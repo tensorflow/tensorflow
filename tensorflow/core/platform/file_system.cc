@@ -76,6 +76,22 @@ WritableFile::~WritableFile() {}
 
 FileSystemRegistry::~FileSystemRegistry() {}
 
+bool FileSystem::FilesExist(const std::vector<string>& files,
+                            std::vector<Status>* status) {
+  bool result = true;
+  for (const auto& file : files) {
+    Status s = FileExists(file);
+    result &= s.ok();
+    if (status != nullptr) {
+      status->push_back(s);
+    } else if (!result) {
+      // Return early since there is no need to check other files.
+      return false;
+    }
+  }
+  return result;
+}
+
 Status FileSystem::GetMatchingPaths(const string& pattern,
                                     std::vector<string>* results) {
   results->clear();

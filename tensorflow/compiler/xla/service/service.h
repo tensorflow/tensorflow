@@ -249,6 +249,8 @@ class Service : public ServiceInterface {
   Backend* mutable_backend() { return execute_backend_.get(); }
 
  protected:
+  friend class LocalExecutable;
+
   // The constructor is private. Use the NewService factory to create new
   // service objects.
   Service(std::unique_ptr<Backend> backend,
@@ -360,9 +362,9 @@ class Service : public ServiceInterface {
   // arguments. The ExecuteOnStream overloads return different types so this
   // method is templated on return-type of the execute function.
   template <typename ReturnT>
-  ReturnT ExecuteOnStreamWrapper(
+  static ReturnT ExecuteOnStreamWrapper(
       Executable* executable, const ServiceExecutableRunOptions* run_options,
-      ExecutionProfile* profile,
+      ExecutionProfile* profile, Backend* backend,
       std::function<ReturnT(Executable* executable,
                             const ServiceExecutableRunOptions* run_options,
                             HloExecutionProfile* hlo_execution_profile)>
@@ -400,7 +402,7 @@ class Service : public ServiceInterface {
 template <typename ReturnT>
 ReturnT Service::ExecuteOnStreamWrapper(
     Executable* executable, const ServiceExecutableRunOptions* run_options,
-    ExecutionProfile* profile,
+    ExecutionProfile* profile, Backend* backend,
     std::function<ReturnT(Executable* executable,
                           const ServiceExecutableRunOptions* run_options,
                           HloExecutionProfile* hlo_execution_profile)>
@@ -450,9 +452,10 @@ ReturnT Service::ExecuteOnStreamWrapper(
   }
 
   if (profile_ptr != nullptr) {
-    HloCostAnalysis::ShapeSizeFunction shape_size = [this](const Shape& shape) {
-      return execute_backend_->compiler()->ShapeSizeBytes(shape);
-    };
+    HloCostAnalysis::ShapeSizeFunction shape_size =
+        [backend](const Shape& shape) {
+          return backend->compiler()->ShapeSizeBytes(shape);
+        };
     std::unordered_set<const xla::HloComputation*> profiled_computations =
         profile_ptr->profiled_computations();
     // To ensure we have print the profiles in a stable order, iterate over the

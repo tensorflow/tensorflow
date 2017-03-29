@@ -53,6 +53,10 @@ REGISTER_XLA_KERNEL(
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("AvgPool").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("AvgPool3D").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("AvgPool3DGrad").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("AvgPoolGrad").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("BatchMatMul").TypeConstraint("T", kCpuFloatTypes));
@@ -161,6 +165,10 @@ REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("MaxPool").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("MaxPool3D").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("MaxPool3DGrad").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("MaxPoolGrad").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Mean").TypeConstraint("T", kCpuNumericTypes));
@@ -216,8 +224,24 @@ REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Relu6Grad").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Reshape").TypeConstraint("T", kCpuAllTypes));
-REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("ResourceApplyGradientDescent")
-                                            .TypeConstraint("T", kCpuAllTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_CPU_XLA_JIT,
+    Name("ResourceApplyAdagrad").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_CPU_XLA_JIT,
+    Name("ResourceApplyGradientDescent").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_CPU_XLA_JIT,
+    Name("ResourceApplyMomentum").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_CPU_XLA_JIT,
+    Name("ResourceApplyRMSProp").TypeConstraint("T", kCpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("Reverse").TypeConstraint("T", kCpuAllTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("ReverseV2").TypeConstraint("T", kCpuAllTypes));
+REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
+                    Name("Round").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Rsqrt").TypeConstraint("T", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
@@ -288,6 +312,9 @@ REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("TruncateDiv").TypeConstraint("T", kCpuIntTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("TruncateMod").TypeConstraint("T", kCpuNumericTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_CPU_XLA_JIT,
+    Name("TruncatedNormal").TypeConstraint("dtype", kCpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
                     Name("Unpack").TypeConstraint("T", kCpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT, Name("VarIsInitializedOp"));
@@ -332,6 +359,10 @@ REGISTER_XLA_KERNEL(
     Name("AssignSubVariableOp").TypeConstraint("dtype", kGpuNumericTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("AvgPool").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("AvgPool3D").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("AvgPool3DGrad").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("AvgPoolGrad").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
@@ -439,6 +470,10 @@ REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("MaxPool").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("MaxPool3D").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("MaxPool3DGrad").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("MaxPoolGrad").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Mean").TypeConstraint("T", kGpuNumericTypes));
@@ -491,8 +526,24 @@ REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Relu6Grad").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Reshape").TypeConstraint("T", kGpuAllTypes));
-REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT, Name("ResourceApplyGradientDescent")
-                                            .TypeConstraint("T", kGpuAllTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_GPU_XLA_JIT,
+    Name("ResourceApplyAdagrad").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_GPU_XLA_JIT,
+    Name("ResourceApplyRMSProp").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_GPU_XLA_JIT,
+    Name("ResourceApplyGradientDescent").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_GPU_XLA_JIT,
+    Name("ResourceApplyMomentum").TypeConstraint("T", kGpuFloatTypes));
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("Reverse").TypeConstraint("T", kGpuAllTypes))
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("ReverseV2").TypeConstraint("T", kGpuAllTypes))
+REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
+                    Name("Round").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Rsqrt").TypeConstraint("T", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
@@ -563,6 +614,9 @@ REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("TruncateDiv").TypeConstraint("T", kGpuIntTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("TruncateMod").TypeConstraint("T", kGpuNumericTypes));
+REGISTER_XLA_KERNEL(
+    DEVICE_GPU_XLA_JIT,
+    Name("TruncatedNormal").TypeConstraint("dtype", kGpuFloatTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT,
                     Name("Unpack").TypeConstraint("T", kGpuAllTypes));
 REGISTER_XLA_KERNEL(DEVICE_GPU_XLA_JIT, Name("VarIsInitializedOp"));

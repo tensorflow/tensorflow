@@ -128,17 +128,6 @@ class HloComputation {
     return instructions_;
   }
 
-  // Add a control dependency between the two instructions in this computation
-  // so that the 'predecessor' is visited before the 'successor' during the DFS
-  // traversal of the computation. Returns an error status if either of the
-  // given instructions does not belong to the current computation.
-  //
-  // This is used to enforce an additional ordering requirement that is not
-  // captured by normal data dependencies, such as ordering among Send or Recv
-  // operations to avoid deadlock.
-  Status AddControlDependency(HloInstruction* predecessor,
-                              HloInstruction* successor);
-
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
   std::list<HloInstruction*> MakeInstructionPostOrder() const;
@@ -205,6 +194,7 @@ class HloComputation {
   // Set/get the module containing this computation.
   void set_parent(HloModule* module) { parent_ = module; }
   const HloModule* parent() const { return parent_; }
+  HloModule* parent() { return parent_; }
 
   // Visit every node in the computation in DFS post-order with the given
   // visitor. This is similar to calling HloInstruction::Accept on the root of

@@ -324,22 +324,21 @@ class StateSavingRnnEstimatorTest(test.TestCase):
 
   def _getModelFnOpsForMode(self, mode):
     """Helper for testGetRnnModelFn{Train,Eval,Infer}()."""
-    num_units = 4
-    num_rnn_layers = 1
+    num_units = [4]
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=num_units)
+            'inputs', dimension=1)
     ]
     features = {
         'inputs': constant_op.constant([1., 2., 3.]),
     }
     labels = constant_op.constant([1., 0., 1.])
     model_fn = ssre._get_rnn_model_fn(
+        cell_type='basic_rnn',
         target_column=target_column_lib.multi_class_target(n_classes=2),
         optimizer='SGD',
         num_unroll=2,
         num_units=num_units,
-        num_rnn_layers=num_rnn_layers,
         num_threads=1,
         queue_capacity=10,
         batch_size=1,
@@ -380,14 +379,14 @@ class StateSavingRnnEstimatorTest(test.TestCase):
   def testExport(self):
     input_feature_key = 'magic_input_feature_key'
     batch_size = 8
-    cell_size = 4
+    num_units = [4]
     sequence_length = 10
     num_unroll = 2
     num_classes = 2
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=cell_size)
+            'inputs', dimension=4)
     ]
 
     def get_input_fn(mode, seed):
@@ -414,7 +413,7 @@ class StateSavingRnnEstimatorTest(test.TestCase):
     def estimator_fn():
       return ssre.StateSavingRnnEstimator(
           constants.ProblemType.CLASSIFICATION,
-          num_units=cell_size,
+          num_units=num_units,
           num_unroll=num_unroll,
           batch_size=batch_size,
           sequence_feature_columns=seq_columns,
@@ -518,8 +517,8 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     sequence_length = 64
     train_steps = 250
     eval_steps = 20
-    num_units = 4
     num_rnn_layers = 1
+    num_units = [4] * num_rnn_layers
     learning_rate = 0.3
     loss_threshold = 0.035
 
@@ -539,14 +538,14 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=num_units)
+            'inputs', dimension=1)
     ]
     config = run_config.RunConfig(tf_random_seed=1234)
     dropout_keep_probabilities = [0.9] * (num_rnn_layers + 1)
     sequence_estimator = ssre.StateSavingRnnEstimator(
         constants.ProblemType.LINEAR_REGRESSION,
         num_units=num_units,
-        num_rnn_layers=num_rnn_layers,
+        cell_type='lstm',
         num_unroll=num_unroll,
         batch_size=batch_size,
         sequence_feature_columns=seq_columns,
@@ -578,7 +577,7 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     sequence_length = 32
     train_steps = 200
     eval_steps = 20
-    num_units = 4
+    num_units = [4]
     learning_rate = 0.5
     accuracy_threshold = 0.9
 
@@ -596,12 +595,13 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=num_units)
+            'inputs', dimension=1)
     ]
     config = run_config.RunConfig(tf_random_seed=21212)
     sequence_estimator = ssre.StateSavingRnnEstimator(
         constants.ProblemType.CLASSIFICATION,
         num_units=num_units,
+        cell_type='lstm',
         num_unroll=num_unroll,
         batch_size=batch_size,
         sequence_feature_columns=seq_columns,
@@ -649,7 +649,7 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     num_unroll = 7  # not a divisor of sequence_length
     train_steps = 350
     eval_steps = 30
-    num_units = 4
+    num_units = [4]
     learning_rate = 0.4
     accuracy_threshold = 0.65
 
@@ -684,6 +684,7 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     sequence_estimator = ssre.StateSavingRnnEstimator(
         constants.ProblemType.CLASSIFICATION,
         num_units=num_units,
+        cell_type='basic_rnn',
         num_unroll=num_unroll,
         batch_size=batch_size,
         sequence_feature_columns=sequence_feature_columns,

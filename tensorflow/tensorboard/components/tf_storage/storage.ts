@@ -21,6 +21,8 @@ limitations under the License.
  * It generates URI components like: events&runPrefix=train*
  * which TensorBoard uses after like localhost:8000/#events&runPrefix=train*
  * to store state in the URI.
+ *
+ * It also allows saving the values to localStorage for long-term persistance.
  */
 module TF.URIStorage {
   type StringDict = {[key: string]: string};
@@ -50,76 +52,79 @@ module TF.URIStorage {
   export let DISAMBIGUATOR = 'disambiguator';
 
   /**
-   * Return a boolean stored in the URI, given a corresponding key.
+   * Return a string stored in URI or localStorage.
    * Undefined if not found.
    */
-  export function getBoolean(key: string): boolean {
-    let items = _componentToDict(_readComponent());
-    let item = items[key];
+  export function getString(key: string, useLocalStorage: boolean): string {
+    if (useLocalStorage) {
+      return window.localStorage.getItem(key);
+    } else {
+      return _componentToDict(_readComponent())[key];
+    }
+  }
+
+  /**
+   * Set a string in URI or localStorage.
+   */
+  export function setString(
+      key: string, value: string, useLocalStorage: boolean) {
+    if (useLocalStorage) {
+      window.localStorage.setItem(key, value);
+    } else {
+      let items = _componentToDict(_readComponent());
+      items[key] = value;
+      _writeComponent(_dictToComponent(items));
+    }
+  }
+
+  /**
+   * Return a boolean stored in stored in URI or localStorage.
+   * Undefined if not found.
+   */
+  export function getBoolean(key: string, useLocalStorage: boolean): boolean {
+    let item = getString(key, useLocalStorage);
     return item === 'true' ? true : item === 'false' ? false : undefined;
   }
 
   /**
-   * Store a boolean in the URI, with a corresponding key.
+   * Store a boolean in URI or localStorage.
    */
-  export function setBoolean(key: string, value: boolean) {
-    let items = _componentToDict(_readComponent());
-    items[key] = value.toString();
-    _writeComponent(_dictToComponent(items));
+  export function setBoolean(
+      key: string, value: boolean, useLocalStorage = false) {
+    setString(key, value.toString(), useLocalStorage);
   }
 
   /**
-   * Return a string stored in the URI, given a corresponding key.
+   * Return a number stored in stored in URI or localStorage.
    * Undefined if not found.
    */
-  export function getString(key: string): string {
-    let items = _componentToDict(_readComponent());
-    return items[key];
+  export function getNumber(key: string, useLocalStorage: boolean): number {
+    let item = getString(key, useLocalStorage);
+    return item === undefined ? undefined : +item;
   }
 
   /**
-   * Store a string in the URI, with a corresponding key.
+   * Store a number in URI or localStorage.
    */
-  export function setString(key: string, value: string) {
-    let items = _componentToDict(_readComponent());
-    items[key] = value;
-    _writeComponent(_dictToComponent(items));
+  export function setNumber(
+      key: string, value: number, useLocalStorage: boolean) {
+    setString(key, '' + value, useLocalStorage);
   }
 
   /**
-   * Return a number stored in the URI, given a corresponding key.
+   * Return an object stored in stored in URI or localStorage.
    * Undefined if not found.
    */
-  export function getNumber(key: string): number {
-    let items = _componentToDict(_readComponent());
-    return items[key] === undefined ? undefined : +items[key];
+  export function getObject(key: string, useLocalStorage: boolean): {} {
+    let item = getString(key, useLocalStorage);
+    return item === undefined ? undefined : JSON.parse(atob(item));
   }
 
   /**
-   * Store a number in the URI, with a corresponding key.
+   * Store an object in URI or localStorage.
    */
-  export function setNumber(key: string, value: number) {
-    let items = _componentToDict(_readComponent());
-    items[key] = '' + value;
-    _writeComponent(_dictToComponent(items));
-  }
-
-  /**
-   * Return an object stored in the URI, given a corresponding key.
-   * Undefined if not found.
-   */
-  export function getObject(key: string): Object {
-    let items = _componentToDict(_readComponent());
-    return items[key] === undefined ? undefined : JSON.parse(atob(items[key]));
-  }
-
-  /**
-   * Store an object in the URI, with a corresponding key.
-   */
-  export function setObject(key: string, value: Object) {
-    let items = _componentToDict(_readComponent());
-    items[key] = btoa(JSON.stringify(value));
-    _writeComponent(_dictToComponent(items));
+  export function setObject(key: string, value: {}, useLocalStorage: boolean) {
+    setString(key, btoa(JSON.stringify(value)), useLocalStorage);
   }
 
   /**
@@ -129,7 +134,7 @@ module TF.URIStorage {
    * same propertyName.
    */
   export function getURIStorageName(
-      component: Object, propertyName: string): string {
+      component: {}, propertyName: string): string {
     let d = component[DISAMBIGUATOR];
     let components = d == null ? [propertyName] : [d, propertyName];
     return components.join('.');
@@ -142,8 +147,10 @@ module TF.URIStorage {
    * (2) Sets up listener that updates Polymer property on hash change.
    */
   export function getBooleanInitializer(
-      propertyName: string, defaultVal: boolean): Function {
-    return _getInitializer(getBoolean, propertyName, defaultVal);
+      propertyName: string, defaultVal: boolean,
+      useLocalStorage = false): Function {
+    return _getInitializer(
+        getBoolean, propertyName, defaultVal, useLocalStorage);
   }
 
   /**
@@ -153,8 +160,10 @@ module TF.URIStorage {
    * (2) Sets up listener that updates Polymer property on hash change.
    */
   export function getStringInitializer(
-      propertyName: string, defaultVal: string): Function {
-    return _getInitializer(getString, propertyName, defaultVal);
+      propertyName: string, defaultVal: string,
+      useLocalStorage = false): Function {
+    return _getInitializer(
+        getString, propertyName, defaultVal, useLocalStorage);
   }
 
   /**
@@ -164,8 +173,10 @@ module TF.URIStorage {
    * (2) Sets up listener that updates Polymer property on hash change.
    */
   export function getNumberInitializer(
-      propertyName: string, defaultVal: number): Function {
-    return _getInitializer(getNumber, propertyName, defaultVal);
+      propertyName: string, defaultVal: number,
+      useLocalStorage = false): Function {
+    return _getInitializer(
+        getNumber, propertyName, defaultVal, useLocalStorage);
   }
 
   /**
@@ -177,32 +188,39 @@ module TF.URIStorage {
    * Generates a deep clone of the defaultVal to avoid mutation issues.
    */
   export function getObjectInitializer(
-      propertyName: string, defaultVal: Object): Function {
-    return _getInitializer(getObject, propertyName, defaultVal);
+      propertyName: string, defaultVal: {}, useLocalStorage = false): Function {
+    return _getInitializer(
+        getObject, propertyName, defaultVal, useLocalStorage);
   }
 
   /**
    * Return a function that updates URIStorage when a string property changes.
    */
   export function getBooleanObserver(
-      propertyName: string, defaultVal: boolean): Function {
-    return _getObserver(getBoolean, setBoolean, propertyName, defaultVal);
+      propertyName: string, defaultVal: boolean,
+      useLocalStorage = false): Function {
+    return _getObserver(
+        getBoolean, setBoolean, propertyName, defaultVal, useLocalStorage);
   }
 
   /**
    * Return a function that updates URIStorage when a string property changes.
    */
   export function getStringObserver(
-      propertyName: string, defaultVal: string): Function {
-    return _getObserver(getString, setString, propertyName, defaultVal);
+      propertyName: string, defaultVal: string,
+      useLocalStorage = false): Function {
+    return _getObserver(
+        getString, setString, propertyName, defaultVal, useLocalStorage);
   }
 
   /**
    * Return a function that updates URIStorage when a number property changes.
    */
   export function getNumberObserver(
-      propertyName: string, defaultVal: number): Function {
-    return _getObserver(getNumber, setNumber, propertyName, defaultVal);
+      propertyName: string, defaultVal: number,
+      useLocalStorage = false): Function {
+    return _getObserver(
+        getNumber, setNumber, propertyName, defaultVal, useLocalStorage);
   }
 
   /**
@@ -210,9 +228,10 @@ module TF.URIStorage {
    * Generates a deep clone of the defaultVal to avoid mutation issues.
    */
   export function getObjectObserver(
-      propertyName: string, defaultVal: Object): Function {
+      propertyName: string, defaultVal: {}, useLocalStorage = false): Function {
     let clone = _.cloneDeep(defaultVal);
-    return _getObserver(getObject, setObject, propertyName, clone);
+    return _getObserver(
+        getObject, setObject, propertyName, clone, useLocalStorage);
   }
 
   /**
@@ -292,7 +311,8 @@ module TF.URIStorage {
    * (2) Sets up listener that updates Polymer property on hash change.
    */
   function _getInitializer<T>(
-      get: (name: string) => T, propertyName: string, defaultVal: T): Function {
+      get: (name: string, useLocalStorage: boolean) => T, propertyName: string,
+      defaultVal: T, useLocalStorage): Function {
     return function() {
       let URIStorageName = getURIStorageName(this, propertyName);
       // setComponentValue will be called every time the hash changes, and is
@@ -301,23 +321,39 @@ module TF.URIStorage {
       // It is important that this function does not re-assign needlessly,
       // to avoid Polymer observer churn.
       let setComponentValue = () => {
-        let uriValue = get(URIStorageName);
+        let uriValue = get(URIStorageName, false);
         let currentValue = this[propertyName];
         // if uriValue is undefined, we will ensure that the property has the
         // default value
         if (uriValue === undefined) {
-          if (!_.isEqual(currentValue, defaultVal)) {
+          let valueToSet: T;
+          // if we are using localStorage, we will set the value to the value
+          // from localStorage. Then, the corresponding observer will proxy
+          // the localStorage value into URI storage.
+          // in this way, localStorage takes precedence over the default val
+          // but not over the URI value.
+          if (useLocalStorage) {
+            let useLocalStorageValue = get(URIStorageName, true);
+            valueToSet = useLocalStorageValue === undefined ?
+                defaultVal :
+                useLocalStorageValue;
+          } else {
+            valueToSet = defaultVal;
+          }
+          if (!_.isEqual(currentValue, valueToSet)) {
             // If we don't have an explicit URI value, then we need to ensure
             // the property value is equal to the default value.
             // We will assign a clone rather than the canonical default, because
             // the component receiving this property may mutate it, and we need
             // to keep a pristine copy of the default.
-            this[propertyName] = _.clone(defaultVal);
+            this[propertyName] = _.clone(valueToSet);
           }
           // In this case, we have an explicit URI value, so we will ensure that
           // the component has an equivalent value.
-        } else if (!_.isEqual(uriValue, currentValue)) {
-          this[propertyName] = uriValue;
+        } else {
+          if (!_.isEqual(uriValue, currentValue)) {
+            this[propertyName] = uriValue;
+          }
         }
       };
       // Set the value on the property.
@@ -331,16 +367,22 @@ module TF.URIStorage {
    * Return a function that updates URIStorage when a property changes.
    */
   function _getObserver<T>(
-      get: (name: string) => T, set: (name: string, newVal: T) => void,
-      propertyName: string, defaultVal: T): Function {
+      get: (name: string, useLocalStorage: boolean) => T,
+      set: (name: string, newVal: T, useLocalStorage: boolean) => void,
+      propertyName: string, defaultVal: T, useLocalStorage: boolean): Function {
     return function() {
       let URIStorageName = getURIStorageName(this, propertyName);
       let newVal = this[propertyName];
-      if (!_.isEqual(newVal, get(URIStorageName))) {
+      // if this is a localStorage property, we always synchronize the value
+      // in localStorage to match the one currently in the URI.
+      if (useLocalStorage) {
+        set(URIStorageName, newVal, true);
+      }
+      if (!_.isEqual(newVal, get(URIStorageName, false))) {
         if (_.isEqual(newVal, defaultVal)) {
-          _unset(URIStorageName);
+          _unsetFromURI(URIStorageName);
         } else {
-          set(URIStorageName, newVal);
+          set(URIStorageName, newVal, false);
         }
       }
     };
@@ -349,7 +391,7 @@ module TF.URIStorage {
   /**
    * Delete a key from the URI.
    */
-  function _unset(key) {
+  function _unsetFromURI(key) {
     let items = _componentToDict(_readComponent());
     delete items[key];
     _writeComponent(_dictToComponent(items));

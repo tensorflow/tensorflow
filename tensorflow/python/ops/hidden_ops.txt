@@ -60,6 +60,7 @@ FakeQueue
 FIFOQueue
 FIFOQueueV2
 GetSessionHandle
+GetSessionHandleV2
 GetSessionTensor
 HashTable
 InitializeTable
@@ -251,6 +252,7 @@ TruncateMod
 
 # nn_ops
 AvgPoolGrad  # "*Grad" accessible through nn_grad instead of nn_ops.
+AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
 FusedBatchNorm
@@ -259,6 +261,10 @@ SparseSoftmaxCrossEntropyWithLogits
 LRNGrad
 MaxPoolGrad
 MaxPoolGradWithArgmax
+MaxPoolGradGrad
+MaxPoolGradGradWithArgmax
+MaxPool3DGrad
+MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad

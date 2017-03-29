@@ -300,8 +300,9 @@ struct FusedBatchNorm<GPUDevice, T> {
     GPUDevice d = context->eigen_device<GPUDevice>();
     using perftools::gputools::DeviceMemory;
     Tensor inv_var;
-    context->allocate_temp(DataTypeToEnum<T>::value, estimated_variance.shape(),
-                           &inv_var);
+    OP_REQUIRES_OK(
+        context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                        estimated_variance.shape(), &inv_var));
     auto inv_var_ptr = StreamExecutorUtil::AsDeviceMemory<T>(inv_var);
     std::function<const DeviceMemory<T>&()> var_to_inv_var =
         [d, epsilon, estimated_variance,

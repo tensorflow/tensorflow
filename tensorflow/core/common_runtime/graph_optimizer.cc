@@ -79,7 +79,9 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
     if (!changed) break;
   }
 
-  std::unique_ptr<Graph> copy(new Graph(g->op_registry()));
+  // Note that we use the Graph constructor that copies the input
+  // FunctionLibraryDefinition, since the original lib def will go out of scope.
+  std::unique_ptr<Graph> copy(new Graph(g->flib_def()));
   CopyGraph(*g, copy.get());
   graph->swap(copy);
 

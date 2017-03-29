@@ -23,6 +23,8 @@ create a `LocalCLIDebugHook` and supply it as the `monitors` argument. For examp
 
 ```python
 # First, let your BUILD target depend on "//tensorflow/python/debug:debug_py"
+# (You don't need to worry about the BUILD dependency if you are using a pip
+#  install of open-source TensorFlow.)
 from tensorflow.python import debug as tf_debug
 
 hooks = [tf_debug.LocalCLIDebugHook()]
@@ -62,6 +64,8 @@ calling its constructor. For example:
 
 ```python
 # First, let your BUILD target depend on "//tensorflow/python/debug:debug_py"
+# (You don't need to worry about the BUILD dependency if you are using a pip
+#  install of open-source TensorFlow.)
 from tensorflow.python import debug as tf_debug
 
 hooks = [tf_debug.LocalCLIDebugHook()]
@@ -94,15 +98,17 @@ non-interactive `DumpingDebugHook`. For example:
 
 ```python
 # Let your BUILD target depend on "//tensorflow/python/debug:debug_py
+# (You don't need to worry about the BUILD dependency if you are using a pip
+#  install of open-source TensorFlow.)
 from tensorflow.python import debug as tf_debug
 
-hooks = [tf_debug.DumpingDebugHook("/cns/is-d/home/somebody/tfdbg_dumps_1")]
+hooks = [tf_debug.DumpingDebugHook("/shared/storage/location/tfdbg_dumps_1")]
 ```
 
 Then this `hook` can be used in the same way as the `LocalCLIDebugHook` examples
 above. As the training and/or evalution of `Estimator` or `Experiment`
 happens, directories of the naming pattern
-`/cns/is-d/home/somebody/tfdbg_dumps_1/run_<epoch_timestamp_microsec>_<uuid>`
+`/shared/storage/location/tfdbg_dumps_1/run_<epoch_timestamp_microsec>_<uuid>`
 will appear. Each directory corresponds to a `Session.run()` call that underlies
 the `fit()` or `evaluate()` call. You can load these directories and inspect
 them in a command-line interface in an offline manner using the
@@ -110,7 +116,7 @@ them in a command-line interface in an offline manner using the
 
 ```bash
 python -m tensorflow.python.debug.cli.offline_analyzer \
-    --dump_dir="/cns/is-d/home/somebody/tfdbg_dumps_1/run_<epoch_timestamp_microsec>_<uuid>"
+    --dump_dir="/shared/storage/location/tfdbg_dumps_1/run_<epoch_timestamp_microsec>_<uuid>"
 ```
 
 The `LocalCLIDebugHook` also allows you to configure a `watch_fn` that can be

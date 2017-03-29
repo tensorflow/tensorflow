@@ -182,6 +182,15 @@ class InferenceContext {
     if (!s.ok()) {
       return AttachContext(s);
     }
+#if 0
+    // TODO(cwhipkey): enable this check
+#ifndef NDEBUG
+    for (int i = 0; i < num_outputs(); ++i) {
+      DCHECK(output(i).IsSet()) << i << " for " << node_def().name()
+                                << " of type " << node_def().op();
+    }
+#endif  // NDEBUG
+#endif
     return s;
   }
 
@@ -239,7 +248,7 @@ class InferenceContext {
   }
   int32 Rank(ShapeHandle s) const {
     DCHECK(s.IsSet());
-    return s->rank_;
+    return s.IsSet() ? s->rank_ : kUnknownRank;
   }
   bool RankKnown(ShapeHandle s) const {
     return (s.IsSet() && (Rank(s) != kUnknownRank));
@@ -374,6 +383,11 @@ class InferenceContext {
   // The input tensor must be in host memory, since it is dereferenced to get
   // the value.
   Status MakeDimForScalarInput(int idx, DimensionHandle* out);
+
+  // Returns the NodeDef. The returned reference does not outlive the
+  // InferenceContext, and it should not be used after InferenceContext is
+  // destroyed.
+  const NodeDef& node_def() { return node_def_; }
 
   // Look up the attr for the NodeDef being evaluated with name attr_name and
   // set *value to its value.  If no attr with attr_name is found in def(), or

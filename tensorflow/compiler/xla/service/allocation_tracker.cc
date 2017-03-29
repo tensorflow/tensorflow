@@ -125,7 +125,9 @@ tensorflow::Status AllocationTracker::DeallocateShape(
     handle_map.erase(device_memory->opaque());
   }
 
-  if (ShapeUtil::IsTuple(shape)) {
+  // TODO(b/36256956) Ideally tuple elements could always be distinct buffers.
+  if (ShapeUtil::IsTuple(shape) &&
+      backend->transfer_manager()->TupleElementsAreDistinctBuffers()) {
     // Traverse into tuple recursively deallocating buffers.
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend->stream_executor(device_ordinal));
@@ -171,8 +173,7 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
           executor, allocation->device_memory(), allocation->shape()));
 
   std::vector<GlobalDataHandle> element_handles;
-  for (std::vector<se::DeviceMemoryBase>::size_type i = 0;
-       i < element_bases.size(); ++i) {
+  for (int i = 0; i < element_bases.size(); ++i) {
     element_handles.push_back(RegisterInternal(
         allocation->backend(), allocation->device_ordinal(), element_bases[i],
         ShapeUtil::GetSubshape(allocation->shape(), {i}),

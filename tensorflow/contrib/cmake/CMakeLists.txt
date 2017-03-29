@@ -29,6 +29,7 @@ option(tensorflow_BUILD_CONTRIB_KERNELS "Build OpKernels from tensorflow/contrib
 option(tensorflow_BUILD_CC_TESTS "Build cc unit tests " OFF)
 option(tensorflow_BUILD_PYTHON_TESTS "Build python unit tests " OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
+option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 
 if (NOT WIN32)
   # Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option
@@ -56,9 +57,10 @@ mark_as_advanced(DOWNLOAD_LOCATION)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
-  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC -D__VERSION__=\"MSVC\")
+  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC)
   add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH -D_ITERATOR_DEBUG_LEVEL=0)
+  add_definitions(-DTF_COMPILE_LIBRARY)
   add_definitions(-DNDEBUG /O2)  # Equivalent of -c opt in Bazel.
   add_definitions(/bigobj /nologo /EHsc /GF /FC /MP /Gm-)
   # Suppress warnings to reduce build log size.
@@ -77,6 +79,18 @@ if (tensorflow_OPTIMIZE_FOR_NATIVE_ARCH)
   CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
   if (COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+  endif()
+endif()
+
+# MSVC SIMD instructions
+if (tensorflow_WIN_CPU_SIMD_OPTIONS)
+  if (WIN32)
+    CHECK_CXX_COMPILER_FLAG("${tensorflow_WIN_CPU_SIMD_OPTIONS}" COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+    if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
+    else()
+      message(FATAL_ERROR "${tensorflow_WIN_CPU_SIMD_OPTIONS} not supported")
+    endif()
   endif()
 endif()
 
@@ -190,6 +204,7 @@ if (tensorflow_ENABLE_GPU)
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda.h ${CUDA_TOOLKIT_TARGET_DIR}/include/cuComplex.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h ${CUDNN_HOME}/include/cudnn.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
+      ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
       DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
     )
     include_directories(${tensorflow_source_dir}/third_party/gpus)
@@ -200,7 +215,6 @@ endif()
 
 # Let's get to work!
 include(tf_core_framework.cmake)
-include(tf_tools.cmake)
 # NOTE: Disabled until issue #3996 is fixed.
 # include(tf_stream_executor.cmake)
 if (tensorflow_ENABLE_GPU)
@@ -221,6 +235,7 @@ if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)
 endif()
+include(tf_tools.cmake)
 if(tensorflow_BUILD_PYTHON_BINDINGS)
   include(tensorboard)
   include(tf_python.cmake)

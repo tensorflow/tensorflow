@@ -164,7 +164,7 @@ TEST(TensorUtil, Concat) {
   }
 
   Tensor concated;
-  TF_ASSERT_OK(tensor::TryConcat(to_concat, &concated));
+  TF_ASSERT_OK(tensor::Concat(to_concat, &concated));
   ASSERT_EQ(TensorShape({total_size, 2}), concated.shape());
   for (int i = 0; i < total_size; ++i) {
     for (int j = 0; j < 2; ++j) {
@@ -183,7 +183,7 @@ TEST(TensorUtil, Split) {
 
   std::vector<int64> sizes = {1, 4, 5};
   std::vector<Tensor> splits;
-  TF_ASSERT_OK(tensor::TrySplit(to_split, sizes, &splits));
+  TF_ASSERT_OK(tensor::Split(to_split, sizes, &splits));
   ASSERT_EQ(sizes.size(), splits.size());
 
   int offset = 0;
@@ -208,7 +208,10 @@ TEST(TensorUtil, ConcatSplitStrings) {
     x.flat<string>()(i) = strings::StrCat("foo_", i);
   }
 
-  Tensor x_round_tripped = tensor::Concat(tensor::Split(x, {2, 1, 1}));
+  std::vector<Tensor> split;
+  TF_ASSERT_OK(tensor::Split(x, {2, 1, 1}, &split));
+  Tensor x_round_tripped;
+  TF_ASSERT_OK(tensor::Concat(split, &x_round_tripped));
   ASSERT_EQ(x.shape(), x_round_tripped.shape());
   for (int i = 0; i < 4 * 3; ++i) {
     EXPECT_EQ(x.flat<string>()(i), x_round_tripped.flat<string>()(i));

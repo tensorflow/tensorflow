@@ -132,12 +132,13 @@ class Dense(base._Layer):  # pylint: disable=protected-access
       self.bias = None
 
   def call(self, inputs):
+    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
     shape = inputs.get_shape().as_list()
     output_shape = shape[:-1] + [self.units]
     if len(output_shape) > 2:
       # Broadcasting is required for the inputs.
-      outputs = standard_ops.tensordot(inputs, self.kernel,
-                                       [[len(shape) - 1], [0]])
+      outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
+                                                             [0]])
       # Reshape the output back to the original ndim of the input.
       outputs.set_shape(output_shape)
     else:

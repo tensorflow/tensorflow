@@ -267,7 +267,7 @@ def _find_cuda_define(repository_ctx, cudnn_header_dir, define):
   cudnn_h_path = repository_ctx.path("%s/cudnn.h" % cudnn_header_dir)
   if not cudnn_h_path.exists:
     auto_configure_fail("Cannot find cudnn.h at %s" % str(cudnn_h_path))
-  result = repository_ctx.execute(["grep", "-E", define, str(cudnn_h_path)])
+  result = repository_ctx.execute(["grep", "--color=never", "-E", define, str(cudnn_h_path)])
   if result.stderr:
     auto_configure_fail("Error reading %s: %s" %
                         (result.stderr, str(cudnn_h_path)))
@@ -824,10 +824,20 @@ def _cuda_autoconf_impl(repository_ctx):
     _create_cuda_repository(repository_ctx)
 
 
+
 cuda_configure = repository_rule(
     implementation = _cuda_autoconf_impl,
-    local = True,
+    environ = [
+        _GCC_HOST_COMPILER_PATH,
+        "TF_NEED_CUDA",
+        _CUDA_TOOLKIT_PATH,
+        _CUDNN_INSTALL_PATH,
+        _TF_CUDA_VERSION,
+        _TF_CUDNN_VERSION,
+        _TF_CUDA_COMPUTE_CAPABILITIES,
+    ],
 )
+
 """Detects and configures the local CUDA toolchain.
 
 Add the following to your WORKSPACE FILE:

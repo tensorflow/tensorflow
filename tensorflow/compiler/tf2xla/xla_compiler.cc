@@ -76,7 +76,8 @@ int64 XlaCompiler::NextStepId() {
 static void PruneUnreachableNodes(Graph* graph) {
   std::unordered_set<const Node*> nodes;
   for (Node* node : graph->nodes()) {
-    if (node->type_string() == "_Retval") {
+    if (node->type_string() == "_Retval" ||
+        StringPiece(node->type_string()).ends_with("Send")) {
       nodes.insert(node);
     }
   }
@@ -225,8 +226,8 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
   parameters.reserve(args.size());
   variables.reserve(args.size());
 
-  for (std::vector<XlaCompiler::Argument>::size_type i = 0;
-       i < args.size(); ++i) {
+  for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
+       ++i) {
     XlaContext::Argument& context_arg = (*context_args)[i];
     context_arg.name = args[i].name;
     context_arg.value.constant_value = args[i].constant_value;
@@ -379,7 +380,6 @@ Status XlaCompiler::CompileGraph(string const& name,
   VLOG(1) << "Executing graph symbolically to populate ComputationBuilder.";
 
   xla::ComputationBuilder builder(client(), name);
-
   XlaContext* context =
       new XlaContext(this, &builder, options_.allow_cpu_custom_calls,
                      options_.resolve_compile_time_constants);

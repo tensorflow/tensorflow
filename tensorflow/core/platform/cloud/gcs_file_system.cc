@@ -411,22 +411,14 @@ class GcsWritableFile : public WritableFile {
           return UploadToSession(session_uri, already_uploaded);
         },
         initial_retry_delay_usec_);
-    switch (upload_status.code()) {
-      case errors::Code::OK:
-        return Status::OK();
-      case errors::Code::NOT_FOUND:
-        // GCS docs recommend retrying the whole upload. We're relying on the
-        // RetryingFileSystem to retry the Sync() call.
-        return errors::Unavailable("Could not upload gs://", bucket_, "/",
-                                   object_);
-      case errors::Code::UNAVAILABLE:
-        // Return ABORTED so that RetryingFileSystem doesn't retry again.
-        return errors::Aborted("Upload gs://", bucket_, "/", object_,
-                               " failed.");
-      default:
-        // Something unexpected happen, fail.
-        return upload_status;
+    if (upload_status.code() == errors::Code::NOT_FOUND) {
+      // GCS docs recommend retrying the whole upload. We're relying on the
+      // RetryingFileSystem to retry the Sync() call.
+      return errors::Unavailable(
+          strings::StrCat("Upload to gs://", bucket_, "/", object_,
+                          " failed, caused by: ", upload_status.ToString()));
     }
+    return upload_status;
   }
 
   Status CheckWritable() const {
@@ -1023,7 +1015,7 @@ Status GcsFileSystem::CreateDir(const string& dirname) {
 }
 
 // Checks that the directory is empty (i.e no objects with this prefix exist).
-// If it is, does nothing, because directories are not entities in GCS.
+// Deletes the GCS directory marker if it exists.
 Status GcsFileSystem::DeleteDir(const string& dirname) {
   std::vector<string> children;
   // A directory is considered empty either if there are no matching objects
@@ -1115,8 +1107,12 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
         "locations or storage classes is not supported.");
   }
 
-  TF_RETURN_IF_ERROR(DeleteFile(src));
-  return Status::OK();
+  // In case the delete API call failed, but the deletion actually happened
+  // on the server side, we can't just retry the whole RenameFile operation
+  // because the source object is already gone.
+  return RetryingUtils::DeleteWithRetries(
+      std::bind(&GcsFileSystem::DeleteFile, this, src),
+      initial_retry_delay_usec_);
 }
 
 Status GcsFileSystem::IsDirectory(const string& fname) {
@@ -1168,7 +1164,13 @@ Status GcsFileSystem::DeleteRecursively(const string& dirname,
   for (const string& object : all_objects) {
     const string& full_path = JoinGcsPath(dirname, object);
     // Delete all objects including directory markers for subfolders.
-    if (!DeleteFile(full_path).ok()) {
+    // Since DeleteRecursively returns OK if individual file deletions fail,
+    // and therefore RetryingFileSystem won't pay attention to the failures,
+    // we need to make sure these failures are properly retried.
+    const auto& delete_file_status = RetryingUtils::DeleteWithRetries(
+        std::bind(&GcsFileSystem::DeleteFile, this, full_path),
+        initial_retry_delay_usec_);
+    if (!delete_file_status.ok()) {
       if (IsDirectory(full_path).ok()) {
         // The object is a directory marker.
         (*undeleted_dirs)++;

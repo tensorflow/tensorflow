@@ -3,6 +3,7 @@ tensorflow/core/util/memmapped_file_system.pb_text.cc
 tensorflow/core/protobuf/saver.pb_text.cc
 tensorflow/core/protobuf/config.pb_text.cc
 tensorflow/core/protobuf/debug.pb_text.cc
+tensorflow/core/protobuf/rewriter_config.pb_text.cc
 tensorflow/core/protobuf/tensor_bundle.pb_text.cc
 tensorflow/core/lib/core/error_codes.pb_text.cc
 tensorflow/core/framework/versions.pb_text.cc

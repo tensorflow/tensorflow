@@ -43,10 +43,11 @@ class ExportStrategy(collections.namedtuple('ExportStrategy',
       result or based on an internal timer or any other criterion, if exports
       are not desired for every checkpoint.
 
-      The signature of this function must be one of:
-        * (estimator, export_path) -> export_path`
-        * (estimator, export_path, checkpoint_path) -> export_path`
-        * (estimator, export_path, checkpoint_path, eval_result) -> export_path`
+    The signature of this function must be one of:
+
+    * `(estimator, export_path) -> export_path`
+    * `(estimator, export_path, checkpoint_path) -> export_path`
+    * `(estimator, export_path, checkpoint_path, eval_result) -> export_path`
   """
 
   def export(self,
@@ -84,5 +85,3 @@ class ExportStrategy(collections.namedtuple('ExportStrategy',
       kwargs['eval_result'] = eval_result
 
     return self.export_fn(estimator, export_path, **kwargs)
-
-

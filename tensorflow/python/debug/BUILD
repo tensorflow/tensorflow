@@ -15,6 +15,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
     name = "debug_py",
@@ -27,6 +28,18 @@ py_library(
         ":hooks",
         ":local_cli_wrapper",
     ],
+)
+
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "debug_pip",
+    deps = [
+        ":debug_py",
+        ":offline_analyzer",
+        ":session_debug_testlib",
+    ] + if_not_windows([
+        ":debug_examples",
+    ]),
 )
 
 py_library(
@@ -160,12 +173,20 @@ py_library(
 )
 
 py_library(
+    name = "curses_widgets",
+    srcs = ["cli/curses_widgets.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debugger_cli_common"],
+)
+
+py_library(
     name = "curses_ui",
     srcs = ["cli/curses_ui.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":base_ui",
         ":command_parser",
+        ":curses_widgets",
         ":debugger_cli_common",
         ":tensor_format",
         "@six_archive//:six",
@@ -232,6 +253,7 @@ py_library(
         ":debug_utils",
         ":dumping_wrapper",
         ":framework",
+        ":grpc_wrapper",
         ":local_cli_wrapper",
         ":stepper",
         "//tensorflow/python:training",
@@ -247,6 +269,16 @@ py_binary(
         ":debug_data",
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
+    ],
+)
+
+py_library(
+    name = "debug_examples",
+    deps = [
+        ":debug_errors",
+        ":debug_fibonacci",
+        ":debug_mnist",
+        ":debug_tflearn_iris",
     ],
 )
 
@@ -386,6 +418,17 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "curses_widgets_test",
+    size = "small",
+    srcs = ["cli/curses_widgets_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":curses_widgets",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -633,6 +676,7 @@ sh_test(
         ":debug_fibonacci",
         ":debug_mnist",
         ":debug_tflearn_iris",
+        ":offline_analyzer",
     ],
 )
 

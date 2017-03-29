@@ -39,24 +39,28 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
   bool SetupGraph() final;
   bool ExecuteGraph() final;
   bool TeardownGraph() final;
-  bool FillInputNode(const string& node_name, const ConstByteArray bytes) final;
   bool FillInputNode(const string& node_name, const Tensor& tensor) final;
-  bool ReadOutputNode(string node_name, std::vector<ByteArray>* outputs) final;
+  bool ReadOutputNode(const string& node_name,
+                      TensorAllocatorFunc tensor_allocator) final;
+  bool ReadOutputNode(const string& node_name, std::vector<ByteArray>* outputs);
 
  private:
+  bool FillInputNode(const string& node_name, const ConstByteArray bytes);
+
   // CAVEAT: Need offset as HVX library reserves some ids
   static constexpr int NODE_ID_OFFSET = 0x10000;
 
   static GraphTransferInfo::NodeInfo* FindNodeInfo(
       const string& node_name, GraphTransferInfo* graph_transfer_info);
 
-  GraphTransferer graph_transferer_;
+  const RemoteFusedGraphExecuteInfo* execute_info_{};
+  GraphTransferer graph_transferer_{};
   // Dummy float array for input node.
   // TODO(satok): Use actual data passed by FillInputNode and remove
-  std::vector<float> dummy_input_float_;
+  std::vector<float> dummy_input_float_{};
   // Dummy byte array for cosnt node.
   // TODO(satok): Remove
-  std::unordered_map<int, std::vector<uint8>> dummy_const_data_;
+  std::unordered_map<int, std::vector<uint8>> dummy_const_data_{};
 
   TF_DISALLOW_COPY_AND_ASSIGN(HexagonControlWrapper);
 };

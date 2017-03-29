@@ -298,6 +298,8 @@ invoke the following command:
 
 <pre>$ <b>bazel build --config=opt --config=cuda //tensorflow/tools/pip_package:build_pip_package</b> </pre>
 
+**NOTE on gcc 5 or later:** the binary pip packages available on the TensorFlow website are built with gcc 4, which uses the older ABI. To make your build compatible with the older ABI, you need to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"` to your `bazel build` command. ABI compatibility allows custom ops built against the TensorFlow pip package to continue to work against your built package.
+
 <b>Tip:</b> By default, building TensorFlow from sources consumes
 a lot of RAM.  If RAM is an issue on your system, you may limit RAM usage
 by specifying <code>--local_resources 2048,.5,1.0</code> while
@@ -315,7 +317,7 @@ $ <b>bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pk
 ## Install the pip package
 
 Invoke `pip install` to install that pip package.
-The filename of the `.whl `file depends on your platform.
+The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
 for TensorFlow 1.0.1 on Linux:
 
@@ -323,41 +325,39 @@ for TensorFlow 1.0.1 on Linux:
 $ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.0.1-py2-none-any.whl</b>
 </pre>
 
-**NOTE on gcc version 5:** the binary pip packages
-available on the TensorFlow website are built with gcc4 that uses the older ABI.
-To make the library compatible with the older abi you have to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
-
-<a name="#ValidateYourInstallation"></a>
 ## Validate your installation
 
 Validate your TensorFlow installation by doing the following:
 
-  1. Start a terminal.
+Start a terminal.
 
-  2. Change directory (`cd`) to any directory on your system other than
-     the `tensorflow` subdirectory from which you invoked the `configure`
-     command.
+Change directory (`cd`) to any directory on your system other than the
+`tensorflow` subdirectory from which you invoked the `configure` command.
 
-  3. Invoke python:
+Invoke python:
 
-  <pre> $ <b>python</b></pre>
+<pre>$ <b>python</b></pre>
 
-  4. Enter the following short program inside the python interactive shell:
+Enter the following short program inside the python interactive shell:
 
-  <pre>>>> <b>import tensorflow as tf</b>
-  >>> <b>hello = tf.constant('Hello, TensorFlow!')</b>
-  >>> <b>sess = tf.Session()</b>
-  >>> <b>print(sess.run(hello))</b></pre>
+```python
+# Python
+import tensorflow as tf
+hello = tf.constant('Hello, TensorFlow!')
+sess = tf.Session()
+print(sess.run(hello))
+```
 
-  If the Python program outputs the following, then the installation
-  is successful and you can begin writing TensorFlow programs. (If you
-  are new to TensorFlow, see *Getting Started with TensorFlow*):
+If the system outputs the following, then you are ready to begin writing
+TensorFlow programs:
 
-  <pre>Hello, TensorFlow!</pre>
+<pre>Hello, TensorFlow!</pre>
 
-  If the system generates an error message instead of a greeting, see
-  the next section.
+If you are new to TensorFlow, see @{$get_started$Getting Started with
+TensorFlow}.
 
+If the system outputs an error message instead of a greeting, see [Common
+installation problems](#common_installation_problems).
 
 ## Common installation problems
 

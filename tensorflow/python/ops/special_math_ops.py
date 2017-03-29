@@ -29,8 +29,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 
@@ -51,51 +49,40 @@ def lbeta(x, name='lbeta'):
   `Beta(z) = int_0^1 t^{u-1} (1 - t)^{v-1} dt`, which defines the traditional
   bivariate beta function.
 
+  If the last dimension is empty, we follow the convention that the sum over
+  the empty set is zero, and the product is one.
+
   Args:
-    x: A rank `n + 1` `Tensor` with type `float`, or `double`.
+    x: A rank `n + 1` `Tensor`, `n >= 0` with type `float`, or `double`.
     name: A name for the operation (optional).
 
   Returns:
     The logarithm of `|Beta(x)|` reducing along the last dimension.
-
-  Raises:
-    ValueError:  If `x` is empty with rank one or less.
   """
+  # In the event that the last dimension has zero entries, we return -inf.
+  # This is consistent with a convention that the sum over the empty set 0, and
+  # the product is 1.
+  # This is standard.  See https://en.wikipedia.org/wiki/Empty_set.
   with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name='x')
-    x = control_flow_ops.with_dependencies(
-        [check_ops.assert_rank_at_least(x, 1)], x)
 
-    is_empty = math_ops.equal(0, array_ops.size(x))
+    # Note reduce_sum([]) = 0.
+    log_prod_gamma_x = math_ops.reduce_sum(
+        math_ops.lgamma(x), reduction_indices=[-1])
 
-    def nonempty_lbeta():
-      log_prod_gamma_x = math_ops.reduce_sum(
-          math_ops.lgamma(x), reduction_indices=[-1])
-      sum_x = math_ops.reduce_sum(x, reduction_indices=[-1])
-      log_gamma_sum_x = math_ops.lgamma(sum_x)
-      result = log_prod_gamma_x - log_gamma_sum_x
-      return result
+    # Note lgamma(0) = infinity, so if x = []
+    # log_gamma_sum_x = lgamma(0) = infinity, and
+    # log_prod_gamma_x = lgamma(1) = 0,
+    # so result = -infinity
+    sum_x = math_ops.reduce_sum(x, axis=[-1])
+    log_gamma_sum_x = math_ops.lgamma(sum_x)
+    result = log_prod_gamma_x - log_gamma_sum_x
 
-    def empty_lbeta():
-      # If x is empty, return version with one less dimension.
-      # Can only do this if rank >= 2.
-      assertion = check_ops.assert_rank_at_least(x, 2)
-      with ops.control_dependencies([assertion]):
-        return array_ops.squeeze(x, squeeze_dims=[0])
-
-    static_size = x.get_shape().num_elements()
-    if static_size is not None:
-      if static_size > 0:
-        return nonempty_lbeta()
-      else:
-        return empty_lbeta()
-    else:
-      return control_flow_ops.cond(is_empty, empty_lbeta, nonempty_lbeta)
+    return result
 
 
 def einsum(equation, *inputs):
-  """
-  A generalized contraction between tensors of arbitrary dimension.
+  """A generalized contraction between tensors of arbitrary dimension.
 
   This function returns a tensor whose elements are defined by `equation`,
   which is written in a shorthand form inspired by the Einstein summation
@@ -139,6 +126,7 @@ def einsum(equation, *inputs):
   ```
 
   This function behaves like `numpy.einsum`, but does not support:
+
   * Ellipses (subscripts like `ij...,jk...->ik...`)
   * Subscripts where an axis appears more than once for a single input
     (e.g. `ijj,k->ik`).
@@ -147,7 +135,7 @@ def einsum(equation, *inputs):
   Args:
     equation: a `str` describing the contraction, in the same format as
       `numpy.einsum`.
-    inputs: the inputs to contract (each one a `Tensor`), whose shapes should
+    *inputs: the inputs to contract (each one a `Tensor`), whose shapes should
       be consistent with `equation`.
 
   Returns:
@@ -163,7 +151,7 @@ def einsum(equation, *inputs):
       - the input shapes are inconsistent along a particular axis.
   """
   if '...' in equation:
-    raise ValueError("Subscripts with ellipses are not yet supported.")
+    raise ValueError('Subscripts with ellipses are not yet supported.')
 
   match = re.match('([a-z,]+)(->[a-z]*)?', equation)
   if not match:
@@ -190,8 +178,8 @@ def einsum(equation, *inputs):
         counts[ax] += 1
 
     output_axis_labels = ''.join(sorted(
-      ax for ax in indices
-      if counts[ax] == 1
+        ax for ax in indices
+        if counts[ax] == 1
     ))
 
   for a in axis_labels:
@@ -382,6 +370,7 @@ def _get_shape(tensor):
     for i in none_indices:
       shape[i] = shape_tensor[i]
   return shape
+
 
 def _total_size(shape_values):
   """Given list of tensor shape values, returns total size.

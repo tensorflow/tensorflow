@@ -467,7 +467,6 @@ void SetTargetOptions(const HloModuleConfig& config,
   target_options->NoInfsFPMath = fast;
   target_options->NoNaNsFPMath = fast;
   target_options->NoSignedZerosFPMath = fast;
-  target_options->LessPreciseFPMADOption = fast;
 }
 
 }  // namespace llvm_ir

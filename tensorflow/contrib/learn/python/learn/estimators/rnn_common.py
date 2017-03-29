@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib import metrics
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
@@ -38,6 +39,13 @@ class RNNKeys(object):
   LABELS_KEY = '__labels__'
   SEQUENCE_LENGTH_KEY = 'sequence_length'
   STATE_PREFIX = 'rnn_cell_state'
+
+
+class PredictionType(object):
+  """Enum-like values for the type of prediction that the model makes.
+  """
+  SINGLE_VALUE = 1
+  MULTIPLE_VALUE = 2
 
 
 _CELL_TYPES = {'basic_rnn': contrib_rnn.BasicRNNCell,
@@ -122,13 +130,55 @@ def apply_dropout(cells, dropout_keep_probabilities, random_seed=None):
         'number of cells. Got {} cells and {} dropout probabilities.'.format(
             len(cells), len(dropout_keep_probabilities)))
   wrapped_cells = [
-      contrib_rnn.DropoutWrapper(cell, prob, 1.0, random_seed)
+      contrib_rnn.DropoutWrapper(cell, prob, 1.0, seed=random_seed)
       for cell, prob in zip(cells[:-1], dropout_keep_probabilities[:-2])
   ]
   wrapped_cells.append(
       contrib_rnn.DropoutWrapper(cells[-1], dropout_keep_probabilities[-2],
                                  dropout_keep_probabilities[-1]))
   return wrapped_cells
+
+
+def get_eval_metric_ops(problem_type, prediction_type, sequence_length,
+                        prediction_dict, labels):
+  """Returns eval metric ops for given `problem_type` and `prediction_type`.
+
+  Args:
+    problem_type: `ProblemType.CLASSIFICATION` or
+      `ProblemType.LINEAR_REGRESSION`.
+    prediction_type: `PredictionType.SINGLE_VALUE` or
+      `PredictionType.MULTIPLE_VALUE`.
+    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
+      containing the length of each sequence in the batch. If `None`, sequences
+      are assumed to be unpadded.
+    prediction_dict: A dict of prediction tensors.
+    labels: The label `Tensor`.
+
+  Returns:
+    A `dict` mapping strings to the result of calling the metric_fn.
+  """
+  eval_metric_ops = {}
+  if problem_type == constants.ProblemType.CLASSIFICATION:
+    # Multi value classification
+    if prediction_type == PredictionType.MULTIPLE_VALUE:
+      mask_predictions, mask_labels = mask_activations_and_labels(
+          prediction_dict[prediction_key.PredictionKey.CLASSES], labels,
+          sequence_length)
+      eval_metric_ops['accuracy'] = metrics.streaming_accuracy(
+          predictions=mask_predictions, labels=mask_labels)
+    # Single value classification
+    elif prediction_type == PredictionType.SINGLE_VALUE:
+      eval_metric_ops['accuracy'] = metrics.streaming_accuracy(
+          predictions=prediction_dict[prediction_key.PredictionKey.CLASSES],
+          labels=labels)
+  elif problem_type == constants.ProblemType.LINEAR_REGRESSION:
+    # Multi value regression
+    if prediction_type == PredictionType.MULTIPLE_VALUE:
+      pass
+    # Single value regression
+    elif prediction_type == PredictionType.SINGLE_VALUE:
+      pass
+  return eval_metric_ops
 
 
 def select_last_activations(activations, sequence_lengths):

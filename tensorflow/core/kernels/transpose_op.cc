@@ -180,6 +180,20 @@ Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                    out);
 }
 
+#ifdef INTEL_MKL
+#define REGISTER(T)                                           \
+  REGISTER_KERNEL_BUILDER(Name("Transpose")                   \
+                              .Device(DEVICE_CPU)             \
+                              .TypeConstraint<T>("T")         \
+                              .TypeConstraint<int32>("Tperm") \
+                              .HostMemory("perm"),            \
+                          MklTransposeCpuOp);
+TF_CALL_ALL_TYPES(REGISTER);
+REGISTER(bfloat16);
+#undef REGISTER
+
+#else  // INTEL_MKL
+
 #define REGISTER(T)                                           \
   REGISTER_KERNEL_BUILDER(Name("Transpose")                   \
                               .Device(DEVICE_CPU)             \
@@ -190,6 +204,7 @@ Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
 TF_CALL_ALL_TYPES(REGISTER)
 REGISTER(bfloat16);
 #undef REGISTER
+#endif  // INTEL_MKL
 
 #if GOOGLE_CUDA
 Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,

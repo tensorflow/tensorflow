@@ -15,20 +15,28 @@
 
 """Ops for building neural network seq2seq decoders and losses.
 
-## Decoder base class and functions
+See the @{$python/contrib.seq2seq} guide.
+
 @@Decoder
 @@dynamic_decode
 
-## Basic Decoder
 @@BasicDecoderOutput
 @@BasicDecoder
 
-## Decoder Helpers
 @@Helper
 @@CustomHelper
 @@GreedyEmbeddingHelper
 @@ScheduledEmbeddingTrainingHelper
+@@ScheduledOutputTrainingHelper
 @@TrainingHelper
+
+@@BahdanauAttention
+@@LuongAttention
+
+@@hardmax
+
+@@AttentionWrapperState
+@@AttentionWrapper
 """
 
 from __future__ import absolute_import
@@ -36,6 +44,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long
+from tensorflow.contrib.seq2seq.python.ops.attention_wrapper import *
 from tensorflow.contrib.seq2seq.python.ops.basic_decoder import *
 from tensorflow.contrib.seq2seq.python.ops.decoder import *
 from tensorflow.contrib.seq2seq.python.ops.helper import *

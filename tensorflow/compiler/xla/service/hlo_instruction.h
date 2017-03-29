@@ -24,11 +24,12 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
-#include <set>
 #include <string>
 #include <tuple>
+#include <unordered_set>
 #include <vector>
 
+#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -303,27 +304,37 @@ class HloInstruction {
   int64 user_count() const { return users_.size(); }
 
   // Returns the users of this instruction.
-  const std::set<HloInstruction*>& users() const { return users_; }
+  const std::vector<HloInstruction*>& users() const { return users_; }
 
-  // Returns the set of control predecessors of this instruction. Control
-  // predecessors are the instructions that must be scheduled before the current
-  // instruction.
-  const std::set<HloInstruction*>& control_predecessors() const {
+  // Returns true if this instruction is a user of 'instruction'.
+  bool IsUserOf(const HloInstruction* instruction) const {
+    return ContainsKey(instruction->user_set_, this);
+  }
+
+  // Adds a control dependency from this instruction to the given
+  // instruction. This instruction becomes a control predecessor of
+  // 'instruction', and 'instruction' becomes a control successor of this
+  // instruction. Returns an error status if either of the given instructions
+  // does not belong to the same computation.
+  //
+  // This is used to enforce an additional ordering requirement that is not
+  // captured by normal data dependencies, such as ordering among Send or Recv
+  // operations to avoid deadlock.
+  Status AddControlDependencyTo(HloInstruction* instruction);
+
+  // Removes a previously added control dependency from this instruction to
+  // 'instruction'.
+  Status RemoveControlDependencyTo(HloInstruction* instruction);
+
+  // Returns the set of control predecessors (successors) of this
+  // instruction. Control predecessors (sucessors) must execute before (after)
+  // the current instruction.
+  const std::vector<HloInstruction*>& control_predecessors() const {
     return control_predecessors_;
   }
-
-  // Adds the given instruction to the set of control predecessors.
-  void AddControlPredecessor(HloInstruction* instruction);
-
-  // Returns the set of control successors of this instruction. Control
-  // successors are the instructions that must be scheduled after the current
-  // instruction.
-  const std::set<HloInstruction*>& control_successors() const {
+  const std::vector<HloInstruction*>& control_successors() const {
     return control_successors_;
   }
-
-  // Adds the given instruction to the set of control successors.
-  void AddControlSuccessor(HloInstruction* instruction);
 
   // Returns true if "other" performs the same computation as this instruction.
   // Layout of the instructions' output array is not considered.
@@ -621,6 +632,9 @@ class HloInstruction {
     return *convolution_dimension_numbers_;
   }
 
+  // Returns the dump string of the convolution dimension numbers.
+  string ConvolutionDimensionNumbersToString() const;
+
   // Returns the random distribution for this rng node.
   //
   // Precondition: opcode() == HloOpcode::kRng
@@ -628,18 +642,20 @@ class HloInstruction {
 
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
-  // cloned from) is not changed.
-  std::unique_ptr<HloInstruction> Clone();
+  // cloned from) is not changed. Suffix is the string to append to the name of
+  // the instruction to form the name of the cloned instruction.
+  std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone");
 
   // Clones the HLO instruction as above but with new shape and operands.
   std::unique_ptr<HloInstruction> CloneWithNewOperands(
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
-  // Computes and returns the computations this instruction calls (if any). This
-  // includes computations called by fused instructions inside of a fusion
-  // instruction.
-  std::set<HloComputation*> MakeCalledComputationsSet() const;
+  // Returns the computations this instruction calls (if any). This includes
+  // computations called by fused instructions inside of a fusion instruction.
+  const std::vector<HloComputation*>& called_computations() const {
+    return called_computations_;
+  }
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
@@ -675,6 +691,11 @@ class HloInstruction {
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
+  // Returns the opcode string for this instruction. Compared with
+  // HloOpcodeString method, this wrapper dumps additional information
+  // such as fusion kind.
+  string ExtendedOpcodeStr() const;
+
   // Returns a string identifier for this instruction. If no string identifier
   // has been explicitly set, then the identifier is the serialized pointer to
   // this instruction.
@@ -682,6 +703,10 @@ class HloInstruction {
 
   // Sets the string identifier for this instruction.
   void set_name(const string& name) { name_ = name; }
+
+  // Sets the debug metadata for this instruction.
+  void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
+  const OpMetadata& metadata() const { return metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only
   // be called by HloComputation methods which add/remove instructions to
@@ -802,21 +827,23 @@ class HloInstruction {
   int64 parameter_number_ = 0;
   string parameter_name_;
 
-  // Computation to apply, only present for kCall, kMap, kReduce and
-  // kReduceWindow.
-  HloComputation* to_apply_ = nullptr;
-
   // Name of a global symbol to call, only present for kCustomCall.
   string custom_call_target_;
 
-  // Computation for condition and body of kWhile, only present for kWhile.
-  HloComputation* condition_ = nullptr;
-  HloComputation* body_ = nullptr;
+  // Computations called by this instruction.
+  std::vector<HloComputation*> called_computations_;
 
-  // Computation for select and scatter, only present for
-  // kSelectAndScatter.
-  HloComputation* select_ = nullptr;
-  HloComputation* scatter_ = nullptr;
+  // Indices of computations in called_computations_ for instructions which call
+  // multiple computations.
+  enum {
+    // kWhile computations.
+    kBodyComputationIndex = 0,
+    kConditionComputationIndex = 1,
+
+    // kSelectAndScatter computations.
+    kSelectComputationIndex = 0,
+    kScatterComputationIndex = 1,
+  };
 
   // Outfeed configuration information, only present for kOutfeed.
   string outfeed_config_;
@@ -825,14 +852,17 @@ class HloInstruction {
   std::vector<HloInstruction*> operands_;
 
   // The users of this instruction. Users are HLOs where this instruction is an
-  // operand.
-  std::set<HloInstruction*> users_;
+  // operand. The vector users_ and the set user_set_ contain identical
+  // members. The set enables fast membership testing and the vector enables
+  // fast, stable iteration.
+  std::vector<HloInstruction*> users_;
+  std::unordered_set<const HloInstruction*> user_set_;
 
   // The set of control predecessors of this instruction.
-  std::set<HloInstruction*> control_predecessors_;
+  std::vector<HloInstruction*> control_predecessors_;
 
   // The set of control successors of this instruction.
-  std::set<HloInstruction*> control_successors_;
+  std::vector<HloInstruction*> control_successors_;
 
   // A trace instruction that consumes this instruction.
   //
@@ -857,10 +887,13 @@ class HloInstruction {
   // The computation in which this instruction is contained.
   HloComputation* parent_ = nullptr;
 
+  // Metadata for debugging.
+  OpMetadata metadata_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };
 
-string FusionKindString(HloInstruction::FusionKind kind);
+string ToString(HloInstruction::FusionKind kind);
 
 }  // namespace xla
 

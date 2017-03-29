@@ -1209,6 +1209,7 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     successfully applied to the accumulator.
 
     Once successful, the following actions are also triggered:
+
     - Counter of accumulated gradients is reset to 0.
     - Aggregated gradient is reset to 0 tensor.
     - Accumulator's internal time step is incremented by 1.
@@ -1223,8 +1224,10 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     Raises:
       InvalidArgumentError: If num_required < 1
     """
-    return gen_data_flow_ops.accumulator_take_gradient(
+    out = gen_data_flow_ops.accumulator_take_gradient(
         self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+    out.set_shape(self._shape)
+    return out
 
 
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):

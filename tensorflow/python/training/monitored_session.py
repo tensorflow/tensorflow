@@ -67,8 +67,8 @@ class Scaffold(object):
   The following pieces are directly accessible as attributes of the `Scaffold`
   object:
 
-  * `saver`: A `tf.train.Saver` object taking care of saving the variables.  Picked
-    from and stored into the `SAVERS` collection in the graph by default.
+  * `saver`: A `tf.train.Saver` object taking care of saving the variables.
+    Picked from and stored into the `SAVERS` collection in the graph by default.
   * `init_op`: An op to run to initialize the variables.  Picked from and
     stored into the `INIT_OP` collection in the graph by default.
   * `ready_op`: An op to verify that the variables are initialized.  Picked
@@ -124,7 +124,8 @@ class Scaffold(object):
       local_init_op: Optional op to initialize local variables.
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
-      saver: Optional `tf.train.Saver` object to use to save and restore variables.
+      saver: Optional `tf.train.Saver` object to use to save and restore
+        variables.
     """
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
@@ -632,6 +633,7 @@ class SingularMonitoredSession(_MonitoredSession):
   Please note that this utility is not recommended for distributed settings.
   For distributed settings, please use `tf.train.MonitoredSession`. The
   differences between `MonitoredSession` and `SingularMonitoredSession` are:
+
   * `MonitoredSession` handles `AbortedError` and `UnavailableError` for
     distributed settings, but `SingularMonitoredSession` does not.
   * `MonitoredSession` can be created in `chief` or `worker` modes.
@@ -639,8 +641,8 @@ class SingularMonitoredSession(_MonitoredSession):
   * You can access the raw `tf.Session` object used by
     `SingularMonitoredSession`, whereas in MonitoredSession the raw session is
     private. This can be used:
-    - To `run` without hooks.
-    - To save and restore.
+      - To `run` without hooks.
+      - To save and restore.
   * All other functionality is identical.
 
   Example usage:

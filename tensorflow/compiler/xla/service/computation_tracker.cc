@@ -53,12 +53,28 @@ StatusOr<ComputationHandle> ComputationTracker::LoadSessionModule(
   // For each embedded computation, create a new computation based on its
   // serialized data, and place the mapping from the old computation handle to
   // the new computation handle.
+
+  // Build a mapping from old embedded computation handles to new computation
+  // handles. We build the ID mapping first since the embedded computations are
+  // in no particular order and may refer to each other.
   std::map<int64, ComputationHandle> old_to_new;
   for (const SessionComputation& computation :
        session_module.embedded_computations()) {
     const int64 old_handle = computation.computation_handle().handle();
-    TF_ASSIGN_OR_RETURN(old_to_new[old_handle],
-                        LoadSessionComputation(computation, &old_to_new));
+    if (!old_to_new.emplace(old_handle, AllocateHandle()).second) {
+      return InvalidArgument("Duplicate embedded computation handle %lld",
+                             old_handle);
+    }
+  }
+
+  // Create a new computation from each serialized embedded computation.
+  for (const SessionComputation& computation :
+       session_module.embedded_computations()) {
+    const int64 old_handle = computation.computation_handle().handle();
+    const ComputationHandle& new_handle = old_to_new[old_handle];
+    TF_ASSIGN_OR_RETURN(opaque_to_computation_[new_handle.handle()],
+                        UserComputation::MakeWithRemapping(
+                            computation, new_handle, old_to_new));
   }
 
   // Finally, place the entry computation in the tracker with all of the

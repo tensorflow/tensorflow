@@ -98,6 +98,7 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   SET_CLASS(NC_VARIABLE, ts, "VariableV2", "");
   SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
   SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandle", "");
+  SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandleV2", "");
   SET_CLASS(NC_GET_SESSION_TENSOR, ts, "GetSessionTensor", "");
   SET_CLASS(NC_DELETE_SESSION_TENSOR, ts, "DeleteSessionTensor", "");
   if (class_ == NC_UNINITIALIZED) {
@@ -224,7 +225,7 @@ Node::Properties::~Properties() {}
 // Graph
 
 Graph::Graph(const OpRegistryInterface* ops)
-    : ops_(ops), arena_(8 << 10 /* 8kB */) {
+    : ops_(ops, FunctionDefLibrary()), arena_(8 << 10 /* 8kB */) {
   versions_.set_producer(TF_GRAPH_DEF_VERSION);
   versions_.set_min_consumer(TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
 
@@ -245,6 +246,12 @@ Graph::Graph(const OpRegistryInterface* ops)
   AddControlEdge(source, sink);
 }
 
+Graph::Graph(const FunctionLibraryDefinition& flib_def)
+    : Graph(flib_def.default_registry()) {
+  Status s = ops_.AddLibrary(flib_def);
+  CHECK(s.ok()) << s.error_message();
+}
+
 Graph::~Graph() {
   // Manually call the destructors for all the Nodes we constructed using
   // placement new.
@@ -262,7 +269,7 @@ Graph::~Graph() {
 
 Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
   const OpDef* op_def;
-  status->Update(ops_->LookUpOpDef(node_def.op(), &op_def));
+  status->Update(ops_.LookUpOpDef(node_def.op(), &op_def));
   if (!status->ok()) return nullptr;
 
   DataTypeVector inputs;

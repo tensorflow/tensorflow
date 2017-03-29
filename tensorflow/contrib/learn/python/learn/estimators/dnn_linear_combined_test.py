@@ -24,7 +24,6 @@ import tempfile
 
 import numpy as np
 
-from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn import experiment
 from tensorflow.contrib.learn.python.learn.datasets import base
@@ -39,6 +38,7 @@ from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.contrib.metrics.python.ops import metric_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -51,6 +51,9 @@ from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import learning_rate_decay
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import server_lib
+from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import sync_replicas_optimizer
+from tensorflow.python.training import training_util
 
 
 def _assert_metrics_in_range(keys, metrics):
@@ -60,7 +63,7 @@ def _assert_metrics_in_range(keys, metrics):
                                          metrics)
 
 
-class _CheckCallsHead(head_lib._Head):  # pylint: disable=protected-access
+class _CheckCallsHead(head_lib.Head):
   """Head that checks whether head_ops is called."""
 
   def __init__(self):
@@ -88,6 +91,21 @@ class _CheckCallsHead(head_lib._Head):  # pylint: disable=protected-access
     return self._head_ops_called_times
 
 
+class _StepCounterHook(session_run_hook.SessionRunHook):
+  """Counts the number of training steps."""
+
+  def __init__(self):
+    self._steps = 0
+
+  def after_run(self, run_context, run_values):
+    del run_context, run_values
+    self._steps += 1
+
+  @property
+  def steps(self):
+    return self._steps
+
+
 class EmbeddingMultiplierTest(test.TestCase):
   """dnn_model_fn tests."""
 
@@ -97,7 +115,7 @@ class EmbeddingMultiplierTest(test.TestCase):
 
     params = {
         'dnn_feature_columns': [one_hot_language],
-        'head': head_lib._multi_class_head(2),
+        'head': head_lib.multi_class_head(2),
         'dnn_hidden_units': [1],
         # Set lr mult to 0. to keep embeddings constant.
         'embedding_lr_multipliers': {
@@ -131,53 +149,54 @@ class EmbeddingMultiplierTest(test.TestCase):
 
     params = {
         'dnn_feature_columns': [embedding_language, embedding_wire],
-        'head': head_lib._multi_class_head(2),
+        'head': head_lib.multi_class_head(2),
         'dnn_hidden_units': [1],
-        # Set lr mult to 0. to keep embeddings constant.
+        # Set lr mult to 0. to keep language embeddings constant, whereas wire
+        # embeddings will be trained.
         'embedding_lr_multipliers': {
             embedding_language: 0.0
         },
         'dnn_optimizer': 'Adagrad',
     }
-    features = {
-        'language':
-            sparse_tensor.SparseTensor(
-                values=['en', 'fr', 'zh'],
-                indices=[[0, 0], [1, 0], [2, 0]],
-                dense_shape=[3, 1]),
-        'wire':
-            sparse_tensor.SparseTensor(
-                values=['omar', 'stringer', 'marlo'],
-                indices=[[0, 0], [1, 0], [2, 0]],
-                dense_shape=[3, 1]),
-    }
-    labels = constant_op.constant([[0], [0], [0]], dtype=dtypes.int32)
-    model_ops = dnn_linear_combined._dnn_linear_combined_model_fn(
-        features, labels, model_fn.ModeKeys.TRAIN, params)
-    with monitored_session.MonitoredSession() as sess:
-      language_var = dnn_linear_combined._get_embedding_variable(
-          embedding_language, 'dnn', 'dnn/input_from_feature_columns')
-      wire_var = dnn_linear_combined._get_embedding_variable(
-          embedding_wire, 'dnn', 'dnn/input_from_feature_columns')
-      for _ in range(2):
-        _, language_value, wire_value = sess.run(
-            [model_ops.train_op, language_var, wire_var])
-      initial_value = np.full_like(language_value, 0.1)
-      self.assertTrue(np.all(np.isclose(language_value, initial_value)))
-      self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
+    with ops.Graph().as_default():
+      features = {
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=['en', 'fr', 'zh'],
+                  indices=[[0, 0], [1, 0], [2, 0]],
+                  dense_shape=[3, 1]),
+          'wire':
+              sparse_tensor.SparseTensor(
+                  values=['omar', 'stringer', 'marlo'],
+                  indices=[[0, 0], [1, 0], [2, 0]],
+                  dense_shape=[3, 1]),
+      }
+      labels = constant_op.constant([[1], [0], [0]], dtype=dtypes.int32)
+      training_util.create_global_step()
+      model_ops = dnn_linear_combined._dnn_linear_combined_model_fn(
+          features, labels, model_fn.ModeKeys.TRAIN, params)
+      with monitored_session.MonitoredSession() as sess:
+        language_var = dnn_linear_combined._get_embedding_variable(
+            embedding_language, 'dnn', 'dnn/input_from_feature_columns')
+        language_initial_value = sess.run(language_var)
+        for _ in range(2):
+          _, language_value = sess.run([model_ops.train_op, language_var])
+
+    self.assertAllClose(language_value, language_initial_value)
+    # We could also test that wire_value changed, but that test would be flaky.
 
 
 class DNNLinearCombinedEstimatorTest(test.TestCase):
 
   def testEstimatorContract(self):
     estimator_test_utils.assert_estimator_contract(
-        self, dnn_linear_combined._DNNLinearCombinedEstimator)
+        self, dnn_linear_combined.DNNLinearCombinedEstimator)
 
   def testNoFeatureColumns(self):
     with self.assertRaisesRegexp(
         ValueError,
         'Either linear_feature_columns or dnn_feature_columns must be defined'):
-      dnn_linear_combined._DNNLinearCombinedEstimator(
+      dnn_linear_combined.DNNLinearCombinedEstimator(
           head=_CheckCallsHead(),
           linear_feature_columns=None,
           dnn_feature_columns=None,
@@ -192,7 +211,7 @@ class DNNLinearCombinedEstimatorTest(test.TestCase):
     bucketized_feature = [feature_column.bucketized_column(
         cont_features[0], test_data.get_quantile_based_buckets(iris.data, 10))]
 
-    estimator = dnn_linear_combined._DNNLinearCombinedEstimator(
+    estimator = dnn_linear_combined.DNNLinearCombinedEstimator(
         head,
         linear_feature_columns=bucketized_feature,
         dnn_feature_columns=cont_features,
@@ -255,6 +274,27 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
       classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
           dnn_feature_columns=[age, language])
       classifier.fit(input_fn=_input_fn, steps=2)
+
+  def testSyncReplicasOptimizerUnsupported(self):
+    cont_features = [feature_column.real_valued_column('feature', dimension=4)]
+
+    sync_optimizer = sync_replicas_optimizer.SyncReplicasOptimizer(
+        opt=adagrad.AdagradOptimizer(learning_rate=0.1),
+        replicas_to_aggregate=1,
+        total_num_replicas=1)
+    sync_hook = sync_optimizer.make_session_run_hook(is_chief=True)
+    classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        n_classes=3,
+        dnn_feature_columns=cont_features,
+        dnn_hidden_units=[3, 3],
+        dnn_optimizer=sync_optimizer)
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'SyncReplicasOptimizer is not supported in DNNLinearCombined model'):
+      classifier.fit(
+          input_fn=test_data.iris_input_multiclass_fn, steps=100,
+          monitors=[sync_hook])
 
   def testEmbeddingMultiplier(self):
     embedding_language = feature_column.embedding_column(
@@ -601,7 +641,7 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
     ]
 
     def _optimizer_exp_decay():
-      global_step = variables.get_global_step()
+      global_step = training_util.get_global_step()
       learning_rate = learning_rate_decay.exponential_decay(
           learning_rate=0.1,
           global_step=global_step,
@@ -736,7 +776,7 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
           })
 
   def testVariableQuery(self):
-    """Tests bias is centered or not."""
+    """Tests get_variable_names and get_variable_value."""
 
     def _input_fn_train():
       # Create 4 rows, three (y = x), one (y=Not(x))
@@ -837,6 +877,99 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
 
     classifier.fit(input_fn=_input_fn_train, steps=500)
     self.assertNotIn('centered_bias_weight', classifier.get_variable_names())
+
+  def testGlobalStepLinearOnly(self):
+    """Tests global step update for linear-only model."""
+
+    def input_fn():
+      return {
+          'age': constant_op.constant([1]),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=['english'], indices=[[0, 0]], dense_shape=[1, 1])
+      }, constant_op.constant([[1]])
+
+    language = feature_column.sparse_column_with_hash_bucket('language', 10)
+    age = feature_column.real_valued_column('age')
+
+    step_counter = _StepCounterHook()
+    classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        linear_feature_columns=[age, language])
+    classifier.fit(input_fn=input_fn, steps=100, monitors=[step_counter])
+
+    self.assertEqual(100, step_counter.steps)
+
+  def testGlobalStepDNNOnly(self):
+    """Tests global step update for dnn-only model."""
+
+    def input_fn():
+      return {
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=['english'], indices=[[0, 0]], dense_shape=[1, 1])
+      }, constant_op.constant([[1]])
+
+    language = feature_column.sparse_column_with_hash_bucket('language', 10)
+
+    step_counter = _StepCounterHook()
+    classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        dnn_feature_columns=[
+            feature_column.embedding_column(language, dimension=1)],
+        dnn_hidden_units=[3, 3])
+    classifier.fit(input_fn=input_fn, steps=100, monitors=[step_counter])
+
+    self.assertEqual(100, step_counter.steps)
+
+  def testGlobalStepDNNLinearCombinedBug(self):
+    """Tests global step update for dnn-linear combined model."""
+
+    def input_fn():
+      return {
+          'age': constant_op.constant([1]),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=['english'], indices=[[0, 0]], dense_shape=[1, 1])
+      }, constant_op.constant([[1]])
+
+    language = feature_column.sparse_column_with_hash_bucket('language', 10)
+    age = feature_column.real_valued_column('age')
+
+    step_counter = _StepCounterHook()
+    classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        linear_feature_columns=[age, language],
+        dnn_feature_columns=[
+            feature_column.embedding_column(language, dimension=1)],
+        dnn_hidden_units=[3, 3],
+        fix_global_step_increment_bug=False)
+    classifier.fit(input_fn=input_fn, steps=100, monitors=[step_counter])
+
+    # Expected is 100, but because of the global step increment bug, this is 51.
+    self.assertEqual(51, step_counter.steps)
+
+  def testGlobalStepDNNLinearCombinedBugFixed(self):
+    """Tests global step update for dnn-linear combined model."""
+
+    def input_fn():
+      return {
+          'age': constant_op.constant([1]),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=['english'], indices=[[0, 0]], dense_shape=[1, 1])
+      }, constant_op.constant([[1]])
+
+    language = feature_column.sparse_column_with_hash_bucket('language', 10)
+    age = feature_column.real_valued_column('age')
+
+    step_counter = _StepCounterHook()
+    classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        linear_feature_columns=[age, language],
+        dnn_feature_columns=[
+            feature_column.embedding_column(language, dimension=1)],
+        dnn_hidden_units=[3, 3],
+        fix_global_step_increment_bug=True)
+    classifier.fit(input_fn=input_fn, steps=100, monitors=[step_counter])
+
+    self.assertEqual(100, step_counter.steps)
 
   def testLinearOnly(self):
     """Tests that linear-only instantiation works."""

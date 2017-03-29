@@ -13,7 +13,7 @@ Linux.
 Current Status
 --------------
 
-CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/get_started/os_setup.html#pip-installation-on-windows)
+CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/install/install_windows)
 for instructions on how to install a pre-built TensorFlow package on Windows.
 
 ### Current known limitations
@@ -181,7 +181,11 @@ Step-by-step Windows build
    More? -Dtensorflow_ENABLE_GPU=ON ^
    More? -DCUDNN_HOME="D:\...\cudnn"
    ```
-    
+   To enable SIMD instructions with MSVC, as AVX and SSE, define it as follows:
+   ```
+   More? -Dtensorflow_WIN_CPU_SIMD_OPTIONS=/arch:AVX
+   ```     
+
    Note that the `-DCMAKE_BUILD_TYPE=Release` flag must match the build
    configuration that you choose when invoking `msbuild`. The known-good
    values are `Release` and `RelWithDebInfo`. The `Debug` build type is

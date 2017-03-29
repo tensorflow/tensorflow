@@ -662,6 +662,33 @@ StatusOr<ComputationDataHandle> UserComputation::AddReshapeInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddTransposeInstruction(
+    const TransposeRequest& transpose_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  // Fetches and validates the operand.
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(transpose_request.operand()));
+
+  TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                      ShapeInference::InferTransposeShape(
+                          operand->output_shape(),
+                          AsInt64Slice(transpose_request.dimensions())));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = inferred_shape;
+  *request.mutable_request()->mutable_transpose_request() = transpose_request;
+
+  VLOG(1) << "AddTransposeInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << transpose_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddSliceInstruction(
     const SliceRequest& slice_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1091,6 +1118,22 @@ StatusOr<Shape> UserComputation::GetShape(const ComputationDataHandle& handle) {
   return operand->output_shape();
 }
 
+Status UserComputation::SetOpMetadata(const ComputationDataHandle& handle,
+                                      const OpMetadata& metadata) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  int64 handle_value = handle.handle();
+  if (session_computation_.requests().count(handle_value) == 0) {
+    return InvalidArgument("Invalid handle in SetDebugMetadata (%lld)",
+                           handle_value);
+  }
+  *session_computation_.mutable_requests()
+       ->at(handle_value)
+       .mutable_request()
+       ->mutable_metadata() = metadata;
+  return Status::OK();
+}
+
 Status UserComputation::SetReturnValue(const ComputationDataHandle& handle) {
   tensorflow::mutex_lock lock(mutex_);
 
@@ -1478,6 +1521,14 @@ void ConstantVisitor(const SessionComputation& session_computation,
       ConstantVisitor(session_computation, ternary_op_request.rhs(), visited,
                       is_constant);
       ConstantVisitor(session_computation, ternary_op_request.ehs(), visited,
+                      is_constant);
+      break;
+    }
+
+    case OpRequest::kTransposeRequest: {
+      const TransposeRequest& transpose_request =
+          request.request().transpose_request();
+      ConstantVisitor(session_computation, transpose_request.operand(), visited,
                       is_constant);
       break;
     }
@@ -2109,15 +2160,32 @@ HloInstruction* ComputationLowerer::Visit(
       const ReshapeRequest& reshape_request =
           request.request().reshape_request();
       HloInstruction* operand = Visit(reshape_request.operand(), visited);
+      HloInstruction* transposed;
+      if (IsIdentityPermutation(AsInt64Slice(reshape_request.dimensions()))) {
+        transposed = operand;
+      } else {
+        transposed =
+            hlo_builder_.AddInstruction(HloInstruction::CreateTranspose(
+                ShapeUtil::PermuteDimensions(InversePermutation(AsInt64Slice(
+                                                 reshape_request.dimensions())),
+                                             operand->shape()),
+                operand, AsInt64Slice(reshape_request.dimensions())));
+      }
+      hlo_instruction = hlo_builder_.AddInstruction(
+          HloInstruction::CreateReshape(request.output_shape(), transposed));
+      break;
+    }
+
+    case OpRequest::kTransposeRequest: {
+      const TransposeRequest& transpose_request =
+          request.request().transpose_request();
+      HloInstruction* operand = Visit(transpose_request.operand(), visited);
       hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateReshape(
-              request.output_shape(),
-              hlo_builder_.AddInstruction(HloInstruction::CreateTranspose(
-                  ShapeUtil::PermuteDimensions(
-                      InversePermutation(
-                          AsInt64Slice(reshape_request.dimensions())),
-                      operand->shape()),
-                  operand, AsInt64Slice(reshape_request.dimensions())))));
+          hlo_builder_.AddInstruction(HloInstruction::CreateTranspose(
+              ShapeUtil::PermuteDimensions(InversePermutation(AsInt64Slice(
+                                               transpose_request.dimensions())),
+                                           operand->shape()),
+              operand, AsInt64Slice(transpose_request.dimensions())));
       break;
     }
 
@@ -2314,6 +2382,7 @@ HloInstruction* ComputationLowerer::Visit(
     default:
       LOG(FATAL) << "Unexpected request type: " << request.request().op_case();
   }
+  hlo_instruction->set_metadata(request.request().metadata());
   (*visited)[handle.handle()] = hlo_instruction;
   return hlo_instruction;
 }

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 
 def build_md_page(page_info):
   """Given a PageInfo object, return markdown for the page.
@@ -48,24 +46,24 @@ def build_md_page(page_info):
 
 def _build_function_page(page_info):
   """Given a FunctionPageInfo object Return the page as an md string."""
-  parts = [
-      '# {page_info.full_name}{page_info.signature}\n\n'.format(
-          page_info=page_info)
-  ]
+  parts = ['# %s\n\n' % page_info.full_name]
 
   if page_info.aliases:
-    parts.extend('### `%s%s`\n' % (name, page_info.signature)
+    parts.extend('### `%s`\n' % name
                  for name in page_info.aliases)
     parts.append('\n')
+
+  if page_info.signature is not None:
+    parts.append(_build_signature(page_info))
+
+  if page_info.defined_in:
+    parts.append('\n\n')
+    parts.append(str(page_info.defined_in))
 
   parts.append(page_info.guides)
   parts.append(page_info.doc.docstring)
   parts.append(_build_function_details(page_info.doc.function_details))
   parts.append(_build_compatibility(page_info.doc.compatibility))
-
-  if page_info.defined_in:
-    parts.append('\n\n')
-    parts.append(str(page_info.defined_in))
 
   return ''.join(parts)
 
@@ -77,6 +75,10 @@ def _build_class_page(page_info):
   if page_info.aliases:
     parts.extend('### `class %s`\n' % name for name in page_info.aliases)
     parts.append('\n')
+
+  if page_info.defined_in is not None:
+    parts.append('\n\n')
+    parts.append(str(page_info.defined_in))
 
   parts.append(page_info.guides)
   parts.append(page_info.doc.docstring)
@@ -110,11 +112,21 @@ def _build_class_page(page_info):
 
   if page_info.methods:
     parts.append('## Methods\n\n')
-    for method_info in sorted(page_info.methods):
+    # Sort the methods list, but make sure constructors come first.
+    constructors = ['__init__', '__new__']
+    inits = [method for method in page_info.methods
+             if method.short_name in constructors]
+    others = [method for method in page_info.methods
+              if method.short_name not in constructors]
+
+    for method_info in sorted(inits) + sorted(others):
       h3 = ('<h3 id="{short_name}">'
-            '<code>{short_name}{signature}</code>'
+            '<code>{short_name}</code>'
             '</h3>\n\n')
       parts.append(h3.format(**method_info.__dict__))
+
+      if method_info.signature is not None:
+        parts.append(_build_signature(method_info))
 
       parts.append(method_info.doc.docstring)
       parts.append(_build_function_details(method_info.doc.function_details))
@@ -125,17 +137,13 @@ def _build_class_page(page_info):
   if page_info.other_members:
     parts.append('## Class Members\n\n')
 
-    # TODO(wicke): Document the value of the members,
-    #              at least for basic types.
+    # TODO(markdaoust): Document the value of the members,
+    #                   at least for basic types.
 
     h3 = '<h3 id="{short_name}"><code>{short_name}</code></h3>\n\n'
     others_member_headings = (h3.format(short_name=info.short_name)
                               for info in sorted(page_info.other_members))
     parts.extend(others_member_headings)
-
-  if page_info.defined_in is not None:
-    parts.append('\n\n')
-    parts.append(str(page_info.defined_in))
 
   return ''.join(parts)
 
@@ -149,41 +157,76 @@ def _build_module_page(page_info):
     parts.extend('### Module `%s`\n' % name for name in page_info.aliases)
     parts.append('\n')
 
-  parts.append(page_info.doc.docstring)
-  parts.append('\n\n')
-  parts.append('## Members\n\n')
-
-  # TODO(deannarubin): Make this list into a table.
-  for member_info in page_info.members:
-    if not member_info.is_link():
-      parts.append('Constant ' + member_info.short_name)
-      parts.append('\n\n')
-      continue
-
-    suffix = ''
-    if inspect.isclass(member_info.obj):
-      link_text = 'class ' + member_info.short_name
-    elif inspect.isfunction(member_info.obj):
-      link_text = member_info.short_name + '(...)'
-    elif inspect.ismodule(member_info.obj):
-      link_text = member_info.short_name
-      suffix = ' module'
-
-    if member_info.doc.brief:
-      suffix = '%s: %s' % (suffix, member_info.doc.brief)
-
-    parts.append('[`{link_text}`]({url}){suffix}'.format(
-        link_text=link_text, url=member_info.url, suffix=suffix))
-    parts.append('\n\n')
-
-  if page_info.members:
-    parts.pop()
-
   if page_info.defined_in is not None:
     parts.append('\n\n')
     parts.append(str(page_info.defined_in))
 
+  parts.append(page_info.doc.docstring)
+  parts.append('\n\n')
+
+  if page_info.modules:
+    parts.append('## Modules\n\n')
+    template = '[`{short_name}`]({url}) module'
+
+    for item in page_info.modules:
+      parts.append(template.format(**item.__dict__))
+
+      if item.doc.brief:
+        parts.append(': ' + item.doc.brief)
+
+      parts.append('\n\n')
+
+  if page_info.classes:
+    parts.append('## Classes\n\n')
+    template = '[`class {short_name}`]({url})'
+
+    for item in page_info.classes:
+      parts.append(template.format(**item.__dict__))
+
+      if item.doc.brief:
+        parts.append(': ' + item.doc.brief)
+
+      parts.append('\n\n')
+
+  if page_info.functions:
+    parts.append('## Functions\n\n')
+    template = '[`{short_name}(...)`]({url})'
+
+    for item in page_info.functions:
+      parts.append(template.format(**item.__dict__))
+
+      if item.doc.brief:
+        parts.append(': ' + item.doc.brief)
+
+      parts.append('\n\n')
+
+  if page_info.other_members:
+    # TODO(markdaoust): Document the value of the members,
+    #                   at least for basic types.
+    parts.append('## Other Members\n\n')
+
+    for item in page_info.other_members:
+      parts.append('`{short_name}`\n\n'.format(**item.__dict__))
+
   return ''.join(parts)
+
+
+def _build_signature(obj_info):
+  """Returns a md code block showing the function signature."""
+  signature_template = '\n'.join([
+      '``` python',
+      '{name}({sig})',
+      '```\n\n'])
+
+  if not obj_info.signature:
+    sig = ''
+  elif len(obj_info.signature) == 1:
+    sig = obj_info.signature[0]
+  else:
+    sig = ',\n'.join('    %s' % sig_item for sig_item in obj_info.signature)
+    sig = '\n'+sig+'\n'
+
+  return signature_template.format(name=obj_info.short_name, sig=sig)
 
 
 def _build_compatibility(compatibility):

@@ -32,6 +32,23 @@ from tensorflow.tools.docs import pretty_docs
 from tensorflow.tools.docs import py_guide_parser
 
 
+def  _is_free_function(py_object, full_name, index):
+  """Check if input is a free function (and not a class- or static method)."""
+  if not inspect.isfunction(py_object):
+    return False
+
+  # Static methods are functions to inspect (in 2.7), so check if the parent
+  # is a class. If there is no parent, it's not a function.
+  if '.' not in full_name:
+    return False
+
+  parent_name = full_name.rsplit('.', 1)[0]
+  if inspect.isclass(index[parent_name]):
+    return False
+
+  return True
+
+
 def write_docs(output_dir, parser_config, duplicate_of, index, yaml_toc):
   """Write previously extracted docs to disk.
 
@@ -75,7 +92,7 @@ def write_docs(output_dir, parser_config, duplicate_of, index, yaml_toc):
     # Methods and some routines are documented only as part of their class.
     if not (inspect.ismodule(py_object) or
             inspect.isclass(py_object) or
-            inspect.isfunction(py_object)):
+            _is_free_function(py_object, full_name, index)):
       continue
 
     sitepath = os.path.join('api_docs/python',
@@ -132,14 +149,15 @@ def write_docs(output_dir, parser_config, duplicate_of, index, yaml_toc):
         f.write('  - title: ' + module + '\n'
                 '    section:\n' +
                 '    - title: Overview\n' +
-                '      path: /TARGET_DOC_ROOT/' + symbol_to_file[module] + '\n')
+                '      path: /TARGET_DOC_ROOT/VERSION/' +
+                symbol_to_file[module] + '\n')
 
         symbols_in_module = module_children.get(module, [])
         symbols_in_module.sort(key=lambda a: a.upper())
 
         for full_name in symbols_in_module:
           f.write('    - title: ' + full_name[len(module)+1:] + '\n'
-                  '      path: /TARGET_DOC_ROOT/' +
+                  '      path: /TARGET_DOC_ROOT/VERSION/' +
                   symbol_to_file[full_name] + '\n')
 
   # Write a global index containing all full names with links.
@@ -192,6 +210,7 @@ def _get_default_do_not_descend_map():
           'select',
           'util'
       ],
+      'contrib.keras': ['api', 'python'],
       'contrib.layers': ['feature_column', 'summaries'],
       'contrib.learn': [
           'datasets',
@@ -459,10 +478,13 @@ class DocGenerator(object):
         guide_index=guide_index,
         base_dir=base_dir)
 
+  def run_extraction(self):
+    return extract(self._py_modules, self._do_not_descend_map)
+
   def build(self, flags):
     """Actually build the docs."""
     doc_index = build_doc_index(flags.src_dir)
-    visitor = extract(self._py_modules, self._do_not_descend_map)
+    visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
     guide_index = _build_guide_index(
         os.path.join(flags.src_dir, 'api_guides/python'))

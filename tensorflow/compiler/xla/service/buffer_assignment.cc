@@ -425,7 +425,8 @@ Status GatherComputationsByAllocationType(
     }
 
     for (auto& instruction : computation->instructions()) {
-      for (auto* subcomputation : instruction->MakeCalledComputationsSet()) {
+      for (HloComputation* subcomputation :
+           instruction->called_computations()) {
         switch (instruction->opcode()) {
           case HloOpcode::kCall:
           case HloOpcode::kWhile:

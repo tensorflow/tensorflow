@@ -28,6 +28,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using testing::UnorderedMatcher;
+
 class CallGraphTest : public HloTestBase {
  protected:
   // Build and return a trivial computation taking and returning a scalar.
@@ -91,10 +93,11 @@ TEST_F(CallGraphTest, SingletonComputation) {
   HloModule module(TestName());
   HloComputation* computation =
       module.AddEntryComputation(MakeScalarComputation());
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
-  EXPECT_EQ(1, call_graph.nodes().size());
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
+                         CallGraph::Build(&module));
+  EXPECT_EQ(1, call_graph->nodes().size());
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* node,
-                         call_graph.GetNode(computation));
+                         call_graph->GetNode(computation));
   EXPECT_EQ(computation, node->computation());
   EXPECT_TRUE(node->callsites().empty());
   EXPECT_TRUE(node->callees().empty());
@@ -112,16 +115,17 @@ TEST_F(CallGraphTest, UnreachableComputation) {
   HloComputation* unreachable_computation =
       module.AddEmbeddedComputation(MakeScalarComputation());
 
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
-  EXPECT_EQ(2, call_graph.nodes().size());
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
+                         CallGraph::Build(&module));
+  EXPECT_EQ(2, call_graph->nodes().size());
 
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* entry_node,
-                         call_graph.GetNode(entry_computation));
+                         call_graph->GetNode(entry_computation));
   EXPECT_EQ(entry_computation, entry_node->computation());
   EXPECT_EQ(CallContext::kSequential, entry_node->context());
 
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* unreachable_node,
-                         call_graph.GetNode(unreachable_computation));
+                         call_graph->GetNode(unreachable_computation));
   EXPECT_EQ(unreachable_computation, unreachable_node->computation());
   EXPECT_EQ(CallContext::kSequential, unreachable_node->context());
 }
@@ -135,11 +139,12 @@ TEST_F(CallGraphTest, ParallelComputation) {
   HloComputation* entry_computation = module.AddEmbeddedComputation(
       MakeMappingComputation(map_computation, /*callsites=*/5));
 
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
-  EXPECT_EQ(2, call_graph.nodes().size());
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
+                         CallGraph::Build(&module));
+  EXPECT_EQ(2, call_graph->nodes().size());
 
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* entry_node,
-                         call_graph.GetNode(entry_computation));
+                         call_graph->GetNode(entry_computation));
   EXPECT_EQ(entry_computation, entry_node->computation());
   EXPECT_EQ(CallContext::kSequential, entry_node->context());
   EXPECT_EQ(5, entry_node->callsites().size());
@@ -148,7 +153,7 @@ TEST_F(CallGraphTest, ParallelComputation) {
   EXPECT_TRUE(entry_node->callers().empty());
 
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* map_node,
-                         call_graph.GetNode(map_computation));
+                         call_graph->GetNode(map_computation));
   EXPECT_EQ(map_computation, map_node->computation());
   EXPECT_EQ(CallContext::kParallel, map_node->context());
   EXPECT_TRUE(map_node->callsites().empty());
@@ -166,11 +171,12 @@ TEST_F(CallGraphTest, SequentialComputations) {
   HloComputation* entry_computation = module.AddEmbeddedComputation(
       MakeCallingComputation(called_computation, /*callsites=*/3));
 
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
-  EXPECT_EQ(2, call_graph.nodes().size());
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
+                         CallGraph::Build(&module));
+  EXPECT_EQ(2, call_graph->nodes().size());
 
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* entry_node,
-                         call_graph.GetNode(entry_computation));
+                         call_graph->GetNode(entry_computation));
   EXPECT_EQ(entry_computation, entry_node->computation());
   EXPECT_EQ(CallContext::kSequential, entry_node->context());
   EXPECT_EQ(3, entry_node->callsites().size());
@@ -179,7 +185,7 @@ TEST_F(CallGraphTest, SequentialComputations) {
   EXPECT_TRUE(entry_node->callers().empty());
 
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* called_node,
-                         call_graph.GetNode(called_computation));
+                         call_graph->GetNode(called_computation));
   EXPECT_EQ(called_computation, called_node->computation());
   EXPECT_EQ(CallContext::kSequential, called_node->context());
   EXPECT_TRUE(called_node->callsites().empty());
@@ -205,26 +211,31 @@ TEST_F(CallGraphTest, ContextBothComputations) {
   HloComputation* entry_computation =
       module.AddEmbeddedComputation(builder.Build());
 
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
-  EXPECT_EQ(2, call_graph.nodes().size());
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
+                         CallGraph::Build(&module));
+  EXPECT_EQ(2, call_graph->nodes().size());
 
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* entry_node,
-                         call_graph.GetNode(entry_computation));
+                         call_graph->GetNode(entry_computation));
   EXPECT_EQ(entry_computation, entry_node->computation());
   EXPECT_EQ(2, entry_node->callsites().size());
 
   const CallSite& call_callsite = entry_node->callsites()[0];
-  EXPECT_EQ(call, call_callsite.instruction);
-  EXPECT_EQ(subcomputation, call_callsite.called_computation);
-  EXPECT_EQ(CallContext::kSequential, call_callsite.context);
+  EXPECT_EQ(call, call_callsite.instruction());
+  EXPECT_MATCH(call_callsite.called_computations(),
+               UnorderedMatcher<HloComputation*>(subcomputation));
+  EXPECT_EQ(CallContext::kSequential, call_callsite.context());
+  EXPECT_EQ(entry_node->GetCallSite(call), &call_callsite);
 
   const CallSite& map_callsite = entry_node->callsites()[1];
-  EXPECT_EQ(map, map_callsite.instruction);
-  EXPECT_EQ(subcomputation, map_callsite.called_computation);
-  EXPECT_EQ(CallContext::kParallel, map_callsite.context);
+  EXPECT_EQ(map, map_callsite.instruction());
+  EXPECT_MATCH(map_callsite.called_computations(),
+               UnorderedMatcher(subcomputation));
+  EXPECT_EQ(CallContext::kParallel, map_callsite.context());
+  EXPECT_EQ(entry_node->GetCallSite(map), &map_callsite);
 
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* sub_node,
-                         call_graph.GetNode(subcomputation));
+                         call_graph->GetNode(subcomputation));
   EXPECT_EQ(CallContext::kBoth, sub_node->context());
 }
 
@@ -271,25 +282,32 @@ TEST_F(CallGraphTest, ComplexGraph) {
     entry_computation = module.AddEntryComputation(builder.Build());
   }
 
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
-  EXPECT_EQ(5, call_graph.nodes().size());
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
+                         CallGraph::Build(&module));
+  EXPECT_EQ(5, call_graph->nodes().size());
 
+  // Entry computation has one while instruction calling two computations
+  // (cond_computation and a_computation).
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* entry_node,
-                         call_graph.GetNode(entry_computation));
-  // Entry computation has one while instruction (two callsites).
-  EXPECT_EQ(2, entry_node->callsites().size());
+                         call_graph->GetNode(entry_computation));
+  ASSERT_EQ(1, entry_node->callsites().size());
+  const std::vector<HloComputation*>& called_computations =
+      entry_node->callsites()[0].called_computations();
+  EXPECT_MATCH(called_computations,
+               UnorderedMatcher(cond_computation, a_computation));
   EXPECT_EQ(CallContext::kSequential, entry_node->context());
 
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* c_node,
-                         call_graph.GetNode(c_computation));
+                         call_graph->GetNode(c_computation));
   EXPECT_TRUE(c_node->callsites().empty());
-  EXPECT_EQ(2, c_node->callers().size());
+  EXPECT_MATCH(c_node->callers(),
+               UnorderedMatcher(a_computation, b_computation));
   EXPECT_EQ(CallContext::kBoth, c_node->context());
 
   // Visit the graph and verify nodes were visited in callee-before-caller
   // order.
   std::vector<const HloComputation*> visited;
-  TF_ASSERT_OK(call_graph.VisitNodes([&visited](const CallGraphNode& node) {
+  TF_ASSERT_OK(call_graph->VisitNodes([&visited](const CallGraphNode& node) {
     visited.push_back(node.computation());
     return Status::OK();
   }));
@@ -317,15 +335,15 @@ TEST_F(CallGraphTest, VisitSingletonComputation) {
   HloModule module(TestName());
   HloComputation* computation =
       module.AddEntryComputation(MakeScalarComputation());
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
+                         CallGraph::Build(&module));
 
-  std::vector<const HloComputation*> visited;
-  TF_ASSERT_OK(call_graph.VisitNodes([&visited](const CallGraphNode& node) {
+  std::vector<HloComputation*> visited;
+  TF_ASSERT_OK(call_graph->VisitNodes([&visited](const CallGraphNode& node) {
     visited.push_back(node.computation());
     return Status::OK();
   }));
-  EXPECT_EQ(visited.size(), 1);
-  EXPECT_EQ(visited[0], computation);
+  EXPECT_MATCH(visited, UnorderedMatcher(computation));
 }
 
 TEST_F(CallGraphTest, VisitUnreachableComputation) {
@@ -335,12 +353,13 @@ TEST_F(CallGraphTest, VisitUnreachableComputation) {
       module.AddEntryComputation(MakeScalarComputation());
   HloComputation* unreachable_computation =
       module.AddEmbeddedComputation(MakeScalarComputation());
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
+                         CallGraph::Build(&module));
 
   // Test visitation of only reachable nodes.
   {
     std::vector<const HloComputation*> visited;
-    TF_ASSERT_OK(call_graph.VisitNodes(
+    TF_ASSERT_OK(call_graph->VisitNodes(
         [&visited](const CallGraphNode& node) {
           visited.push_back(node.computation());
           return Status::OK();
@@ -352,19 +371,16 @@ TEST_F(CallGraphTest, VisitUnreachableComputation) {
 
   // Test visitation of all nodes (reachable and unreachable).
   {
-    std::vector<const HloComputation*> visited;
-    TF_ASSERT_OK(call_graph.VisitNodes(
+    std::vector<HloComputation*> visited;
+    TF_ASSERT_OK(call_graph->VisitNodes(
         [&visited](const CallGraphNode& node) {
           visited.push_back(node.computation());
           return Status::OK();
         },
         /*visit_unreachable_nodes=*/true));
     EXPECT_EQ(visited.size(), 2);
-    EXPECT_NE(std::find(visited.begin(), visited.end(), entry_computation),
-              visited.end());
-    EXPECT_NE(
-        std::find(visited.begin(), visited.end(), unreachable_computation),
-        visited.end());
+    EXPECT_MATCH(visited,
+                 UnorderedMatcher(entry_computation, unreachable_computation));
   }
 }
 
@@ -372,9 +388,10 @@ TEST_F(CallGraphTest, VisitWithError) {
   // Test that the call graph visitor properly propagates errors.
   HloModule module(TestName());
   module.AddEntryComputation(MakeScalarComputation());
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraph call_graph, CallGraph::Build(&module));
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
+                         CallGraph::Build(&module));
 
-  Status status = call_graph.VisitNodes(
+  Status status = call_graph->VisitNodes(
       [](const CallGraphNode&) { return InternalError("Visitation failed"); });
 
   ASSERT_FALSE(status.ok());

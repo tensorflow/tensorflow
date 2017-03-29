@@ -19,7 +19,7 @@
 #
 # The script obeys the following required environment variables:
 #   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID | ANDROID_FULL)
-#   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3)
+#   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
 # The below environment variable is required, but will be deprecated together
@@ -33,7 +33,8 @@
 #   ANDROID & PIP    (Android and PIP builds are mutually exclusive)
 #
 #   2) TF_BUILD_PYTHON_VERSION is set to PYTHON3, the build will use the version
-# pointed to by "which python3" on the system.
+# pointed to by "which python3" on the system, which is typically python3.4. To
+# build for python3.5, set the environment variable to PYTHON3.5
 #
 #
 # Additionally, the script follows the directions of optional environment
@@ -88,6 +89,9 @@
 #                     Use the specified configurations when building.
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
+#   TF_SKIP_CONTRIB_TESTS:
+#                     If set to any non-empty or non-0 value, will skipp running
+#                     contrib tests.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -117,8 +121,7 @@ DOCKER_MAIN_CMD="${CI_BUILD_DIR}/ci_build.sh"
 NO_DOCKER_MAIN_CMD="${CI_BUILD_DIR}/builds/configured"
 
 # Additional option flags to apply when Docker is unavailable (e.g., on Mac)
-NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names "\
-"--genrule_strategy=standalone"
+NO_DOCKER_OPT_FLAG="--genrule_strategy=standalone"
 
 DO_DOCKER=1
 
@@ -145,6 +148,10 @@ if [[ -z $TF_BUILD_ENABLE_XLA ]] || [ $TF_BUILD_ENABLE_XLA == 0 ]; then
 else
   BAZEL_TARGET="//tensorflow/compiler/..."
   EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_BUILD_ENABLE_XLA=1"
+fi
+
+if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
+  BAZEL_TARGET="$BAZEL_TARGET -//tensorflow/contrib/..."
 fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
@@ -420,7 +427,9 @@ fi
 # Process Python version
 if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
   :
-elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" ]]; then
+elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" || \
+        ${TF_BUILD_PYTHON_VERSION} == "python3.4" || \
+        ${TF_BUILD_PYTHON_VERSION} == "python3.5" ]]; then
   # Supply proper environment variable to select Python 3
   if [[ "${DO_DOCKER}" == "1" ]]; then
     EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=${TF_BUILD_PYTHON_VERSION}"
@@ -487,6 +496,30 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
+if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
+  # Modify Dockerfile for Python3.5 build
+  TMP_DIR=$(mktemp -d)
+  echo "Docker build will occur in temporary directory: ${TMP_DIR}"
+
+  # Copy the files required for the docker build
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
+      die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
+
+  DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+  cp "${DOCKERFILE}" "${TMP_DIR}/" || \
+      die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
+  DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+
+  # Replace a line in the Dockerfile
+  sed -i \
+      's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
+      "${DOCKERFILE}" && \
+      echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}" || \
+      die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+
+  DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
+fi
 
 chmod +x ${TMP_SCRIPT}
 

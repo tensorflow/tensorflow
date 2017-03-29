@@ -168,6 +168,10 @@ class DebugNumericSummaryOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
     OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
+    OP_REQUIRES_OK(context, context->GetAttr("lower_bound", &lower_bound_));
+    OP_REQUIRES_OK(context, context->GetAttr("upper_bound", &upper_bound_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("mute_if_healthy", &mute_if_healthy_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -196,6 +200,9 @@ class DebugNumericSummaryOp : public OpKernel {
       const T* input_flat = input.template flat<T>().data();
 
       element_count = input_shape.num_elements();
+      const bool is_lower_bound_custom = !Eigen::numext::isinf(lower_bound_);
+      const bool is_upper_bound_custom = !Eigen::numext::isinf(upper_bound_);
+
       for (int64 i = 0; i < element_count; ++i) {
         const double x = static_cast<double>(input_flat[i]);
         if (Eigen::numext::isnan(x)) {
@@ -207,7 +214,11 @@ class DebugNumericSummaryOp : public OpKernel {
             positive_inf_count++;
           }
         } else {
-          if (x < 0.0) {
+          if (is_lower_bound_custom && x <= lower_bound_) {
+            negative_inf_count++;
+          } else if (is_upper_bound_custom && x >= upper_bound_) {
+            positive_inf_count++;
+          } else if (x < 0.0) {
             negative_count++;
           } else if (x > 0.0) {
             positive_count++;
@@ -259,7 +270,9 @@ class DebugNumericSummaryOp : public OpKernel {
     output_tensor->vec<double>()(10) = mean;
     output_tensor->vec<double>()(11) = variance;
 
-    if (!debug_urls_.empty()) {
+    bool mute = mute_if_healthy_ && nan_count == 0 && negative_inf_count == 0 &&
+                positive_inf_count == 0;
+    if (!mute && !debug_urls_.empty()) {
       // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
       DebugIO::PublishDebugTensor(tensor_name_, "DebugNumericSummary",
                                   *output_tensor, Env::Default()->NowMicros(),
@@ -273,6 +286,9 @@ class DebugNumericSummaryOp : public OpKernel {
  private:
   string tensor_name_;
   std::vector<string> debug_urls_;
+  float lower_bound_;
+  float upper_bound_;
+  bool mute_if_healthy_;
 };
 
 }  // namespace tensorflow

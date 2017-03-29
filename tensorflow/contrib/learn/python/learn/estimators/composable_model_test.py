@@ -131,7 +131,7 @@ class ComposableModelTest(test.TestCase):
     language = feature_column.sparse_column_with_hash_bucket('language', 100)
     age = feature_column.real_valued_column('age')
 
-    head = head_lib._multi_class_head(n_classes=2)
+    head = head_lib.multi_class_head(n_classes=2)
     classifier = _linear_estimator(head, feature_columns=[age, language])
 
     classifier.fit(input_fn=input_fn, steps=1000)
@@ -157,7 +157,7 @@ class ComposableModelTest(test.TestCase):
     language = feature_column.sparse_column_with_hash_bucket('language', 100)
     age = feature_column.sparse_column_with_hash_bucket('age', 2)
 
-    head = head_lib._multi_class_head(n_classes=2)
+    head = head_lib.multi_class_head(n_classes=2)
     classifier = _joint_linear_estimator(head, feature_columns=[age, language])
 
     classifier.fit(input_fn=input_fn, steps=1000)
@@ -171,7 +171,7 @@ class ComposableModelTest(test.TestCase):
     """Tests multi-class classification using matrix data as input."""
     cont_features = [feature_column.real_valued_column('feature', dimension=4)]
 
-    head = head_lib._multi_class_head(n_classes=3)
+    head = head_lib.multi_class_head(n_classes=3)
     classifier = _dnn_estimator(
         head, feature_columns=cont_features, hidden_units=[3, 3])
 
