@@ -94,22 +94,22 @@ def generator_input_fn(x,
         type(data).__name__))
   input_keys = sorted(next(x()).keys())
   if target_key is not None:
-      if isinstance(target_key, str):
-        target_key = [target_key]
-      elif isinstance(target_key,  Container):
-        for item in target_key:
-          if not isinstance(item, str):
-            raise TypeError(
+    if isinstance(target_key, str):
+      target_key = [target_key]
+    elif isinstance(target_key,  Container):
+      for item in target_key:
+        if not isinstance(item, str):
+          raise TypeError(
               'target_key must be str or Container of str; got {}'.format(
                   type(item).__name__))
-          if item not in input_keys:
-            raise KeyError(
+        if item not in input_keys:
+          raise KeyError(
               'target_key not in yielded dict. Expected {} keys; got {}'.format(
                   input_keys, item))
-      else:
-        raise TypeError(
-            'target_key must be str or Container of str; got {}'.format(
-                type(target_key).__name__))
+    else:
+      raise TypeError(
+          'target_key must be str or Container of str; got {}'.format(
+              type(target_key).__name__))
 
   def _generator_input_fn():
     """generator input function."""

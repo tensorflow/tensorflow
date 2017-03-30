@@ -287,7 +287,7 @@ class GeneratorIoTest(test.TestCase):
       threads = queue_runner_impl.start_queue_runners(session, coord=coord)
 
       with self.assertRaises(errors.OutOfRangeError):
-              session.run([features])
+        session.run([features])
 
       with self.assertRaisesRegex(KeyError, 'key mismatch between dicts emitted'
                                             ' by GenFunExpected'):
