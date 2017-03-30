@@ -17,7 +17,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #ifdef SNAPPY
-#include <snappy.h>
+#include "snappy.h"
 #endif
 
 #include <Windows.h>

@@ -1445,5 +1445,26 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reshape_shape));
 }
 
+TEST_F(AlgebraicSimplifierTest, ReversalOfTrivialDimensionsToBitcast) {
+  HloComputation::Builder builder(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {448, 2048, 1, 1});
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  builder.AddInstruction(
+      HloInstruction::CreateReverse(shape, a, /*dimensions=*/{2, 3}));
+
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(a, root);
+  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), shape));
+}
+
 }  // namespace
 }  // namespace xla

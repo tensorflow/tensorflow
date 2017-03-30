@@ -113,6 +113,7 @@ filegroup(
         "@org_mozilla_bleach//:LICENSE",
         "@org_pocoo_werkzeug//:LICENSE",
         "@org_pythonhosted_markdown//:LICENSE.md",
+        "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
     ] + if_not_windows([
         "@nccl_archive//:LICENSE.txt",

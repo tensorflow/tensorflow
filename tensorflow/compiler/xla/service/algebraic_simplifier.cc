@@ -146,6 +146,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
                       tensorflow::gtl::ArraySlice<int64> dimensions,
                       HloComputation* function) override;
 
+  Status HandleReverse(HloInstruction* reverse,
+                       HloInstruction* operand) override;
   Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
 
   Status HandleTranspose(HloInstruction* transpose) override;
@@ -1009,6 +1011,21 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
     return Status::OK();
   }
 
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse,
+                                                 HloInstruction* operand) {
+  // When all the dimensions to reverse are trivial (i.e. the bound is 1), there
+  // is nothing to be done.
+  auto dim_is_one = [&](int64 i) -> bool {
+    return reverse->shape().dimensions(i) == 1;
+  };
+  if (std::all_of(reverse->dimensions().begin(), reverse->dimensions().end(),
+                  dim_is_one)) {
+    changed_ = true;
+    return computation_->ReplaceInstruction(reverse, operand);
+  }
   return Status::OK();
 }
 

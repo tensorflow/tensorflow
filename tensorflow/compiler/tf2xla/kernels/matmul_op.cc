@@ -73,7 +73,7 @@ class MatMulOp : public XlaOpKernel {
   bool transpose_b_;
 };
 
-REGISTER_XLA_OP("MatMul", MatMulOp);
+REGISTER_XLA_OP(Name("MatMul").TypeConstraint("T", kFloatTypes), MatMulOp);
 
 class SparseMatMulOp : public MatMulOp {
  public:
@@ -82,7 +82,10 @@ class SparseMatMulOp : public MatMulOp {
   ~SparseMatMulOp() override = default;
 };
 
-REGISTER_XLA_OP("SparseMatMul", SparseMatMulOp);
+REGISTER_XLA_OP(Name("SparseMatMul")
+                    .TypeConstraint("Ta", kFloatTypes)
+                    .TypeConstraint("Tb", kFloatTypes),
+                SparseMatMulOp);
 
 }  // namespace
 }  // namespace tensorflow
