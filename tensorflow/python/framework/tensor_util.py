@@ -764,3 +764,18 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
       ret = ret.merge_with(tensor_shape.TensorShape(
           [d if d != -1 else None for d in value]))
     return ret
+
+
+def is_tensor(x):  # pylint: disable=invalid-name
+  """Check whether `x` is of tensor type.
+
+  Check whether an object is a tensor. Equivalent to
+  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+
+  Args:
+    x: An python object to check.
+
+  Returns:
+    `True` if `x` is a tensor, `False` if not.
+  """
+  return isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x)  # pylint: disable=protected-access
