@@ -2457,22 +2457,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "quantize_training_test",
-    size = "small",
-    srcs = [
-        "client/quantize_training_test.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client",
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":math_ops",
-        ":pywrap_tensorflow",
-    ],
-)
-
 py_library(
     name = "device_lib",
     srcs = ["client/device_lib.py"],
@@ -2548,7 +2532,6 @@ tf_py_wrap_cc(
     swig_includes = [
         "client/device_lib.i",
         "client/events_writer.i",
-        "client/quantize_training.i",
         "client/tf_session.i",
         "framework/cpp_shape_inference.i",
         "framework/python_op_gen.i",
@@ -2558,6 +2541,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
+        "training/quantize_training.i",
         "training/server_lib.i",
         "util/kernel_registry.i",
         "util/port.i",
@@ -2904,6 +2888,7 @@ cuda_py_tests(
         "training/optimizer_test.py",
         "training/proximal_adagrad_test.py",
         "training/proximal_gradient_descent_test.py",
+        "training/quantize_training_test.py",
         "training/queue_runner_test.py",
         "training/rmsprop_test.py",
         "training/slot_creator_test.py",
