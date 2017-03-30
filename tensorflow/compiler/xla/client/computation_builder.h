@@ -541,8 +541,8 @@ class ComputationBuilder {
   // (float32 is specified as there is an implicit float32 -1.0f constant
   // exponent).
   //
-  // TODO(leary) axe F32 suffix, can be determined by reflecting on the shape of
-  // the operand.
+  // TODO(b/34468990) axe F32 suffix, can be determined by reflecting on the
+  // shape of the operand.
   ComputationDataHandle ReciprocalF32(const ComputationDataHandle& operand);
 
   // Enqueues a negate instruction onto the computation.
@@ -839,7 +839,7 @@ template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
   return ConstantOp([&values, &layout](Literal* literal) {
-    LiteralUtil::PopulateR4FromArray4D(values, layout, literal);
+    LiteralUtil::PopulateR4FromArray4DWithLayout(values, layout, literal);
   });
 }
 

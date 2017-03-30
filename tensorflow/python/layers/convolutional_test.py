@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import convolutional as conv_layers
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -88,6 +89,23 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
+  def testUnknownInputChannels(self):
+    images = random_ops.random_uniform((5, 7, 9, 4))
+    images._shape = tensor_shape.as_shape((5, 7, 9, None))
+    layer = conv_layers.Conv2D(32, [3, 3], activation=nn_ops.relu)
+    with self.assertRaisesRegexp(ValueError,
+                                 'The channel dimension of the inputs '
+                                 'should be defined. Found `None`.'):
+      _ = layer.apply(images)
+
+    images = random_ops.random_uniform((5, 4, 7, 9))
+    images._shape = tensor_shape.as_shape((5, None, 7, 9))
+    layer = conv_layers.Conv2D(32, [3, 3], data_format='channels_first')
+    with self.assertRaisesRegexp(ValueError,
+                                 'The channel dimension of the inputs '
+                                 'should be defined. Found `None`.'):
+      _ = layer.apply(images)
+
   def testConv2DPaddingSame(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 32), seed=1)
@@ -135,6 +153,23 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
+  def testUnknownInputChannelsConv1D(self):
+    data = random_ops.random_uniform((5, 4, 7))
+    data._shape = tensor_shape.as_shape((5, 4, None))
+    layer = conv_layers.Conv1D(32, 3, activation=nn_ops.relu)
+    with self.assertRaisesRegexp(ValueError,
+                                 'The channel dimension of the inputs '
+                                 'should be defined. Found `None`.'):
+      _ = layer.apply(data)
+
+    data = random_ops.random_uniform((5, 7, 4))
+    data._shape = tensor_shape.as_shape((5, None, 4))
+    layer = conv_layers.Conv1D(32, 3, data_format='channels_first')
+    with self.assertRaisesRegexp(ValueError,
+                                 'The channel dimension of the inputs '
+                                 'should be defined. Found `None`.'):
+      _ = layer.apply(data)
+
   def testCreateConv3D(self):
     depth, height, width = 6, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 4))
@@ -145,6 +180,15 @@ class ConvTest(test.TestCase):
                          [5, depth - 2, height - 2, width - 2, 32])
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
+
+  def testUnknownInputChannelsConv3D(self):
+    volumes = random_ops.random_uniform((5, 6, 7, 9, 9))
+    volumes._shape = tensor_shape.as_shape((5, 6, 7, 9, None))
+    layer = conv_layers.Conv3D(32, [3, 3, 3], activation=nn_ops.relu)
+    with self.assertRaisesRegexp(ValueError,
+                                 'The channel dimension of the inputs '
+                                 'should be defined. Found `None`.'):
+      _ = layer.apply(volumes)
 
   def testConv2DKernelRegularizer(self):
     height, width = 7, 9

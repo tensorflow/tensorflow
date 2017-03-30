@@ -32,9 +32,12 @@ namespace tensorflow {
 // functions for IRemoteFusedGraphExecutor.
 class RemoteFusedGraphExecuteUtils {
  public:
+  // TODO(satok): Use "_output_data_types" to share a spec with other ops
   static constexpr const char* const ATTR_OUTPUT_DATA_TYPES =
-      "_output_data_types";
-  static constexpr const char* const ATTR_OUTPUT_SHAPES = "_output_shapes";
+      "_default_remote_graph_output_data_types";
+  // TODO(satok): Use "_output_shapes" to share a spec with other ops
+  static constexpr const char* const ATTR_OUTPUT_SHAPES =
+      "_default_remote_output_shapes";
 
   using ExecutorBuildFunc = std::function<Status(
       std::unique_ptr<IRemoteFusedGraphExecutor>* executor)>;
@@ -95,6 +98,10 @@ class RemoteFusedGraphExecuteUtils {
 
   static Status AddOutputTensorShapeTypeByTensorShapeMap(
       const TensorShapeMap& tensor_shape_map, NodeDef* node_def);
+
+  static Status GetOutputTensorShapeType(const NodeDef& node_def,
+                                         std::vector<DataType>* data_types,
+                                         std::vector<TensorShape>* shapes);
 
   static Status PropagateShapeInference(
       const GraphDef& graph_def,

@@ -31,7 +31,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-def build_graph(device, input_shape, perm, datatype):
+def build_graph(device, input_shape, perm, datatype, num_iters):
   """Build a graph containing a sequence of conv2d operations.
 
   Args:
@@ -39,6 +39,7 @@ def build_graph(device, input_shape, perm, datatype):
     input_shape: Shape of the input tensor.
     perm: A list of ints with the same length as input tensor's dimension.
     datatype: numpy data type of the input tensor.
+    num_iters: number of iterations to run transpose.
 
   Returns:
     An array of tensors to run()
@@ -46,11 +47,13 @@ def build_graph(device, input_shape, perm, datatype):
   with ops.device("/%s:0" % device):
     total_size = np.prod(input_shape)
     inp = np.arange(1, total_size + 1, dtype=datatype).reshape(input_shape)
-    t1 = constant_op.constant(inp, shape=input_shape)
+    t = constant_op.constant(inp, shape=input_shape)
 
     outputs = []
-    for _ in range(10):
-      outputs.append(array_ops.transpose(t1, perm))
+    outputs.append(array_ops.transpose(t, perm))
+    for i in range(1, num_iters):
+      with ops.control_dependencies([outputs[i - 1]]):
+        outputs.append(array_ops.transpose(t, perm))
     return control_flow_ops.group(*outputs)
 
 
@@ -72,18 +75,17 @@ class TransposeBenchmark(test.Benchmark):
     """
     graph = ops.Graph()
     with graph.as_default():
-      outputs = build_graph(device, input_shape, perm, datatype)
+      outputs = build_graph(device, input_shape, perm, datatype, num_iters)
       with session_lib.Session(graph=graph) as session:
         variables.global_variables_initializer().run()
-        for _ in xrange(10):
-          session.run(outputs)
+        # warmup runs
+        session.run(outputs)
         start_time = time.time()
-        for _ in xrange(num_iters):
-          session.run(outputs)
+        session.run(outputs)
         duration = (time.time() - start_time) / num_iters
-        throughput = np.prod(
-            np.array(input_shape)) * 4 * 2 / duration / 1000000000
-        print("%s %s inputshape:%s perm:%s %d %.4fsec, %.4fGB/s." %
+        throughput = np.prod(np.array(
+            input_shape)) * datatype().itemsize * 2 / duration / 1e9
+        print("%s %s inputshape:%s perm:%s %d %.6fsec, %.4fGB/s." %
               (device, str(datatype), str(input_shape).replace(" ", ""),
                str(perm).replace(" ", ""), num_iters, duration, throughput))
 
@@ -125,21 +127,21 @@ class TransposeBenchmark(test.Benchmark):
     huge_perms = [[0, 4, 1, 2, 3], [0, 3, 1, 2], [0, 2, 1], [4, 1, 2, 3, 0],
                   [3, 1, 2, 0], [2, 1, 0]]
 
+    num_iters = 40
     for datatype in datatypes:
       for ishape, perm in zip(small_shapes, small_perms):
-        self._run_graph("gpu", ishape, perm, 20, datatype)
+        self._run_graph("gpu", ishape, perm, num_iters, datatype)
 
       if datatype is not np.complex128:
         if datatype is not np.float16:
           for ishape, perm in zip(large_shapes, large_perms):
-            self._run_graph("gpu", ishape, perm, 20, datatype)
+            self._run_graph("gpu", ishape, perm, num_iters, datatype)
 
       if datatype is not np.complex128:
         if datatype is not np.float64:
           if datatype is not np.float16:
             for ishape, perm in zip(huge_shapes, huge_perms):
-              self._run_graph("gpu", ishape, perm, 20, datatype)
-
+              self._run_graph("gpu", ishape, perm, num_iters, datatype)
 
 if __name__ == "__main__":
   test.main()

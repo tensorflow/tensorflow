@@ -19,18 +19,23 @@ from __future__ import division
 from __future__ import print_function
 
 import imghdr
+import math
 import os
 import numpy as np
-from werkzeug import wrappers
 
+from six import BytesIO
+from werkzeug import wrappers
 from google.protobuf import json_format
 from google.protobuf import text_format
-from tensorflow.contrib.tensorboard.plugins.projector import PROJECTOR_FILENAME
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
+from tensorflow.contrib.tensorboard.plugins.projector import projector_config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
+from tensorflow.python.summary import plugin_asset
 from tensorflow.python.training.saver import checkpoint_exists
 from tensorflow.python.training.saver import latest_checkpoint
 from tensorflow.tensorboard.backend.http_util import Respond
@@ -38,6 +43,8 @@ from tensorflow.tensorboard.plugins.base_plugin import TBPlugin
 
 # The prefix of routes provided by this plugin.
 PLUGIN_PREFIX_ROUTE = 'projector'
+
+PROJECTOR_FILENAME = 'projector_config.pbtxt'
 
 # HTTP routes.
 CONFIG_ROUTE = '/info'
@@ -56,6 +63,193 @@ _IMGHDR_TO_MIMETYPE = {
 _DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
 
 
+class EmbeddingMetadata(object):
+  """Metadata container for an embedding.
+
+  The metadata holds different columns with values used for visualization
+  (color by, label by) in the "Embeddings" tab in TensorBoard.
+  """
+
+  def __init__(self, num_points):
+    """Constructs a metadata for an embedding of the specified size.
+
+    Args:
+      num_points: Number of points in the embedding.
+    """
+    self.num_points = num_points
+    self.column_names = []
+    self.name_to_values = {}
+
+  def add_column(self, column_name, column_values):
+    """Adds a named column of metadata values.
+
+    Args:
+      column_name: Name of the column.
+      column_values: 1D array/list/iterable holding the column values. Must be
+          of length `num_points`. The i-th value corresponds to the i-th point.
+
+    Raises:
+      ValueError: If `column_values` is not 1D array, or of length `num_points`,
+          or the `name` is already used.
+    """
+    # Sanity checks.
+    if isinstance(column_values, list) and isinstance(column_values[0], list):
+      raise ValueError('"column_values" must be a flat list, but we detected '
+                       'that its first entry is a list')
+
+    if isinstance(column_values, np.ndarray) and column_values.ndim != 1:
+      raise ValueError('"column_values" should be of rank 1, '
+                       'but is of rank %d' % column_values.ndim)
+    if len(column_values) != self.num_points:
+      raise ValueError('"column_values" should be of length %d, but is of '
+                       'length %d' % (self.num_points, len(column_values)))
+    if column_name in self.name_to_values:
+      raise ValueError('The column name "%s" is already used' % column_name)
+
+    self.column_names.append(column_name)
+    self.name_to_values[column_name] = column_values
+
+
+class ProjectorPluginAsset(plugin_asset.PluginAsset):
+  """Provides a registry for assets needed by the Projector plugin."""
+  plugin_name = 'org_tensorflow_tensorboard_projector'
+
+  def __init__(self):
+    self._config = projector_config_pb2.ProjectorConfig()
+    self._assets = {}
+    self._used_names = set()
+
+  def add_metadata_for_embedding_variable(self,
+                                          var_name,
+                                          metadata=None,
+                                          thumbnails=None,
+                                          thumbnail_dim=None):
+    """Adds metadata for an embedding variable stored in a checkpoint file.
+
+    Args:
+      var_name: Name of the embedding variable.
+      metadata: Optional. A `Metadata` container mapping column header names to
+          the values of that column.
+      thumbnails: Optional. A 4D `ndarray` or a list of 3D `ndarray`s. Each
+          3D array represents the pixels [height, width, channels] of a single
+          thumbnail. The i-th image corresponds to the i-th row (data point) of
+          the embedding variable.
+      thumbnail_dim: Required if `thumbnails` is provided. A tuple
+          (height, width) of a single thumbnail in the sprite.
+
+    Raises:
+      ValueError: If the name of the variable was previously used in this
+          object, or both `metadata` and `thumbnails` are None.
+    """
+
+    if metadata is None and thumbnails is None:
+      raise ValueError('At least one of (`metadata`, `thumbnails`) must be '
+                       'provided')
+    self._convert_embedding_to_assets(var_name, None, metadata, thumbnails,
+                                      thumbnail_dim)
+
+  def add_embedding(self,
+                    name,
+                    values,
+                    metadata=None,
+                    thumbnails=None,
+                    thumbnail_dim=None):
+    """Adds an embedding asset to be visualized by the Embedding Projector.
+
+    Args:
+      name: Name of the embedding.
+      values: 2D `ndarray` of shape [numPoints, dimensionality]
+          containing the embedding values. The i-th row corresponds to the i-th
+          data point.
+      metadata: Optional. A `Metadata` container mapping column header names to
+          the values of that column.
+      thumbnails: Optional. A 4D `ndarray` or a list of 3D `ndarray`s. Each
+          3D array represents the pixels [height, width, channels] of a single
+          thumbnail. The i-th image corresponds to the i-th row (data point) of
+          the `values` matrix.
+      thumbnail_dim: Required if `thumbnails` is provided. A tuple
+          (height, width) of a single thumbnail in the sprite.
+
+    Raises:
+      ValueError: If the name of the embedding was previously used in this
+          object, or `values` is not a 2D array.
+    """
+
+    # Sanity checks.
+    if values.ndim != 2:
+      raise ValueError('`values` must be a 2D array, but is '
+                       '%d-D' % values.ndim)
+    self._convert_embedding_to_assets(name, values, metadata, thumbnails,
+                                      thumbnail_dim)
+
+  def _convert_embedding_to_assets(self,
+                                   name,
+                                   values=None,
+                                   metadata=None,
+                                   thumbnails=None,
+                                   thumbnail_dim=None):
+    """Converts the data associated with embeddings into serializable assets."""
+
+    if name in self._used_names:
+      raise ValueError('The name "%s" was previously used' % name)
+    if thumbnails is not None and not thumbnail_dim:
+      raise ValueError('`thumbnail_dim` is required when `thumbnails` is '
+                       'provided')
+    if thumbnail_dim is not None:
+      if not isinstance(thumbnail_dim, (list, tuple, np.ndarray)):
+        raise ValueError('`thumbnail_dim` must be either a list, tuple or '
+                         '`ndarray`')
+      if len(thumbnail_dim) != 2:
+        raise ValueError('`thumbnail_dim` must be of length 2, '
+                         'but is of length %d' % len(thumbnail_dim))
+    if metadata:
+      if values is not None and len(values) != metadata.num_points:
+        raise ValueError('First dimension of `values` "%d" must match '
+                         '`metadata.num_points` "%d"' % (len(values),
+                                                         metadata.num_points))
+      if not metadata.column_names:
+        raise ValueError('The provided metadata has no columns. Did you forget '
+                         'to add a column?')
+
+    self._used_names.add(name)
+    embedding_info = self._config.embeddings.add()
+    embedding_info.tensor_name = name
+
+    if values is not None:
+      bytes_io = BytesIO()
+      np.savetxt(bytes_io, values, fmt='%.6g', delimiter='\t')
+      fname = '{}_values.tsv'.format(name)
+      embedding_info.tensor_path = fname
+      embedding_info.tensor_shape.extend(values.shape)
+      self._assets[fname] = bytes_io.getvalue()
+
+    if metadata:
+      metadata_tsv_lines = []
+      should_have_header = len(metadata.column_names) > 1
+      if should_have_header:
+        metadata_tsv_lines.append('\t'.join(metadata.column_names))
+
+      for i in range(metadata.num_points):
+        row = [
+            metadata.name_to_values[col_name][i]
+            for col_name in metadata.column_names
+        ]
+        metadata_tsv_lines.append('\t'.join(map(str, row)))
+      fname = '{}_metadata.tsv'.format(name)
+      embedding_info.metadata_path = fname
+      self._assets[fname] = '\n'.join(metadata_tsv_lines) + '\n'
+
+    if thumbnails is not None:
+      fname = '{}_sprite.png'.format(name)
+      embedding_info.sprite.image_path = fname
+      embedding_info.sprite.single_image_dim.extend(thumbnail_dim)
+      self._assets[fname] = _make_sprite_image(thumbnails, thumbnail_dim)
+
+  def assets(self):
+    self._assets[PROJECTOR_FILENAME] = text_format.MessageToString(self._config)
+    return self._assets
+
+
 def _read_tensor_file(fpath):
   with file_io.FileIO(fpath, 'r') as f:
     tensor = []
@@ -69,7 +263,7 @@ def _latest_checkpoints_changed(configs, run_path_pairs):
   """Returns true if the latest checkpoint has changed in any of the runs."""
   for run_name, logdir in run_path_pairs:
     if run_name not in configs:
-      config = ProjectorConfig()
+      config = projector_config_pb2.ProjectorConfig()
       config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
         file_content = file_io.read_file_to_string(config_fpath)
@@ -202,7 +396,7 @@ class ProjectorPlugin(TBPlugin):
     configs = {}
     config_fpaths = {}
     for run_name, logdir in run_path_pairs:
-      config = ProjectorConfig()
+      config = projector_config_pb2.ProjectorConfig()
       config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
         file_content = file_io.read_file_to_string(config_fpath)
@@ -461,3 +655,39 @@ def _find_latest_checkpoint(dir_path):
     return ckpt_path
   except errors.NotFoundError:
     return None
+
+
+def _make_sprite_image(thumbnails, thumbnail_dim):
+  """Constructs a sprite image from thumbnails and returns the png bytes."""
+  if len(thumbnails) < 1:
+    raise ValueError('The length of "thumbnails" must be >= 1')
+
+  if isinstance(thumbnails, np.ndarray) and thumbnails.ndim != 4:
+    raise ValueError('"thumbnails" should be of rank 4, '
+                     'but is of rank %d' % thumbnails.ndim)
+  if isinstance(thumbnails, list):
+    if not isinstance(thumbnails[0], np.ndarray) or thumbnails[0].ndim != 3:
+      raise ValueError('Each element of "thumbnails" must be a 3D `ndarray`')
+    thumbnails = np.array(thumbnails)
+
+  with ops.Graph().as_default():
+    s = session.Session()
+    resized_images = image_ops.resize_images(thumbnails, thumbnail_dim).eval(
+        session=s)
+    images_per_row = int(math.ceil(math.sqrt(len(thumbnails))))
+    thumb_height = thumbnail_dim[0]
+    thumb_width = thumbnail_dim[1]
+    master_height = images_per_row * thumb_height
+    master_width = images_per_row * thumb_width
+    num_channels = thumbnails.shape[3]
+    master = np.zeros([master_height, master_width, num_channels])
+    for idx, image in enumerate(resized_images):
+      left_idx = idx % images_per_row
+      top_idx = int(math.floor(idx / images_per_row))
+      left_start = left_idx * thumb_width
+      left_end = left_start + thumb_width
+      top_start = top_idx * thumb_height
+      top_end = top_start + thumb_height
+      master[top_start:top_end, left_start:left_end, :] = image
+
+    return image_ops.encode_png(master).eval(session=s)

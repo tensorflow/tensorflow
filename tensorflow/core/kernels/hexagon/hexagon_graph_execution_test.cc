@@ -280,7 +280,6 @@ TEST(GraphTransferer,
   inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> output_node_names = {"softmax"};
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
   profile_utils::CpuUtils::EnableClockCycleProfiling(true);
@@ -288,10 +287,41 @@ TEST(GraphTransferer,
   prof.Start();
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
-      false,                 // is_text_proto
-      USE_SHAPE_INFERENCE,   // shape_inference_for_unknown_shape
-      !USE_SHAPE_INFERENCE,  // dry_run_for_unknown_shape
-      &output_tensor_info);
+      false,  // is_text_proto
+      false,  // shape_inference_for_unknown_shape
+      true    // dry_run_for_unknown_shape
+      );
+  ASSERT_TRUE(status.ok()) << status;
+  prof.Stop();
+  prof.DumpStatistics("LoadGraphFromProtoFile");
+
+  std::vector<float> img_floats;
+  LoadImage(&img_floats);
+  RunInferenceByHexagonControlWrapper(gt, img_floats);
+}
+
+TEST(GraphTransferer,
+     DISABLED_RunInceptionV3OnHexagonExampleWithHexagonWrapperShapeInference) {
+  LOG(INFO) << "Run inception v3 on hexagon with hexagon controller";
+  CheckHexagonControllerVersion();
+
+  const IGraphTransferOpsDefinitions* ops_definitions =
+      &HexagonOpsDefinitions::getInstance();
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
+  std::vector<string> output_node_names = {"softmax"};
+
+  GraphTransferer gt;
+  gt.EnableStrictCheckMode(false);
+  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  ClockCycleProfiler prof;
+  prof.Start();
+  Status status = gt.LoadGraphFromProtoFile(
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
+      false,  // is_text_proto
+      true,   // shape_inference_for_unknown_shape
+      false   // dry_run_for_unknown_shape
+      );
   ASSERT_TRUE(status.ok()) << status;
   prof.Stop();
   prof.DumpStatistics("LoadGraphFromProtoFile");
@@ -326,7 +356,7 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExampleWithTfRuntime) {
   gt.EnableStrictCheckMode(false);
   GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
       HexagonOpsDefinitions::getInstance(),
-      REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME, inputs, outputs, graph_def, &gt);
+      REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME, inputs, outputs, &graph_def, &gt);
 
   RunFusedGraph(fused_graph_def);
 }
@@ -358,8 +388,10 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   prof0.Start();
   Status status = gt0.LoadGraphFromProtoFile(
       *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
-      false /* is_text_proto */, false /* shape_inference_for_unknown_shape */,
-      true /* dry_run_for_unknown_shape */, &output_tensor_info0);
+      false,  // is_text_proto
+      false,  // shape_inference_for_unknown_shape
+      true    // dry_run_for_unknown_shape
+      );
   const GraphTransferInfo& gfi0 = gt0.GetGraphTransferInfo();
 
   ASSERT_TRUE(status.ok());
@@ -376,8 +408,10 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   prof1.Start();
   status = gt1.LoadGraphFromProtoFile(
       *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
-      false /* is_text_proto */, true /* shape_inference_for_unknown_shape */,
-      false /* dry_run_for_unknown_shape */, &output_tensor_info1);
+      false,  // is_text_proto
+      true,   // shape_inference_for_unknown_shape
+      false   // dry_run_for_unknown_shape
+      );
   const GraphTransferInfo& gfi1 = gt1.GetGraphTransferInfo();
 
   ASSERT_TRUE(status.ok());

@@ -612,6 +612,93 @@ TEST_F(FusedDynamicUpdateSliceLivenessTest, WithInterference) {
   EXPECT_TRUE(Run(/*update_uses_tuple_element1=*/true));
 }
 
+class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
+ protected:
+  // Builds and runs a computation (see test case computation graphs below).
+  // Runs BufferLiveness on this computation.
+  // Returns whether buffer interference is detected between tuple-shaped
+  // parameter and root instructions at tuple element 1.
+  bool Run(const bool tuple_element1_has_two_uses) {
+    auto builder = HloComputation::Builder(TestName());
+    // Create param0 Tuple.
+    Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+    Shape update_shape = ShapeUtil::MakeShape(F32, {3});
+    auto tuple_param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "param0"));
+
+    auto gte0 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(data_shape, tuple_param0, 0));
+
+    auto gte1 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(data_shape, tuple_param0, 1));
+
+    auto update = builder.AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
+
+    if (tuple_element1_has_two_uses) {
+      // Add 'gte0' and 'gte1' to create another user of 'gte1'.
+      gte0 = builder.AddInstruction(HloInstruction::CreateBinary(
+          data_shape, HloOpcode::kAdd, gte0, gte1));
+    }
+    // Create a DynamicUpdateSlice instruction of tuple element 1 with 'update'.
+    auto starts = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+    auto dynamic_update_slice =
+        builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+            data_shape, gte1, update, starts));
+    // Create output tuple.
+    auto tuple_root = builder.AddInstruction(
+        HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
+    // Build module and get reference to entry computation.
+    auto module = MakeUnique<HloModule>(TestName());
+    module->AddEntryComputation(builder.Build());
+    // Run BufferLiveness on 'module'.
+    auto liveness =
+        BufferLiveness::Run(module.get(),
+                            MakeUnique<DependencyHloOrdering>(module.get()))
+            .ConsumeValueOrDie();
+    // Return whether or not buffers interfernce is detected between
+    // 'tuple_param0' and 'tuple_root' at shape index '{1}'.
+    return TupleElementsMayInterfere(*liveness, tuple_param0, tuple_root, {1});
+  }
+};
+
+// Tests that live ranges of buffers Param0[1] and Tuple[1] do not overlap in
+// the following computation (because DynamicUpdateSlice (at operand 0) is the
+// unique user):
+//
+//     Parameter0
+//      |      |
+//    GTE(0) GTE(1) Const Const
+//      |      \      |    /
+//      |    DynamicUpdateSlice
+//       \    /
+//        Tuple
+//
+TEST_F(DynamicUpdateSliceLivenessTest, NoInterference) {
+  EXPECT_FALSE(Run(/*tuple_element1_has_two_uses=*/false));
+}
+
+// Tests that live ranges of buffers Param0[1] and Tuple[1] do overlap because
+// GTE(1) has two users:
+// 1) DynamicUpdateSlice at operand 0.
+// 2) Add at operand 1.
+//
+//     Parameter0
+//      |      |
+//    GTE(0) GTE(1)
+//      |   /  |
+//      |  /   |
+//      Add    |     Const Const
+//      |      |      |      |
+//      |    DynamicUpdateSlice
+//       \    /
+//        Tuple
+//
+TEST_F(DynamicUpdateSliceLivenessTest, WithInterference) {
+  EXPECT_TRUE(Run(/*tuple_element1_has_two_uses=*/true));
+}
+
 }  // namespace
 
 }  // namespace xla

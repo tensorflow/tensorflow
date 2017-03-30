@@ -53,6 +53,7 @@ void PrngTest::UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims) {
       builder.ConstantR0<T>(a), builder.ConstantR0<T>(b),
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(), dims));
 
+  SetSeed(42);
   auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
   EXPECT_TRUE(ContainersEqual(dims, actual->shape().dimensions()));
   LiteralUtil::EachCell<T>(*actual,
@@ -118,6 +119,7 @@ double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count) {
                      builder.ConstantR0<int32>(range_size),
                      ShapeUtil::MakeShape(S32, {sample_size}));
 
+  SetSeed(42);
   auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
   std::vector<int32> counts(range_size, 0);
   LiteralUtil::EachCell<int32>(
@@ -264,6 +266,7 @@ XLA_TEST_F(PrngTest, TenValuesN01) {
   builder.RngNormal(builder.ConstantR0<float>(0), builder.ConstantR0<float>(1),
                     ShapeUtil::MakeShape(F32, {10}));
 
+  SetSeed(42);
   ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
   // TODO(b/25995601): Test that resultant values are reasonable
 }

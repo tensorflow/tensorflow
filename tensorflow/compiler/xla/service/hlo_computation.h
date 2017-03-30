@@ -235,6 +235,14 @@ class HloComputation {
   HloInstruction* AddInstructionInternal(
       std::unique_ptr<HloInstruction> instruction);
 
+  // Helper for setting the parent of instructions that are added to this
+  // computation.
+  //
+  // Because we clone HLO instructions without knowing what computation they're
+  // destined to be added to, this is required to appropriate set the parent on
+  // fused instruction sequences.
+  void Reparent(HloInstruction* instruction);
+
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
   //
   // Pre-condition: fusion_instruction's opcode is kFusion.

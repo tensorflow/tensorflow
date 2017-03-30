@@ -218,6 +218,39 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.new_http_archive(
+      name = "org_pythonhosted_markdown",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/pypi.python.org/packages/1d/25/3f6d2cb31ec42ca5bd3bfbea99b63892b735d76e26f20dd2dcc34ffe4f0d/Markdown-2.6.8.tar.gz",
+          "https://pypi.python.org/packages/1d/25/3f6d2cb31ec42ca5bd3bfbea99b63892b735d76e26f20dd2dcc34ffe4f0d/Markdown-2.6.8.tar.gz",
+      ],
+      strip_prefix = "Markdown-2.6.8",
+      sha256 = "0ac8a81e658167da95d063a9279c9c1b2699f37c7c4153256a458b3a43860e33",
+      build_file = str(Label("//third_party:markdown.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "org_html5lib",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/html5lib/html5lib-python/archive/1.0b8.tar.gz",
+          "https://github.com/html5lib/html5lib-python/archive/1.0b8.tar.gz",
+      ],
+      sha256 = "adb36c879264e8880b92589c4c4fe0814cd9d157b73328b14d728f48a6bab0a4",
+      strip_prefix = "html5lib-python-1.0b8",
+      build_file = str(Label("//third_party:html5lib.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "org_mozilla_bleach",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/mozilla/bleach/archive/v1.5.tar.gz",
+          "https://github.com/mozilla/bleach/archive/v1.5.tar.gz",
+      ],
+      strip_prefix = "bleach-1.5",
+      sha256 = "0d68713d02ba4148c417ab1637dd819333d96929a34401d0233947bec0881ad8",
+      build_file = str(Label("//third_party:bleach.BUILD")),
+  )
+
+  native.new_http_archive(
       name = "org_pocoo_werkzeug",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/pypi.python.org/packages/b7/7f/44d3cfe5a12ba002b253f6985a4477edfa66da53787a2a838a40f6415263/Werkzeug-0.11.10.tar.gz",

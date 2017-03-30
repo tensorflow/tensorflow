@@ -21,8 +21,10 @@ import numpy as np
 
 from tensorflow.contrib import linalg as linalg_lib
 from tensorflow.contrib.linalg.python.ops import linear_operator_util
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -89,6 +91,142 @@ class AssertNoEntriesWithModulusZeroTest(test.TestCase):
       with self.assertRaisesOpError("ABC123"):
         linear_operator_util.assert_no_entries_with_modulus_zero(
             z, message="ABC123").run()
+
+
+class BroadcastMatrixBatchDimsTest(test.TestCase):
+
+  def test_zero_batch_matrices_returned_as_empty_list(self):
+    self.assertAllEqual(
+        [], linear_operator_util.broadcast_matrix_batch_dims([]))
+
+  def test_one_batch_matrix_returned_after_tensor_conversion(self):
+    arr = rng.rand(2, 3, 4)
+    tensor, = linear_operator_util.broadcast_matrix_batch_dims([arr])
+    self.assertTrue(isinstance(tensor, ops.Tensor))
+
+    with self.test_session():
+      self.assertAllClose(arr, tensor.eval())
+
+  def test_static_dims_broadcast(self):
+    # x.batch_shape = [3, 1, 2]
+    # y.batch_shape = [4, 1]
+    # broadcast batch shape = [3, 4, 2]
+    x = rng.rand(3, 1, 2, 1, 5)
+    y = rng.rand(4, 1, 3, 7)
+    batch_of_zeros = np.zeros((3, 4, 2, 1, 1))
+    x_bc_expected = x + batch_of_zeros
+    y_bc_expected = y + batch_of_zeros
+
+    x_bc, y_bc = linear_operator_util.broadcast_matrix_batch_dims([x, y])
+
+    with self.test_session() as sess:
+      self.assertAllEqual(x_bc_expected.shape, x_bc.get_shape())
+      self.assertAllEqual(y_bc_expected.shape, y_bc.get_shape())
+      x_bc_, y_bc_ = sess.run([x_bc, y_bc])
+      self.assertAllClose(x_bc_expected, x_bc_)
+      self.assertAllClose(y_bc_expected, y_bc_)
+
+  def test_static_dims_broadcast_second_arg_higher_rank(self):
+    # x.batch_shape =    [1, 2]
+    # y.batch_shape = [1, 3, 1]
+    # broadcast batch shape = [1, 3, 2]
+    x = rng.rand(1, 2, 1, 5)
+    y = rng.rand(1, 3, 2, 3, 7)
+    batch_of_zeros = np.zeros((1, 3, 2, 1, 1))
+    x_bc_expected = x + batch_of_zeros
+    y_bc_expected = y + batch_of_zeros
+
+    x_bc, y_bc = linear_operator_util.broadcast_matrix_batch_dims([x, y])
+
+    with self.test_session() as sess:
+      self.assertAllEqual(x_bc_expected.shape, x_bc.get_shape())
+      self.assertAllEqual(y_bc_expected.shape, y_bc.get_shape())
+      x_bc_, y_bc_ = sess.run([x_bc, y_bc])
+      self.assertAllClose(x_bc_expected, x_bc_)
+      self.assertAllClose(y_bc_expected, y_bc_)
+
+  def test_dynamic_dims_broadcast_32bit(self):
+    # x.batch_shape = [3, 1, 2]
+    # y.batch_shape = [4, 1]
+    # broadcast batch shape = [3, 4, 2]
+    x = rng.rand(3, 1, 2, 1, 5).astype(np.float32)
+    y = rng.rand(4, 1, 3, 7).astype(np.float32)
+    batch_of_zeros = np.zeros((3, 4, 2, 1, 1)).astype(np.float32)
+    x_bc_expected = x + batch_of_zeros
+    y_bc_expected = y + batch_of_zeros
+
+    x_ph = array_ops.placeholder(dtypes.float32)
+    y_ph = array_ops.placeholder(dtypes.float32)
+
+    x_bc, y_bc = linear_operator_util.broadcast_matrix_batch_dims([x_ph, y_ph])
+
+    with self.test_session() as sess:
+      x_bc_, y_bc_ = sess.run([x_bc, y_bc], feed_dict={x_ph: x, y_ph: y})
+      self.assertAllClose(x_bc_expected, x_bc_)
+      self.assertAllClose(y_bc_expected, y_bc_)
+
+  def test_dynamic_dims_broadcast_32bit_second_arg_higher_rank(self):
+    # x.batch_shape =    [1, 2]
+    # y.batch_shape = [3, 4, 1]
+    # broadcast batch shape = [3, 4, 2]
+    x = rng.rand(1, 2, 1, 5).astype(np.float32)
+    y = rng.rand(3, 4, 1, 3, 7).astype(np.float32)
+    batch_of_zeros = np.zeros((3, 4, 2, 1, 1)).astype(np.float32)
+    x_bc_expected = x + batch_of_zeros
+    y_bc_expected = y + batch_of_zeros
+
+    x_ph = array_ops.placeholder(dtypes.float32)
+    y_ph = array_ops.placeholder(dtypes.float32)
+
+    x_bc, y_bc = linear_operator_util.broadcast_matrix_batch_dims([x_ph, y_ph])
+
+    with self.test_session() as sess:
+      x_bc_, y_bc_ = sess.run([x_bc, y_bc], feed_dict={x_ph: x, y_ph: y})
+      self.assertAllClose(x_bc_expected, x_bc_)
+      self.assertAllClose(y_bc_expected, y_bc_)
+
+  def test_less_than_two_dims_raises_static(self):
+    x = rng.rand(3)
+    y = rng.rand(1, 1)
+
+    with self.assertRaisesRegexp(ValueError, "at least two dimensions"):
+      linear_operator_util.broadcast_matrix_batch_dims([x, y])
+
+    with self.assertRaisesRegexp(ValueError, "at least two dimensions"):
+      linear_operator_util.broadcast_matrix_batch_dims([y, x])
+
+
+class MatmulWithBroadcastTest(test.TestCase):
+
+  def test_static_dims_broadcast(self):
+    # batch_shape = [2]
+    # for each batch member, we have a 1x3 matrix times a 3x7 matrix ==> 1x7
+    x = rng.rand(2, 1, 3)
+    y = rng.rand(3, 7)
+    y_broadcast = y + np.zeros((2, 1, 1))
+
+    with self.test_session():
+      result = linear_operator_util.matmul_with_broadcast(x, y)
+      self.assertAllEqual((2, 1, 7), result.get_shape())
+      expected = math_ops.matmul(x, y_broadcast)
+      self.assertAllEqual(expected.eval(), result.eval())
+
+  def test_dynamic_dims_broadcast_32bit(self):
+    # batch_shape = [2]
+    # for each batch member, we have a 1x3 matrix times a 3x7 matrix ==> 1x7
+    x = rng.rand(2, 1, 3)
+    y = rng.rand(3, 7)
+    y_broadcast = y + np.zeros((2, 1, 1))
+
+    x_ph = array_ops.placeholder(dtypes.float64)
+    y_ph = array_ops.placeholder(dtypes.float64)
+
+    with self.test_session() as sess:
+      result, expected = sess.run(
+          [linear_operator_util.matmul_with_broadcast(x_ph, y_ph),
+           math_ops.matmul(x, y_broadcast)],
+          feed_dict={x_ph: x, y_ph: y})
+      self.assertAllEqual(expected, result)
 
 
 class DomainDimensionStubOperator(object):

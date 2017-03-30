@@ -1111,7 +1111,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
         llvm_ir::IrArray::Index input_index = reduced_dims_index;
         llvm_ir::IrArray::Index::const_iterator it = index.begin();
 
-        for (auto i = 0; i < input_index.size(); ++i) {
+        for (size_t i = 0; i < input_index.size(); ++i) {
           if (input_index[i] == nullptr) {
             input_index[i] = *it++;
           }
@@ -1180,7 +1180,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   // output_index := edge_padding_low + operand_index * (interior_padding + 1)
   const PaddingConfig& padding_config = pad->padding_config();
   llvm_ir::IrArray::Index output_index;
-  for (auto i = 0; i < operand_index.size(); ++i) {
+  for (size_t i = 0; i < operand_index.size(); ++i) {
     llvm::Value* offset = ir_builder_.CreateMul(
         operand_index[i],
         ir_builder_.getInt64(padding_config.dimensions(i).interior_padding() +
@@ -1294,12 +1294,12 @@ Status IrEmitter::HandleCustomCall(
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
           i8_ptr_type, ir_builder_.getInt32(operands.size()),
           "cc_operands_alloca", &ir_builder_);
-  for (auto i = 0; i < operands.size(); ++i) {
+  for (size_t i = 0; i < operands.size(); ++i) {
     const HloInstruction* operand = operands[i];
     llvm::Value* operand_as_i8ptr =
         ir_builder_.CreatePointerCast(GetEmittedValueFor(operand), i8_ptr_type);
     llvm::Value* slot_in_operands_alloca = ir_builder_.CreateInBoundsGEP(
-        operands_alloca, {ir_builder_.getInt32(i)});
+        operands_alloca, {ir_builder_.getInt64(i)});
     ir_builder_.CreateStore(operand_as_i8ptr, slot_in_operands_alloca);
   }
   auto* custom_call_ir_function =
@@ -1659,13 +1659,13 @@ void IrEmitter::EmitArrayFunctionCallInto(
           ir_builder_.getInt32(parameter_addresses.size()),
           tensorflow::strings::StrCat(name, "_parameter_addresses"),
           &ir_builder_);
-  for (auto i = 0; i < parameter_addresses.size(); ++i) {
+  for (size_t i = 0; i < parameter_addresses.size(); ++i) {
     llvm::Value* parameter_as_i8ptr = ir_builder_.CreateBitCast(
         parameter_addresses[i], ir_builder_.getInt8PtrTy(),
         llvm_ir::AsStringRef(tensorflow::strings::StrCat(name, "_parameter_", i,
                                                          "_address_as_i8ptr")));
     llvm::Value* slot_in_param_adresses = ir_builder_.CreateInBoundsGEP(
-        parameter_addresses_buffer, {ir_builder_.getInt32(i)});
+        parameter_addresses_buffer, {ir_builder_.getInt64(i)});
     ir_builder_.CreateStore(parameter_as_i8ptr, slot_in_param_adresses);
   }
 
