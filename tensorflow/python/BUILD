@@ -2766,6 +2766,7 @@ py_library(
     name = "timeline",
     srcs = ["client/timeline.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":platform",
     ],
