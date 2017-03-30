@@ -34,26 +34,26 @@ That's all. As an example, to create a Maven project for the
 1.  Create a `pom.xml`:
 
     ```xml
-<project>
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>org.myorg</groupId>
-    <artifactId>label-image</artifactId>
-    <version>1.0-SNAPSHOT</version>
-    <properties>
-      <exec.mainClass>org.tensorflow.examples.LabelImage</exec.mainClass>
-      <!-- The LabelImage example code requires at least JDK 1.7. -->
-      <!-- The maven compiler plugin defaults to a lower version -->
-      <maven.compiler.source>1.7</maven.compiler.source>
-      <maven.compiler.target>1.7</maven.compiler.target>
-    </properties>
-    <dependencies>
-      <dependency>
-        <groupId>org.tensorflow</groupId>
-        <artifactId>tensorflow</artifactId>
-        <version>1.1.0-rc0-windows-fix</version>
-      </dependency>
-    </dependencies>
-</project>
+    <project>
+        <modelVersion>4.0.0</modelVersion>
+        <groupId>org.myorg</groupId>
+        <artifactId>label-image</artifactId>
+        <version>1.0-SNAPSHOT</version>
+        <properties>
+          <exec.mainClass>org.tensorflow.examples.LabelImage</exec.mainClass>
+          <!-- The LabelImage example code requires at least JDK 1.7. -->
+          <!-- The maven compiler plugin defaults to a lower version -->
+          <maven.compiler.source>1.7</maven.compiler.source>
+          <maven.compiler.target>1.7</maven.compiler.target>
+        </properties>
+        <dependencies>
+          <dependency>
+            <groupId>org.tensorflow</groupId>
+            <artifactId>tensorflow</artifactId>
+            <version>1.1.0-rc0-windows-fix</version>
+          </dependency>
+        </dependencies>
+    </project>
     ```
 
 2.  Download the [example source](https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/java/src/main/java/org/tensorflow/examples/LabelImage.java)
