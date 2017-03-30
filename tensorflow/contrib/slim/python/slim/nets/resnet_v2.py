@@ -228,9 +228,31 @@ def resnet_v2(inputs,
       if num_classes is not None:
         end_points['predictions'] = layers.softmax(net, scope='predictions')
       return net, end_points
-
-
 resnet_v2.default_image_size = 224
+
+
+def resnet_v2_block(scope, base_depth, num_units, stride):
+  """Helper function for creating a resnet_v2 bottleneck block.
+
+  Args:
+    scope: The scope of the block.
+    base_depth: The depth of the bottleneck layer for each unit.
+    num_units: The number of units in the block.
+    stride: The stride of the block, implemented as a stride in the last unit.
+      All other units have stride=1.
+
+  Returns:
+    A resnet_v2 bottleneck block.
+  """
+  return resnet_utils.Block(scope, bottleneck, [{
+      'depth': base_depth * 4,
+      'depth_bottleneck': base_depth,
+      'stride': 1
+  }] * (num_units - 1) + [{
+      'depth': base_depth * 4,
+      'depth_bottleneck': base_depth,
+      'stride': stride
+  }])
 
 
 def resnet_v2_50(inputs,
@@ -241,13 +263,10 @@ def resnet_v2_50(inputs,
                  scope='resnet_v2_50'):
   """ResNet-50 model of [1]. See resnet_v2() for arg and return description."""
   blocks = [
-      resnet_utils.Block('block1', bottleneck,
-                         [(256, 64, 1)] * 2 + [(256, 64, 2)]),
-      resnet_utils.Block('block2', bottleneck,
-                         [(512, 128, 1)] * 3 + [(512, 128, 2)]),
-      resnet_utils.Block('block3', bottleneck,
-                         [(1024, 256, 1)] * 5 + [(1024, 256, 2)]),
-      resnet_utils.Block('block4', bottleneck, [(2048, 512, 1)] * 3)
+      resnet_v2_block('block1', base_depth=64, num_units=3, stride=2),
+      resnet_v2_block('block2', base_depth=128, num_units=4, stride=2),
+      resnet_v2_block('block3', base_depth=256, num_units=6, stride=2),
+      resnet_v2_block('block4', base_depth=512, num_units=3, stride=1),
   ]
   return resnet_v2(
       inputs,
@@ -268,13 +287,10 @@ def resnet_v2_101(inputs,
                   scope='resnet_v2_101'):
   """ResNet-101 model of [1]. See resnet_v2() for arg and return description."""
   blocks = [
-      resnet_utils.Block('block1', bottleneck,
-                         [(256, 64, 1)] * 2 + [(256, 64, 2)]),
-      resnet_utils.Block('block2', bottleneck,
-                         [(512, 128, 1)] * 3 + [(512, 128, 2)]),
-      resnet_utils.Block('block3', bottleneck,
-                         [(1024, 256, 1)] * 22 + [(1024, 256, 2)]),
-      resnet_utils.Block('block4', bottleneck, [(2048, 512, 1)] * 3)
+      resnet_v2_block('block1', base_depth=64, num_units=3, stride=2),
+      resnet_v2_block('block2', base_depth=128, num_units=4, stride=2),
+      resnet_v2_block('block3', base_depth=256, num_units=23, stride=2),
+      resnet_v2_block('block4', base_depth=512, num_units=3, stride=1),
   ]
   return resnet_v2(
       inputs,
@@ -295,13 +311,10 @@ def resnet_v2_152(inputs,
                   scope='resnet_v2_152'):
   """ResNet-152 model of [1]. See resnet_v2() for arg and return description."""
   blocks = [
-      resnet_utils.Block('block1', bottleneck,
-                         [(256, 64, 1)] * 2 + [(256, 64, 2)]),
-      resnet_utils.Block('block2', bottleneck,
-                         [(512, 128, 1)] * 7 + [(512, 128, 2)]),
-      resnet_utils.Block('block3', bottleneck,
-                         [(1024, 256, 1)] * 35 + [(1024, 256, 2)]),
-      resnet_utils.Block('block4', bottleneck, [(2048, 512, 1)] * 3)
+      resnet_v2_block('block1', base_depth=64, num_units=3, stride=2),
+      resnet_v2_block('block2', base_depth=128, num_units=8, stride=2),
+      resnet_v2_block('block3', base_depth=256, num_units=36, stride=2),
+      resnet_v2_block('block4', base_depth=512, num_units=3, stride=1),
   ]
   return resnet_v2(
       inputs,
@@ -322,13 +335,10 @@ def resnet_v2_200(inputs,
                   scope='resnet_v2_200'):
   """ResNet-200 model of [2]. See resnet_v2() for arg and return description."""
   blocks = [
-      resnet_utils.Block('block1', bottleneck,
-                         [(256, 64, 1)] * 2 + [(256, 64, 2)]),
-      resnet_utils.Block('block2', bottleneck,
-                         [(512, 128, 1)] * 23 + [(512, 128, 2)]),
-      resnet_utils.Block('block3', bottleneck,
-                         [(1024, 256, 1)] * 35 + [(1024, 256, 2)]),
-      resnet_utils.Block('block4', bottleneck, [(2048, 512, 1)] * 3)
+      resnet_v2_block('block1', base_depth=64, num_units=3, stride=2),
+      resnet_v2_block('block2', base_depth=128, num_units=24, stride=2),
+      resnet_v2_block('block3', base_depth=256, num_units=36, stride=2),
+      resnet_v2_block('block4', base_depth=512, num_units=3, stride=1),
   ]
   return resnet_v2(
       inputs,
