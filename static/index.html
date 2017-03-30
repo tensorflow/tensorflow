@@ -18,9 +18,59 @@
     <![endif]-->
   </head>
   <body>
-    <h1>Computer Vision for Cloud-based Horticulture Catalog</h1>
+    <div class="container-fluid">
+		<div class="row">
+			<div class="col-md-3"></div>
+			<div class="col-md-6">
+				<h1 class="text-center">Computer Vision for Cloud-based Horticulture Catalog <small>eLeaf</small></h1>
+			</div>
+			<div class="col-md-3"></div>
+		</div>
 
-	<a href="images">Upload new image</a>
+		<div class="row">
+			<div class="col-md-3"></div>
+			<div class="col-md-2"></div>
+			<div class="col-md-2">
+				<img src="images/logo.png" class="img-responsive" alt="eLeaf Logo">
+			</div>
+			<div class="col-md-2"></div>
+			<div class="col-md-3"></div>
+		</div>
+
+		<div class="row">
+			<div class="col-md-3"></div>
+			<div class="col-md-6">
+				<h2 class="text-center">Summary</h2>
+			</div>
+			<div class="col-md-3"></div>
+		</div>
+
+		<div class="row">
+			<div class="col-md-3"></div>
+			<div class="col-md-6 text-justify">
+				<p>The project aims to provide a tool to identify the species of a plant by taking a picture of the plant’s leaves. The purpose for the tool is to facilitate the task of identifying plants for experts and non-experts. In order to identify the species of a plant, there are many factors that need to be taken into account. It is necessary to look at the different dimensions and shapes of the plant’s organs, such as the leaf, flower, and fruit. Thus, it is very difficult for an untrained person to be able to accurately discern the species of a plant, and even experts may incorrectly identify plants. Additionally, the number of plant taxonomy experts globally has been decreasing due to insufficient funding.</p>
+				<p>Therefore our goal is to create an application that can allow a user to capture an image of a plant that they want to identify, and it will yield the correct species of the plant with a high accuracy rate. This project will be useful for biologists, agriculturists, and any other fields who work directly with plant life because there is a need for an easy method to identify plants. In order to meet this need, the project will be built for an Android smartphone or tablet for portability and for access to a camera. The project will use machine learning to train the models for identifying plants in order to reach an identification accuracy of 80%. To ensure that the time period between submitting the image for identification and receiving the results is no longer than 10 seconds, the trained model will be installed on the device so that the search can be performed locally. There will also be a web server that will contain a REST API for performing the training functions on the model to allow the model to learn to recognize new plants.</p>
+				<p>The design for the project is separated into two portions, the front-end and the back-end. The front-end of the design involves the Android application and the user interface. The Android application will use the hardware’s camera to capture an image of a plant that the user wants to identify. It will then use the already trained model that was generated and uploaded to the device to search for the species of the plant. The back-end of the design is the server that will receive the new training data from the administrators so that the search capability is expanded. The server will consist of a web server and the TensorFlow model that will be trained using a plant image database beforehand. The web server portion will have a REST API defined for receiving bulk labelled image samples and for transmitting trained TensorFlow model. The server will store both the images and the TensorFlow models in a hierarchical file structure.</p>
+				<p>This project will greatly benefit the biology, agriculture, and nature conservation fields because it will allow them to easily and quickly identify a plant without needing to purchase specialized hardware. It will help these fields to study plants more efficiently, to ensure biodiversity in a region, and to fight off invasive species of plants. Additionally, it can serve as an educational tool for people interested in learning about the plants native to their regions.</p>
+			</div>
+			<div class="col-md-3"></div>
+		</div>
+	</div>
+
+	<div class="container-fluid">
+		<div class="row">
+			<div class="col-md-3"></div>
+			<div class="col-md-6"><h2 class="text-center">Links</h2></div>
+			<div class="col-md-3"></div>
+		</div>
+		<div class="row">
+			<div class="col-md-3"></div>
+			<div class="col-md-2"><a href="images">Upload new image</a></div>
+			<div class="col-md-2"><a href="push-model-update">Download latest model</a></div>
+			<div class="col-md-2"><a href="push-label-update">Download latest model labels</a></div>
+			<div class="col-md-3"></div>
+		</div>
+	</div>
 
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>

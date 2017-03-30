@@ -18,16 +18,34 @@
     <![endif]-->
   </head>
   <body>
-    <h1>Upload New Plant Image</h1>
+    <div class="container-fluid">
+		<div class="row">
+			<div class="col-md-3"></div>
+			<div class="col-md-6"><h1 class="text-center">Upload New Plant Image</h1></div>
+			<div class="col-md-3"></div>
+		</div>
+	</div>
 
     <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
     <!-- Include all compiled plugins (below), or include individual files as needed -->
     <script src="js/bootstrap.min.js"></script>
 
-	<form method="POST" enctype="multipart/form-data">
-		<p><input type="file" name="file">
-		<input type="submit" value="Upload Image"></p>
-	</form>
+	<div class="container-fluid">
+		<div class="row">
+			<div class="col-md-3"></div>
+			<div class="col-md-6">
+				<form method="POST" enctype="multipart/form-data">
+					<div class="form-group">
+						<label for="image-file">Image file</label>
+						<input type="file" name="file" id="image-file">
+						<p class="help-block">Select the image to upload and then click "Upload Image"</p>
+					</div>
+					<button type="submit" class="btn btn-primary">Upload Image</button>
+				</form>
+			</div>
+			<div class="col-md-3"></div>
+		</div>
+	</div>
   </body>
 </html>
