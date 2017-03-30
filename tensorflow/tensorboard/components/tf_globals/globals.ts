@@ -19,7 +19,7 @@ module TF.Globals {
   // The names of TensorBoard tabs.
   export var TABS = [
     'scalars', 'images', 'audio', 'graphs', 'distributions', 'histograms',
-    'embeddings'
+    'embeddings', 'text'
   ];
 
   // If true, TensorBoard stores its hash in the URI state.

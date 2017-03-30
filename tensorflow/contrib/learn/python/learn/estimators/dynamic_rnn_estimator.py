@@ -188,6 +188,10 @@ def build_sequence_input(features,
     A `Tensor` of dtype `float32` and shape `[batch_size, padded_length, ?]`.
     This will be used as input to an RNN.
   """
+  features = features.copy()
+  features.update(layers.transform_features(
+      features,
+      list(sequence_feature_columns) + list(context_feature_columns or [])))
   sequence_input = layers.sequence_input_from_feature_columns(
       columns_to_tensors=features,
       feature_columns=sequence_feature_columns,

@@ -45,7 +45,7 @@ class GraphTransferUtils {
       const IGraphTransferOpsDefinitions& ops_definitions,
       const string& remote_graph_execute_name,
       const std::vector<std::pair<string, Tensor>>& inputs,
-      const std::vector<string>& outputs, const GraphDef& def,
+      const std::vector<string>& outputs, GraphDef* original_def,
       GraphTransferer* gt);
 
  private:

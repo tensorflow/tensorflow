@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
 
+// function alias
+constexpr auto AddOutputTensorShapeTypeByTensorShapeMap =
+    &RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap;
+
 /* static */ std::priority_queue<std::tuple<float, int, string>>
 GraphTransferUtils::GetTopNFloatResults(const float* const data,
                                         const string* const labels,
@@ -86,15 +90,19 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const string& remote_graph_execute_name,
     const std::vector<std::pair<string, Tensor>>& inputs,
-    const std::vector<string>& outputs, const GraphDef& def,
+    const std::vector<string>& outputs, GraphDef* original_def,
     GraphTransferer* const gt) {
   CHECK(gt != nullptr);
   RemoteFusedGraphExecuteUtils::TensorShapeMap tensor_shape_map;
   Status status = RemoteFusedGraphExecuteUtils::DryRunInferenceForAllNode(
-      def, inputs, true /* initialize_by_zero */, &tensor_shape_map);
+      *original_def, inputs, true /* initialize_by_zero */, &tensor_shape_map);
+  for (NodeDef& node_def : *original_def->mutable_node()) {
+    TF_CHECK_OK(
+        AddOutputTensorShapeTypeByTensorShapeMap(tensor_shape_map, &node_def));
+  }
   CHECK(status.ok());
-  status = gt->LoadGraphFromProto(ops_definitions, def, inputs, outputs, false,
-                                  tensor_shape_map);
+  status = gt->LoadGraphFromProto(ops_definitions, *original_def, inputs,
+                                  outputs, false);
   const DataType input_data_type =
       inputs.empty() ? DT_FLOAT : inputs.at(0).second.dtype();
 

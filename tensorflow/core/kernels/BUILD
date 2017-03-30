@@ -848,6 +848,51 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "decode_wav_op_test",
+    size = "small",
+    srcs = ["decode_wav_op_test.cc"],
+    deps = [
+        ":decode_wav_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "encode_wav_op_test",
+    size = "small",
+    srcs = ["encode_wav_op_test.cc"],
+    deps = [
+        ":decode_wav_op",
+        ":encode_wav_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "example_parsing_ops_test",
     size = "large",
     srcs = ["example_parsing_ops_test.cc"],
@@ -1654,6 +1699,31 @@ tf_kernel_library(
     name = "sample_distorted_bounding_box_op",
     prefix = "sample_distorted_bounding_box_op",
     deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "encode_wav_op",
+    prefix = "encode_wav_op",
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:audio_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
+    name = "decode_wav_op",
+    prefix = "decode_wav_op",
+    deps = [
+        "//tensorflow/core:audio_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 tf_cc_tests(

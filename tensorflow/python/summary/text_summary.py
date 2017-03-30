@@ -59,7 +59,7 @@ def text_summary(name, tensor, collections=None):
     raise ValueError("Expected tensor %s to be scalar, has shape %s" %
                      (tensor.name, tensor.shape))
 
-  t_summary = tensor_summary(name, tensor, collections)
+  t_summary = tensor_summary(name, tensor, collections=collections)
   text_assets = plugin_asset.get_plugin_asset(TextSummaryPluginAsset)
   text_assets.register_tensor(t_summary.op.name)
   return t_summary

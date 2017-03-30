@@ -378,6 +378,8 @@ class BaseEstimator(
       self._model_dir = tempfile.mkdtemp()
       logging.warning('Using temporary folder as model directory: %s',
                       self._model_dir)
+    if self._config.model_dir is None:
+      self._config = self._config.replace(model_dir=self._model_dir)
 
     # Set device function depending if there are replicas or not.
     self._device_fn = _get_replica_device_setter(self._config)
