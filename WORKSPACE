@@ -20,7 +20,9 @@ load("//tensorflow:workspace.bzl", "tf_workspace")
 #android_sdk_repository(
 #    name = "androidsdk",
 #    api_level = 23,
-#    build_tools_version = "25.0.1",
+#    # Ensure that you have the build_tools_version below installed in the 
+#    # SDK manager as it updates periodically.
+#    build_tools_version = "25.0.2",
 #    # Replace with path to Android SDK on your system
 #    path = "<PATH_TO_SDK>",
 #)
@@ -29,7 +31,9 @@ load("//tensorflow:workspace.bzl", "tf_workspace")
 #android_ndk_repository(
 #    name="androidndk",
 #    path="<PATH_TO_NDK>",
-#    api_level=14) # This needs to be 14 or higher to compile TensorFlow.
+#    # This needs to be 14 or higher to compile TensorFlow. 
+#    # Note that the NDK version is not the API level.
+#    api_level=14)
 
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_workspace()
