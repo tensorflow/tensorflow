@@ -441,7 +441,22 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   # we flatten it conservatively.
   if numpy_dtype == dtypes.string and not isinstance(values, np.ndarray):
     proto_values = _FlattenToStrings(values)
-    tensor_proto.string_val.extend([compat.as_bytes(x) for x in proto_values])
+
+    # At this point, values may be a list of objects that we could not
+    # identify a common type for (hence it was inferred as
+    # np.object/dtypes.string).  If we are unable to convert it to a
+    # string, we raise a more helpful error message.
+    #
+    # Ideally, we'd be able to convert the elements of the list to a
+    # common type, but this type inference requires some thinking and
+    # so we defer it for now.
+    try:
+      str_values = [compat.as_bytes(x) for x in proto_values]
+    except TypeError:
+      raise TypeError("Failed to convert object of type %s to Tensor. "
+                      "Contents: %s. Consider casting elements to a "
+                      "supported type." % (type(values), values))
+    tensor_proto.string_val.extend(str_values)
     return tensor_proto
 
   # TensorFlow expects C order (a.k.a., eigen row major).
