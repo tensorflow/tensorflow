@@ -342,6 +342,10 @@ class _FuncGraph(ops.Graph):
           # Substitute with a placeholder.
           self.extra_inputs.append(x)
           ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
+          # pylint: disable=protected-access
+          ph._handle_shape = x._handle_shape
+          ph._handle_dtype = x._handle_dtype
+          # pylint: enable=protected-access
           inputs[i] = ph
           self._captured[x] = ph
           self.extra_args.append(ph)

@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -232,7 +233,7 @@ class ResourceVariable(object):
     else:
       self._save_slice_info = None
     self._caching_device = None
-    self._dtype = self._handle.op.get_attr("dtype")
+    self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
 
   @property
   def dtype(self):
