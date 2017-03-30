@@ -546,7 +546,8 @@ class TransformedDistribution(distributions.Distribution):
 
   def _maybe_rotate_dims(self, x, rotate_right=False):
     """Helper which rolls left event_dims left or right event_dims right."""
-    if tensor_util.constant_value(self._needs_rotation) is False:
+    needs_rotation_const = tensor_util.constant_value(self._needs_rotation)
+    if needs_rotation_const is not None and not needs_rotation_const:
       return x
     ndims = array_ops.rank(x)
     n = (ndims - self._rotate_ndims) if rotate_right else self._rotate_ndims

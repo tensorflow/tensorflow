@@ -538,6 +538,9 @@ class HloInstruction {
   // instruction. The order is a reverse postorder of the fused expression (root
   // is first in the order).
   //
+  // Note: although the list itself is const, the instructions contained in the
+  // list returned here are mutable.
+  //
   // Precondition: opcode() == HloOpcode::kFusion
   const std::list<std::unique_ptr<HloInstruction>>& fused_instructions() const;
 

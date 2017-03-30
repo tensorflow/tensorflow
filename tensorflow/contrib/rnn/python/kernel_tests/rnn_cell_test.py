@@ -173,7 +173,6 @@ class RNNCellTest(test.TestCase):
     with self.test_session() as sess:
       num_units = 8
       batch_size = 3
-      input_size = 4
       feature_size = 2
       frequency_skip = 1
       num_frequency_blocks = [1, 1]
@@ -843,6 +842,45 @@ class RNNCellTest(test.TestCase):
                     "Intersection RNN. To fix, num_in_proj should "
                     "be set to num_units at cell init."):
       cell(inputs, init_state)
+
+  def testPhasedLSTMCell(self):
+    with self.test_session() as sess:
+      num_units = 2
+      batch_size = 3
+      input_size = 4
+      expected_state_c = np.array(
+          [[2.954548e-01, 8.354891e-04],
+           [2.834632e-01, 8.158963e-01],
+           [2.291694e-01, 1.325745e-04]],
+          dtype=np.float32)
+      expected_state_h = np.array(
+          [[2.116566e-01, 5.985238e-04],
+           [2.137760e-01, 6.153145e-01],
+           [1.742966e-01, 1.008306e-04]],
+          dtype=np.float32)
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        t = array_ops.zeros([batch_size, 1], dtype=dtypes.float64)
+        x = array_ops.zeros([batch_size, input_size])
+        c0 = array_ops.zeros([batch_size, 2])
+        h0 = array_ops.zeros([batch_size, 2])
+        state0 = core_rnn_cell_impl.LSTMStateTuple(c0, h0)
+        output, state = rnn_cell.PhasedLSTMCell(num_units=num_units)((t, x),
+                                                                     state0)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state], {
+            t.name:
+                np.array([[1.], [2.], [3.]]),
+            x.name:
+                np.array([[1., 1., 1., 1.],
+                          [2., 2., 2., 2.],
+                          [3., 3., 3., 3.]]),
+        })
+        # This is a smoke test, making sure expected values are unchanged.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], res[1].h)
+        self.assertAllClose(res[1].c, expected_state_c)
+        self.assertAllClose(res[1].h, expected_state_h)
 
 
 class LayerNormBasicLSTMCellTest(test.TestCase):

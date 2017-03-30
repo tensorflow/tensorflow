@@ -663,7 +663,7 @@ def _dynamic_rnn_loop(cell,
   output_ta = tuple(_create_ta("output_%d" % i,
                                _infer_state_dtype(dtype, state))
                     for i in range(len(flat_output_size)))
-  input_ta = tuple(_create_ta("input_%d" % i, flat_input[0].dtype)
+  input_ta = tuple(_create_ta("input_%d" % i, flat_input[i].dtype)
                    for i in range(len(flat_input)))
 
   input_ta = tuple(ta.unstack(input_)

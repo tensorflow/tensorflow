@@ -75,6 +75,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "@six_archive//:six",
     ],
 )

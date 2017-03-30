@@ -18,12 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 import json
 import os
 
 import six
 
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.training import server_lib
 
@@ -291,7 +293,7 @@ class RunConfig(ClusterConfig):
 
     new_copy = copy.deepcopy(self)
 
-    # TODO(xiejw): Allow more fields, such as the user allowed changed ones.
+    # TODO(b/33295821): Allow more fields to be replaced.
     for key, new_value in six.iteritems(kwargs):
       if key == 'model_dir':
         new_copy._model_dir = new_value  # pylint: disable=protected-access
@@ -300,6 +302,24 @@ class RunConfig(ClusterConfig):
       raise ValueError('{} is not supported by RunConfig replace'.format(key))
 
     return new_copy
+
+  @experimental
+  def uid(self):
+    """Generates a 'Unique Identifier' based on all internal fields.
+
+    Caller should use the uid string to check `RunConfig` instance integrity
+    in one session use, but should not rely on the implementation details, which
+    is subject to change.
+
+    Returns:
+      A uid string.
+    """
+    # TODO(b/33295821): Allows user to specify a whitelist.
+    state = {k: v for k, v in self.__dict__.items() if not k.startswith('__')}
+    ordered_state = collections.OrderedDict(
+        sorted(state.items(), key=lambda t: t[0]))
+    return ', '.join(
+        '%s=%r' % (k, v) for (k, v) in six.iteritems(ordered_state))
 
   @property
   def model_dir(self):

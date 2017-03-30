@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
@@ -214,6 +215,7 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
                                  HloDumper dump_hlo) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU", dump_hlo);
+  pipeline.AddInvariantChecker<HloVerifier>();
 
   // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
   // where we will take this pass in future.
@@ -573,8 +575,7 @@ CpuCompiler::CompileAheadOfTime(
   }
 
   std::vector<std::unique_ptr<AotCompilationResult>> results;
-  for (std::vector<std::unique_ptr<HloModule>>::size_type i = 0;
-       i < hlo_modules.size(); ++i) {
+  for (size_t i = 0; i < hlo_modules.size(); ++i) {
     HloModule* hlo_module = hlo_modules[i].get();
     HloModuleConfig* module_config = module_configs[i].get();
 

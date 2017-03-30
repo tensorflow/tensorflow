@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
+using ::tensorflow::strings::StrAppend;
+
 namespace xla {
 
 namespace {
@@ -44,6 +46,14 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
       tensorflow::str_util::Split(flags->xla_disable_hlo_passes, ',');
   tensorflow::gtl::FlatSet<string> disabled_passes(tmp.begin(), tmp.end());
 
+  auto run_invariant_checkers = [this, module]() -> Status {
+    for (auto& invariant_checker : invariant_checkers_) {
+      TF_ASSIGN_OR_RETURN(bool changed, invariant_checker->Run(module));
+      TF_RET_CHECK(!changed) << "invariant checkers must not change the graph";
+    }
+    return Status::OK();
+  };
+
   string prefix = name().ToString() + ": pipeline start";
   bool changed = false;
   string message;
@@ -55,15 +65,17 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
 
     // Emit label containing: "after foo-pass, before bar-pass".
     message.clear();
-    tensorflow::strings::StrAppend(&message, prefix, ", before ", pass->name());
+    StrAppend(&message, prefix, ", before ", pass->name());
     DumpModule(dumper_, *module, message);
 
+    TF_RETURN_IF_ERROR(run_invariant_checkers());
     TF_ASSIGN_OR_RETURN(bool changed_this_pass, pass->Run(module));
 
     changed |= changed_this_pass;
     prefix.clear();
-    tensorflow::strings::StrAppend(&prefix, name(), ": after ", pass->name());
+    StrAppend(&prefix, name(), ": after ", pass->name());
   }
+  TF_RETURN_IF_ERROR(run_invariant_checkers());
   DumpModule(dumper_, *module, prefix + ", pipeline end");
   return changed;
 }

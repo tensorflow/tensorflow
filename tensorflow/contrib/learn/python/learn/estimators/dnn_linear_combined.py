@@ -165,8 +165,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
       * embedding_lr_multipliers: Optional. A dictionary from
           `EmbeddingColumn` to a `float` multiplier. Multiplier will be used to
           multiply with learning rate for the embedding variables.
-      * input_layer_min_slice_size: Optional. The min slice size of input layer
-          partitions. If not provided, will use the default of 64M.
+      * input_layer_partitioner: Optional. Partitioner for input layer.
     config: `RunConfig` object to configure the runtime settings.
 
   Returns:
@@ -174,7 +173,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
 
   Raises:
     ValueError: If both `linear_feature_columns` and `dnn_features_columns`
-      are empty at the same time.
+      are empty at the same time, or `input_layer_partitioner` is missing.
   """
   head = params["head"]
   linear_feature_columns = params.get("linear_feature_columns")
@@ -186,9 +185,11 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   dnn_activation_fn = params.get("dnn_activation_fn") or nn.relu
   dnn_dropout = params.get("dnn_dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
-  input_layer_min_slice_size = (
-      params.get("input_layer_min_slice_size") or 64 << 20)
   num_ps_replicas = config.num_ps_replicas if config else 0
+  input_layer_partitioner = params.get("input_layer_partitioner") or (
+      partitioned_variables.min_max_variable_partitioner(
+          max_partitions=num_ps_replicas,
+          min_slice_size=64 << 20))
   embedding_lr_multipliers = params.get("embedding_lr_multipliers", {})
   fix_global_step_increment_bug = params.get(
       "fix_global_step_increment_bug", True)
@@ -221,10 +222,6 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
         dnn_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=dnn_partitioner):
-      input_layer_partitioner = (
-          partitioned_variables.min_max_variable_partitioner(
-              max_partitions=num_ps_replicas,
-              min_slice_size=input_layer_min_slice_size))
       with variable_scope.variable_scope(
           "input_from_feature_columns",
           values=tuple(six.itervalues(features)),
@@ -387,7 +384,8 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
                config=None,
                feature_engineering_fn=None,
                embedding_lr_multipliers=None,
-               fix_global_step_increment_bug=False):
+               fix_global_step_increment_bug=False,
+               input_layer_partitioner=None):
     """Initializes a DNNLinearCombinedEstimator instance.
 
     Note: New users must set `fix_global_step_increment_bug=True` when creating
@@ -432,6 +430,7 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
         steps to optimize both linear and dnn parts. If `True`, this bug is
         fixed. New users must set this to `True`, but the default value is
         `False` for backwards compatibility.
+      input_layer_partitioner: Optional. Partitioner for input layer.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -459,6 +458,7 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
             "fix_global_step_increment_bug": fix_global_step_increment_bug,
+            "input_layer_partitioner": input_layer_partitioner
         },
         feature_engineering_fn=feature_engineering_fn)
 
@@ -602,19 +602,25 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       ValueError: If both `linear_feature_columns` and `dnn_features_columns`
         are empty at the same time.
     """
-    if n_classes < 2:
-      raise ValueError("n_classes should be greater than 1. Given: {}".format(
-          n_classes))
+    head = head_lib.multi_class_head(
+        n_classes=n_classes,
+        weight_column_name=weight_column_name,
+        enable_centered_bias=enable_centered_bias)
     linear_feature_columns = tuple(linear_feature_columns or [])
     dnn_feature_columns = tuple(dnn_feature_columns or [])
     self._feature_columns = linear_feature_columns + dnn_feature_columns
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    head = head_lib.multi_class_head(
-        n_classes=n_classes,
-        weight_column_name=weight_column_name,
-        enable_centered_bias=enable_centered_bias)
+
+    # TODO(b/35922130): Replace with `input_layer_partitioner` arg.
+    input_layer_partitioner = None
+    if input_layer_min_slice_size is not None:
+      input_layer_partitioner = (
+          partitioned_variables.min_max_variable_partitioner(
+              max_partitions=config.num_ps_replicas if config else 0,
+              min_slice_size=input_layer_min_slice_size))
+
     super(DNNLinearCombinedClassifier, self).__init__(
         model_fn=_dnn_linear_combined_model_fn,
         model_dir=model_dir,
@@ -631,7 +637,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
-            "input_layer_min_slice_size": input_layer_min_slice_size,
+            "input_layer_partitioner": input_layer_partitioner,
             "fix_global_step_increment_bug": fix_global_step_increment_bug,
         },
         feature_engineering_fn=feature_engineering_fn)
@@ -916,6 +922,15 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
+
+    # TODO(b/35922130): Replace with `input_layer_partitioner` arg.
+    input_layer_partitioner = None
+    if input_layer_min_slice_size is not None:
+      input_layer_partitioner = (
+          partitioned_variables.min_max_variable_partitioner(
+              max_partitions=config.num_ps_replicas if config else 0,
+              min_slice_size=input_layer_min_slice_size))
+
     head = head_lib.regression_head(
         weight_column_name=weight_column_name,
         label_dimension=label_dimension,
@@ -936,7 +951,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
-            "input_layer_min_slice_size": input_layer_min_slice_size,
+            "input_layer_partitioner": input_layer_partitioner,
             "fix_global_step_increment_bug": fix_global_step_increment_bug,
         },
         feature_engineering_fn=feature_engineering_fn)

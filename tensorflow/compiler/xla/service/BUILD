@@ -1134,6 +1134,22 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_verifier",
+    srcs = ["hlo_verifier.cc"],
+    hdrs = ["hlo_verifier.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "hlo_rematerialization",
     srcs = ["hlo_rematerialization.cc"],
     hdrs = ["hlo_rematerialization.h"],

@@ -45,6 +45,7 @@ py_library(
     deps = [
         ":protos_all_py",
         "//tensorflow/python:lib",
+        "//tensorflow/tensorboard/plugins/projector:projector_plugin",
     ],
 )
 

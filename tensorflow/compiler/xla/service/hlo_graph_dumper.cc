@@ -75,8 +75,7 @@ string InstructionSequenceGraph(
   std::vector<HloInstruction*> param_instructions;
   for (auto& instruction : instructions) {
     if (instruction->opcode() == HloOpcode::kParameter) {
-      std::vector<HloInstruction*>::size_type param_number =
-          instruction->parameter_number();
+      size_t param_number = instruction->parameter_number();
 
       if (param_instructions.size() < param_number + 1) {
         param_instructions.resize(param_number + 1, nullptr);

@@ -419,7 +419,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.test_session() as sess:
       dist = ds.DirichletMultinomial(
           total_count=5.,
-          concentration=2. * self._rng.rand(4, 3, 2).astype(np.float32))
+          concentration=1. + 2. * self._rng.rand(4, 3, 2).astype(np.float32))
       n = int(3e3)
       x = dist.sample(n, seed=0)
       sample_mean = math_ops.reduce_mean(x, 0)
@@ -448,7 +448,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.test_session() as sess:
       dist = ds.DirichletMultinomial(
           total_count=5.,
-          concentration=2. * self._rng.rand(4).astype(np.float32))
+          concentration=1. + 2. * self._rng.rand(4).astype(np.float32))
       n = int(5e3)
       x = dist.sample(n, seed=0)
       sample_mean = math_ops.reduce_mean(x, 0)

@@ -170,6 +170,8 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
         Default is `None`, unless `base_operator` is positive-definite
         `v = None` (meaning `u=v`), and `is_diag_update_positive`, in which case
         this defaults to `True`.
+        Note that we say an operator is positive definite when the quadratic
+        form `x^H A x` has positive real part for all nonzero `x`.
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
