@@ -206,9 +206,9 @@ class ResourceApplyRMSProp : public XlaOpKernel {
 
     // var should be the same shape as mom and ms.
     OP_REQUIRES(ctx, var_shape.IsSameSize(ms_shape),
-                errors::InvalidArgument(
-                    "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                errors::InvalidArgument("var and ms do not have the same shape",
+                                        var_shape.DebugString(), " ",
+                                        ms_shape.DebugString()));
     OP_REQUIRES(ctx, var_shape.IsSameSize(mom_shape),
                 errors::InvalidArgument(
                     "var and mom do not have the same shape",
