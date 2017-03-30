@@ -57,7 +57,7 @@ module VZ {
       this.colorScale = colorScale;
       this.tooltip = tooltip;
       this.datasets = [];
-      this._ignoreYOutliers = true;
+      this._ignoreYOutliers = false;
       // lastPointDataset is a dataset that contains just the last point of
       // every dataset we're currently drawing.
       this.lastPointsDataset = new Plottable.Dataset();
