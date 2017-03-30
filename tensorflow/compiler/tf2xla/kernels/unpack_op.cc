@@ -84,7 +84,7 @@ class UnpackOp : public XlaOpKernel {
   int axis_;
 };
 
-REGISTER_XLA_OP("Unpack", UnpackOp);
+REGISTER_XLA_OP(Name("Unpack"), UnpackOp);
 
 }  // namespace
 }  // namespace tensorflow

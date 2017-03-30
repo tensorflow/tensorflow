@@ -84,10 +84,10 @@ class Relu6GradOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Relu", ReluOp);
-REGISTER_XLA_OP("Relu6", Relu6Op);
-REGISTER_XLA_OP("ReluGrad", ReluGradOp);
-REGISTER_XLA_OP("Relu6Grad", Relu6GradOp);
+REGISTER_XLA_OP(Name("Relu"), ReluOp);
+REGISTER_XLA_OP(Name("Relu6"), Relu6Op);
+REGISTER_XLA_OP(Name("ReluGrad"), ReluGradOp);
+REGISTER_XLA_OP(Name("Relu6Grad"), Relu6GradOp);
 
 }  // namespace
 }  // namespace tensorflow
