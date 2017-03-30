@@ -15,6 +15,7 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
+# Google-internal rules omitted.
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",

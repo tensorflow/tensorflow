@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import functools
 import inspect
 import re
@@ -86,10 +87,14 @@ class _Layer(object):
     self._updates = []
     self._losses = []
     self._reuse = kwargs.get('_reuse')
+    self._graph = ops.get_default_graph()
     self.dtype = dtype
 
     # Determine base name (non-unique).
-    base_name = name
+    if isinstance(name, vs.VariableScope):
+      base_name = name.name
+    else:
+      base_name = name
     if not name:
       base_name = _to_snake_case(self.__class__.__name__)
     self._base_name = base_name
@@ -306,6 +311,13 @@ class _Layer(object):
     with vs.variable_scope(self._scope,
                            reuse=True if self._built else self._reuse,
                            custom_getter=variable_getter) as scope:
+      # Ensure the Layer, if being reused, is working with inputs from
+      # the same graph as where it was created.
+      try:
+        ops._get_graph_from_inputs(nest.flatten(inputs), graph=self.graph)  # pylint: disable=protected-access
+      except ValueError as e:
+        raise ValueError("Inputs' and Layer's graphs are not the same: %s" % e)
+
       with ops.name_scope(scope.original_name_scope):
         if not self.built:
           input_list = [
@@ -334,6 +346,25 @@ class _Layer(object):
     # Update global default collections.
     _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
     return outputs
+
+  @property
+  def graph(self):
+    return self._graph
+
+  def __deepcopy__(self, memo):
+    no_copy = set(['_graph'])
+    shallow_copy = set(['_scope'])
+    cls = self.__class__
+    result = cls.__new__(cls)
+    memo[id(self)] = result
+    for k, v in self.__dict__.items():
+      if k in no_copy:
+        setattr(result, k, v)
+      elif k in shallow_copy:
+        setattr(result, k, copy.copy(v))
+      else:
+        setattr(result, k, copy.deepcopy(v, memo))
+    return result
 
   def apply(self, inputs, **kwargs):
     """Apply the layer on a input.

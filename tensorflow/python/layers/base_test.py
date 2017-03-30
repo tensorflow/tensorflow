@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import base as base_layers
 from tensorflow.python.ops import init_ops
@@ -145,6 +147,12 @@ class BaseLayerTest(test.TestCase):
         self.assertListEqual(lazy_layer.variables, [])
         self.assertEqual(lazy_layer.name, 'new_scope')
 
+      with ops.Graph().as_default():
+        inputs_ng = random_ops.random_uniform((5,), seed=1)
+        with self.assertRaisesRegexp(ValueError,
+                                     r'graphs are not the same'):
+          layer.apply(inputs_ng)
+
   def testCall(self):
 
     class MyLayer(base_layers._Layer):
@@ -157,6 +165,24 @@ class BaseLayerTest(test.TestCase):
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
     self.assertEqual(outputs.op.name, 'my_layer/Square')
+
+  def testDeepCopy(self):
+
+    class MyLayer(base_layers._Layer):
+
+      def call(self, inputs):
+        return math_ops.square(inputs)
+
+    layer = MyLayer(name='my_layer')
+    inputs = random_ops.random_uniform((5,), seed=1)
+    outputs = layer.apply(inputs)
+    self.assertEqual(layer.built, True)
+    self.assertEqual(outputs.op.name, 'my_layer/Square')
+
+    layer_copy = copy.deepcopy(layer)
+    self.assertEqual(layer_copy.name, layer.name)
+    self.assertEqual(layer_copy._scope.name, layer._scope.name)
+    self.assertEqual(layer_copy._graph, layer._graph)
 
   def testNaming(self):
 
@@ -178,11 +204,6 @@ class BaseLayerTest(test.TestCase):
     my_layer1 = PrivateLayer(name='my_layer')
     my_layer1.apply(inputs)
     self.assertEqual(my_layer1.name, 'my_layer_1')
-    # New graph has fully orthogonal names.
-    with ops.Graph().as_default():
-      my_layer_other_graph = PrivateLayer(name='my_layer')
-      my_layer_other_graph.apply(inputs)
-      self.assertEqual(my_layer_other_graph.name, 'my_layer')
     my_layer2 = PrivateLayer(name='my_layer')
     my_layer2.apply(inputs)
     self.assertEqual(my_layer2.name, 'my_layer_2')

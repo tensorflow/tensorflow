@@ -32,8 +32,7 @@ namespace xla {
   // Padding and nested layouts not supported yet.
   DCHECK_EQ(0, shape.layout().padded_dimensions_size());
 
-  for (tensorflow::gtl::ArraySlice<int64>::size_type i = 0;
-       i < multi_index.size(); ++i) {
+  for (size_t i = 0; i < multi_index.size(); ++i) {
     DCHECK_GE(multi_index[i], 0);
     DCHECK_LT(multi_index[i], shape.dimensions(i))
         << "indexing beyond extent in dimension " << i << ":"

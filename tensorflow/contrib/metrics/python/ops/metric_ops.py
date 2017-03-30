@@ -1879,11 +1879,11 @@ def streaming_pearson_correlation(predictions,
         math_ops.multiply(math_ops.sqrt(var_predictions),
                           math_ops.sqrt(var_labels)),
         'pearson_r')
-    with ops.control_dependencies(
-        [update_cov, update_var_predictions, update_var_labels]):
-      update_op = _safe_div(update_cov, math_ops.multiply(
-          math_ops.sqrt(update_var_predictions),
-          math_ops.sqrt(update_var_labels)), 'update_op')
+    update_op = _safe_div(
+        update_cov,
+        math_ops.multiply(math_ops.sqrt(update_var_predictions),
+                          math_ops.sqrt(update_var_labels)),
+        'update_op')
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, pearson_r)

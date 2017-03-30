@@ -144,6 +144,7 @@ def _input_from_feature_columns(columns_to_tensors,
                                 output_rank,
                                 default_name):
   """Implementation of `input_from(_sequence)_feature_columns`."""
+  columns_to_tensors = columns_to_tensors.copy()
   check_feature_columns(feature_columns)
   with variable_scope.variable_scope(scope,
                                      default_name=default_name,
@@ -430,6 +431,7 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
     ValueError: if FeatureColumn cannot be used for linear predictions.
 
   """
+  columns_to_tensors = columns_to_tensors.copy()
   check_feature_columns(feature_columns)
   with variable_scope.variable_scope(
       scope,
@@ -518,6 +520,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
   Raises:
     ValueError: if FeatureColumn cannot be used for linear predictions.
   """
+  columns_to_tensors = columns_to_tensors.copy()
   check_feature_columns(feature_columns)
   with variable_scope.variable_scope(
       scope,
@@ -684,8 +687,8 @@ def transform_features(features, feature_columns):
   Returns:
     A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
   """
-  check_feature_columns(feature_columns)
   columns_to_tensor = features.copy()
+  check_feature_columns(feature_columns)
   transformer = _Transformer(columns_to_tensor)
   for column in sorted(set(feature_columns), key=lambda x: x.key):
     transformer.transform(column)

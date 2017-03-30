@@ -53,6 +53,16 @@ var nonTBComponents = util.getComponents(function(name) {
   return prefix !== 'tf_'  && prefix !== 'vz_';
 });
 
+// These manual additions are necessary. The task should not inline these
+// third-party javascript files. However, vulcanization still needs the HTML
+// files found within those directories. Upon adding new third-party javascript,
+// consider updating this list.
+nonTBComponents.push('/tf-imports/d3.js');
+nonTBComponents.push('/tf-imports/dagre.js');
+nonTBComponents.push('/tf-imports/graphlib.js');
+nonTBComponents.push('/tf-imports/lodash.js');
+nonTBComponents.push('/tf-imports/plottable.js');
+
 module.exports = function(overwrite) {
   return function() {
     var suffix = overwrite ? '' : '.OPENSOURCE';

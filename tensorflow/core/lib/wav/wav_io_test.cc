@@ -78,5 +78,24 @@ TEST(WavIO, BasicOdd) {
   EXPECT_EQ(54, result.size());
 }
 
+TEST(WavIO, EncodeThenDecode) {
+  float audio[] = {0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f};
+  string wav_data;
+  TF_ASSERT_OK(EncodeAudioAsS16LEWav(audio, 44100, 2, 3, &wav_data));
+  std::vector<float> decoded_audio;
+  uint32 decoded_sample_count;
+  uint16 decoded_channel_count;
+  uint32 decoded_sample_rate;
+  TF_ASSERT_OK(DecodeLin16WaveAsFloatVector(
+      wav_data, &decoded_audio, &decoded_sample_count, &decoded_channel_count,
+      &decoded_sample_rate));
+  EXPECT_EQ(2, decoded_channel_count);
+  EXPECT_EQ(3, decoded_sample_count);
+  EXPECT_EQ(44100, decoded_sample_rate);
+  for (int i = 0; i < 6; ++i) {
+    EXPECT_NEAR(audio[i], decoded_audio[i], 1e-4f) << "i=" << i;
+  }
+}
+
 }  // namespace wav
 }  // namespace tensorflow

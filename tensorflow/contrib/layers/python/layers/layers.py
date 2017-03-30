@@ -28,6 +28,7 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.layers import convolutional as convolutional_layers
@@ -68,6 +69,7 @@ __all__ = ['avg_pool2d',
            'relu',
            'relu6',
            'repeat',
+           'scale_gradient',
            'separable_conv2d',
            'separable_convolution2d',
            'softmax',
@@ -1743,6 +1745,48 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
       kwargs['scope'] = scope + '_' + str(i+1)
       outputs = layer(outputs, *args, **kwargs)
     return outputs
+
+
+def _scale_gradient_shape(op):
+  """Shape helper function for scale_gradient function below."""
+  return [op.inputs[0].shape]
+
+
+def _scale_gradient_grad(op, grad):
+  """Python gradient helper function for scale_gradient function below."""
+  return [grad * op.inputs[1], None]
+
+
+@function.Defun(python_grad_func=_scale_gradient_grad,
+                shape_func=_scale_gradient_shape)
+def scale_gradient(inputs, gradient_multiplier):
+  """Identity operation, but with the gradient multiplied by a tensor.
+
+  The TensorFlow gradient system will compute the gradient with respect to
+  `inputs` as the product of the gradient with respect to the `output`
+  multiplied by a specified `gradient_multiplier` tensor.  If
+  `gradient_multiplier` is equal to 1, then this results in the true gradient.
+  Otherwise, it results in a scaled gradient.
+
+  This can be useful for adjusting the relative learning rate of different
+  parameter tensors when performing gradient descent, and because this rescaling
+  can be inserted at arbitrary locations within a graph, is often more
+  convenient to apply than simply rescaling the final computed gradients.
+
+  Args:
+    inputs: Tensor to be output.
+    gradient_multiplier: Tensor by which to multiply the gradient with respect
+      to `output` to compute the gradient with respect to `inputs`.  Its shape
+      must be broadcastable to the shape of `inputs`.
+
+  Returns:
+    output Tensor, equal to `inputs`.
+  """
+  # gradient_multiplier is implicitly saved by decorator, and only used for
+  # gradient computation.
+  del gradient_multiplier
+
+  return inputs
 
 
 @add_arg_scope

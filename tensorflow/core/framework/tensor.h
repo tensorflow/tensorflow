@@ -502,6 +502,9 @@ class TensorBuffer : public core::RefCounted {
   T* base() const {
     return reinterpret_cast<T*>(data());
   }
+
+  // Whether this TensorBuffer owns the underlying memory.
+  virtual bool OwnsMemory() const { return true; }
 };
 
 template <typename T>
