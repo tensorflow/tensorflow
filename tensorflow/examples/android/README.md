@@ -32,9 +32,7 @@ on API >= 14 devices.
         (https://arxiv.org/abs/1610.07629) to restyle the camera preview image
         to that of a number of different artists.
 
-<img src="sample_images/classify1.jpg" width="30%">
-<img src="sample_images/stylize1.jpg" width="30%">
-<img src="sample_images/detect1.jpg" width="30%">
+<img src="sample_images/classify1.jpg" width="30%"><img src="sample_images/stylize1.jpg" width="30%"><img src="sample_images/detect1.jpg" width="30%">
 
 ## Prebuilt APK:
 
