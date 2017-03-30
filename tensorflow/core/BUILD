@@ -1251,7 +1251,7 @@ cc_library(
         "platform/tracing.h",
     ],
     copts = tf_copts(),
-    defines = tf_additional_lib_defines(),
+    defines = tf_additional_lib_defines() + ["SNAPPY"],
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
@@ -1262,6 +1262,7 @@ cc_library(
         ":protos_all_cc",
         "//third_party/eigen3",
         "//tensorflow/core/platform/default/build_config:platformlib",
+        "@snappy",
         "@zlib_archive//:zlib",
     ],
 )

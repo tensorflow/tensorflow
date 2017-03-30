@@ -487,6 +487,18 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   temp_workaround_http_archive(
+      name = "snappy",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/snappy/archive/1.1.4.zip",
+          "https://github.com/google/snappy/archive/1.1.4.zip",
+      ],
+      sha256 = "6c74d2b663170d68184da353cdd71b5b7d57bc8888ef1e99b4929b5d680dba54",
+      strip_prefix = "snappy-1.1.4",
+      build_file = str(Label("//third_party:snappy.BUILD")),
+      repository = tf_repo_name,
+  )
+
+  temp_workaround_http_archive(
       name = "nccl_archive",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
