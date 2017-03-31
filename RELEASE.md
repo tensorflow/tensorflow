@@ -69,7 +69,7 @@
 * Multiple tfdbg bug fixes:
   * Fixed Windows compatibility issues.
   * Command history now persists across runs.
-* Bug fix in graph validation related to `tf.while_loops`.
+  * Bug fix in graph validation related to `tf.while_loops`.
 * Java Maven fixes for bugs with Windows installation.
 
 ## Thanks to our Contributors
