@@ -334,6 +334,21 @@ class GradientsTest(test_util.TensorFlowTestCase):
       gradient = gradients.gradients(var._ref(), var)
       self.assertIsNotNone(gradient)
 
+  def testDependentYs(self):
+    with self.test_session():
+      x = constant_op.constant(3.0)
+      y = math_ops.square(x)
+      y1 = math_ops.square(y)
+      y2 = math_ops.square(y1)
+      g = gradients.gradients([y, y2], x)
+      self.assertAllClose(17502.0, g[0].eval())
+      g = gradients.gradients(y + y2, x)
+      self.assertAllClose(17502.0, g[0].eval())
+      z = array_ops.identity(y)
+      z2 = array_ops.identity(y2)
+      g = gradients.gradients([z, z2], x)
+      self.assertAllClose(17502.0, g[0].eval())
+
 
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
 

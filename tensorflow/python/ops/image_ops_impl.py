@@ -908,7 +908,6 @@ def adjust_brightness(image, delta):
     adjusted = math_ops.add(flt_image,
                             math_ops.cast(delta, dtypes.float32),
                             name=name)
-    adjusted = clip_ops.clip_by_value(adjusted, 0.0, 1.0)
 
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 

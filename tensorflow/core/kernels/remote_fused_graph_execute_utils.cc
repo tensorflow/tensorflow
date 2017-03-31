@@ -387,6 +387,24 @@ RemoteFusedGraphExecuteUtils::GetTensorShapeType(
   return nullptr;
 }
 
+/* static */ void
+RemoteFusedGraphExecuteUtils::BuildRemoteGraphInputsAndOutputsFromProto(
+    const RemoteFusedGraphExecuteInfo& proto,
+    std::vector<std::pair<string, Tensor>>* inputs,
+    std::vector<string>* outputs) {
+  CHECK_EQ(proto.graph_input_node_name_size(),
+           proto.default_graph_input_tensor_shape_size());
+  for (int i = 0; i < proto.graph_input_node_name_size(); ++i) {
+    inputs->emplace_back(
+        proto.graph_input_node_name(i),
+        Tensor(proto.default_graph_input_tensor_shape(i).dtype(),
+               TensorShape(proto.default_graph_input_tensor_shape(i).shape())));
+  }
+  for (const string& output_node_name : proto.graph_output_node_name()) {
+    outputs->emplace_back(output_node_name);
+  }
+}
+
 /* static */ void RemoteFusedGraphExecuteUtils::EmplaceTensorShapeType(
     const string& name, const Tensor& tensor,
     TensorShapeMap* tensor_shape_map) {

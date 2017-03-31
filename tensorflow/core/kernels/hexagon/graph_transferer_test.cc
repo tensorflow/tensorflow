@@ -414,7 +414,7 @@ TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
 
   GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
       TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, "remote_fused_graph_execute_node",
-      inputs, outputs, &def, &gt_);
+      inputs, outputs, &def);
 
   EXPECT_EQ(3, fused_graph_def.node_size());
 }

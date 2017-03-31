@@ -31,9 +31,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// An upper limit of the total number of elements in a tensor.
-constexpr int64 kMaxElements = (1LL << 40);
-
 // START_SKIP_DOXYGEN
 class TensorShapeIter;  // Declared below
 // END_SKIP_DOXYGEN
@@ -160,6 +157,7 @@ class TensorShape {
   static string DebugString(const TensorShapeProto& proto);
 
   void DumpRep() const;  // XXX
+
  private:
   void DestructorOutOfLine();
   void ClearAllButDataType();
@@ -169,6 +167,13 @@ class TensorShape {
 
   void CheckDimsEqual(int NDIMS) const;
   void CheckDimsAtLeast(int NDIMS) const;
+
+  // Used by AddDim and MakeShapeHelper.  Does no error checking.
+  void UnsafeAddDim(int64 size, int64 new_num_elements);
+
+  // For use by TensorShapeUtils::MakeShape
+  template <class T>
+  friend Status MakeShapeHelper(const T*, int64, TensorShape*);
 
   // We use 16 bytes to represent a TensorShape.  Because we need to
   // be able to support full 64-bit dimension sizes and an arbitrary
