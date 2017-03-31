@@ -28,10 +28,10 @@ namespace {
 // A subclass of a XlaBinaryOp must build the computation that
 // describes the (tensor,tensor)->tensor function to apply to each element of
 // the input.
-#define XLA_MAKE_BINARY(Name, HLO)                                      \
-  class Name##Op : public XlaBinaryOp {                                 \
+#define XLA_MAKE_BINARY(NAME, HLO)                                      \
+  class NAME##Op : public XlaBinaryOp {                                 \
    public:                                                              \
-    explicit Name##Op(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}  \
+    explicit NAME##Op(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}  \
     xla::ComputationDataHandle Computation(                             \
         XlaOpKernelContext* ctx, const xla::ComputationDataHandle& lhs, \
         const gtl::ArraySlice<int64>& lhs_shape,                        \
@@ -43,7 +43,7 @@ namespace {
       return HLO;                                                       \
     }                                                                   \
   };                                                                    \
-  REGISTER_XLA_OP(#Name, Name##Op)
+  REGISTER_XLA_OP(Name(#NAME), NAME##Op)
 
 XLA_MAKE_BINARY(Add, b->Add(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Sub, b->Sub(lhs, rhs, extend_dimensions));

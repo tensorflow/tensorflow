@@ -189,5 +189,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
                feed_dict={placeholder: np.zeros(shape=[2, 2],
                                                 dtype=np.float32)})
 
+  def testDtypeAfterFromProto(self):
+    v = resource_variable_ops.ResourceVariable(2.0)
+    w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
+    self.assertIsInstance(w.dtype, dtypes.DType)
+    self.assertEqual(v.dtype, w.dtype)
+
+
 if __name__ == "__main__":
   test.main()

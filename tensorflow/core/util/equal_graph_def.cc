@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/graph/equal_graph_def.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 #include <unordered_map>
 #include <unordered_set>

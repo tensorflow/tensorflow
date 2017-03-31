@@ -1129,7 +1129,7 @@ get_variable.__doc__ = get_variable_or_local_docstring % (
     "Gets an existing variable with these parameters or create a new one.",
     "",
     "trainable: If `True` also add the variable to the graph collection\n"
-    "    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).\n",
+    "    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).\n  ",
     "GraphKeys.GLOBAL_VARIABLES")
 
 
