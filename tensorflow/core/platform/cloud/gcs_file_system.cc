@@ -273,7 +273,7 @@ class GcsRandomAccessFile : public RandomAccessFile {
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
     TF_RETURN_IF_ERROR(
-        request->SetUri(strings::StrCat("https://", bucket_, ".", kStorageHost,
+        request->SetUri(strings::StrCat("https://", kStorageHost, "/", bucket_,
                                         "/", request->EscapeString(object_))));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetRange(
