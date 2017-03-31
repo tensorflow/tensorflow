@@ -592,6 +592,96 @@ class ExperimentTest(test.TestCase):
       self.assertEqual(0, est.eval_count)
       self.assertEqual(1, est.export_count)
 
+  def test_continuous_train_and_eval_with_adapted_steps_per_iteration(self):
+    mock_estimator = test.mock.Mock(core_estimator.Estimator)
+    type(mock_estimator).model_dir = test.mock.PropertyMock(
+        return_value='test_dir')
+
+    total_steps = 100000000000000
+    ex = experiment.Experiment(
+        mock_estimator,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        train_steps=total_steps)
+
+    def predicate_fn(eval_result):
+      # Allows the first invoke only.
+      return eval_result is None
+
+    ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
+    mock_estimator.train.assert_called_once_with(
+        input_fn='train_input',
+        steps=int(total_steps/10),
+        max_steps=test.mock.ANY,
+        hooks=test.mock.ANY)
+
+  def test_continuous_train_and_eval_with_steps_per_iteration_from_user(self):
+    mock_estimator = test.mock.Mock(core_estimator.Estimator)
+    type(mock_estimator).model_dir = test.mock.PropertyMock(
+        return_value='test_dir')
+
+    total_steps = 100000000000000
+    ex = experiment.Experiment(
+        mock_estimator,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        train_steps_per_iteration=1234,
+        train_steps=total_steps)
+
+    def predicate_fn(eval_result):
+      # Allows the first invoke only.
+      return eval_result is None
+
+    ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
+    mock_estimator.train.assert_called_once_with(
+        input_fn='train_input',
+        steps=1234,
+        max_steps=test.mock.ANY,
+        hooks=test.mock.ANY)
+
+  def test_continuous_train_and_eval_with_default_steps_per_iteration(self):
+    mock_estimator = test.mock.Mock(core_estimator.Estimator)
+    type(mock_estimator).model_dir = test.mock.PropertyMock(
+        return_value='test_dir')
+
+    ex = experiment.Experiment(
+        mock_estimator,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        train_steps_per_iteration=None,
+        train_steps=None)
+
+    def predicate_fn(eval_result):
+      # Allows the first invoke only.
+      return eval_result is None
+
+    ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
+    mock_estimator.train.assert_called_once_with(
+        input_fn='train_input',
+        steps=1000,
+        max_steps=test.mock.ANY,
+        hooks=test.mock.ANY)
+
+  def test_continuous_train_and_eval_with_invalid_predicate_fn(self):
+    for est in self._estimators_for_tests():
+      ex = experiment.Experiment(
+          est,
+          train_input_fn='train_input',
+          eval_input_fn='eval_input')
+      with self.assertRaisesRegexp(
+          ValueError, '`continuous_eval_predicate_fn` must be a callable'):
+        ex.continuous_train_and_eval(continuous_eval_predicate_fn='fn')
+
+  def test_continuous_train_and_eval_with_invalid_train_steps_iterations(self):
+    for est in self._estimators_for_tests():
+      with self.assertRaisesRegexp(
+          ValueError, '`train_steps_per_iteration` must be an integer.'):
+        experiment.Experiment(
+            est,
+            train_input_fn='train_input',
+            eval_input_fn='eval_input',
+            train_steps_per_iteration='123')
+
   @test.mock.patch.object(server_lib, 'Server')
   def test_run_std_server(self, mock_server):
     # Arrange.

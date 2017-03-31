@@ -103,8 +103,8 @@ output layers of the model are. The best source for these is the model training
 process, where for a classifier the inputs will be the nodes that receive the
 data from the training set, and the output will be the predictions. If you're
 unsure, the
-[summarize_graph](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/summarize_graph.cc)
-can inspect the model and provide guesses about likely input and output nodes,
+[summarize_graph](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/summarize_graph_main.cc)
+tool can inspect the model and provide guesses about likely input and output nodes,
 as well as other information that's useful for debugging. Here's an example of
 how to use it on the [Inception V3
 graph](http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz):

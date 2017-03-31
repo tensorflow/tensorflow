@@ -102,7 +102,9 @@ tf_cc_test(
     name = "tfprof_show_test",
     srcs = ["tfprof_show_test.cc"],
     data = [
-        "testdata/ckpt",
+        "testdata/ckpt.data-00000-of-00001",
+        "testdata/ckpt.index",
+        "testdata/ckpt.meta",
         "testdata/graph.pbtxt",
         "testdata/run_meta",
         "testdata/tfprof_log",
@@ -176,7 +178,9 @@ tf_cc_test(
     name = "tfprof_stats_test",
     srcs = ["tfprof_stats_test.cc"],
     data = [
-        "testdata/ckpt",
+        "testdata/ckpt.data-00000-of-00001",
+        "testdata/ckpt.index",
+        "testdata/ckpt.meta",
         "testdata/graph.pbtxt",
         "testdata/run_meta",
         "testdata/tfprof_log",
@@ -212,7 +216,9 @@ tf_cc_test(
     name = "tfprof_tensor_test",
     srcs = ["tfprof_tensor_test.cc"],
     data = [
-        "testdata/ckpt",
+        "testdata/ckpt.data-00000-of-00001",
+        "testdata/ckpt.index",
+        "testdata/ckpt.meta",
         "testdata/graph.pbtxt",
     ],
     deps = [

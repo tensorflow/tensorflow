@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -45,8 +46,8 @@ bool TensorShape::IsValid(const TensorShapeProto& proto) {
   if (proto.dim().size() > MaxDimensions()) return false;
   for (const auto& d : proto.dim()) {
     if (d.size() < 0) return false;
-    num_elements *= d.size();
-    if (num_elements > kMaxElements) return false;
+    num_elements = MultiplyWithoutOverflow(num_elements, d.size());
+    if (num_elements < 0) return false;
   }
   return true;
 }
@@ -62,11 +63,11 @@ Status TensorShape::IsValidShape(const TensorShapeProto& proto) {
       return errors::InvalidArgument("Shape ", DebugString(proto),
                                      " has negative dimensions");
     }
-    num_elements *= d.size();
-    if (num_elements > kMaxElements) {
-      return errors::InvalidArgument("Shape ", DebugString(proto),
-                                     " is too large (more than ", kMaxElements,
-                                     " entries)");
+    num_elements = MultiplyWithoutOverflow(num_elements, d.size());
+    if (num_elements < 0) {
+      return errors::InvalidArgument(
+          "Shape ", DebugString(proto),
+          " is too large (more than 2**63 - 1 entries)");
     }
   }
   return Status::OK();
@@ -158,17 +159,22 @@ void TensorShape::ClearAllButDataType() {
 void TensorShape::RecomputeNumElements() {
   int64 n = 1;
   for (auto it = begin(); it != end(); ++it) {
-    n *= (*it).size;
+    n = MultiplyWithoutOverflow(n, (*it).size);
     CHECK_LE(0, n);
-    CHECK_LE(n, kMaxElements);
   }
   num_elements_ = n;
 }
 
 void TensorShape::AddDim(int64 size) {
   CHECK_GE(size, 0);
+  CHECK_LT(ndims_byte(), MaxDimensions()) << "Too many dimensions in tensor";
+  const int64 new_num_elements = MultiplyWithoutOverflow(num_elements_, size);
+  CHECK_LE(0, new_num_elements);
+  UnsafeAddDim(size, new_num_elements);
+}
+
+void TensorShape::UnsafeAddDim(int64 size, int64 new_num_elements) {
   const int nd = ndims_byte();
-  CHECK_LT(nd, MaxDimensions()) << "Too many dimensions in tensor";
   if (tag() == REP16 && nd < 6 && size < kMaxRep16) {
     as16()->dims_[nd] = static_cast<int16>(size);
   } else if (tag() == REP32 && nd < 3 && size < kMaxRep32) {
@@ -204,9 +210,7 @@ void TensorShape::AddDim(int64 size) {
     }
   }
   set_ndims_byte(nd + 1);
-  num_elements_ *= size;
-  CHECK_LE(0, num_elements_);
-  CHECK_LE(num_elements_, kMaxElements);
+  num_elements_ = new_num_elements;
 }
 
 void TensorShape::AppendShape(const TensorShape& shape) {
@@ -355,7 +359,7 @@ bool TensorShapeUtils::EndsWith(const TensorShape& shape,
 }
 
 template <typename T>
-static inline Status MakeShapeHelper(const T* dims, int64 n, TensorShape* out) {
+Status MakeShapeHelper(const T* dims, int64 n, TensorShape* out) {
   *out = TensorShape();
   if (n > TensorShape::MaxDimensions()) {
     return errors::InvalidArgument("Too many dimensions");
@@ -365,11 +369,21 @@ static inline Status MakeShapeHelper(const T* dims, int64 n, TensorShape* out) {
   }
   for (int64 i = 0; i < n; ++i) {
     const T dim = internal::SubtleMustCopy(dims[i]);
-    if (dim >= 0) {
-      out->AddDim(dim);
-    } else {
+    if (dim < 0) {
       return errors::InvalidArgument("Dimension ", dim, " must be >= 0");
     }
+    const int64 new_num_elements =
+        MultiplyWithoutOverflow(out->num_elements(), dim);
+    if (TF_PREDICT_FALSE(new_num_elements < 0)) {
+      TensorShapeProto proto;
+      for (int64 j = 0; j < n; ++j) {
+        proto.add_dim()->set_size(dim);
+      }
+      return errors::InvalidArgument(
+          "Shape ", TensorShape::DebugString(proto),
+          " would have more than 2**63 - 1 elements");
+    }
+    out->UnsafeAddDim(dim, new_num_elements);
   }
   return Status::OK();
 }

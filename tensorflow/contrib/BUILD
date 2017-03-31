@@ -34,6 +34,7 @@ py_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/keras",
+        "//tensorflow/contrib/kernel_methods",
         "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
@@ -90,6 +91,7 @@ cc_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
         "//tensorflow/contrib/layers:bucketization_op_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
+        "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
     ],
 )
 

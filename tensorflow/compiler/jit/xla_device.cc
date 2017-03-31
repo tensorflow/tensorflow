@@ -56,7 +56,6 @@ namespace tensorflow {
 
   // These are no-ops if they have already been done previously for
   // this device_name/compilation_device_name pair.
-  XlaOpRegistry::RegisterCompilationKernels();
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = jit_device_name;
   registration.requires_compilation = true;
@@ -206,6 +205,7 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
 
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device) {
+  XlaOpRegistry::RegisterCompilationKernels();
   XlaDeviceOpRegistrations* registrations = new XlaDeviceOpRegistrations;
   auto dummy_factory = [](OpKernelConstruction* context) -> OpKernel* {
     return new XlaDeviceDummyOp(context);

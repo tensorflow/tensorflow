@@ -1,5 +1,4 @@
-# Description:
-# TensorBoard plugin for the Embedding Projector
+# Embedding Projector plugin.
 
 package(default_visibility = ["//tensorflow:internal"])
 
@@ -9,7 +8,6 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-## Embedding Projector Plugin ##
 py_library(
     name = "projector_plugin",
     srcs = ["projector_plugin.py"],
@@ -19,9 +17,9 @@ py_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/contrib/tensorboard:projector",
         "//tensorflow/contrib/tensorboard:protos_all_py",
         "//tensorflow/python:errors",
+        "//tensorflow/python:image_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
@@ -45,6 +43,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",

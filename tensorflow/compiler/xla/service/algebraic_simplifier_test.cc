@@ -896,7 +896,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
   HloInstruction* zero = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   PaddingConfig no_padding;
-  for (auto i = 0; i < 2; ++i) {
+  for (int i = 0; i < 2; ++i) {
     auto dimension = no_padding.add_dimensions();
     dimension->set_edge_padding_low(0);
     dimension->set_edge_padding_high(0);
@@ -926,7 +926,7 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
   PaddingConfig padding;
   int64 low_padding[2] = {-1, -2};
   int64 high_padding[2] = {2, -3};
-  for (auto i = 0; i < 2; ++i) {
+  for (int i = 0; i < 2; ++i) {
     auto dimension = padding.add_dimensions();
     dimension->set_edge_padding_low(low_padding[i]);
     dimension->set_edge_padding_high(high_padding[i]);
@@ -1443,6 +1443,27 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
   EXPECT_EQ(forty_two, root->operand(0));
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reshape_shape));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReversalOfTrivialDimensionsToBitcast) {
+  HloComputation::Builder builder(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {448, 2048, 1, 1});
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  builder.AddInstruction(
+      HloInstruction::CreateReverse(shape, a, /*dimensions=*/{2, 3}));
+
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(a, root);
+  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), shape));
 }
 
 }  // namespace

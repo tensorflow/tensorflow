@@ -19,6 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_XLA_OP("NoOp", NoOp);
+// XLA_* devices also register a "real" NoOp operator so we suppress the
+// dummy operator using CompilationOnly().
+REGISTER_XLA_OP(Name("NoOp").CompilationOnly(), NoOp);
 
 }  // namespace tensorflow

@@ -19,12 +19,12 @@ limitations under the License.
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace graph_transforms {

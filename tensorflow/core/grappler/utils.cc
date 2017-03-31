@@ -29,7 +29,7 @@ NodeMap::NodeMap(GraphDef* graph) : graph_(graph) {
     auto node = graph_->mutable_node(i);
     nodes_.insert(std::make_pair(node->name(), node));
     for (const auto& input : node->input()) {
-      outputs_[input].insert(nodes_[node->name()]);
+      outputs_[NodeName(input)].insert(nodes_[node->name()]);
     }
   }
 }

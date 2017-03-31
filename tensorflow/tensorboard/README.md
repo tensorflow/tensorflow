@@ -1,14 +1,17 @@
 # TensorBoard
 
 TensorBoard is a suite of web applications for inspecting and understanding your
-TensorFlow runs and graphs. TensorBoard currently supports five visualizations:
-scalars, images, audio, histograms, and the graph.
+TensorFlow runs and graphs.
 
 This README gives an overview of key concepts in TensorBoard, as well as how to
 interpret the visualizations TensorBoard provides. For an in-depth example of
 using TensorBoard, see the tutorial: [TensorBoard: Visualizing
 Learning](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
 For in-depth information on the Graph Visualizer, see this tutorial: [TensorBoard: Graph Visualization](https://www.tensorflow.org/get_started/graph_viz).
+
+You may also want to watch
+[this video tutorial](https://www.youtube.com/watch?v=eBbEDRsCmv4) that walks
+through setting up and using TensorBoard.
 
 # Usage
 
@@ -21,8 +24,7 @@ directory by creating a summary writer:
 file_writer = tf.summary.FileWriter('/path/to/logs', sess.graph)
 ```
 
-For more details, see [this
-tutorial](http://www.tensorflow.org/how_tos/summaries_and_tensorboard/index.html#serializing-the-data).
+For more details, see [the TensorBoard tutorial](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
 Once you have event files, run TensorBoard and provide the log directory. If
 you're using a precompiled TensorFlow package (e.g. you installed via pip), run:
 
@@ -37,7 +39,8 @@ bazel build tensorflow/tensorboard:tensorboard
 ./bazel-bin/tensorflow/tensorboard/tensorboard --logdir=path/to/logs
 ```
 
-This should print that TensorBoard has started. Next, connect to http://localhost:6006.
+This should print that TensorBoard has started. Next, connect to
+http://localhost:6006.
 
 TensorBoard requires a `logdir` to read logs from. For info on configuring
 TensorBoard, run `tensorboard --help`.
@@ -50,19 +53,25 @@ work, but there may be bugs or performance issues.
 ### Summary Ops: How TensorBoard gets data from TensorFlow
 
 The first step in using TensorBoard is acquiring data from your TensorFlow run.
-For this, you need [summary
-ops](https://www.tensorflow.org/versions/r1.0/api_docs/python/train.html#summary-operations).
+For this, you need [summary ops](https://www.tensorflow.org/api_docs/python/tf/summary).
 Summary ops are ops, like
-[`tf.matmul`](https://www.tensorflow.org/versions/r1.0/api_docs/python/math_ops.html#matmul)
+[`tf.matmul`](https://www.tensorflow.org/versions/r1.1/api_docs/python/tf/matmul)
 or
-[`tf.nn.relu`](https://www.tensorflow.org/versions/r1.0/api_docs/python/nn.html#relu),
+[`tf.nn.relu`](https://www.tensorflow.org/versions/master/api_docs/python/tf/nn/relu),
 which means they take in tensors, produce tensors, and are evaluated from within
 a TensorFlow graph. However, summary ops have a twist: the Tensors they produce
 contain serialized protobufs, which are written to disk and sent to TensorBoard.
 To visualize the summary data in TensorBoard, you should evaluate the summary
 op, retrieve the result, and then write that result to disk using a
 summary.FileWriter. A full explanation, with examples, is in [the
-tutorial](https://www.tensorflow.org/versions/r1.0/how_tos/summaries_and_tensorboard/index.html).
+tutorial](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
+
+The supported summary ops include:
+* tf.summary.scalar
+* tf.summary.image
+* tf.summary.audio
+* tf.summary.text
+* tf.summary.histogram
 
 ### Tags: Giving names to data
 
@@ -121,9 +130,9 @@ tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
 
 # The Visualizations
 
-### Events Dashboard
+### Scalar Dashboard
 
-TensorBoard's Events Dashboard visualizes scalar statistics that vary over time;
+TensorBoard's Scalar Dashboard visualizes scalar statistics that vary over time;
 for example, you might want to track the model's loss or learning rate. As
 described in *Key Concepts*, you can compare multiple runs, and the data is
 organized by tag. The line charts have the following interactions:
@@ -141,12 +150,20 @@ the run-selector on the left.
 Additionally, you can create new folders to organize tags by writing regular
 expressions in the box in the top-left of the dashboard.
 
+### Histogram Dashboard
+
+The HistogramDashboard displays how the statistical distribution of a Tensor
+has varied over time. It visualizes data recorded via `tf.summary.histogram`.
+Each chart shows temporal "slices" of data, where each slice is a histogram of
+the tensor at a given step. It's organized with the oldest timestep in the back,
+and the most recent timestep in front. By changing the Histogram Mode from
+"offset" to "overlay", the perspective will rotate so that every histogram slice
+is rendered as a line and overlaid with one another.
+
 ### Distribution Dashboard
 
-The Distribution Dashboard is for visualizing how the statistical distribution
-of a Tensor has varied over time. It visualizes data recorded via a
-tf.summary.histogram. Right now, its name is a bit of a misnomer, as it doesn't
-show histograms; instead, it shows some high-level statistics on a distribution.
+The Distribution Dashboard is another way of visualizing histogram data from
+`tf.summary.histogram`. It shows some high-level statistics on a distribution.
 Each line on the chart represents a percentile in the distribution over the
 data: for example, the bottom line shows how the minimum value has changed over
 time, and the line in the middle shows how the median has changed. Reading from
@@ -158,22 +175,20 @@ normal distribution: `[maximum, μ+1.5σ, μ+σ, μ+0.5σ, μ, μ-0.5σ, μ-σ, 
 minimum]` so that the colored regions, read from inside to outside, have widths
 `[σ, 2σ, 3σ]` respectively.
 
-This histogram visualization is a bit weird, and cannot meaningfully represent
-multimodal distributions. We are currently working on a true-histogram
-replacement.
 
 ### Image Dashboard
 
-The Image Dashboard can display pngs that were saved via a tf.summary.image. The
-dashboard is set up so that each row corresponds to a different tag, and each
-column corresponds to a run. Since the image dashboard supports arbitrary pngs,
-you can use this to embed custom visualizations (e.g. matplotlib scatterplots)
-into TensorBoard. This dashboard always shows you the latest image for each tag.
+The Image Dashboard can display pngs that were saved via a `tf.summary.image`.
+The dashboard is set up so that each row corresponds to a different tag, and
+each column corresponds to a run. Since the image dashboard supports arbitrary
+pngs, you can use this to embed custom visualizations (e.g. matplotlib
+scatterplots) into TensorBoard. This dashboard always shows you the latest image
+for each tag.
 
 ### Audio Dashboard
 
 The Audio Dashboard can embed playable audio widgets for audio saved via a
-tf.summary.audio. The dashboard is set up so that each row corresponds to a
+`tf.summary.audio`. The dashboard is set up so that each row corresponds to a
 different tag, and each column corresponds to a run. This dashboard always
 embeds the latest audio for each tag.
 
@@ -183,8 +198,21 @@ The Graph Explorer can visualize a TensorBoard graph, enabling inspection of the
 TensorFlow model. To get best use of the graph visualizer, you should use name
 scopes to hierarchically group the ops in your graph - otherwise, the graph may
 be difficult to decipher. For more information, including examples, see [the
-graph visualizer
-tutorial](https://www.tensorflow.org/versions/r1.0/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
+graph visualizer tutorial](https://www.tensorflow.org/get_started/graph_viz).
+
+### Embedding Projector
+
+The Embedding Projector allows you to visualize high-dimensional data; for
+example, you may view your input data after it has been embedded in a high-
+dimensional space by your model. The embedding projector reads data from your
+model checkpoint file, and may be configured with additional metadata, like
+a vocabulary file or sprite images. For more details, see [the embedding
+projector tutorial](https://www.tensorflow.org/get_started/embedding_viz).
+
+### Text Dashboard
+
+The Text Dashboard displays text snippets saved via `tf.summary.text`. Markdown
+features including hyperlinks, lists, and tables are all supported.
 
 # Frequently Asked Questions
 

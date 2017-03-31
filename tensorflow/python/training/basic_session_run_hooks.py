@@ -277,9 +277,8 @@ class CheckpointSaverListener(object):
   right thing, similar to what CheckpointSaverHook.end() does using
   self._timer.last_triggered_step().
 
-  To use such listeners, pass them in the checkpoint_listeners argument to
-  graph_actions._monitored_train().  If using tf.Learn Estimators, create a
-  custom Estimator and override _get_checkpoint_listeners().
+  To use such listeners, in your `model_fn` return a `CheckpointSaverHook` as
+  part of `training_chief_hooks`.
   """
 
   def begin(self):

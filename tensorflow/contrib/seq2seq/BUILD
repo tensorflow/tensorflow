@@ -88,9 +88,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "dynamic_attention_wrapper_test",
+    name = "attention_wrapper_test",
     size = "medium",
-    srcs = ["python/kernel_tests/dynamic_attention_wrapper_test.py"],
+    srcs = ["python/kernel_tests/attention_wrapper_test.py"],
     additional_deps = [
         ":seq2seq_py",
         "//tensorflow/contrib/layers:layers_py",

@@ -661,26 +661,17 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
 
     Args:
       sess: The TensorFlow `Session` object being wrapped.
-      watch_fn: (`Callable`) A Callable of the following signature:
-        ```
-        def watch_fn(fetches, feeds):
-          # Args:
-          #   fetches: the fetches to the `Session.run()` call.
-          #   feeds: the feeds to the `Session.run()` call.
-          #
-          # Returns: (node_name_regex_whitelist, op_type_regex_whitelist)
-          #   debug_ops: (str or list of str) Debug op(s) to be used by the
-          #     debugger in this run() call.
-          #   node_name_regex_whitelist: Regular-expression whitelist for node
-          #     name. Same as the corresponding arg to `debug_util.watch_graph`.
-          #   op_type_regex_whiteslit: Regular-expression whitelist for op type.
-          #     Same as the corresponding arg to `debug_util.watch_graph`.
-          #
-          #   Both or either can be None. If both are set, the two whitelists
-          #   will operate in a logical AND relation. This is consistent with
-          #   `debug_utils.watch_graph()`.
-        ```
+      watch_fn: (`Callable`) A Callable that maps the fetches and feeds of a
+        debugged `Session.run()` call to `WatchOptions.`
+        * Args:
+          * `fetches`: the fetches to the `Session.run()` call.
+          * `feeds`: the feeds to the `Session.run()` call.
 
+        * Returns:
+         (`tf_debug.WatchOptions`) An object containing debug options including
+           the debug ops to use, the node names, op types and/or tensor data
+           types to watch, etc. See the documentation of `tf_debug.WatchOptions`
+           for more details.
     Raises:
        TypeError: If a non-None `watch_fn` is specified and it is not callable.
     """

@@ -23,6 +23,7 @@ tf_custom_op_py_library(
         "python/ops/factorization_ops.py",
         "python/ops/gmm.py",
         "python/ops/gmm_ops.py",
+        "python/ops/wals.py",
     ],
     dso = [
         ":python/ops/_clustering_ops.so",
@@ -173,6 +174,26 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+# Estimators tests
+tf_py_test(
+    name = "wals_test",
+    size = "medium",
+    srcs = ["python/ops/wals_test.py"],
+    additional_deps = [
+        ":factorization_py",
+        ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_benchmark",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
     ],
 )
 

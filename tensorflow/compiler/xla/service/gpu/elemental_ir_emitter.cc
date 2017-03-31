@@ -270,69 +270,6 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
     const HloToElementGeneratorMap& operand_to_generator) const {
   switch (hlo->opcode()) {
-    case HloOpcode::kPad:
-      return [=, &operand_to_generator](
-                 const IrArray::Index& padded_index) -> StatusOr<llvm::Value*> {
-        auto index = padded_index;
-        llvm::Value* in_bounds =
-            llvm::ConstantInt::get(ir_builder_->getInt1Ty(), 1);
-        for (auto i = 0; i < index.size(); ++i) {
-          auto index_typed_const = [=](int64 n) {
-            return llvm::ConstantInt::get(index[i]->getType(), n);
-          };
-          const auto& pad_dim = hlo->padding_config().dimensions(i);
-          index[i] = ir_builder_->CreateSub(
-              index[i], index_typed_const(pad_dim.edge_padding_low()));
-          in_bounds = ir_builder_->CreateAnd(
-              in_bounds,
-              ir_builder_->CreateICmpSGE(index[i], index_typed_const(0)),
-              "in_bounds");
-          in_bounds = ir_builder_->CreateAnd(
-              in_bounds,
-              ir_builder_->CreateICmpEQ(
-                  index_typed_const(0),
-                  ir_builder_->CreateURem(
-                      index[i],
-                      index_typed_const(pad_dim.interior_padding() + 1))),
-              "in_bounds");
-          index[i] = ir_builder_->CreateSDiv(
-              index[i], index_typed_const(pad_dim.interior_padding() + 1));
-          in_bounds = ir_builder_->CreateAnd(
-              in_bounds,
-              ir_builder_->CreateICmpSLT(
-                  index[i],
-                  index_typed_const(hlo->operand(0)->shape().dimensions(i))),
-              "in_bounds");
-        }
-
-        // if (in_bounds) {
-        //   ret_value = operand0[index];  // source
-        // } else {
-        //   ret_value = *operand1;        // padding
-        // }
-        llvm::Value* ret_value_addr = llvm_ir::EmitAllocaAtFunctionEntry(
-            llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(),
-                                           ir_builder_),
-            "pad_result_addr", ir_builder_);
-        llvm_ir::LlvmIfData if_data =
-            llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", ir_builder_);
-        SetToFirstInsertPoint(if_data.true_block, ir_builder_);
-        TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                            operand_to_generator.at(hlo->operand(0))(index));
-        ir_builder_->CreateStore(operand_value, ret_value_addr);
-
-        SetToFirstInsertPoint(if_data.false_block, ir_builder_);
-        TF_ASSIGN_OR_RETURN(llvm::Value * padding_value,
-                            operand_to_generator.at(hlo->operand(1))({}));
-        ir_builder_->CreateStore(padding_value, ret_value_addr);
-
-        SetToFirstInsertPoint(if_data.after_block, ir_builder_);
-        // Don't create phi(operand_value, padding_value) here, because invoking
-        // operand_to_generator may create new basic blocks, making the parent
-        // of operand_value or padding_value no longer a predecessor of
-        // if_data.after_block.
-        return ir_builder_->CreateLoad(ret_value_addr);
-      };
     case HloOpcode::kMap:
       return [=, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
