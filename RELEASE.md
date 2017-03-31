@@ -68,38 +68,16 @@
 * Multiple tfdbg bug fixes:
   * Fixed Windows compatibility issues.
   * Command history now persists across runs.
+* Bug fix in graph validation related to `tf.while_loops`.
+* Java Maven fixes for bugs with Windows installation.
+* Rollback of adjust contract change.
+* Initial release of installation guides for Java, C, and Go.
 
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
-A. Besir Kurtulmus, Adal Chiriliuc, @akash, Alec-Desouza, Alex Rothberg, Alex
-Sergeev, Alexander Heinecke, Allen Guo, Andreas Madsen, Ankesh Anand, Anton
-Loss, @Aravind, @Arie, Ashutosh Das, AuréLien Geron, Bairen Yi, @bakunyo, Ben
-Visser, Brady Zhou, Calpa Liu, Changming Sun, Chi Zeng, Chih Cheng Liang,
-Christopher Berner, Clark Zinzow, @Conchylicultor, Courtial Florian, Dan Ellis,
-Dan J, Dan Jarvis, Daniel Ylitalo, Darren Garvey, David Norman, David Truong,
-@DavidNorman, Dimitar Pavlov, Dmitry Persiyanov, @Eddie, @elirex, Erfan
-Noury, Eron Wright, Evgeny Mazovetskiy, Fabrizio (Misto) Milo, @fanlu, Fisher
-Coder, Franck Dernoncourt, Gagan Goel, Gao, Xiang, @Gautam, Gefu Tang,
-@guilherme, @guschmue, Hannah Provenza, Hans Pabst, @hartb, Hsiao Yi, Huazuo
-Gao, Igor ChorążEwicz, Ivan Smirnov, Jakub Kolodziejczyk, Jason Gavris, Jason
-Morton, Jay Young, Jayaram Bobba, Jeremy Sawruk, Jiaming Liu, Jihun Choi,
-@jiqiu, Joan Thibault, John C F, Jojy G Varghese, Jon Malmaud, Julian Berman,
-Julian Niedermeier, Junpeng Lao, Kai Sasaki, @Kankroc, Karl Lessard, Kyle
-Bostelmann, @Lezcano, Li Yi, Luo Yun, @lurker, Mahmoud-Abuzaina, Mandeep Singh,
-Marek Kolodziej, Mark Szepieniec, Martial Hue, Medhat Omr, Memo Akten, Michael
-Gharbi, MichaëL Defferrard, Milan Straka, @MircoT, @mlucool, Muammar Ibn Faisal,
-Nayana Thorat, @nghiattran, Nicholas Connor, Nikolaas Steenbergen, Niraj Patel,
-Niranjan Hasabnis, @Panmari, Pavel Bulanov, Philip Pries Henningsen, Philipp
-Jund, @polonez, Prayag Verma, Rahul Kavi, Raphael Gontijo Lopes, @rasbt, Raven
-Iqqe, Reid Pryzant, Richard Shin, Rizwan Asif, Russell Kaplan, Ryo Asakura,
-RüDiger Busche, Saisai Shao, Sam Abrahams, @sanosay, Sean Papay, @seaotterman,
-@selay01, Shaurya Sharma, Sriram Narayanamoorthy, Stefano Probst, @taknevski,
-@tbonza, @teldridge11, Yuan (Terry) Tang, Tim Anglade, Tomas Reimers, Tomer Gafner,
-Valentin Iovene, Vamsi Sripathi, Viktor Malyi, Vit Stepanovs, Vivek Rane, Vlad
-Firoiu, @wangg12, @will, Xiaoyu Tao, Yaroslav Bulatov, Yuan (Terry) Tang,
-@Yufeng, Yuming Wang, Yuxin Wu, Zafar Takhirov, Ziming Dong
+A. Besir Kurtulmus, Adal Chiriliuc, @akash, Alec-Desouza, Alex Rothberg, Alex Sergeev, Alexander Heinecke, Allen Guo, Andreas Madsen, Ankesh Anand, Anton Loss, @Aravind, @Arie, Ashutosh Das, AuréLien Geron, Bairen Yi, @bakunyo, Ben Visser, Brady Zhou, Calpa Liu, Changming Sun, Chi Zeng, Chih Cheng Liang, Christopher Berner, Clark Zinzow, @Conchylicultor, Damien Martin-Guillerez, Dan Ellis, Dan J, Dan Jarvis, Daniel Mané, Daniel Ylitalo, Darren Garvey, David Norman, David Truong, @DavidNorman, Dimitar Pavlov, Dmitry Persiyanov, @drpngx, @Eddie, @elirex, Erfan Noury, Eron Wright, Evgeny Mazovetskiy, Fabrizio (Misto) Milo, @fanlu, Fisher Coder, Florian Courtial, Franck Dernoncourt, Gagan Goel, Gao, Xiang, @Gautam, Gefu Tang, @guilherme, @guschmue, Hannah Provenza, Hans Pabst, @hartb, Hsiao Yi, Huazuo Gao, Igor ChorążEwicz, Ivan Smirnov, Jakub Kolodziejczyk, Jason Gavris, Jason Morton, Jay Young, Jayaram Bobba, Jeremy Sawruk, Jiaming Liu, Jihun Choi, @jiqiu, Joan Thibault, John C F, Jojy George Varghese, Jon Malmaud, Julian Berman, Julian Niedermeier, Junpeng Lao, Kai Sasaki, @Kankroc, Karl Lessard, Kyle Bostelmann, @Lezcano, Li Yi, Luo Yun, @lurker, Mahmoud-Abuzaina, Mandeep Singh, Marek Kolodziej, Mark Szepieniec, Martial Hue, Medhat Omr, Memo Akten, Michael Gharbi, MichaëL Defferrard, Milan Straka, @MircoT, @mlucool, Muammar Ibn Faisal, Nayana Thorat, @nghiattran, Nicholas Connor, Nikolaas Steenbergen, Niraj Patel, Niranjan Hasabnis, @Panmari, Pavel Bulanov, Philip Pries Henningsen, Philipp Jund, @polonez, Prayag Verma, Rahul Kavi, Raphael Gontijo Lopes, @rasbt, Raven Iqqe, Reid Pryzant, Richard Shin, Rizwan Asif, Russell Kaplan, Ryo Asakura, RüDiger Busche, Saisai Shao, Sam Abrahams, @sanosay, Sean Papay, @seaotterman, @selay01, Shaurya Sharma, Sriram Narayanamoorthy, Stefano Probst, @taknevski, @tbonza, @teldridge11, @terrytangyuan, Tim Anglade, Tomas Reimers, Tomer Gafner, Valentin Iovene, Vamsi Sripathi, Viktor Malyi, Vit Stepanovs, Vivek Rane, Vlad Firoiu, @wangg12, @will, Xiaoyu Tao, Yaroslav Bulatov, Yi Liu, Yuan (Terry) Tang, @Yufeng, Yuming Wang, Yuxin Wu, Zafar Takhirov, Ziming Dong
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
