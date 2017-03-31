@@ -75,12 +75,10 @@ Status RewriteQuantizedStrippedModelForHexagon(
   for (const string& output_name : context.output_names) {
     outputs.emplace_back(output_name);
   }
-  GraphTransferer gt;
-  gt.EnableStrictCheckMode(false);
   GraphDef mutable_input_graph_def = input_graph_def;
   *output_graph_def = GraphTransferUtils::BuildFusedGraphDef(
       HexagonOpsDefinitions::getInstance(), "remote_fused_graph_execute_node",
-      inputs, outputs, &mutable_input_graph_def, &gt);
+      inputs, outputs, &mutable_input_graph_def);
   return Status::OK();
 }
 

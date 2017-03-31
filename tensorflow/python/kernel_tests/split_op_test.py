@@ -117,7 +117,7 @@ class SplitOpTest(test.TestCase):
     inp = np.random.rand(4, 4).astype("f")
     with self.test_session(use_gpu=use_gpu):
       inp_tensor = ops.convert_to_tensor(inp)
-      s = array_ops.split(inp_tensor, [1, 4], 1)
+      s = array_ops.split(inp_tensor, [1, 3], 1)
       inp_grads = [
           np.random.rand(4, 1).astype("f"), np.random.rand(4, 3).astype("f")
       ]

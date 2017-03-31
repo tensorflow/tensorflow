@@ -417,7 +417,6 @@ class TFExampleDecoder(data_decoder.DataDecoder):
     """
     example = parsing_ops.parse_single_example(serialized_example,
                                                self._keys_to_features)
-    print(example.keys())
 
     # Reshape non-sparse elements just once:
     for k in self._keys_to_features:

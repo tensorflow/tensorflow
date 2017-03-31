@@ -177,12 +177,46 @@ static Tensor BuildImageTensor(const std::vector<float>& img_floats) {
   return img_tensor;
 }
 
+/* static */ RemoteFusedGraphExecuteInfo
+BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(
+    const GraphTransferInfo& graph_transfer_info) {
+  RemoteFusedGraphExecuteInfo execute_info;
+  execute_info.set_executor_name("build_hexagon_remote_fused_graph_executor");
+  for (const GraphTransferInfo::GraphInputNodeInfo& input :
+       graph_transfer_info.graph_input_node_info()) {
+    execute_info.add_graph_input_node_name(input.name());
+    RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
+        *execute_info.add_default_graph_input_tensor_shape();
+    tensor_shape_type.set_dtype(input.dtype());
+    TensorShapeProto& tensor_shape_proto = *tensor_shape_type.mutable_shape();
+    for (const int64 dim : input.shape()) {
+      tensor_shape_proto.add_dim()->set_size(dim);
+    }
+  }
+
+  for (const GraphTransferInfo::GraphOutputNodeInfo& output :
+       graph_transfer_info.graph_output_node_info()) {
+    execute_info.add_graph_output_node_name(output.name());
+    RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
+        *execute_info.add_default_graph_output_tensor_shape();
+    tensor_shape_type.set_dtype(output.dtype());
+    TensorShapeProto& tensor_shape_proto = *tensor_shape_type.mutable_shape();
+    for (const int64 dim : output.shape()) {
+      tensor_shape_proto.add_dim()->set_size(dim);
+    }
+  }
+
+  execute_info.set_serialized_executor_parameters(
+      graph_transfer_info.SerializeAsString());
+  return execute_info;
+}
+
 static void RunInferenceByHexagonControlWrapper(
     const GraphTransferer& gt, const std::vector<float>& img_floats) {
   const Tensor img_tensor = BuildImageTensor(img_floats);
 
   const RemoteFusedGraphExecuteInfo execute_info =
-      GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
+      BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(
           gt.GetGraphTransferInfo());
 
   HexagonControlWrapper hexagon_control_wrapper;
@@ -352,11 +386,9 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExampleWithTfRuntime) {
   ASSERT_TRUE(status.ok());
 
   LOG(INFO) << "Build fused graph";
-  GraphTransferer gt;
-  gt.EnableStrictCheckMode(false);
   GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
       HexagonOpsDefinitions::getInstance(),
-      REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME, inputs, outputs, &graph_def, &gt);
+      REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME, inputs, outputs, &graph_def);
 
   RunFusedGraph(fused_graph_def);
 }
