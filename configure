@@ -279,14 +279,8 @@ while [ "$TF_NEED_CUDA" == "" ]; do
   esac
 done
 
-sed_hyphen_i -e "/--action_env TF_NEED_CUDA/d" .bazelrc
-sed_hyphen_i -e "/--action_env CUD/d" .bazelrc
-sed_hyphen_i -e "/--action_env GCC_HOST/d" .bazelrc
-sed_hyphen_i -e "/--action_env TF_CUD/d" .bazelrc
-sed_hyphen_i -e "/--action_env CLANG_CUDA/d" .bazelrc
-
 export TF_NEED_CUDA
-echo "build --action_env TF_NEED_CUDA=$TF_NEED_CUDA" >>.bazelrc
+write_action_env_to_bazelrc "TF_NEED_CUDA" "$TF_NEED_CUDA"
 
 export TF_NEED_OPENCL
 
@@ -302,7 +296,7 @@ while [[ "$TF_CUDA_CLANG" == "" ]]; do
 done
 
 export TF_CUDA_CLANG
-echo "build --action_env TF_CUDA_CLANG=$TF_CUDA_CLANG" >>.bazelrc
+write_action_env_to_bazelrc "TF_CUDA_CLANG" "$TF_CUDA_CLANG"
 
 # Set up which gcc nvcc should use as the host compiler
 # No need to set this on Windows
@@ -342,7 +336,7 @@ while [[ "$TF_CUDA_CLANG" == "1" ]] && true; do
   fi
   if [ -e "$CLANG_CUDA_COMPILER_PATH" ]; then
     export CLANG_CUDA_COMPILER_PATH
-    echo "build --action_env CLANG_CUDA_COMPILER_PATH=\"$CLANG_CUDA_COMPILER_PATH\"" >>.bazelrc
+    write_action_env_to_bazelrc "CLANG_CUDA_COMPILER_PATH" "$CLANG_CUDA_COMPILER_PATH"
     break
   fi
   echo "Invalid clang path. ${CLANG_CUDA_COMPILER_PATH} cannot be found" 1>&2
