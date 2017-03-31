@@ -168,6 +168,7 @@ if is_windows; then
   TF_NEED_HDFS=0
   TF_NEED_JEMALLOC=0
   TF_NEED_OPENCL=0
+  TF_CUDA_CLANG=0
 fi
 
 if is_linux; then
