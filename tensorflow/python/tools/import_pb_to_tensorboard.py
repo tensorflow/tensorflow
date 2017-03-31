@@ -5,7 +5,7 @@ from tensorflow.python.framework.ops import reset_default_graph
 def import_to_tensorboard(modeldir,logdir):
 # import_to_tensorboard(modeldir,logdir) provides a quick way to visualize 
 # a .pb model in Tensorboard.
-# Created in response to issue #8851
+# Created in response to issue #8854
 # Args:
 # 	modeldir: The location of the .pb model to visualize
 #	logdir: The location for the Tensorboard log to begin visualisation from.
