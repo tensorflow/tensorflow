@@ -934,8 +934,12 @@ class DebugDumpDir(object):
       for inp in inputs:
         inp_node = get_node_name(inp)
         inp_output_slot = get_output_slot(inp)
+        # Inputs from Enter and NextIteration nodes are not validated because
+        # DebugNodeInserter::InsertNodes() in the debugger core skips creating
+        # control edges from debug ops watching these types of nodes.
         if (inp_node in self._debug_watches and
             inp_output_slot in self._debug_watches[inp_node] and
+            self._node_op_types.get(inp) not in ("Enter", "NextIteration") and
             (inp_node, inp_output_slot) not in pending_inputs[node]):
           pending_inputs[node].append((inp_node, inp_output_slot))
 
