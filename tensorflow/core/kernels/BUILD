@@ -27,6 +27,7 @@ load(
     "tf_copts",
     "tf_opts_nortti_if_android",
     "tf_kernel_library",
+    "tf_mkl_kernel_library",
     "cc_header_only_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -4408,77 +4409,69 @@ tf_cc_test(
     ],
 )
 
-if_mkl(
-    tf_kernel_library(
-        name = "mkl_conv_op",
-        prefix = "mkl_conv",
-        deps = [
-            ":bounds_check",
-            ":conv_ops",
-            ":ops_util",
-            "//tensorflow/core:core_cpu",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:nn_ops_op_lib",
-            "//third_party/mkl:intel_binary_blob",
-        ],
-    ),
+tf_mkl_kernel_library(
+    name = "mkl_conv_op",
+    prefix = "mkl_conv",
+    deps = [
+        ":bounds_check",
+        ":conv_ops",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/mkl:intel_binary_blob",
+    ],
 )
 
-if_mkl(
-    tf_kernel_library(
-        name = "mkl_tfconv_op",
-        prefix = "mkl_tfconv",
-        deps = [
-            ":bounds_check",
-            ":ops_util",
-            "//tensorflow/core:core_cpu",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:nn_ops_op_lib",
-            "//third_party/mkl:intel_binary_blob",
-        ],
-    ),
+tf_mkl_kernel_library(
+    name = "mkl_tfconv_op",
+    prefix = "mkl_tfconv",
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/mkl:intel_binary_blob",
+    ],
 )
 
-if_mkl(
-    tf_kernel_library(
-        name = "mkl_pooling_ops",
-        srcs = [
-            "mkl_avgpooling_op.cc",
-            "mkl_maxpooling_op.cc",
-            "mkl_pooling_ops_common.cc",
-        ],
-        hdrs = ["mkl_pooling_ops_common.h"],
-        deps = [
-            ":ops_util",
-            "//tensorflow/core:core_cpu",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:nn_ops_op_lib",
-            "//third_party/mkl:intel_binary_blob",
-        ],
-    ),
+tf_mkl_kernel_library(
+    name = "mkl_pooling_ops",
+    srcs = [
+        "mkl_avgpooling_op.cc",
+        "mkl_maxpooling_op.cc",
+        "mkl_pooling_ops_common.cc",
+    ],
+    hdrs = ["mkl_pooling_ops_common.h"],
+    deps = [
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/mkl:intel_binary_blob",
+    ],
 )
 
-if_mkl(
-    tf_kernel_library(
-        name = "mkl_relu_op",
-        prefix = "mkl_relu",
-        deps = [
-            ":bounds_check",
-            ":ops_util",
-            "//tensorflow/core:core_cpu",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:nn_ops_op_lib",
-            "//third_party/mkl:intel_binary_blob",
-        ],
-    ),
+tf_mkl_kernel_library(
+    name = "mkl_relu_op",
+    prefix = "mkl_relu",
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/mkl:intel_binary_blob",
+    ],
 )
 
 # -----------------------------------------------------------------------------
