@@ -32,13 +32,11 @@ steps to install this library and enable TensorFlow for Go:
   2. Download and extract the TensorFlow C library into `/usr/local/lib` by
      invoking the following shell commands:
 
-     ```sh
-     TF_TYPE="cpu" # Change to "gpu" for GPU support
-     TARGET_DIRECTORY='/usr/local'
-     curl -L \
-       "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-$(go env GOOS)-x86_64-1.1.0.tar.gz" |
-     sudo tar -C $TARGET_DIRECTORY -xz
-     ```
+         TF_TYPE="cpu" # Change to "gpu" for GPU support
+         TARGET_DIRECTORY='/usr/local'
+         curl -L \
+           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-$(go env GOOS)-x86_64-1.1.0.tar.gz" |
+         sudo tar -C $TARGET_DIRECTORY -xz
 
      The `tar` command extracts the TensorFlow C library into the `lib`
      subdirectory of `TARGET_DIRECTORY`. For example, specifying `/usr/local`
@@ -52,34 +50,26 @@ steps to install this library and enable TensorFlow for Go:
      as the `TARGET_DIRECTORY`, then run `ldconfig` to configure the linker.
      For example:
 
-     ```sh
-     sudo ldconfig
-     ```
+     <pre><b>sudo ldconfig</b></pre>
 
      If you assigned a `TARGET_DIRECTORY` other than a system
      directory (for example, `~/mydir`), then you must append the extraction
-     directory (for example, `~/mydir/lib`) to two environment variables.
-     For example:
+     directory (for example, `~/mydir/lib`) to two environment variables
+     as follows:
 
-     ```sh
-     export LIBRARY_PATH=$LIBRARY_PATH:~/mydir/lib # For both Linux and Mac OS X
-     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/mydir/lib # For Linux only
-     export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:~/mydir/lib # For Mac OS X only
-     ```
+     <pre> <b>export LIBRARY_PATH=$LIBRARY_PATH:~/mydir/lib</b> # For both Linux and Mac OS X
+     <b>export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/mydir/lib</b> # For Linux only
+     <b>export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:~/mydir/lib</b> # For Mac OS X only</pre>
 
   4. Now that the TensorFlow C library is installed, invoke `go get` as follows
      to download the appropriate packages and their dependencies:
 
-     ```sh
-     go get github.com/tensorflow/tensorflow/tensorflow/go
-     ```
+     <pre><b>go get github.com/tensorflow/tensorflow/tensorflow/go</b></pre>
 
   5. Invoke `go test` as follows to validate the TensorFlow for Go
      installation:
 
-     ```sh
-     go test github.com/tensorflow/tensorflow/tensorflow/go
-     ```
+     <pre><b>go test github.com/tensorflow/tensorflow/tensorflow/go</b></pre>
 
 If `go get` or `go test` generate error messages, search (or post to)
 [StackOverflow](http://www.stackoverflow.com/questions/tagged/tensorflow)
@@ -131,24 +121,15 @@ which uses a pre-trained TensorFlow model to label contents of an image.
 
 Run `hello_tf.go` by invoking the following command:
 
-```sh
-go run hello_tf.go
-```
-
-The program should print the following output:
-
-```sh
-Hello from TensorFlow version *number*
-```
+<pre><b>go run hello_tf.go</b>
+Hello from TensorFlow version <i>number</i></pre>
 
 The program might also generate multiple warning messages of the
 following form, which you can ignore:
 
-```sh
-W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library
+<pre>W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library
 wasn't compiled to use *Type* instructions, but these are available on your
-machine and could speed up CPU computations.
-```
+machine and could speed up CPU computations.</pre>
 
 
 ## Building from source code

@@ -632,6 +632,11 @@ class TensorUtilTest(test.TestCase):
     with self.assertRaises(TypeError):
       tensor_util.make_tensor_proto([3], dtype=dtypes.qint8)
 
+    # Validate the helpful error message when trying to convert an
+    # unconvertible list as strings.
+    with self.assertRaisesRegexp(TypeError, "Failed to convert object"):
+      tensor_util.make_tensor_proto([tensor_shape.Dimension(1)])
+
   def testTensorShapeVerification(self):
     array = np.array([[1], [2]])
     correct_shape = (2, 1)

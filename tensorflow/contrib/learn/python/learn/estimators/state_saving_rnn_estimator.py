@@ -399,8 +399,7 @@ def _get_rnn_model_fn(cell_type,
   """Creates a state saving RNN model function for an `Estimator`.
 
   Args:
-    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell` or one of
-        'basic_rnn,' 'lstm' or 'gru'.
+    cell_type: A subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
     target_column: An initialized `TargetColumn`, used to calculate prediction
       and loss.
     problem_type: `ProblemType.CLASSIFICATION` or
@@ -573,8 +572,7 @@ class StateSavingRnnEstimator(estimator.Estimator):
       num_units: A list of integers indicating the number of units in the
         `RNNCell`s in each layer. Either `num_units` is specified or `cell_type`
         is an instance of `RNNCell`.
-      cell_type: A subclass of `RNNCell`, an instance of an `RNNCell` or one of
-        'basic_rnn,' 'lstm' or 'gru'.
+      cell_type: A subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
       optimizer_type: The type of optimizer to use. Either a subclass of
         `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
         one of 'Adagrad', 'Adam', 'Ftrl', Momentum', 'RMSProp', or 'SGD'.
@@ -611,12 +609,6 @@ class StateSavingRnnEstimator(estimator.Estimator):
       ValueError: `problem_type` is `ProblemType.CLASSIFICATION` but
         `num_classes` is not specified.
     """
-    if (num_units is not None) == isinstance(cell_type, rnn_cell.RNNCell):
-      raise ValueError(
-          'Either num_units is specified OR cell_type is an instance of '
-          'RNNCell. Got num_units = {} and cell_type = {}.'.format(
-              num_units, cell_type))
-
     name = 'MultiValueStateSavingRNN'
     if problem_type == constants.ProblemType.LINEAR_REGRESSION:
       name += 'Regressor'

@@ -69,7 +69,7 @@ class LRNOp : public XlaOpKernel {
   float beta_;
 };
 
-REGISTER_XLA_OP("LRN", LRNOp);
+REGISTER_XLA_OP(Name("LRN"), LRNOp);
 
 class LRNGradOp : public XlaOpKernel {
  public:
@@ -167,7 +167,7 @@ class LRNGradOp : public XlaOpKernel {
   float beta_;
 };
 
-REGISTER_XLA_OP("LRNGrad", LRNGradOp);
+REGISTER_XLA_OP(Name("LRNGrad"), LRNGradOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

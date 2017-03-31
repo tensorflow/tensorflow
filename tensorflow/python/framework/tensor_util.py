@@ -445,7 +445,22 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   # we flatten it conservatively.
   if numpy_dtype == dtypes.string and not isinstance(values, np.ndarray):
     proto_values = _FlattenToStrings(values)
-    tensor_proto.string_val.extend([compat.as_bytes(x) for x in proto_values])
+
+    # At this point, values may be a list of objects that we could not
+    # identify a common type for (hence it was inferred as
+    # np.object/dtypes.string).  If we are unable to convert it to a
+    # string, we raise a more helpful error message.
+    #
+    # Ideally, we'd be able to convert the elements of the list to a
+    # common type, but this type inference requires some thinking and
+    # so we defer it for now.
+    try:
+      str_values = [compat.as_bytes(x) for x in proto_values]
+    except TypeError:
+      raise TypeError("Failed to convert object of type %s to Tensor. "
+                      "Contents: %s. Consider casting elements to a "
+                      "supported type." % (type(values), values))
+    tensor_proto.string_val.extend(str_values)
     return tensor_proto
 
   # TensorFlow expects C order (a.k.a., eigen row major).
@@ -753,3 +768,18 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
       ret = ret.merge_with(tensor_shape.TensorShape(
           [d if d != -1 else None for d in value]))
     return ret
+
+
+def is_tensor(x):  # pylint: disable=invalid-name
+  """Check whether `x` is of tensor type.
+
+  Check whether an object is a tensor. Equivalent to
+  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+
+  Args:
+    x: An python object to check.
+
+  Returns:
+    `True` if `x` is a tensor, `False` if not.
+  """
+  return isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x)  # pylint: disable=protected-access

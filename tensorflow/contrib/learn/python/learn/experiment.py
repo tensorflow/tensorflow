@@ -78,7 +78,8 @@ class Experiment(object):
                continuous_eval_throttle_secs=60,
                min_eval_frequency=1,
                delay_workers_by_global_step=False,
-               export_strategies=None):
+               export_strategies=None,
+               train_steps_per_iteration=None):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -117,6 +118,11 @@ class Experiment(object):
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
       export_strategies: A list of `ExportStrategy`s, or a single one, or None.
+      train_steps_per_iteration: (applies only to continuous_train_and_eval).
+        Perform this many (integer) number of train steps for each
+        training-evaluation iteration. With a small value, the model will be
+        evaluated more frequently with more checkpoints saved. If `None`, will
+        use a default value (which is smaller than `train_steps` if provided).
 
     Raises:
       ValueError: if `estimator` does not implement Estimator interface,
@@ -154,6 +160,12 @@ class Experiment(object):
     self._train_monitors = train_monitors[:] if train_monitors else []
     self._eval_hooks = eval_hooks[:] if eval_hooks else []
     self._set_export_strategies(export_strategies)
+
+    self._train_steps_per_iteration = train_steps_per_iteration
+    if (self._train_steps_per_iteration is not None and
+        not isinstance(self._train_steps_per_iteration, int)):
+      raise ValueError(
+          "`train_steps_per_iteration` must be an integer.")
 
   @property
   def estimator(self):
@@ -478,12 +490,11 @@ class Experiment(object):
 
   @experimental
   def continuous_train_and_eval(self,
-                                train_steps_per_iteration=1000,
                                 continuous_eval_predicate_fn=None):
     """Interleaves training and evaluation.
 
-    The frequency of evaluation is controlled by the
-    `train_steps_per_iteration`. The model will be first trained for
+    The frequency of evaluation is controlled by the `train_steps_per_iteration`
+    (via constructor). The model will be first trained for
     `train_steps_per_iteration`, and then be evaluated in turns.
 
     This differs from `train_and_evaluate` as follows:
@@ -499,10 +510,6 @@ class Experiment(object):
       is generated at the end of each small trainning iteration.
 
     Args:
-      train_steps_per_iteration: The (integer) number of train steps for
-        each training-evaluation iteration. With a small
-        `train_steps_per_iteration`, the model will be evaluated more frequently
-        with more checkpoints saved.
       continuous_eval_predicate_fn: A predicate function determining whether to
         continue after each iteration. `predicate_fn` takes the evaluation
         results as its arguments. At the beginning of evaluation, the passed
@@ -524,16 +531,15 @@ class Experiment(object):
       raise ValueError(
           "`continuous_eval_predicate_fn` must be a callable, or None.")
 
-    if not isinstance(train_steps_per_iteration, int):
-      raise ValueError(
-          "`train_steps_per_iteration` must be an integer.")
-
     eval_result = None
 
-    # TODO(b/33295821): improve the way to determine the
-    # train_steps_per_iteration.
-    if self._train_steps and train_steps_per_iteration > self._train_steps:
-      train_steps_per_iteration = self._train_steps
+    # Set the default value for train_steps_per_iteration, which will be
+    # overriden by other settings.
+    train_steps_per_iteration = 1000
+    if self._train_steps_per_iteration is not None:
+      train_steps_per_iteration = self._train_steps_per_iteration
+    elif self._train_steps is not None:
+      train_steps_per_iteration = int(self._train_steps / 10)
 
     while (not continuous_eval_predicate_fn or
            continuous_eval_predicate_fn(eval_result)):
