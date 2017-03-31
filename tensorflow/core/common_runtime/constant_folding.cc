@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -304,10 +305,18 @@ Status DoConstantFoldingWithStatus(const ConstantFoldingOptions& opts,
     tensors_to_replace.push_back({n.second, n.first.second});
   }
 
+  auto graph_runner = std::unique_ptr<GraphRunner>(new GraphRunner(env));
   // Evaluate the constant foldable nodes.
   std::vector<Tensor> outputs;
-  Status s = GraphRunner::Run(constant_graph.get(), function_library, env,
-                              {} /* inputs*/, tensors_to_fetch_names, &outputs);
+  auto delete_tensors = gtl::MakeCleanup([&graph_runner, &outputs] {
+    // Output tensors need to be cleared before the GraphRunner is deleted.
+    outputs.clear();
+    graph_runner.reset(nullptr);
+  });
+
+  Status s =
+      graph_runner->Run(constant_graph.get(), function_library, {} /* inputs*/,
+                        tensors_to_fetch_names, &outputs);
   if (!s.ok()) {
     VLOG(1) << "Could not fetch constants: " << s;
     *was_mutated = false;
