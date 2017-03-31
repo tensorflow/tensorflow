@@ -887,6 +887,8 @@ class _BinaryLogisticHead(_SingleHead):
           _indicator_labels_streaming_mean(labels, weights))
       metrics[_summary_key(self.head_name, mkey.AUC)] = (
           _streaming_auc(logistic, labels, weights))
+      metrics[_summary_key(self.head_name, mkey.AUC_PR)] = (
+          _streaming_auc(logistic, labels, weights, curve="PR"))
 
       for threshold in self._thresholds:
         metrics[_summary_key(
@@ -1360,6 +1362,8 @@ class _MultiLabelHead(_SingleHead):
           metrics_lib.streaming_accuracy(classes, labels, weights))
       metrics[_summary_key(self.head_name, mkey.AUC)] = _streaming_auc(
           probabilities, labels, weights)
+      metrics[_summary_key(self.head_name, mkey.AUC_PR)] = _streaming_auc(
+          probabilities, labels, weights, curve="PR")
 
       for class_id in self._metric_class_ids:
         # TODO(ptucker): Add per-class accuracy, precision, recall.
@@ -1377,6 +1381,9 @@ class _MultiLabelHead(_SingleHead):
                 _predictions_streaming_mean(logits, weights, class_id))
         metrics[_summary_key(self.head_name, mkey.CLASS_AUC % class_id)] = (
             _streaming_auc(probabilities, labels, weights, class_id))
+        metrics[_summary_key(self.head_name, mkey.CLASS_AUC_PR % class_id)] = (
+            _streaming_auc(probabilities, labels, weights, class_id,
+                           curve="PR"))
 
     return metrics
 
@@ -1843,7 +1850,8 @@ def _class_labels_streaming_mean(labels, weights, class_id):
       weights=weights)
 
 
-def _streaming_auc(predictions, labels, weights=None, class_id=None):
+def _streaming_auc(predictions, labels, weights=None, class_id=None,
+                   curve="ROC"):
   predictions = ops.convert_to_tensor(predictions)
   labels = ops.convert_to_tensor(labels)
   if class_id is not None:
@@ -1852,7 +1860,8 @@ def _streaming_auc(predictions, labels, weights=None, class_id=None):
   return metrics_lib.streaming_auc(
       predictions,
       math_ops.cast(labels, dtypes.bool),
-      weights=_float_weights_or_none(weights))
+      weights=_float_weights_or_none(weights),
+      curve=curve)
 
 
 def _assert_class_id(class_id, num_classes=None):
