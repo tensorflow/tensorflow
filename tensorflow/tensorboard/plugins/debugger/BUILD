@@ -30,6 +30,7 @@ py_test(
     srcs = ["debugger_plugin_test.py"],
     main = "debugger_plugin_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":debugger_plugin",
         "//tensorflow/core:protos_all_py",
