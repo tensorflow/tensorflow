@@ -612,4 +612,6 @@ done
 # end of if "$TF_NEED_OPENCL" == "1"
 fi
 
+# TODO(gunan): Remove once bazel correctly handles changes in remote repositories.
+bazel clean
 echo "Configuration finished"
