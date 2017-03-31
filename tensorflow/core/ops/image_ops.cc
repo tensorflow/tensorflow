@@ -564,6 +564,19 @@ contents: 0-D. PNG-encoded image.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("DecodeBmp")
+    .Input("contents: string")
+    .Output("image: uint8")
+    .Attr("channels: int = 3")
+    .SetShapeFn(DecodeImageShapeFn)
+    .Doc(R"doc(
+Decode the first frame of a BMP-encoded image to a uint8 tensor.
+
+contents: 0-D.  The BMP-encoded image.
+image: 3-D with shape `[height, width, 3]`. RGB order
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("DecodeGif")
     .Input("contents: string")
     .Output("image: uint8")
