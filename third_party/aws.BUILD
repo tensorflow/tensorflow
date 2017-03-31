@@ -14,15 +14,25 @@ cc_library(
     srcs = select({
         ":linux_x86_64": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
-        ]),
-        "//conditions:default": glob([
             "aws-cpp-sdk-core/source/*.cpp",
-            "aws-cpp-sdk-core/source/auth/*.cpp",
-            "aws-cpp-sdk-core/source/config/*.cpp",
-            "aws-cpp-sdk-core/source/client/*.cpp",
-            "aws-cpp-sdk-core/source/external/*.cpp",
-            "aws-cpp-sdk-core/source/internal/*.cpp",
+            "aws-cpp-sdk-core/source/auth/**/*.cpp",
+            "aws-cpp-sdk-core/source/config/**/*.cpp",
+            "aws-cpp-sdk-core/source/client/**/*.cpp",
+            "aws-cpp-sdk-core/source/external/**/*.cpp",
+            "aws-cpp-sdk-core/source/internal/**/*.cpp",
+            "aws-cpp-sdk-core/source/http/*.cpp",
+            "aws-cpp-sdk-core/source/http/curl/**/*.cpp",
+            "aws-cpp-sdk-core/source/http/standard/**/*.cpp",
             "aws-cpp-sdk-core/source/utils/*.cpp",
+            "aws-cpp-sdk-core/source/utils/base64/**/*.cpp",
+            "aws-cpp-sdk-core/source/utils/json/**/*.cpp",
+            "aws-cpp-sdk-core/source/utils/logging/**/*.cpp",
+            "aws-cpp-sdk-core/source/utils/memory/**/*.cpp",
+            "aws-cpp-sdk-core/source/utils/stream/**/*.cpp",
+            "aws-cpp-sdk-core/source/utils/threading/**/*.cpp",
+            "aws-cpp-sdk-core/source/utils/xml/**/*.cpp",
+            "aws-cpp-sdk-core/source/utils/crypto/*.cpp",
+            "aws-cpp-sdk-core/source/utils/crypto/factory/**/*.cpp",
             "aws-cpp-sdk-s3/source/**/*.cpp",
         ]),
     }),
@@ -31,11 +41,18 @@ cc_library(
         "aws-cpp-sdk-s3/include/",
     ],
     defines = select({
-        ":linux_x86_64": ["PLATFORM_LINUX"],
+        ":linux_x86_64": [
+            "PLATFORM_LINUX",
+            "ENABLE_CURL_CLIENT",
+            "ENABLE_NO_ENCRYPTION",
+        ],
         "//conditions:default": [],
     }),
     hdrs = [
         "aws-cpp-sdk-core/include/aws/core/SDKConfig.h",
+    ],
+    deps = [
+        "@curl//:curl",
     ],
 )
 
