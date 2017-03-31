@@ -117,7 +117,7 @@ static RemoteFusedGraphExecuteInfo BuildRemoteFusedGraphExecuteInfo(
   // In this example, simply copy all nodes. Basically, you don't need to add
   // unused node for inference.
   for (const NodeDef& node : original_graph.node()) {
-    NodeDef& copied_node = *execute_info.add_node();
+    NodeDef& copied_node = *execute_info.mutable_remote_graph()->add_node();
     copied_node = node;
     // Adding tensor shape type to the node
     // TODO(satok): Use TensorShapeMap to detime tensor shape type
@@ -149,7 +149,7 @@ class TestRemoteFusedGraphExecutor final : public IRemoteFusedGraphExecutor {
   int GetVersion() final { return 1; }
   bool Init(const RemoteFusedGraphExecuteInfo& info) final {
     info_ = &info;
-    for (const NodeDef& node_def : info.node()) {
+    for (const NodeDef& node_def : info.remote_graph().node()) {
       node_def_map_.emplace(node_def.name(), &node_def);
     }
     return true;

@@ -55,8 +55,21 @@ bool HexagonControlWrapper::Init(const RemoteFusedGraphExecuteInfo& info) {
   if (DBG_USE_SAMPLE_INPUT) {
     soc_interface_SetDebugFlag(FLAG_ENABLE_PANDA_BINARY_INPUT);
   }
-  graph_transferer_.SetSerializedGraphTransferInfo(
-      info.serialized_executor_parameters());
+  if (info.serialized_executor_parameters().empty()) {
+    std::vector<std::pair<string, Tensor>> inputs;
+    std::vector<string> outputs;
+    RemoteFusedGraphExecuteUtils::BuildRemoteGraphInputsAndOutputsFromProto(
+        info, &inputs, &outputs);
+    graph_transferer_.LoadGraphFromProto(
+        HexagonOpsDefinitions::getInstance(), info.remote_graph(), inputs,
+        outputs,
+        false  // shape_inference_for_unknown_shape
+        );
+  } else {
+    // If graph transfer info is attached, just import it.
+    graph_transferer_.SetSerializedGraphTransferInfo(
+        info.serialized_executor_parameters());
+  }
   execute_info_ = &info;
   return soc_interface_Init();
 }
