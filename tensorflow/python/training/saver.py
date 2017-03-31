@@ -792,14 +792,66 @@ def update_checkpoint_state(save_dir,
       'checkpoint'.
 
   Raises:
-    RuntimeError: If the save paths conflict.
+    RuntimeError: If any of the model checkpoint paths conflict with the file
+      containing CheckpointSate.
+  """
+  _update_checkpoint_state(
+      save_dir=save_dir,
+      model_checkpoint_path=model_checkpoint_path,
+      all_model_checkpoint_paths=all_model_checkpoint_paths,
+      latest_filename=latest_filename,
+      save_relative_paths=False)
+
+
+def _update_checkpoint_state(save_dir,
+                             model_checkpoint_path,
+                             all_model_checkpoint_paths=None,
+                             latest_filename=None,
+                             save_relative_paths=False):
+  """Updates the content of the 'checkpoint' file.
+
+  This updates the checkpoint file containing a CheckpointState
+  proto.
+
+  Args:
+    save_dir: Directory where the model was saved.
+    model_checkpoint_path: The checkpoint file.
+    all_model_checkpoint_paths: List of strings.  Paths to all not-yet-deleted
+      checkpoints, sorted from oldest to newest.  If this is a non-empty list,
+      the last element must be equal to model_checkpoint_path.  These paths
+      are also saved in the CheckpointState proto.
+    latest_filename: Optional name of the checkpoint file.  Default to
+      'checkpoint'.
+    save_relative_paths: If `True`, will write relative paths to the checkpoint
+      state file.
+
+  Raises:
+    RuntimeError: If any of the model checkpoint paths conflict with the file
+      containing CheckpointSate.
   """
   # Writes the "checkpoint" file for the coordinator for later restoration.
   coord_checkpoint_filename = _GetCheckpointFilename(save_dir, latest_filename)
-  ckpt = generate_checkpoint_state_proto(
-      save_dir,
-      model_checkpoint_path,
-      all_model_checkpoint_paths=all_model_checkpoint_paths)
+  if save_relative_paths:
+    if os.path.isabs(model_checkpoint_path):
+      rel_model_checkpoint_path = os.path.relpath(
+          model_checkpoint_path, save_dir)
+    else:
+      rel_model_checkpoint_path = model_checkpoint_path
+    rel_all_model_checkpoint_paths = []
+    for p in all_model_checkpoint_paths:
+      if os.path.isabs(p):
+        rel_all_model_checkpoint_paths.append(os.path.relpath(p, save_dir))
+      else:
+        rel_all_model_checkpoint_paths.append(p)
+    ckpt = generate_checkpoint_state_proto(
+        save_dir,
+        rel_model_checkpoint_path,
+        all_model_checkpoint_paths=rel_all_model_checkpoint_paths)
+  else:
+    ckpt = generate_checkpoint_state_proto(
+        save_dir,
+        model_checkpoint_path,
+        all_model_checkpoint_paths=all_model_checkpoint_paths)
 
   if coord_checkpoint_filename == ckpt.model_checkpoint_path:
     raise RuntimeError("Save path '%s' conflicts with path used for "
@@ -956,7 +1008,8 @@ class Saver(object):
                defer_build=False,
                allow_empty=False,
                write_version=saver_pb2.SaverDef.V2,
-               pad_step_number=False):
+               pad_step_number=False,
+               save_relative_paths=False):
     """Creates a `Saver`.
 
     The constructor adds ops to save and restore variables.
@@ -1029,6 +1082,9 @@ class Saver(object):
       pad_step_number: if True, pads the global step number in the checkpoint
         filepaths to some fixed width (8 by default).  This is turned off by
         default.
+      save_relative_paths: If `True`, will write relative paths to the
+        checkpoint state file. This is needed if the user wants to copy the
+        checkpoint directory and reload from the copied directory.
 
     Raises:
       TypeError: If `var_list` is invalid.
@@ -1057,6 +1113,7 @@ class Saver(object):
     if self.saver_def:
       self._check_saver_def()
       self._write_version = self.saver_def.version
+    self._save_relative_paths = save_relative_paths
 
   def build(self):
     """Builds saver_def."""
@@ -1393,8 +1450,12 @@ class Saver(object):
       if write_state:
         self._MaybeDeleteOldCheckpoints(
             model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
-        update_checkpoint_state(save_path, model_checkpoint_path,
-                                self.last_checkpoints, latest_filename)
+        _update_checkpoint_state(
+            save_dir=save_path,
+            model_checkpoint_path=model_checkpoint_path,
+            all_model_checkpoint_paths=self.last_checkpoints,
+            latest_filename=latest_filename,
+            save_relative_paths=self._save_relative_paths)
 
     if write_meta_graph:
       meta_graph_filename = self._MetaGraphFilename(
