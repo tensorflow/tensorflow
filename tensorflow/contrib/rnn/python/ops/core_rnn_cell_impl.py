@@ -466,12 +466,13 @@ class OutputProjectionWrapper(RNNCell):
   if needed or directly feed into a softmax.
   """
 
-  def __init__(self, cell, output_size, reuse=None):
+  def __init__(self, cell, output_size, activation=None, reuse=None):
     """Create a cell with output projection.
 
     Args:
       cell: an RNNCell, a projection to output_size is added to it.
       output_size: integer, the size of the output after projection.
+      activation: (optional) an optional activation function.
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
@@ -487,6 +488,7 @@ class OutputProjectionWrapper(RNNCell):
     self._cell = cell
     self._output_size = output_size
     self._reuse = reuse
+    self._activation = activation
 
   @property
   def state_size(self):
@@ -507,6 +509,8 @@ class OutputProjectionWrapper(RNNCell):
     with _checked_scope(self, scope or "output_projection_wrapper",
                         reuse=self._reuse):
       projected = _linear(output, self._output_size, True)
+      if self._activation:
+        projected = self._activation(projected)
     return projected, res_state
 
 
@@ -518,12 +522,13 @@ class InputProjectionWrapper(RNNCell):
   do the projection on this batch-concatenated sequence, then split it.
   """
 
-  def __init__(self, cell, num_proj, input_size=None):
+  def __init__(self, cell, num_proj, activation=None, input_size=None):
     """Create a cell with input projection.
 
     Args:
       cell: an RNNCell, a projection of inputs is added before it.
       num_proj: Python integer.  The dimension to project to.
+      activation: (optional) an optional activation function.
       input_size: Deprecated and unused.
 
     Raises:
@@ -535,6 +540,7 @@ class InputProjectionWrapper(RNNCell):
       raise TypeError("The parameter cell is not RNNCell.")
     self._cell = cell
     self._num_proj = num_proj
+    self._activation = activation
 
   @property
   def state_size(self):
@@ -553,6 +559,8 @@ class InputProjectionWrapper(RNNCell):
     # Default scope: "InputProjectionWrapper"
     with vs.variable_scope(scope or "input_projection_wrapper"):
       projected = _linear(inputs, self._num_proj, True)
+      if self._activation:
+        projected = self._activation(projected)
     return self._cell(projected, state)
 
 
