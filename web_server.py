@@ -20,7 +20,7 @@ def allowed_file(filename):
         filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @APP.route('/')
-def hello_world():
+def index():
     """ Index page. TODO: Replace with a dashboard or something to help manage the server """
     return APP.send_static_file('index.html')
 
@@ -39,25 +39,50 @@ def images():
         # Display file upload form
         return APP.send_static_file('upload.html')
     if request.method == 'POST':
-        # Upload the images attached to the request under the set_name folder
+        # Check if the form data was completed successfully
+        if 'species' not in request.form:
+            flash('Plant species not specified')
+            return redirect(request.url)
         if 'file' not in request.files:
             flash('No files attached')
             return redirect(request.url)
-        img = request.files['file']
 
-        # if user does not select file, browser also
-        # submit a empty part without a filename
+        # Grab the form data
+        species = request.form['species'].replace(' ', '_').lower()
+        img = request.files['file']
+        extension = img.filename.rsplit('.', 1)[1].lower()
+
+        # Debug lines
+        print 'species: {0}'.format(species)
+
+        # Check if no file was selected
         if img.filename == '':
             flash('No file selected')
             return redirect(request.url)
 
-        if img and allowed_file(img.filename):
-            filename = secure_filename(img.filename)
-            directory = APP.config['UPLOAD_FOLDER']
-
-            # create the file path if it does not exist
+        # Process file if all information is present
+        if img and allowed_file(img.filename) and species:
+            # Create the file path if it does not exist
+            directory = os.path.join(APP.config['UPLOAD_FOLDER'], species.replace(' ', '_'))
             if not os.path.exists(directory):
                 os.makedirs(directory)
+
+            # Count the number of files in the species directory to figure out
+            # what number to assign to the uploaded image
+            number = len([name for name in os.listdir(directory) if os.path.isfile(name)])
+            filename = species.replace(' ', '_') + '_' + str(number).zfill(4) + '.' + extension
+
+            # Check if file name already exists
+            while os.path.isfile(os.path.join(directory, filename)):
+                number = number + 1
+                filename = species.replace(' ', '_') + '_' + str(number).zfill(4) + '.' + extension
+
+                # Debug lines
+                print 'number incremented to {0}'.format(number)
+
+            # Debug lines
+            print 'directory: {0}'.format(directory)
+            print 'file name: {0}'.format(filename)
 
             # save the image in the directory
             img.save(os.path.join(directory, filename))
@@ -80,18 +105,21 @@ def push_label_update():
 def check_version():
     """ Check the metadata of the model file to see if there is a new
     version available. """
+    # Grab the URL arguments
     update_available = False
     client_mod_time = int(request.args.get('time-modified'))
     client_size = int(request.args.get('size'))
 
+    # Grab the metadata for the model file in the server
     file_info = os.stat('tensorflow/examples/android/assets/tensorflow_inception_graph.pb')
     size = file_info[ST_SIZE]
     mod_time = file_info[ST_MTIME]
 
+    # Debug lines
     print 'client mod time: {0}, client size: {1}'.format(client_mod_time, client_size)
     print 'server mod time: {0}, server size: {1}'.format(mod_time, size)
 
-    # compare the last modified time first
+    # Compare the last modified time first
     if client_mod_time < mod_time:
         print 'client mod time is older than server mod time'
         update_available = True
@@ -101,6 +129,7 @@ def check_version():
             mimetype='application/json'
         )
 
+    # Compare size if modified time is the same (which should not happen)
     if client_size != size:
         print 'client size is not the same as server size'
         update_available = True
@@ -110,6 +139,7 @@ def check_version():
             mimetype='application/json'
         )
 
+    # No update available, return false
     print 'no update available'
     return APP.response_class(
         response=json.dumps(update_available),
