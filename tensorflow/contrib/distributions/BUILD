@@ -15,7 +15,6 @@ py_library(
     srcs = glob(["python/ops/bijectors/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -41,7 +40,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":bijectors_py",
-        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",

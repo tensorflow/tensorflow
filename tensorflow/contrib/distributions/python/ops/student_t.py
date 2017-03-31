@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -161,7 +160,7 @@ class StudentT(distribution.Distribution):
         self._df = array_ops.identity(df, name="df")
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        contrib_tensor_util.assert_same_float_dtype(
+        check_ops.assert_same_float_dtype(
             (self._df, self._loc, self._scale))
     super(StudentT, self).__init__(
         dtype=self._scale.dtype,

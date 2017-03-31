@@ -21,7 +21,6 @@ from __future__ import print_function
 import math
 
 from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -108,7 +107,7 @@ class Uniform(distribution.Distribution):
       ] if validate_args else []):
         self._low = array_ops.identity(low, name="low")
         self._high = array_ops.identity(high, name="high")
-        contrib_tensor_util.assert_same_float_dtype([self._low, self._high])
+        check_ops.assert_same_float_dtype([self._low, self._high])
     super(Uniform, self).__init__(
         dtype=self._low.dtype,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
