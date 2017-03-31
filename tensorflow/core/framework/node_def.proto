@@ -29,9 +29,8 @@ message NodeDef {
   // node should be placed.
   // The expected syntax for this string is as follows:
   //
-  // DEVICE_SPEC ::= COLOCATED_NODE | PARTIAL_SPEC
+  // DEVICE_SPEC ::= PARTIAL_SPEC
   //
-  // COLOCATED_NODE ::= "@" NODE_NAME  // See NodeDef.name above.
   // PARTIAL_SPEC ::= ("/" CONSTRAINT) *
   // CONSTRAINT ::= ("job:" JOB_NAME)
   //              | ("replica:" [1-9][0-9]*)
@@ -39,7 +38,6 @@ message NodeDef {
   //              | ( ("gpu" | "cpu") ":" ([1-9][0-9]* | "*") )
   //
   // Valid values for this string include:
-  // * "@other/node"                         (colocate with "other/node")
   // * "/job:worker/replica:0/task:1/gpu:3"  (full specification)
   // * "/job:worker/gpu:3"                   (partial specification)
   // * ""                                    (no specification)
