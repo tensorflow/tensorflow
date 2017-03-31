@@ -78,33 +78,33 @@ void* AlignedMalloc(size_t size, int minimum_alignment) {
 
 void AlignedFree(void* aligned_memory) {
 #ifdef TENSORFLOW_USE_JEMALLOC
-    jemalloc_free(aligned_memory);
+  jemalloc_free(aligned_memory);
 #else
-    _aligned_free(aligned_memory);
+  _aligned_free(aligned_memory);
 #endif
 }
 
 void* Malloc(size_t size) {
 #ifdef TENSORFLOW_USE_JEMALLOC
-    return jemalloc_malloc(size);
+  return jemalloc_malloc(size);
 #else
-    return malloc(size);
+  return malloc(size);
 #endif
 }
 
 void* Realloc(void* ptr, size_t size) {
 #ifdef TENSORFLOW_USE_JEMALLOC
-    return jemalloc_realloc(ptr, size);
+  return jemalloc_realloc(ptr, size);
 #else
-    return realloc(ptr, size);
+  return realloc(ptr, size);
 #endif
 }
 
 void Free(void* ptr) {
 #ifdef TENSORFLOW_USE_JEMALLOC
-    return jemalloc_free(ptr);
+  return jemalloc_free(ptr);
 #else
-    return free(ptr);
+  return free(ptr);
 #endif
 }
 
