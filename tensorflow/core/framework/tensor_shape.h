@@ -289,6 +289,11 @@ class TensorShapeUtils {
   static Status MakeShape(const int64* dims, int64 n, TensorShape* out);
   static Status MakeShape(gtl::ArraySlice<int32> shape, TensorShape* out);
   static Status MakeShape(gtl::ArraySlice<int64> shape, TensorShape* out);
+  // Convert from Eigen::TensorMap
+  template<typename T>
+  inline static Status MakeShape(T &t, TensorShape *out) {
+     return MakeShape( t.data(), t.size(), out );
+  }
 
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
 

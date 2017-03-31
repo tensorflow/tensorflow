@@ -30,8 +30,8 @@ namespace functor {
 template <>
 struct DenseUpdate<Eigen::ThreadPoolDevice, string, ASSIGN> {
   void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<string>::Flat params,
-                  typename TTypes<string>::ConstFlat update) {
+                  TTypes<string>::Flat params,
+                  TTypes<string>::ConstFlat update) {
     if (params.dimension(0) == 1) {
       params.data()->resize(update.data()->size());
       auto work = [&params, &update](int64 start, int64 end) {

@@ -204,8 +204,9 @@ class MergeV2Checkpoints : public OpKernel {
                     "Input destination_prefix should be a scalar tensor, got ",
                     destination_prefix.shape().DebugString(), " instead."));
 
+    auto flat = checkpoint_prefixes.flat<string>();
     const gtl::ArraySlice<string> input_prefixes =
-        gtl::ArraySlice<string>(checkpoint_prefixes.flat<string>());
+        gtl::ArraySlice<string>(flat.data(),flat.size());
     Env* env = Env::Default();
     const string& merged_prefix = destination_prefix.scalar<string>()();
     OP_REQUIRES_OK(

@@ -78,10 +78,10 @@ class EdgeSet {
 
 class EdgeSet::const_iterator {
  public:
-  typedef typename EdgeSet::value_type value_type;
-  typedef const typename EdgeSet::value_type& reference;
-  typedef const typename EdgeSet::value_type* pointer;
-  typedef typename EdgeSet::difference_type difference_type;
+  typedef EdgeSet::value_type value_type;
+  typedef const EdgeSet::value_type& reference;
+  typedef const EdgeSet::value_type* pointer;
+  typedef EdgeSet::difference_type difference_type;
   typedef std::forward_iterator_tag iterator_category;
 
   const_iterator() {}
@@ -99,7 +99,7 @@ class EdgeSet::const_iterator {
   friend class EdgeSet;
 
   void const* const* array_iter_ = nullptr;
-  typename std::set<const Edge*>::const_iterator tree_iter_;
+  std::set<const Edge*>::const_iterator tree_iter_;
 
 #ifdef NDEBUG
   inline void Init(const EdgeSet* e) {}

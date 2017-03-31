@@ -90,7 +90,7 @@ struct TTypes {
                                          IndexType> > UnalignedConstMatrix;
 };
 
-typedef typename TTypes<float, 1>::Tensor32Bit::Index Index32;
+typedef TTypes<float, 1>::Tensor32Bit::Index Index32;
 
 template <typename DSizes>
 Eigen::DSizes<Index32, DSizes::count> To32BitDims(const DSizes& in) {

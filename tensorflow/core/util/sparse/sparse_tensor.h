@@ -38,7 +38,7 @@ namespace sparse {
 
 class SparseTensor {
  public:
-  typedef typename gtl::ArraySlice<int64> VarDimArray;
+  typedef gtl::ArraySlice<int64> VarDimArray;
 
   SparseTensor(Tensor ix, Tensor vals, const TensorShape& shape)
       : SparseTensor(ix, vals, shape, UndefinedOrder(shape)) {}

@@ -191,7 +191,7 @@ struct FakeQuantWithMinMaxVarsGradientFunctor {
   }
 };
 
-using Index = typename tensorflow::TTypes<float>::ConstTensor::Index;
+using Index = tensorflow::TTypes<float>::ConstTensor::Index;
 
 // Functor called by FakeQuantWithMinMaxVarsPerChannelOp to do the work.
 // Compiles both for CPU and GPU.

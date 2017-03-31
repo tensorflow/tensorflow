@@ -65,7 +65,7 @@ static inline void DecreasingArgSort(const std::vector<float>& values,
 }
 
 // Compute intersection-over-union overlap between boxes i and j.
-static inline float ComputeIOU(typename TTypes<float, 2>::ConstTensor boxes,
+static inline float ComputeIOU(TTypes<float, 2>::ConstTensor boxes,
                                int i, int j) {
   const float ymin_i = std::min<float>(boxes(i, 0), boxes(i, 2));
   const float xmin_i = std::min<float>(boxes(i, 1), boxes(i, 3));

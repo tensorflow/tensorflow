@@ -1032,7 +1032,7 @@ class SparseMatMulOp : public OpKernel {
           new Tensor(right->dtype(),
                      TensorShape({right->dim_size(1), right->dim_size(0)})));
 
-      Eigen::array<int, 2> perm({1, 0});
+      Eigen::array<int, 2> perm{1, 0};
       if (transpose_output) {
         right_tr->matrix<TL>().device(ctx->template eigen_device<CPUDevice>()) =
             right->matrix<TL>().shuffle(perm);
@@ -1076,7 +1076,7 @@ inline void SparseMatMul<TL, TR>::ComputeOutputBlock(
     const typename SparseMatMul<TL, TR>::ConstMatrixMapR& right, int num_cols,
     int output_row_offset, int output_col_offset, bool assign,
     bool transpose_output, MatrixMap* output) {
-  static const Eigen::array<int, 2> perm({1, 0});
+  static const Eigen::array<int, 2> perm{1, 0};
   int num_rows = left[0]->num_rows;
   const int rhs_num_cols = right.dimension(1);
   DCHECK_LE(num_cols, rhs_num_cols);

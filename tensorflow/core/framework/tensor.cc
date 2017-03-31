@@ -235,7 +235,7 @@ struct ProtoHelper {};
       return proto.N##_val().size();                                   \
     }                                                                  \
     static void Fill(const T* data, size_t n, TensorProto* proto) {    \
-      typename ProtoHelper<T>::FieldType copy(data, data + n);         \
+      ProtoHelper<T>::FieldType copy(data, data + n);         \
       proto->mutable_##N##_val()->Swap(&copy);                         \
     }                                                                  \
   };

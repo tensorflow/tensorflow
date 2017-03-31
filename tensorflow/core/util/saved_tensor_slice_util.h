@@ -96,7 +96,7 @@ void Fill(T* data, size_t n, TensorProto* t);
   TENSOR_PROTO_EXTRACT_TYPE_HELPER(TYPE, FIELD, FTYPE, FTYPE)     \
   template <>                                                     \
   inline void Fill(const TYPE* data, size_t n, TensorProto* t) {  \
-    typename protobuf::RepeatedField<FTYPE> copy(data, data + n); \
+    protobuf::RepeatedField<FTYPE> copy(data, data + n); \
     t->mutable_##FIELD##_val()->Swap(&copy);                      \
   }
 
@@ -106,7 +106,7 @@ void Fill(T* data, size_t n, TensorProto* t);
   template <>                                                       \
   inline void Fill(const TYPE* data, size_t n, TensorProto* t) {    \
     const FTYPE* sub = reinterpret_cast<const FTYPE*>(data);        \
-    typename protobuf::RepeatedField<FTYPE> copy(sub, sub + 2 * n); \
+    protobuf::RepeatedField<FTYPE> copy(sub, sub + 2 * n); \
     t->mutable_##FIELD##_val()->Swap(&copy);                        \
   }
 
@@ -142,7 +142,7 @@ inline const int32* TensorProtoData<qint32>(const TensorProto& t) {
 
 inline void Fill(const qint32* data, size_t n, TensorProto* t) {
   const int32* p = reinterpret_cast<const int32*>(data);
-  typename protobuf::RepeatedField<int32> copy(p, p + n);
+  protobuf::RepeatedField<int32> copy(p, p + n);
   t->mutable_int_val()->Swap(&copy);
 }
 
@@ -168,7 +168,7 @@ inline protobuf::RepeatedField<int32>* MutableTensorProtoData<Eigen::half>(
 
 template <>
 inline void Fill(const Eigen::half* data, size_t n, TensorProto* t) {
-  typename protobuf::RepeatedField<int32>* val = t->mutable_half_val();
+  protobuf::RepeatedField<int32>* val = t->mutable_half_val();
   val->Resize(n, 0);
   for (size_t i = 0; i < n; ++i) {
     val->Set(i, data[i].x);
@@ -201,7 +201,7 @@ inline protobuf::RepeatedPtrField<string>* MutableTensorProtoData<string>(
 
 template <>
 inline void Fill(const string* data, size_t n, TensorProto* t) {
-  typename protobuf::RepeatedPtrField<string> copy(data, data + n);
+  protobuf::RepeatedPtrField<string> copy(data, data + n);
   t->mutable_string_val()->Swap(&copy);
 }
 

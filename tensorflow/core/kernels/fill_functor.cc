@@ -31,7 +31,7 @@ void SetZeroFunctor<Eigen::ThreadPoolDevice, T>::operator()(
 }
 
 void SetZeroFunctor<Eigen::ThreadPoolDevice, string>::operator()(
-    const Eigen::ThreadPoolDevice& d, typename TTypes<string>::Flat out) {
+    const Eigen::ThreadPoolDevice& d, TTypes<string>::Flat out) {
   out.device(d) = out.constant(string());
 }
 
