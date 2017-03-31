@@ -26,7 +26,6 @@ import types
 import numpy as np
 import six
 
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -381,7 +380,7 @@ class Distribution(_BaseDistribution):
     """
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
-      if t is None or not contrib_framework.is_tensor(t):
+      if t is None or not tensor_util.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
     self._dtype = dtype
     self._reparameterization_type = reparameterization_type

@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -157,7 +156,7 @@ class Beta(distribution.Distribution):
       self._concentration0 = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration0, name="concentration0"),
           validate_args)
-      contrib_tensor_util.assert_same_float_dtype([
+      check_ops.assert_same_float_dtype([
           self._concentration1, self._concentration0])
       self._total_concentration = self._concentration1 + self._concentration0
     super(Beta, self).__init__(

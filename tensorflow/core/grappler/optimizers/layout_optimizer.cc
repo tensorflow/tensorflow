@@ -271,14 +271,26 @@ class NodeProcessor {
       auto it = std::find_if(output->mutable_input()->begin(),
                              output->mutable_input()->end(),
                              [this](const string& input) {
-                               return input.compare(node_->name()) == 0;
+                               string node_name = NodeName(input);
+                               return node_name.compare(node_->name()) == 0;
                              });
+      if (it == output->mutable_input()->end()) {
+        return Status(error::INVALID_ARGUMENT,
+                      strings::StrCat("Expect ", node_->name(),
+                                      " to be an input of ", output->name()));
+      }
       int output_pos = NodePosition(*it);
+      // No need to process control nodes or nodes that use an output
+      // other than the first output: only the first output is of 4D NCHW/NHWC
+      // format and thus relevant here.
+      if (output_pos != 0) {
+        continue;
+      }
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
       AddNodeTranspose(
           node_name_NCHWToNHWC, node_->name(), node_->attr().at("T").type(),
-          node_->attr().at("_output_shapes").list().shape(output_pos), false);
+          node_->attr().at("_output_shapes").list().shape(0), false);
       *it = node_name_NCHWToNHWC;
       node_map_->UpdateOutput(node_->name(), output->name(),
                               node_name_NCHWToNHWC);
