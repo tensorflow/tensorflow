@@ -198,10 +198,10 @@ class Estimator(object):
     if (steps is not None) and (max_steps is not None):
       raise ValueError('Can not provide both steps and max_steps.')
     if steps is not None and steps <= 0:
-      raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+      raise ValueError('Must specify steps > 0, given: {}'.format(steps))
     if max_steps is not None and max_steps <= 0:
       raise ValueError(
-          'Must specify max_steps >= 0, given: {}'.format(max_steps))
+          'Must specify max_steps > 0, given: {}'.format(max_steps))
 
     if max_steps is not None:
       start_step = _load_global_step_from_checkpoint_dir(self._model_dir)
@@ -256,7 +256,7 @@ class Estimator(object):
     hooks = _check_hooks_type(hooks)
     if steps is not None:
       if steps <= 0:
-        raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+        raise ValueError('Must specify steps > 0, given: {}'.format(steps))
       hooks.append(evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
           num_evals=steps))
 
