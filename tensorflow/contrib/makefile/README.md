@@ -75,7 +75,7 @@ To run the executable, use:
 
 ```bash
 tensorflow/contrib/makefile/gen/bin/benchmark \
- --graph=~/graphs/inception/tensorflow_inception_graph.pb
+ --graph=$HOME/graphs/inception/tensorflow_inception_graph.pb
 ```
 
 ## Android
