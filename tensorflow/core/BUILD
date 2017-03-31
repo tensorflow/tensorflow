@@ -417,6 +417,14 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "overflow",
+    hdrs = ["util/overflow.h"],
+    deps = [
+        ":framework_lite",
+    ],
+)
+
+cc_library(
     name = "reader_base",
     srcs = ["framework/reader_base.cc"],
     hdrs = ["framework/reader_base.h"],
@@ -1847,6 +1855,18 @@ tf_cc_test(
         ":lib_internal",
         ":lib_test_internal",
         ":protos_all_cc",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "util_overflow_test",
+    size = "small",
+    srcs = ["util/overflow_test.cc"],
+    deps = [
+        ":framework_lite",
+        ":overflow",
         ":test",
         ":test_main",
     ],

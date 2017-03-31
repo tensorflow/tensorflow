@@ -119,6 +119,11 @@ class RemoteFusedGraphExecuteUtils {
       const TensorShapeMap& tensor_shape_map, const string& node_name,
       const int port);
 
+  static void BuildRemoteGraphInputsAndOutputsFromProto(
+      const RemoteFusedGraphExecuteInfo& proto,
+      std::vector<std::pair<string, Tensor>>* inputs,
+      std::vector<string>* outputs);
+
  private:
   static void EmplaceTensorShapeType(const string& name, const Tensor& tensor,
                                      TensorShapeMap* tensor_shape_map);
