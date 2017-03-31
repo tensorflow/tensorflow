@@ -405,6 +405,11 @@ add_python_module("tensorflow/contrib/ndlstm/python")
 add_python_module("tensorflow/contrib/nn")
 add_python_module("tensorflow/contrib/nn/python")
 add_python_module("tensorflow/contrib/nn/python/ops")
+add_python_module("tensorflow/contrib/nccl")
+add_python_module("tensorflow/contrib/nccl/kernels")
+add_python_module("tensorflow/contrib/nccl/ops")
+add_python_module("tensorflow/contrib/nccl/python")
+add_python_module("tensorflow/contrib/nccl/python/ops")
 add_python_module("tensorflow/contrib/opt")
 add_python_module("tensorflow/contrib/opt/python")
 add_python_module("tensorflow/contrib/opt/python/training")
@@ -599,6 +604,8 @@ GENERATE_PYTHON_OP_LIB("contrib_layers_sparse_feature_cross_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/layers/ops/gen_sparse_feature_cross_op.py)
 GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/memory_stats/ops/gen_memory_stats_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_nccl_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nccl/ops/gen_nccl_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_gru_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_gru_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_lstm_ops"
