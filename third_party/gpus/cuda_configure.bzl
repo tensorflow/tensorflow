@@ -42,7 +42,8 @@ def find_cc(repository_ctx):
   # On Windows, we use Bazel's MSVC CROSSTOOL for GPU build
   # Return a dummy value for GCC detection here to avoid error
   if _cpu_value(repository_ctx) == "Windows":
-    return "/usr/bin/dummycompiler"
+    return "/use/--config x64_windows_msvc/instead"
+
   if _use_cuda_clang(repository_ctx):
     target_cc_name = "clang"
     cc_path_envvar = _CLANG_CUDA_COMPILER_PATH
