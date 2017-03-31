@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -245,12 +246,54 @@ XLA_TEST_F(ScalarComputationsTest, RemTwoScalarsF32) {
   ComputeAndCompareR0<float>(&builder, 2.5f, {}, error_spec_);
 }
 
-XLA_TEST_F(ScalarComputationsTest, DivideTwoScalarsS32) {
-  ComputationBuilder builder(client_, TestName());
-  builder.Div(builder.ConstantR0<int32>(-5), builder.ConstantR0<int32>(2));
+struct DivS32Params {
+  int32 dividend;
+  int32 divisor;
+  int32 result;
+};
 
-  ComputeAndCompareR0<int32>(&builder, -2, {});
+void PrintTo(const DivS32Params& p, std::ostream* os) {
+  *os << "{" << p.dividend << ", " << p.divisor << ", " << p.result << "}";
 }
+
+class DivS32Test : public ClientLibraryTestBase,
+                   public ::testing::WithParamInterface<DivS32Params> {};
+
+XLA_TEST_P(DivS32Test, DivideTwoScalarsS32) {
+  DivS32Params p = GetParam();
+  ComputationBuilder builder(client_, TestName());
+  builder.Div(builder.ConstantR0<int32>(p.dividend),
+              builder.ConstantR0<int32>(p.divisor));
+
+  ComputeAndCompareR0<int32>(&builder, p.result, {});
+}
+
+INSTANTIATE_TEST_CASE_P(DivS32Test_Instantiation, DivS32Test,
+                        ::testing::Values(
+                            // Positive divisors.
+                            DivS32Params{5, 2, 2},     //
+                            DivS32Params{-5, 2, -2},   //
+                            DivS32Params{17, 3, 5},    //
+                            DivS32Params{-17, 3, -5},  //
+                            // Negative divisors.
+                            DivS32Params{5, -2, -2},   //
+                            DivS32Params{-5, -2, 2},   //
+                            DivS32Params{17, -3, -5},  //
+                            DivS32Params{-17, -3, 5},  //
+                            // Large positive divisors.
+                            DivS32Params{INT32_MIN, INT32_MAX, -1},       //
+                            DivS32Params{INT32_MIN + 1, INT32_MAX, -1},   //
+                            DivS32Params{INT32_MIN + 2, INT32_MAX, 0},    //
+                            DivS32Params{INT32_MIN, 0x40000000, -2},      //
+                            DivS32Params{INT32_MIN + 1, 0x40000000, -1},  //
+                            // Large negative divisors.
+                            DivS32Params{INT32_MIN, INT32_MIN, 1},       //
+                            DivS32Params{INT32_MIN, INT32_MIN + 1, 1},   //
+                            DivS32Params{INT32_MIN + 1, INT32_MIN, 0},   //
+                            DivS32Params{INT32_MAX, INT32_MIN, 0},       //
+                            DivS32Params{INT32_MAX, INT32_MIN + 1, -1},  //
+                            DivS32Params{INT32_MIN, -0x40000000, 2},     //
+                            DivS32Params{INT32_MIN + 1, -0x40000000, 1}));
 
 TEST_F(ScalarComputationsTest, RemainderTwoScalarsNegativeResultS32) {
   ComputationBuilder builder(client_, TestName());
