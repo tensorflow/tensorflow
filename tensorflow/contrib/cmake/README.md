@@ -45,7 +45,7 @@ bindings.
 
 ### Pre-requisites
 
-* CMake version 3.5 up to 3.6 or 3.8
+* CMake version 3.5 or later.
 
 * [Git](http://git-scm.com)
 
