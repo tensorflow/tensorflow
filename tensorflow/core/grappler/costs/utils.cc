@@ -101,6 +101,11 @@ OpInfo::DeviceProperties GetLocalCPUInfo() {
   OpInfo::DeviceProperties device;
   device.set_type("CPU");
 
+  device.set_vendor(port::CPUVendorIDString());
+  // Combine cpu family and model into the model string.
+  device.set_model(
+      strings::StrCat((port::CPUFamily() << 4) + port::CPUModelNum()));
+  device.set_frequency(port::NominalCPUFrequency());
   device.set_num_cores(port::NumSchedulableCPUs());
   device.set_l1_cache_size(Eigen::l1CacheSize());
   device.set_l2_cache_size(Eigen::l2CacheSize());
