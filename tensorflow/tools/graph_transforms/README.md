@@ -315,7 +315,7 @@ themselves contain commas (for example shape definitions).
 The --inputs and --outputs are shared across all transforms, since it's common
 to need to know what the ingoing and outgoing nodes in the graph are. You should
 make sure you set these correctly before calling the graph transform tool, and
-if you're in doubt check with the model's author, or use the [`summarize_graph`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/summarize_graph_main.cc) tool
+if you're in doubt check with the model's author, or use the [`summarize_graph`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/graph_transforms#inspecting-graphs) tool
 to examine likely inputs and outputs.
 
 All transforms can be passed the `ignore_errors` flag, with the value set to
