@@ -30,8 +30,8 @@ namespace {
 
 // Append the given nodes to tree with transfer of pointer ownership.
 // nodes will not be usable upon return.
-void AppendNodes(DecisionTreeConfig* tree,
-                 proto2::RepeatedPtrField<TreeNode>* nodes) {
+template <typename T>
+void AppendNodes(DecisionTreeConfig* tree, T* nodes) {
   std::reverse(nodes->pointer_begin(), nodes->pointer_end());
   while (!nodes->empty()) {
     tree->mutable_nodes()->AddAllocated(nodes->ReleaseLast());
