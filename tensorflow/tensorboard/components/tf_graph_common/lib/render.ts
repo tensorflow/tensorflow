@@ -45,7 +45,7 @@ export let MetanodeColors = {
    * Standard hue values for node color palette.
    */
   HUES: [220, 100, 180, 40, 20, 340, 260, 300, 140, 60],
-  STRUCTURE_PALETTE: function(id: number, lightened?: boolean) {
+  STRUCTURE_PALETTE(id: number, lightened?: boolean) {
     // The code below is a flexible way to computationally create a set
     // of colors that go well together.
     let hues = MetanodeColors.HUES;
@@ -56,8 +56,12 @@ export let MetanodeColors = {
     let light = lightened ? 95 : 80;
     return d3.hsl(hue, .01 * sat, .01 * light).toString();
   },
-  DEVICE_PALETTE: function(index: number):
-      string { return MetanodeColors.STRUCTURE_PALETTE(index);},
+  DEVICE_PALETTE(index: number): string {
+    return MetanodeColors.STRUCTURE_PALETTE(index);
+  },
+  XLA_CLUSTER_PALETTE(index: number): string {
+    return MetanodeColors.STRUCTURE_PALETTE(index);
+  },
   UNKNOWN: '#eee',
   GRADIENT_OUTLINE: '#888'
 };
@@ -159,6 +163,7 @@ export class RenderGraphInfo {
   private index: {[nodeName: string]: RenderNodeInfo};
   private renderedOpNames: string[];
   private deviceColorMap: d3.scale.Ordinal<string, string>;
+  private xlaClusterColorMap: d3.scale.Ordinal<string, string>;
   private memoryUsageScale: d3.scale.Linear<string, string>;
   private computeTimeScale: d3.scale.Linear<string, string>;
   /** Scale for the thickness of edges when there is no shape information. */
@@ -195,6 +200,13 @@ export class RenderGraphInfo {
         .domain(this.hierarchy.devices)
         .range(_.map(d3.range(this.hierarchy.devices.length),
                      MetanodeColors.DEVICE_PALETTE));
+
+    this.xlaClusterColorMap =
+        d3.scale.ordinal<string>()
+            .domain(this.hierarchy.xlaClusters)
+            .range(_.map(
+                d3.range(this.hierarchy.xlaClusters.length),
+                MetanodeColors.XLA_CLUSTER_PALETTE));
 
     let topLevelGraph = this.hierarchy.root.metagraph;
     // Find the maximum and minimum memory usage.
@@ -275,6 +287,13 @@ export class RenderGraphInfo {
       renderInfo.memoryColor = this.memoryUsageScale(node.stats.totalBytes);
       renderInfo.computeTimeColor =
         this.computeTimeScale(node.stats.totalMicros);
+    }
+
+    if (!node.isGroupNode) {
+      let clusterName = (node as OpNode).xlaCluster;
+      if (clusterName) {
+        renderInfo.xlaClusterColor = this.xlaClusterColorMap(clusterName);
+      }
     }
 
     // We only fade nodes when we're displaying stats.
@@ -1031,7 +1050,12 @@ export class RenderNodeInfo {
    * its children. If this node is an op node, this list will have only one
    * color with proportion 1.0.
    */
-  deviceColors: {color: string, proportion: number}[];
+  deviceColors: Array<{color: string, proportion: number}>;
+
+  /**
+   * Color according to the XLA cluster of this node.
+   */
+  xlaClusterColor: string;
 
   /**
    * Color according to the memory usage of this node.
