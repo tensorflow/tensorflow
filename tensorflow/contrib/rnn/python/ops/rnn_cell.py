@@ -1859,3 +1859,115 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
       new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
 
       return new_h, new_state
+
+class BasicConvLSTMCell(core_rnn_cell.RNNCell):
+  """Basic Convolutional LSTM recurrent network cell.
+
+  https://arxiv.org/pdf/1506.04214v1.pdf
+  """
+
+  def __init__(self,
+               shape,
+               filter_size,
+               num_features,
+               forget_bias=1.0,
+               activation=math_ops.tanh,
+               reuse=None):
+    """Initialize the basic Conv LSTM cell.
+    Args:
+      shape: int tuple thats the height and width of the cell
+      filter_size: int tuple thats the height and width of the filter
+      num_features: int thats the depth of the cell 
+      forget_bias: float, The bias added to forget gates (see above).
+      input_size: Deprecated and unused.
+      state_is_tuple: If True, accepted and returned states are 2-tuples of
+        the `c_state` and `m_state`.  If False, they are concatenated
+        along the column axis.  The latter behavior will soon be deprecated.
+      activation: Activation function of the inner states.
+    """
+    self._shape = shape 
+    self._filter_size = filter_size
+    self._num_features = num_features 
+    self._forget_bias = forget_bias
+    self._reuse = reuse
+    self._activation = activation
+
+  @property
+  def state_size(self):
+    return core_rnn_cell.LSTMStateTuple(self._shape, self._shape)
+
+  @property
+  def output_size(self):
+    return self._shape
+
+  def zero_state(self, batch_size, dtype):
+    shape = self._shape 
+    num_features = self._num_features
+    zero_c = array_ops.zeros([batch_size, shape[0], shape[1], num_features], dtype=dtype)
+    zero_h = array_ops.zeros([batch_size, shape[0], shape[1], num_features], dtype=dtype)
+    zero_state = core_rnn_cell.LSTMStateTuple(zero_c, zero_h)
+    return zero_state
+
+  def __call__(self, inputs, state, scope=None):
+    """Long short-term memory cell (LSTM)."""
+    with vs.variable_scope(scope or "conv_lstm_cell", reuse=self._reuse):  # "BasicLSTMCell"
+      # Parameters of gates are concatenated into one multiply for efficiency.
+      (c, h) = state
+
+      concat = _conv_linear([inputs, h], self._filter_size, self._num_features * 4, True)
+
+      i, j, f, o = array_ops.split(axis=3, num_or_size_splits=4, value=concat)
+
+      new_c = (c * math_ops.sigmoid(f + self._forget_bias) + math_ops.sigmoid(i) *
+               self._activation(j))
+      new_h = self._activation(new_c) * math_ops.sigmoid(o)
+
+      new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
+      return new_h, new_state
+
+def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
+  """convolution:
+  Args:
+    args: a 4D Tensor or a list of 4D, batch x n, Tensors.
+    filter_size: int tuple of filter height and width.
+    num_features: int, number of features.
+    bias_start: starting value to initialize the bias; 0 by default.
+    scope: VariableScope for the created subgraph; defaults to "Conv".
+  Returns:
+    A 4D Tensor with shape [batch h w num_features]
+  Raises:
+    ValueError: if some of the arguments has unspecified or wrong shape.
+  """
+
+  # Calculate the total size of arguments on dimension 1.
+  total_arg_size_depth = 0
+  shapes = [a.get_shape().as_list() for a in args]
+  for shape in shapes:
+    if len(shape) != 4:
+      raise ValueError("Conv Linear is expecting 4D arguments: %s" % str(shapes))
+    if not shape[3]:
+      raise ValueError("Conv Linear expects shape[4] of arguments: %s" % str(shapes))
+    else:
+      total_arg_size_depth += shape[3]
+
+  dtype = [a.dtype for a in args][0]
+
+  # Now the computation.
+  with vs.variable_scope(scope or "Conv"):
+    matrix = vs.get_variable(
+        "Matrix", [filter_size[0], filter_size[1], total_arg_size_depth, num_features], dtype=dtype)
+    if len(args) == 1:
+      res = nn_ops.conv2d(args[0], matrix, strides=[1, 1, 1, 1], padding='SAME')
+    else:
+      res = nn_ops.conv2d(array_ops.concat(axis=3, values=args), matrix, strides=[1, 1, 1, 1], padding='SAME')
+    if not bias:
+      return res
+    bias_term = vs.get_variable(
+        "Bias", [num_features],
+        dtype=dtype,
+        initializer=init_ops.constant_initializer(
+            bias_start, dtype=dtype))
+  return res + bias_term
+
+
+
