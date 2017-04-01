@@ -105,7 +105,7 @@ As an example, these steps will create a Maven project that uses TensorFlow:
      <b>mvn -q compile exec:java</b></pre>
 
 
-The preceeding command should output <tt>Hello from <i>version</i></tt>. If it
+The preceding command should output <tt>Hello from <i>version</i></tt>. If it
 does, you've succesfully set up TensorFlow for Java and are ready to use it in
 Maven projects. If not, check
 [Stack Overflow](http://stackoverflow.com/questions/tagged/tensorflow)
