@@ -2,6 +2,7 @@
 .ipynb_checkpoints
 node_modules
 /.bazelrc
+/.tf_configure.bazelrc
 /bazel-*
 /third_party/py/numpy/numpy_include
 /tools/bazel.rc
