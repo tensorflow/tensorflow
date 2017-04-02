@@ -81,7 +81,7 @@ class SavedModelBuilder(object):
 
     Args:
       export_dir: The directory to export to
-      overwrite: If `True` overwrites if a directory already exists 
+      overwrite: If `True` overwrites if a directory already exists
     """
     self._saved_model = saved_model_pb2.SavedModel()
     self._saved_model.saved_model_schema_version = (
@@ -94,7 +94,7 @@ class SavedModelBuilder(object):
       else:
         raise AssertionError(
             "Export directory already exists. Please specify a different export "
-            "directory: %s" % export_dir)
+            "directory: %s or change overwrite flag to `True`" % export_dir)
 
     file_io.recursive_create_dir(self._export_dir)
 
