@@ -791,9 +791,11 @@ def weighted_sparse_column(sparse_id_column,
       weight or value of the corresponding sparse id feature.
     dtype: Type of weights, such as `tf.float32`. Only floating and integer
       weights are supported.
+
   Returns:
     A _WeightedSparseColumn composed of two sparse features: one represents id,
     the other represents weight (value) of the id feature in that example.
+
   Raises:
     ValueError: if dtype is not convertible to float.
   """
