@@ -721,7 +721,8 @@ cc_library(
         "//tensorflow/core/kernels:quantized_ops",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_conv_op",
-        "//tensorflow/core/kernels:mkl_matmul_op",
+        "//tensorflow/core/kernels:mkl_pooling_ops",
+        "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
 )
@@ -2094,7 +2095,8 @@ tf_cc_test_mkl(
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:mkl_conv_op",
-        "//tensorflow/core/kernels:mkl_matmul_op",
+        "//tensorflow/core/kernels:mkl_pooling_ops",
+        "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
