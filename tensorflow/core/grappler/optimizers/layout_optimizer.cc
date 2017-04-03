@@ -508,7 +508,7 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     AttrValue attr_tensor;
     Tensor tensor(DT_INT32, TensorShape({4}));
     std::vector<int> shape = {1, num_channels, 1, 1};
-    for (int i = 0; i < shape.size(); i++) {
+    for (int i = 0; static_cast<size_t>(i) < shape.size(); i++) {
       tensor.flat<int>()(i) = shape[i];
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -851,7 +851,7 @@ class DataLayoutOptimizer {
     node->mutable_attr()->insert({"dtype", attr_data_type});
     AttrValue attr_tensor;
     Tensor tensor(DT_INT32, TensorShape({4}));
-    for (int i = 0; i < permutation.size(); i++) {
+    for (int i = 0; static_cast<size_t>(i) < permutation.size(); i++) {
       tensor.flat<int>()(i) = permutation[i];
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -885,7 +885,7 @@ class DataLayoutOptimizer {
     AttrValue attr_tensor;
     Tensor tensor(DT_INT32, TensorShape({3}));
     std::vector<int> axis = {0, 2, 3};
-    for (int i = 0; i < axis.size(); i++) {
+    for (int i = 0; static_cast<size_t>(i) < axis.size(); i++) {
       tensor.flat<int>()(i) = axis[i];
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());

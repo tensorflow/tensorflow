@@ -262,7 +262,7 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
   const uint32 data_count = *sample_count * *channel_count;
   float_values->resize(data_count);
   for (int i = 0; i < data_count; ++i) {
-    int16 single_channel_value;
+    int16 single_channel_value = 0;
     TF_RETURN_IF_ERROR(
         ReadValue<int16>(wav_string, &single_channel_value, &offset));
     (*float_values)[i] = Int16SampleToFloat(single_channel_value);
