@@ -44,7 +44,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   will launch the command-line interface (CLI) of tfdbg.
   """
 
-  def __init__(self, sess, dump_root=None, log_usage=True, ui_type="curses"):
+  def __init__(self,
+               sess,
+               dump_root=None,
+               log_usage=True,
+               ui_type="curses"):
     """Constructor of LocalCLIDebugWrapperSession.
 
     Args:
@@ -133,6 +137,27 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         type=str,
         default="",
         help="Run until a tensor in the graph passes the specified filter.")
+    ap.add_argument(
+        "--node_name_filter",
+        dest="node_name_filter",
+        type=str,
+        default="",
+        help="Regular-expression filter for node names to be watched in the "
+        "run, e.g., loss, reshape.*")
+    ap.add_argument(
+        "--op_type_filter",
+        dest="op_type_filter",
+        type=str,
+        default="",
+        help="Regular-expression filter for op type to be watched in the run, "
+        "e.g., (MatMul|Add), Variable.*")
+    ap.add_argument(
+        "--tensor_dtype_filter",
+        dest="tensor_dtype_filter",
+        type=str,
+        default="",
+        help="Regular-expression filter for tensor dtype to be watched in the "
+        "run, e.g., (float32|float64), int.*")
     self._argparsers["run"] = ap
 
     ap = argparse.ArgumentParser(
@@ -176,15 +201,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       `run` / `invoke_stepper`.
 
     Args:
-      request: An instance of `OnSessionInitRequest`.
+      request: An instance of `OnRunStartRequest`.
 
     Returns:
-      An instance of `OnSessionInitResponse`.
-
-    Raises:
-      RuntimeError: If user chooses to prematurely exit the debugger.
+      An instance of `OnRunStartResponse`.
     """
-
     self._is_run_start = True
     self._update_run_calls_state(request.run_call_count, request.fetches,
                                  request.feed_dict)
@@ -195,6 +216,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       return framework.OnRunStartResponse(framework.OnRunStartAction.DEBUG_RUN,
                                           self._get_run_debug_urls())
 
+    self._exit_if_requested_by_user()
+
     if self._run_call_count > 1 and not self._skip_debug:
       if self._run_through_times > 0:
         # Just run through without debugging.
@@ -203,9 +226,10 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       elif self._run_through_times == 0:
         # It is the run at which the run-end CLI will be launched: activate
         # debugging.
-        return framework.OnRunStartResponse(
-            framework.OnRunStartAction.DEBUG_RUN,
-            self._get_run_debug_urls())
+        return (self._run_start_response or
+                framework.OnRunStartResponse(
+                    framework.OnRunStartAction.DEBUG_RUN,
+                    self._get_run_debug_urls()))
 
     if self._run_start_response is None:
       self._prep_cli_for_run_start()
@@ -214,14 +238,16 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       if self._run_through_times > 1:
         self._run_through_times -= 1
 
+    self._exit_if_requested_by_user()
+    return self._run_start_response
+
+  def _exit_if_requested_by_user(self):
     if self._run_start_response == debugger_cli_common.EXPLICIT_USER_EXIT:
       # Explicit user "exit" command leads to sys.exit(1).
       print(
           "Note: user exited from debugger CLI: Calling sys.exit(1).",
           file=sys.stderr)
       sys.exit(1)
-
-    return self._run_start_response
 
   def _prep_cli_for_run_start(self):
     """Prepare (but not launch) the CLI for run-start."""
@@ -398,6 +424,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     _ = screen_info  # Currently unused.
 
     parsed = self._argparsers["run"].parse_args(args)
+    parsed.node_name_filter = parsed.node_name_filter or None
+    parsed.op_type_filter = parsed.op_type_filter or None
+    parsed.tensor_dtype_filter = parsed.tensor_dtype_filter or None
 
     if parsed.till_filter_pass:
       # For the run-till-bad-numerical-value-appears mode, use the DEBUG_RUN
@@ -425,7 +454,12 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     # Raise CommandLineExit exception to cause the CLI to exit.
     raise debugger_cli_common.CommandLineExit(
-        exit_token=framework.OnRunStartResponse(action, debug_urls))
+        exit_token=framework.OnRunStartResponse(
+            action,
+            debug_urls,
+            node_name_regex_whitelist=parsed.node_name_filter,
+            op_type_regex_whitelist=parsed.op_type_filter,
+            tensor_dtype_regex_whitelist=parsed.tensor_dtype_filter))
 
   def _register_this_run_info(self, curses_cli):
     curses_cli.register_command_handler(

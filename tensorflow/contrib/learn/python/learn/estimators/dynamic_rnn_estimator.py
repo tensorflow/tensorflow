@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
-from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.contrib.framework.python.framework import deprecated
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn.estimators import constants
@@ -188,6 +187,10 @@ def build_sequence_input(features,
     A `Tensor` of dtype `float32` and shape `[batch_size, padded_length, ?]`.
     This will be used as input to an RNN.
   """
+  features = features.copy()
+  features.update(layers.transform_features(
+      features,
+      list(sequence_feature_columns) + list(context_feature_columns or [])))
   sequence_input = layers.sequence_input_from_feature_columns(
       columns_to_tensors=features,
       feature_columns=sequence_feature_columns,
@@ -537,21 +540,17 @@ def _get_dynamic_rnn_model_fn(
   return _dynamic_rnn_model_fn
 
 
-def _get_dropout_and_num_units(cell_type,
-                               num_units,
+def _get_dropout_and_num_units(num_units,
                                num_rnn_layers,
                                input_keep_probability,
                                output_keep_probability):
   """Helper function for deprecated factory functions."""
   dropout_keep_probabilities = None
-  if isinstance(cell_type, contrib_rnn.RNNCell):
-    num_units = None
-  else:
-    num_units = [num_units for _ in range(num_rnn_layers)]
-    if input_keep_probability or output_keep_probability:
-      dropout_keep_probabilities = ([input_keep_probability]
-                                    + [1.0] * (num_rnn_layers - 1)
-                                    + [output_keep_probability])
+  num_units = [num_units for _ in range(num_rnn_layers)]
+  if input_keep_probability or output_keep_probability:
+    dropout_keep_probabilities = ([input_keep_probability]
+                                  + [1.0] * (num_rnn_layers - 1)
+                                  + [output_keep_probability])
   return dropout_keep_probabilities, num_units
 
 
@@ -625,10 +624,8 @@ class DynamicRnnEstimator(estimator.Estimator):
       num_classes: the number of classes for a classification problem. Only
         used when `problem_type=ProblemType.CLASSIFICATION`.
       num_units: A list of integers indicating the number of units in the
-        `RNNCell`s in each layer. Either `num_units` is specified or `cell_type`
-        is an instance of `RNNCell`.
-      cell_type: A subclass of `RNNCell`, an instance of an `RNNCell` or one of
-        'basic_rnn,' 'lstm' or 'gru'.
+        `RNNCell`s in each layer.
+      cell_type: A subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
       optimizer: The type of optimizer to use. Either a subclass of
         `Optimizer`, an instance of an `Optimizer`, a callback that returns an
         optimizer, or a string. Strings must be one of 'Adagrad', 'Adam',
@@ -654,8 +651,6 @@ class DynamicRnnEstimator(estimator.Estimator):
       config: A `RunConfig` instance.
 
     Raises:
-      ValueError: Both or neither of the following are true: (a) `num_units` is
-        specified and (b) `cell_type` is an instance of `RNNCell`.
       ValueError: `problem_type` is not one of
         `ProblemType.LINEAR_REGRESSION` or `ProblemType.CLASSIFICATION`.
       ValueError: `problem_type` is `ProblemType.CLASSIFICATION` but
@@ -663,12 +658,6 @@ class DynamicRnnEstimator(estimator.Estimator):
       ValueError: `prediction_type` is not one of
         `PredictionType.MULTIPLE_VALUE` or `PredictionType.SINGLE_VALUE`.
     """
-    if (num_units is not None) == isinstance(cell_type, contrib_rnn.RNNCell):
-      raise ValueError(
-          'Either num_units is specified OR cell_type is an instance of '
-          'RNNCell. Got num_units = {} and cell_type = {}.'.format(
-              num_units, cell_type))
-
     if prediction_type == rnn_common.PredictionType.MULTIPLE_VALUE:
       name = 'MultiValueDynamicRNN'
     elif prediction_type == rnn_common.PredictionType.SINGLE_VALUE:
@@ -740,8 +729,7 @@ def multi_value_rnn_regressor(num_units,
   recurrent network and outputs a sequence of continuous values.
 
   Args:
-    num_units: The size of the RNN cells. This argument has no effect
-      if `cell_type` is an instance of `RNNCell`.
+    num_units: The size of the RNN cells.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
@@ -749,8 +737,7 @@ def multi_value_rnn_regressor(num_units,
       describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
-    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell` or one of
-      'basic_rnn,' 'lstm' or 'gru'.
+    cell_type: A subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
     num_rnn_layers: Number of RNN layers. Leave this at its default value 1
       if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
@@ -778,7 +765,6 @@ def multi_value_rnn_regressor(num_units,
     An initialized `Estimator`.
   """
   dropout_keep_probabilities, num_units = _get_dropout_and_num_units(
-      cell_type,
       num_units,
       num_rnn_layers,
       input_keep_probability,
@@ -827,8 +813,7 @@ def multi_value_rnn_classifier(num_classes,
 
   Args:
     num_classes: The number of classes for categorization.
-    num_units: The size of the RNN cells. This argument has no effect
-      if `cell_type` is an instance of `RNNCell`.
+    num_units: The size of the RNN cells.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
@@ -836,8 +821,7 @@ def multi_value_rnn_classifier(num_classes,
       describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
-    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
-      'basic_rnn,' 'lstm' or 'gru'.
+    cell_type: A subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
     num_rnn_layers: Number of RNN layers. Leave this at its default value 1
       if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
@@ -867,7 +851,6 @@ def multi_value_rnn_classifier(num_classes,
     An initialized `Estimator`.
   """
   dropout_keep_probabilities, num_units = _get_dropout_and_num_units(
-      cell_type,
       num_units,
       num_rnn_layers,
       input_keep_probability,
@@ -914,8 +897,7 @@ def single_value_rnn_regressor(num_units,
   recurrent network and outputs a single continuous values.
 
   Args:
-    num_units: The size of the RNN cells. This argument has no effect
-      if `cell_type` is an instance of `RNNCell`.
+    num_units: The size of the RNN cells.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
@@ -923,8 +905,7 @@ def single_value_rnn_regressor(num_units,
       describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
-    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell` or one of
-      'basic_rnn,' 'lstm' or 'gru'.
+    cell_type: A subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
     num_rnn_layers: Number of RNN layers. Leave this at its default value 1
       if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
@@ -952,7 +933,6 @@ def single_value_rnn_regressor(num_units,
     An initialized `Estimator`.
   """
   dropout_keep_probabilities, num_units = _get_dropout_and_num_units(
-      cell_type,
       num_units,
       num_rnn_layers,
       input_keep_probability,
@@ -1001,8 +981,7 @@ def single_value_rnn_classifier(num_classes,
 
   Args:
     num_classes: The number of classes for categorization.
-    num_units: The size of the RNN cells. This argument has no effect
-      if `cell_type` is an instance of `RNNCell`.
+    num_units: The size of the RNN cells.
     sequence_feature_columns: An iterable containing all the feature columns
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
@@ -1010,8 +989,7 @@ def single_value_rnn_classifier(num_classes,
       describing context features, i.e., features that apply accross all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
-    cell_type: A subclass of `RNNCell`, an instance of an `RNNCell or one of
-      'basic_rnn,' 'lstm' or 'gru'.
+    cell_type: A subclass of `RNNCell` or one of 'basic_rnn,' 'lstm' or 'gru'.
     num_rnn_layers: Number of RNN layers. Leave this at its default value 1
       if passing a `cell_type` that is already a MultiRNNCell.
     optimizer_type: The type of optimizer to use. Either a subclass of
@@ -1041,7 +1019,6 @@ def single_value_rnn_classifier(num_classes,
     An initialized `Estimator`.
   """
   dropout_keep_probabilities, num_units = _get_dropout_and_num_units(
-      cell_type,
       num_units,
       num_rnn_layers,
       input_keep_probability,

@@ -121,6 +121,7 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
   // *) Is element-wise.
   // *) Is a loop fusion instruction (with DynamicUpdateSlice fused root) where
   //    the singleton use of 'a' at 'a.index' is the fused root at operand 0.
+  // *) Use of 'operand' is DynamicUpdateSlice at operand index 0.
   for (const BufferAlias& alias : points_to_analysis_->GetBufferAliases(a)) {
     if (b.instruction()->IsUserOf(alias.instruction()) &&
         !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),

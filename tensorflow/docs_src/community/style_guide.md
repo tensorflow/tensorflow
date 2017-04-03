@@ -93,15 +93,15 @@ creates a part of the graph and returns output tensors.
  put the arguments with names of the collections right before `name` argument.
 
 * Tensor arguments should be either a single tensor or an iterable of tensors.
-  E.g. a "Tensor or list of Tensors" is too broad. See `assert_proper_iterable`.
+ E.g. a "Tensor or list of Tensors" is too broad. See `assert_proper_iterable`.
 
 * Operations that take tensors as arguments should call `convert_to_tensor`
  to convert non-tensor inputs into tensors if they are using C++ operations.
  Note that the arguments are still described as a `Tensor` object
  of a specific dtype in the documentation.
 
-* Each Python operation should have an `op_scope` like below.
- Pass list of input tensors, `name` and a default name of the op as arguments.
+* Each Python operation should have a `name_scope` like below. Pass as
+ arguments `name`, a default name of the op, and a list of the input tensors.
 
 * Operations should contain an extensive Python comment with Args and Returns
  declarations that explain both the type and meaning of each value. Possible

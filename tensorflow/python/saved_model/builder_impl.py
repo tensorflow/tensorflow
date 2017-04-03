@@ -57,7 +57,7 @@ class SavedModelBuilder(object):
   Typical usage for the `SavedModelBuilder`:
   ```python
   ...
-  builder = saved_model_builder.SavedModelBuilder(export_dir)
+  builder = saved_model.builder.SavedModelBuilder(export_dir)
 
   with tf.Session(graph=tf.Graph()) as sess:
     ...

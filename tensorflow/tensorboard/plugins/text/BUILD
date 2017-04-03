@@ -21,7 +21,9 @@ py_library(
         "//tensorflow/python:summary",
         "//tensorflow/tensorboard/backend:http_util",
         "//tensorflow/tensorboard/plugins:base_plugin",
+        "@org_mozilla_bleach",
         "@org_pocoo_werkzeug//:werkzeug",
+        "@org_pythonhosted_markdown",
     ],
 )
 

@@ -29,6 +29,7 @@ import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/config.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
+import "tensorflow/core/protobuf/tensorflow_server.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -41,6 +42,25 @@ message GetStatusRequest {
 
 message GetStatusResponse {
   repeated DeviceAttributes device_attributes = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// CreateSession method request/response messages
+//
+// For each session,
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message CreateWorkerSessionRequest {
+  // Sessions are identified by a given handle.
+  string session_handle = 1;
+
+  // Defines the configuration of a TensorFlow worker.
+  ServerDef server_def = 2;
+}
+
+message CreateWorkerSessionResponse {
 }
 
 ////////////////////////////////////////////////////////////////////////////////

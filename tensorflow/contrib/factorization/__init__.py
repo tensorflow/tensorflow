@@ -23,4 +23,5 @@ from tensorflow.contrib.factorization.python.ops.clustering_ops import *
 from tensorflow.contrib.factorization.python.ops.factorization_ops import *
 from tensorflow.contrib.factorization.python.ops.gmm import *
 from tensorflow.contrib.factorization.python.ops.gmm_ops import *
+from tensorflow.contrib.factorization.python.ops.wals import *
 # pylint: enable=wildcard-import

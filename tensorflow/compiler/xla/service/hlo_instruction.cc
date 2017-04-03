@@ -431,6 +431,7 @@ HloInstruction::CreateSelectAndScatter(
     const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root) {
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
   instruction->fusion_kind_ = fusion_kind;
+  instruction->set_parent(fused_root->parent());
   instruction->CloneAndFuseInternal(fused_root);
   instruction->CheckFusionInstruction();
   return instruction;
@@ -568,6 +569,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       std::unique_ptr<HloInstruction> param_instruction =
           CreateParameter(param_no, operand->shape(), "fusion_param");
 
+      param_instruction->set_parent(parent());
       param_instruction->parent_fusion_instruction_ = this;
       fused_parameters_.push_back(param_instruction.get());
       fused_instructions_.push_back(std::move(param_instruction));
@@ -602,6 +604,7 @@ void HloInstruction::CheckFusionInstruction() const {
   for (auto& instruction : fused_instructions_) {
     CHECK(instruction->IsFused());
     CHECK_EQ(this, instruction->fusion_instruction());
+    CHECK_EQ(parent(), instruction->parent()) << instruction->ToString();
   }
 
   // Fused root instruction and fused parameters must all be owned by the fusion
@@ -834,16 +837,18 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   }
 }
 
-std::unique_ptr<HloInstruction> HloInstruction::Clone() {
+std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape_, operands_);
-  clone->name_ = name() + ".clone";
+  clone->name_ = name() + "." + suffix;
+  clone->set_parent(parent());
   return clone;
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
+  CHECK(parent() != nullptr);
 
   auto new_instruction =
       WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
@@ -883,6 +888,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
         old_fused_instruction->CloneWithNewOperands(
             old_fused_instruction->shape(), new_operands));
     HloInstruction* new_fused_instruction = new_fused_instructions.back().get();
+    new_fused_instruction->set_parent(parent());
     new_fused_instruction->parent_fusion_instruction_ = new_instruction.get();
     InsertOrDie(&old_to_new, old_fused_instruction, new_fused_instruction);
   }
@@ -893,6 +899,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
   new_instruction->fused_instructions_ = std::move(new_fused_instructions);
   new_instruction->fused_parameters_ = std::move(new_fused_parameters);
   new_instruction->fused_root_ = FindOrDie(old_to_new, fused_root_);
+  new_instruction->set_parent(parent());
   new_instruction->CheckFusionInstruction();
   return new_instruction;
 }

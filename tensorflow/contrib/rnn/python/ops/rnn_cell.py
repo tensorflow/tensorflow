@@ -33,6 +33,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -1434,6 +1435,214 @@ class NASCell(core_rnn_cell.RNNCell):
       return new_m, new_state
 
 
+class UGRNNCell(core_rnn_cell.RNNCell):
+  """Update Gate Recurrent Neural Network (UGRNN) cell.
+
+  Compromise between a LSTM/GRU and a vanilla RNN.  There is only one
+  gate, and that is to determine whether the unit should be
+  integrating or computing instantaneously.  This is the recurrent
+  idea of the feedforward Highway Network.
+
+  This implements the recurrent cell from the paper:
+
+    https://arxiv.org/abs/1611.09913
+
+  Jasmine Collins, Jascha Sohl-Dickstein, and David Sussillo.
+  "Capacity and Trainability in Recurrent Neural Networks" Proc. ICLR 2017.
+  """
+
+  def __init__(self, num_units, initializer=None, forget_bias=1.0,
+               activation=math_ops.tanh, reuse=None):
+    """Initialize the parameters for an UGRNN cell.
+
+    Args:
+      num_units: int, The number of units in the UGRNN cell
+      initializer: (optional) The initializer to use for the weight matrices.
+      forget_bias: (optional) float, default 1.0, The initial bias of the
+        forget gate, used to reduce the scale of forgetting at the beginning
+        of the training.
+      activation: (optional) Activation function of the inner states.
+        Default is `tf.tanh`.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
+    """
+    self._num_units = num_units
+    self._initializer = initializer
+    self._forget_bias = forget_bias
+    self._activation = activation
+    self._reuse = reuse
+
+  @property
+  def state_size(self):
+    return self._num_units
+
+  @property
+  def output_size(self):
+    return self._num_units
+
+  def __call__(self, inputs, state, scope=None):
+    """Run one step of UGRNN.
+
+    Args:
+      inputs: input Tensor, 2D, batch x input size.
+      state: state Tensor, 2D, batch x num units.
+      scope: VariableScope for the created subgraph; defaults to "ugrnn_cell".
+
+    Returns:
+      new_output: batch x num units, Tensor representing the output of the UGRNN
+        after reading `inputs` when previous state was `state`. Identical to
+        `new_state`.
+      new_state: batch x num units, Tensor representing the state of the UGRNN
+        after reading `inputs` when previous state was `state`.
+
+    Raises:
+      ValueError: If input size cannot be inferred from inputs via
+        static shape inference.
+    """
+    sigmoid = math_ops.sigmoid
+
+    input_size = inputs.get_shape().with_rank(2)[1]
+    if input_size.value is None:
+      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+
+    with _checked_scope(self, scope or "ugrnn_cell",
+                        initializer=self._initializer, reuse=self._reuse):
+      cell_inputs = array_ops.concat([inputs, state], 1)
+      rnn_matrix = _linear(cell_inputs, 2 * self._num_units, True)
+
+      [g_act, c_act] = array_ops.split(
+          axis=1, num_or_size_splits=2, value=rnn_matrix)
+
+      c = self._activation(c_act)
+      g = sigmoid(g_act + self._forget_bias)
+      new_state = g * state + (1.0 - g) * c
+      new_output = new_state
+
+    return new_output, new_state
+
+
+class IntersectionRNNCell(core_rnn_cell.RNNCell):
+  """Intersection Recurrent Neural Network (+RNN) cell.
+
+  Architecture with coupled recurrent gate as well as coupled depth
+  gate, designed to improve information flow through stacked RNNs. As the
+  architecture uses depth gating, the dimensionality of the depth
+  output (y) also should not change through depth (input size == output size).
+  To achieve this, the first layer of a stacked Intersection RNN projects
+  the inputs to N (num units) dimensions. Therefore when initializing an
+  IntersectionRNNCell, one should set `num_in_proj = N` for the first layer
+  and use default settings for subsequent layers.
+
+  This implements the recurrent cell from the paper:
+
+    https://arxiv.org/abs/1611.09913
+
+  Jasmine Collins, Jascha Sohl-Dickstein, and David Sussillo.
+  "Capacity and Trainability in Recurrent Neural Networks" Proc. ICLR 2017.
+
+  The Intersection RNN is built for use in deeply stacked
+  RNNs so it may not achieve best performance with depth 1.
+  """
+
+  def __init__(self, num_units, num_in_proj=None,
+               initializer=None, forget_bias=1.0,
+               y_activation=nn_ops.relu, reuse=None):
+    """Initialize the parameters for an +RNN cell.
+
+    Args:
+      num_units: int, The number of units in the +RNN cell
+      num_in_proj: (optional) int, The input dimensionality for the RNN.
+        If creating the first layer of an +RNN, this should be set to
+        `num_units`. Otherwise, this should be set to `None` (default).
+        If `None`, dimensionality of `inputs` should be equal to `num_units`,
+        otherwise ValueError is thrown.
+      initializer: (optional) The initializer to use for the weight matrices.
+      forget_bias: (optional) float, default 1.0, The initial bias of the
+        forget gates, used to reduce the scale of forgetting at the beginning
+        of the training.
+      y_activation: (optional) Activation function of the states passed
+        through depth. Default is 'tf.nn.relu`.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
+    """
+    self._num_units = num_units
+    self._initializer = initializer
+    self._forget_bias = forget_bias
+    self._num_input_proj = num_in_proj
+    self._y_activation = y_activation
+    self._reuse = reuse
+
+  @property
+  def state_size(self):
+    return self._num_units
+
+  @property
+  def output_size(self):
+    return self._num_units
+
+  def __call__(self, inputs, state, scope=None):
+    """Run one step of the Intersection RNN.
+
+    Args:
+      inputs: input Tensor, 2D, batch x input size.
+      state: state Tensor, 2D, batch x num units.
+      scope: VariableScope for the created subgraph; defaults to
+        "intersection_rnn_cell"
+
+    Returns:
+      new_y: batch x num units, Tensor representing the output of the +RNN
+        after reading `inputs` when previous state was `state`.
+      new_state: batch x num units, Tensor representing the state of the +RNN
+        after reading `inputs` when previous state was `state`.
+
+    Raises:
+      ValueError: If input size cannot be inferred from `inputs` via
+        static shape inference.
+      ValueError: If input size != output size (these must be equal when
+        using the Intersection RNN).
+    """
+    sigmoid = math_ops.sigmoid
+    tanh = math_ops.tanh
+
+    input_size = inputs.get_shape().with_rank(2)[1]
+    if input_size.value is None:
+      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+
+    with _checked_scope(self, scope or "intersection_rnn_cell",
+                        initializer=self._initializer, reuse=self._reuse):
+      # read-in projections (should be used for first layer in deep +RNN
+      # to transform size of inputs from I --> N)
+      if input_size.value != self._num_units:
+        if self._num_input_proj:
+          with vs.variable_scope("in_projection"):
+            inputs = _linear(inputs, self._num_units, True)
+        else:
+          raise ValueError("Must have input size == output size for "
+                           "Intersection RNN. To fix, num_in_proj should "
+                           "be set to num_units at cell init.")
+
+      n_dim = i_dim = self._num_units
+      cell_inputs = array_ops.concat([inputs, state], 1)
+      rnn_matrix = _linear(cell_inputs, 2*n_dim + 2*i_dim, True)
+
+      gh_act = rnn_matrix[:, :n_dim]                           # b x n
+      h_act = rnn_matrix[:, n_dim:2*n_dim]                     # b x n
+      gy_act = rnn_matrix[:, 2*n_dim:2*n_dim+i_dim]            # b x i
+      y_act = rnn_matrix[:, 2*n_dim+i_dim:2*n_dim+2*i_dim]     # b x i
+
+      h = tanh(h_act)
+      y = self._y_activation(y_act)
+      gh = sigmoid(gh_act + self._forget_bias)
+      gy = sigmoid(gy_act + self._forget_bias)
+
+      new_state = gh * state + (1.0 - gh) * h  # passed thru time
+      new_y = gy * inputs + (1.0 - gy) * y  # passed thru depth
+
+    return new_y, new_state
+
+
 _REGISTERED_OPS = None
 
 
@@ -1475,3 +1684,178 @@ class CompiledWrapper(core_rnn_cell.RNNCell):
 
     with jit.experimental_jit_scope(compile_ops=compile_ops):
       return self._cell(inputs, state, scope=scope)
+
+
+def _random_exp_initializer(minval,
+                            maxval,
+                            seed=None,
+                            dtype=dtypes.float32):
+  """Returns an exponential distribution initializer.
+
+  Args:
+    minval: float or a scalar float Tensor. With value > 0. Lower bound of the
+        range of random values to generate.
+    maxval: float or a scalar float Tensor. With value > minval. Upper bound of
+        the range of random values to generate.
+    seed: An integer. Used to create random seeds.
+    dtype: The data type.
+
+  Returns:
+    An initializer that generates tensors with an exponential distribution.
+  """
+
+  def _initializer(shape, dtype=dtype, partition_info=None):
+    del partition_info  # Unused.
+    return math_ops.exp(
+        random_ops.random_uniform(
+            shape,
+            math_ops.log(minval),
+            math_ops.log(maxval),
+            dtype,
+            seed=seed))
+
+  return _initializer
+
+
+class PhasedLSTMCell(core_rnn_cell.RNNCell):
+  """Phased LSTM recurrent network cell.
+
+  https://arxiv.org/pdf/1610.09513v1.pdf
+  """
+
+  def __init__(self,
+               num_units,
+               use_peepholes=False,
+               leak=0.001,
+               ratio_on=0.1,
+               trainable_ratio_on=True,
+               period_init_min=1.0,
+               period_init_max=1000.0,
+               reuse=None):
+    """Initialize the Phased LSTM cell.
+
+    Args:
+      num_units: int, The number of units in the Phased LSTM cell.
+      use_peepholes: bool, set True to enable peephole connections.
+      leak: float or scalar float Tensor with value in [0, 1]. Leak applied
+          during training.
+      ratio_on: float or scalar float Tensor with value in [0, 1]. Ratio of the
+          period during which the gates are open.
+      trainable_ratio_on: bool, weather ratio_on is trainable.
+      period_init_min: float or scalar float Tensor. With value > 0.
+          Minimum value of the initalized period.
+          The period values are initialized by drawing from the distribution:
+          e^U(log(period_init_min), log(period_init_max))
+          Where U(.,.) is the uniform distribution.
+      period_init_max: float or scalar float Tensor.
+          With value > period_init_min. Maximum value of the initalized period.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope. If not `True`, and the existing scope already has
+        the given variables, an error is raised.
+    """
+    self._num_units = num_units
+    self._use_peepholes = use_peepholes
+    self._leak = leak
+    self._ratio_on = ratio_on
+    self._trainable_ratio_on = trainable_ratio_on
+    self._period_init_min = period_init_min
+    self._period_init_max = period_init_max
+    self._reuse = reuse
+
+  @property
+  def state_size(self):
+    return core_rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
+
+  @property
+  def output_size(self):
+    return self._num_units
+
+  def _mod(self, x, y):
+    """Modulo function that propagates x gradients."""
+    return array_ops.stop_gradient(math_ops.mod(x, y) - x) + x
+
+  def _get_cycle_ratio(self, time, phase, period):
+    """Compute the cycle ratio in the dtype of the time."""
+    phase_casted = math_ops.cast(phase, dtype=time.dtype)
+    period_casted = math_ops.cast(period, dtype=time.dtype)
+    shifted_time = time - phase_casted
+    cycle_ratio = self._mod(shifted_time, period_casted) / period_casted
+    return math_ops.cast(cycle_ratio, dtype=dtypes.float32)
+
+  def __call__(self, inputs, state, scope=None):
+    """Phased LSTM Cell.
+
+    Args:
+      inputs: A tuple of 2 Tensor.
+         The first Tensor has shape [batch, 1], and type float32 or float64.
+         It stores the time.
+         The second Tensor has shape [batch, features_size], and type float32.
+         It stores the features.
+      state: core_rnn_cell.LSTMStateTuple, state from previous timestep.
+      scope: string, id of the variable scope.
+
+    Returns:
+      A tuple containing:
+      - A Tensor of float32, and shape [batch_size, num_units], representing the
+        output of the cell.
+      - A core_rnn_cell.LSTMStateTuple, containing 2 Tensors of float32, shape
+        [batch_size, num_units], representing the new state and the output.
+    """
+    with _checked_scope(self, scope or "phased_lstm_cell", reuse=self._reuse):
+      (c_prev, h_prev) = state
+      (time, x) = inputs
+
+      in_mask_gates = [x, h_prev]
+      if self._use_peepholes:
+        in_mask_gates.append(c_prev)
+
+      with vs.variable_scope("mask_gates"):
+        mask_gates = math_ops.sigmoid(
+            _linear(in_mask_gates, 2 * self._num_units, True))
+        [input_gate, forget_gate] = array_ops.split(
+            axis=1, num_or_size_splits=2, value=mask_gates)
+
+      with vs.variable_scope("new_input"):
+        new_input = math_ops.tanh(
+            _linear([x, h_prev], self._num_units, True))
+
+      new_c = (c_prev * forget_gate + input_gate * new_input)
+
+      in_out_gate = [x, h_prev]
+      if self._use_peepholes:
+        in_out_gate.append(new_c)
+
+      with vs.variable_scope("output_gate"):
+        output_gate = math_ops.sigmoid(
+            _linear(in_out_gate, self._num_units, True))
+
+      new_h = math_ops.tanh(new_c) * output_gate
+
+      period = vs.get_variable(
+          "period", [self._num_units],
+          initializer=_random_exp_initializer(
+              self._period_init_min, self._period_init_max))
+      phase = vs.get_variable(
+          "phase", [self._num_units],
+          initializer=init_ops.random_uniform_initializer(
+              0., period.initial_value))
+      ratio_on = vs.get_variable(
+          "ratio_on", [self._num_units],
+          initializer=init_ops.constant_initializer(self._ratio_on),
+          trainable=self._trainable_ratio_on)
+
+      cycle_ratio = self._get_cycle_ratio(time, phase, period)
+
+      k_up = 2 * cycle_ratio / ratio_on
+      k_down = 2 - k_up
+      k_closed = self._leak * cycle_ratio
+
+      k = array_ops.where(cycle_ratio < ratio_on, k_down, k_closed)
+      k = array_ops.where(cycle_ratio < 0.5 * ratio_on, k_up, k)
+
+      new_c = k * new_c + (1 - k) * c_prev
+      new_h = k * new_h + (1 - k) * h_prev
+
+      new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
+
+      return new_h, new_state

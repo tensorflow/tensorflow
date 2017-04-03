@@ -110,8 +110,18 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
     run_args = session_run_hook.SessionRunArgs(
         None, feed_dict=None, options=config_pb2.RunOptions())
     if self._performed_action == framework.OnRunStartAction.DEBUG_RUN:
-      self._decorate_options_for_debug(run_args.options,
-                                       run_context.session.graph)
+      self._decorate_options_for_debug(
+          run_args.options,
+          run_context.session.graph,
+          framework.WatchOptions(
+              node_name_regex_whitelist=(
+                  on_run_start_response.node_name_regex_whitelist),
+              op_type_regex_whitelist=(
+                  on_run_start_response.op_type_regex_whitelist),
+              tensor_dtype_regex_whitelist=(
+                  on_run_start_response.tensor_dtype_regex_whitelist),
+              tolerate_debug_op_creation_failures=(
+                  on_run_start_response.tolerate_debug_op_creation_failures)))
     elif self._performed_action == framework.OnRunStartAction.INVOKE_STEPPER:
       # The _finalized property must be set to False so that the NodeStepper
       # can insert ops for retrieving TensorHandles.
@@ -136,16 +146,17 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
                                                    run_values.run_metadata)
     self.on_run_end(on_run_end_request)
 
-  def _decorate_options_for_debug(self, options, graph):
-    """Modify RunOptions.debug_options.debug_tensor_watch_opts for debugging.
-
-    Args:
-      options: (config_pb2.RunOptions) The RunOptions instance to be modified.
-      graph: A TensorFlow Graph object.
-    """
-
+  def _decorate_options_for_debug(self, options, graph, watch_options):
+    """Modify RunOptions.debug_options.debug_tensor_watch_opts for debugging."""
     debug_utils.watch_graph(
-        options, graph, debug_urls=self._get_run_debug_urls())
+        options,
+        graph,
+        debug_urls=self._get_run_debug_urls(),
+        node_name_regex_whitelist=watch_options.node_name_regex_whitelist,
+        op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
+        tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
+        tolerate_debug_op_creation_failures=(
+            watch_options.tolerate_debug_op_creation_failures))
     options.output_partition_graphs = True
 
 

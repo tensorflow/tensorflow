@@ -21,9 +21,10 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/equal_graph_def.h"
+#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 namespace tensorflow {
 
@@ -538,14 +539,11 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
                   sizeof(ResourceHandle));
       inputs_safe.emplace_back(make_safe(tensor));
     } else if (dtype != TF_STRING) {
-      // NOTE(mrry): We currently copy the numpy array into a new
-      // buffer to avoid possible issues on deallocation (such as
-      // having to acquire the Python Global Interpreter Lock).
-      // TODO(mrry): Investigate in what cases we can safely acquire
       size_t size = PyArray_NBYTES(array);
+      array_safe.release();
       TF_Tensor* tensor =
-          TF_AllocateTensor(dtype, dims.data(), dims.size(), size);
-      std::memcpy(TF_TensorData(tensor), PyArray_DATA(array), size);
+          TF_NewTensor(dtype, dims.data(), dims.size(), PyArray_DATA(array),
+                       size, &DelayedNumpyDecref, array);
       inputs_safe.emplace_back(make_safe(tensor));
     } else {
       size_t size = 0;
@@ -569,6 +567,10 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
   // 2. Allocate a container for the output data.
   TF_TensorVector outputs(output_names.size());
 
+  // In case any tensors were leftover from previous runs we might as well clear
+  // them here.
+  ClearDecrefCache();
+
   // 3. Actually call TF_Run().
   Py_BEGIN_ALLOW_THREADS;
   if (handle == nullptr) {
@@ -586,6 +588,9 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
   }
 
   Py_END_ALLOW_THREADS;
+
+  // Decref any numpy arrays we are not using anymore.
+  ClearDecrefCache();
 
   if (TF_GetCode(out_status) != TF_OK) {
     return;
@@ -627,6 +632,7 @@ void TF_Run_wrapper(TF_DeprecatedSession* session, const TF_Buffer* run_options,
                     PyObjectVector* out_values, TF_Buffer* run_outputs) {
   TF_Run_wrapper_helper(session, nullptr, run_options, feed_dict, output_names,
                         target_nodes, out_status, out_values, run_outputs);
+  ClearDecrefCache();
 }
 
 // Wrapper for TF_PRunSetup that converts the arguments to appropriate types.
@@ -653,6 +659,7 @@ void TF_PRun_wrapper(TF_DeprecatedSession* session, const char* handle,
                      TF_Status* out_status, PyObjectVector* out_values) {
   TF_Run_wrapper_helper(session, handle, nullptr, feed_dict, output_names,
                         NameVector(), out_status, out_values, nullptr);
+  ClearDecrefCache();
 }
 
 // Wrapper for TF_Reset that converts the string vectors to character arrays.

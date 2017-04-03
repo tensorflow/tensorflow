@@ -341,7 +341,7 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         input_layer_min_slice_size=1)
 
     # Ensure the param is passed in.
-    self.assertEqual(1, classifier.params['input_layer_min_slice_size'])
+    self.assertTrue(callable(classifier.params['input_layer_partitioner']))
 
     # Ensure the partition count is 10.
     classifier.fit(input_fn=_input_fn_float_label, steps=50)

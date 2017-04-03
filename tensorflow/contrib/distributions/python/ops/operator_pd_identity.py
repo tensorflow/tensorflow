@@ -20,7 +20,6 @@ from __future__ import print_function
 
 
 from tensorflow.contrib.distributions.python.ops import operator_pd
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -108,7 +107,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
       return scale
 
     # Further check that this is a rank 0, positive tensor.
-    scale = contrib_tensor_util.assert_scalar(scale)
+    scale = check_ops.assert_scalar(scale)
     return control_flow_ops.with_dependencies(
         [check_ops.assert_positive(scale)], scale)
 

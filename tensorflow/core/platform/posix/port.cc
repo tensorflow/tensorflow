@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
@@ -29,7 +30,7 @@ limitations under the License.
 #include <string.h>
 #include <unistd.h>
 #ifdef SNAPPY
-#include <snappy.h>
+#include "snappy.h"
 #endif
 #if defined(__APPLE__) && defined(__MACH__)
 #include <thread>

@@ -271,7 +271,6 @@ def _SplitGrad(op, *grads):
 def _SplitVGrad(op, *grads):
   returnval = array_ops.concat(list(grads), op.inputs[2])
   returnval = [returnval] + [None,] * (len(op.inputs) - 1)
-  print(returnval)
   return returnval
 
 ops.NotDifferentiable("Const")

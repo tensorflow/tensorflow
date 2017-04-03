@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -134,7 +133,7 @@ class InverseGamma(distribution.Distribution):
         self._concentration = array_ops.identity(
             concentration, name="concentration")
         self._rate = array_ops.identity(rate, name="rate")
-        contrib_tensor_util.assert_same_float_dtype(
+        check_ops.assert_same_float_dtype(
             [self._concentration, self._rate])
     super(InverseGamma, self).__init__(
         dtype=self._concentration.dtype,
@@ -268,7 +267,7 @@ class InverseGamma(distribution.Distribution):
     return self.rate / (1. + self.concentration)
 
   def _maybe_assert_valid_sample(self, x):
-    contrib_tensor_util.assert_same_float_dtype(
+    check_ops.assert_same_float_dtype(
         tensors=[x], dtype=self.dtype)
     if not self.validate_args:
       return x

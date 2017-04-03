@@ -256,8 +256,7 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
     tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
     const Backend* backend, int device_ordinal) {
   std::vector<const Allocation*> allocations;
-  for (tensorflow::gtl::ArraySlice<const GlobalDataHandle*>::size_type i = 0; 
-       i < arguments.size(); ++i) {
+  for (size_t i = 0; i < arguments.size(); ++i) {
     auto allocation_status = allocation_tracker_.Resolve(*arguments[i]);
     if (!allocation_status.ok()) {
       return Status(allocation_status.status().code(),
@@ -296,8 +295,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
                            program_shape.parameters_size(), arguments.size());
   }
 
-  for (tensorflow::gtl::ArraySlice<const Allocation*>::size_type i = 0;
-       i < arguments.size(); ++i) {
+  for (size_t i = 0; i < arguments.size(); ++i) {
     // Verify that shape of arguments matches the shape of the arguments in the
     // ProgramShape.
     if (!ShapeUtil::Compatible(arguments[i]->shape(),
@@ -385,8 +383,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
                           hlo_dumper, std::move(executors)));
 
   if (!other_directory_path.empty()) {
-    for (std::vector<VersionedComputationHandle>::size_type i = 0;
-         i < versioned_handles.size(); ++i) {
+    for (size_t i = 0; i < versioned_handles.size(); ++i) {
       executables[i]->set_session_module(std::move(session_modules[i]));
     }
   }
@@ -578,15 +575,15 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   perftools::gputools::DeviceMemoryBase result;
   if (backend->Replicas().size() == 1) {
     TF_ASSIGN_OR_RETURN(
-        result, ExecuteOnStreamWrapper<StatusOr<se::DeviceMemoryBase>>(
-                    executable, &run_options[0], profile,
-                    execute_backend_.get(),
-                    [&arguments](Executable* executable,
-                                 const ServiceExecutableRunOptions* run_options,
-                                 HloExecutionProfile* hlo_execution_profile) {
-                      return executable->ExecuteOnStream(run_options, arguments,
-                                                         hlo_execution_profile);
-                    }));
+        result,
+        ExecuteOnStreamWrapper<StatusOr<se::DeviceMemoryBase>>(
+            executable, &run_options[0], profile, execute_backend_.get(),
+            [&arguments](Executable* executable,
+                         const ServiceExecutableRunOptions* run_options,
+                         HloExecutionProfile* hlo_execution_profile) {
+              return executable->ExecuteOnStream(run_options, arguments,
+                                                 hlo_execution_profile);
+            }));
   } else {
     std::vector<
         tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>

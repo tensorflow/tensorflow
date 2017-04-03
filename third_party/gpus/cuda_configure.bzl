@@ -5,6 +5,9 @@
 
   * `TF_NEED_CUDA`: Whether to enable building with CUDA.
   * `GCC_HOST_COMPILER_PATH`: The GCC host compiler path
+  * `TF_CUDA_CLANG`: Wheter to use clang as a cuda compiler.
+  * `CLANG_CUDA_COMPILER_PATH`: The clang compiler path that will be used for
+    both host and device code compilation if TF_CUDA_CLANG is 1.
   * `CUDA_TOOLKIT_PATH`: The path to the CUDA toolkit. Default is
     `/usr/local/cuda`.
   * `TF_CUDA_VERSION`: The version of the CUDA toolkit. If this is blank, then
@@ -17,6 +20,7 @@
 """
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
+_CLANG_CUDA_COMPILER_PATH = "CLANG_CUDA_COMPILER_PATH"
 _CUDA_TOOLKIT_PATH = "CUDA_TOOLKIT_PATH"
 _TF_CUDA_VERSION = "TF_CUDA_VERSION"
 _TF_CUDNN_VERSION = "TF_CUDNN_VERSION"
@@ -35,19 +39,30 @@ _DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
 # BEGIN cc_configure common functions.
 def find_cc(repository_ctx):
   """Find the C++ compiler."""
-  cc_name = "gcc"
-  if _GCC_HOST_COMPILER_PATH in repository_ctx.os.environ:
-    cc_name = repository_ctx.os.environ[_GCC_HOST_COMPILER_PATH].strip()
-    if not cc_name:
-      cc_name = "gcc"
+  # On Windows, we use Bazel's MSVC CROSSTOOL for GPU build
+  # Return a dummy value for GCC detection here to avoid error
+  if _cpu_value(repository_ctx) == "Windows":
+    return "/use/--config x64_windows_msvc/instead"
+
+  if _use_cuda_clang(repository_ctx):
+    target_cc_name = "clang"
+    cc_path_envvar = _CLANG_CUDA_COMPILER_PATH
+  else:
+    target_cc_name = "gcc"
+    cc_path_envvar = _GCC_HOST_COMPILER_PATH
+  cc_name = target_cc_name
+
+  if cc_path_envvar in repository_ctx.os.environ:
+    cc_name_from_env = repository_ctx.os.environ[cc_path_envvar].strip()
+    if cc_name_from_env:
+      cc_name = cc_name_from_env
   if cc_name.startswith("/"):
     # Absolute path, maybe we should make this suported by our which function.
     return cc_name
   cc = repository_ctx.which(cc_name)
   if cc == None:
-    fail(
-        "Cannot find gcc, either correct your path or set the CC" +
-        " environment variable")
+    fail(("Cannot find {}, either correct your path or set the {}" +
+          " environment variable").format(target_cc_name, cc_path_envvar))
   return cc
 
 
@@ -64,10 +79,17 @@ def _cxx_inc_convert(path):
     path = path[:-_OSX_FRAMEWORK_SUFFIX_LEN].strip()
   return path
 
-
-def get_cxx_inc_directories(repository_ctx, cc):
-  """Compute the list of default C++ include directories."""
-  result = repository_ctx.execute([cc, "-E", "-xc++", "-", "-v"])
+def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
+  """Compute the list of default C or C++ include directories."""
+  if lang_is_cpp:
+    lang = "c++"
+  else:
+    lang = "c"
+  # TODO: We pass -no-canonical-prefixes here to match the compiler flags,
+  #       but in cuda_clang CROSSTOOL file that is a `feature` and we should
+  #       handle the case when it's disabled and no flag is passed
+  result = repository_ctx.execute([cc, "-no-canonical-prefixes",
+                                   "-E", "-x" + lang, "-", "-v"])
   index1 = result.stderr.find(_INC_DIR_MARKER_BEGIN)
   if index1 == -1:
     return []
@@ -86,6 +108,19 @@ def get_cxx_inc_directories(repository_ctx, cc):
   return [repository_ctx.path(_cxx_inc_convert(p))
           for p in inc_dirs.split("\n")]
 
+def get_cxx_inc_directories(repository_ctx, cc):
+  """Compute the list of default C and C++ include directories."""
+  # For some reason `clang -xc` sometimes returns include paths that are
+  # different from the ones from `clang -xc++`. (Symlink and a dir)
+  # So we run the compiler with both `-xc` and `-xc++` and merge resulting lists
+  includes_cpp = _get_cxx_inc_directories_impl(repository_ctx, cc, True)
+  includes_c = _get_cxx_inc_directories_impl(repository_ctx, cc, False)
+
+  includes_cpp_set = set(includes_cpp)
+  return includes_cpp + [inc for inc in includes_c
+                         if inc not in includes_cpp_set]
+
+
 def auto_configure_fail(msg):
   """Output failure message when auto configuration fails."""
   red = "\033[0;31m"
@@ -94,7 +129,7 @@ def auto_configure_fail(msg):
 # END cc_configure common functions (see TODO above).
 
 
-def _gcc_host_compiler_includes(repository_ctx, cc):
+def _host_compiler_includes(repository_ctx, cc):
   """Generates the cxx_builtin_include_directory entries for gcc inc dirs.
 
   Args:
@@ -267,7 +302,7 @@ def _find_cuda_define(repository_ctx, cudnn_header_dir, define):
   cudnn_h_path = repository_ctx.path("%s/cudnn.h" % cudnn_header_dir)
   if not cudnn_h_path.exists:
     auto_configure_fail("Cannot find cudnn.h at %s" % str(cudnn_h_path))
-  result = repository_ctx.execute(["grep", "-E", define, str(cudnn_h_path)])
+  result = repository_ctx.execute(["grep", "--color=never", "-E", define, str(cudnn_h_path)])
   if result.stderr:
     auto_configure_fail("Error reading %s: %s" %
                         (result.stderr, str(cudnn_h_path)))
@@ -645,7 +680,8 @@ def _create_dummy_repository(repository_ctx):
   # Set up BUILD file for cuda/.
   _tpl(repository_ctx, "cuda:build_defs.bzl",
        {
-           "%{cuda_is_configured}": "False"
+           "%{cuda_is_configured}": "False",
+           "%{cuda_extra_copts}": "[]"
        })
   _tpl(repository_ctx, "cuda:BUILD",
        {
@@ -730,6 +766,19 @@ def _symlink_dir(repository_ctx, src_dir, dest_dir):
   for src_file in files:
     repository_ctx.symlink(src_file, dest_dir + "/" + src_file.basename)
 
+def _use_cuda_clang(repository_ctx):
+  if "TF_CUDA_CLANG" in repository_ctx.os.environ:
+    enable_cuda = repository_ctx.os.environ["TF_CUDA_CLANG"].strip()
+    return enable_cuda == "1"
+  return False
+
+def _compute_cuda_extra_copts(repository_ctx, cuda_config):
+  if _use_cuda_clang(repository_ctx):
+    capability_flags = ["--cuda-gpu-arch=sm_" + cap.replace(".", "") for cap in cuda_config.compute_capabilities]
+  else:
+    # Capabilities are handled in the "crosstool_wrapper_driver_is_not_gcc" for nvcc
+    capability_flags = []
+  return str(capability_flags)
 
 def _create_cuda_repository(repository_ctx):
   """Creates the repository containing files set up to build with CUDA."""
@@ -761,7 +810,9 @@ def _create_cuda_repository(repository_ctx):
   # Set up BUILD file for cuda/
   _tpl(repository_ctx, "cuda:build_defs.bzl",
        {
-           "%{cuda_is_configured}": "True"
+           "%{cuda_is_configured}": "True",
+           "%{cuda_extra_copts}": _compute_cuda_extra_copts(repository_ctx, cuda_config),
+
        })
   _tpl(repository_ctx, "cuda:BUILD",
        {
@@ -787,21 +838,25 @@ def _create_cuda_repository(repository_ctx):
   # Set up crosstool/
   _file(repository_ctx, "crosstool:BUILD")
   cc = find_cc(repository_ctx)
-  gcc_host_compiler_includes = _gcc_host_compiler_includes(repository_ctx, cc)
-  _tpl(repository_ctx, "crosstool:CROSSTOOL",
-       {
+  host_compiler_includes = _host_compiler_includes(repository_ctx, cc)
+  cuda_defines = {
            "%{cuda_include_path}": cuda_config.cuda_toolkit_path + '/include',
-           "%{gcc_host_compiler_includes}": gcc_host_compiler_includes,
-       })
-  _tpl(repository_ctx,
-       "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc",
-       {
-           "%{cpu_compiler}": str(cc),
-           "%{cuda_version}": cuda_config.cuda_version,
-           "%{gcc_host_compiler_path}": str(cc),
-           "%{cuda_compute_capabilities}": ", ".join(
-               ["\"%s\"" % c for c in cuda_config.compute_capabilities]),
-       })
+           "%{host_compiler_includes}": host_compiler_includes,
+       }
+  if _use_cuda_clang(repository_ctx):
+    cuda_defines["%{clang_path}"] = cc
+    _tpl(repository_ctx, "crosstool:CROSSTOOL_clang", cuda_defines, out="crosstool/CROSSTOOL")
+  else:
+    _tpl(repository_ctx, "crosstool:CROSSTOOL_nvcc", cuda_defines, out="crosstool/CROSSTOOL")
+    _tpl(repository_ctx,
+         "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc",
+         {
+             "%{cpu_compiler}": str(cc),
+             "%{cuda_version}": cuda_config.cuda_version,
+             "%{gcc_host_compiler_path}": str(cc),
+             "%{cuda_compute_capabilities}": ", ".join(
+                 ["\"%s\"" % c for c in cuda_config.compute_capabilities]),
+         })
 
   # Set up cuda_config.h, which is used by
   # tensorflow/stream_executor/dso_loader.cc.

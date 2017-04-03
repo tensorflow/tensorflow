@@ -1005,23 +1005,13 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
 
   def testPositiveDeltaFloat(self):
     x_shape = [2, 2, 3]
-    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 245, 90, 255, 1]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.float32).reshape(x_shape) / 255.
 
-    y_data = [10, 15, 23, 64, 145, 236, 47, 18, 255, 100, 255, 11]
+    y_data = [10, 15, 23, 64, 145, 236, 47, 18, 244, 100, 265, 11]
     y_np = np.array(y_data, dtype=np.float32).reshape(x_shape) / 255.
 
     self._testBrightness(x_np, y_np, delta=10. / 255.)
-
-  def testNegativeDeltaFloat(self):
-    x_shape = [2, 2, 3]
-    x_data = [0, 5, 13, 10, 135, 226, 37, 8, 245, 90, 255, 1]
-    x_np = np.array(x_data, dtype=np.float32).reshape(x_shape) / 255.
-
-    y_data = [0, 0, 3, 0, 125, 216, 27, 0, 235, 80, 245, 0]
-    y_np = np.array(y_data, dtype=np.float32).reshape(x_shape) / 255.
-
-    self._testBrightness(x_np, y_np, delta=-10. / 255.)
 
   def testNegativeDelta(self):
     x_shape = [2, 2, 3]
@@ -1187,11 +1177,13 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
 
     for x_shape in ([3, 5],):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
-                         target_width, "'image' must be at least three-dimensional.")
+                         target_width,
+                         "'image' must be at least three-dimensional.")
 
     for x_shape in ([1, 3, 5, 1, 1],):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
-                         target_width, "'image' must have either 3 or 4 dimensions.")
+                         target_width,
+                         "'image' must have either 3 or 4 dimensions.")
 
   def testZeroLengthInput(self):
     # Input image has 0-length dimension(s).
@@ -1436,11 +1428,13 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
 
     for x_shape in ([3, 5],):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
-                         target_width, "'image' must be at least three-dimensional")
+                         target_width,
+                         "'image' must be at least three-dimensional")
 
     for x_shape in ([1, 3, 5, 1, 1],):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
-                         target_width, "'image' must have either 3 or 4 dimensions.")
+                         target_width,
+                         "'image' must have either 3 or 4 dimensions.")
 
   def testZeroLengthInput(self):
     # Input image has 0-length dimension(s).

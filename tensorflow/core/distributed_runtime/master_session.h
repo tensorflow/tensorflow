@@ -173,7 +173,7 @@ class MasterSession : public core::RefCounted {
   int64 next_node_id_ GUARDED_BY(mu_) = 0;
 
   // Used to cancel running steps on Close().
-  CancellationManager* cancellation_manager_;
+  CancellationManager cancellation_manager_;
 
   // Private dtor. The client must call Close().
   virtual ~MasterSession();

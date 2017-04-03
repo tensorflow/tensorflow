@@ -51,16 +51,53 @@ def _temp_workaround_http_archive_impl(repo_ctx):
                      }, False)
    repo_ctx.download_and_extract(repo_ctx.attr.urls, "", repo_ctx.attr.sha256,
                                  "", repo_ctx.attr.strip_prefix)
+   if repo_ctx.attr.patch_file != None:
+     _apply_patch(repo_ctx, repo_ctx.attr.patch_file)
 
 temp_workaround_http_archive = repository_rule(
    implementation=_temp_workaround_http_archive_impl,
    attrs = {
       "build_file": attr.label(),
       "repository": attr.string(),
+      "patch_file": attr.label(default = None),
       "urls": attr.string_list(default = []),
       "sha256": attr.string(default = ""),
       "strip_prefix": attr.string(default = ""),
    })
+
+# Executes specified command with arguments and calls 'fail' if it exited with non-zero code
+def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
+  result = repo_ctx.execute(cmd_and_args)
+  if result.return_code != 0:
+    fail(("Non-zero return code({1}) when executing '{0}':\n" +
+          "Stdout: {2}\n" +
+          "Stderr: {3}").format(" ".join(cmd_and_args),
+                                result.return_code, result.stdout, result.stderr))
+
+# Apply a patch_file to the repository root directory
+# Runs 'patch -p1'
+def _apply_patch(repo_ctx, patch_file):
+  _execute_and_check_ret_code(repo_ctx, ["patch", "-p1",
+                                         "-d", repo_ctx.path("."),
+                                         "-i", repo_ctx.path(patch_file)])
+
+# Download the repository and apply a patch to its root
+def _patched_http_archive_impl(repo_ctx):
+  repo_ctx.download_and_extract(repo_ctx.attr.urls,
+                                sha256 = repo_ctx.attr.sha256,
+                                stripPrefix = repo_ctx.attr.strip_prefix)
+  _apply_patch(repo_ctx, repo_ctx.attr.patch_file)
+
+patched_http_archive = repository_rule(
+    implementation = _patched_http_archive_impl,
+    attrs = {
+      "patch_file": attr.label(),
+      "build_file": attr.label(),
+      "repository": attr.string(),
+      "urls": attr.string_list(default = []),
+      "sha256": attr.string(default = ""),
+      "strip_prefix": attr.string(default = ""),
+    })
 
 # If TensorFlow is linked as a submodule.
 # path_prefix and tf_repo_name are no longer used.
@@ -80,22 +117,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/9c6361787292.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/9c6361787292.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/deff8b280204.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/deff8b280204.tar.gz",
       ],
-      sha256 = "e6ec2502a5d82dd5df0b9b16e7697f5fccb81c322d0be8e3492969eecb66badd",
-      strip_prefix = "eigen-eigen-9c6361787292",
+      sha256 = "a39834683eb5bdb9a7434f0ab3621d2cbc3b07e8002db6de101e45ec536723eb",
+      strip_prefix = "eigen-eigen-deff8b280204",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
   native.new_http_archive(
       name = "libxsmm_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.7.1.tar.gz",
-          "https://github.com/hfp/libxsmm/archive/1.7.1.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.8.tar.gz",
+          "https://github.com/hfp/libxsmm/archive/1.8.tar.gz",
       ],
-      sha256 = "9d3f63ce3eed62f04e4036de6f2be2ce0ff07781ca571af6e0bf85b077edf17a",
-      strip_prefix = "libxsmm-1.7.1",
+      sha256 = "0330201afb5525d0950ec861fec9dd75eb40a03845ebe03d2c635cf8bfc14fea",
+      strip_prefix = "libxsmm-1.8",
       build_file = str(Label("//third_party:libxsmm.BUILD")),
   )
 
@@ -220,6 +257,39 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.new_http_archive(
+      name = "org_pythonhosted_markdown",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/pypi.python.org/packages/1d/25/3f6d2cb31ec42ca5bd3bfbea99b63892b735d76e26f20dd2dcc34ffe4f0d/Markdown-2.6.8.tar.gz",
+          "https://pypi.python.org/packages/1d/25/3f6d2cb31ec42ca5bd3bfbea99b63892b735d76e26f20dd2dcc34ffe4f0d/Markdown-2.6.8.tar.gz",
+      ],
+      strip_prefix = "Markdown-2.6.8",
+      sha256 = "0ac8a81e658167da95d063a9279c9c1b2699f37c7c4153256a458b3a43860e33",
+      build_file = str(Label("//third_party:markdown.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "org_html5lib",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/html5lib/html5lib-python/archive/1.0b8.tar.gz",
+          "https://github.com/html5lib/html5lib-python/archive/1.0b8.tar.gz",
+      ],
+      sha256 = "adb36c879264e8880b92589c4c4fe0814cd9d157b73328b14d728f48a6bab0a4",
+      strip_prefix = "html5lib-python-1.0b8",
+      build_file = str(Label("//third_party:html5lib.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "org_mozilla_bleach",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/mozilla/bleach/archive/v1.5.tar.gz",
+          "https://github.com/mozilla/bleach/archive/v1.5.tar.gz",
+      ],
+      strip_prefix = "bleach-1.5",
+      sha256 = "0d68713d02ba4148c417ab1637dd819333d96929a34401d0233947bec0881ad8",
+      build_file = str(Label("//third_party:bleach.BUILD")),
+  )
+
+  native.new_http_archive(
       name = "org_pocoo_werkzeug",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/pypi.python.org/packages/b7/7f/44d3cfe5a12ba002b253f6985a4477edfa66da53787a2a838a40f6415263/Werkzeug-0.11.10.tar.gz",
@@ -235,7 +305,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@six_archive//:six",
   )
 
-  native.http_archive(
+  patched_http_archive(
       name = "protobuf",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
@@ -243,6 +313,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
       strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
+      # TODO: remove patching when tensorflow stops linking same protos into
+      #       multiple shared libraries loaded in runtime by python.
+      #       This patch fixes a runtime crash when tensorflow is compiled
+      #       with clang -O2 on Linux (see https://github.com/tensorflow/tensorflow/issues/8394)
+      patch_file = str(Label("//third_party/protobuf:add_noinlines.patch")),
   )
 
   # We need to import the protobuf library under the names com_google_protobuf
@@ -454,6 +529,18 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   temp_workaround_http_archive(
+      name = "snappy",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/google/snappy/archive/1.1.4.zip",
+          "https://github.com/google/snappy/archive/1.1.4.zip",
+      ],
+      sha256 = "6c74d2b663170d68184da353cdd71b5b7d57bc8888ef1e99b4929b5d680dba54",
+      strip_prefix = "snappy-1.1.4",
+      build_file = str(Label("//third_party:snappy.BUILD")),
+      repository = tf_repo_name,
+  )
+
+  temp_workaround_http_archive(
       name = "nccl_archive",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
@@ -461,7 +548,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       sha256 = "6787f0eed88d52ee8e32956fa4947d92c139da469f1d8e311c307f27d641118e",
       strip_prefix = "nccl-024d1e267845f2ed06f3e2e42476d50f04a00ee6",
-      build_file = str(Label("//third_party:nccl.BUILD")),
+      build_file = str(Label("//third_party/nccl:nccl.BUILD")),
+      # TODO: Remove patching after the fix is merged into nccl(see https://github.com/NVIDIA/nccl/pull/78)
+      patch_file = str(Label("//third_party/nccl:fix_clang_compilation.patch")),
       repository = tf_repo_name,
   )
 

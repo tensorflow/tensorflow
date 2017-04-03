@@ -84,6 +84,35 @@ class ParallelCpuExecutable : public Executable {
   }
 
  private:
+  // Allocate buffers required for execution and assign them to the elements of
+  // "buffers". "buffers" should be sized to the number of buffers in buffer
+  // assignment. Each vector element corresponds to a particular Index. If
+  // a vector element already contains a non-null DeviceMemoryBase, then no
+  // buffer is assigned for this element.
+  Status AllocateBuffers(
+      DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+      std::vector<perftools::gputools::DeviceMemoryBase>* buffers);
+
+  // Calls the generated functions in 'function_names_', performing the
+  // computation with the given arguments using the supplied buffers.
+  Status ExecuteComputeFunctions(
+      const ExecutableRunOptions* run_options,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          arguments,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          buffers,
+      HloExecutionProfile* hlo_execution_profile);
+  Status ExecuteComputeFunctions(
+      const ExecutableRunOptions* run_options,
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+          buffers,
+      HloExecutionProfile* hlo_execution_profile);
+
+  // Returns the points-to set of the root instruction of the entry
+  // computation. Uses points-to analysis from buffer assignment.
+  const PointsToSet& GetRootPointsToSet() const;
+
   // The JIT containing compiled modules.
   tensorflow::mutex jit_mutex_;
   std::unique_ptr<SimpleOrcJIT> jit_ GUARDED_BY(jit_mutex_);

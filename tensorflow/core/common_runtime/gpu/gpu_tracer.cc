@@ -288,6 +288,7 @@ class GPUTracerImpl : public GPUTracer,
                       public port::Tracing::Engine {
  public:
   GPUTracerImpl();
+  ~GPUTracerImpl();
 
   // GPUTracer interface:
   Status Start() override;
@@ -380,6 +381,12 @@ GPUTracerImpl::GPUTracerImpl() {
   CHECK(cupti_manager_);
   cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
   enabled_ = false;
+}
+
+GPUTracerImpl::~GPUTracerImpl() {
+  // Unregister the CUPTI callbacks if needed to prevent them from accessing
+  // freed memory.
+  Stop().IgnoreError();
 }
 
 Status GPUTracerImpl::Start() {

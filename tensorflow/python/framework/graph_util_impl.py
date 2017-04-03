@@ -157,6 +157,8 @@ def extract_sub_graph(graph_def, dest_nodes):
   out = graph_pb2.GraphDef()
   for n in nodes_to_keep_list:
     out.node.extend([copy.deepcopy(name_to_node_map[n])])
+  out.library.CopyFrom(graph_def.library)
+  out.versions.CopyFrom(graph_def.versions)
 
   return out
 

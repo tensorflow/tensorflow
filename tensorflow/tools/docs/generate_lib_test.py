@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import os
 import sys
-import tempfile
 
 import tensorflow as tf
 
@@ -44,6 +43,13 @@ class TestClass(object):
     class GrandChildClass(object):
       """Docstring for a child of a child class."""
       pass
+
+
+class DummyVisitor(object):
+
+  def __init__(self, index, duplicate_of):
+    self.index = index
+    self.duplicate_of = duplicate_of
 
 
 class GenerateTest(googletest.TestCase):
@@ -85,43 +91,59 @@ class GenerateTest(googletest.TestCase):
         'tf.TestModule.TestClass.ChildClass.GrandChildClass': []
     }
 
-    duplicate_of = {
-        'tf.TestModule.test_function': 'tf.test_function'
-    }
+    duplicate_of = {'tf.test_function': 'tf.TestModule.test_function'}
 
     duplicates = {
-        'tf.test_function': ['tf.test_function', 'tf.TestModule.test_function']
+        'tf.TestModule.test_function': [
+            'tf.test_function', 'tf.TestModule.test_function'
+        ]
     }
 
-    output_dir = tempfile.mkdtemp()
     base_dir = os.path.dirname(__file__)
 
-    reference_resolver = parser.ReferenceResolver(
-        duplicate_of=duplicate_of,
-        doc_index={}, index=index, py_module_names=['tf'])
+    visitor = DummyVisitor(index, duplicate_of)
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
     parser_config = parser.ParserConfig(
-        reference_resolver=reference_resolver, duplicates=duplicates, tree=tree,
-        reverse_index={}, guide_index={}, base_dir=base_dir)
-    generate_lib.write_docs(output_dir, parser_config, duplicate_of, index,
-                            yaml_toc=True)
+        reference_resolver=reference_resolver,
+        duplicates=duplicates,
+        duplicate_of=duplicate_of,
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir=base_dir)
+
+    output_dir = googletest.GetTempDir()
+
+    generate_lib.write_docs(output_dir, parser_config, yaml_toc=True)
 
     # Make sure that the right files are written to disk.
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'index.md')))
     self.assertTrue(os.path.exists(os.path.join(output_dir, 'tf.md')))
     self.assertTrue(os.path.exists(os.path.join(output_dir, '_toc.yaml')))
-    self.assertTrue(os.path.exists(os.path.join(
-        output_dir, 'tf/TestModule.md')))
-    self.assertTrue(os.path.exists(os.path.join(
-        output_dir, 'tf/test_function.md')))
-    self.assertTrue(os.path.exists(os.path.join(
-        output_dir, 'tf/TestModule/TestClass.md')))
-    self.assertTrue(os.path.exists(os.path.join(
-        output_dir, 'tf/TestModule/TestClass/ChildClass.md')))
-    self.assertTrue(os.path.exists(os.path.join(
-        output_dir, 'tf/TestModule/TestClass/ChildClass/GrandChildClass.md')))
+    self.assertTrue(
+        os.path.exists(os.path.join(output_dir, 'tf/TestModule.md')))
+    self.assertFalse(
+        os.path.exists(os.path.join(output_dir, 'tf/test_function.md')))
+    self.assertTrue(
+        os.path.exists(
+            os.path.join(output_dir, 'tf/TestModule/TestClass.md')))
+    self.assertTrue(
+        os.path.exists(
+            os.path.join(output_dir,
+                         'tf/TestModule/TestClass/ChildClass.md')))
+    self.assertTrue(
+        os.path.exists(
+            os.path.join(
+                output_dir,
+                'tf/TestModule/TestClass/ChildClass/GrandChildClass.md')))
     # Make sure that duplicates are not written
-    self.assertFalse(os.path.exists(os.path.join(
-        output_dir, 'tf/TestModule/test_function.md')))
+    self.assertTrue(
+        os.path.exists(
+            os.path.join(output_dir, 'tf/TestModule/test_function.md')))
 
 
 if __name__ == '__main__':

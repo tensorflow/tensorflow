@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_OP_REGISTRY_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_OP_REGISTRY_H_
 
-#include <map>
+#include <functional>
 #include <memory>
+#include <set>
+#include <unordered_map>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -38,19 +41,16 @@ namespace tensorflow {
 extern const char* const DEVICE_CPU_XLA_JIT;  // "CPU_XLA_JIT"
 extern const char* const DEVICE_GPU_XLA_JIT;  // "GPU_XLA_JIT"
 
+constexpr std::array<DataType, 2> kIntTypes = {{DT_INT32, DT_INT64}};
+constexpr std::array<DataType, 2> kFloatTypes = {{DT_FLOAT, DT_DOUBLE}};
+constexpr std::array<DataType, 4> kNumericTypes = {
+    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE}};
+
 constexpr std::array<DataType, 5> kCpuAllTypes = {
     {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_BOOL}};
-constexpr std::array<DataType, 2> kCpuIntTypes = {{DT_INT32, DT_INT64}};
-constexpr std::array<DataType, 2> kCpuFloatTypes = {{DT_FLOAT, DT_DOUBLE}};
-constexpr std::array<DataType, 4> kCpuNumericTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE}};
 
 constexpr std::array<DataType, 5> kGpuAllTypes = {
     {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_BOOL}};
-constexpr std::array<DataType, 2> kGpuIntTypes = {{DT_INT32, DT_INT64}};
-constexpr std::array<DataType, 2> kGpuFloatTypes = {{DT_FLOAT, DT_DOUBLE}};
-constexpr std::array<DataType, 4> kGpuNumericTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE}};
 
 // Class that manages registrations of operators and devices for the XLA JIT.
 // Not thread-safe.
@@ -76,6 +76,20 @@ class XlaOpRegistry {
     bool compile_resource_ops = false;
   };
 
+  // Registers an XLA backend. `compilation_device_name` is the name of the
+  // device used for symbolic execution during compilation. `supported_types`
+  // is the list of non-resource types supported by the device. Each operators
+  // will be registered for the intersection of the operator's supported types
+  // and the device's supported types. `backend_op_filter` is a function used
+  // to exclude or modify operator registrations on the device; it may be
+  // nullptr, in which case all ops are included.
+  // `backend_op_filter` should return true if the op should be registered on
+  // the device; it may optionally modify the KernelDef.
+  typedef bool (*BackendOpFilter)(KernelDef* kdef);
+  static void RegisterBackend(const string& compilation_device_name,
+                              gtl::ArraySlice<DataType> supported_types,
+                              BackendOpFilter op_filter);
+
   // Registers `device_name` for XLA compilation, using information from
   // `registration`.
   static void RegisterCompilationDevice(const string& device_name,
@@ -94,14 +108,16 @@ class XlaOpRegistry {
   // Does nothing otherwise.
   static void RegisterCompilationKernels();
 
-  // Returns KernelDefs for JIT ops registered on 'jit_device_type'.
-  // Does not include kernels registered using REGISTER_XLA_JIT_ONLY_KERNEL.
+  // Returns KernelDefs for compilation ops registered on
+  // 'compilation_device_name'.
+  // Does not include kernels registered as CompilationOnly.
   static std::vector<const KernelDef*> DeviceKernels(
-      const string& jit_device_type);
+      const string& compilation_device_name);
 
  private:
-  friend class XlaKernelRegistrar;
+  friend class XlaBackendRegistrar;
   friend class XlaOpRegistrar;
+  friend class XlaOpRegistrationBuilder;
 
   static XlaOpRegistry& Instance();
 
@@ -110,28 +126,57 @@ class XlaOpRegistry {
 
   mutex mutex_;
 
+  // Describes an XLA backend.
+  struct Backend {
+    // Which types are supported by this device?
+    std::set<DataType> supported_types;
+
+    // The per-backend operator filter function. See the comment on
+    // RegisterBackend() for details.
+    BackendOpFilter op_filter;
+
+    // KernelDefs built by RegisterCompilationKernels() for each op supported
+    // by the device.
+    std::vector<std::unique_ptr<KernelDef>> kernel_defs;
+  };
+
+  // Map from compilation device names to a description of the backend.
+  std::unordered_map<string, Backend> backends_ GUARDED_BY(mutex_);
+
   // Map from Tensorflow device names to the corresponding JIT device metadata.
   std::unordered_map<string, DeviceRegistration> compilation_devices_
       GUARDED_BY(mutex_);
 
-  // Map from operator name to OpKernel factory, populated by REGISTER_XLA_OP.
-  std::unordered_map<string, Factory> ops_ GUARDED_BY(mutex_);
+  // A description of a Tensorflow operator that can be compiled to XLA.
+  struct OpRegistration {
+    string name;
+
+    // Should this operator be registered only on compilation devices, without a
+    // dummy kernel registered on the corresponding XLA device?
+    bool compilation_only = false;
+
+    // Should we allow resource types for type attributes? Used by _Arg to
+    // allow DT_RESOURCE.
+    bool allow_resource_types = false;
+
+    // Mapping from attribute name to a list of supported types.
+    std::unordered_map<string, std::set<DataType>> type_constraints;
+
+    // An optional whitelist of devices. If there is no whitelist, all devices
+    // are permitted.
+    bool has_device_whitelist = false;
+    std::unordered_set<string> device_whitelist;
+
+    // Factory used to build OpKernels that perform symbolic execution.
+    Factory factory;
+  };
+
+  // Map from operator name to OpRegistrations, populated by REGISTER_XLA_OP.
+  std::unordered_map<string, std::unique_ptr<OpRegistration>> ops_
+      GUARDED_BY(mutex_);
 
   // Have we already registered the JIT kernels on the JIT devices?
   bool jit_kernels_registered_ = false;
-
-  struct XlaKernel {
-    // Should this kernel be registered only on JIT devices, without a dummy
-    // kernel registered on the corresponding XLA device?
-    bool jit_only;
-
-    // KernelDef as built by REGISTER_XLA_KERNEL.
-    std::unique_ptr<const KernelDef> kernel_def;
-  };
-
-  // Map from JIT device name to a vector of XLA kernel descriptors.
-  std::unordered_map<string, std::vector<XlaKernel>> kernels_
-      GUARDED_BY(mutex_);
 
   // Holds ownership of OpKernelRegistrars that represent the Tensorflow kernel
   // registrations created by RegisterCompilationKernels() and
@@ -141,7 +186,7 @@ class XlaOpRegistry {
 };
 
 // REGISTER_XLA_OP() registers an XLA OpKernel by name, for example:
-// REGISTER_XLA_OP("Add", AddOp);
+// REGISTER_XLA_OP(Name("Add"), AddOp);
 // where 'AddOp' is the name of a JIT OpKernel class that implements "Add".
 //
 // We don't use a variadic macro here because we don't expect JIT operators to
@@ -150,50 +195,72 @@ class XlaOpRegistry {
 #define REGISTER_XLA_OP(NAME, OP) \
   REGISTER_XLA_OP_UNIQ_HELPER(__COUNTER__, NAME, OP)
 
-// REGISTER_XLA_KERNEL() associates an XLA OpKernel with a particular device and
-// set of type constraints, e.g.,
-// REGISTER_XLA_KERNEL(DEVICE_XLA_CPU_JIT,
-//                     Name("Relu").TypeConstraint("T", DT_FLOAT));
-//
-// REGISTER_XLA_JIT_ONLY_KERNEL is similar to REGISTER_XLA_KERNEL(), but causes
-// XlaOpRegistry::RegisterDeviceKernels() to ignore the kernel.
+class XlaOpRegistrationBuilder {
+ public:
+  // Starts an operator registration chain.
+  static XlaOpRegistrationBuilder Name(StringPiece name);
 
-#define REGISTER_XLA_KERNEL(DEVICE, BUILDER) \
-  REGISTER_XLA_KERNEL_UNIQ_HELPER(__COUNTER__, DEVICE, BUILDER, false)
+  // Specifies a whitelist of devices on which the operator may run.
+  XlaOpRegistrationBuilder& Device(StringPiece devices);
+  XlaOpRegistrationBuilder& Device(gtl::ArraySlice<StringPiece> devices);
 
-#define REGISTER_XLA_JIT_ONLY_KERNEL(DEVICE, BUILDER) \
-  REGISTER_XLA_KERNEL_UNIQ_HELPER(__COUNTER__, DEVICE, BUILDER, true)
+  // Specifies a type constraint for a type variable attribute. Each constraint
+  // specifies the set of types that the type variable may assume.
+  XlaOpRegistrationBuilder& TypeConstraint(StringPiece attr_name,
+                                           DataType allowed);
+
+  XlaOpRegistrationBuilder& TypeConstraint(StringPiece attr_name,
+                                           gtl::ArraySlice<DataType> allowed);
+
+  // Specifies that a dummy copy of this operator should not be registered on
+  // XLA_* devices, but may be used during compilation.
+  XlaOpRegistrationBuilder& CompilationOnly();
+
+  // Allow DT_RESOURCE types for type parameters.
+  XlaOpRegistrationBuilder& AllowResourceTypes();
+
+  std::unique_ptr<XlaOpRegistry::OpRegistration> Build(
+      XlaOpRegistry::Factory factory);
+
+ private:
+  XlaOpRegistrationBuilder(StringPiece name);
+
+  std::unique_ptr<XlaOpRegistry::OpRegistration> registration_;
+};
+
+// REGISTER_XLA_BACKEND() registers an XLA backend. Example usage:
+// REGISTER_XLA_BACKEND(DEVICE_GPU_XLA_JIT, kGpuAllTypes, GpuOpFilter);
+#define REGISTER_XLA_BACKEND(NAME, ...) \
+  REGISTER_XLA_BACKEND_UNIQ_HELPER(__COUNTER__, NAME, __VA_ARGS__)
 
 // Implementation details.
 
 class XlaOpRegistrar {
  public:
-  XlaOpRegistrar(StringPiece name, XlaOpRegistry::Factory factory);
+  XlaOpRegistrar(std::unique_ptr<XlaOpRegistry::OpRegistration> registration);
 };
 
-#define REGISTER_XLA_OP_UNIQ_HELPER(COUNTER, NAME, OP) \
-  REGISTER_XLA_OP_UNIQ(COUNTER, NAME, OP)
+#define REGISTER_XLA_OP_UNIQ_HELPER(COUNTER, BUILDER, OP) \
+  REGISTER_XLA_OP_UNIQ(COUNTER, BUILDER, OP)
 
-#define REGISTER_XLA_OP_UNIQ(CTR, NAME, OP)                                    \
+#define REGISTER_XLA_OP_UNIQ(CTR, BUILDER, OP)                                 \
   static ::tensorflow::XlaOpRegistrar xla_op_registrar__body__##CTR##__object( \
-      NAME,                                                                    \
-      [](::tensorflow::OpKernelConstruction* context)                          \
-          -> ::tensorflow::OpKernel* { return new OP(context); });
+      XlaOpRegistrationBuilder::BUILDER.Build(                                 \
+          [](::tensorflow::OpKernelConstruction* context)                      \
+              -> ::tensorflow::OpKernel* { return new OP(context); }));
 
-// Implementation details.
-class XlaKernelRegistrar {
+class XlaBackendRegistrar {
  public:
-  XlaKernelRegistrar(bool jit_only, const KernelDef* def);
+  XlaBackendRegistrar(StringPiece name, gtl::ArraySlice<DataType> types,
+                      XlaOpRegistry::BackendOpFilter op_filter = nullptr);
 };
 
-#define REGISTER_XLA_KERNEL_UNIQ_HELPER(COUNTER, DEVICE, BUILDER, JIT_ONLY) \
-  REGISTER_XLA_KERNEL_UNIQ(COUNTER, DEVICE, BUILDER, JIT_ONLY)
+#define REGISTER_XLA_BACKEND_UNIQ_HELPER(COUNTER, NAME, ...) \
+  REGISTER_XLA_BACKEND_UNIQ(COUNTER, NAME, __VA_ARGS__)
 
-#define REGISTER_XLA_KERNEL_UNIQ(CTR, DEVICE, BUILDER, JIT_ONLY) \
-  static ::tensorflow::XlaKernelRegistrar                        \
-      xla_kernel_registrar__body__##CTR##__object(               \
-          JIT_ONLY,                                              \
-          ::tensorflow::register_kernel::BUILDER.Device(DEVICE).Build());
+#define REGISTER_XLA_BACKEND_UNIQ(CTR, NAME, ...) \
+  static ::tensorflow::XlaBackendRegistrar        \
+      xla_backend_registrar__body__##CTR##__object(NAME, __VA_ARGS__);
 
 }  // namespace tensorflow
 

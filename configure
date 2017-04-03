@@ -8,9 +8,6 @@ pushd `dirname $0` > /dev/null
 SOURCE_BASE_DIR=`pwd -P`
 popd > /dev/null
 
-# This file contains customized config settings.
-touch .bazelrc
-
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 
 function is_linux() {
@@ -38,14 +35,6 @@ function is_windows() {
   fi
 }
 
-function bazel_clean_and_fetch() {
-  if [ -z "$TF_BAZEL_TARGETS" ]; then
-    bazel fetch "//tensorflow/... -//tensorflow/contrib/nccl/... -//tensorflow/examples/android/..."
-  else
-    bazel fetch $TF_BAZEL_TARGETS
-  fi
-}
-
 function sed_hyphen_i() {
   if is_macos; then
     sed -i '' "$@"
@@ -53,6 +42,21 @@ function sed_hyphen_i() {
     sed -i "$@"
   fi
 }
+
+function write_to_bazelrc() {
+  echo "$1" >> .tf_configure.bazelrc
+}
+
+function write_action_env_to_bazelrc() {
+  write_to_bazelrc "build --action_env $1=\"$2\""
+}
+
+# This file contains customized config settings.
+rm -f .tf_configure.bazelrc
+touch .tf_configure.bazelrc
+touch .bazelrc
+sed_hyphen_i "/tf_configure/d" .bazelrc
+echo "import .tf_configure.bazelrc" >> .bazelrc
 
 # Delete any leftover BUILD files from the Makefile build, which would interfere
 # with Bazel parsing.
@@ -164,6 +168,7 @@ if is_windows; then
   TF_NEED_HDFS=0
   TF_NEED_JEMALLOC=0
   TF_NEED_OPENCL=0
+  TF_CUDA_CLANG=0
 fi
 
 if is_linux; then
@@ -181,9 +186,8 @@ else
   TF_NEED_JEMALLOC=0
 fi
 
-sed_hyphen_i -e "/with_jemalloc/d" .bazelrc
 if [[ "$TF_NEED_JEMALLOC" == "1" ]]; then
-  echo 'build --define with_jemalloc=true' >>.bazelrc
+  write_to_bazelrc 'build --define with_jemalloc=true'
 fi
 
 while [[ "$TF_NEED_GCP" == "" ]]; do
@@ -200,9 +204,8 @@ while [[ "$TF_NEED_GCP" == "" ]]; do
   esac
 done
 
-sed_hyphen_i -e "/with_gcp_support/d" .bazelrc
 if [[ "$TF_NEED_GCP" == "1" ]]; then
-  echo 'build --define with_gcp_support=true' >>.bazelrc
+  write_to_bazelrc 'build --define with_gcp_support=true'
 fi
 
 while [[ "$TF_NEED_HDFS" == "" ]]; do
@@ -219,9 +222,8 @@ while [[ "$TF_NEED_HDFS" == "" ]]; do
   esac
 done
 
-sed_hyphen_i -e "/with_hdfs_support/d" .bazelrc
 if [[ "$TF_NEED_HDFS" == "1" ]]; then
-  echo 'build --define with_hdfs_support=true' >>.bazelrc
+  write_to_bazelrc 'build --define with_hdfs_support=true'
 fi
 
 ## Enable XLA.
@@ -235,9 +237,8 @@ while [[ "$TF_ENABLE_XLA" == "" ]]; do
   esac
 done
 
-sed_hyphen_i -e "/with_xla_support/d" .bazelrc
 if [[ "$TF_ENABLE_XLA" == "1" ]]; then
-  echo 'build --define with_xla_support=true' >>.bazelrc
+  write_to_bazelrc 'build --define with_xla_support=true'
 fi
 
 
@@ -280,17 +281,27 @@ while [ "$TF_NEED_CUDA" == "" ]; do
 done
 
 export TF_NEED_CUDA
+write_action_env_to_bazelrc "TF_NEED_CUDA" "$TF_NEED_CUDA"
+
 export TF_NEED_OPENCL
-if [[ "$TF_NEED_CUDA" == "0" ]] && [[ "$TF_NEED_OPENCL" == "0" ]]; then
-  echo "Configuration finished"
-  bazel_clean_and_fetch
-  exit
-fi
 
 if [ "$TF_NEED_CUDA" == "1" ]; then
+while [[ "$TF_CUDA_CLANG" == "" ]]; do
+  read -p "Do you want to use clang as CUDA compiler? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "Clang will be used as CUDA compiler"; TF_CUDA_CLANG=1;;
+    [Nn]* ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
+    "" ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+export TF_CUDA_CLANG
+write_action_env_to_bazelrc "TF_CUDA_CLANG" "$TF_CUDA_CLANG"
+
 # Set up which gcc nvcc should use as the host compiler
 # No need to set this on Windows
-while ! is_windows && true; do
+while [[ "$TF_CUDA_CLANG" != "1" ]] && ! is_windows && true; do
   fromuser=""
   if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
     default_gcc_host_compiler_path=$(which gcc || true)
@@ -302,6 +313,7 @@ while ! is_windows && true; do
   fi
   if [ -e "$GCC_HOST_COMPILER_PATH" ]; then
     export GCC_HOST_COMPILER_PATH
+    write_action_env_to_bazelrc "GCC_HOST_COMPILER_PATH" "$GCC_HOST_COMPILER_PATH"
     break
   fi
   echo "Invalid gcc path. ${GCC_HOST_COMPILER_PATH} cannot be found" 1>&2
@@ -309,6 +321,30 @@ while ! is_windows && true; do
     exit 1
   fi
   GCC_HOST_COMPILER_PATH=""
+  # Retry
+done
+
+# Set up which clang we should use as the cuda / host compiler.
+while [[ "$TF_CUDA_CLANG" == "1" ]] && true; do
+  fromuser=""
+  if [ -z "$CLANG_CUDA_COMPILER_PATH" ]; then
+    default_clang_host_compiler_path=$(which clang || true)
+    read -p "Please specify which clang should be used as device and host compiler. [Default is $default_clang_host_compiler_path]: " CLANG_CUDA_COMPILER_PATH
+    fromuser="1"
+    if [ -z "$CLANG_CUDA_COMPILER_PATH" ]; then
+      CLANG_CUDA_COMPILER_PATH="$default_clang_host_compiler_path"
+    fi
+  fi
+  if [ -e "$CLANG_CUDA_COMPILER_PATH" ]; then
+    export CLANG_CUDA_COMPILER_PATH
+    write_action_env_to_bazelrc "CLANG_CUDA_COMPILER_PATH" "$CLANG_CUDA_COMPILER_PATH"
+    break
+  fi
+  echo "Invalid clang path. ${CLANG_CUDA_COMPILER_PATH} cannot be found" 1>&2
+  if [ -z "$fromuser" ]; then
+    exit 1
+  fi
+  CLANG_CUDA_COMPILER_PATH=""
   # Retry
 done
 
@@ -352,7 +388,9 @@ while true; do
 
   if [ -e "${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}" ]; then
     export CUDA_TOOLKIT_PATH
+    write_action_env_to_bazelrc "CUDA_TOOLKIT_PATH" "$CUDA_TOOLKIT_PATH"
     export TF_CUDA_VERSION
+    write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION"
     break
   fi
   echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH} cannot be found"
@@ -404,7 +442,9 @@ while true; do
 
   if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
     export TF_CUDNN_VERSION
+    write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
     export CUDNN_INSTALL_PATH
+    write_action_env_to_bazelrc "CUDNN_INSTALL_PATH" "$CUDNN_INSTALL_PATH"
     break
   fi
 
@@ -417,7 +457,9 @@ while true; do
     CUDNN_PATH_FROM_LDCONFIG="$($LDCONFIG_BIN -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
     if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
       export TF_CUDNN_VERSION
+      write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
       export CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
+      write_action_env_to_bazelrc "CUDNN_INSTALL_PATH" "$CUDNN_INSTALL_PATH"
       break
     fi
   fi
@@ -469,6 +511,7 @@ EOF
     fi
   else
     export TF_CUDA_COMPUTE_CAPABILITIES
+    write_action_env_to_bazelrc "TF_CUDA_COMPUTE_CAPABILITIES" "$TF_CUDA_COMPUTE_CAPABILITIES"
     break
   fi
   TF_CUDA_COMPUTE_CAPABILITIES=""
@@ -479,9 +522,9 @@ if is_windows; then
   export CUDA_PATH="$CUDA_TOOLKIT_PATH"
   export CUDA_COMPUTE_CAPABILITIES="$TF_CUDA_COMPUTE_CAPABILITIES"
   export NO_WHOLE_ARCHIVE_OPTION=1
-
-  # Set GCC_HOST_COMPILER_PATH to keep cuda_configure.bzl happy
-  export GCC_HOST_COMPILER_PATH="/usr/bin/dummy_compiler"
+  write_action_env_to_bazelrc "CUDA_PATH" "$CUDA_PATH"
+  write_action_env_to_bazelrc "CUDA_COMPUTE_CAPABILITIES" "$CUDA_COMPUTE_CAPABILITIES"
+  write_action_env_to_bazelrc "NO_WHOLE_ARCHIVE_OPTION" "1"
 fi
 
 # end of if "$TF_NEED_CUDA" == "1"
@@ -572,6 +615,6 @@ done
 # end of if "$TF_NEED_OPENCL" == "1"
 fi
 
-bazel_clean_and_fetch
-
+# TODO(gunan): Remove once bazel correctly handles changes in remote repositories.
+bazel clean
 echo "Configuration finished"
