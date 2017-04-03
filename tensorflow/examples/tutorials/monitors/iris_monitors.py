@@ -41,18 +41,15 @@ def main(unused_argv):
       "accuracy":
           tf.contrib.learn.MetricSpec(
               metric_fn=tf.contrib.metrics.streaming_accuracy,
-              prediction_key=
-              tf.contrib.learn.PredictionKey.CLASSES),
+              prediction_key="classes"),
       "precision":
           tf.contrib.learn.MetricSpec(
               metric_fn=tf.contrib.metrics.streaming_precision,
-              prediction_key=
-              tf.contrib.learn.PredictionKey.CLASSES),
+              prediction_key="classes"),
       "recall":
           tf.contrib.learn.MetricSpec(
               metric_fn=tf.contrib.metrics.streaming_recall,
-              prediction_key=
-              tf.contrib.learn.PredictionKey.CLASSES)
+              prediction_key="classes")
   }
   validation_monitor = tf.contrib.learn.monitors.ValidationMonitor(
       test_set.data,
