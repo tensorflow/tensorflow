@@ -19,6 +19,7 @@
 #include "tensorflow/contrib/boosted_trees/resources/stamped_resource.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 namespace boosted_trees {
@@ -30,7 +31,7 @@ class DecisionTreeEnsembleResource : public StampedResource {
   // Constructor.
   explicit DecisionTreeEnsembleResource()
       : decision_tree_ensemble_(
-            proto2::Arena::CreateMessage<
+            protobuf::Arena::CreateMessage<
                 boosted_trees::trees::DecisionTreeEnsembleConfig>(&arena_)) {}
 
   string DebugString() override {
@@ -57,14 +58,14 @@ class DecisionTreeEnsembleResource : public StampedResource {
     // Clear tree ensemle.
     arena_.Reset();
     CHECK_EQ(0, arena_.SpaceAllocated());
-    decision_tree_ensemble_ = proto2::Arena::CreateMessage<
+    decision_tree_ensemble_ = protobuf::Arena::CreateMessage<
         boosted_trees::trees::DecisionTreeEnsembleConfig>(&arena_);
   }
 
   mutex* get_mutex() { return &mu_; }
 
  private:
-  proto2::Arena arena_;
+  protobuf::Arena arena_;
   mutex mu_;
   boosted_trees::trees::DecisionTreeEnsembleConfig* decision_tree_ensemble_;
 };
