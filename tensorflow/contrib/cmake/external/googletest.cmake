@@ -4,14 +4,8 @@ set(googletest_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletes
 set(googletest_URL https://github.com/google/googletest.git)
 set(googletest_BUILD ${CMAKE_CURRENT_BINARY_DIR}/googletest/)
 set(googletest_TAG ec44c6c1675c25b9827aacd08c02433cccde7780)
-
-if(WIN32)
-  set(googletest_STATIC_LIBRARIES
-      ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/${CMAKE_BUILD_TYPE}/gtest.lib)
-else()
-  set(googletest_STATIC_LIBRARIES
-      ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/${CMAKE_BUILD_TYPE}/gtest.a)
-endif()
+set(googletest_STATIC_LIBRARIES
+    ${CMAKE_CURRENT_BINARY_DIR}/googletest/src/googletest/googletest/${CMAKE_BUILD_TYPE}/gtest${CMAKE_STATIC_LIBRARY_SUFFIX})
 
 ExternalProject_Add(googletest
     PREFIX googletest

@@ -14,13 +14,9 @@ add_custom_target(highwayhash_create_destination_dir
 add_custom_target(highwayhash_copy_headers_to_destination
     DEPENDS highwayhash_create_destination_dir)
 
-if(WIN32)
-  set(highwayhash_HEADERS "${highwayhash_BUILD}/highwayhash/*.h")
-  set(highwayhash_STATIC_LIBRARIES ${highwayhash_INSTALL}/lib/highwayhash.lib)
-else()
-  set(highwayhash_HEADERS "${highwayhash_BUILD}/highwayhash/*.h")
-  set(highwayhash_STATIC_LIBRARIES ${highwayhash_INSTALL}/lib/libhighwayhash.a)
-endif()
+set(highwayhash_HEADERS "${highwayhash_BUILD}/highwayhash/*.h")
+set(highwayhash_STATIC_LIBRARIES
+    ${highwayhash_INSTALL}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}highwayhash${CMAKE_STATIC_LIBRARY_SUFFIX})
 
 ExternalProject_Add(highwayhash
     PREFIX highwayhash
