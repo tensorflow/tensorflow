@@ -27,20 +27,15 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
-from tensorflow.python.platform import control_imports
 from tensorflow.python.platform import test
 
 
-class ScalarStrictTest(test.TestCase):
+class ScalarTest(test.TestCase):
 
   def check(self, op, args, error, correct=None):
     # Within Google, the switch to scalar strict occurred at version 6.
-    if control_imports.USE_OSS:
-      lenient = []
-      strict = [5, 6]
-    else:
-      lenient = [5]
-      strict = [6]
+    lenient = []
+    strict = [5, 6]
 
     # Use placeholders to bypass shape inference, since only the C++
     # GraphDef level is ever scalar lenient.
