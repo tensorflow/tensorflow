@@ -1427,12 +1427,12 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
   """
   with ops.name_scope(name, "ones_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    ones_shape = shape_internal(tensor, optimize=optimize)
-    if dtype is None:
-      dtype = tensor.dtype
-    ret = ones(ones_shape, dtype=dtype, name=name)
-    ret.set_shape(tensor.get_shape())
-    return ret
+    if dtype is not None and tensor.dtype != dtype:
+      ret = ones(shape_internal(tensor, optimize=optimize), dtype, name=name)
+      ret.set_shape(tensor.get_shape())
+      return ret
+    else:
+      return gen_array_ops._ones_like(tensor, name=name)
 
 
 def ones(shape, dtype=dtypes.float32, name=None):
