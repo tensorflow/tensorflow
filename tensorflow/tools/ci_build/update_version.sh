@@ -73,6 +73,7 @@ OLD_MINOR=$(cat ${VERSION_H} | grep -E "^#define TF_MINOR_VERSION [0-9]+" | \
 cut -d ' ' -f 3)
 OLD_PATCH=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [[:alnum:]-]+" | \
 cut -d ' ' -f 3)
+OLD_PIP_PATCH="${OLD_PATCH//-}"
 
 sed -i -e "s/^#define TF_MAJOR_VERSION ${OLD_MAJOR}/#define TF_MAJOR_VERSION ${MAJOR}/g" ${VERSION_H}
 sed -i -e "s/^#define TF_MINOR_VERSION ${OLD_MINOR}/#define TF_MINOR_VERSION ${MINOR}/g" ${VERSION_H}
@@ -92,6 +93,18 @@ check_existence file "${README_MD}"
 
 sed -i -r -e "s/${OLD_MAJOR}\.${OLD_MINOR}\.([[:alnum:]]+)-/${MAJOR}.${MINOR}.${PIP_PATCH}-/g" "${README_MD}"
 
+# Update the install md files
+NEW_PIP_TAG=$MAJOR.$MINOR.$PIP_PATCH
+OLD_PIP_TAG=$OLD_MAJOR.$OLD_MINOR.$OLD_PIP_PATCH
+
+echo $NEW_PIP_TAG
+echo $OLD_PIP_TAG
+for file in ${TF_SRC_DIR}/docs_src/install/install_{linux,mac,windows,sources}.md
+do
+  sed -i "s/tensorflow-${OLD_PIP_TAG}/tensorflow-${NEW_PIP_TAG}/g" $file
+  sed -i "s/tensorflow_gpu-${OLD_PIP_TAG}/tensorflow_gpu-${NEW_PIP_TAG}/g" $file
+  sed -i "s/TensorFlow ${OLD_PIP_TAG}/TensorFlow ${NEW_PIP_TAG}/g" $file
+done
 
 # Updates to be made if there are major / minor version changes
 MAJOR_MINOR_CHANGE=0
@@ -109,6 +122,11 @@ if [[ ${OLD_MAJOR} != ${MAJOR} ]] || [[ ${OLD_MINOR} != ${MINOR} ]]; then
   check_existence file "${TENSORBOARD_README_MD}"
   sed -i -r -e "s/${OLD_R_MAJOR_MINOR}/${R_MAJOR_MINOR}/g" \
       "${TENSORBOARD_README_MD}"
+
+  # Update tensorflow/docs_src/install/install_sources.md
+  MAC_FILE="${TF_SRC_DIR}/tensorflow/docs_src/install/install_mac.md"
+  sed -i -r -e "s/${OLD_R_MAJOR_MINOR}/${R_MAJOR_MINOR}/g" \
+      "${MAC_FILE}"
 
   # Update dockerfiles
   DEVEL_DOCKERFILE="${TF_SRC_DIR}/tools/docker/Dockerfile.devel"
