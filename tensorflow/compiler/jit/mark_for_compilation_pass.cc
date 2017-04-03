@@ -50,7 +50,7 @@ bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
 }
 
 // Make sure we don't recurse infinitely on recursive functions.
-const int kMaxRecursionDepth = 5;
+const int kMaxRecursionDepth = 10;
 
 bool IsCompilableCall(const NodeDef& call_def, DeviceType jit_device_type,
                       int depth, FunctionLibraryRuntime* lib_runtime);
