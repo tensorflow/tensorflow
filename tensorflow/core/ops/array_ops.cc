@@ -612,9 +612,7 @@ y: a tensor of the same shape and type as x but filled with zeros.
 REGISTER_OP("OnesLike")
     .Input("x: T")
     .Output("y: T")
-    .Attr(
-        "T: {uint8, half, float, double, int8, int16, int32, int64, complex64, "
-        "complex128}")
+    .Attr("T: {float, double, int32, int64, complex64, complex128}")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Returns a tensor of ones with the same shape and type as x.
