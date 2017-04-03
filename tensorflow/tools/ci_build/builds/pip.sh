@@ -269,7 +269,7 @@ pip install --upgrade pip==8.1.2
 
 # Force tensorflow reinstallation. Otherwise it may not get installed from
 # last build if it had the same version number as previous build.
-PIP_FLAGS="--upgrade --force-reinstall --no-deps"
+PIP_FLAGS="--upgrade --force-reinstall"
 pip install -v ${PIP_FLAGS} ${WHL_PATH} || \
     die "pip install (forcing to reinstall tensorflow) FAILED"
 echo "Successfully installed pip package ${WHL_PATH}"
