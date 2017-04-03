@@ -193,5 +193,5 @@ ImportError: cannot import name 'descriptor'</pre>
   <td><pre>No module named "pywrap_tensorflow"</pre></td>
 </tr>
 
-<table>
+</table>
 
