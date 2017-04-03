@@ -31,6 +31,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import session_run_hook
 
 
@@ -95,6 +97,22 @@ class TensorForestLossHook(session_run_hook.SessionRunHook):
       run_context.request_stop()
 
 
+class EveryCheckpointPreSaveListener(
+    basic_session_run_hooks.CheckpointSaverListener):
+  """Runs a given op before each checkpoint save."""
+
+  def __init__(self, op):
+    """Initializes the object.
+
+    Args:
+      op: An op to run before each checkpoint save.
+    """
+    self._op = op
+
+  def before_save(self, session, global_step_value):
+    session.run(self._op)
+
+
 def get_model_fn(params,
                  graph_builder_class,
                  device_assigner,
@@ -103,6 +121,7 @@ def get_model_fn(params,
                  num_trainers=1,
                  trainer_id=0,
                  report_feature_importances=False,
+                 model_dir=None,
                  local_eval=False):
   """Return a model function given a way to construct a graph builder."""
   def _model_fn(features, labels, mode):
@@ -138,6 +157,8 @@ def get_model_fn(params,
     # question of why we force everything to adhere to a single model_fn).
     loss_deps = []
     training_graph = None
+    training_hooks = []
+    scaffold = None
     if labels is not None and mode == model_fn_lib.ModeKeys.TRAIN:
       training_graph = control_flow_ops.group(
           graph_builder.training_graph(
@@ -146,6 +167,15 @@ def get_model_fn(params,
               trainer_id=trainer_id),
           state_ops.assign_add(contrib_framework.get_global_step(), 1))
       loss_deps.append(training_graph)
+      if hasattr(graph_builder, 'finalize_training'):
+        finalize_listener = EveryCheckpointPreSaveListener(
+            graph_builder.finalize_training())
+        scaffold = monitored_session.Scaffold()
+        training_hooks.append(
+            basic_session_run_hooks.CheckpointSaverHook(
+                model_dir, save_secs=600, save_steps=None,
+                scaffold=scaffold,
+                listeners=[finalize_listener]))
 
     training_loss = None
     if (mode == model_fn_lib.ModeKeys.EVAL or
@@ -158,7 +188,6 @@ def get_model_fn(params,
     if weights is not None:
       features[weights_name] = weights
 
-    training_hooks = []
     if early_stopping_rounds:
       training_hooks.append(TensorForestLossHook(early_stopping_rounds))
 
@@ -167,7 +196,9 @@ def get_model_fn(params,
         predictions=inference,
         loss=training_loss,
         train_op=training_graph,
-        training_hooks=training_hooks)
+        training_hooks=training_hooks,
+        scaffold=scaffold)
+
   return _model_fn
 
 
@@ -257,6 +288,7 @@ class TensorForestEstimator(estimator.Estimator):
             num_trainers=num_trainers,
             trainer_id=trainer_id,
             report_feature_importances=report_feature_importances,
+            model_dir=model_dir,
             local_eval=local_eval),
         model_dir=model_dir,
         config=config,

@@ -162,11 +162,26 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "factorization_ops_test_utils",
+    srcs = [
+        "python/ops/factorization_ops_test_utils.py",
+    ],
+    additional_deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+    ],
+)
+
+tf_py_test(
     name = "factorization_ops_test",
     srcs = ["python/ops/factorization_ops_test.py"],
     additional_deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        ":factorization_ops_test_utils",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -615,6 +615,12 @@ class TensorArrayPackOrGatherOp : public OpKernel {
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_tensor));
+
+    // If output_tensor is empty, there is nothing to concatenate so return it.
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
+
     ConstMatrixVector input_tensors_flat;
     input_tensors_flat.reserve(num_indices);
     auto output_flat =

@@ -157,6 +157,99 @@ TEST_F(ShapeInferenceTest, SelectBadShapes) {
       testing::ContainsRegex("pred operand must have PRED element type"));
 }
 
+TEST_F(ShapeInferenceTest, ClampAllMatrix) {
+  auto inferred_status = ShapeInference::InferTernaryOpShape(
+      TernaryOperation::TRIOP_CLAMP, matrix_64_48_, matrix_64_48_,
+      matrix_64_48_);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+}
+
+TEST_F(ShapeInferenceTest, ClampAllScalar) {
+  auto inferred_status = ShapeInference::InferTernaryOpShape(
+      TernaryOperation::TRIOP_CLAMP, f32_, f32_, f32_);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(f32_, inferred_status.ValueOrDie()));
+}
+
+TEST_F(ShapeInferenceTest, ClampMinScalar) {
+  auto inferred_status = ShapeInference::InferTernaryOpShape(
+      TernaryOperation::TRIOP_CLAMP, f32_, matrix_64_48_, matrix_64_48_);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+}
+
+TEST_F(ShapeInferenceTest, ClampMaxScalar) {
+  auto inferred_status = ShapeInference::InferTernaryOpShape(
+      TernaryOperation::TRIOP_CLAMP, matrix_64_48_, matrix_64_48_, f32_);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+}
+
+TEST_F(ShapeInferenceTest, ClampOperandScalar) {
+  auto inferred_status = ShapeInference::InferTernaryOpShape(
+      TernaryOperation::TRIOP_CLAMP, matrix_64_48_, f32_, matrix_64_48_);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+}
+
+TEST_F(ShapeInferenceTest, ClampMinMatrix) {
+  auto inferred_status = ShapeInference::InferTernaryOpShape(
+      TernaryOperation::TRIOP_CLAMP, matrix_64_48_, f32_, f32_);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+}
+
+TEST_F(ShapeInferenceTest, ClampMaxMatrix) {
+  auto inferred_status = ShapeInference::InferTernaryOpShape(
+      TernaryOperation::TRIOP_CLAMP, f32_, f32_, matrix_64_48_);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+}
+
+TEST_F(ShapeInferenceTest, ClampOperandMatrix) {
+  auto inferred_status = ShapeInference::InferTernaryOpShape(
+      TernaryOperation::TRIOP_CLAMP, f32_, matrix_64_48_, f32_);
+  ASSERT_IS_OK(inferred_status.status());
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_64_48_, inferred_status.ValueOrDie()));
+}
+
+TEST_F(ShapeInferenceTest, ClampBadShapes) {
+  // Type mismatch
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
+                   TernaryOperation::TRIOP_CLAMP, s32_, f32_, f32_)
+                   .ok());
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
+                   TernaryOperation::TRIOP_CLAMP, f32_, s32_, f32_)
+                   .ok());
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
+                   TernaryOperation::TRIOP_CLAMP, f32_, f32_, s32_)
+                   .ok());
+  // Dimension mismatch
+  ASSERT_FALSE(
+      ShapeInference::InferTernaryOpShape(TernaryOperation::TRIOP_CLAMP,
+                                          vector_64_, vector_32_, vector_32_)
+          .ok());
+  ASSERT_FALSE(
+      ShapeInference::InferTernaryOpShape(TernaryOperation::TRIOP_CLAMP,
+                                          vector_32_, vector_64_, vector_32_)
+          .ok());
+  ASSERT_FALSE(
+      ShapeInference::InferTernaryOpShape(TernaryOperation::TRIOP_CLAMP,
+                                          vector_32_, vector_32_, vector_64_)
+          .ok());
+  // Dimension mismatch, where one operand is a scalar
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
+                   TernaryOperation::TRIOP_CLAMP, vector_64_, vector_32_, f32_)
+                   .ok());
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
+                   TernaryOperation::TRIOP_CLAMP, vector_64_, f32_, vector_32_)
+                   .ok());
+  ASSERT_FALSE(ShapeInference::InferTernaryOpShape(
+                   TernaryOperation::TRIOP_CLAMP, f32_, vector_64_, vector_32_)
+                   .ok());
+}
+
 TEST_F(ShapeInferenceTest, VariadicOpTuplify) {
   StatusOr<Shape> result = ShapeInference::InferVariadicOpShape(
       VariadicOperation::VAROP_TUPLE, {&s32_, &f32_});

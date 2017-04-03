@@ -12,6 +12,7 @@ ListDiff
 MirrorPad
 MirrorPadGrad
 OneHot
+OnesLike
 Pack
 Pad
 ParallelConcat

@@ -117,9 +117,7 @@ void Worker::MaybeCallFinalCallback(const string& graph_handle, int step_id,
     }
   }
   if (done != nullptr) {
-    if (s.ok()) {
-      s = executor_status;
-    }
+    s.Update(executor_status);
     done(s);
   }
 }

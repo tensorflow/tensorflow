@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -41,19 +42,14 @@ namespace xla {
 // computations are owned by the module.
 class HloModule {
  public:
-  explicit HloModule(const string& name,
-                     const VersionedComputationHandle& entry_computation_handle)
-      : name_(name),
-        entry_computation_(nullptr),
-        has_entry_computation_handle_(true),
-        entry_computation_handle_(entry_computation_handle) {}
+  HloModule(const string& name,
+            const VersionedComputationHandle& entry_computation_handle);
 
   // Constructor without a versioned computation handle. This constructor should
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
   // cache.
-  explicit HloModule(const string& name)
-      : name_(name), entry_computation_(nullptr) {}
+  explicit HloModule(const string& name);
 
   // Adds an entry computation to the module. A module can only have one entry
   // computation. Returns a pointer to the newly added computation.
@@ -111,6 +107,9 @@ class HloModule {
   uint64 RandomNew64() const;
 
  private:
+  HloComputation* AddComputationInternal(
+      std::unique_ptr<HloComputation> computation);
+
   const string name_;
   HloComputation* entry_computation_;
   std::vector<std::unique_ptr<HloComputation>> computations_;
@@ -125,6 +124,9 @@ class HloModule {
   // Versioned handle of the entry computation of the module.
   bool has_entry_computation_handle_ = false;
   VersionedComputationHandle entry_computation_handle_;
+
+  // Unique name generator for computation names, which are unique per module.
+  NameUniquer computation_name_uniquer_;
 };
 
 }  // namespace xla

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_CPU_INFO_H_
 #define TENSORFLOW_PLATFORM_CPU_INFO_H_
 
+#include <string>
+
 #if defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/windows/cpu_info.h"
 #endif
@@ -91,6 +93,18 @@ enum CPUFeature {
 // Checks whether the current processor supports one of the features above.
 // Checks CPU registers to return hardware capabilities.
 bool TestCPUFeature(CPUFeature feature);
+
+// Returns CPU Vendor string (i.e. 'GenuineIntel', 'AuthenticAMD', etc.)
+std::string CPUVendorIDString();
+
+// Returns CPU family.
+int CPUFamily();
+
+// Returns CPU model number.
+int CPUModelNum();
+
+// Returns nominal core processor cycles per second of each processor.
+double NominalCPUFrequency();
 
 }  // namespace port
 }  // namespace tensorflow

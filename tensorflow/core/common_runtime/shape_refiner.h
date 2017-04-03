@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -32,6 +33,7 @@ namespace tensorflow {
 class ShapeRefiner {
  public:
   ShapeRefiner(int graph_def_version, const OpRegistryInterface* ops);
+  ~ShapeRefiner();
 
   // Performs validation of 'node' and runs 'node's shape function,
   // storing its shape outputs.
@@ -101,6 +103,10 @@ class ShapeRefiner {
   const int graph_def_version_;
   const OpRegistryInterface* const ops_registry_;
 
+  // The lifetime of the tensors are bound to the runner, so it should be the
+  // deleted after the tensors.
+  GraphRunner graph_runner_;
+
   // Stores a map from a node to its InferenceContext.
   //
   // Owns values.
@@ -118,6 +124,7 @@ class ShapeRefiner {
   // Only tensors less than 1KiB are currently stored in the cache.
   static constexpr int64 kMaxTensorSize = 1024;
   std::unordered_map<string, Tensor> const_tensor_map_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
 };
 
