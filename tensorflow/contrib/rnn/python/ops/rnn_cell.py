@@ -571,7 +571,7 @@ class GridLSTMCell(core_rnn_cell.RNNCell):
       ValueError: if an input_size was specified and the provided inputs have
         a different dimension.
     """
-    batch_size = int(inputs.get_shape()[0])
+    batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
     freq_inputs = self._make_tf_features(inputs)
     with _checked_scope(self, scope or "grid_lstm_cell",
                         initializer=self._initializer, reuse=self._reuse):
@@ -994,7 +994,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
       ValueError: if an input_size was specified and the provided inputs have
         a different dimension.
     """
-    batch_size = int(inputs.get_shape()[0])
+    batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
     fwd_inputs = self._make_tf_features(inputs)
     if self._backward_slice_offset:
       bwd_inputs = self._make_tf_features(inputs, self._backward_slice_offset)

@@ -202,6 +202,7 @@ filegroup(
         "//tensorflow/contrib/boosted_trees:all_files",
         "//tensorflow/contrib/boosted_trees/lib:all_files",
         "//tensorflow/contrib/boosted_trees/proto:all_files",
+        "//tensorflow/contrib/boosted_trees/resources:all_files",
         "//tensorflow/contrib/cloud:all_files",
         "//tensorflow/contrib/cloud/kernels:all_files",
         "//tensorflow/contrib/compiler:all_files",

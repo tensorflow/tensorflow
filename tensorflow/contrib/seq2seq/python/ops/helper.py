@@ -431,7 +431,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
                                        shape=base_shape))
 
       all_finished = math_ops.reduce_all(finished)
-      no_samples = math_ops.equal(array_ops.shape(sample_ids)[0], 0)
+      no_samples = math_ops.logical_not(math_ops.reduce_any(sample_ids))
       next_inputs = control_flow_ops.cond(
           math_ops.logical_or(all_finished, no_samples),
           lambda: base_next_inputs, maybe_sample)

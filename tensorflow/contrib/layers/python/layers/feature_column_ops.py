@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
@@ -36,6 +38,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 
 def _embeddings_from_arguments(column,
@@ -136,6 +139,58 @@ def _embeddings_from_arguments(column,
       max_norm=args.max_norm)
 
 
+def _maybe_reshape_input_tensor(tensor, column_name, output_rank):
+  """Reshape the input tensor by the following rule.
+
+  1. If `output_rank > input_rank + 1`, raise a `ValueError`.
+  2. If `output_rank == input_rank + 1`, expand the tensor by one dimension.
+  3. If `output_rank == input_rank`, do nothing.
+  4. If `output_rank < input_rank`, flatten the inner dimensions of the tensor.
+
+  Args:
+    tensor: A Tensor or SparseTensor to be reshaped.
+    column_name: A string name of the feature column for the tensor.
+    output_rank: the desired rank of the tensor.
+  Returns:
+    A reshaped Tensor or SparseTensor.
+  Raises:
+    ValueError: if `output_rank > input_rank + 1` for the input tensor.
+  """
+  input_rank = tensor.get_shape().ndims
+
+  if input_rank is None and isinstance(tensor, sparse_tensor_py.SparseTensor):
+    # Try to get the rank of a sparse tensor by its dense_shape's shape.
+    input_rank = tensor.dense_shape.get_shape().as_list()[0]
+
+  if input_rank is None:
+    raise ValueError('Error while processing column {}. Rank of input Tensor '
+                     'can not be None.'.format(column_name))
+
+  if output_rank > input_rank + 1:
+    raise ValueError('Error while processing column {}. Rank of input Tensor '
+                     '({}) should be the same as output_rank ({}). For '
+                     'example, sequence data should typically be 3 '
+                     'dimensional (rank 3) while non-sequence data is '
+                     'typically 2 dimensional (rank 2).'.format(
+                         column_name, input_rank, output_rank))
+  elif output_rank == input_rank + 1:
+    # Expand the tensor's shape by 1 dimension.
+    if isinstance(tensor, sparse_tensor_py.SparseTensor):
+      output_shape = array_ops.concat([tensor.dense_shape, [1]], 0)
+      return sparse_ops.sparse_reshape(tensor, output_shape)
+    else:
+      reshaped = array_ops.expand_dims(tensor, -1)
+      # Try to calculate the new shape.
+      static_shape = tensor.get_shape()
+      if static_shape is not None and static_shape.dims is not None:
+        reshaped.set_shape(static_shape.as_list() + [1])
+      return reshaped
+  elif output_rank < input_rank:
+    return layers._inner_flatten(tensor, output_rank)  # pylint: disable=protected-access
+  else:
+    return tensor
+
+
 def _input_from_feature_columns(columns_to_tensors,
                                 feature_columns,
                                 weight_collections,
@@ -160,6 +215,12 @@ def _input_from_feature_columns(columns_to_tensors,
                                          default_name=column.name,
                                          values=columns_to_tensors.values()):
         transformed_tensor = transformer.transform(column)
+        if output_rank == 3:
+          transformed_tensor = nest.map_structure(
+              functools.partial(
+                  _maybe_reshape_input_tensor,
+                  column_name=column.name,
+                  output_rank=output_rank), transformed_tensor)
         try:
           # pylint: disable=protected-access
           arguments = column._deep_embedding_lookup_arguments(
@@ -548,7 +609,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
             default_name=column.name,
             values=columns_to_tensors.values()):
           tensor = column._to_dense_tensor(transformed_tensor)
-          tensor = fc._reshape_real_valued_tensor(tensor, 2, column.name)
+          tensor = _maybe_reshape_input_tensor(
+              tensor, column.name, output_rank=2)
           variable = [
               contrib_variables.model_variable(
                   name='weight',

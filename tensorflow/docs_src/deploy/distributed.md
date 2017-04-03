@@ -2,7 +2,7 @@
 
 This document shows how to create a cluster of TensorFlow servers, and how to
 distribute a computation graph across that cluster. We assume that you are
-familiar with the @{$get_started$basic concepts} of
+familiar with the @{$get_started/get_started$basic concepts} of
 writing TensorFlow programs.
 
 ## Hello distributed TensorFlow!
