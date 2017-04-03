@@ -33,11 +33,14 @@ py_library(
         "//tensorflow/contrib/imperative",
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
+        "//tensorflow/contrib/keras",
+        "//tensorflow/contrib/kernel_methods",
         "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/contrib/legacy_seq2seq:seq2seq_py",
         "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
@@ -75,7 +78,7 @@ cc_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:bucketization_op_kernel",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
-        "//tensorflow/contrib/tensor_forest:all_ops",
+        "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
     ],
 )
 
@@ -88,6 +91,7 @@ cc_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
         "//tensorflow/contrib/layers:bucketization_op_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
+        "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
     ],
 )
 

@@ -238,6 +238,18 @@ class RunConfigTest(test.TestCase):
     with self.assertRaises(ValueError):
       config.replace(some_undefined_property=RANDOM_SEED)
 
+  def test_uid(self):
+    config = run_config.RunConfig(
+        tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
+
+    expected_uid = config.uid()
+    # Check for 10 times, which should prove something.
+    for _ in range(10):
+      self.assertEqual(expected_uid, config.uid())
+
+    new_config = config.replace(model_dir=ANOTHER_TEST_DIR)
+    self.assertNotEqual(expected_uid, new_config.uid())
+
 
 if __name__ == "__main__":
   test.main()

@@ -32,50 +32,174 @@ namespace xla {
 namespace {
 using ReshapeMoverTest = HloTestBase;
 
-TEST_F(ReshapeMoverTest, ReshapesWithNonSameInputShapesNotMoved) {
-  auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
+TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
   HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param0"));
   auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {1, 8, 7, 1}), "param0"));
-  auto reshape2 =
+      1, ShapeUtil::MakeShape(F32, {1, 8, 7, 1}), "param1"));
+  auto reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
-  auto reshape3 =
+  auto reshape1 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param1));
-  auto add4 = builder.AddInstruction(HloInstruction::CreateBinary(
-      root_shape, HloOpcode::kAdd, reshape2, reshape3));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      root_shape, HloOpcode::kAdd, reshape0, reshape1));
 
   auto module = MakeUnique<HloModule>(TestName());
   auto computation = module->AddEntryComputation(builder.Build());
-  EXPECT_EQ(add4, computation->root_instruction());
+  EXPECT_EQ(add, computation->root_instruction());
   EXPECT_FALSE(ReshapeMover().Run(module.get()).ValueOrDie());
-  EXPECT_EQ(add4, computation->root_instruction());
+  EXPECT_EQ(add, computation->root_instruction());
 }
 
-TEST_F(ReshapeMoverTest, EquivalentReshapesMovedAcrossFusion) {
-  auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
+TEST_F(ReshapeMoverTest, ScalarReshapesNotMoved) {
   HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {});
+  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {1, 1, 1}), "param0"));
+  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {1, 1, 1}), "param1"));
+  auto reshape0 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
+  auto reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param1));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      root_shape, HloOpcode::kAdd, reshape0, reshape1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(add, computation->root_instruction());
+  EXPECT_FALSE(ReshapeMover().Run(module.get()).ValueOrDie());
+  EXPECT_EQ(add, computation->root_instruction());
+}
+
+TEST_F(ReshapeMoverTest, EquivalentReshapesMoved) {
+  HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param0"));
   auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param0"));
-  auto reshape2 =
+      1, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param1"));
+  auto reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
-  auto reshape3 =
+  auto reshape1 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param1));
-  auto add4 = builder.AddInstruction(HloInstruction::CreateBinary(
-      root_shape, HloOpcode::kAdd, reshape2, reshape3));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      root_shape, HloOpcode::kAdd, reshape0, reshape1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(add, computation->root_instruction());
+  EXPECT_TRUE(ReshapeMover().Run(module.get()).ValueOrDie());
+
+  auto new_root = computation->root_instruction();
+  EXPECT_NE(add, new_root);
+  EXPECT_EQ(HloOpcode::kReshape, new_root->opcode());
+  EXPECT_EQ(root_shape.DebugString(), new_root->shape().DebugString());
+}
+
+TEST_F(ReshapeMoverTest, ConstantAndReshapeMoved) {
+  HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {1, 3, 1, 2}), "param0"));
+  auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
+  auto reshape0 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      root_shape, HloOpcode::kAdd, reshape0, const1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(add, computation->root_instruction());
+  EXPECT_TRUE(ReshapeMover().Run(module.get()).ValueOrDie());
+
+  auto new_root = computation->root_instruction();
+  EXPECT_NE(add, new_root);
+  EXPECT_EQ(HloOpcode::kReshape, new_root->opcode());
+  EXPECT_EQ(root_shape.DebugString(), new_root->shape().DebugString());
+}
+
+TEST_F(ReshapeMoverTest, EquivalentReshapesMovedAcrossFusion) {
+  HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
+  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param0"));
+  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param1"));
+  auto reshape0 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
+  auto reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param1));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      root_shape, HloOpcode::kAdd, reshape0, reshape1));
 
   auto module = MakeUnique<HloModule>(TestName());
   auto computation = module->AddEntryComputation(builder.Build());
   auto fusion = computation->AddInstruction(HloInstruction::CreateFusion(
-      add4->shape(), HloInstruction::FusionKind::kLoop, add4));
-  TF_CHECK_OK(computation->ReplaceInstruction(add4, fusion));
+      add->shape(), HloInstruction::FusionKind::kLoop, add));
+  TF_CHECK_OK(computation->ReplaceInstruction(add, fusion));
   EXPECT_EQ(fusion, computation->root_instruction());
   EXPECT_TRUE(ReshapeMover().Run(module.get()).ValueOrDie());
-  EXPECT_NE(fusion, computation->root_instruction());
-  EXPECT_EQ(HloOpcode::kReshape, computation->root_instruction()->opcode());
+
+  auto new_root = computation->root_instruction();
+  EXPECT_NE(fusion, new_root);
+  EXPECT_EQ(HloOpcode::kReshape, new_root->opcode());
+  EXPECT_EQ(root_shape.DebugString(), new_root->shape().DebugString());
+}
+
+TEST_F(ReshapeMoverTest, EquivalentReshapesMovedAcrossSelect) {
+  HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
+  auto pred_shape = ShapeUtil::MakeShape(PRED, {8, 7});
+  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param0"));
+  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param1"));
+  auto pred = builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(PRED, {1, 8, 1, 7}), "pred"));
+  auto reshape0 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
+  auto reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param1));
+  auto reshape_pred =
+      builder.AddInstruction(HloInstruction::CreateReshape(pred_shape, pred));
+  auto select = builder.AddInstruction(HloInstruction::CreateTernary(
+      root_shape, HloOpcode::kSelect, reshape_pred, reshape0, reshape1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(select, computation->root_instruction());
+  EXPECT_TRUE(ReshapeMover().Run(module.get()).ValueOrDie());
+
+  auto new_root = computation->root_instruction();
+  EXPECT_NE(select, new_root);
+  EXPECT_EQ(HloOpcode::kReshape, new_root->opcode());
+  EXPECT_EQ(root_shape.DebugString(), new_root->shape().DebugString());
+}
+
+TEST_F(ReshapeMoverTest, ScalarReshapeNotMovedAcrossSelect) {
+  HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {});
+  auto pred_shape = ShapeUtil::MakeShape(PRED, {});
+  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "param0"));
+  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {}), "param1"));
+  auto pred = builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(PRED, {1, 1, 1}), "pred"));
+  auto reshape_pred =
+      builder.AddInstruction(HloInstruction::CreateReshape(pred_shape, pred));
+  auto select = builder.AddInstruction(HloInstruction::CreateTernary(
+      root_shape, HloOpcode::kSelect, reshape_pred, param0, param1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(select, computation->root_instruction());
+  EXPECT_FALSE(ReshapeMover().Run(module.get()).ValueOrDie());
+  EXPECT_EQ(select, computation->root_instruction());
 }
 
 }  // namespace

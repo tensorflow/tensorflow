@@ -256,7 +256,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              save_summaries_steps=100,
                              save_summaries_secs=None,
                              config=None,
-                             stop_grace_period_secs=120):
+                             stop_grace_period_secs=120,
+                             log_step_count_steps=10000):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -292,6 +293,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       It's the `config` argument of constructor of `tf.Session`.
     stop_grace_period_secs: Number of seconds given to threads to stop after
       `close()` has been called.
+    log_step_count_steps: The frequency, in number of global steps, that the
+      global step/sec is logged.
 
   Returns:
     A `MonitoredSession` object.
@@ -313,8 +316,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       config=config)
 
   if checkpoint_dir:
-    all_hooks.append(
-        basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
+    all_hooks.append(basic_session_run_hooks.StepCounterHook(
+        output_dir=checkpoint_dir, every_n_steps=log_step_count_steps))
 
     if (save_summaries_steps and save_summaries_steps > 0) or (
         save_summaries_secs and save_summaries_secs > 0):
@@ -633,6 +636,7 @@ class SingularMonitoredSession(_MonitoredSession):
   Please note that this utility is not recommended for distributed settings.
   For distributed settings, please use `tf.train.MonitoredSession`. The
   differences between `MonitoredSession` and `SingularMonitoredSession` are:
+
   * `MonitoredSession` handles `AbortedError` and `UnavailableError` for
     distributed settings, but `SingularMonitoredSession` does not.
   * `MonitoredSession` can be created in `chief` or `worker` modes.
@@ -640,8 +644,8 @@ class SingularMonitoredSession(_MonitoredSession):
   * You can access the raw `tf.Session` object used by
     `SingularMonitoredSession`, whereas in MonitoredSession the raw session is
     private. This can be used:
-    - To `run` without hooks.
-    - To save and restore.
+      - To `run` without hooks.
+      - To save and restore.
   * All other functionality is identical.
 
   Example usage:

@@ -68,7 +68,10 @@ struct Costs {
   typedef NanoSeconds Duration;
 
   // Overall cost of running the graph; latency.
+  // Mean
   Duration execution_time;
+  Duration min_execution_time;
+  Duration max_execution_time;
 
   // Computation cost of running the graph.
   Duration compute_time;

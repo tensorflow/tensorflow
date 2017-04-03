@@ -379,17 +379,12 @@ do_java_package_licenses_check() {
     "//tensorflow/tools/lib_package:jnilicenses_generate"
 }
 
-# Run bazel build --nobuild to test the validity of the BUILD files
-do_bazel_nobuild() {
-  BUILD_TARGET="//tensorflow/..."
-  BUILD_CMD="bazel build --nobuild ${BUILD_TARGET}"
-
-  ${BUILD_CMD}
-
+#Check for the bazel cmd status (First arg is error message)
+cmd_status(){
   if [[ $? != 0 ]]; then
     echo ""
     echo "FAIL: ${BUILD_CMD}"
-    echo "  This is due to invalid BUILD files. See lines above for details."
+    echo "  $1 See lines above for details."
     return 1
   else
     echo ""
@@ -398,9 +393,32 @@ do_bazel_nobuild() {
   fi
 }
 
+# Run bazel build --nobuild to test the validity of the BUILD files
+do_bazel_nobuild() {
+  BUILD_TARGET="//tensorflow/..."
+  BUILD_CMD="bazel build --nobuild ${BUILD_TARGET}"
+
+  ${BUILD_CMD}
+
+  cmd_status \
+    "This is due to invalid BUILD files."
+}
+
+do_pip_smoke_test() {
+  BUILD_CMD="bazel build //tensorflow/tools/pip_package:pip_smoke_test"
+  ${BUILD_CMD}
+  cmd_status \
+    "Pip smoke test has failed. Please make sure any new TensorFlow are added to the tensorflow/tools/pip_package:build_pip_package dependencies."
+
+  RUN_CMD="bazel-bin/tensorflow/tools/pip_package/pip_smoke_test"
+  ${RUN_CMD}
+  cmd_status \
+    "The pip smoke test failed."
+}
+
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package")
 
 INCREMENTAL_FLAG=""
 

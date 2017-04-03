@@ -1340,7 +1340,10 @@ class DebugAnalyzer(object):
     return output_with_header
 
 
-def create_analyzer_ui(debug_dump, tensor_filters=None, ui_type="curses"):
+def create_analyzer_ui(debug_dump,
+                       tensor_filters=None,
+                       ui_type="curses",
+                       on_ui_exit=None):
   """Create an instance of CursesUI based on a DebugDumpDir object.
 
   Args:
@@ -1348,6 +1351,7 @@ def create_analyzer_ui(debug_dump, tensor_filters=None, ui_type="curses"):
     tensor_filters: (dict) A dict mapping tensor filter name (str) to tensor
       filter (Callable).
     ui_type: (str) requested UI type, e.g., "curses", "readline".
+    on_ui_exit: (`Callable`) the callback to be called when the UI exits.
 
   Returns:
     (base_ui.BaseUI) A BaseUI subtype object with a set of standard analyzer
@@ -1360,7 +1364,7 @@ def create_analyzer_ui(debug_dump, tensor_filters=None, ui_type="curses"):
       analyzer.add_tensor_filter(
           tensor_filter_name, tensor_filters[tensor_filter_name])
 
-  cli = ui_factory.get_ui(ui_type)
+  cli = ui_factory.get_ui(ui_type, on_ui_exit=on_ui_exit)
   cli.register_command_handler(
       "list_tensors",
       analyzer.list_tensors,

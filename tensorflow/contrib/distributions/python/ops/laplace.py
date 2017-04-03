@@ -24,7 +24,6 @@ import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import special_math
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -105,7 +104,7 @@ class Laplace(distribution.Distribution):
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        contrib_tensor_util.assert_same_float_dtype([self._loc, self._scale])
+        check_ops.assert_same_float_dtype([self._loc, self._scale])
       super(Laplace, self).__init__(
           dtype=self._loc.dtype,
           reparameterization_type=distribution.FULLY_REPARAMETERIZED,

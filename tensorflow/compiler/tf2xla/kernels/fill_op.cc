@@ -68,7 +68,7 @@ class FillOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Fill", FillOp);
+REGISTER_XLA_OP(Name("Fill"), FillOp);
 
 }  // namespace
 }  // namespace tensorflow

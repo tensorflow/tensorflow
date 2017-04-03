@@ -18,17 +18,19 @@ limitations under the License.
 #endif
 
 #include <memory>
+
+#include "tensorflow/core/kernels/adjust_hue_op.h"
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/adjust_hue_op.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/work_sharder.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -193,7 +195,6 @@ static void hv_range_to_rgb(float h, float v_min, float v_max, float* r,
 }
 }  // namespace internal
 
-
 template <>
 class AdjustHueOp<CPUDevice> : public AdjustHueOpBase {
  public:
@@ -214,8 +215,9 @@ class AdjustHueOp<CPUDevice> : public AdjustHueOpBase {
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, channel_count,
-          kCostPerChannel, [channel_count, &input_data, &output_data, delta_h](
-                               int64 start_channel, int64 end_channel) {
+          kCostPerChannel,
+          [channel_count, &input_data, &output_data, delta_h](
+              int64 start_channel, int64 end_channel) {
             const float* p = input_data.data() + start_channel * kChannelSize;
             float* q = output_data.data() + start_channel * kChannelSize;
             for (int i = start_channel; i < end_channel; i++) {
@@ -253,7 +255,8 @@ class AdjustHueOp<GPUDevice> : public AdjustHueOpBase {
   explicit AdjustHueOp(OpKernelConstruction* context)
       : AdjustHueOpBase(context) {}
 
-  virtual void DoCompute(OpKernelContext* context, const ComputeOptions& options) override {
+  virtual void DoCompute(OpKernelContext* context,
+                         const ComputeOptions& options) override {
     const Tensor* input = options.input;
     const Tensor* delta = options.delta;
     Tensor* output = options.output;
@@ -271,7 +274,8 @@ class AdjustHueOp<GPUDevice> : public AdjustHueOpBase {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("AdjustHue").Device(DEVICE_GPU), AdjustHueOp<GPUDevice>);
+REGISTER_KERNEL_BUILDER(Name("AdjustHue").Device(DEVICE_GPU),
+                        AdjustHueOp<GPUDevice>);
 
 #endif
 

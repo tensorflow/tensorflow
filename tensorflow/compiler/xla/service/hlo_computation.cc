@@ -92,11 +92,20 @@ HloInstruction* HloComputation::AddInstructionInternal(
   // Generate a unique name for the instruction.
   instruction->set_name(
       instruction_name_uniquer_.GetUniqueName(instruction->name()));
-  instruction->set_parent(this);
+  Reparent(instruction.get());
   HloInstruction* pinst = instruction.get();
   instruction_iterators_[pinst] =
       instructions_.insert(instructions_.end(), std::move(instruction));
   return pinst;
+}
+
+void HloComputation::Reparent(HloInstruction* instruction) {
+  instruction->set_parent(this);
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    for (auto& i : instruction->fused_instructions()) {
+      Reparent(i.get());
+    }
+  }
 }
 
 /* static */ bool HloComputation::IsRemovable(const HloOpcode& opcode) {
@@ -293,7 +302,10 @@ string HloComputation::ToString() const {
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     s << "  " << instruction->ToString() << "\n";
     if (instruction->opcode() == HloOpcode::kFusion) {
-      for (const auto& fused_instruction : instruction->fused_instructions()) {
+      tensorflow::gtl::FlatSet<HloInstruction*> added_instructions;
+      auto fused_instructions = InstructionPostOrderer::GetOrder(
+          instruction->fused_expression_root(), &added_instructions);
+      for (const auto& fused_instruction : fused_instructions) {
         s << "    " << fused_instruction->ToString() << "\n";
       }
     }

@@ -609,6 +609,19 @@ y: a tensor of the same shape and type as x but filled with zeros.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("OnesLike")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {float, double, int32, int64, complex64, complex128}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Returns a tensor of ones with the same shape and type as x.
+
+x: a tensor of type T.
+y: a tensor of the same shape and type as x but filled with ones.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("Diag")
     .Input("diagonal: T")
     .Output("output: T")
@@ -1309,6 +1322,11 @@ Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 
 If `indices` is a permutation and `len(indices) == params.shape[0]` then
 this operation will permute `params` accordingly.
+
+`validate_indices`: DEPRECATED. If this operation is assigned to CPU, values in
+`indices` are always validated to be within range. If assigned to GPU,
+out-of-bound indices result in unspecified behavior (currently the result is
+`0`, but this may become an error in the future).
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/Gather.png" alt>
@@ -4493,7 +4511,7 @@ each value by 128 prior to casting.
 
 If the mode is 'MIN_FIRST', then this approach is used:
 
-```
+```c++
 number_of_steps = 1 << (# of bits in T)
 range_adjust = number_of_steps / (number_of_steps - 1)
 range = (range_max - range_min) * range_adjust
@@ -4728,12 +4746,14 @@ tensor with 8 elements.
 
 In Python, this scatter operation would look like this:
 
+```python
     indices = tf.constant([[4], [3], [1], [7]])
     updates = tf.constant([9, 10, 11, 12])
     shape = tf.constant([8])
     scatter = tf.scatter_nd(indices, updates, shape)
     with tf.Session() as sess:
       print sess.run(scatter)
+```
 
 The resulting tensor would look like this:
 
@@ -4749,6 +4769,7 @@ rank-3 tensor with two matrices of new values.
 
 In Python, this scatter operation would look like this:
 
+```python
     indices = tf.constant([[0], [2]])
     updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
                             [7, 7, 7, 7], [8, 8, 8, 8]],
@@ -4758,6 +4779,7 @@ In Python, this scatter operation would look like this:
     scatter = tf.scatter_nd(indices, updates, shape)
     with tf.Session() as sess:
       print sess.run(scatter)
+```
 
 The resulting tensor would look like this:
 

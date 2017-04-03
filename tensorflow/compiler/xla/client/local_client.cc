@@ -309,6 +309,14 @@ int LocalClient::default_device_ordinal() const {
   return local_service_->backend().default_device_ordinal();
 }
 
+const Backend& LocalClient::backend() const {
+  return local_service_->backend();
+}
+
+Backend* LocalClient::mutable_backend() {
+  return local_service_->mutable_backend();
+}
+
 StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
     const Computation& computation,
     const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,

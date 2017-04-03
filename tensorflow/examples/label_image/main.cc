@@ -93,8 +93,8 @@ Status ReadTensorFromImageFile(string file_name, const int input_height,
 
   string input_name = "file_reader";
   string output_name = "normalized";
-  auto file_reader = tensorflow::ops::ReadFile(root.WithOpName(input_name),
-                                               file_name);
+  auto file_reader =
+      tensorflow::ops::ReadFile(root.WithOpName(input_name), file_name);
   // Now try to figure out what kind of file it is and decode it.
   const int wanted_channels = 3;
   tensorflow::Output image_reader;
@@ -232,20 +232,18 @@ int main(int argc, char* argv[]) {
   // These are the command-line flags the program can understand.
   // They define where the graph and input data is located, and what kind of
   // input the model expects. If you train your own model, or use something
-  // other than GoogLeNet you'll need to update these.
+  // other than inception_v3, then you'll need to update these.
   string image = "tensorflow/examples/label_image/data/grace_hopper.jpg";
   string graph =
-      "tensorflow/examples/label_image/data/"
-      "tensorflow_inception_graph.pb";
+      "tensorflow/examples/label_image/data/inception_v3_2016_08_28_frozen.pb";
   string labels =
-      "tensorflow/examples/label_image/data/"
-      "imagenet_comp_graph_label_strings.txt";
+      "tensorflow/examples/label_image/data/imagenet_slim_labels.txt";
   int32 input_width = 299;
   int32 input_height = 299;
-  int32 input_mean = 128;
-  int32 input_std = 128;
-  string input_layer = "Mul";
-  string output_layer = "softmax";
+  int32 input_mean = 0;
+  int32 input_std = 255;
+  string input_layer = "input";
+  string output_layer = "InceptionV3/Predictions/Reshape_1";
   bool self_test = false;
   string root_dir = "";
   std::vector<Flag> flag_list = {

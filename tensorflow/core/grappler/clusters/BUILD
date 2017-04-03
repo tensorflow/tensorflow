@@ -1,7 +1,5 @@
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -9,6 +7,16 @@ filegroup(
         exclude = [
             "**/METADATA",
             "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "android_srcs",
+    srcs = glob(
+        [
+            "cluster.*",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
@@ -22,10 +30,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
         "//tensorflow/core/grappler:grappler_item",
     ],
 )
@@ -44,6 +52,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
     ],
 )
@@ -59,6 +68,7 @@ cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )

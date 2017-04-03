@@ -18,16 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-
-# TODO(keveman): #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes  # pylint: disable=g-import-not-at-top
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
-
-# pylint: disable=g-import-not-at-top
 from tensorflow.contrib.compiler import jit
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function

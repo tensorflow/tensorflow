@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
 
+// function alias
+constexpr auto AddOutputTensorShapeTypeByTensorShapeMap =
+    &RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap;
+
 /* static */ std::priority_queue<std::tuple<float, int, string>>
 GraphTransferUtils::GetTopNFloatResults(const float* const data,
                                         const string* const labels,
@@ -50,35 +54,43 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
 
 /* static */ RemoteFusedGraphExecuteInfo
 GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
-    const GraphTransferInfo& graph_transfer_info) {
+    const GraphDef& graph_def,
+    const std::vector<std::pair<string, Tensor>>& inputs,
+    const std::vector<string>& outputs,
+    const RemoteFusedGraphExecuteUtils::TensorShapeMap& tensor_shape_map) {
   RemoteFusedGraphExecuteInfo execute_info;
   execute_info.set_executor_name("build_hexagon_remote_fused_graph_executor");
-  for (const GraphTransferInfo::GraphInputNodeInfo& input :
-       graph_transfer_info.graph_input_node_info()) {
-    execute_info.add_graph_input_node_name(input.name());
+
+  // copy graph
+  execute_info.mutable_remote_graph()->CopyFrom(graph_def);
+
+  for (const std::pair<string, Tensor>& input : inputs) {
+    execute_info.add_graph_input_node_name(input.first);
     RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
         *execute_info.add_default_graph_input_tensor_shape();
-    tensor_shape_type.set_dtype(input.dtype());
+    tensor_shape_type.set_dtype(input.second.dtype());
     TensorShapeProto& tensor_shape_proto = *tensor_shape_type.mutable_shape();
-    for (const int64 dim : input.shape()) {
+    for (const int64 dim : input.second.shape().dim_sizes()) {
       tensor_shape_proto.add_dim()->set_size(dim);
     }
   }
 
-  for (const GraphTransferInfo::GraphOutputNodeInfo& output :
-       graph_transfer_info.graph_output_node_info()) {
-    execute_info.add_graph_output_node_name(output.name());
-    RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
+  for (const string& output_name : outputs) {
+    const std::pair<DataType, TensorShape>* tensor_shape_type =
+        RemoteFusedGraphExecuteUtils::GetTensorShapeType(tensor_shape_map,
+                                                         output_name);
+    CHECK_NOTNULL(tensor_shape_type);
+    execute_info.add_graph_output_node_name(output_name);
+    RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type_proto =
         *execute_info.add_default_graph_output_tensor_shape();
-    tensor_shape_type.set_dtype(output.dtype());
-    TensorShapeProto& tensor_shape_proto = *tensor_shape_type.mutable_shape();
-    for (const int64 dim : output.shape()) {
+    tensor_shape_type_proto.set_dtype(tensor_shape_type->first);
+    TensorShapeProto& tensor_shape_proto =
+        *tensor_shape_type_proto.mutable_shape();
+    for (const int64 dim : tensor_shape_type->second.dim_sizes()) {
       tensor_shape_proto.add_dim()->set_size(dim);
     }
   }
 
-  execute_info.set_serialized_executor_parameters(
-      graph_transfer_info.SerializeAsString());
   return execute_info;
 }
 
@@ -86,15 +98,15 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const string& remote_graph_execute_name,
     const std::vector<std::pair<string, Tensor>>& inputs,
-    const std::vector<string>& outputs, const GraphDef& def,
-    GraphTransferer* const gt) {
-  CHECK(gt != nullptr);
+    const std::vector<string>& outputs, GraphDef* original_def) {
   RemoteFusedGraphExecuteUtils::TensorShapeMap tensor_shape_map;
   Status status = RemoteFusedGraphExecuteUtils::DryRunInferenceForAllNode(
-      def, inputs, true /* initialize_by_zero */, &tensor_shape_map);
+      *original_def, inputs, true /* initialize_by_zero */, &tensor_shape_map);
+  for (NodeDef& node_def : *original_def->mutable_node()) {
+    TF_CHECK_OK(
+        AddOutputTensorShapeTypeByTensorShapeMap(tensor_shape_map, &node_def));
+  }
   CHECK(status.ok());
-  status = gt->LoadGraphFromProto(ops_definitions, def, inputs, outputs, false,
-                                  tensor_shape_map);
   const DataType input_data_type =
       inputs.empty() ? DT_FLOAT : inputs.at(0).second.dtype();
 
@@ -117,7 +129,8 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   }
 
   const RemoteFusedGraphExecuteInfo execute_info =
-      BuildRemoteFusedGraphExecuteInfo(gt->GetGraphTransferInfo());
+      BuildRemoteFusedGraphExecuteInfo(*original_def, inputs, outputs,
+                                       tensor_shape_map);
 
   const std::pair<DataType, TensorShape>* tensor_shape_type =
       RemoteFusedGraphExecuteUtils::GetTensorShapeType(tensor_shape_map,

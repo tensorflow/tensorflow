@@ -35,6 +35,7 @@ See the @{$python/contrib.layers} guide.
 @@relu6
 @@repeat
 @@safe_embedding_lookup_sparse
+@@scale_gradient
 @@separable_conv2d
 @@separable_convolution2d
 @@softmax
@@ -68,6 +69,7 @@ See the @{$python/contrib.layers} guide.
 @@embedding_column
 @@scattered_embedding_column
 @@input_from_feature_columns
+@@transform_features
 @@joint_weighted_sum_from_feature_columns
 @@make_place_holder_tensors_for_base_features
 @@multi_class_target

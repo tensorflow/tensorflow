@@ -56,23 +56,18 @@ class LazyAdamOptimizer(adam.AdamOptimizer):
     lr = (lr_t * math_ops.sqrt(1 - beta2_power) / (1 - beta1_power))
 
     # m := beta1 * m + (1 - beta1) * g_t
-    # We use a slightly different version of the moving-average update formula
-    # that does a better job of handling concurrent lockless updates:
-    # m -= (1 - beta1) * (m - g_t)
     m = self.get_slot(var, "m")
-    m_t_delta = array_ops.gather(m, grad.indices) - grad.values
-    m_t = state_ops.scatter_sub(m, grad.indices,
-                                (1 - beta1_t) * m_t_delta,
-                                use_locking=self._use_locking)
+    m_t = state_ops.scatter_update(m, grad.indices,
+                                   beta1_t * array_ops.gather(m, grad.indices) +
+                                   (1 - beta1_t) * grad.values,
+                                   use_locking=self._use_locking)
 
     # v := beta2 * v + (1 - beta2) * (g_t * g_t)
-    # We reformulate the update as:
-    # v -= (1 - beta2) * (v - g_t * g_t)
     v = self.get_slot(var, "v")
-    v_t_delta = array_ops.gather(v, grad.indices) - math_ops.square(grad.values)
-    v_t = state_ops.scatter_sub(v, grad.indices,
-                                (1 - beta2_t) * v_t_delta,
-                                use_locking=self._use_locking)
+    v_t = state_ops.scatter_update(v, grad.indices,
+                                   beta2_t * array_ops.gather(v, grad.indices) +
+                                   (1 - beta2_t) * math_ops.square(grad.values),
+                                   use_locking=self._use_locking)
 
     # variable -= learning_rate * m_t / (epsilon_t + sqrt(v_t))
     m_t_slice = array_ops.gather(m_t, grad.indices)

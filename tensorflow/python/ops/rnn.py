@@ -271,10 +271,9 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
     cell_bw: An instance of RNNCell, to be used for backward direction.
     inputs: The RNN inputs.
       If time_major == False (default), this must be a tensor of shape:
-        `[batch_size, max_time, input_size]`.
+        `[batch_size, max_time, ...]`, or a nested tuple of such elements.
       If time_major == True, this must be a tensor of shape:
-        `[max_time, batch_size, input_size]`.
-      [batch_size, input_size].
+        `[max_time, batch_size, ...]`, or a nested tuple of such elements.
     sequence_length: (optional) An int32/int64 vector, size `[batch_size]`,
       containing the actual lengths for each of the sequences in the batch.
       If not provided, all batch entries are assumed to be full sequences; and
@@ -664,7 +663,7 @@ def _dynamic_rnn_loop(cell,
   output_ta = tuple(_create_ta("output_%d" % i,
                                _infer_state_dtype(dtype, state))
                     for i in range(len(flat_output_size)))
-  input_ta = tuple(_create_ta("input_%d" % i, flat_input[0].dtype)
+  input_ta = tuple(_create_ta("input_%d" % i, flat_input[i].dtype)
                    for i in range(len(flat_input)))
 
   input_ta = tuple(ta.unstack(input_)

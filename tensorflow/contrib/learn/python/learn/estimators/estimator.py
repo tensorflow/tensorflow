@@ -58,6 +58,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -377,6 +378,8 @@ class BaseEstimator(
       self._model_dir = tempfile.mkdtemp()
       logging.warning('Using temporary folder as model directory: %s',
                       self._model_dir)
+    if self._config.model_dir is None:
+      self._config = self._config.replace(model_dir=self._model_dir)
 
     # Set device function depending if there are replicas or not.
     self._device_fn = _get_replica_device_setter(self._config)
@@ -800,7 +803,8 @@ class BaseEstimator(
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
-      eval_dict = self._get_eval_ops(features, labels, metrics).eval_metric_ops
+      model_fn_results = self._get_eval_ops(features, labels, metrics)
+      eval_dict = model_fn_results.eval_metric_ops
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
 
@@ -821,6 +825,7 @@ class BaseEstimator(
       eval_results = evaluation.evaluate_once(
           checkpoint_path=checkpoint_path,
           master=self._config.evaluation_master,
+          scaffold=model_fn_results.scaffold,
           eval_ops=update_op,
           final_ops=eval_dict,
           hooks=hooks,
@@ -858,6 +863,7 @@ class BaseEstimator(
       mon_sess = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
+              scaffold=infer_ops.scaffold,
               config=config_pb2.ConfigProto(allow_soft_placement=True)))
       if not as_iterable:
         with mon_sess:
@@ -1104,7 +1110,7 @@ class Estimator(BaseEstimator):
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
 
-    # Here model_fn_ops should be a tuple with 3 elements.
+    # Here model_fn_results should be a tuple with 3 elements.
     if len(model_fn_results) != 3:
       raise ValueError('Unrecognized value returned by model_fn, '
                        'please return ModelFnOps.')
@@ -1251,16 +1257,19 @@ class Estimator(BaseEstimator):
       export_dir = saved_model_export_utils.get_timestamped_export_dir(
           export_dir_base)
 
+      if (model_fn_ops.scaffold is not None and
+          model_fn_ops.scaffold.saver is not None):
+        saver_for_restore = model_fn_ops.scaffold.saver
+      else:
+        saver_for_restore = saver.Saver(sharded=True)
       with tf_session.Session('') as session:
         variables.initialize_local_variables()
         data_flow_ops.tables_initializer()
-        saver_for_restore = saver.Saver(
-            variables.global_variables(),
-            sharded=True)
+        resources.initialize_resources(resources.shared_resources())
         saver_for_restore.restore(session, checkpoint_path)
-
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),
+            resources.initialize_resources(resources.shared_resources()),
             data_flow_ops.tables_initializer())
 
         # Perform the export

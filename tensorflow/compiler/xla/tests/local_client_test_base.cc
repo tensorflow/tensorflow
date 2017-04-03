@@ -187,8 +187,13 @@ ExecutableBuildOptions LocalClientTestBase::DefaultExecutableBuildOptions()
 }
 
 ExecutableRunOptions LocalClientTestBase::DefaultExecutableRunOptions() const {
-  return ExecutableRunOptions().set_allocator(
-      GetOrCreateAllocator(local_client_->platform()));
+  ExecutableRunOptions run_options;
+  run_options.set_inter_op_thread_pool(
+      local_client_->backend().inter_op_thread_pool());
+  run_options.set_intra_op_thread_pool(
+      local_client_->backend().eigen_intra_op_thread_pool_device());
+  run_options.set_allocator(GetOrCreateAllocator(local_client_->platform()));
+  return run_options;
 }
 
 std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocallyOrDie(

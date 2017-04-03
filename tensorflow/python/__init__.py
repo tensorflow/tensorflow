@@ -57,6 +57,7 @@ from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
 from tensorflow.core.protobuf.config_pb2 import *
+from tensorflow.core.protobuf.rewriter_config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
 # Framework
@@ -74,18 +75,18 @@ from tensorflow.python.ops.standard_ops import *
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
+from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.layers import layers
+from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sdca_ops as sdca
-from tensorflow.python.ops import spectral_ops as spectral
-from tensorflow.python.ops import image_ops as image
-from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops import sets
-from tensorflow.python.saved_model import saved_model
-from tensorflow.python.util import compat
+from tensorflow.python.ops import spectral_ops as spectral
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
+from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
 
 # Import the names from python/training.py as train.Name.
@@ -145,6 +146,7 @@ _allowed_symbols = [
     'NameAttrList',
     'NodeDef',
     'OptimizerOptions',
+    'RewriterConfig',
     'RunOptions',
     'RunMetadata',
     'SessionLog',
@@ -209,6 +211,7 @@ _allowed_symbols.extend([
     'app',
     'compat',
     'errors',
+    'estimator',
     'flags',
     'gfile',
     'graph_util',

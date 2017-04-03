@@ -28,6 +28,8 @@ limitations under the License.
 
 namespace gpu = ::perftools::gputools;
 
+bool FLAGS_stream_executor_cpu_real_clock_rate = false;
+
 namespace perftools {
 namespace gputools {
 namespace host {
@@ -191,10 +193,12 @@ DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
   // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
   builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
 
-  builder.set_clock_rate_ghz(
-      static_cast<float>(
-          tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency()) /
-      1e9);
+  float cycle_counter_frequency = 1e9;
+  if (FLAGS_stream_executor_cpu_real_clock_rate) {
+    cycle_counter_frequency = static_cast<float>(
+        tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
+  }
+  builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
   auto built = builder.Build();
   return built.release();

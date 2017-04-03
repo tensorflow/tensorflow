@@ -155,8 +155,9 @@ class LinearOperator(object):
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `dtype` is real, this is equivalent to being symmetric.
       is_positive_definite:  Expect that this operator is positive definite,
-        meaning the real part of all eigenvalues is positive.  We do not require
-        the operator to be self-adjoint to be positive-definite.  See:
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
         https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
@@ -461,8 +462,9 @@ class LinearOperator(object):
   def assert_positive_definite(self, name="assert_positive_definite"):
     """Returns an `Op` that asserts this operator is positive definite.
 
-    Here, positive definite means the real part of all eigenvalues is positive.
-    We do not require the operator to be self-adjoint.
+    Here, positive definite means that the quadratic form `x^H A x` has positive
+    real part for all nonzero `x`.  Note that we do not require the operator to
+    be self-adjoint to be positive definite.
 
     Args:
       name:  A name to give this `Op`.

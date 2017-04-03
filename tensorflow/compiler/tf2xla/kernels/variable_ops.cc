@@ -34,7 +34,7 @@ class VarIsInitializedOp : public XlaOpKernel {
     ctx->SetOutput(0, ctx->builder()->ConstantR0<bool>(initialized));
   }
 };
-REGISTER_XLA_OP("VarIsInitializedOp", VarIsInitializedOp);
+REGISTER_XLA_OP(Name("VarIsInitializedOp"), VarIsInitializedOp);
 
 class ReadVariableOp : public XlaOpKernel {
  public:
@@ -45,8 +45,8 @@ class ReadVariableOp : public XlaOpKernel {
     ctx->SetOutput(0, handle);
   }
 };
-REGISTER_XLA_OP("ReadVariableOp", ReadVariableOp);
-REGISTER_XLA_OP("_UnsafeReadVariable", ReadVariableOp);
+REGISTER_XLA_OP(Name("ReadVariableOp"), ReadVariableOp);
+REGISTER_XLA_OP(Name("_UnsafeReadVariable"), ReadVariableOp);
 
 class AssignVariableOp : public XlaOpKernel {
  public:
@@ -56,7 +56,7 @@ class AssignVariableOp : public XlaOpKernel {
                    ctx->AssignVariable(0, ctx->input_type(1), ctx->Input(1)));
   }
 };
-REGISTER_XLA_OP("AssignVariableOp", AssignVariableOp);
+REGISTER_XLA_OP(Name("AssignVariableOp"), AssignVariableOp);
 
 class AssignAddVariableOp : public XlaOpKernel {
  public:
@@ -68,7 +68,9 @@ class AssignAddVariableOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
   }
 };
-REGISTER_XLA_OP("AssignAddVariableOp", AssignAddVariableOp);
+REGISTER_XLA_OP(
+    Name("AssignAddVariableOp").TypeConstraint("dtype", kNumericTypes),
+    AssignAddVariableOp);
 
 class AssignSubVariableOp : public XlaOpKernel {
  public:
@@ -80,21 +82,9 @@ class AssignSubVariableOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
   }
 };
-REGISTER_XLA_OP("AssignSubVariableOp", AssignSubVariableOp);
-
-class ResourceApplyGradientDescent : public XlaOpKernel {
- public:
-  explicit ResourceApplyGradientDescent(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx) {}
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationDataHandle handle;
-    xla::ComputationBuilder* b = ctx->builder();
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &handle));
-    handle = b->Sub(handle, b->Mul(ctx->Input(1), ctx->Input(2)));
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
-  }
-};
-REGISTER_XLA_OP("ResourceApplyGradientDescent", ResourceApplyGradientDescent);
+REGISTER_XLA_OP(
+    Name("AssignSubVariableOp").TypeConstraint("dtype", kNumericTypes),
+    AssignSubVariableOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -301,8 +301,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   }
 
   std::vector<std::unique_ptr<GlobalData>> outputs;
-  for (tensorflow::gtl::ArraySlice<ComputationInstance>::size_type i = 0;
-       i < computations.size(); ++i) {
+  for (size_t i = 0; i < computations.size(); ++i) {
     outputs.push_back(
         MakeUnique<GlobalData>(stub_, response.responses(i).output()));
     if (computations[i].execution_profile != nullptr) {

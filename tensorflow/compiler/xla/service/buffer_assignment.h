@@ -294,6 +294,15 @@ class BufferAssignment {
     return GetPointsToSet(instruction).element(index);
   }
 
+  // Returns true if 'hlo_a{shape_index_a}' and 'hlo_b{shape_index_b}'
+  // share the same BufferAllocation::Slice.
+  // Returns false otherwise.
+  // REQUIRES: BufferAssignment assigned allocations to both instructions.
+  bool SharesSliceAtIndex(const HloInstruction* hlo_a,
+                          const ShapeIndex& shape_index_a,
+                          const HloInstruction* hlo_b,
+                          const ShapeIndex& shape_index_b) const;
+
   // Returns the underlying points-to analysis used for this assignment.
   const TuplePointsToAnalysis& points_to_analysis() const {
     return liveness_->points_to_analysis();

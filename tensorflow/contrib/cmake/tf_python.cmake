@@ -184,6 +184,7 @@ add_python_module("tensorflow/python/debug/examples")
 add_python_module("tensorflow/python/debug/lib")
 add_python_module("tensorflow/python/debug/wrappers")
 add_python_module("tensorflow/python/estimator")
+add_python_module("tensorflow/python/estimator/export")
 add_python_module("tensorflow/python/estimator/inputs")
 add_python_module("tensorflow/python/estimator/inputs/queues")
 add_python_module("tensorflow/python/framework")
@@ -208,10 +209,10 @@ add_python_module("tensorflow/python/util/protobuf")
 add_python_module("tensorflow/tensorboard")
 add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/backend/event_processing")
-add_python_module("tensorflow/tensorboard/lib/python")
 add_python_module("tensorflow/tensorboard/plugins")
 add_python_module("tensorflow/tensorboard/plugins/debugger")
 add_python_module("tensorflow/tensorboard/plugins/projector")
+add_python_module("tensorflow/tensorboard/plugins/text")
 add_python_module("tensorflow/tensorboard/scripts")
 add_python_module("tensorflow/contrib")
 add_python_module("tensorflow/contrib/android")
@@ -277,9 +278,11 @@ add_python_module("tensorflow/contrib/grid_rnn/python/kernel_tests")
 add_python_module("tensorflow/contrib/grid_rnn/python/ops")
 add_python_module("tensorflow/contrib/hooks")
 add_python_module("tensorflow/contrib/image")
+add_python_module("tensorflow/contrib/image/ops")
 add_python_module("tensorflow/contrib/image/python")
 add_python_module("tensorflow/contrib/image/python/ops")
 add_python_module("tensorflow/contrib/input_pipeline")
+add_python_module("tensorflow/contrib/input_pipeline/ops")
 add_python_module("tensorflow/contrib/input_pipeline/python")
 add_python_module("tensorflow/contrib/input_pipeline/python/ops")
 add_python_module("tensorflow/contrib/integrate")
@@ -296,6 +299,49 @@ add_python_module("tensorflow/contrib/ios_examples/camera/en.lproj")
 add_python_module("tensorflow/contrib/ios_examples/simple")
 add_python_module("tensorflow/contrib/ios_examples/simple/data")
 add_python_module("tensorflow/contrib/ios_examples/simple/tf_ios_makefile_example.xcodeproj")
+add_python_module("tensorflow/contrib/keras")
+add_python_module("tensorflow/contrib/keras/api")
+add_python_module("tensorflow/contrib/keras/api/keras")
+add_python_module("tensorflow/contrib/keras/api/keras/activations")
+add_python_module("tensorflow/contrib/keras/api/keras/applications")
+add_python_module("tensorflow/contrib/keras/api/keras/applications/inception_v3")
+add_python_module("tensorflow/contrib/keras/api/keras/applications/resnet50")
+add_python_module("tensorflow/contrib/keras/api/keras/applications/vgg16")
+add_python_module("tensorflow/contrib/keras/api/keras/applications/vgg19")
+add_python_module("tensorflow/contrib/keras/api/keras/applications/xception")
+add_python_module("tensorflow/contrib/keras/api/keras/backend")
+add_python_module("tensorflow/contrib/keras/api/keras/callbacks")
+add_python_module("tensorflow/contrib/keras/api/keras/constraints")
+add_python_module("tensorflow/contrib/keras/api/keras/datasets")
+add_python_module("tensorflow/contrib/keras/api/keras/datasets/boston_housing")
+add_python_module("tensorflow/contrib/keras/api/keras/datasets/cifar10")
+add_python_module("tensorflow/contrib/keras/api/keras/datasets/cifar100")
+add_python_module("tensorflow/contrib/keras/api/keras/datasets/imdb")
+add_python_module("tensorflow/contrib/keras/api/keras/datasets/mnist")
+add_python_module("tensorflow/contrib/keras/api/keras/datasets/reuters")
+add_python_module("tensorflow/contrib/keras/api/keras/initializers")
+add_python_module("tensorflow/contrib/keras/api/keras/layers")
+add_python_module("tensorflow/contrib/keras/api/keras/losses")
+add_python_module("tensorflow/contrib/keras/api/keras/metrics")
+add_python_module("tensorflow/contrib/keras/api/keras/models")
+add_python_module("tensorflow/contrib/keras/api/keras/optimizers")
+add_python_module("tensorflow/contrib/keras/api/keras/preprocessing")
+add_python_module("tensorflow/contrib/keras/api/keras/preprocessing/image")
+add_python_module("tensorflow/contrib/keras/api/keras/preprocessing/sequence")
+add_python_module("tensorflow/contrib/keras/api/keras/preprocessing/text")
+add_python_module("tensorflow/contrib/keras/api/keras/regularizers")
+add_python_module("tensorflow/contrib/keras/api/keras/utils")
+add_python_module("tensorflow/contrib/keras/api/keras/wrappers")
+add_python_module("tensorflow/contrib/keras/api/keras/wrappers/scikit_learn")
+add_python_module("tensorflow/contrib/keras/python")
+add_python_module("tensorflow/contrib/keras/python/keras")
+add_python_module("tensorflow/contrib/keras/python/keras/applications")
+add_python_module("tensorflow/contrib/keras/python/keras/datasets")
+add_python_module("tensorflow/contrib/keras/python/keras/engine")
+add_python_module("tensorflow/contrib/keras/python/keras/layers")
+add_python_module("tensorflow/contrib/keras/python/keras/preprocessing")
+add_python_module("tensorflow/contrib/keras/python/keras/utils")
+add_python_module("tensorflow/contrib/keras/python/keras/wrappers")
 add_python_module("tensorflow/contrib/labeled_tensor")
 add_python_module("tensorflow/contrib/labeled_tensor/python")
 add_python_module("tensorflow/contrib/labeled_tensor/python/ops")
@@ -411,6 +457,7 @@ add_python_module("tensorflow/contrib/tensor_forest/data")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid/core")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid/core/ops")
+add_python_module("tensorflow/contrib/tensor_forest/hybrid/ops")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid/python")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid/python/kernel_tests")
 add_python_module("tensorflow/contrib/tensor_forest/hybrid/python/layers")
@@ -478,7 +525,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     else()
       set(require_shape_fn 1)
     endif()
-    
+
     # Create a C++ executable that links in the appropriate op
     # registrations and generates Python wrapper code based on the
     # registered ops.
@@ -542,11 +589,24 @@ GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_factorization_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_framework_variable_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_variable_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_input_pipeline_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/input_pipeline/ops/gen_input_pipeline_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_image_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/image/ops/gen_image_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_layers_bucketization_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/layers/ops/gen_bucketization_op.py)
+GENERATE_PYTHON_OP_LIB("contrib_layers_sparse_feature_cross_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/layers/ops/gen_sparse_feature_cross_op.py)
 GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/memory_stats/ops/gen_memory_stats_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_rnn_gru_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_gru_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_rnn_lstm_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_lstm_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
-	  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
-
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_hybrid_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/hybrid/ops/gen_training_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_bigquery_reader_ops.py)
 
@@ -588,6 +648,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.cc"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+    "${tensorflow_source_dir}/tensorflow/python/lib/core/ndarray_tensor_bridge.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/py_func.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_reader.h"
@@ -784,7 +846,7 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/datasets/data/text_train.csv
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/learn/python/learn/datasets/data/)
-					   
+
 if(${tensorflow_ENABLE_GPU})
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
     COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel --project_name tensorflow_gpu

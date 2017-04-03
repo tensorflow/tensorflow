@@ -29,6 +29,7 @@ import threading
 import numpy as np
 import six
 
+from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
@@ -41,6 +42,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
@@ -142,11 +144,55 @@ def CudaSupportsHalfMatMulAndConv():
   return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
 
 
+def NHWCToNCHW(input_tensor):
+  """Converts the input from the NHWC format to NCHW.
+
+  Args:
+    input_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    converted tensor or shape array
+  """
+  # tensor dim -> new axis order
+  new_axes = {
+      4: [0, 3, 1, 2],
+      5: [0, 4, 1, 2, 3]
+  }
+  if isinstance(input_tensor, ops.Tensor):
+    ndims = input_tensor.shape.ndims
+    return array_ops.transpose(input_tensor, new_axes[ndims])
+  else:
+    ndims = len(input_tensor)
+    return [input_tensor[a] for a in new_axes[ndims]]
+
+
+def NCHWToNHWC(input_tensor):
+  """Converts the input from the NCHW format to NHWC.
+
+  Args:
+    input_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    converted tensor or shape array
+  """
+  # tensor dim -> new axis order
+  new_axes = {
+      4: [0, 2, 3, 1],
+      5: [0, 2, 3, 4, 1]
+  }
+  if isinstance(input_tensor, ops.Tensor):
+    ndims = input_tensor.shape.ndims
+    return array_ops.transpose(input_tensor, new_axes[ndims])
+  else:
+    ndims = len(input_tensor)
+    return [input_tensor[a] for a in new_axes[ndims]]
+
+
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
 
-  def __init__(self, methodName="runTest"):
+  def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     self._threads = []
     self._tempdir = None
@@ -209,16 +255,17 @@ class TensorFlowTestCase(googletest.TestCase):
     then compares them using self._AssertProtoEqual().
 
     Args:
-      expected_message_maybe_ascii: proto message in original or ascii form
-      message: the message to validate
+      expected_message_maybe_ascii: proto message in original or ascii form.
+      message: the message to validate.
     """
 
-    if type(expected_message_maybe_ascii) == type(message):
+    if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(expected_message, message)
     elif isinstance(expected_message_maybe_ascii, str):
       expected_message = type(message)()
-      text_format.Merge(expected_message_maybe_ascii, expected_message)
+      text_format.Merge(expected_message_maybe_ascii, expected_message,
+                        descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(expected_message, message)
     else:
       assert False, ("Can't compare protos of type %s and %s" %
@@ -297,6 +344,14 @@ class TensorFlowTestCase(googletest.TestCase):
       self.skipTest("Not a test.")
 
     def prepare_config(config):
+      """Returns a config for sessions.
+
+      Args:
+        config: An optional config_pb2.ConfigProto to use to configure the
+          session.
+      Returns:
+        A config_pb2.ConfigProto object.
+      """
       if config is None:
         config = config_pb2.ConfigProto()
         config.allow_soft_placement = not force_gpu
@@ -319,7 +374,7 @@ class TensorFlowTestCase(googletest.TestCase):
           # Use the name of an actual device if one is detected, or '/gpu:0'
           # otherwise
           gpu_name = gpu_device_name()
-          if len(gpu_name) == 0:
+          if not gpu_name:
             gpu_name = "/gpu:0"
           with sess.graph.device(gpu_name):
             yield sess
@@ -334,7 +389,7 @@ class TensorFlowTestCase(googletest.TestCase):
           # Use the name of an actual device if one is detected, or '/gpu:0'
           # otherwise
           gpu_name = gpu_device_name()
-          if len(gpu_name) == 0:
+          if not gpu_name:
             gpu_name = "/gpu:0"
           with sess.graph.device(gpu_name):
             yield sess
@@ -485,8 +540,8 @@ class TensorFlowTestCase(googletest.TestCase):
     Args:
       a: a numpy ndarray or anything can be converted to one.
       b: a numpy ndarray or anything can be converted to one.
-      rtol: relative tolerance
-      atol: absolute tolerance
+      rtol: relative tolerance.
+      atol: absolute tolerance.
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
@@ -534,12 +589,12 @@ class TensorFlowTestCase(googletest.TestCase):
     Args:
       a: a numpy ndarray or anything can be converted to one.
       b: a numpy ndarray or anything can be converted to one.
-      rtol: relative tolerance
-      atol: absolute tolerance
-      float_rtol: relative tolerance for float32
-      float_atol: absolute tolerance for float32
-      half_rtol: relative tolerance for float16
-      half_atol: absolute tolerance for float16
+      rtol: relative tolerance.
+      atol: absolute tolerance.
+      float_rtol: relative tolerance for float32.
+      float_atol: absolute tolerance for float32.
+      half_rtol: relative tolerance for float16.
+      half_atol: absolute tolerance for float16.
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
@@ -611,7 +666,7 @@ class TensorFlowTestCase(googletest.TestCase):
         op = e.op if isinstance(e, errors.OpError) else None
         while op is not None:
           err_str += "\nCaused by: " + op.name
-          op = op._original_op
+          op = op._original_op  # pylint: disable=protected-access
         logging.info("Searching within error strings: '%s' within '%s'",
                      expected_err_re_or_predicate, err_str)
         return re.search(expected_err_re_or_predicate, err_str)
@@ -660,8 +715,12 @@ class TensorFlowTestCase(googletest.TestCase):
 
   # Fix Python 3 compatibility issues
   if six.PY3:
+    # pylint: disable=invalid-name
+
     # Silence a deprecation warning
     assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
 
     # assertItemsEqual is assertCountEqual as of 3.2.
     assertItemsEqual = googletest.TestCase.assertCountEqual
+
+    # pylint: enable=invalid-name

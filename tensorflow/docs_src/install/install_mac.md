@@ -45,7 +45,7 @@ the specified versions. If upgrading is not possible, you may still run
 TensorFlow with GPU support, but only if you do both of the following:
 
   * Install TensorFlow from sources as described
-    @{install_sources$here}.
+    @{$install_sources$here}.
   * Install or upgrade to at least the following NVIDIA versions:
     * CUDA toolkit 7.0 or greater
     * cuDNN v3 or greater
@@ -119,15 +119,15 @@ Take the following steps to install TensorFlow with Virtualenv:
      $ <b>virtualenv --system-site-packages -p python3</b> <i>targetDirectory</i> # for Python 3.n
      </pre>
 
-     The <i>targetDirectory</i> identifies the top of the virtualenv tree.
+     where <i>targetDirectory</i> identifies the top of the virtualenv tree.
      Our instructions assume that <i>targetDirectory</i>
      is `~/tensorflow`, but you may choose any directory.
 
   4. Activate the virtualenv environment by issuing one of the
      following commands:
 
-     <pre> $ <b>source ~/tensorflow/bin/activate</b>      # If using bash, sh, ksh, or zsh
-     $ <b>source ~/tensorflow/bin/activate.csh</b>  # If using csh or tcsh </pre>
+     <pre>$ <b>source ~/tensorflow/bin/activate</b>      # If using bash, sh, ksh, or zsh
+    $ <b>source ~/tensorflow/bin/activate.csh</b>  # If using csh or tcsh </pre>
 
      The preceding `source` command should change your prompt to the following:
 
@@ -149,14 +149,14 @@ Take the following steps to install TensorFlow with Virtualenv:
      lower than 8.1), install TensorFlow in the active
      virtualenv environment by issuing a command of the following format:
 
-     <pre> $ <b>pip install --upgrade</b> <i>TF_BINARY_URL</i>   # Python 2.7
-     $ <b>pip3 install --upgrade</b> <i>TF_BINARY_URL</i>  # Python 3.n </pre>
+     <pre> $ <b>pip install --upgrade</b> <i>tfBinaryURL</i>   # Python 2.7
+     $ <b>pip3 install --upgrade</b> <i>tfBinaryURL</i>  # Python 3.n </pre>
 
-     where <i>TF_BINARY_URL</i> identifies the URL
+     where <i>tfBinaryURL</i> identifies the URL
      of the TensorFlow Python package. The appropriate value of
-     <i>TF_BINARY_URL</i> depends on the operating system,
+     <i>tfBinaryURL</i> depends on the operating system,
      Python version, and GPU support. Find the appropriate value for
-     <i>TF_BINARY_URL</i> for your system
+     <i>tfBinaryURL</i> for your system
      [here](#the_url_of_the_tensorflow_python_package).
      For example, if you are installing TensorFlow for Mac OS X,
      Python 2.7, and CPU-only support, the command to install
@@ -180,7 +180,7 @@ use TensorFlow in a new shell.  If the virtualenv environment is not
 currently active (that is, the prompt is not `(tensorflow)`, invoke
 one of the following commands:
 
-<pre> $ <b>source ~/tensorflow/bin/activate</b>      # bash, sh, ksh, or zsh
+<pre>$ <b>source ~/tensorflow/bin/activate</b>      # bash, sh, ksh, or zsh
 $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh </pre>
 
 Your prompt will transform to the following to indicate that your
@@ -263,7 +263,7 @@ take the following steps:
 
   1. Install TensorFlow by invoking **one** of the following commands:
 
-     <pre>$ <b>pip install tensorflow</b>      # Python 2.7; CPU support (no GPU support)
+     <pre> $ <b>pip install tensorflow</b>      # Python 2.7; CPU support (no GPU support)
      $ <b>pip3 install tensorflow</b>     # Python 3.n; CPU support (no GPU support)
      $ <b>pip install tensorflow-gpu</b>  # Python 2.7;  GPU support
      $ <b>pip3 install tensorflow-gpu</b> # Python 3.n; GPU support </pre>
@@ -274,13 +274,13 @@ take the following steps:
   2. (Optional.) If Step 1 failed, install the latest version of TensorFlow
      by issuing a command of the following format:
 
-     <pre>$ <b>sudo pip  install --upgrade</b> <i>TF_BINARY_URL</i>   # Python 2.7
-     $ <b>sudo pip3 install --upgrade</b> <i>TF_BINARY_URL</i>   # Python 3.n </pre>
+     <pre> $ <b>sudo pip  install --upgrade</b> <i>tfBinaryURL</i>   # Python 2.7
+     $ <b>sudo pip3 install --upgrade</b> <i>tfBinaryURL</i>   # Python 3.n </pre>
 
-     where <i>TF_BINARY_URL</i> identifies the URL of the TensorFlow Python
-     package. The appropriate value of <i>TF_BINARY_URL</i> depends on the
+     where <i>tfBinaryURL</i> identifies the URL of the TensorFlow Python
+     package. The appropriate value of <i>tfBinaryURL</i> depends on the
      operating system, Python version, and GPU support. Find the appropriate
-     value for <i>TF_BINARY_URL</i>
+     value for <i>tfBinaryURL</i>
      [here](#the_url_of_the_tensorflow_python_package).  For example, if
      you are installing TensorFlow for Mac OS, Python 2.7, and CPU-only
      support, issue the following command:
@@ -390,9 +390,9 @@ Take the following steps to install TensorFlow in an Anaconda environment:
   4. Issue a command of the following format to install
      TensorFlow inside your conda environment:
 
-     <pre>(tensorflow)<b>$ pip install --ignore-installed --upgrade $TF_PYTHON_URL</b></pre>
+     <pre>(tensorflow)<b>$ pip install --ignore-installed --upgrade</b> <i>TF_PYTHON_URL</i></pre>
 
-     where `TF_PYTHON_URL` is the
+     where <i>TF_PYTHON_URL</i> is the
      [URL of the TensorFlow Python package](#the_url_of_the_tensorflow_python_package).
      For example, the following command installs the CPU-only version of
      TensorFlow for Python 2.7:
@@ -436,10 +436,11 @@ Invoke python from your shell as follows:
 Enter the following short program inside the python interactive shell:
 
 ```python
->>> import tensorflow as tf
->>> hello = tf.constant('Hello, TensorFlow!')
->>> sess = tf.Session()
->>> print(sess.run(hello))
+# Python
+import tensorflow as tf
+hello = tf.constant('Hello, TensorFlow!')
+sess = tf.Session()
+print(sess.run(hello))
 ```
 
 If the system outputs the following, then you are ready to begin
@@ -570,6 +571,15 @@ Terminal window to review and agree to the Xcode license agreements.
 
 RuntimeError: Broken toolchain: cannot link a simple C program</pre>
 </td>
+
+<tr>
+  <td><a href="http://stackoverflow.com/questions/42376790/">42376790</a></td>
+  <td>After installing for GPU, an `import tensorflow` statement
+      triggers the following error:
+<pre>tensorflow/stream_executor/dso_loader.cc:135] successfully opened CUDA
+  library libcublas.8.0.dylib locally
+  Segmentation fault: 11
+</pre></td>
 </tr>
 
 </table>
@@ -648,13 +658,13 @@ the custom binary protobuf pip package, invoke one of the following commands:
 
   * for Python 2.7:
 
-  <pre> $ <b>pip install --upgrade \
-  https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp27-none-linux_x86_64.whl</b></pre>
+    <pre>$ <b>pip install --upgrade \
+    https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp27-none-linux_x86_64.whl</b></pre>
 
   * for Python 3.n:
 
-  <pre> $ <b>pip3 install --upgrade \
-  https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp35-none-linux_x86_64.whl</b> </pre>
+    <pre>$ <b>pip3 install --upgrade \
+    https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp35-none-linux_x86_64.whl</b> </pre>
 
 Installing this protobuf package will overwrite the existing protobuf package.
 Note that the binary pip package already has support for protobufs

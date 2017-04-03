@@ -25,7 +25,6 @@ from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.contrib.distributions.python.ops import operator_pd_full
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -121,7 +120,7 @@ class _WishartOperatorPD(distribution.Distribution):
             df,
             dtype=scale_operator_pd.dtype,
             name="df")
-        contrib_tensor_util.assert_same_float_dtype(
+        check_ops.assert_same_float_dtype(
             (self._df, self._scale_operator_pd))
         if (self._scale_operator_pd.get_shape().ndims is None or
             self._scale_operator_pd.get_shape()[-1].value is None):

@@ -249,8 +249,14 @@ def dynamic_decode(decoder,
 
       # Copy through states past finish
       def _maybe_copy_state(new, cur):
-        return (new if isinstance(cur, tensor_array_ops.TensorArray) else
-                array_ops.where(finished, cur, new))
+        # TensorArrays and scalar states get passed through.
+        if isinstance(cur, tensor_array_ops.TensorArray):
+          pass_through = True
+        else:
+          new.set_shape(cur.shape)
+          pass_through = (new.shape.ndims == 0)
+        return new if pass_through else array_ops.where(finished, cur, new)
+
       if impute_finished:
         next_state = nest.map_structure(
             _maybe_copy_state, decoder_state, state)

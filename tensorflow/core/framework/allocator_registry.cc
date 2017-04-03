@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/allocator_registry.h"
-
 #include <string>
 
-#include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/framework/allocator_registry.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -40,9 +39,9 @@ void AllocatorRegistry::Register(const string& name, int priority,
                                  Allocator* allocator) {
   CHECK(!name.empty()) << "Need a valid name for Allocator";
   CHECK_GE(priority, 0) << "Priority needs to be non-negative";
-  CHECK(!CheckForDuplicates(name, priority)) << "Allocator with name: [" << name
-                                             << "] and priority: [" << priority
-                                             << "] already registered";
+  CHECK(!CheckForDuplicates(name, priority))
+      << "Allocator with name: [" << name << "] and priority: [" << priority
+      << "] already registered";
 
   AllocatorRegistryEntry tmp_entry;
   tmp_entry.name = name;

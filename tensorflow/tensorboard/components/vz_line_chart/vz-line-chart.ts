@@ -45,6 +45,7 @@ module VZ {
     private smoothingEnabled: Boolean;
     private tooltipSortingMethod: string;
     private tooltipPosition: string;
+    private _ignoreYOutliers: boolean;
 
     private targetSVG: d3.Selection<any>;
 
@@ -56,6 +57,7 @@ module VZ {
       this.colorScale = colorScale;
       this.tooltip = tooltip;
       this.datasets = [];
+      this._ignoreYOutliers = false;
       // lastPointDataset is a dataset that contains just the last point of
       // every dataset we're currently drawing.
       this.lastPointsDataset = new Plottable.Dataset();
@@ -82,15 +84,21 @@ module VZ {
       this.yAxis.margin(0).tickLabelPadding(5).formatter(yFormatter);
       this.yAxis.usesTextWidthApproximation(true);
 
-      this.dzl = new Plottable.DragZoomLayer(this.xScale, this.yScale);
+      this.dzl = new Plottable.DragZoomLayer(
+          this.xScale, this.yScale, this.updateSpecialDatasets.bind(this));
 
       let center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
 
       this.gridlines =
           new Plottable.Components.Gridlines(this.xScale, this.yScale);
 
-      this.center =
-          new Plottable.Components.Group([this.gridlines, center, this.dzl]);
+      let xZeroLine = new Plottable.Components.GuideLineLayer('horizontal');
+      xZeroLine.scale(this.yScale).value(0);
+      let yZeroLine = new Plottable.Components.GuideLineLayer('vertical');
+      yZeroLine.scale(this.xScale).value(0);
+
+      this.center = new Plottable.Components.Group(
+          [this.gridlines, xZeroLine, yZeroLine, center, this.dzl]);
       this.outer =  new Plottable.Components.Table([
                                                    [this.yAxis, this.center],
                                                    [null, this.xAxis]
@@ -153,6 +161,13 @@ module VZ {
         this.resmoothDataset(dataset);
       }
       this.updateSpecialDatasets();
+    }
+
+    public ignoreYOutliers(ignoreYOutliers: boolean) {
+      if (ignoreYOutliers !== this._ignoreYOutliers) {
+        this._ignoreYOutliers = ignoreYOutliers;
+        this.updateSpecialDatasets();
+      }
     }
 
     private updateSpecialDatasets() {
@@ -221,6 +236,14 @@ module VZ {
       };
       let nanData = _.flatten(this.datasets.map(datasetToNaNData));
       this.nanDataset.data(nanData);
+
+      let datasetToValues: (d: Plottable.Dataset) => number[] = (d) => {
+        return d.data().map((x) => accessor(x, -1, d));
+      };
+      let vals = _.flatten(this.datasets.map(datasetToValues));
+      vals = vals.filter((x) => x === x && x !== Infinity && x !== -Infinity);
+      let domain = VZ.ChartHelpers.computeDomain(vals, this._ignoreYOutliers);
+      this.yScale.domain(domain);
     }
 
     private setupTooltips(plot: Plottable.XYPlot<number|Date, number>):
@@ -430,35 +453,19 @@ module VZ {
     }
 
     private resmoothDataset(dataset: Plottable.Dataset) {
-      // When increasing the smoothing window, it smoothes a lot with the first
-      // few points and then starts to gradually smooth slower, so using an
-      // exponential function makes the slider more consistent. 1000^x has a
-      // range of [1, 1000], so subtracting 1 and dividing by 999 results in a
-      // range of [0, 1], which can be used as the percentage of the data, so
-      // that the kernel size can be specified as a percentage instead of a
-      // hardcoded number, what would be bad with multiple series.
-      let factor = (Math.pow(1000, this.smoothingWeight) - 1) / 999;
-      let data = dataset.data();
-      let kernelRadius = Math.floor(data.length * factor / 2);
-
-      data.forEach((d, i) => {
-        let actualKernelRadius = Math.min(kernelRadius, i);
-        let start = i - actualKernelRadius;
-        let end = i + actualKernelRadius + 1;
-        if (end >= data.length) {
-          // In the beginning, it's OK for the smoothing window to be small,
-          // but this is not desirable towards the end. Rather than shrinking
-          // the window, or extrapolating data to fill the gap, we're simply
-          // not going to display the smoothed line towards the end.
-          d.smoothed = Infinity;
-        } else if (!_.isFinite(d.scalar)) {
-          // Only smooth finite numbers.
+      var data = dataset.data();
+      var smoothingWeight = this.smoothingWeight;
+      let last = data.length > 0 ? data[0].scalar : NaN;
+      data.forEach((d) => {
+        if (!_.isFinite(last)) {
           d.smoothed = d.scalar;
         } else {
-          d.smoothed = d3.mean(
-              data.slice(start, end).filter((d) => _.isFinite(d.scalar)),
-              (d) => d.scalar);
+          // 1st-order IIR low-pass filter to attenuate the higher-
+          // frequency components of the time-series.
+          d.smoothed = last * smoothingWeight +
+                       (1 - smoothingWeight) * d.scalar;
         }
+        last = d.smoothed;
       });
     }
 

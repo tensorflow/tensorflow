@@ -1,9 +1,21 @@
 licenses(["notice"])  # Apache 2.0
 
-package(
-    default_visibility = [
+package_group(
+    name = "internal",
+    includes = [
         "//tensorflow/compiler/tf2xla:internal",
     ],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//tensorflow/compiler/tf2xla:friends",
+    ],
+)
+
+package(
+    default_visibility = [":internal"],
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -19,6 +31,7 @@ py_library(
     testonly = 1,
     srcs = ["xla_test.py"],
     srcs_version = "PY2AND3",
+    visibility = [":friends"],
     deps = [
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/core:protos_all_py",
@@ -36,6 +49,20 @@ cc_library(
     testonly = 1,
     srcs = ["depthwise_conv2d_test_kernel.cc"],
     deps = ["//tensorflow/core:framework_lite"],
+)
+
+tf_xla_py_test(
+    name = "adagrad_test",
+    size = "small",
+    srcs = ["adagrad_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
 )
 
 tf_xla_py_test(
@@ -156,6 +183,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "momentum_test",
+    size = "small",
+    srcs = ["momentum_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "nary_ops_test",
     size = "small",
     srcs = ["nary_ops_test.py"],
@@ -247,6 +288,20 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_xla_py_test(
+    name = "rmsprop_test",
+    size = "small",
+    srcs = ["rmsprop_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )
 

@@ -71,7 +71,9 @@ class ConstantDeclarationOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ConstantDeclarationOp);
 };
 
-REGISTER_XLA_OP("Const", ConstantDeclarationOp);
+// XLA_* devices also register a "real" Identity operator so we suppress the
+// dummy operator using CompilationOnly().
+REGISTER_XLA_OP(Name("Const").CompilationOnly(), ConstantDeclarationOp);
 
 // This OpKernel implements the _Arg Op for XLA JIT devices. It
 // associates its output with one of the arguments to a
@@ -121,7 +123,7 @@ class ArgOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
 };
 
-REGISTER_XLA_OP("_Arg", ArgOp);
+REGISTER_XLA_OP(Name("_Arg").AllowResourceTypes(), ArgOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -13,6 +13,7 @@
     *   [Eight-bit Calculations](#eight-bit-calculations)
 *   [Transform Reference](#transform-reference)
     *   [add_default_attributes](#add_default_attributes)
+    *   [backport_concatv2](#backport_concatv2)
     *   [fold_batch_norms](#fold_batch_norms)
     *   [fold_constants](#fold_constants)
     *   [fold_old_batch_norms](#fold_old_batch_norms)
@@ -102,8 +103,8 @@ output layers of the model are. The best source for these is the model training
 process, where for a classifier the inputs will be the nodes that receive the
 data from the training set, and the output will be the predictions. If you're
 unsure, the
-[summarize_graph](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/summarize_graph.cc)
-can inspect the model and provide guesses about likely input and output nodes,
+[summarize_graph](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/summarize_graph_main.cc)
+tool can inspect the model and provide guesses about likely input and output nodes,
 as well as other information that's useful for debugging. Here's an example of
 how to use it on the [Inception V3
 graph](http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz):
@@ -335,6 +336,15 @@ your model is going to be processed outside of the main TensorFlow framework it
 can be useful to run this update process as a transform. This process finds any
 op attributes that are defined in the current TensorFlow list of ops but not
 within the saved model, and sets them to the defined default for that attribute.
+
+### backport_concatv2
+
+Args: None
+
+If you have a GraphDef file that has been produced by a newer version of the
+TensorFlow framework and includes ConcatV2, and you want to run it on an older
+version that only supports Concat, this transform will take care of converting
+those newer ops to the equivalent older form.
 
 ### fold_batch_norms
 

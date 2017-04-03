@@ -134,7 +134,6 @@ Status RetryingFileSystem::FileExists(const string& fname) {
   return RetryingUtils::CallWithRetries(
       std::bind(&FileSystem::FileExists, base_file_system_.get(), fname),
       initial_delay_microseconds_);
-  ;
 }
 
 Status RetryingFileSystem::Stat(const string& fname, FileStatistics* stat) {
@@ -159,7 +158,7 @@ Status RetryingFileSystem::GetMatchingPaths(const string& pattern,
 }
 
 Status RetryingFileSystem::DeleteFile(const string& fname) {
-  return RetryingUtils::CallWithRetries(
+  return RetryingUtils::DeleteWithRetries(
       std::bind(&FileSystem::DeleteFile, base_file_system_.get(), fname),
       initial_delay_microseconds_);
 }
@@ -171,7 +170,7 @@ Status RetryingFileSystem::CreateDir(const string& dirname) {
 }
 
 Status RetryingFileSystem::DeleteDir(const string& dirname) {
-  return RetryingUtils::CallWithRetries(
+  return RetryingUtils::DeleteWithRetries(
       std::bind(&FileSystem::DeleteDir, base_file_system_.get(), dirname),
       initial_delay_microseconds_);
 }
@@ -198,7 +197,7 @@ Status RetryingFileSystem::IsDirectory(const string& dirname) {
 Status RetryingFileSystem::DeleteRecursively(const string& dirname,
                                              int64* undeleted_files,
                                              int64* undeleted_dirs) {
-  return RetryingUtils::CallWithRetries(
+  return RetryingUtils::DeleteWithRetries(
       std::bind(&FileSystem::DeleteRecursively, base_file_system_.get(),
                 dirname, undeleted_files, undeleted_dirs),
       initial_delay_microseconds_);

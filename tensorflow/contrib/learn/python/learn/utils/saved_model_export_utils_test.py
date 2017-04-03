@@ -18,16 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
 import tempfile
 import time
-
-# pylint: disable=g-import-not-at-top
-
-# TODO(jart): #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.layers.python.layers import feature_column as fc
 from tensorflow.contrib.learn.python.learn import export_strategy as export_strategy_lib

@@ -41,10 +41,6 @@ Tensor DeepCopy(const Tensor& other);
 Status Concat(const gtl::ArraySlice<Tensor>& tensors,
               Tensor* result) TF_MUST_USE_RESULT;
 
-// Version of Concat() that crashes upon hitting an error.
-// DEPRECATED. DO NOT USE.
-Tensor Concat(const gtl::ArraySlice<Tensor>& tensors);
-
 // Splits 'tensor' into 'sizes.size()' individual tensors, along the 0th
 // dimension. The ith output tensor has 0th-dimension size 'sizes[i]'.
 //
@@ -57,11 +53,6 @@ Tensor Concat(const gtl::ArraySlice<Tensor>& tensors);
 // Split() and Concat() are inverse operations.
 Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
              std::vector<Tensor>* result) TF_MUST_USE_RESULT;
-
-// Version of Split() that crashes upon hitting an error.
-// DEPRECATED. DO NOT USE.
-std::vector<Tensor> Split(const Tensor& tensor,
-                          const gtl::ArraySlice<int64>& sizes);
 
 }  // namespace tensor
 }  // namespace tensorflow

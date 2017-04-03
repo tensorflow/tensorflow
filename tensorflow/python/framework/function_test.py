@@ -338,6 +338,23 @@ class FunctionTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllEqual(z.eval(), 101.)
 
+  def testResourceVarAsImplicitInput(self):
+    g = ops.Graph()
+    with g.as_default():
+      v = variable_scope.get_variable(
+          "var", (4, 4), dtypes.float32, use_resource=True)
+
+      @function.Defun()
+      def Foo():
+        return array_ops.identity(v)
+
+      y = v.value()
+      z = Foo()
+
+    with self.test_session(graph=g):
+      v.initializer.run()
+      self.assertAllEqual(y.eval(), z.eval())
+
   def testDefineErrors(self):
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(ValueError, "can not return None"):

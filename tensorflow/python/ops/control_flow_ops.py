@@ -275,7 +275,7 @@ def exit(data, name=None):
 def switch(data, pred, dtype=None, name=None):
   """Forwards `data` to an output determined by `pred`.
 
-  If `pred` is true, the `data` input is forwared to the first output.
+  If `pred` is false, the `data` input is forwared to the first output.
   Otherwise, the data goes to the second output.
 
   This op handles `Tensor`s and `IndexedSlices`.
@@ -323,7 +323,7 @@ def switch(data, pred, dtype=None, name=None):
 def _SwitchRefOrTensor(data, pred, name="Switch"):
   """Forwards `data` to an output determined by `pred`.
 
-  If `pred` is true, the `data` input is forwared to the first output.
+  If `pred` is false, the `data` input is forwared to the first output.
   Otherwise, the data goes to the second output.
 
   This op handles `Tensor`s and `IndexedSlices`.
@@ -2673,7 +2673,7 @@ def with_dependencies(dependencies, output_tensor, name=None):
   no guarantee that `output_tensor` will be evaluated after any `dependencies`
   have run.
 
-  See also `tuple` and `group`.
+  See also @{tf.tuple$tuple} and @{tf.group$group}.
 
   Args:
     dependencies: Iterable of operations to run before this op finishes.
@@ -2715,7 +2715,8 @@ def group(*inputs, **kwargs):
   When this op finishes, all ops in `input` have finished. This op has no
   output.
 
-  See also `tuple` and `with_dependencies`.
+  See also @{tf.tuple$tuple} and
+  @{tf.control_dependencies$control_dependencies}.
 
   Args:
     *inputs: Zero or more tensors to group.
@@ -2778,7 +2779,8 @@ def tuple(tensors, name=None, control_inputs=None):
   returned by `tuple` are only available after all the parallel computations
   are done.
 
-  See also `group` and `with_dependencies`.
+  See also @{tf.group$group} and
+  @{tf.control_dependencies$control_dependencies}.
 
   Args:
     tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.

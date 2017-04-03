@@ -980,24 +980,24 @@ string BuildGraphOptionsString(const BuildGraphOptions& opts) {
   return buf;
 }
 
-MasterSession::MasterSession(const SessionOptions& opt, const MasterEnv* env,
-                             std::vector<Device*>* remote_devs,
-                             StatsPublisherFactory stats_publisher_factory)
+MasterSession::MasterSession(
+    const SessionOptions& opt, const MasterEnv* env,
+    std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
+    StatsPublisherFactory stats_publisher_factory)
     : session_opts_(opt),
       env_(env),
       handle_(strings::FpToString(random::New64())),
+      remote_devs_(std::move(remote_devs)),
       stats_publisher_factory_(std::move(stats_publisher_factory)),
       graph_version_(0),
       run_graphs_(5),
-      partial_run_graphs_(5),
-      cancellation_manager_(new CancellationManager) {
+      partial_run_graphs_(5) {
   UpdateLastAccessTime();
 
-  swap(remote_devs_, *remote_devs);
   VLOG(1) << "Session " << handle_ << " #local " << env->local_devices.size()
-          << " #remote " << remote_devs_.size();
-  for (Device* d : remote_devs_) {
-    devices_.AddDevice(d);
+          << " #remote " << remote_devs_->size();
+  for (auto&& d : *remote_devs_) {
+    devices_.AddDevice(d.get());
   }
   int num_local_devices = 0;
   for (Device* d : env->local_devices) {
@@ -1014,10 +1014,8 @@ MasterSession::MasterSession(const SessionOptions& opt, const MasterEnv* env,
 }
 
 MasterSession::~MasterSession() {
-  delete cancellation_manager_;
   for (const auto& iter : run_graphs_) iter.second->Unref();
   for (const auto& iter : partial_run_graphs_) iter.second->Unref();
-  for (Device* dev : remote_devs_) delete dev;
 }
 
 void MasterSession::UpdateLastAccessTime() {
@@ -1317,7 +1315,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
 
   Status s = run_state->rcg->RunPartitions(
       env_, run_state->step_id, run_state->count, execution_state_.get(),
-      &run_state->pss, opts, req, resp, cancellation_manager_,
+      &run_state->pss, opts, req, resp, &cancellation_manager_,
       is_last_partial_run);
 
   // Delete the run state if there is an error or all fetches are done.
@@ -1388,7 +1386,7 @@ Status MasterSession::DoRunWithLocalExecution(
 
   Status s =
       rcg->RunPartitions(env_, step_id, count, execution_state_.get(), &pss,
-                         opts, req, resp, cancellation_manager_, false);
+                         opts, req, resp, &cancellation_manager_, false);
   if (s.ok()) {
     pss.end_micros = Env::Default()->NowMicros();
 
@@ -1423,7 +1421,7 @@ Status MasterSession::Close() {
     mutex_lock l(mu_);
     closed_ = true;  // All subsequent calls to Run() or Extend() will fail.
   }
-  cancellation_manager_->StartCancel();
+  cancellation_manager_.StartCancel();
   std::vector<ReffedClientGraph*> to_unref;
   {
     mutex_lock l(mu_);
@@ -1443,7 +1441,7 @@ void MasterSession::GarbageCollect() {
     closed_ = true;
     garbage_collected_ = true;
   }
-  cancellation_manager_->StartCancel();
+  cancellation_manager_.StartCancel();
   Unref();
 }
 

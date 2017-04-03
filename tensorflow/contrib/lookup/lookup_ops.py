@@ -332,11 +332,12 @@ class TextFileInitializer(TableInitializerBase):
 
   The key and value content to get from each line is specified by
   the `key_index` and `value_index`.
-    - TextFileIndex.LINE_NUMBER means use the line number starting from zero,
-      expects data type int64.
-    - TextFileIndex.WHOLE_LINE means use the whole line content, expects data
-      type string.
-    - A value >=0 means use the index (starting at zero) of the split line based
+
+  * `TextFileIndex.LINE_NUMBER` means use the line number starting from zero,
+    expects data type int64.
+  * `TextFileIndex.WHOLE_LINE` means use the whole line content, expects data
+    type string.
+  * A value `>=0` means use the index (starting at zero) of the split line based
       on `delimiter`.
 
   For example if we have a file with the following content:
@@ -349,9 +350,10 @@ class TextFileInitializer(TableInitializerBase):
 
   The following snippet initializes a table with the first column as keys and
   second column as values:
-  - emerson -> 10
-  - lake -> 20
-  - palmer -> 30
+
+  * `emerson -> 10`
+  * `lake -> 20`
+  * `palmer -> 30`
 
   ```python
   table = tf.contrib.lookup.HashTable(tf.contrib.lookup.TextFileInitializer(
@@ -361,9 +363,10 @@ class TextFileInitializer(TableInitializerBase):
   ```
 
   Similarly to initialize the whole line as keys and the line number as values.
-  - emerson 10 -> 0
-  - lake 20 -> 1
-  - palmer 30 -> 2
+
+  * `emerson 10 -> 0`
+  * `lake 20 -> 1`
+  * `palmer 30 -> 2`
 
   ```python
   table = tf.contrib.lookup.HashTable(tf.contrib.lookup.TextFileInitializer(
@@ -1063,7 +1066,7 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
   For example:
 
   ```python
-  mapping_strings = t.constant(["emerson", "lake", "palmer")
+  mapping_strings = tf.constant(["emerson", "lake", "palmer")
   feats = tf.constant(["emerson", "lake", "and", "palmer"])
   ids = tf.contrib.lookup.string_to_index(
       feats, mapping=mapping_strings, default_value=-1)

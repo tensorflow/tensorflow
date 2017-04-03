@@ -54,4 +54,4 @@ export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/extras/CUPT
 export PATH="/c/tools/cuda/bin:$PATH"
 
 # Set the common build options on Windows
-export BUILD_OPTS='--cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=/w --verbose_failures --experimental_ui'
+export BUILD_OPTS='--cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=-w --host_copt=-w --verbose_failures --experimental_ui'

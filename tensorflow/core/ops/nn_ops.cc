@@ -89,7 +89,7 @@ REGISTER_OP("AvgPool")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::AvgPoolShape)
     .Doc(R"doc(
 Performs average pooling on the input.
@@ -117,7 +117,7 @@ REGISTER_OP("AvgPoolGrad")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       // NOTE(mrry): We could in principle work out the shape from the
       // gradients and the attrs, but if we do not know orig_input_shape
@@ -942,6 +942,7 @@ REGISTER_OP("Conv3D")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .SetShapeFn(shape_inference::Conv3DShape)
     .Doc(R"doc(
 Computes a 3-D convolution given 5-D `input` and `filter` tensors.
@@ -958,7 +959,11 @@ filter: Shape `[filter_depth, filter_height, filter_width, in_channels,
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
-
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 REGISTER_OP("Conv3DBackpropInput")
@@ -1024,6 +1029,7 @@ REGISTER_OP("Conv3DBackpropInputV2")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -1044,6 +1050,11 @@ out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 
 )doc");
 
@@ -1055,6 +1066,7 @@ REGISTER_OP("Conv3DBackpropFilterV2")
     .Attr("T: numbertype")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
@@ -1075,6 +1087,11 @@ out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
 strides: 1-D tensor of length 5. The stride of the sliding window for each
   dimension of `input`. Must have `strides[0] = strides[4] = 1`.
 padding: The type of padding algorithm to use.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 
 )doc");
 
@@ -1086,6 +1103,7 @@ REGISTER_OP("AvgPool3D")
     .Attr("ksize: list(int) >= 5")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: numbertype")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
@@ -1098,6 +1116,11 @@ strides: 1-D tensor of length 5. The stride of the sliding window for each
 padding: The type of padding algorithm to use.
 input: Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 output: The average pooled output tensor.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 REGISTER_OP("AvgPool3DGrad")
@@ -1107,6 +1130,7 @@ REGISTER_OP("AvgPool3DGrad")
     .Attr("ksize: list(int) >= 5")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: numbertype")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
@@ -1126,6 +1150,11 @@ padding: The type of padding algorithm to use.
 orig_input_shape: The original input dimensions.
 grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
 output: The backprop for input.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1136,6 +1165,7 @@ REGISTER_OP("MaxPool3D")
     .Attr("ksize: list(int) >= 5")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: numbertype")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
@@ -1148,17 +1178,24 @@ strides: 1-D tensor of length 5. The stride of the sliding window for each
 padding: The type of padding algorithm to use.
 input: Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
 output: The max pooled output tensor.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 REGISTER_OP("MaxPool3DGrad")
-    .Input("orig_input: float")
-    .Input("orig_output: float")
+    .Input("orig_input: TInput")
+    .Input("orig_output: TInput")
     .Input("grad: T")
     .Output("output: T")
     .Attr("ksize: list(int) >= 5 ")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
-    .Attr("T: numbertype")
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: numbertype = DT_FLOAT")
+    .Attr("TInput: numbertype = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 5);
     })
@@ -1173,6 +1210,49 @@ padding: The type of padding algorithm to use.
 orig_input: The original input tensor.
 orig_output: The original output tensor.
 grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
+)doc");
+
+REGISTER_OP("MaxPool3DGradGrad")
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("ksize: list(int) >= 5 ")
+    .Attr("strides: list(int) >= 5")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnet3dDataFormatAttrString())
+    .Attr("T: realnumbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::Pool3DShape(c));
+      ShapeHandle unused;
+      // Validate 'orig_input' is the same shape as 'grad'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
+      // Validate 'orig_output' is same shape as 'output'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes second-order gradients of the maxpooling function.
+
+ksize: 1-D tensor of length 5. The size of the window for each dimension of
+  the input tensor. Must have `ksize[0] = ksize[4] = 1`.
+strides: 1-D tensor of length 5. The stride of the sliding window for each
+  dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+padding: The type of padding algorithm to use.
+orig_input: The original input tensor.
+orig_output: The original output tensor.
+grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
+output: Gradients of gradients w.r.t. the input to `max_pool`.
+data_format: The data format of the input and output data. With the
+    default format "NDHWC", the data is stored in the order of:
+        [batch, in_depth, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCDHW", the data storage order is:
+        [batch, in_channels, in_depth, in_height, in_width].
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1262,7 +1342,7 @@ output: The gradients for LRN.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("MaxPool")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: realnumbertype = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
@@ -1295,7 +1375,7 @@ REGISTER_OP("MaxPoolGrad")
     .Input("orig_output: T")
     .Input("grad: T")
     .Output("output: T")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: realnumbertype = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 4);
     })
@@ -1317,6 +1397,43 @@ grad: 4-D.  Gradients w.r.t. the output of `max_pool`.
 output: Gradients w.r.t. the input to `max_pool`.
 )doc");
 
+REGISTER_OP("MaxPoolGradGrad")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
+      ShapeHandle unused;
+      // Validate 'orig_input' is the same shape as 'grad'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
+      // Validate 'orig_output' is same shape as 'output'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes second-order gradients of the maxpooling function.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+orig_input: The original input tensor.
+orig_output: The original output tensor.
+grad: 4-D.  Gradients of gradients w.r.t. the input of `max_pool`.
+output: Gradients of gradients w.r.t. the input to `max_pool`.
+)doc");
+
 REGISTER_OP("MaxPoolWithArgmax")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -1325,7 +1442,7 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Input("input: T")
     .Output("output: T")
     .Output("argmax: Targmax")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
       c->set_output(1, c->output(0));
@@ -1356,7 +1473,7 @@ REGISTER_OP("MaxPoolGradWithArgmax")
     .Input("grad: T")
     .Input("argmax: Targmax")
     .Output("output: T")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       return UnchangedShapeWithRank(c, 4);
     })
@@ -1372,6 +1489,39 @@ grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
   output of `max_pool`.
 argmax: The indices of the maximum values chosen for each output of `max_pool`.
 output: Gradients w.r.t. the input of `max_pool`.
+)doc");
+
+REGISTER_OP("MaxPoolGradGradWithArgmax")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr("Targmax: {int32, int64}")
+    .Input("input: T")
+    .Input("grad: T")
+    .Input("argmax: Targmax")
+    .Output("output: T")
+    .Attr("T: realnumbertype")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
+      ShapeHandle unused;
+      // Validate 'orig_input' is the same shape as 'grad'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &unused));
+      // Validate 'argmax' is same shape as 'output'
+      TF_RETURN_IF_ERROR(c->Merge(c->input(2), c->output(0), &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Computes second-order gradients of the maxpooling function.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+input: The original input.
+grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
+  input of `max_pool`.
+argmax: The indices of the maximum values chosen for each output of `max_pool`.
+output: Gradients of gradients w.r.t. the input of `max_pool`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1844,9 +1994,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument("input must have last dimension >= k = ",
-                                   c->Value(k_dim), " but is ",
-                                   c->Value(last_dim));
+    return errors::InvalidArgument(
+        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
+        c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.

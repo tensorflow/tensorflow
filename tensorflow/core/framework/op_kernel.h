@@ -207,7 +207,7 @@ class PersistentTensor {
 
   int64 NumElements() const { return tensor_.NumElements(); }
 
-  int64 TotalBytes() const { return tensor_.TotalBytes(); }
+  int64 AllocatedBytes() const { return tensor_.AllocatedBytes(); }
 
  private:
   Tensor tensor_;
@@ -1056,9 +1056,9 @@ class OpKernelContext {
   std::vector<int64> host_persistent_alloc_ids() const;
   std::vector<int64> device_persistent_alloc_ids() const;
 
- private:
   bool input_is_ref(int index) const;
 
+ private:
   Allocator* get_allocator(AllocatorAttributes attr);
 
   // Internal method to add a tensor's buffer to the list of buffers
@@ -1284,7 +1284,8 @@ inline MemoryType OpKernelContext::output_memory_type(int index) const {
 }
 
 inline bool OpKernelContext::input_is_ref(int index) const {
-  return IsRefType(input_dtype(index));
+  const TensorValue& value((*params_->inputs)[index]);
+  return value.is_ref();
 }
 
 inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {

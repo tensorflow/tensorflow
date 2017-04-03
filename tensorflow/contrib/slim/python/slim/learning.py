@@ -382,7 +382,8 @@ def create_train_op(total_loss,
                     gate_gradients=tf_optimizer.Optimizer.GATE_OP,
                     aggregation_method=None,
                     colocate_gradients_with_ops=False,
-                    gradient_multipliers=None):
+                    gradient_multipliers=None,
+                    check_numerics=True):
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
@@ -408,6 +409,8 @@ def create_train_op(total_loss,
     gradient_multipliers: A dictionary of either `Variables` or `Variable` op
       names to the coefficient by which the associated gradient should be
       scaled.
+    check_numerics: Whether or not we apply check_numerics.
+
   Returns:
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
@@ -433,7 +436,8 @@ def create_train_op(total_loss,
       summarize_gradients=summarize_gradients,
       gate_gradients=gate_gradients,
       aggregation_method=aggregation_method,
-      colocate_gradients_with_ops=colocate_gradients_with_ops)
+      colocate_gradients_with_ops=colocate_gradients_with_ops,
+      check_numerics=check_numerics)
 
 
 def _wait_for_step(sess, global_step, step):

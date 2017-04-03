@@ -45,8 +45,8 @@ tf_cc_test(
         ":transform_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -59,6 +59,7 @@ cc_library(
     name = "transforms_lib",
     srcs = [
         "add_default_attributes.cc",
+        "backports.cc",
         "fold_batch_norms.cc",
         "fold_constants_lib.cc",
         "fold_old_batch_norms.cc",
@@ -106,6 +107,7 @@ tf_cc_test(
     size = "small",
     srcs = [
         "add_default_attributes_test.cc",
+        "backports_test.cc",
         "fold_batch_norms_test.cc",
         "fold_constants_test.cc",
         "fold_old_batch_norms_test.cc",
