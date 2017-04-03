@@ -67,28 +67,10 @@ class MklToTfOp : public OpKernel {
     CHECK_EQ(op_data_type, input_data_type);
     CHECK_EQ(op_data_type, output_data_type);
 
-    // We need to recreate Tf tensor shape based on sizes and strides.
-    // Ideally, we should know what the data_format is, but that attribute
-    // to this op is not reliable. So below, we rely of sorting logic where
-    // we sort strides first and then sizes.
     TensorShape output_shape;
-    std::vector<std::pair<int, int>> shape_size;
     for (size_t i = 0; i < input_shape.GetDimension(); i++) {
-      VLOG(1) << "Size: " << input_shape.GetSizes()[i]
-              << ", Strides: " << input_shape.GetStrides()[i];
-      shape_size.push_back(std::make_pair(input_shape.GetSizes()[i],
-                                          input_shape.GetStrides()[i]));
-    }
-
-    std::sort(shape_size.begin(), shape_size.end(),
-              [](std::pair<int, int> a, std::pair<int, int> b) {
-                return (a.second > b.second) ||
-                       (a.second == b.second && a.first > b.first);
-              });
-
-    for (std::pair<int, int> s_s : shape_size) {
-      VLOG(1) << "Added dimension: " << s_s.first;
-      output_shape.AddDim(s_s.first);
+      // Outermost to innermost dimension
+      output_shape.AddDim(input_shape.GetSizes()[input_shape.tf_dim_idx(i)]);
     }
 
     // Allocate output tensor.

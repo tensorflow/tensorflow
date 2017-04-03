@@ -549,6 +549,12 @@ def tf_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
       deps = deps,
       **kwargs)
 
+def tf_mkl_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
+                      deps=None, alwayslink=1, copts=tf_copts(), **kwargs):
+  if_mkl(tf_kernel_library(name, prefix=prefix, srcs=srcs, gpu_srcs=gpu_srcs, 
+                                 hdrs=hdrs, deps=deps, alwayslink=alwayslink, 
+                                 copts=copts, **kwargs))
+
 # Bazel rules for building swig files.
 def _py_wrap_cc_impl(ctx):
   srcs = ctx.files.srcs
