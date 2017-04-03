@@ -10,9 +10,9 @@
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
 
-#include <popnn/ActivationMapping.hpp>
-#include <popnn/Convolution.hpp>
-#include <popnn/ConvPlan.hpp>
+#include <popstd/ActivationMapping.hpp>
+#include <popconv/Convolution.hpp>
+#include <popconv/ConvPlan.hpp>
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
@@ -72,15 +72,15 @@ CreateConv2D(poplar::Graph &graph,
   unsigned int o_x = output_dims[dims.spatial_dimensions(1)];
 
   // Create a plan
-  conv::Planner planner;
-  conv::Plan plan = planner.createPlan(n_y, n_x, n_i, f_y, f_x,
-                                       window.dimensions(0).stride(),
-                                       window.dimensions(1).stride(),
-                                       window.dimensions(0).padding_low(),
-                                       window.dimensions(1).padding_low(),
-                                       n_o, n_b, dtype, dtype,
-                                       false, graph,
-                                       {});
+  popconv::Planner planner;
+  popconv::Plan plan = planner.createPlan(n_y, n_x, n_i, f_y, f_x,
+                                          window.dimensions(0).stride(),
+                                          window.dimensions(1).stride(),
+                                          window.dimensions(0).padding_low(),
+                                          window.dimensions(1).padding_low(),
+                                          n_o, n_b, dtype, dtype,
+                                          false, graph,
+                                          {});
 
   const unsigned in_chan_groups = n_i / plan.inChansPerGroup;
   const unsigned out_chan_groups = n_o / plan.partialChansPerGroup;
@@ -120,24 +120,24 @@ CreateConv2D(poplar::Graph &graph,
   // TODO - ideally don't even have a biases tensor
   poplar::Tensor biases = graph.addConstantTensor(dtype, {n_o}, 0);
 
-  mapActivations(graph, in);
-  conv::mapWeights(kernel, graph, plan, input_dims[0]);
-  conv::mapBiases(biases, graph, out);
-  mapActivations(graph, out);
+  popstd::mapActivations(graph, in);
+  popconv::mapWeights(kernel, graph, plan, input_dims[0]);
+  popconv::mapBiases(biases, graph, out);
+  popstd::mapActivations(graph, out);
 
   // Add the convolution
   poplar::program::Program prog;
-  prog = conv::convolution(graph, plan,
-                           window.dimensions(0).stride(), // stride y
-                           window.dimensions(1).stride(), // stride x
-                           window.dimensions(0).padding_low(), // padding y
-                           window.dimensions(1).padding_low(), // padding x
-                           in,
-                           kernel,
-                           biases,
-                           out,
-                           dtype,
-                           false);
+  prog = popconv::convolution(graph, plan,
+                              window.dimensions(0).stride(), // stride y
+                              window.dimensions(1).stride(), // stride x
+                              window.dimensions(0).padding_low(), // padding y
+                              window.dimensions(1).padding_low(), // padding x
+                              in,
+                              kernel,
+                              biases,
+                              out,
+                              dtype,
+                              false);
 
   return prog;
 }

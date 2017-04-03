@@ -17,7 +17,7 @@
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
-#include <popnn/Reduce.hpp>
+#include <popreduce/Reduce.hpp>
 
 namespace xla {
 namespace poplarplugin {

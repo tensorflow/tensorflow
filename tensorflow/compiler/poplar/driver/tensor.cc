@@ -7,7 +7,7 @@
 #include "tensorflow/core/util/bcast.h"
 
 #include <poplar/Engine.hpp>
-#include <popnn/ActivationMapping.hpp>
+#include <popstd/ActivationMapping.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -59,7 +59,7 @@ AddTensor(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
 
   out = graph.addTensor(poplar_type, dim, name);
-  mapTensor(graph, out);
+  popstd::mapTensor(graph, out);
   return out;
 }
 
@@ -145,7 +145,7 @@ AddConstantTensor(poplar::Graph& graph,
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
   tensor = tensor.reshape(dim);
 
-  mapTensor(graph, tensor);
+  popstd::mapTensor(graph, tensor);
   return tensor;
 }
 

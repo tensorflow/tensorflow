@@ -39,8 +39,13 @@ limitations under the License.
 
 #include <poplar/exceptions.hpp>
 #include <xgraph_core/exceptions.hpp>
-#include <popnn/exceptions.hpp>
+#include <enigma/exceptions.hpp>
+
+#include <popconv/codelets.hpp>
+#include <poplin/codelets.hpp>
 #include <popnn/codelets.hpp>
+#include <popreduce/codelets.hpp>
+#include <popstd/codelets.hpp>
 
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::poplarplugin;
@@ -146,7 +151,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
   poplar::Graph* graph = new poplar::Graph(dev);
   graph->addCodelets(poplarExecutor->GetPathToGraphProgFile());
+  popconv::addCodelets(*graph);
+  poplin::addCodelets(*graph);
   popnn::addCodelets(*graph);
+  popreduce::addCodelets(*graph);
+  popstd::addCodelets(*graph);
 
   // Visit the graph, building up a poplar equivalent
   HloComputation* entry = hlo_module->entry_computation();
@@ -159,7 +168,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
                         port::StrCat("[Poplar Compile] ",
                                      e.what()));
   }
-  catch (popnn::popnn_error e) {
+  catch (enigma::enigma_error e) {
     return port::Status(port::error::UNKNOWN,
                         port::StrCat("[Popnn Compile] ",
                                      e.what()));
@@ -200,7 +209,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
     HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
 
   return tensorflow::errors::Unimplemented(
-          "Compilation of multiple HLO modules is not yet supported on Poplar.");
+          "Compilation of multiple HLO modules is not supported on Poplar.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
