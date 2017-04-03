@@ -35,15 +35,23 @@ def _poplar_autoconf_impl(repository_ctx):
 
     repository_ctx.symlink(poplar_base + "/bin", "poplar/bin")
 
-    repository_ctx.template("poplar/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_poplar.tpl"), {})
-    repository_ctx.template("popnn/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_popnn.tpl"), {})
-    repository_ctx.template("poplar/build_defs.bzl", Label("//third_party/ipus/poplar_lib:build_defs_poplar.tpl"), {})
+    repository_ctx.template("poplar/BUILD",
+        Label("//third_party/ipus/poplar_lib:BUILD_poplar.tpl"), {})
+    repository_ctx.template("popnn/BUILD",
+        Label("//third_party/ipus/poplar_lib:BUILD_popnn.tpl"), {})
+    repository_ctx.template("poplar/build_defs.bzl",
+        Label("//third_party/ipus/poplar_lib:build_defs_poplar.tpl"),
+        { "POPLAR_LIB_DIRECTORY" : poplar_base + "/lib",
+          "POPNN_LIB_DIRECTORY" : popnn_base + "/lib"})
 
     return
 
-  repository_ctx.template("poplar/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_nopoplar.tpl"), {})
-  repository_ctx.template("popnn/BUILD", Label("//third_party/ipus/poplar_lib:BUILD_nopopnn.tpl"), {})
-  repository_ctx.template("poplar/build_defs.bzl", Label("//third_party/ipus/poplar_lib:build_defs_nopoplar.tpl"), {})
+  repository_ctx.template("poplar/BUILD",
+      Label("//third_party/ipus/poplar_lib:BUILD_nopoplar.tpl"), {})
+  repository_ctx.template("popnn/BUILD",
+      Label("//third_party/ipus/poplar_lib:BUILD_nopopnn.tpl"), {})
+  repository_ctx.template("poplar/build_defs.bzl",
+      Label("//third_party/ipus/poplar_lib:build_defs_nopoplar.tpl"), {})
 
 
 poplar_configure = repository_rule(

@@ -9,7 +9,10 @@ filegroup(
 
 filegroup(
   name = "poplar_lib",
-  srcs = glob(["lib/libpoplar.*"]),
+  srcs = glob([
+    "lib/libpoplar.*",
+    "lib/libxgraph.*"
+  ]),
 )
 
 cc_library(
