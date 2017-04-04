@@ -31,15 +31,6 @@ if [ ! -e "WORKSPACE" ]; then
   exit 1
 fi
 
-#### BEGIN HACKS TO BE RESOLVED WITH NEWER BAZEL VERSIONS ####
-# Disable nccl.
-# This can be removed once we switch to a bazel release that includes
-# https://github.com/bazelbuild/bazel/commit/8e0991cb19eadfcb651cd6987255d5f7c0a58e0a
-# (the fix for https://github.com/bazelbuild/bazel/issues/2494).
-# Most likley bazel 0.4.5 will contain that.
-sed -i -e "s/\"@nccl_archive/#\"@nccl_archive/"  ./tensorflow/contrib/nccl/BUILD
-sed -i -e "s/\"@nccl_archive/#\"@nccl_archive/"  ./tensorflow/tools/pip_package/BUILD
-
 # Enable JNI support for Windows in Bazel.
 # This can be removed once
 # https://github.com/bazelbuild/bazel/pull/2599
@@ -66,7 +57,7 @@ bazel build -c opt ${BUILD_OPTS} \
   tensorflow/tools/lib_package:jnilicenses_generate
 
 # Revert the hacks above
-git checkout ./tensorflow/contrib/nccl/BUILD ./tensorflow/tools/pip_package/BUILD
+git checkout ./tensorflow/tools/pip_package/BUILD
 git checkout ./tensorflow/java/src/main/native/BUILD
 rm -f ./tensorflow/java/src/main/native/windows_jni_md.h
 

@@ -42,6 +42,9 @@ export enum SeriesGroupingType {GROUP, UNGROUP};
 /** Attribute key reserved for the shapes of the output tensors. */
 const OUTPUT_SHAPES_KEY = '_output_shapes';
 
+/** Attribute key reserved for the XLA cluster that an op runs on. */
+const _XLA_CLUSTER_KEY = '_XlaCluster';
+
 /**
  * A BaseEdge is the label object (in the graphlib sense) for an edge in the
  * original, full graph produced after parsing. Subsequent graphs, like those
@@ -133,6 +136,7 @@ export type TensorShape = number[];
 
 export interface OpNode extends Node {
   op: string;
+  // The device on which the op ran. Null if it is unknown.
   device: string;
   attr: {key: string, value: any}[];
   inputs: NormalizedInput[];
@@ -154,6 +158,8 @@ export interface OpNode extends Node {
    *       of the middle dimension is unknown (encoded as -1).
    */
   outputShapes: TensorShape[];
+  // The XLA Cluster on which the op ran. Null if it is unknown.
+  xlaCluster: string;
 }
 
 export interface BridgeNode extends Node {
@@ -349,6 +355,7 @@ export class OpNodeImpl implements OpNode {
   owningSeries: string;
   outputShapes: TensorShape[];
   nodeAttributes: {[key: string]: any;};
+  xlaCluster: string;
 
   /**
    * Constructs a new Op node.
@@ -366,6 +373,7 @@ export class OpNodeImpl implements OpNode {
     // control dependency.
     this.inputs = normalizeInputs(rawNode.input);
     this.outputShapes = extractOutputShapes(rawNode.attr);
+    this.xlaCluster = extractXlaCluster(rawNode.attr);
     // additional properties
     this.type = NodeType.OP;
     this.isGroupNode = false;
@@ -799,7 +807,9 @@ class SeriesNodeImpl implements SeriesNode {
  * Extracts the shapes of the output tensors from the attr property in the
  * node proto.
  */
-function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
+// tslint:disable-next-line:no-any
+function extractOutputShapes(attr: Array<{key: string, value: any}>):
+    TensorShape[] {
   let result = null;
   // We don't know anything about the output tensors.
   if (!attr) {
@@ -840,6 +850,28 @@ function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
   }
   // We didn't find OUTPUT_SHAPES_KEY in attributes, so we don't know anything
   // about the output tensors.
+  return null;
+}
+
+/**
+ * Extracts the XLA Cluster that an op runs on from the attrs of the OpNode.
+ * @param attr The attr property.
+ * @return A string that is the name of the cluster. Or null if it could not be
+ *     determined.
+ */
+// tslint:disable-next-line:no-any
+function extractXlaCluster(attr: Array<{key: string, value: any}>): string|
+    null {
+  if (!attr) {
+    return null;
+  }
+
+  // Find the attribute for XLA cluster if there is one.
+  for (let i = 0; i < attr.length; i++) {
+    if (attr[i].key === _XLA_CLUSTER_KEY) {
+      return attr[i].value['s'] || null;
+    }
+  }
   return null;
 }
 

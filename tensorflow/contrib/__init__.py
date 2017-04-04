@@ -35,6 +35,7 @@ from tensorflow.contrib import image
 from tensorflow.contrib import input_pipeline
 from tensorflow.contrib import integrate
 from tensorflow.contrib import keras
+from tensorflow.contrib import kernel_methods
 from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
@@ -45,6 +46,7 @@ from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
 from tensorflow.contrib import memory_stats
 from tensorflow.contrib import metrics
+from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
 from tensorflow.contrib import quantization

@@ -9075,15 +9075,16 @@ func Rint(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// Compute the 1-dimensional discrete Fourier Transform over the inner-most
+// Fast Fourier transform.
 //
+// Computes the 1-dimensional discrete Fourier transform over the inner-most
 // dimension of `input`.
 //
 // Arguments:
 //	input: A complex64 tensor.
 //
 // Returns A complex64 tensor of the same shape as `input`. The inner-most
-//   dimension of `input` is replaced with its 1D Fourier Transform.
+//   dimension of `input` is replaced with its 1D Fourier transform.
 //
 // @compatibility(numpy)
 // Equivalent to np.fft.fft
@@ -9714,15 +9715,16 @@ func ResourceApplyCenteredRMSProp(scope *Scope, var_ tf.Output, mg tf.Output, ms
 	return scope.AddOperation(opspec)
 }
 
-// Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
+// Inverse 3D fast Fourier transform.
 //
-// 3 dimensions of `input`.
+// Computes the inverse 3-dimensional discrete Fourier transform over the
+// inner-most 3 dimensions of `input`.
 //
 // Arguments:
 //	input: A complex64 tensor.
 //
 // Returns A complex64 tensor of the same shape as `input`. The inner-most 3
-//   dimensions of `input` are replaced with their inverse 3D Fourier Transform.
+//   dimensions of `input` are replaced with their inverse 3D Fourier transform.
 //
 // @compatibility(numpy)
 // Equivalent to np.fft.ifftn with 3 dimensions.
@@ -9991,15 +9993,16 @@ func ResourceApplyAdam(scope *Scope, var_ tf.Output, m tf.Output, v tf.Output, b
 	return scope.AddOperation(opspec)
 }
 
-// Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
+// 3D fast Fourier transform.
 //
+// Computes the 3-dimensional discrete Fourier transform over the inner-most 3
 // dimensions of `input`.
 //
 // Arguments:
 //	input: A complex64 tensor.
 //
 // Returns A complex64 tensor of the same shape as `input`. The inner-most 3
-//   dimensions of `input` are replaced with their 3D Fourier Transform.
+//   dimensions of `input` are replaced with their 3D Fourier transform.
 //
 // @compatibility(numpy)
 // Equivalent to np.fft.fftn with 3 dimensions.
@@ -10184,15 +10187,16 @@ func ResourceApplyProximalGradientDescent(scope *Scope, var_ tf.Output, alpha tf
 	return scope.AddOperation(opspec)
 }
 
-// Compute the 2-dimensional discrete Fourier Transform over the inner-most
+// 2D fast Fourier transform.
 //
+// Computes the 2-dimensional discrete Fourier transform over the inner-most
 // 2 dimensions of `input`.
 //
 // Arguments:
 //	input: A complex64 tensor.
 //
 // Returns A complex64 tensor of the same shape as `input`. The inner-most 2
-//   dimensions of `input` are replaced with their 2D Fourier Transform.
+//   dimensions of `input` are replaced with their 2D Fourier transform.
 //
 // @compatibility(numpy)
 // Equivalent to np.fft.fft2
@@ -10244,15 +10248,16 @@ func Fill(scope *Scope, dims tf.Output, value tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
-// Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
+// Inverse 2D fast Fourier transform.
 //
-// 2 dimensions of `input`.
+// Computes the inverse 2-dimensional discrete Fourier transform over the
+// inner-most 2 dimensions of `input`.
 //
 // Arguments:
 //	input: A complex64 tensor.
 //
 // Returns A complex64 tensor of the same shape as `input`. The inner-most 2
-//   dimensions of `input` are replaced with their inverse 2D Fourier Transform.
+//   dimensions of `input` are replaced with their inverse 2D Fourier transform.
 //
 // @compatibility(numpy)
 // Equivalent to np.fft.ifft2
@@ -11256,8 +11261,9 @@ func Cross(scope *Scope, a tf.Output, b tf.Output) (product tf.Output) {
 	return op.Output(0)
 }
 
-// Compute the inverse 2-dimensional discrete Fourier Transform of a real-valued
+// Inverse 2D real-valued fast Fourier transform.
 //
+// Computes the inverse 2-dimensional discrete Fourier transform of a real-valued
 // signal over the inner-most 2 dimensions of `input`.
 //
 // The inner-most 2 dimensions of `input` are assumed to be the result of `RFFT2D`:
@@ -11273,7 +11279,7 @@ func Cross(scope *Scope, a tf.Output, b tf.Output) (product tf.Output) {
 //
 // Returns A float32 tensor of the same rank as `input`. The inner-most 2
 //   dimensions of `input` are replaced with the `fft_length` samples of their
-//   inverse 2D Fourier Transform.
+//   inverse 2D Fourier transform.
 //
 // @compatibility(numpy)
 // Equivalent to np.fft.irfft2
@@ -14173,15 +14179,16 @@ func Zeta(scope *Scope, x tf.Output, q tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
-// Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
+// Inverse fast Fourier transform.
 //
-// dimension of `input`.
+// Computes the inverse 1-dimensional discrete Fourier transform over the
+// inner-most dimension of `input`.
 //
 // Arguments:
 //	input: A complex64 tensor.
 //
 // Returns A complex64 tensor of the same shape as `input`. The inner-most
-//   dimension of `input` is replaced with its inverse 1D Fourier Transform.
+//   dimension of `input` is replaced with its inverse 1D Fourier transform.
 //
 // @compatibility(numpy)
 // Equivalent to np.fft.ifft
@@ -14200,8 +14207,9 @@ func IFFT(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
-// Compute the inverse 1-dimensional discrete Fourier Transform of a real-valued
+// Inverse real-valued fast Fourier transform.
 //
+// Computes the inverse 1-dimensional discrete Fourier transform of a real-valued
 // signal over the inner-most dimension of `input`.
 //
 // The inner-most dimension of `input` is assumed to be the result of `RFFT`: the
@@ -14217,7 +14225,7 @@ func IFFT(scope *Scope, input tf.Output) (output tf.Output) {
 //
 // Returns A float32 tensor of the same rank as `input`. The inner-most
 //   dimension of `input` is replaced with the `fft_length` samples of its inverse
-//   1D Fourier Transform.
+//   1D Fourier transform.
 //
 // @compatibility(numpy)
 // Equivalent to np.fft.irfft
@@ -14361,8 +14369,9 @@ func AssignAddVariableOp(scope *Scope, resource tf.Output, value tf.Output) (o *
 	return scope.AddOperation(opspec)
 }
 
-// Compute the 1-dimensional discrete Fourier Transform of a real-valued signal
+// Real-valued fast Fourier transform.
 //
+// Computes the 1-dimensional discrete Fourier transform of a real-valued signal
 // over the inner-most dimension of `input`.
 //
 // Since the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the
@@ -14375,7 +14384,7 @@ func AssignAddVariableOp(scope *Scope, resource tf.Output, value tf.Output) (o *
 //
 // Returns A complex64 tensor of the same rank as `input`. The inner-most
 //   dimension of `input` is replaced with the `fft_length / 2 + 1` unique
-//   frequency components of its 1D Fourier Transform.
+//   frequency components of its 1D Fourier transform.
 //
 // @compatibility(numpy)
 // Equivalent to np.fft.rfft
@@ -14951,8 +14960,9 @@ func StringSplit(scope *Scope, input tf.Output, delimiter tf.Output) (indices tf
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Compute the inverse 3-dimensional discrete Fourier Transform of a real-valued
+// Inverse 3D real-valued fast Fourier transform.
 //
+// Computes the inverse 3-dimensional discrete Fourier transform of a real-valued
 // signal over the inner-most 3 dimensions of `input`.
 //
 // The inner-most 3 dimensions of `input` are assumed to be the result of `RFFT3D`:
@@ -14968,7 +14978,7 @@ func StringSplit(scope *Scope, input tf.Output, delimiter tf.Output) (indices tf
 //
 // Returns A float32 tensor of the same rank as `input`. The inner-most 3
 //   dimensions of `input` are replaced with the `fft_length` samples of their
-//   inverse 3D real Fourier Transform.
+//   inverse 3D real Fourier transform.
 //
 // @compatibility(numpy)
 // Equivalent to np.irfftn with 3 dimensions.
@@ -16420,8 +16430,9 @@ func Erfc(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// Compute the 2-dimensional discrete Fourier Transform of a real-valued signal
+// 2D real-valued fast Fourier transform.
 //
+// Computes the 2-dimensional discrete Fourier transform of a real-valued signal
 // over the inner-most 2 dimensions of `input`.
 //
 // Since the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the
@@ -16434,7 +16445,7 @@ func Erfc(scope *Scope, x tf.Output) (y tf.Output) {
 //	fft_length: An int32 tensor of shape [2]. The FFT length for each dimension.
 //
 // Returns A complex64 tensor of the same rank as `input`. The inner-most 2
-//   dimensions of `input` are replaced with their 2D Fourier Transform. The
+//   dimensions of `input` are replaced with their 2D Fourier transform. The
 //   inner-most dimension contains `fft_length / 2 + 1` unique frequency
 //   components.
 //
@@ -20064,8 +20075,9 @@ func TensorArrayGatherV3(scope *Scope, handle tf.Output, indices tf.Output, flow
 	return op.Output(0)
 }
 
-// Compute the 3-dimensional discrete Fourier Transform of a real-valued signal
+// 3D real-valued fast Fourier transform.
 //
+// Computes the 3-dimensional discrete Fourier transform of a real-valued signal
 // over the inner-most 3 dimensions of `input`.
 //
 // Since the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the
@@ -20078,7 +20090,7 @@ func TensorArrayGatherV3(scope *Scope, handle tf.Output, indices tf.Output, flow
 //	fft_length: An int32 tensor of shape [3]. The FFT length for each dimension.
 //
 // Returns A complex64 tensor of the same rank as `input`. The inner-most 3
-//   dimensions of `input` are replaced with the their 3D Fourier Transform. The
+//   dimensions of `input` are replaced with the their 3D Fourier transform. The
 //   inner-most dimension contains `fft_length / 2 + 1` unique frequency
 //   components.
 //

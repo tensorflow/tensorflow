@@ -31,9 +31,8 @@ inline int64 MultiplyWithoutOverflow(const int64 x, const int64 y) {
   const uint64 uy = y;
   const uint64 uxy = ux * uy;
 
-  // Check for overflow, using a cheap check if both inputs are small
-  static const uint64 kSqrtInt64Max = 3037000500;  // ceil(sqrt(2**63 - 1))
-  if (TF_PREDICT_FALSE(ux >= kSqrtInt64Max || uy >= kSqrtInt64Max)) {
+  // Check if we overflow uint64, using a cheap check if both inputs are small
+  if (TF_PREDICT_FALSE((ux | uy) >> 32 != 0)) {
     // Ensure nonnegativity.  Note that negative numbers will appear "large"
     // to the unsigned comparisons above.
     CHECK(x >= 0 && y >= 0);

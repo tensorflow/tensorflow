@@ -74,6 +74,11 @@ TEST_F(HloModuleTest, TwoComputationsPostOrder) {
   EXPECT_MATCH(
       testing::ListToVec<HloComputation*>(module->MakeComputationPostOrder()),
       testing::UnorderedMatcher<HloComputation*>(computation1, computation2));
+
+  // We specified the same name for both computations, but the HloModule should
+  // have made the names unique.
+  EXPECT_EQ(computation1->name(), "Constant");
+  EXPECT_EQ(computation2->name(), "Constant.1");
 }
 
 TEST_F(HloModuleTest, DiamondComputationsPostOrder) {

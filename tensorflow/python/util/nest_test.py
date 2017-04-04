@@ -139,6 +139,13 @@ class NestTest(test.TestCase):
                                  "don't have the same nested structure"):
       nest.assert_same_structure([[3], 4], [3, [4]])
 
+    structure1_list = [[[1, 2], 3], 4, [5, 6]]
+    with self.assertRaisesRegexp(TypeError,
+                                 "don't have the same sequence type"):
+      nest.assert_same_structure(structure1, structure1_list)
+    nest.assert_same_structure(structure1, structure2, check_types=False)
+    nest.assert_same_structure(structure1, structure1_list, check_types=False)
+
   def testMapStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
     structure2 = (((7, 8), 9), 10, (11, 12))
@@ -169,6 +176,23 @@ class NestTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "same nested structure"):
       nest.map_structure(lambda x, y: None, ((3, 4), 5), (3, (4, 5)))
 
+    structure1_list = [[[1, 2], 3], 4, [5, 6]]
+    with self.assertRaisesRegexp(TypeError, "same sequence type"):
+      nest.map_structure(lambda x, y: None, structure1, structure1_list)
+
+    nest.map_structure(lambda x, y: None, structure1, structure1_list,
+                       check_types=False)
+
+    with self.assertRaisesRegexp(ValueError, "same nested structure"):
+      nest.map_structure(lambda x, y: None, ((3, 4), 5), (3, (4, 5)),
+                         check_types=False)
+
+    with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
+      nest.map_structure(lambda x: None, structure1, foo="a")
+
+    with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
+      nest.map_structure(lambda x: None, structure1, check_types=False, foo="a")
+
   def testAssertShallowStructure(self):
     inp_ab = ["a", "b"]
     inp_abc = ["a", "b", "c"]
@@ -186,6 +210,7 @@ class NestTest(test.TestCase):
         "<(type|class) 'list'>.")
     with self.assertRaisesRegexp(TypeError, expected_message):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
+    nest.assert_shallow_structure(inp_ab2, inp_ab1, check_types=False)
 
   def testFlattenUpTo(self):
     input_tree = [[[2, 2], [3, 3]], [[4, 9], [5, 5]]]

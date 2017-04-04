@@ -43,6 +43,10 @@ class GraphRewriter {
   // a control dependency edge.
   bool DrivesControlDependency(const NodeDef& node) const;
 
+  // Returns true if at least one of the incident edges is a control dependency
+  // edge.
+  bool IsDrivenByControlDependency(const NodeDef& node) const;
+
  private:
   std::unordered_map<string, const NodeDef*> nodes_;
   std::unordered_set<const NodeDef*> control_dependency_drivers_;

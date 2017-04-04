@@ -39,7 +39,7 @@ labels/images to the data points. You can do this by generating a
 [metadata file](#metadata) containing the labels for each point and configuring
 the projector either by using our Python API, or manually constructing and
 saving a
-<code>[projector_config.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto)</code>
+<code>[projector_config.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/plugins/projector/projector_config.proto)</code>
 in the same directory as your checkpoint file.
 
 ## Setup
@@ -68,7 +68,7 @@ saver.save(session, os.path.join(LOG_DIR, "model.ckpt"), step)
 
 If you have any metadata (labels, images) associated with your embedding, you
 can tell TensorBoard about it either by directly storing a
-<code>[projector_config.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto)</code>
+<code>[projector_config.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/plugins/projector/projector_config.proto)</code>
 in the <code>LOG_DIR</code>, or use our python API.
 
 For instance, the following <code>projector_config.ptxt</code> associates the
@@ -91,7 +91,7 @@ N = 10000 # Number of items (vocab size).
 D = 200 # Dimensionality of the embedding.
 embedding_var = tf.Variable(tf.random_normal([N,D]), name='word_embedding')
 
-# Format: tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto
+# Format: tensorflow/tensorboard/plugins/projector/projector_config.proto
 config = projector.ProjectorConfig()
 
 # You can add multiple embeddings. Here we add only one.

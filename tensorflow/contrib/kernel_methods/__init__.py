@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.kernel_methods.python.kernel_estimators import KernelLinearClassifier
-from tensorflow.contrib.kernel_methods.python.mappers import dense_kernel_mapper
 from tensorflow.contrib.kernel_methods.python.mappers.random_fourier_features import RandomFourierFeatureMapper
 
 from tensorflow.python.util.all_util import remove_undocumented

@@ -40,17 +40,19 @@ class TextPluginTest(test_util.TensorFlowTestCase):
         num = array_ops.constant(1)
         text_summary.text_summary("foo", num)
 
-      with self.assertRaises(ValueError):
-        arr = array_ops.constant(["one", "two", "three"])
-        text_summary.text_summary("foo", arr)
+      # The API accepts vectors.
+      arr = array_ops.constant(["one", "two", "three"])
+      summ = text_summary.text_summary("foo", arr)
+      self.assertEqual(summ.op.type, "TensorSummary")
 
+      # the API accepts scalars
       summ = text_summary.text_summary("foo", array_ops.constant("one"))
       self.assertEqual(summ.op.type, "TensorSummary")
 
-      text_summary.text_summary("bar", array_ops.constant("2"), collections=[])
-      summaries = framework_ops.get_collection(
-          framework_ops.GraphKeys.SUMMARIES)
-      self.assertEqual(len(summaries), 1)
+  def testTextSummaryCollections(self):
+    text_summary.text_summary("bar", array_ops.constant("2"), collections=[])
+    summaries = framework_ops.get_collection(framework_ops.GraphKeys.SUMMARIES)
+    self.assertEqual(len(summaries), 0)
 
 
 if __name__ == "__main__":

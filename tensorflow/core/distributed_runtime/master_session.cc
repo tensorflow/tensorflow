@@ -440,19 +440,6 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
   return s;
 }
 
-static bool CopyIfNeeded(TensorProto* in, TensorProto* out) {
-  if (in->tensor_content().empty()) {
-    // If the tensor is not encoded in tensor_content or contains 0
-    // elements, we can return it to the client directly.
-    out->Swap(in);
-  } else {
-    Tensor t(in->dtype());
-    if (!t.FromProto(cpu_allocator(), *in)) return false;
-    t.AsProtoTensorContent(out);
-  }
-  return true;
-}
-
 // Helper class to manage "num" parallel RunGraph calls.
 class RunManyGraphs {
  public:
@@ -565,7 +552,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     // We keep these as separate paths for now, to ensure we aren't
     // inadvertently slowing down the normal run path.
     if (is_partial_) {
-      for (int i = 0; i < req.num_feeds(); ++i) {
+      for (int i = 0; static_cast<size_t>(i) < req.num_feeds(); ++i) {
         const string& name = req.feed_name(i);
         auto iter = part.feed_key.find(name);
         if (iter == part.feed_key.end()) {
@@ -577,7 +564,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
         if (feeds_iter == feeds.end()) {
           return errors::InvalidArgument("No feed is provided for feed=", name,
                                          ", key=", key);
-        } else if (feeds_iter->second != i) {
+        } else if (feeds_iter->second != static_cast<size_t>(i)) {
           return errors::Internal("Cannot find feed named \"", name,
                                   " in request.");
         }
@@ -585,7 +572,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       }
       // TODO(suharshs): Make a map from feed to fetch_key to make this faster.
       // For now, we just iterate through partitions to find the matching key.
-      for (int i = 0; i < req.num_fetches(); ++i) {
+      for (int i = 0; static_cast<size_t>(i) < req.num_fetches(); ++i) {
         const string& req_fetch = req.fetch_name(i);
         for (const auto& key_fetch : part.key_fetch) {
           if (key_fetch.second == req_fetch) {

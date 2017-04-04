@@ -214,6 +214,12 @@ class XlaCompiler {
     // This is useful to prune stateful operators that should not be executed
     // from a function body.
     bool prune_unreachable_nodes = false;
+
+    // If not nullptr, populate_resource_manager is called with the
+    // compilation device's resource manager when the compilation
+    // device is created, and can be used to create metadata objects
+    // that can be accessed by XLA op kernels.
+    std::function<Status(ResourceMgr*)>* populate_resource_manager = nullptr;
   };
 
   explicit XlaCompiler(Options options);
@@ -247,6 +253,7 @@ class XlaCompiler {
   Status BuildExecutable(const CompilationResult& result,
                          std::unique_ptr<xla::LocalExecutable>* executable);
 
+  const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }
   XlaCompilationDevice* device() const { return device_; }
   const DeviceMgr* device_mgr() const { return &device_mgr_; }
@@ -259,6 +266,9 @@ class XlaCompiler {
 
  private:
   Options options_;
+
+  // Status set to non-OK in the constructor if initialization fails.
+  Status initialization_status_;
 
   // Returns the next step sequence number.
   int64 NextStepId();

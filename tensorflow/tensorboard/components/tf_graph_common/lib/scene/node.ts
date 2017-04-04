@@ -591,7 +591,8 @@ function position(nodeGroup, d: render.RenderNodeInfo) {
 };
 
 /** Enum specifying the options to color nodes by */
-export enum ColorBy { STRUCTURE, DEVICE, COMPUTE_TIME, MEMORY };
+export enum ColorBy {STRUCTURE, DEVICE, XLA_CLUSTER, COMPUTE_TIME, MEMORY}
+;
 
 /**
  * Returns the fill color for the node given its state and the 'color by'
@@ -648,6 +649,9 @@ export function getFillForNode(templateIndex, colorBy,
         });
       }
       return isExpanded ? colorParams.EXPANDED_COLOR : `url(#${escapedId})`;
+    case ColorBy.XLA_CLUSTER:
+      return isExpanded ? colorParams.EXPANDED_COLOR :
+                          renderInfo.xlaClusterColor || colorParams.UNKNOWN;
     case ColorBy.COMPUTE_TIME:
       return isExpanded ?
         colorParams.EXPANDED_COLOR : renderInfo.computeTimeColor ||

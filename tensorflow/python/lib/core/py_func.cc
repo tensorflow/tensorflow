@@ -265,7 +265,7 @@ class NumpyTensorBuffer : public TensorBuffer {
 
 Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
   PyArrayObject* input = reinterpret_cast<PyArrayObject*>(obj);
-  DataType dtype;
+  DataType dtype = DT_INVALID;
   TensorShape shape;
   for (int i = 0; i < PyArray_NDIM(input); ++i) {
     shape.AddDim(PyArray_SHAPE(input)[i]);

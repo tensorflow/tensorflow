@@ -120,6 +120,7 @@ class HloComputation {
   }
 
   const string& name() const { return name_; }
+  void set_name(const string& name) { name_ = name; }
 
   // Return a string representation of the computation.
   string ToString() const;
@@ -257,7 +258,7 @@ class HloComputation {
   // Internal helper to collect unreachable roots.
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
 
-  const string name_;
+  string name_;
   HloInstruction* root_instruction_;
 
   // Module containing this computation.

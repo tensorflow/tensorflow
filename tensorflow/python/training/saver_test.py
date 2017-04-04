@@ -1785,11 +1785,9 @@ class MetaGraphTest(test.TestCase):
     # Test that we can import a meta graph into a namescope.
     test_dir = self._get_test_dir("import_into_namescope")
     filename = os.path.join(test_dir, "ckpt")
-    image = array_ops.placeholder(dtypes.float32, [None, 784])
-    label = array_ops.placeholder(dtypes.float32, [None, 10])
+    image = array_ops.placeholder(dtypes.float32, [None, 784], name="image")
+    label = array_ops.placeholder(dtypes.float32, [None, 10], name="label")
     with session.Session() as sess:
-      label = array_ops.identity(label, name="label")
-      image = array_ops.identity(image, name="image")
       weights = variables.Variable(
           random_ops.random_uniform([784, 10]), name="weights")
       bias = variables.Variable(array_ops.zeros([10]), name="bias")
