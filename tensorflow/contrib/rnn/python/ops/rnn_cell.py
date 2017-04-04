@@ -109,7 +109,7 @@ class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
   def __init__(self, num_units, use_peepholes=False,
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=1, num_proj_shards=1,
-               forget_bias=1.0, state_is_tuple=False,
+               forget_bias=1.0, state_is_tuple=True,
                activation=math_ops.tanh, reuse=None):
     """Initialize the parameters for an LSTM cell.
 
@@ -457,7 +457,7 @@ class GridLSTMCell(core_rnn_cell.RNNCell):
                start_freqindex_list=None,
                end_freqindex_list=None,
                couple_input_forget_gates=False,
-               state_is_tuple=False,
+               state_is_tuple=True,
                reuse=None):
     """Initialize the parameters for an LSTM cell.
 
@@ -571,7 +571,7 @@ class GridLSTMCell(core_rnn_cell.RNNCell):
       ValueError: if an input_size was specified and the provided inputs have
         a different dimension.
     """
-    batch_size = int(inputs.get_shape()[0])
+    batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
     freq_inputs = self._make_tf_features(inputs)
     with _checked_scope(self, scope or "grid_lstm_cell",
                         initializer=self._initializer, reuse=self._reuse):
@@ -994,7 +994,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
       ValueError: if an input_size was specified and the provided inputs have
         a different dimension.
     """
-    batch_size = int(inputs.get_shape()[0])
+    batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
     fwd_inputs = self._make_tf_features(inputs)
     if self._backward_slice_offset:
       bwd_inputs = self._make_tf_features(inputs, self._backward_slice_offset)
@@ -1043,7 +1043,7 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
   """
 
   def __init__(self, cell, attn_length, attn_size=None, attn_vec_size=None,
-               input_size=None, state_is_tuple=False, reuse=None):
+               input_size=None, state_is_tuple=True, reuse=None):
     """Create a cell with attention.
 
     Args:

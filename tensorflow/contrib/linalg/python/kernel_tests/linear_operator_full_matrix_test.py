@@ -45,7 +45,7 @@ class SquareLinearOperatorFullMatrixTest(
       # values are random and we want the same value used for both mat and
       # feed_dict.
       matrix = matrix.eval()
-      operator = linalg.LinearOperatorFullMatrix(matrix)
+      operator = linalg.LinearOperatorFullMatrix(matrix_ph)
       feed_dict = {matrix_ph: matrix}
     else:
       operator = linalg.LinearOperatorFullMatrix(matrix)
@@ -105,7 +105,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
       # feed_dict.
       matrix = matrix.eval()
       operator = linalg.LinearOperatorFullMatrix(
-          matrix, is_self_adjoint=True, is_positive_definite=True)
+          matrix_ph, is_self_adjoint=True, is_positive_definite=True)
       feed_dict = {matrix_ph: matrix}
     else:
       operator = linalg.LinearOperatorFullMatrix(
@@ -144,7 +144,7 @@ class NonSquareLinearOperatorFullMatrixTest(
       # values are random and we want the same value used for both mat and
       # feed_dict.
       matrix = matrix.eval()
-      operator = linalg.LinearOperatorFullMatrix(matrix)
+      operator = linalg.LinearOperatorFullMatrix(matrix_ph)
       feed_dict = {matrix_ph: matrix}
     else:
       operator = linalg.LinearOperatorFullMatrix(matrix)

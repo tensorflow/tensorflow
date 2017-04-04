@@ -30,6 +30,8 @@ export interface Hierarchy {
   templates: {[templateId: string]: string[]};
   /** List of all device names */
   devices: string[];
+  /** List of all XLA cluster names */
+  xlaClusters: string[];
   /** True if at least one tensor in the graph has shape information */
   hasShapeInfo: boolean;
   /** The maximum size across all meta edges. Used for scaling thickness. */
@@ -52,6 +54,7 @@ class HierarchyImpl implements Hierarchy {
   templates: {[templateId: string]: string[]};
   private index: {[nodeName: string]: GroupNode|OpNode};
   devices: string[];
+  xlaClusters: string[];
   hasShapeInfo = false;
   maxMetaEdgeSize = 1;
   orderings: { [nodeName: string]: { [childName: string]: number } };
@@ -395,14 +398,22 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
       .runAsyncTask(
           'Adding nodes', 20,
           () => {
-            // Get all the possible device names.
+            // Get all the possible device and XLA cluster names.
             let deviceNames = {};
+            let xlaClusterNames = {};
             _.each(graph.nodes, (node, nodeName) => {
-              if (node.device != null) {
+              if (node.device) {
                 deviceNames[node.device] = true;
               }
+
+              if (node.xlaCluster) {
+                xlaClusterNames[node.xlaCluster] = true;
+              }
             });
+
             h.devices = _.keys(deviceNames);
+            h.xlaClusters = _.keys(xlaClusterNames);
+
             addNodes(h, graph);
           },
           tracker)
@@ -426,7 +437,9 @@ export function build(graph: tf.graph.SlimGraph, params: HierarchyParams,
               h.templates = template.detect(h, params.verifyTemplate);
             }, tracker);
       })
-      .then(() => { return h; });
+      .then(() => {
+        return h;
+      });
 };
 
 export function joinAndAggregateStats(

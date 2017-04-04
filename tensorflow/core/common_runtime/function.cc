@@ -274,8 +274,9 @@ class CallOp : public AsyncOpKernel {
                if (!status.ok()) {
                  ctx->SetStatus(status);
                } else {
-                 CHECK_EQ(rets->size(), ctx->num_outputs());
-                 for (size_t i = 0; i < rets->size(); ++i) {
+                 const int ret_size = static_cast<int>(rets->size());
+                 CHECK_EQ(ret_size, ctx->num_outputs());
+                 for (int i = 0; i < ret_size; ++i) {
                    ctx->set_output(i, (*rets)[i]);
                  }
                }
@@ -1000,7 +1001,7 @@ string NewName(const Node* n, bool pretty) {
 void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   // We visit nodes in forward topological sort order, which is a
   // possible execution order of the graph.
-  std::vector<int> pending(g->num_node_ids());
+  std::vector<size_t> pending(g->num_node_ids());
   std::deque<const Node*> ready;
   for (const Node* n : g->nodes()) {
     pending[n->id()] = n->in_edges().size();
@@ -1154,7 +1155,7 @@ FunctionBody* SymbolicGradientHelper::Compute() {
 
   Graph* g = gbody_->graph;
 
-  const int num_y = gbody_->ret_nodes.size();
+  const int num_y = static_cast<int>(gbody_->ret_nodes.size());
 
   // Populate 'y_node_outputs_' with node function body outputs.
   // Populate 'y_grad_nodes' with initial gradient nodes for each return node of
@@ -1169,7 +1170,7 @@ FunctionBody* SymbolicGradientHelper::Compute() {
     y_node_outputs.push_back({y, 0});
     DCHECK_EQ(y->type_string(), kRetOp);
     const DataType dtype = y->input_type(0);
-    const int index = gbody_->arg_nodes.size();
+    const int index = static_cast<int>(gbody_->arg_nodes.size());
     Node* dy = AddArg(g, dtype, index);
     gbody_->arg_types.push_back(dtype);
     gbody_->arg_nodes.push_back(dy);
@@ -1177,7 +1178,7 @@ FunctionBody* SymbolicGradientHelper::Compute() {
   }
 
   // Populate 'x_nodes' with function args (excluding 'y_grad_node_outputs').
-  const int num_x = fbody_->arg_nodes.size();
+  const size_t num_x = fbody_->arg_nodes.size();
   std::vector<NodeOut> x_node_outputs;
   x_node_outputs.reserve(num_x);
   for (size_t i = 0; i < fbody_->arg_nodes.size(); ++i) {
@@ -1200,7 +1201,8 @@ FunctionBody* SymbolicGradientHelper::Compute() {
   gbody_->ret_nodes.clear();
   // Add new return nodes to the function gradient body for each node
   // in 'x_grad_nodes'.
-  for (size_t i = 0; i < fbody_->arg_types.size(); ++i) {
+  const int arg_types_size = static_cast<int>(fbody_->arg_types.size());
+  for (int i = 0; i < arg_types_size; ++i) {
     Endpoint grad = {x_grad_node_outputs[i].node, x_grad_node_outputs[i].index};
     Node* ret = AddRet(g, grad, i);
     gbody_->ret_nodes.push_back(ret);

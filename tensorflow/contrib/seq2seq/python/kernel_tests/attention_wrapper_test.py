@@ -56,6 +56,13 @@ class AttentionWrapperTest(test.TestCase):
     return super(AttentionWrapperTest, self).assertAllClose(
         *args, **kwargs)
 
+  def testAttentionWrapperState(self):
+    num_fields = len(wrapper.AttentionWrapperState._fields)  # pylint: disable=protected-access
+    state = wrapper.AttentionWrapperState(*([None] * num_fields))
+    new_state = state.clone(time=1)
+    self.assertEqual(state.time, None)
+    self.assertEqual(new_state.time, 1)
+
   def _testWithAttention(self,
                          create_attention_mechanism,
                          expected_final_output,
