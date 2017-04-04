@@ -208,7 +208,8 @@ the \\(x\\)s, add a bias, and then apply softmax.
 If we write that out as equations, we get:
 
 <div style="width:52%; margin-left:25%; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/softmax-regression-scalarequation.png">
+<img style="width:100%" src="../../images/softmax-regression-scalarequation.png"
+   alt="[y1, y2, y3] = softmax(W11*x1 + W12*x2 + W13*x3 + b1,  W21*x1 + W22*x2 + W23*x3 + b2,  W31*x1 + W32*x2 + W33*x3 + b3)">
 </div>
 
 We can "vectorize" this procedure, turning it into a matrix multiplication
@@ -216,7 +217,8 @@ and vector addition. This is helpful for computational efficiency. (It's also
 a useful way to think.)
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/softmax-regression-vectorequation.png">
+<img style="width:100%" src="../../images/softmax-regression-vectorequation.png"
+ alt="[y1, y2, y3] = softmax([[W11, W12, W13], [W21, W22, W23], [W31, W32, W33]]*[x1, x2, x3] + [b1, b2, b3])">
 </div>
 
 More compactly, we can just write:
