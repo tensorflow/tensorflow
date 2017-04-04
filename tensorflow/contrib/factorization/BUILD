@@ -35,6 +35,7 @@ tf_custom_op_py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":factorization_ops_test_utils_py",
         ":gen_clustering_ops",
         ":gen_factorization_ops",
         "//tensorflow/contrib/framework:framework_py",

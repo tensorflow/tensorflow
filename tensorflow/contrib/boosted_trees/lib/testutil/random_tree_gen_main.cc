@@ -26,6 +26,8 @@
 
 using tensorflow::Flag;
 using tensorflow::Flags;
+using tensorflow::int32;
+using tensorflow::string;
 
 int main(int argc, char* argv[]) {
   int32 dense_feature_size = 100;
