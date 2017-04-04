@@ -473,9 +473,14 @@ Status PoplarBaseVisitor::HandleWhile(
         HloComputation* condition,
         HloComputation* body) {
   VLOG(1) << inst->ToString();
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  poplar::program::Program prog;
+  TF_ASSIGN_OR_RETURN(prog,
+                      CreateWhileOp(*graph_,
+                                    inst,
+                                    GetOutputShape(inst),
+                                    tensor_map));
+  sequence.add(prog);
+  return Status::OK();
 }
 
 Status PoplarBaseVisitor::HandlePad(HloInstruction* inst) {

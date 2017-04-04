@@ -53,19 +53,22 @@ public: \
   Output<Vector<bool>> out; \
 \
   bool compute() { \
+    bool res=true; \
     for (unsigned i = 0; i < a.size(); ++i) { \
       out[i] = (EXP); \
+      res = res & out[i]; \
     } \
-    return true; \
+    return res; \
   } \
 \
   int getCycleEstimate() const { return 1; } \
-}; \
+};  \
 \
 template class NAME<float>; \
 template class NAME<half>; \
 template class NAME<int>; \
 template class NAME<bool>;
+
 
 // Predicates
 PREDICATE_ELEMENTWISE(EqualTo, a[i] == b[i])
@@ -85,10 +88,12 @@ public: \
   Output<Vector<bool>> out; \
 \
   bool compute() { \
+    bool res=true; \
     for (unsigned i = 0; i < a.size(); ++i) { \
       out[i] = (EXP); \
+      res = res & out[i]; \
     } \
-    return true; \
+    return res; \
   } \
 \
   int getCycleEstimate() const { return 1; } \
@@ -304,10 +309,12 @@ public: \
   Output<Vector<bool>> out; \
 \
   bool compute() { \
+    bool res=true; \
     for (unsigned i = 0; i < a.size(); ++i) { \
       out[i] = (EXP); \
+      res = res & out[i]; \
     } \
-    return true; \
+    return res; \
   } \
 \
   int getCycleEstimate() const { return 1; } \
@@ -414,7 +421,7 @@ public: \
     } \
 \
     out[0] = v; \
-    return true; \
+    return out[0]; \
   } \
 \
   int getCycleEstimate() const { return 1; } \

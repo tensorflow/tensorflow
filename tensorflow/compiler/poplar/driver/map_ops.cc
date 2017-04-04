@@ -127,6 +127,57 @@ CreateCallOp(poplar::Graph &graph,
   return visitor.sequence;
 }
 
+port::StatusOr<poplar::program::Program>
+CreateWhileOp(poplar::Graph &graph,
+              const HloInstruction *inst,
+              const xla::Shape& output,
+              TensorMap& tensor_map) {
+
+  if (ShapeUtil::IsTuple(inst->operand(0)->shape())) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Poplar doesn't support tuple arguments to 'while' "
+                        "operations");
+  }
+
+  poplar::Tensor init;
+  TF_ASSIGN_OR_RETURN(init, FindInstructionInput(tensor_map, inst, 0, 0));
+
+  poplar::Tensor body_input;
+  TF_ASSIGN_OR_RETURN(body_input,
+                      AddTensor(graph,
+                                port::StrCat(inst->name(), "_input"),
+                                output));
+
+  poplar::program::Sequence main_seq;
+  main_seq.add(poplar::program::Copy(init, body_input));
+
+  // Body
+  LOG(INFO) << "Generating body";
+  std::vector<poplar::Tensor> body_inputs(1, body_input);
+  PoplarCallVisitor body_visitor(&graph, body_inputs);
+  TF_RETURN_IF_ERROR(inst->while_body()->Accept(&body_visitor));
+
+  body_visitor.sequence.add(poplar::program::Copy(body_visitor.output[0],
+                                                  body_input));
+  //body_visitor.sequence.add(poplar::program::PrintTensor(body_visitor.output[0]));
+  //body_visitor.sequence.add(poplar::program::PrintTensor(body_input));
+  poplar::Tensor body_output = body_visitor.output[0];
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, body_output));
+
+  // Condition
+  LOG(INFO) << "Generating condition";
+  std::vector<poplar::Tensor> condition_inputs(1, body_output);
+  PoplarCallVisitor condition_visitor(&graph, condition_inputs);
+  TF_RETURN_IF_ERROR(inst->while_condition()->Accept(&condition_visitor));
+
+  poplar::program::RepeatWhileTrue repeat_while_true(condition_visitor.sequence,
+                                                     body_visitor.sequence);
+
+  main_seq.add(repeat_while_true);
+
+  return main_seq;
+}
+
 }
 }
 

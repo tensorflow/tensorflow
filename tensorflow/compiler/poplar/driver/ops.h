@@ -115,6 +115,12 @@ CreateCallOp(poplar::Graph &graph,
              TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
+CreateWhileOp(poplar::Graph &graph,
+              const HloInstruction *inst,
+              const xla::Shape& output,
+              TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
 CreateConv2D(poplar::Graph &graph,
              const HloInstruction *inst,
              const xla::Shape& output_shape,
