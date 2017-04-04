@@ -733,11 +733,12 @@ class Model(Container):
       loss_functions = []
       for name in self.output_names:
         if name not in loss:
-          warnings.warn('Output "' + name + '" missing from loss dictionary. '
-                        'We assume this was done on purpose, '
-                        'and we will not be expecting '
-                        'any data to be passed to "' + name +
-                        '" during training.')
+          warnings.warn(
+              'Output "' + name + '" missing from loss dictionary. '
+              'We assume this was done on purpose, '
+              'and we will not be expecting '
+              'any data to be passed to "' + name + '" during training.',
+              stacklevel=2)
         loss_functions.append(losses.get(loss.get(name)))
     elif isinstance(loss, list):
       if len(loss) != len(self.outputs):
@@ -1202,7 +1203,7 @@ class Model(Container):
       if batch_index == 0:
         for batch_out in batch_outs:
           shape = (samples,) + batch_out.shape[1:]
-          outs.append(np.zeros(shape, dtype=K.floatx()))
+          outs.append(np.zeros(shape, dtype=batch_out.dtype))
 
       for i, batch_out in enumerate(batch_outs):
         outs[i][batch_start:batch_end] = batch_out
@@ -1718,7 +1719,7 @@ class Model(Container):
             - a tuple (inputs, targets, sample_weights).
             All arrays should contain the same number of samples.
             The generator is expected to loop over its data
-            indefinitely. An epoch finishes when `samples_per_epoch`
+            indefinitely. An epoch finishes when `steps_per_epoch`
             samples have been seen by the model.
         steps_per_epoch: Total number of steps (batches of samples)
             to yield from `generator` before declaring one epoch
@@ -1767,7 +1768,7 @@ class Model(Container):
                 f.close()
 
         model.fit_generator(generate_arrays_from_file('/my_file.txt'),
-                            samples_per_epoch=10000, epochs=10)
+                            steps_per_epoch=10000, epochs=10)
     ```
 
     Raises:
@@ -2028,7 +2029,8 @@ class Model(Container):
                         steps,
                         max_q_size=10,
                         workers=1,
-                        pickle_safe=False):
+                        pickle_safe=False,
+                        verbose=0):
     """Generates predictions for the input samples from a data generator.
 
     The generator should return the same kind of data as accepted by
@@ -2048,6 +2050,7 @@ class Model(Container):
             non picklable arguments to the generator
             as they can't be passed
             easily to children processes.
+        verbose: verbosity mode, 0 or 1.
 
     Returns:
         Numpy array(s) of predictions.
@@ -2066,6 +2069,9 @@ class Model(Container):
     try:
       enqueuer = GeneratorEnqueuer(generator, pickle_safe=pickle_safe)
       enqueuer.start(workers=workers, max_q_size=max_q_size)
+
+      if verbose == 1:
+        progbar = Progbar(target=steps)
 
       while steps_done < steps:
         generator_output = None
@@ -2103,6 +2109,8 @@ class Model(Container):
         for i, out in enumerate(outs):
           all_outs[i].append(out)
         steps_done += 1
+        if verbose == 1:
+          progbar.update(steps_done)
 
     finally:
       if enqueuer is not None:

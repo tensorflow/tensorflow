@@ -59,7 +59,8 @@ class LocallyConnected1D(Layer):
           specifying the stride length of the convolution.
           Specifying any stride value != 1 is incompatible with specifying
           any `dilation_rate` value != 1.
-      padding: One of `"valid"` or `"same"` (case-insensitive).
+      padding: Currently only supports `"valid"` (case-insensitive).
+          `"same"` may be supported in the future.
       activation: Activation function to use.
           If you don't specify anything, no activation is applied
           (ie. "linear" activation: `a(x) = x`).
@@ -188,7 +189,7 @@ class LocallyConnected1D(Layer):
         'kernel_initializer':
             initializers.serialize(self.kernel_initializer),
         'bias_initializer':
-            initializers.serialize(self.kernel_initializer),
+            initializers.serialize(self.bias_initializer),
         'kernel_regularizer':
             regularizers.serialize(self.kernel_regularizer),
         'bias_regularizer':
@@ -239,16 +240,15 @@ class LocallyConnected2D(Layer):
           specifying the strides of the convolution along the width and height.
           Can be a single integer to specify the same value for
           all spatial dimensions.
-          Specifying any stride value != 1 is incompatible with specifying
-          any `dilation_rate` value != 1.
-      padding: one of `"valid"` or `"same"` (case-insensitive).
+      padding: Currently only support `"valid"` (case-insensitive).
+          `"same"` will be supported in future.
       data_format: A string,
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".
@@ -460,7 +460,7 @@ class LocallyConnected2D(Layer):
         'kernel_initializer':
             initializers.serialize(self.kernel_initializer),
         'bias_initializer':
-            initializers.serialize(self.kernel_initializer),
+            initializers.serialize(self.bias_initializer),
         'kernel_regularizer':
             regularizers.serialize(self.kernel_regularizer),
         'bias_regularizer':
