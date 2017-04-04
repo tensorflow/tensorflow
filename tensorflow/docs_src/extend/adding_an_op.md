@@ -1118,8 +1118,8 @@ Details about registering gradient functions with
   about any attrs can be found via
   @{tf.Operation.get_attr}.
 
-* If the op has multiple outputs, the gradient function will take `op` and
-  `grads`, where `grads` is a list of gradients with respect to each output.
+* If the op has multiple inputs, the gradient function will take `op` and
+  `grads`, where `grads` is a list of gradients with respect to each input.
   The result of the gradient function must be a list of `Tensor` objects
   representing the gradients with respect to each input.
 
