@@ -123,11 +123,6 @@ if [[ ${OLD_MAJOR} != ${MAJOR} ]] || [[ ${OLD_MINOR} != ${MINOR} ]]; then
   sed -i -r -e "s/${OLD_R_MAJOR_MINOR}/${R_MAJOR_MINOR}/g" \
       "${TENSORBOARD_README_MD}"
 
-  # Update tensorflow/docs_src/install/install_sources.md
-  MAC_FILE="${TF_SRC_DIR}/tensorflow/docs_src/install/install_mac.md"
-  sed -i -r -e "s/${OLD_R_MAJOR_MINOR}/${R_MAJOR_MINOR}/g" \
-      "${MAC_FILE}"
-
   # Update dockerfiles
   DEVEL_DOCKERFILE="${TF_SRC_DIR}/tools/docker/Dockerfile.devel"
   check_existence file "${DEVEL_DOCKERFILE}"
