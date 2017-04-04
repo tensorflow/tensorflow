@@ -30,6 +30,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/common_runtime/sycl/sycl_util.h"
+#endif // TENSORFLOW_USE_SYCL
+
 namespace tensorflow {
 
 ConstantOp::ConstantOp(OpKernelConstruction* ctx)
@@ -52,18 +56,6 @@ ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                     \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("Const").Device(DEVICE_SYCL).TypeConstraint<TYPE>("dtype"), \
-      ConstantOp);
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
-REGISTER_SYCL_KERNEL(bool);
-REGISTER_SYCL_KERNEL(int64);
-#undef REGISTER_SYCL_KERNEL
-#endif
-
 #if GOOGLE_CUDA
 #define REGISTER_KERNEL(D, TYPE)                                      \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -83,6 +75,22 @@ REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
 // Currently we do not support string constants on GPU
 #undef REGISTER_KERNEL
+#endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(D, TYPE)                                  \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"),  \
+      ConstantOp);
+REGISTER_SYCL_KERNEL(SYCL, float);
+REGISTER_SYCL_KERNEL(SYCL, double);
+REGISTER_SYCL_KERNEL(SYCL, uint8);
+REGISTER_SYCL_KERNEL(SYCL, int8);
+REGISTER_SYCL_KERNEL(SYCL, uint16);
+REGISTER_SYCL_KERNEL(SYCL, int16);
+REGISTER_SYCL_KERNEL(SYCL, int64);
+REGISTER_SYCL_KERNEL(SYCL, bool);
+#undef REGISTER_SYCL_KERNEL
 #endif
 
 HostConstantOp::HostConstantOp(OpKernelConstruction* ctx)
@@ -116,9 +124,6 @@ REGISTER_KERNEL_BUILDER(Name("Const")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Const")
                             .Device(DEVICE_SYCL)
                             .HostMemory("output")
@@ -144,12 +149,33 @@ struct FillFunctor<CPUDevice, T> {
 };
 
 #ifdef TENSORFLOW_USE_SYCL
+namespace Eigen {
+namespace internal {
+
+template <typename T>
+struct scalar_const_op {
+  const T val;
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
+  scalar_const_op(const scalar_const_op & x)
+      : val(x.val) {}
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE scalar_const_op(const T v) : val(v) {}
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()() const {
+    return val;
+  }
+};
+}
+}
+
 // Partial specialization of FillFunctor<Device=SYCLDevice, T>.
 template <typename T>
 struct FillFunctor<SYCLDevice, T> {
   void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstScalar in) {
-    To32Bit(out).device(d) = To32Bit(out).constant(in());
+                  T in) {
+    Eigen::internal::scalar_const_op<T> f(in);
+    To32Bit(out).device(d) = To32Bit(out).nullaryExpr(f);
   }
 };
 #endif  // TENSORFLOW_USE_SYCL
@@ -184,6 +210,43 @@ class FillOp : public OpKernel {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+class FillOp<SYCLDevice, T> : public OpKernel {
+ public:
+  explicit FillOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& Tdims = context->input(0);
+    OP_REQUIRES(
+        context, IsLegacyVector(Tdims.shape()),
+        errors::InvalidArgument("dims must be a vector of int32, got shape ",
+                                Tdims.shape().DebugString()));
+    const Tensor& Tvalue = context->input(1);
+
+    T data_host;
+    auto device = context->eigen_sycl_device();
+    auto size = sizeof(T);
+    auto src_ptr = GetBase(&Tvalue);
+    device.memcpyDeviceToHost(&data_host, static_cast<const T *>(src_ptr), size);
+
+    OP_REQUIRES(context, IsLegacyScalar(Tvalue.shape()),
+                errors::InvalidArgument("value must be a scalar, got shape ",
+                                        Tvalue.shape().DebugString()));
+    auto dims = Tdims.flat<int32>();
+    TensorShape shape;
+    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
+                                reinterpret_cast<const int32*>(dims.data()),
+                                dims.size(), &shape));
+    Tensor* out = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
+    functor::FillFunctor<SYCLDevice, T> functor;
+    functor(context->eigen_device<SYCLDevice>(), out->flat<T>(),
+            data_host);
+  }
+};
+#endif // TENSORFLOW_USE_SYCL
+
 #define REGISTER_KERNEL(D, TYPE)                         \
   REGISTER_KERNEL_BUILDER(Name("Fill")                   \
                               .Device(DEVICE_##D)        \
@@ -199,8 +262,14 @@ REGISTER_KERNEL(CPU, quint8);
 #undef REGISTER_CPU_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL(SYCL, float)
-REGISTER_KERNEL(SYCL, double)
+REGISTER_KERNEL(SYCL, float);
+REGISTER_KERNEL(SYCL, double);
+REGISTER_KERNEL(SYCL, uint8);
+REGISTER_KERNEL(SYCL, int8);
+REGISTER_KERNEL(SYCL, uint16);
+REGISTER_KERNEL(SYCL, int16);
+REGISTER_KERNEL(SYCL, int64);
+
 REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -260,8 +329,10 @@ TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL(float, SYCL);
 REGISTER_KERNEL(bool, SYCL);
+REGISTER_KERNEL(float, SYCL);
+REGISTER_KERNEL(double, SYCL);
+REGISTER_KERNEL(int64, SYCL);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")

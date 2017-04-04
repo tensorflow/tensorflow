@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/sycl/sycl_device.h"
 
+#include "tensorflow/core/common_runtime/sycl/sycl_util.h"
+
 namespace tensorflow {
 
 class SYCLDeviceFactory : public DeviceFactory {
@@ -34,7 +36,7 @@ class SYCLDeviceFactory : public DeviceFactory {
       devices->push_back(
           new SYCLDevice(options, name, Bytes(256 << 20), DeviceLocality(),
                          SYCLDevice::GetShortDeviceDescription(),
-                         cl::sycl::gpu_selector(), cpu_allocator()));
+                         GetSYCLDevice(), cpu_allocator()));
     }
     return Status::OK();
   }

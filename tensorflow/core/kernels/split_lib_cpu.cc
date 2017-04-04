@@ -50,16 +50,12 @@ void Split<Eigen::SyclDevice, T>::operator()(
     typename TTypes<T, 3>::ConstTensor input,
     const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
     const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes) {
-  if (output.size() < 131072) {
-    output = input.slice(slice_indices, slice_sizes);
-  } else {
     output.device(d) = input.slice(slice_indices, slice_sizes);
-  }
 }
 
 #define DEFINE_SYCL_KERNELS(T) template struct Split<Eigen::SyclDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_SYCL_KERNELS)
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DEFINE_SYCL_KERNELS);
 #endif // TENSORFLOW_USE_SYCL
 
 }  // namespace functor

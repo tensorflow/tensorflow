@@ -234,11 +234,7 @@ Status TransposeSyclOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                               .TypeConstraint<int32>("Tperm") \
                               .HostMemory("perm"),            \
                           TransposeSyclOp);
-REGISTER(float);
-REGISTER(double);
-REGISTER(bool);
-REGISTER(int32);
+TF_CALL_POD_TYPES(REGISTER);
 #undef REGISTER
 #endif
-
 }  // namespace tensorflow

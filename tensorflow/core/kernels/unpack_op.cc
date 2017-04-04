@@ -159,20 +159,15 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
       Name("Unpack").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       UnpackOp<SYCLDevice, type>)
 
-REGISTER_SYCL(float);
-REGISTER_SYCL(double);
-#undef REGISTER_SYCL
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
 
-// A special SYCL kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .Device(DEVICE_SYCL)
                             .HostMemory("value")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         UnpackOp<CPUDevice, int32>);
-
+#undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

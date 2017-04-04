@@ -308,10 +308,8 @@ REGISTER_GPU_HOST_KERNEL(bool);
                               .TypeConstraint<type>("T"), \
                           StackPushOp<SYCLDevice>);
 
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 
-#undef REGISTER_SYCL_KERNEL
 #define REGISTER_SYCL_HOST_KERNEL(type)                   \
   REGISTER_KERNEL_BUILDER(Name("StackPush")               \
                               .Device(DEVICE_SYCL)        \
@@ -323,7 +321,7 @@ REGISTER_SYCL_KERNEL(double);
 
 REGISTER_SYCL_HOST_KERNEL(int32);
 REGISTER_SYCL_HOST_KERNEL(bool);
-
+#undef REGISTER_SYCL_KERNEL
 #undef REGISTER_SYCL_HOST_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 
@@ -405,9 +403,7 @@ REGISTER_GPU_HOST_KERNEL(bool);
                               .TypeConstraint<type>("elem_type"), \
                           StackPopOp)
 
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
-#undef REGISTER_SYCL_KERNEL
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
 
 #define REGISTER_SYCL_HOST_KERNEL(type)                           \
   REGISTER_KERNEL_BUILDER(Name("StackPop")                        \
@@ -420,6 +416,7 @@ REGISTER_SYCL_KERNEL(double);
 REGISTER_SYCL_HOST_KERNEL(int32);
 REGISTER_SYCL_HOST_KERNEL(bool);
 
+#undef REGISTER_SYCL_KERNEL
 #undef REGISTER_SYCL_HOST_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 

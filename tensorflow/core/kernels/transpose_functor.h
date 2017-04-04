@@ -111,6 +111,44 @@ template <typename Device, typename T, int NDIMS>
 void TransposeUsingEigen(const Device& d, const Tensor& in,
                          const gtl::ArraySlice<int32> perm, Tensor* out);
 
+
+#ifdef TENSORFLOW_USE_SYCL
+// For SYCL lets always go through Eigen
+template <typename Device, typename T>
+void TransposeSYCL(const Device& d, const Tensor& in,
+               const gtl::ArraySlice<int32> perm, Tensor* out) {
+  switch (in.dims()) {
+    case 1:
+      TransposeUsingEigen<Device, T, 1>(d, in, perm, out);
+      break;
+    case 2:
+      TransposeUsingEigen<Device, T, 2>(d, in, perm, out);
+      break;
+    case 3:
+      TransposeUsingEigen<Device, T, 3>(d, in, perm, out);
+      break;
+    case 4:
+      TransposeUsingEigen<Device, T, 4>(d, in, perm, out);
+      break;
+    case 5:
+      TransposeUsingEigen<Device, T, 5>(d, in, perm, out);
+      break;
+    case 6:
+      TransposeUsingEigen<Device, T, 6>(d, in, perm, out);
+      break;
+    case 7:
+      TransposeUsingEigen<Device, T, 7>(d, in, perm, out);
+      break;
+    case 8:
+      TransposeUsingEigen<Device, T, 8>(d, in, perm, out);
+      break;
+    default:
+      errors::Unimplemented("Unsupported TransposeUsingEigen for: ",
+                                    in.dims());
+      break;
+  }
+}
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace internal
 
 template <typename Device, typename T>
