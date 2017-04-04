@@ -508,7 +508,7 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     AttrValue attr_tensor;
     Tensor tensor(DT_INT32, TensorShape({4}));
     std::vector<int> shape = {1, num_channels, 1, 1};
-    for (int i = 0; i < shape.size(); i++) {
+    for (int i = 0; static_cast<size_t>(i) < shape.size(); i++) {
       tensor.flat<int>()(i) = shape[i];
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -615,11 +615,9 @@ class ReluGradProcessor : public AgnosticNodeProcessor {
   }
 };
 
-// This is the older, less optimized gather-based SliceProcessor. We keep it as
-// a test case for constant propagation optimization.
-class SliceProcessorGatherBased : public AgnosticNodeProcessor {
+class SliceProcessor : public AgnosticNodeProcessor {
  public:
-  SliceProcessorGatherBased(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+  SliceProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
       : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
@@ -663,9 +661,30 @@ class SliceProcessorGatherBased : public AgnosticNodeProcessor {
   }
 };
 
-class SliceProcessor : public AgnosticNodeProcessor {
+// Specialized SliceProcessor, used if the second and third input are const
+// nodes, which could be the case if a constant folding pass is applied
+// before this optimization.
+class SliceProcessorConst : public AgnosticNodeProcessor {
  public:
-  SliceProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+  SliceProcessorConst(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {}
+
+ protected:
+  Status CustomizedProcessing() override {
+    // Skip the first input, which is the data to be sliced.
+    for (int i = 1; i < node_->input_size(); i++) {
+      auto shape_node = node_map_->GetNode(node_->input(i));
+      TF_RETURN_IF_ERROR(UpdateAttrValue(shape_node));
+    }
+    return Status::OK();
+  }
+};
+
+// Specialized SliceProcessor, used if the second input is ConcatOffset. An
+// example use case is in the gradient computation of Concat for InceptionV3.
+class SliceProcessorConcatOffset : public AgnosticNodeProcessor {
+ public:
+  SliceProcessorConcatOffset(GraphDef* graph, NodeDef* node, NodeMap* node_map)
       : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
@@ -832,7 +851,7 @@ class DataLayoutOptimizer {
     node->mutable_attr()->insert({"dtype", attr_data_type});
     AttrValue attr_tensor;
     Tensor tensor(DT_INT32, TensorShape({4}));
-    for (int i = 0; i < permutation.size(); i++) {
+    for (int i = 0; static_cast<size_t>(i) < permutation.size(); i++) {
       tensor.flat<int>()(i) = permutation[i];
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -866,7 +885,7 @@ class DataLayoutOptimizer {
     AttrValue attr_tensor;
     Tensor tensor(DT_INT32, TensorShape({3}));
     std::vector<int> axis = {0, 2, 3};
-    for (int i = 0; i < axis.size(); i++) {
+    for (int i = 0; static_cast<size_t>(i) < axis.size(); i++) {
       tensor.flat<int>()(i) = axis[i];
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -938,14 +957,17 @@ class DataLayoutOptimizer {
             node_processor.reset(
                 new ReluGradProcessor(graph_, node, &node_map_));
           } else if (node->op().compare("Slice") == 0) {
-            auto maybe_concatoffset_node =
-                node_map_.GetNode(NodeName(node->input(1)));
-            if (maybe_concatoffset_node->op() == "ConcatOffset") {
+            auto input1 = node_map_.GetNode(NodeName(node->input(1)));
+            auto input2 = node_map_.GetNode(NodeName(node->input(2)));
+            if (input1->op() == "ConcatOffset") {
               node_processor.reset(
-                  new SliceProcessor(graph_, node, &node_map_));
+                  new SliceProcessorConcatOffset(graph_, node, &node_map_));
+            } else if (input1->op() == "Const" && input2->op() == "Const") {
+              node_processor.reset(
+                  new SliceProcessorConst(graph_, node, &node_map_));
             } else {
               node_processor.reset(
-                  new SliceProcessorGatherBased(graph_, node, &node_map_));
+                  new SliceProcessor(graph_, node, &node_map_));
             }
 
           } else if (node->op().compare("Squeeze") == 0) {

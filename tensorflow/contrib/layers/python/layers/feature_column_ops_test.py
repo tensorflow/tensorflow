@@ -1350,6 +1350,35 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
 
     self.assertAllEqual(expected_input_shape, model_input.shape)
 
+  def testEmbeddingColumnWithAutoReshape(self):
+    hash_buckets = 10
+    embedding_dimension = 5
+    ids_tensor = sparse_tensor.SparseTensor(
+        values=["c", "b",
+                "a", "c", "b",
+                "b"],
+        indices=[[0, 0], [0, 1],
+                 [1, 0], [1, 1], [1, 2],
+                 [3, 2]],
+        dense_shape=[4, 3])
+
+    expected_input_shape = np.array([4, 3, embedding_dimension])
+
+    hashed_ids_column = feature_column.sparse_column_with_hash_bucket(
+        "ids", hash_buckets)
+    embedded_column = feature_column.embedding_column(hashed_ids_column,
+                                                      embedding_dimension)
+    columns_to_tensors = {"ids": ids_tensor}
+    model_input_tensor = feature_column_ops.sequence_input_from_feature_columns(
+        columns_to_tensors, [embedded_column])
+
+    with self.test_session() as sess:
+      variables_lib.global_variables_initializer().run()
+      data_flow_ops.tables_initializer().run()
+      model_input = sess.run(model_input_tensor)
+
+    self.assertAllEqual(expected_input_shape, model_input.shape)
+
   def testEmbeddingColumnGradient(self):
     hash_buckets = 1000
     embedding_dimension = 3

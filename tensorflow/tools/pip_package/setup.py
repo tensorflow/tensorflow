@@ -167,12 +167,15 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*', 'third_party/eigen3')) +
            list(find_files('*', 'external/eigen_archive')))
 
+tf_long_description = (
+    'Note: TensorFlow manylinux1 wheels do not conform to the '
+    'specification in PEP531.')
 
 setup(
     name=project_name,
     version=_VERSION.replace('-', ''),
     description='TensorFlow helps the tensors flow',
-    long_description='',
+    long_description=tf_long_description,
     url='http://tensorflow.org/',
     author='Google Inc.',
     author_email='opensource@google.com',
@@ -187,13 +190,14 @@ setup(
     # Add in any packaged data.
     include_package_data=True,
     package_data={
-        'tensorflow': [EXTENSION_NAME,
-                       'tensorboard/dist/bazel-html-imports.html',
-                       'tensorboard/dist/index.html',
-                       'tensorboard/dist/tf-tensorboard.html',
-                       'tensorboard/lib/css/global.css',
-                       'tensorboard/TAG',
-                     ] + matches,
+        'tensorflow': [
+            EXTENSION_NAME,
+            'tensorboard/dist/bazel-html-imports.html',
+            'tensorboard/dist/index.html',
+            'tensorboard/dist/tf-tensorboard.html',
+            'tensorboard/lib/css/global.css',
+            'tensorboard/TAG',
+        ] + matches,
     },
     zip_safe=False,
     distclass=BinaryDistribution,
@@ -212,7 +216,6 @@ setup(
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Software Development :: Libraries',
-        ],
+    ],
     license='Apache 2.0',
-    keywords='tensorflow tensor machine learning',
-    )
+    keywords='tensorflow tensor machine learning',)

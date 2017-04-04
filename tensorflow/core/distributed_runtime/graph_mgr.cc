@@ -375,9 +375,7 @@ void GraphMgr::RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous,
             }
           }
           call_state->mu.lock();
-          if (status.ok()) {
-            call_state->shared_status = status;
-          }
+          call_state->shared_status.Update(status);
           call_state->done_counter--;
           // If we are the last async call to return, call the done callback.
           if (call_state->done_counter == 0) {

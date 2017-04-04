@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -245,37 +246,69 @@ XLA_TEST_F(ScalarComputationsTest, RemTwoScalarsF32) {
   ComputeAndCompareR0<float>(&builder, 2.5f, {}, error_spec_);
 }
 
-XLA_TEST_F(ScalarComputationsTest, DivideTwoScalarsS32) {
-  ComputationBuilder builder(client_, TestName());
-  builder.Div(builder.ConstantR0<int32>(-5), builder.ConstantR0<int32>(2));
+struct DivS32Params {
+  int32 dividend;
+  int32 divisor;
+  int32 quotient;
+  int32 remainder;
+};
 
-  ComputeAndCompareR0<int32>(&builder, -2, {});
+void PrintTo(const DivS32Params& p, std::ostream* os) {
+  *os << "{" << p.dividend << ", " << p.divisor << ", " << p.quotient << ", "
+      << p.remainder << "}";
 }
 
-TEST_F(ScalarComputationsTest, RemainderTwoScalarsNegativeResultS32) {
-  ComputationBuilder builder(client_, TestName());
-  builder.Rem(builder.ConstantR0<int32>(-5), builder.ConstantR0<int32>(2));
+class DivS32Test : public ClientLibraryTestBase,
+                   public ::testing::WithParamInterface<DivS32Params> {};
 
-  ComputeAndCompareR0<int32>(&builder, -1, {});
+XLA_TEST_P(DivS32Test, DivideTwoScalarsS32) {
+  DivS32Params p = GetParam();
+  ComputationBuilder builder(client_, TestName());
+  builder.Div(builder.ConstantR0<int32>(p.dividend),
+              builder.ConstantR0<int32>(p.divisor));
+
+  ComputeAndCompareR0<int32>(&builder, p.quotient, {});
 }
 
-TEST_F(ScalarComputationsTest, RemainderTwoScalarsIntMinS32) {
+XLA_TEST_P(DivS32Test, RemainderTwoScalarsS32) {
+  DivS32Params p = GetParam();
   ComputationBuilder builder(client_, TestName());
-  builder.Rem(builder.ConstantR0<int32>(INT_MIN),
-              builder.ConstantR0<int32>(7919));
+  builder.Rem(builder.ConstantR0<int32>(p.dividend),
+              builder.ConstantR0<int32>(p.divisor));
 
-  ComputeAndCompareR0<int32>(&builder, -1309, {});
+  ComputeAndCompareR0<int32>(&builder, p.remainder, {});
 }
 
-TEST_F(ScalarComputationsTest, RemainderTwoScalarsIntMinVsIntMaxS32) {
-  ComputationBuilder builder(client_, TestName());
-  builder.Rem(builder.ConstantR0<int32>(INT_MIN),
-              builder.ConstantR0<int32>(INT_MAX));
+INSTANTIATE_TEST_CASE_P(
+    DivS32Test_Instantiation, DivS32Test,
+    ::testing::Values(
+        // Positive divisors.
+        DivS32Params{5, 2, 2, 1},      //
+        DivS32Params{-5, 2, -2, -1},   //
+        DivS32Params{17, 3, 5, 2},     //
+        DivS32Params{-17, 3, -5, -2},  //
+        // Negative divisors.
+        DivS32Params{5, -2, -2, 1},    //
+        DivS32Params{-5, -2, 2, -1},   //
+        DivS32Params{17, -3, -5, 2},   //
+        DivS32Params{-17, -3, 5, -2},  //
+        // Large positive divisors.
+        DivS32Params{INT32_MIN, 7919, -271181, -1309},             //
+        DivS32Params{INT32_MIN, INT32_MAX, -1, -1},                //
+        DivS32Params{INT32_MIN + 1, INT32_MAX, -1, 0},             //
+        DivS32Params{INT32_MIN + 2, INT32_MAX, 0, INT32_MIN + 2},  //
+        DivS32Params{INT32_MIN, 0x40000000, -2, 0},                //
+        DivS32Params{INT32_MIN + 1, 0x40000000, -1, -0x3fffffff},  //
+        // Large negative divisors.
+        DivS32Params{INT32_MIN, INT32_MIN, 1, 0},                  //
+        DivS32Params{INT32_MIN, INT32_MIN + 1, 1, -1},             //
+        DivS32Params{INT32_MIN + 1, INT32_MIN, 0, INT32_MIN + 1},  //
+        DivS32Params{INT32_MAX, INT32_MIN, 0, INT32_MAX},          //
+        DivS32Params{INT32_MAX, INT32_MIN + 1, -1, 0},             //
+        DivS32Params{INT32_MIN, -0x40000000, 2, 0},                //
+        DivS32Params{INT32_MIN + 1, -0x40000000, 1, -0x3fffffff}));
 
-  ComputeAndCompareR0<int32>(&builder, -1, {});
-}
-
-TEST_F(ScalarComputationsTest, RemainderTwoScalarsPositiveResultS32) {
+TEST_F(ScalarComputationsTest, RemainderTwoScalarsNonConstDividendS32) {
   ComputationBuilder builder(client_, TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(S32, {}), "x");
   builder.Rem(x, builder.ConstantR0<int32>(80000));

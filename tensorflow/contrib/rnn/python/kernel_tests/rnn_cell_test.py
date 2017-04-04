@@ -66,7 +66,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
         output, state = rnn_cell.CoupledInputForgetGateLSTMCell(
-            num_units=num_units, forget_bias=1.0)(x, m)
+            num_units=num_units, forget_bias=1.0, state_is_tuple=False)(x, m)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state], {
             x.name:

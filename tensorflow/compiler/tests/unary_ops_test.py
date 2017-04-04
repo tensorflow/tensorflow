@@ -257,6 +257,11 @@ class UnaryOpsTest(XLATestCase):
           np.array([[4, 3], [2, 1]], dtype=dtype),
           expected=np.array([[0, 0], [0, 0]], dtype=dtype))
 
+      self._assertOpOutputMatchesExpected(
+          array_ops.ones_like,
+          np.array([[4, 3], [2, 1]], dtype=dtype),
+          expected=np.array([[1, 1], [1, 1]], dtype=dtype))
+
   def testLogicalOps(self):
     self._assertOpOutputMatchesExpected(
         math_ops.logical_not,

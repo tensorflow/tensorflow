@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_
 
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/macros.h"
@@ -181,6 +182,11 @@ class XlaOpKernelContext {
 
   // Returns the underlying OpKernelContext. Use rarely.
   OpKernelContext* op_kernel_context() const { return context_; }
+
+  // Returns the options passed to the XlaCompiler that is being
+  // run. Used for, e.g., While to inherit options needed for nested
+  // computation.
+  const XlaCompiler::Options& GetCompilerOptions() const;
 
   // TODO(phawkins): find a better home for these helpers.
 

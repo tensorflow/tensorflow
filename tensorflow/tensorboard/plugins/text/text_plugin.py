@@ -19,6 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import textwrap
+
+# pylint: disable=g-bad-import-order
+# Necessary for an internal test with special behavior for numpy.
+import numpy as np
+# pylint: enable=g-bad-import-order
 
 import bleach
 # pylint: disable=g-bad-import-order
@@ -27,6 +33,7 @@ import markdown
 # pylint: enable=g-bad-import-order
 from werkzeug import wrappers
 
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.summary import text_summary
 from tensorflow.tensorboard.backend import http_util
 from tensorflow.tensorboard.plugins import base_plugin
@@ -68,6 +75,10 @@ ALLOWED_TAGS = [
 
 ALLOWED_ATTRIBUTES = {'a': ['href', 'title'], 'img': ['src', 'title', 'alt']}
 
+WARNING_TEMPLATE = textwrap.dedent("""\
+  **Warning:** This text summary contained data of dimensionality %d, but only \
+  2d tables are supported. Showing a 2d slice of the data instead.""")
+
 
 def markdown_and_sanitize(markdown_string):
   """Takes a markdown string and converts it into sanitized html.
@@ -87,6 +98,7 @@ def markdown_and_sanitize(markdown_string):
   # Convert to utf-8 because we get a bytearray in python3
   if not isinstance(markdown_string, str):
     markdown_string = markdown_string.decode('utf-8')
+
   string_html = markdown.markdown(
       markdown_string, extensions=['markdown.extensions.tables'])
   string_sanitized = bleach.clean(
@@ -94,12 +106,145 @@ def markdown_and_sanitize(markdown_string):
   return string_sanitized
 
 
+def make_table_row(contents, tag='td'):
+  """Given an iterable of string contents, make a table row.
+
+  Args:
+    contents: An iterable yielding strings.
+    tag: The tag to place contents in. Defaults to 'td', you might want 'th'.
+
+  Returns:
+    A string containing the content strings, organized into a table row.
+
+  Example: make_table_row(['one', 'two', 'three']) == '''
+  <tr>
+  <td>one</td>
+  <td>two</td>
+  <td>three</td>
+  </tr>'''
+  """
+  columns = ('<%s>%s</%s>\n' % (tag, s, tag) for s in contents)
+  return '<tr>\n' + ''.join(columns) + '</tr>\n'
+
+
+def make_table(contents, headers=None):
+  """Given a numpy ndarray of strings, concatenate them into a html table.
+
+  Args:
+    contents: A np.ndarray of strings. May be 1d or 2d. In the 1d case, the
+      table is laid out vertically (i.e. row-major).
+    headers: A np.ndarray or list of string header names for the table.
+
+  Returns:
+    A string containing all of the content strings, organized into a table.
+
+  Raises:
+    ValueError: If contents is not a np.ndarray.
+    ValueError: If contents is not 1d or 2d.
+    ValueError: If contents is empty.
+    ValueError: If headers is present and not a list, tuple, or ndarray.
+    ValueError: If headers is not 1d.
+    ValueError: If number of elements in headers does not correspond to number
+      of columns in contents.
+  """
+  if not isinstance(contents, np.ndarray):
+    raise ValueError('make_table contents must be a numpy ndarray')
+
+  if contents.ndim not in [1, 2]:
+    raise ValueError('make_table requires a 1d or 2d numpy array, was %dd' %
+                     contents.ndim)
+
+  if headers:
+    if isinstance(headers, list) or isinstance(headers, tuple):
+      headers = np.array(headers)
+    if not isinstance(headers, np.ndarray):
+      raise ValueError('Could not convert headers %s into np.ndarray' % headers)
+    if headers.ndim != 1:
+      raise ValueError('Headers must be 1d, is %dd' % headers.ndim)
+    expected_n_columns = contents.shape[1] if contents.ndim == 2 else 1
+    if headers.shape[0] != expected_n_columns:
+      raise ValueError('Number of headers %d must match number of columns %d' %
+                       (headers.shape[0], expected_n_columns))
+    header = '<thead>\n%s</thead>\n' % make_table_row(headers, tag='th')
+  else:
+    header = ''
+
+  n_rows = contents.shape[0]
+  if contents.ndim == 1:
+    # If it's a vector, we need to wrap each element in a new list, otherwise
+    # we would turn the string itself into a row (see test code)
+    rows = (make_table_row([contents[i]]) for i in range(n_rows))
+  else:
+    rows = (make_table_row(contents[i, :]) for i in range(n_rows))
+
+  return '<table>\n%s<tbody>\n%s</tbody>\n</table>' % (header, ''.join(rows))
+
+
+def reduce_to_2d(arr):
+  """Given a np.npdarray with nDims > 2, reduce it to 2d.
+
+  It does this by selecting the zeroth coordinate for every dimension greater
+  than two.
+
+  Args:
+    arr: a numpy ndarray of dimension at least 2.
+
+  Returns:
+    A two-dimensional subarray from the input array.
+
+  Raises:
+    ValueError: If the argument is not a numpy ndarray, or the dimensionality
+      is too low.
+  """
+  if not isinstance(arr, np.ndarray):
+    raise ValueError('reduce_to_2d requires a numpy.ndarray')
+
+  ndims = len(arr.shape)
+  if ndims < 2:
+    raise ValueError('reduce_to_2d requires an array of dimensionality >=2')
+  # slice(None) is equivalent to `:`, so we take arr[0,0,...0,:,:]
+  slices = ([0] * (ndims - 2)) + [slice(None), slice(None)]
+  return arr[slices]
+
+
+def text_array_to_html(text_arr):
+  """Take a numpy.ndarray containing strings, and convert it into html.
+
+  If the ndarray contains a single scalar string, that string is converted to
+  html via our sanitized markdown parser. If it contains an array of strings,
+  the strings are individually converted to html and then composed into a table
+  using make_table. If the array contains dimensionality greater than 2,
+  all but two of the dimensions are removed, and a warning message is prefixed
+  to the table.
+
+  Args:
+    text_arr: A numpy.ndarray containing strings.
+
+  Returns:
+    The array converted to html.
+  """
+  if not text_arr.shape:
+    # It is a scalar. No need to put it in a table, just apply markdown
+    return markdown_and_sanitize(text_arr.astype(np.dtype(str)).tostring())
+  warning = ''
+  if len(text_arr.shape) > 2:
+    warning = markdown_and_sanitize(WARNING_TEMPLATE % len(text_arr.shape))
+    text_arr = reduce_to_2d(text_arr)
+
+  html_arr = [markdown_and_sanitize(x) for x in text_arr.reshape(-1)]
+  html_arr = np.array(html_arr).reshape(text_arr.shape)
+
+  return warning + make_table(html_arr)
+
+
 def process_string_tensor_event(event):
   """Convert a TensorEvent into a JSON-compatible response."""
+  string_arr = tensor_util.MakeNdarray(event.tensor_proto)
+  html = text_array_to_html(string_arr)
   return {
       'wall_time': event.wall_time,
       'step': event.step,
-      'text': markdown_and_sanitize(event.tensor_proto.string_val[0]),
+      'text': html,
   }
 
 

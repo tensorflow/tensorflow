@@ -145,7 +145,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started$Getting Started with
+If you are new to TensorFlow, see @{$get_started/get_started$Getting Started with
 TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see [Common
@@ -193,5 +193,5 @@ ImportError: cannot import name 'descriptor'</pre>
   <td><pre>No module named "pywrap_tensorflow"</pre></td>
 </tr>
 
-<table>
+</table>
 
