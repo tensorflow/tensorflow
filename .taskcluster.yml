@@ -29,8 +29,17 @@ tasks:
       command:
         - "/bin/bash"
         - "--login"
-        - "-c"
-        - "set -xe && apt-get -qq update && apt-get -qq -y install realpath git build-essential python-virtualenv python-dev libblas-dev liblapack-dev gfortran swig wget software-properties-common zip zlib1g-dev unzip && echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections && add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer && adduser --system --home /home/build-user build-user && cd /home/build-user && echo '#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && ./setup.sh --cuda && ./build.sh --gpu' > run.sh && chmod +x run.sh && sudo -H -u build-user /bin/bash run.sh"
+        - "-cxe"
+        - >
+          apt-get -qq update && apt-get -qq -y install git &&
+          adduser --system --home /home/build-user build-user &&
+          cd /home/build-user &&
+          echo -e "#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}}" > /tmp/clone.sh && chmod +x /tmp/clone.sh &&
+          sudo -H -u build-user /bin/bash /tmp/clone.sh &&
+          /home/build-user/DeepSpeech/tf/tc-apt.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-setup.sh --cuda &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-build.sh --gpu &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-package.sh
       artifacts:
         "public":
           type: "directory"
@@ -69,8 +78,17 @@ tasks:
       command:
         - "/bin/bash"
         - "--login"
-        - "-c"
-        - "set -xe && apt-get -qq update && apt-get -qq -y install realpath git build-essential python-virtualenv python-dev libblas-dev liblapack-dev gfortran swig wget software-properties-common zip zlib1g-dev unzip && echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections && add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer && adduser --system --home /home/build-user build-user && cd /home/build-user/ && echo '#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && ./setup.sh --cuda && ./build.sh --gpu' > run.sh && chmod +x run.sh && sudo -H -u build-user /bin/bash run.sh"
+        - "-cxe"
+        - >
+          apt-get -qq update && apt-get -qq -y install git &&
+          adduser --system --home /home/build-user build-user &&
+          cd /home/build-user/ &&
+          echo -e "#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}}" > /tmp/clone.sh && chmod +x /tmp/clone.sh &&
+          sudo -H -u build-user /bin/bash /tmp/clone.sh &&
+          /home/build-user/DeepSpeech/tf/tc-apt.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-setup.sh --cuda &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-build.sh --gpu &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-package.sh
       artifacts:
         "public":
           type: "directory"
@@ -99,8 +117,17 @@ tasks:
       command:
         - "/bin/bash"
         - "--login"
-        - "-c"
-        - "set -xe && apt-get -qq update && apt-get -qq -y install realpath git build-essential python-virtualenv python-dev libblas-dev liblapack-dev gfortran swig wget software-properties-common zip zlib1g-dev unzip && echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections && add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer && adduser --system --home /home/build-user build-user && cd /home/build-user/ && echo '#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && ./setup.sh && ./build.sh' > run.sh && chmod +x run.sh && sudo -H -u build-user /bin/bash run.sh"
+        - "-cxe"
+        - >
+          apt-get -qq update && apt-get -qq -y install git &&
+          adduser --system --home /home/build-user build-user &&
+          cd /home/build-user/ &&
+          echo -e "#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}}" > /tmp/clone.sh && chmod +x /tmp/clone.sh &&
+          sudo -H -u build-user /bin/bash /tmp/clone.sh &&
+          /home/build-user/DeepSpeech/tf/tc-apt.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-setup.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-build.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-package.sh
       artifacts:
         "public":
           type: "directory"
@@ -133,8 +160,17 @@ tasks:
       command:
         - "/bin/bash"
         - "--login"
-        - "-c"
-        - "set -xe && apt-get -qq update && apt-get -qq -y install realpath git build-essential python-virtualenv python-dev libblas-dev liblapack-dev gfortran swig wget software-properties-common zip zlib1g-dev unzip && echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections && add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer && adduser --system --home /home/build-user build-user && cd /home/build-user/ && echo '#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && ./setup.sh && ./build.sh' > run.sh && chmod +x run.sh && sudo -H -u build-user /bin/bash run.sh"
+        - "-cxe"
+        - >
+          apt-get -qq update && apt-get -qq -y install git &&
+          adduser --system --home /home/build-user build-user &&
+          cd /home/build-user/ &&
+          echo -e "#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}}" > /tmp/clone.sh && chmod +x /tmp/clone.sh &&
+          sudo -H -u build-user /bin/bash /tmp/clone.sh &&
+          /home/build-user/DeepSpeech/tf/tc-apt.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-setup.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-build.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-package.sh
       artifacts:
         "public":
           type: "directory"
@@ -163,8 +199,17 @@ tasks:
       command:
         - "/bin/bash"
         - "--login"
-        - "-c"
-        - "set -xe && apt-get -qq update && apt-get -qq -y install realpath git build-essential python-virtualenv python-dev libblas-dev liblapack-dev gfortran swig wget software-properties-common zip zlib1g-dev unzip && echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections && add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer && adduser --system --home /home/build-user build-user && cd /home/build-user/ && echo '#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && ./setup.sh && ./build.sh --arm' > run.sh && chmod +x run.sh && sudo -H -u build-user /bin/bash run.sh"
+        - "-cxe"
+        - >
+          apt-get -qq update && apt-get -qq -y install git &&
+          adduser --system --home /home/build-user build-user &&
+          cd /home/build-user/ &&
+          echo -e "#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}}" > /tmp/clone.sh && chmod +x /tmp/clone.sh &&
+          sudo -H -u build-user /bin/bash /tmp/clone.sh &&
+          /home/build-user/DeepSpeech/tf/tc-apt.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-setup.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-build.sh --arm &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-package.sh
       artifacts:
         "public":
           type: "directory"
@@ -197,8 +242,17 @@ tasks:
       command:
         - "/bin/bash"
         - "--login"
-        - "-c"
-        - "set -xe && apt-get -qq update && apt-get -qq -y install realpath git build-essential python-virtualenv python-dev libblas-dev liblapack-dev gfortran swig wget software-properties-common zip zlib1g-dev unzip && echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections && add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer && adduser --system --home /home/build-user build-user && cd /home/build-user/ && echo '#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && ./setup.sh && ./build.sh --arm' > run.sh && chmod +x run.sh && sudo -H -u build-user /bin/bash run.sh"
+        - "-cxe"
+        - >
+          apt-get -qq update && apt-get -qq -y install git &&
+          adduser --system --home /home/build-user build-user &&
+          cd /home/build-user/ &&
+          echo -e "#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}}" > /tmp/clone.sh && chmod +x /tmp/clone.sh &&
+          sudo -H -u build-user /bin/bash /tmp/clone.sh &&
+          /home/build-user/DeepSpeech/tf/tc-apt.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-setup.sh &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-build.sh --arm &&
+          sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-package.sh
       artifacts:
         "public":
           type: "directory"
