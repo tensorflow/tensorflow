@@ -109,7 +109,7 @@ class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
   def __init__(self, num_units, use_peepholes=False,
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=1, num_proj_shards=1,
-               forget_bias=1.0, state_is_tuple=False,
+               forget_bias=1.0, state_is_tuple=True,
                activation=math_ops.tanh, reuse=None):
     """Initialize the parameters for an LSTM cell.
 
@@ -457,7 +457,7 @@ class GridLSTMCell(core_rnn_cell.RNNCell):
                start_freqindex_list=None,
                end_freqindex_list=None,
                couple_input_forget_gates=False,
-               state_is_tuple=False,
+               state_is_tuple=True,
                reuse=None):
     """Initialize the parameters for an LSTM cell.
 
@@ -1043,7 +1043,7 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
   """
 
   def __init__(self, cell, attn_length, attn_size=None, attn_vec_size=None,
-               input_size=None, state_is_tuple=False, reuse=None):
+               input_size=None, state_is_tuple=True, reuse=None):
     """Create a cell with attention.
 
     Args:
