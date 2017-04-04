@@ -2979,6 +2979,20 @@ class SeparableConv2dTest(test.TestCase):
       sess.run(init_op)
       sess.run(net, feed_dict={images_placeholder: images})
 
+  def testTrainableFlagIsPassedOn(self):
+    for trainable in [True, False]:
+      for num_filters in [None, 8]:
+        with ops.Graph().as_default():
+          input_size = [5, 10, 12, 3]
+
+          images = random_ops.random_uniform(input_size, seed=1)
+          layers_lib.separable_conv2d(
+              images, num_filters, [3, 3], 1, trainable=trainable)
+          model_variables = variables.get_model_variables()
+          trainable_variables = variables_lib.trainable_variables()
+          for model_variable in model_variables:
+            self.assertEqual(trainable, model_variable in trainable_variables)
+
 
 class ScaleGradientTests(test.TestCase):
   """Simple tests of the scale_gradient function."""
