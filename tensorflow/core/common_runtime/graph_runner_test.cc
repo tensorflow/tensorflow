@@ -46,9 +46,9 @@ using test::internal::ExpectEqual;
 TEST(GraphRunnerTest, SingleConst) {
   Scope root = Scope::NewRootScope();
   auto c = ops::Const(root, 42.0f);
+  GraphRunner graph_runner(Env::Default());
   std::vector<Tensor> outputs;
-  Status s = GraphRunner::Run(root.graph(), nullptr, Env::Default(), {},
-                              {c.name()}, &outputs);
+  Status s = graph_runner.Run(root.graph(), nullptr, {}, {c.name()}, &outputs);
   TF_ASSERT_OK(s);
   ExpectEqual(42.0f, outputs[0].scalar<float>()());
 }
@@ -57,9 +57,10 @@ TEST(GraphRunnerTest, MultiFetchConst) {
   Scope root = Scope::NewRootScope();
   auto c = ops::Const(root, 42.0f);
   auto pi = ops::Const(root, 3.14f);
+  GraphRunner graph_runner(Env::Default());
   std::vector<Tensor> outputs;
-  Status s = GraphRunner::Run(root.graph(), nullptr, Env::Default(), {},
-                              {c.name(), pi.name()}, &outputs);
+  Status s = graph_runner.Run(root.graph(), nullptr, {}, {c.name(), pi.name()},
+                              &outputs);
   TF_ASSERT_OK(s);
   ExpectEqual(42.0f, outputs[0].scalar<float>()());
   ExpectEqual(3.14f, outputs[1].scalar<float>()());
@@ -78,9 +79,10 @@ TEST(GraphRunnerTest, FeedAndFetch) {
   std::vector<std::pair<string, Tensor>> inputs = {{"p1:0", p1_data},
                                                    {"p2:0", p2_data}};
 
+  GraphRunner graph_runner(Env::Default());
   std::vector<Tensor> outputs;
-  Status s = GraphRunner::Run(root.graph(), nullptr, Env::Default(), inputs,
-                              {"add:0"}, &outputs);
+  Status s =
+      graph_runner.Run(root.graph(), nullptr, inputs, {"add:0"}, &outputs);
   TF_ASSERT_OK(s);
   ExpectEqual(3.0f, outputs[0].scalar<float>()());
 }

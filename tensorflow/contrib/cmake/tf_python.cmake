@@ -111,6 +111,7 @@ file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
+    "${tensorflow_source_dir}/tensorflow/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
 )
@@ -124,6 +125,7 @@ RELATIVE_PROTOBUF_GENERATE_PYTHON(
 file(GLOB_RECURSE tf_python_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
+    "${tensorflow_source_dir}/tensorflow/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
 )
@@ -342,6 +344,9 @@ add_python_module("tensorflow/contrib/keras/python/keras/layers")
 add_python_module("tensorflow/contrib/keras/python/keras/preprocessing")
 add_python_module("tensorflow/contrib/keras/python/keras/utils")
 add_python_module("tensorflow/contrib/keras/python/keras/wrappers")
+add_python_module("tensorflow/contrib/kernel_methods")
+add_python_module("tensorflow/contrib/kernel_methods/python")
+add_python_module("tensorflow/contrib/kernel_methods/python/mappers")
 add_python_module("tensorflow/contrib/labeled_tensor")
 add_python_module("tensorflow/contrib/labeled_tensor/python")
 add_python_module("tensorflow/contrib/labeled_tensor/python/ops")
@@ -405,6 +410,11 @@ add_python_module("tensorflow/contrib/ndlstm/python")
 add_python_module("tensorflow/contrib/nn")
 add_python_module("tensorflow/contrib/nn/python")
 add_python_module("tensorflow/contrib/nn/python/ops")
+add_python_module("tensorflow/contrib/nccl")
+add_python_module("tensorflow/contrib/nccl/kernels")
+add_python_module("tensorflow/contrib/nccl/ops")
+add_python_module("tensorflow/contrib/nccl/python")
+add_python_module("tensorflow/contrib/nccl/python/ops")
 add_python_module("tensorflow/contrib/opt")
 add_python_module("tensorflow/contrib/opt/python")
 add_python_module("tensorflow/contrib/opt/python/training")
@@ -599,6 +609,8 @@ GENERATE_PYTHON_OP_LIB("contrib_layers_sparse_feature_cross_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/layers/ops/gen_sparse_feature_cross_op.py)
 GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/memory_stats/ops/gen_memory_stats_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_nccl_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nccl/ops/gen_nccl_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_gru_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_gru_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_lstm_ops"

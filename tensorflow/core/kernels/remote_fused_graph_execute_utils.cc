@@ -168,12 +168,12 @@ RemoteFusedGraphExecuteUtils::GetExecutorBuildRegistry() {
     output_tensors.push_back(input_node_info.second);
   }
 
-  for (int i = 0; i < output_node_names.size(); ++i) {
+  for (int i = 0; static_cast<size_t>(i) < output_node_names.size(); ++i) {
     const string& name = output_node_names.at(i);
     const Tensor& tensor = output_tensors.at(i);
     EmplaceTensorShapeType(name, tensor, tensor_shape_map);
   }
-  for (int i = 0; i < input_node_info_list.size(); ++i) {
+  for (int i = 0; static_cast<size_t>(i) < input_node_info_list.size(); ++i) {
     const string& name = input_node_info_list.at(i).first;
     const Tensor& tensor = output_tensors.at(output_node_names.size() + i);
     EmplaceTensorShapeType(name, tensor, tensor_shape_map);

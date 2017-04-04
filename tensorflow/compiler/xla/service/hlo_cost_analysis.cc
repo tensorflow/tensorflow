@@ -357,7 +357,9 @@ Status HloCostAnalysis::HandleRng(HloInstruction* random,
 Status HloCostAnalysis::HandleFusion(HloInstruction* fusion) {
   // Compute the cost of the fused expression.
   HloInstruction* fused_expression_root = fusion->fused_expression_root();
-  HloCostAnalysis visitor(shape_size_);
+  // Don't compute sizes inside of fused ops. We don't use the size here and the
+  // operations inside might not have a layout.
+  HloCostAnalysis visitor([](const Shape&) { return 0; });
   TF_RETURN_IF_ERROR(fused_expression_root->Accept(&visitor));
 
   // Attribute the cost of the fused expression to the fusion node.

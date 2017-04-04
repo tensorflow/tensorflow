@@ -167,6 +167,8 @@ void XlaOpRegistry::RegisterCompilationKernels() {
           !backend.second.op_filter(kdef.get())) {
         continue;
       }
+      VLOG(2) << "XLA op registration: device: " << backend.first
+              << " op: " << op.first;
       registry.kernel_registrars_.emplace_back(
           new kernel_factory::OpKernelRegistrar(
               new KernelDef(*kdef), "XlaJitOp", op.second->factory));

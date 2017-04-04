@@ -31,20 +31,38 @@ limitations under the License.
 
 namespace xla {
 
-HloComputation* HloModule::AddEntryComputation(
+HloModule::HloModule(const string& name,
+                     const VersionedComputationHandle& entry_computation_handle)
+    : name_(name),
+      entry_computation_(nullptr),
+      has_entry_computation_handle_(true),
+      entry_computation_handle_(entry_computation_handle),
+      computation_name_uniquer_(/*separator=*/".") {}
+
+HloModule::HloModule(const string& name)
+    : name_(name),
+      entry_computation_(nullptr),
+      computation_name_uniquer_(/*separator=*/".") {}
+
+HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
-  CHECK_EQ(nullptr, entry_computation_);
-  entry_computation_ = computation.get();
+  computation->set_name(
+      computation_name_uniquer_.GetUniqueName(computation->name()));
   computation->set_parent(this);
   computations_.push_back(std::move(computation));
   return computations_.back().get();
 }
 
+HloComputation* HloModule::AddEntryComputation(
+    std::unique_ptr<HloComputation> computation) {
+  CHECK_EQ(nullptr, entry_computation_);
+  entry_computation_ = computation.get();
+  return AddComputationInternal(std::move(computation));
+}
+
 HloComputation* HloModule::AddEmbeddedComputation(
     std::unique_ptr<HloComputation> computation) {
-  computation->set_parent(this);
-  computations_.push_back(std::move(computation));
-  return computations_.back().get();
+  return AddComputationInternal(std::move(computation));
 }
 
 void HloModule::ReplaceComputations(

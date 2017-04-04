@@ -1578,9 +1578,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "scalar_strict_test",
+    name = "scalar_test",
     size = "small",
-    srcs = ["scalar_strict_test.py"],
+    srcs = ["scalar_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",

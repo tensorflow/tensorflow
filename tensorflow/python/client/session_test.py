@@ -1404,6 +1404,14 @@ class SessionTest(test_util.TensorFlowTestCase):
     r2 = sess.partial_run(h, [b, c])
     self.assertEqual(r1, r2)
 
+  def runTestPartialRunMissingPlaceholderFeedException(self, sess):
+    x = array_ops.placeholder(dtypes.float32, shape=())
+    fetches = [x * 2, x * 3]
+    handle = sess.partial_run_setup(fetches=fetches, feeds=[])
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 'You must feed a value for placeholder'):
+      sess.partial_run(handle, fetches[0])
+
   def testPartialRunDirect(self):
     self.runTestPartialRun(session.Session())
 
@@ -1418,6 +1426,9 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testRunAndPartialRunDirect(self):
     self.runTestRunAndPartialRun(session.Session())
+
+  def testPartialRunMissingPlaceholderFeedExceptionDirect(self):
+    self.runTestPartialRunMissingPlaceholderFeedException(session.Session())
 
   def testPartialRunDist(self):
     server = server_lib.Server.create_local_server()
@@ -1438,6 +1449,11 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testRunAndPartialRunDist(self):
     server = server_lib.Server.create_local_server()
     self.runTestRunAndPartialRun(session.Session(server.target))
+
+  def testPartialRunMissingPlaceholderFeedExceptionDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestPartialRunMissingPlaceholderFeedException(
+        session.Session(server.target))
 
   def testFeedDictKeyException(self):
     with session.Session() as sess:

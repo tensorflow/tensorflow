@@ -49,6 +49,9 @@ const char* GrpcWorkerMethodName(GrpcWorkerMethod id) {
     case GrpcWorkerMethod::kTracing:
       return "/tensorflow.WorkerService/Tracing";
   }
+  // Shouldn't be reached.
+  LOG(FATAL) << "Invalid id: this line shouldn't be reached.";
+  return "invalid id";
 }
 
 namespace grpc {
