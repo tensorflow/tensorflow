@@ -370,6 +370,7 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),I386)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch i386 \
+		-mno-sse \
 		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
