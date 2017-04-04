@@ -13,10 +13,7 @@ py_library(
     name = "projector_plugin",
     srcs = ["projector_plugin.py"],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//learning/vis/projector:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":protos_all_py",
         "//tensorflow/python:errors",
