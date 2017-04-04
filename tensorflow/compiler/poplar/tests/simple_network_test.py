@@ -29,19 +29,6 @@ class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
                 result = sess.run(output, fd)
                 self.assertAllClose(result, [[2.,1.],[5.,6.]])
 
-    def testAddVariable(self):
-        with tf.device("/device:XLA_IPU:0"):
-            with tf.Session() as sess:
-                pa = tf.placeholder(tf.float32, [2,2], name="a")
-                v = tf.Variable(tf.zeros([2,2]))
-                a = tf.assign(v, pa + v)
-
-                sess.run(tf.global_variables_initializer())
-
-                fd = {pa: [[0.,0.],[1.,1.]]}
-                result = sess.run(a, fd)
-                self.assertAllClose(result, [[0.,0.],[1.,1.]])
-
     def testTransposeNegate(self):
         with tf.device("/device:XLA_IPU:0"):
             with tf.Session() as sess:

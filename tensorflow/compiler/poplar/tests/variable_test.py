@@ -7,14 +7,18 @@ import numpy as np
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
 
+from tensorflow.python.ops import resource_variable_ops
+
 class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
   def testInitializeSimpleVariables(self):
     with tf.device("/device:XLA_IPU:0"):
       with tf.Session() as sess:
 
-        x = tf.Variable(tf.random_normal([5,5], stddev=0.1), name="x")
-        y = tf.Variable(tf.random_normal([1], stddev=0.1), name="y")
+        x = resource_variable_ops.ResourceVariable(
+          tf.random_normal([5,5], stddev=0.1), name="x")
+        y = resource_variable_ops.ResourceVariable(
+          tf.random_normal([1], stddev=0.1), name="y")
 
         sess.run(tf.global_variables_initializer())
 
@@ -26,12 +30,12 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
   def testInitializeSharedVariables(self):
     with tf.device("/device:XLA_IPU:0"):
       with tf.Session() as sess:
+        with tf.variable_scope("vs", use_resource=True):
+          x = tf.get_variable("x", shape=[], dtype=tf.float32,
+                              initializer=tf.constant_initializer(1))
 
-        x = tf.get_variable("x", shape=[], dtype=tf.float32,
-                            initializer=tf.constant_initializer(1))
-
-        y = tf.get_variable("y", shape=[], dtype=tf.float32,
-                             initializer=tf.constant_initializer(2))
+          y = tf.get_variable("y", shape=[], dtype=tf.float32,
+                               initializer=tf.constant_initializer(2))
 
         sess.run(tf.global_variables_initializer())
 
@@ -43,9 +47,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
   def testRead(self):
     with tf.device("/device:XLA_IPU:0"):
       with tf.Session() as sess:
-
-        z = tf.get_variable("z", shape=[], dtype=tf.float32,
-                            initializer=tf.constant_initializer(3))
+        with tf.variable_scope("vs", use_resource=True):
+          z = tf.get_variable("z", shape=[], dtype=tf.float32,
+                              initializer=tf.constant_initializer(3))
 
         sess.run(tf.global_variables_initializer())
 
