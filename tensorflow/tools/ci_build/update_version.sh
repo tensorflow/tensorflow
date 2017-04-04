@@ -97,8 +97,6 @@ sed -i -r -e "s/${OLD_MAJOR}\.${OLD_MINOR}\.([[:alnum:]]+)-/${MAJOR}.${MINOR}.${
 NEW_PIP_TAG=$MAJOR.$MINOR.$PIP_PATCH
 OLD_PIP_TAG=$OLD_MAJOR.$OLD_MINOR.$OLD_PIP_PATCH
 
-echo $NEW_PIP_TAG
-echo $OLD_PIP_TAG
 for file in ${TF_SRC_DIR}/docs_src/install/install_{linux,mac,windows,sources}.md
 do
   sed -i "s/tensorflow-${OLD_PIP_TAG}/tensorflow-${NEW_PIP_TAG}/g" $file
