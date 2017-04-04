@@ -880,7 +880,6 @@ filegroup(
             "**/*main.cc",
             "debug/**/*",
             "framework/op_gen_*",
-            "framework/reader_base.*",
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
@@ -930,6 +929,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":reader_base_proto_cc",
         ":protos_cc",
         "//third_party/eigen3",
     ],
