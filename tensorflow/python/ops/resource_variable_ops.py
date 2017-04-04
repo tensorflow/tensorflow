@@ -422,6 +422,8 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
   if dtype is not None and dtype != var.value().dtype:
     print("trying to switch the dtype to ", dtype, " from ", var.value().dtype)
     return NotImplemented
+  if as_ref:
+    return var.read_value().op.inputs[0]
   return var.value()
 # pylint: enable=unused-argument,protected-access
 
