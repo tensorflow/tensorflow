@@ -643,12 +643,6 @@ class Estimator(object):
 
     return eval_results
 
-  def _verify_default_metric_key(self, metric_key, eval_dict):
-    if metric_key in six.iterkeys(eval_dict):
-      raise ValueError(
-          'Metric with name `%s` is not allowed, because Estimator '
-          'already defines a default metric with the same name.' % metric_key)
-
 
 def _check_hooks_type(hooks):
   """Returns hooks if all are SessionRunHook, raises TypeError otherwise."""
