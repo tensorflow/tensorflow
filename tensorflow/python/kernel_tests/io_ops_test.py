@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import os
 import tempfile
-import zmq
 
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
@@ -120,27 +119,6 @@ class IoOpsTest(test.TestCase):
 
     for f in files:
       f.close()
-
-  def testPollZmq(self):
-    # Start a listener thread
-    def _listener():
-      context = zmq.Context()
-      socket = context.socket(zmq.REP)
-      socket.bind("tcp://*:5555")
-
-      message = socket.recv()
-      socket.send(b"World")
-      self.assertEqual(message, b"Hello")
-
-    thread = self.checkedThread(_listener)
-    thread.start()
-
-    with self.test_session() as sess:
-      response = io_ops.poll_zmq("Hello", "tcp://localhost:5555")
-      response_val = sess.run(response)
-      self.assertEqual(response_val, b"World")
-
-    thread.join()
 
 
 if __name__ == '__main__':

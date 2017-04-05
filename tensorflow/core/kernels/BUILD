@@ -1842,7 +1842,6 @@ cc_library(
         ":text_line_reader_op",
         ":tf_record_reader_op",
         ":whole_file_read_ops",
-        ":zmq_op",
     ],
 )
 
@@ -1926,12 +1925,6 @@ tf_kernel_library(
     name = "whole_file_read_ops",
     prefix = "whole_file_read_ops",
     deps = IO_DEPS,
-)
-
-tf_kernel_library(
-    name = "zmq_op",
-    prefix = "zmq_op",
-    deps = IO_DEPS + ["@libzmq//:libzmq"],
 )
 
 tf_cc_tests(

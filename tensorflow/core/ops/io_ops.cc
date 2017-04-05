@@ -828,15 +828,4 @@ pattern: Shell wildcard pattern(s). Scalar or vector of type string.
 filenames: A vector of matching filenames.
 )doc");
 
-REGISTER_OP("PollZmq")
-    .Input("request: string")
-    .Output("reply: string")
-    .Attr("address: string")
-    .Attr("timeout: int = -1")
-    .SetIsStateful()
-    .SetShapeFn(ScalarInputsAndOutputs)
-    .Doc(R"doc(
-Sends a message using ZeroMQ and returns the reply.
-)doc");
-
 }  // namespace tensorflow
