@@ -56,7 +56,7 @@ class PublicAPIVisitor(object):
 
       # Everything below here is legitimate.
       'app': ['flags'],  # It'll stay, but it's not officially part of the API.
-      'test': ['mock'],  # Imported for compatibility between py2/3.
+      'test': ['mock', 'TestCase'],  # Imported for compatibility between py2/3.
   }
 
   @property
