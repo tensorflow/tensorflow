@@ -1276,13 +1276,6 @@ class DnnSupport {
   virtual bool DoPoolForward(Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
-                             const DeviceMemory<double>& input_data,
-                             const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<double>* output_data) = 0;
-
-  virtual bool DoPoolForward(Stream* stream,
-                             const dnn::PoolingDescriptor& pooling_dimensions,
-                             const dnn::BatchDescriptor& input_dimensions,
                              const DeviceMemory<float>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemory<float>* output_data) = 0;
