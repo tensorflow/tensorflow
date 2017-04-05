@@ -27,6 +27,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -107,7 +108,7 @@ def _non_atrous_convolution(input, filter, padding, data_format=None,  # pylint:
         raise ValueError("data_format must be \"NWC\" or \"NCW\".")
       return conv1d(
           value=input,
-          filters=filter,
+          filter=filter,
           stride=strides[0],
           padding=padding,
           data_format=data_format_2d,
@@ -2015,10 +2016,14 @@ def top_k(input, k=1, sorted=True, name=None):
   """
   return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
 
-
-def conv1d(value, filters, stride, padding,
+@deprecated_args(
+  "next major release",
+  "filters will be deprecated use filter instead", 
+  ('filters', None)
+)
+def conv1d(value, filter, stride, padding,
            use_cudnn_on_gpu=None, data_format=None,
-           name=None):
+           name=None, filters=None):
   """Computes a 1-D convolution given 3-D input and filter tensors.
 
   Given an input tensor of shape
@@ -2045,7 +2050,7 @@ def conv1d(value, filters, stride, padding,
 
   Args:
     value: A 3D `Tensor`.  Must be of type `float32` or `float64`.
-    filters: A 3D `Tensor`.  Must have the same type as `input`.
+    filter: A 3D `Tensor`.  Must have the same type as `input`.
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.
     padding: 'SAME' or 'VALID'
@@ -2062,7 +2067,12 @@ def conv1d(value, filters, stride, padding,
   Raises:
     ValueError: if `data_format` is invalid.
   """
-  with ops.name_scope(name, "conv1d", [value, filters]) as name:
+
+  # Backwards compatability
+  if filters is not None:
+    filter = filters 
+
+  with ops.name_scope(name, "conv1d", [value, filter]) as name:
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
     if data_format is None or data_format == "NHWC":
       data_format = "NHWC"
@@ -2074,8 +2084,8 @@ def conv1d(value, filters, stride, padding,
     else:
       raise ValueError("data_format must be \"NHWC\" or \"NCHW\".")
     value = array_ops.expand_dims(value, spatial_start_dim)
-    filters = array_ops.expand_dims(filters, 0)
-    result = gen_nn_ops.conv2d(value, filters, strides, padding,
+    filter = array_ops.expand_dims(filter, 0)
+    result = gen_nn_ops.conv2d(value, filter, strides, padding,
                                use_cudnn_on_gpu=use_cudnn_on_gpu,
                                data_format=data_format)
     return array_ops.squeeze(result, [spatial_start_dim])
