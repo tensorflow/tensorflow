@@ -15,6 +15,7 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
+#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/graph/mkl_tfconversion_pass.h"
 
 #include <algorithm>
@@ -125,9 +126,11 @@ TEST_F(MklToTfConversionPass, Basic) {
 }
 
 // MklConv2D followed by Non-Mkl layer
-// C=MklConv2D(A,M,B,N); E=Sub(C,D)
+// C=MklConv2D(A,M,B,N); E=Sub(C,D) (for interleaved ordering)
+// C=MklConv2D(A,B,M,N); E=Sub(C,D) (for contiguous ordering)
 TEST_F(MklToTfConversionPass, Positive) {
-  InitGraph(
+  if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
+    InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'M' op: 'MklInput'}"
       "node { name: 'B' op: 'Input'}"
@@ -143,17 +146,42 @@ TEST_F(MklToTfConversionPass, Positive) {
       "node { name: 'E' op: 'Sub'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['C', 'D']}");
-  EXPECT_EQ(DoRunMklToTfConversionPass(),
+    EXPECT_EQ(DoRunMklToTfConversionPass(),
             "A(Input);B(Input);C(MklConv2D);D(Input);E(Sub);M(MklInput);"
             "Mkl2Tf/_0(MklToTf);N(MklInput)|A->C;B->C:2;C->Mkl2Tf/_0;"
             "C:1->Mkl2Tf/_0:1;D->E:1;M->C:1;Mkl2Tf/_0->E;N->C:3");
+  } else {
+    CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+    InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: 'MklInput'}"
+      "node { name: 'N' op: 'MklInput'}"
+      "node { name: 'C' op: 'MklConv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " input: ['A', 'B', 'M', 'N']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Sub'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['C', 'D']}");
+    EXPECT_EQ(DoRunMklToTfConversionPass(),
+            "A(Input);B(Input);C(MklConv2D);D(Input);E(Sub);M(MklInput);"
+            "Mkl2Tf/_0(MklToTf);N(MklInput)|A->C;B->C:1;C->Mkl2Tf/_0;"
+            "C:1->Mkl2Tf/_0:1;D->E:1;M->C:2;Mkl2Tf/_0->E;N->C:3");
+  }
 }
 
 // MklConv2D followed by MklToTf op followed by Non-Mkl layer.
-// C=MklConv2D(A,M,B,N); D=MklToTf(C:0, C:1) F=Sub(D,E)
+// C=MklConv2D(A,M,B,N); D=MklToTf(C:0, C:1) F=Sub(D,E) (for interleaved)
+// C=MklConv2D(A,B,M,N); D=MklToTf(C:0, C:1) F=Sub(D,E) (for contiguous)
 // MklToTf node should not be inserted again.
 TEST_F(MklToTfConversionPass, Negative_DoubleInsert) {
-  InitGraph(
+  if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
+    InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'M' op: 'MklInput'}"
       "node { name: 'B' op: 'Input'}"
@@ -173,10 +201,37 @@ TEST_F(MklToTfConversionPass, Negative_DoubleInsert) {
       "node { name: 'F' op: 'Sub'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['D', 'E']}");
-  EXPECT_EQ(DoRunMklToTfConversionPass(),
+    EXPECT_EQ(DoRunMklToTfConversionPass(),
             "A(Input);B(Input);C(MklConv2D);D(MklToTf);E(Input);"
             "F(Sub);M(MklInput);N(MklInput)|"
             "A->C;B->C:2;C->D;C:1->D:1;D->F;E->F:1;M->C:1;N->C:3");
+  } else {
+    CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+    InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: 'MklInput'}"
+      "node { name: 'N' op: 'MklInput'}"
+      "node { name: 'C' op: 'MklConv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " input: ['A', 'B', 'M', 'N']}"
+      "node { name: 'D' op: 'MklToTf'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " input: ['C:0', 'C:1']}"
+      "node { name: 'E' op: 'Input'}"
+      "node { name: 'F' op: 'Sub'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['D', 'E']}");
+    EXPECT_EQ(DoRunMklToTfConversionPass(),
+            "A(Input);B(Input);C(MklConv2D);D(MklToTf);E(Input);"
+            "F(Sub);M(MklInput);N(MklInput)|"
+            "A->C;B->C:1;C->D;C:1->D:1;D->F;E->F:1;M->C:2;N->C:3");
+  }
 }
 
 // C=Conv2D(A,B); E=BiasAdd(C,D); Z=Sub(E,Y);
@@ -203,7 +258,7 @@ TEST_F(MklToTfConversionPass, Negative_NoMklLayer) {
       " input: ['E', 'Y']}");
   EXPECT_EQ(DoRunMklToTfConversionPass(),
             "A(Input);B(Input);C(Conv2D);D(Input);E(BiasAdd);Y(Input);Z(Sub)|"
-            "A->C;B->C:1;C->E;D->E:1;E->Z;Y->Z:1");
+             "A->C;B->C:1;C->E;D->E:1;E->Z;Y->Z:1");
 }
 
 static void BM_RunMklToTfConversionPass(int iters, int op_nodes) {
