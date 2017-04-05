@@ -47,9 +47,6 @@ se::Platform::Id PoplarTransferManager::PlatformId() const {
 Status PoplarTransferManager::TransferLiteralFromDevice(
         se::StreamExecutor* executor, const se::DeviceMemoryBase& source,
         const Shape& device_shape, const Shape& literal_shape, Literal* literal) {
-  VLOG(1) << "transferring literal shape from device: "
-            << ShapeUtil::HumanString(literal_shape)
-            << "; device location: " << source.opaque();
   TF_RET_CHECK(ShapeUtil::Compatible(device_shape, literal_shape));
 
   // Tuples are a special case and contain one or more shapes inside of them to
@@ -124,9 +121,6 @@ Status PoplarTransferManager::TransferLiteralToDevice(
         se::StreamExecutor* executor, const Literal& literal,
         se::DeviceMemoryBase* destination) {
   const Shape& shape = literal.shape();
-  VLOG(1) << "transferring literal shape to device: "
-          << ShapeUtil::HumanString(shape)
-          << "; device location: " << destination->opaque();
 
   if (ShapeUtil::IsTuple(literal.shape())) {
     std::vector<void*> tuple_elements_on_device;
