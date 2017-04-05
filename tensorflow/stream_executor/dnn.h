@@ -1283,11 +1283,36 @@ class DnnSupport {
   virtual bool DoPoolForward(Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
+                             const DeviceMemory<double>& input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemory<double>* output_data) {
+    LOG(FATAL) << "DoPoolForward not implemented for double.";
+    return false;
+  }
+
+  virtual bool DoPoolForward(Stream* stream,
+                             const dnn::PoolingDescriptor& pooling_dimensions,
+                             const dnn::BatchDescriptor& input_dimensions,
                              const DeviceMemory<Eigen::half>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<Eigen::half>* output_data) = 0;
+                             DeviceMemory<Eigen::half>* output_data) {
+    LOG(FATAL) << "DoPoolForward not implemented for float16.";
+    return false;
+  }
 
   // Performs differentiation of the pooling operation.
+  virtual bool DoPoolBackward(Stream* stream,
+                              const dnn::PoolingDescriptor& pooling_dimensions,
+                              const dnn::BatchDescriptor& input_dimensions,
+                              const DeviceMemory<double>& input_data,
+                              const dnn::BatchDescriptor& output_dimensions,
+                              const DeviceMemory<double>& output_data,
+                              const DeviceMemory<double>& input_diff_data,
+                              DeviceMemory<double>* output_diff_data) {
+    LOG(FATAL) << "DoPoolBackward not implemented.";
+    return false;
+  }
+
   virtual bool DoPoolBackward(Stream* stream,
                               const dnn::PoolingDescriptor& pooling_dimensions,
                               const dnn::BatchDescriptor& input_dimensions,
@@ -1295,7 +1320,10 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<float>& output_data,
                               const DeviceMemory<float>& input_diff_data,
-                              DeviceMemory<float>* output_diff_data) = 0;
+                              DeviceMemory<float>* output_diff_data) {
+    LOG(FATAL) << "DoPoolBackward not implemented.";
+    return false;
+  }
 
   virtual bool DoPoolBackward(Stream* stream,
                               const dnn::PoolingDescriptor& pooling_dimensions,
@@ -1304,7 +1332,10 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<Eigen::half>& output_data,
                               const DeviceMemory<Eigen::half>& input_diff_data,
-                              DeviceMemory<Eigen::half>* output_diff_data) = 0;
+                              DeviceMemory<Eigen::half>* output_diff_data) {
+    LOG(FATAL) << "DoPoolBackward not implemented.";
+    return false;
+  }
 
   // Applies local response normalization to the values from
   // input_data and writes the result to output_data. See comments on
@@ -1884,4 +1915,3 @@ class DnnSupport {
 }  // namespace perftools
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DNN_H_
-

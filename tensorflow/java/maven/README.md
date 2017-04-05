@@ -68,28 +68,28 @@ conducted in a [Docker](https://www.docker.com) container.
     SONATYPE_PASSWORD="your_sonatype.org_password_here"
     GPG_PASSPHRASE="your_gpg_passphrase_here"
     cat >/tmp/settings.xml <<EOF
-<settings>
-  <servers>
-    <server>
-      <id>ossrh</id>
-      <username>${SONATYPE_USERNAME}</username>
-      <password>${SONATYPE_PASSWORD}</password>
-    </server>
-  </servers>
-  <profiles>
-    <profile>
-      <id>ossrh</id>
-      <activation>
-        <activeByDefault>true</activeByDefault>
-      </activation>
-      <properties>
-        <gpg.executable>gpg2</gpg.executable>
-        <gpg.passphrase>${GPG_PASSPHRASE}</gpg.passphrase>
-      </properties>
-    </profile>
-  </profiles>
-</settings>
-EOF
+    <settings>
+      <servers>
+        <server>
+          <id>ossrh</id>
+          <username>${SONATYPE_USERNAME}</username>
+          <password>${SONATYPE_PASSWORD}</password>
+        </server>
+      </servers>
+      <profiles>
+        <profile>
+          <id>ossrh</id>
+          <activation>
+            <activeByDefault>true</activeByDefault>
+          </activation>
+          <properties>
+            <gpg.executable>gpg2</gpg.executable>
+            <gpg.passphrase>${GPG_PASSPHRASE}</gpg.passphrase>
+          </properties>
+        </profile>
+      </profiles>
+    </settings>
+    EOF
     ```
 
 2.  Run the `release.sh` script.

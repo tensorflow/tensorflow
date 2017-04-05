@@ -39,6 +39,11 @@ _DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
 # BEGIN cc_configure common functions.
 def find_cc(repository_ctx):
   """Find the C++ compiler."""
+  # On Windows, we use Bazel's MSVC CROSSTOOL for GPU build
+  # Return a dummy value for GCC detection here to avoid error
+  if _cpu_value(repository_ctx) == "Windows":
+    return "/use/--config x64_windows_msvc/instead"
+
   if _use_cuda_clang(repository_ctx):
     target_cc_name = "clang"
     cc_path_envvar = _CLANG_CUDA_COMPILER_PATH
@@ -297,7 +302,7 @@ def _find_cuda_define(repository_ctx, cudnn_header_dir, define):
   cudnn_h_path = repository_ctx.path("%s/cudnn.h" % cudnn_header_dir)
   if not cudnn_h_path.exists:
     auto_configure_fail("Cannot find cudnn.h at %s" % str(cudnn_h_path))
-  result = repository_ctx.execute(["grep", "-E", define, str(cudnn_h_path)])
+  result = repository_ctx.execute(["grep", "--color=never", "-E", define, str(cudnn_h_path)])
   if result.stderr:
     auto_configure_fail("Error reading %s: %s" %
                         (result.stderr, str(cudnn_h_path)))
@@ -872,6 +877,7 @@ def _cuda_autoconf_impl(repository_ctx):
     _create_dummy_repository(repository_ctx)
   else:
     _create_cuda_repository(repository_ctx)
+
 
 
 cuda_configure = repository_rule(

@@ -355,6 +355,10 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
+  elif callable(getattr(values, "__array__", None)):
+    # If a class has the __array__ method, then it is possible to convert
+    # to numpy array.
+    nparray = np.asarray(values, dtype=dtype)
   else:
     if values is None:
       raise ValueError("None values not supported.")

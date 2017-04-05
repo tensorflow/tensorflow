@@ -39,6 +39,8 @@ from tensorflow.python.ops.gen_nn_ops import *
 # Aliases for some automatically-generated names.
 local_response_normalization = gen_nn_ops.lrn
 
+# pylint: disable=protected-access
+
 
 def _non_atrous_convolution(input, filter, padding, data_format=None,  # pylint: disable=redefined-builtin
                             strides=None, name=None):
@@ -1698,7 +1700,7 @@ def sparse_softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=
   a probability distribution for each entry, see
   `softmax_cross_entropy_with_logits`.
 
-  **WARNING:** This op expects unscaled logits, since it performs a softmax
+  **WARNING:** This op expects unscaled logits, since it performs a `softmax`
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 

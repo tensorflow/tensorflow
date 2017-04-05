@@ -1323,6 +1323,11 @@ Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 If `indices` is a permutation and `len(indices) == params.shape[0]` then
 this operation will permute `params` accordingly.
 
+`validate_indices`: DEPRECATED. If this operation is assigned to CPU, values in
+`indices` are always validated to be within range. If assigned to GPU,
+out-of-bound indices result in unspecified behavior (currently the result is
+`0`, but this may become an error in the future).
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/Gather.png" alt>
 </div>

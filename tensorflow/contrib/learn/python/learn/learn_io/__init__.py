@@ -35,3 +35,4 @@ from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pan
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import extract_pandas_matrix
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import HAS_PANDAS
 from tensorflow.contrib.learn.python.learn.learn_io.pandas_io import pandas_input_fn
+from tensorflow.contrib.learn.python.learn.learn_io.generator_io import generator_input_fn
