@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -604,6 +605,10 @@ void GraphConstructor::AddPrefixToNodeDef(
 }
 
 Status GraphConstructor::Convert() {
+  // Import functions before adding nodes, since imported nodes may refer to
+  // functions
+  TF_RETURN_IF_ERROR(g_->AddFunctionLibrary(gdef_->library()));
+
   std::vector<InputInfo> inputs;
   int processed = 0;
   // Process the NodeDefs in topological order.
@@ -705,7 +710,12 @@ Status GraphConstructor::Convert() {
         TF_RETURN_IF_ERROR(MakeEdge(inputs[i].node, inputs[i].index, node, i));
       }
     }
-    TF_RETURN_IF_ERROR(ValidateShape(node));
+
+    // TODO(skyewm): remove conditional when b/35715995 ("Functions lack shape
+    // inference") is resolved.
+    if (g_->flib_def().Find(node_def->name()) == nullptr) {
+      TF_RETURN_IF_ERROR(ValidateShape(node));
+    }
 
     // Update pending_count_ for outputs.
     for (size_t i = 0; i < outputs_[o].size(); ++i) {
@@ -846,10 +856,6 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
           "size ",
           return_tensors->size(), ")");
     }
-  }
-  if (gdef.library().function_size() != 0) {
-    return errors::Unimplemented(
-        "Importing GraphDefs containing functions not yet implemented");
   }
   return GraphConstructor::Construct(opts, &gdef, g, refiner, return_tensors);
 }

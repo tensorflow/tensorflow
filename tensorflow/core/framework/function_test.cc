@@ -1107,4 +1107,36 @@ TEST(FunctionLibraryDefinitionTest, GetAttr_Gradient) {
   EXPECT_EQ(annotation, false);  // WXPlusB has no custom gradient.
 }
 
+// TODO(skyewm): this could be more thorough
+TEST(FunctionDefsEqualTest, TestFunctionDefsEqual) {
+  // Equal functions
+  FunctionDef fdef1 = test::function::XTimesTwo();
+  FunctionDef fdef2 = test::function::XTimesTwo();
+  EXPECT_TRUE(FunctionDefsEqual(fdef1, fdef2));
+
+  // Different functions
+  fdef2 = test::function::XTimesFour();
+  EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+
+  // Different signatures
+  fdef2 = test::function::XTimesTwo();
+  fdef2.mutable_signature()->mutable_input_arg(0)->set_name("foo");
+  EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+
+  // Descriptions must be equal
+  fdef2 = test::function::XTimesTwo();
+  fdef2.mutable_signature()->mutable_input_arg(0)->set_description("foo");
+  EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+
+  // Different NodeDefs
+  fdef2 = test::function::XTimesTwo();
+  *fdef2.add_node_def() = fdef2.node_def(0);
+  EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+
+  // Different return values
+  fdef2 = test::function::XTimesTwo();
+  (*fdef2.mutable_ret())["y"] = "y:z:1";  // originally is "y:z:0"
+  EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+}
+
 }  // end namespace tensorflow
