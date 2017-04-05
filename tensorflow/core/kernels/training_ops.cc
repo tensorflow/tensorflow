@@ -243,12 +243,16 @@ struct ApplyAdamNonCuda {
                   typename TTypes<T>::ConstScalar beta1,
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
-                  typename TTypes<T>::ConstFlat grad) {
+                  typename TTypes<T>::ConstFlat grad, bool use_nesterov) {
     const T alpha = lr() * Eigen::numext::sqrt(T(1) - beta2_power()) /
                     (T(1) - beta1_power());
     m.device(d) += (grad - m) * (T(1) - beta1());
     v.device(d) += (grad.square() - v) * (T(1) - beta2());
-    var.device(d) -= (m * alpha) / (v.sqrt() + epsilon());
+    if (use_nesterov) {
+      var.device(d) -= (((T(1) - beta1()) * grad + beta1() * m) * alpha) / (v.sqrt() + epsilon());
+    } else {
+      var.device(d) -= (m * alpha) / (v.sqrt() + epsilon());
+    }
   }
 };
 
@@ -2252,6 +2256,7 @@ class ApplyAdamOp : public OpKernel {
  public:
   explicit ApplyAdamOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -2322,7 +2327,8 @@ class ApplyAdamOp : public OpKernel {
                                     v.flat<T>(), beta1_power.scalar<T>(),
                                     beta2_power.scalar<T>(), lr.scalar<T>(),
                                     beta1.scalar<T>(), beta2.scalar<T>(),
-                                    epsilon.scalar<T>(), grad.flat<T>());
+                                    epsilon.scalar<T>(), grad.flat<T>(),
+                                    use_nesterov_);
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -2367,7 +2373,7 @@ namespace functor {
       typename TTypes<T>::ConstScalar beta1,                  \
       typename TTypes<T>::ConstScalar beta2,                  \
       typename TTypes<T>::ConstScalar epsilon,                \
-      typename TTypes<T>::ConstFlat grad);                    \
+      typename TTypes<T>::ConstFlat grad, bool use_nesterov); \
   extern template struct ApplyAdam<GPUDevice, T>;
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);

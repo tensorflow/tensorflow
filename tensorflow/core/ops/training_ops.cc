@@ -1150,11 +1150,13 @@ REGISTER_OP("ApplyAdam")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdamShapeFn(c, false /* sparse */);
     })
     .Doc(R"doc(
 Update '*var' according to the Adam algorithm.
+Set use_nesterov = True if you want to use Nesterov momentum.
 
 lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
 m_t <- beta1 * m_{t-1} + (1 - beta1) * g_t
@@ -1175,6 +1177,9 @@ out: Same as "var".
 use_locking: If `True`, updating of the var, m, and v tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
+use_nesterov: If `True`, the m used to compute grad will be
+  (1 - beta1) * grad + beta1 * m_t, so in the end, the variable you get is actually
+  variable <- variable - lr_t * ((1 - beta1) * grad + beta1 * m_t) / (sqrt(v_t) + epsilon)
 )doc");
 
 REGISTER_OP("ResourceApplyAdam")
@@ -1190,11 +1195,13 @@ REGISTER_OP("ResourceApplyAdam")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdamShapeFn(c, false /* sparse */);
     })
     .Doc(R"doc(
 Update '*var' according to the Adam algorithm.
+Set use_nesterov = True if you want to use Nesterov momentum.
 
 lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
 m_t <- beta1 * m_{t-1} + (1 - beta1) * g_t
@@ -1214,6 +1221,9 @@ grad: The gradient.
 use_locking: If `True`, updating of the var, m, and v tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
+use_nesterov: If `True`, the m used to compute grad will be
+  (1 - beta1) * grad + beta1 * m_t, so in the end, the variable you get is actually
+  variable <- variable - lr_t * ((1 - beta1) * grad + beta1 * m_t) / (sqrt(v_t) + epsilon)
 )doc");
 
 static Status ApplyRMSPropShapeFn(InferenceContext* c, bool sparse) {

@@ -136,7 +136,8 @@ class AdamOptimizer(optimizer.Optimizer):
         math_ops.cast(self._beta1_t, var.dtype.base_dtype),
         math_ops.cast(self._beta2_t, var.dtype.base_dtype),
         math_ops.cast(self._epsilon_t, var.dtype.base_dtype),
-        grad, use_locking=self._use_locking).op
+        grad, use_locking=self._use_locking,
+        use_nesterov=self._use_nesterov).op
 
   def _apply_sparse(self, grad, var):
     beta1_power = math_ops.cast(self._beta1_power, var.dtype.base_dtype)
