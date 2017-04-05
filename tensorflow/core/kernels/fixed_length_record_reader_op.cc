@@ -115,7 +115,7 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("header_bytes", &header_bytes));
     OP_REQUIRES_OK(context, context->GetAttr("record_bytes", &record_bytes));
     OP_REQUIRES_OK(context, context->GetAttr("footer_bytes", &footer_bytes));
-    OP_REQUIRES_OK(context, context->GetAttr("hop_bytes", &footer_bytes));
+    OP_REQUIRES_OK(context, context->GetAttr("hop_bytes", &hop_bytes));
     OP_REQUIRES(context, header_bytes >= 0,
                 errors::InvalidArgument("header_bytes must be >= 0 not ",
                                         header_bytes));
