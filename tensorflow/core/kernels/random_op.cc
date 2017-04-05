@@ -680,7 +680,7 @@ void FillPhiloxRandom<SYCLDevice, Distribution>::operator()(
   const size_t group_size = device.maxSyclThreadsPerBlock();
   const size_t group_count = (size + group_size - 1) / group_size;
 
-  sycl::buffer<uint8_t, 1> buffer = device.get_sycl_buffer(data);
+  auto buffer = device.get_sycl_buffer(data);
 
   device.sycl_queue().submit([&](sycl::handler& cgh) {
     auto access = buffer.template get_access<sycl::access::mode::write>(cgh);
