@@ -86,6 +86,9 @@ BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}/tensorflow/contrib/... \
   //${PIP_TEST_PREFIX}/tensorflow/python/... \
   //${PIP_TEST_PREFIX}/tensorflow/tensorboard/..."
 
+# Clean the bazel cache
+bazel clean
+
 # Run configure again, we might be using a different python path, due to
 # virtualenv.
 export TF_NEED_GCP=0

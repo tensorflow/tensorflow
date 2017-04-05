@@ -1,0 +1,16 @@
+# Text form of tensorflow.tfcompile.Config proto.
+feed {
+  id { node_name: "x_const" }
+  shape {
+    dim { size: 1 }
+  }
+}
+feed {
+  id { node_name: "y_const" }
+  shape {
+    dim { size: 1 }
+  }
+}
+fetch {
+  id { node_name: "func_call" }
+}

@@ -369,7 +369,26 @@ class AttentionWrapperState(
     - `attention_history`: (if enabled) a `TensorArray` containing attention
        matrices from all time steps.  Call `stack()` to convert to a `Tensor`.
   """
-  pass
+
+  def clone(self, **kwargs):
+    """Clone this object, overriding components provided by kwargs.
+
+    Example:
+
+    ```python
+    initial_state = attention_wrapper.zero_state(dtype=..., batch_size=...)
+    initial_state = initial_state.clone(cell_state=encoder_state)
+    ```
+
+    Args:
+      **kwargs: Any properties of the state object to replace in the returned
+        `AttentionWrapperState`.
+
+    Returns:
+      A new `AttentionWrapperState` whose properties are the same as
+      this one, except any overriden properties as provided in `kwargs`.
+    """
+    return super(AttentionWrapperState, self)._replace(**kwargs)
 
 
 def hardmax(logits, name=None):

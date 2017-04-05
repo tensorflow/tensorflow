@@ -418,8 +418,9 @@ that the graph contains, this kind of disk space issue can happen.
 There are three possible workarounds or solutions:
 
 1. The constructors of `LocalCLIDebugWrapperSession` and `LocalCLIDebugHook`
-   provide a keyword argument, `dump_root`, with which you can specify the path 
+   provide a keyword argument, `dump_root`, with which you can specify the path
    to which **tfdbg** dumps the debug data. For example:
+
    ``` python
    # For LocalCLIDebugWrapperSession
    sess = tf_debug.LocalCLIDebugWrapperSession(dump_root="/with/lots/of/space")
@@ -432,6 +433,7 @@ There are three possible workarounds or solutions:
 2. Reduce the batch size used during the runs.
 3. Use the filtering options of **tfdbg**'s `run` command to watch only specific
    nodes in the graph. For example:
+
    ```
    tfdbg> run --node_name_filter .*hidden.*
    tfdbg> run --op_type_filter Variable.*

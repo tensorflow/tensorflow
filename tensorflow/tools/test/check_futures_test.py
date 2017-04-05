@@ -40,7 +40,6 @@ FUTURES_PATTERN_2 = re.compile(
 REQUIRED_FUTURES = frozenset(['absolute_import', 'division', 'print_function'])
 
 WHITELIST = [
-    'python/platform/control_imports.py',
     'tools/docker/jupyter_notebook_config.py',
 ]
 

@@ -28,7 +28,6 @@ import numpy as np
 from werkzeug import test as werkzeug_test
 from werkzeug import wrappers
 from google.protobuf import text_format
-from tensorflow.contrib.tensorboard.plugins.projector import projector_config_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
@@ -43,6 +42,7 @@ from tensorflow.python.summary.writer import writer
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins.projector import projector_config_pb2
 from tensorflow.tensorboard.plugins.projector import projector_plugin
 
 

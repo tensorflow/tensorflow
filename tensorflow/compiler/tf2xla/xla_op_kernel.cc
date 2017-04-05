@@ -354,6 +354,10 @@ void XlaOpKernelContext::SetOpHasSideEffects() {
   XlaContext::Get(context_).AddSideEffects();
 }
 
+const XlaCompiler::Options& XlaOpKernelContext::GetCompilerOptions() const {
+  return XlaContext::Get(context_).compiler()->options();
+}
+
 void XlaOpKernelContext::CtxFailure(Status s) { context_->CtxFailure(s); }
 void XlaOpKernelContext::CtxFailureWithWarning(Status s) {
   context_->CtxFailureWithWarning(s);

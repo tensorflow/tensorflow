@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/graph_runner.h"
 
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
@@ -95,21 +94,23 @@ class SimpleRendezvous : public Rendezvous {
 
 }  // namespace
 
-// static
+GraphRunner::GraphRunner(Env* env) : cpu_device_(GetCPUDevice(env)) {}
+
+GraphRunner::~GraphRunner() {}
+
 Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
-                        Env* env, const NamedTensorList& inputs,
+                        const NamedTensorList& inputs,
                         const std::vector<string>& output_names,
                         std::vector<Tensor>* outputs) {
+  if (cpu_device_ == nullptr) {
+    return errors::NotFound("Cannot find a device for GraphRunner.");
+  }
+
   // TODO(vrv): Instead of copying the entire graph, consider modifying
   // the existing graph, and then removing those removed edges.
   // prior to returning.
   std::unique_ptr<Graph> graph_to_run(new Graph(graph->op_registry()));
   CopyGraph(*graph, graph_to_run.get());
-
-  std::unique_ptr<Device> device = GetCPUDevice(env);
-  if (!device) {
-    return errors::NotFound("Cannot find a device for GraphRunner.");
-  }
 
   SimpleRendezvous* rendez = new SimpleRendezvous;
   core::ScopedUnref rendez_unref(rendez);
@@ -130,7 +131,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   // Call RewriteGraphForExecution
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       graph_to_run.get(), input_names, output_names, {} /* target nodes */,
-      device->attributes()));
+      cpu_device_->attributes()));
 
   // Create the local executor and the Rendezvous for fetching back the
   // constants.
@@ -143,10 +144,11 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   Graph* g = graph_to_run.release();
 
   LocalExecutorParams params;
-  params.device = device.get();
+  // The ownership of the output tensors are bound to this device's lifetime.
+  params.device = cpu_device_.get();
   params.function_library = function_library;
-  params.create_kernel = [&device, g](const NodeDef& ndef, OpKernel** kernel) {
-    return CreateNonCachedKernel(device.get(), nullptr, ndef,
+  params.create_kernel = [this, g](const NodeDef& ndef, OpKernel** kernel) {
+    return CreateNonCachedKernel(cpu_device_.get(), nullptr, ndef,
                                  g->versions().producer(), kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };

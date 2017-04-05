@@ -288,8 +288,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     // may no longer be resized by new Writes.
     tensor_array->DisableDynamicSize();
 
-    int32 array_size;
-    int32 marked_size;
+    int32 array_size = 0;
+    int32 marked_size = 0;
     TF_RETURN_IF_ERROR(tensor_array->Size(&array_size));
     TF_RETURN_IF_ERROR(tensor_array->MarkedSize(&marked_size));
 
@@ -615,6 +615,12 @@ class TensorArrayPackOrGatherOp : public OpKernel {
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_tensor));
+
+    // If output_tensor is empty, there is nothing to concatenate so return it.
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
+
     ConstMatrixVector input_tensors_flat;
     input_tensors_flat.reserve(num_indices);
     auto output_flat =

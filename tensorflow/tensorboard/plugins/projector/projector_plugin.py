@@ -27,7 +27,6 @@ from six import BytesIO
 from werkzeug import wrappers
 from google.protobuf import json_format
 from google.protobuf import text_format
-from tensorflow.contrib.tensorboard.plugins.projector import projector_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -40,6 +39,7 @@ from tensorflow.python.training.saver import checkpoint_exists
 from tensorflow.python.training.saver import latest_checkpoint
 from tensorflow.tensorboard.backend.http_util import Respond
 from tensorflow.tensorboard.plugins.base_plugin import TBPlugin
+from tensorflow.tensorboard.plugins.projector import projector_config_pb2
 
 # The prefix of routes provided by this plugin.
 PLUGIN_PREFIX_ROUTE = 'projector'

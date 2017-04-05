@@ -239,25 +239,25 @@ class EstimatorTrainTest(test.TestCase):
   def test_steps0_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
-    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps > 0'):
       est.train(dummy_input_fn, steps=0)
 
   def test_steps_negative_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
-    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps > 0'):
       est.train(dummy_input_fn, steps=-1)
 
   def test_max_steps0_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
-    with self.assertRaisesRegexp(ValueError, 'Must specify max_steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify max_steps > 0'):
       est.train(dummy_input_fn, max_steps=0)
 
   def test_max_steps_negative_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
-    with self.assertRaisesRegexp(ValueError, 'Must specify max_steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify max_steps > 0'):
       est.train(dummy_input_fn, max_steps=-1)
 
   def test_scaffold_is_used(self):
@@ -475,14 +475,14 @@ class EstimatorEvaluateTest(test.TestCase):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
     est.train(dummy_input_fn, steps=5)
-    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps > 0'):
       est.evaluate(dummy_input_fn, steps=0)
 
   def test_steps_negative_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
     est.train(dummy_input_fn, steps=5)
-    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps > 0'):
       est.evaluate(dummy_input_fn, steps=-1)
 
   def test_global_step_metric_raises_error(self):

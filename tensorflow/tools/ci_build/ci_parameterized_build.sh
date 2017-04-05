@@ -429,7 +429,8 @@ if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
   :
 elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" || \
         ${TF_BUILD_PYTHON_VERSION} == "python3.4" || \
-        ${TF_BUILD_PYTHON_VERSION} == "python3.5" ]]; then
+        ${TF_BUILD_PYTHON_VERSION} == "python3.5" || \
+        ${TF_BUILD_PYTHON_VERSION} == "python3.6" ]]; then
   # Supply proper environment variable to select Python 3
   if [[ "${DO_DOCKER}" == "1" ]]; then
     EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=${TF_BUILD_PYTHON_VERSION}"

@@ -97,7 +97,8 @@ class Experiment(object):
         finite number of batches (generally, 1 epoch over the evaluation data).
       eval_metrics: `dict` of string, metric function. If `None`, default set
         is used. This should be `None` if the `estimator` is
-        ${tf.estimator.Estimator}.
+        ${tf.estimator.Estimator}. If metrics are provided they will be
+        *appended* to the default set.
       train_steps: Perform this many steps of training. `None`, the default,
         means train forever.
       eval_steps: `evaluate` runs until input is exhausted (or another exception

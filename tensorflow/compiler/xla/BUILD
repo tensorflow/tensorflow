@@ -6,6 +6,7 @@ package_group(
     name = "friends",
     packages = [
         "//tensorflow/compiler/...",
+        "//tensorflow/contrib/xla_tf_graph/...",
     ],
 )
 

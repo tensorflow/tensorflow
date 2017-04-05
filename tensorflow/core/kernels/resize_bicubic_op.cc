@@ -235,9 +235,9 @@ inline void interpolate_with_caching(
       const T* y_ptr_3 = input_b_ptr + y_wai.index_3 * in_row_width;
       if (num_channels == 3) {
         // Manually unroll case of 3 channels.
-        float cached_value_0[4];
-        float cached_value_1[4];
-        float cached_value_2[4];
+        float cached_value_0[4] = {0};
+        float cached_value_1[4] = {0};
+        float cached_value_2[4] = {0};
         for (int64 x = 0; x < resizer_state.out_width; ++x) {
           const WeightsAndIndices& x_wai = x_wais[x];
           // Shift values in cached_value_* to fill first 'advance' values.
@@ -316,7 +316,7 @@ inline void interpolate_with_caching(
         }
       } else {
         for (int64 c = 0; c < num_channels; ++c) {
-          float cached_value[4];
+          float cached_value[4] = {0};
           for (int64 x = 0; x < resizer_state.out_width; ++x) {
             const WeightsAndIndices& x_wai = x_wais[x];
             // Shift values in cached_value to fill first 'advance' values.
