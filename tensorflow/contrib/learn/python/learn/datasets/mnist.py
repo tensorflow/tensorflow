@@ -28,7 +28,7 @@ from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python.framework import dtypes
 
 SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
-
+BACKUP_URL = 'https://web.archive.org/web/20160828233817/http://yann.lecun.com/exdb/mnist/'
 
 def _read32(bytestream):
   dt = numpy.dtype(numpy.uint32).newbyteorder('>')
@@ -223,23 +223,25 @@ def read_data_sets(train_dir,
   TEST_IMAGES = 't10k-images-idx3-ubyte.gz'
   TEST_LABELS = 't10k-labels-idx1-ubyte.gz'
 
-  local_file = base.maybe_download(TRAIN_IMAGES, train_dir,
-                                   SOURCE_URL + TRAIN_IMAGES)
+  def download_local_file(fname):
+    try:
+      return base.maybe_download(fname, train_dir, SOURCE_URL + fname)
+    except:
+      return base.maybe_download(fname, train_dir, BACKUP_URL + fname)
+
+  local_file = download_local_file(TRAIN_IMAGES)
   with open(local_file, 'rb') as f:
     train_images = extract_images(f)
 
-  local_file = base.maybe_download(TRAIN_LABELS, train_dir,
-                                   SOURCE_URL + TRAIN_LABELS)
+  local_file = download_local_file(TRAIN_LABELS)
   with open(local_file, 'rb') as f:
     train_labels = extract_labels(f, one_hot=one_hot)
 
-  local_file = base.maybe_download(TEST_IMAGES, train_dir,
-                                   SOURCE_URL + TEST_IMAGES)
+  local_file = download_local_file(TEST_IMAGES)
   with open(local_file, 'rb') as f:
     test_images = extract_images(f)
 
-  local_file = base.maybe_download(TEST_LABELS, train_dir,
-                                   SOURCE_URL + TEST_LABELS)
+  local_file = download_local_file(TEST_LABELS)
   with open(local_file, 'rb') as f:
     test_labels = extract_labels(f, one_hot=one_hot)
 
