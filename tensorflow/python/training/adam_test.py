@@ -26,7 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import adam
+import adam
 
 
 def adam_update_numpy(param,
@@ -37,13 +37,17 @@ def adam_update_numpy(param,
                       alpha=0.001,
                       beta1=0.9,
                       beta2=0.999,
-                      epsilon=1e-8):
+                      epsilon=1e-8,
+                      use_nesterov = False):
   alpha_t = alpha * np.sqrt(1 - beta2**t) / (1 - beta1**t)
 
   m_t = beta1 * m + (1 - beta1) * g_t
   v_t = beta2 * v + (1 - beta2) * g_t * g_t
-
-  param_t = param - alpha_t * m_t / (np.sqrt(v_t) + epsilon)
+  if use_nesterov:
+    m_bar = beta1 * m_t + (1 - beta1) * g_t
+  else:
+    m_bar = m_t
+  param_t = param - alpha_t * m_bar / (np.sqrt(v_t) + epsilon)
   return param_t, m_t, v_t
 
 
@@ -69,7 +73,7 @@ class AdamOptimizerTest(test.TestCase):
         grads1 = ops.IndexedSlices(
             constant_op.constant(grads1_np),
             constant_op.constant(grads1_np_indices), constant_op.constant([2]))
-        opt = adam.AdamOptimizer()
+        opt = adam.AdamOptimizer(use_nesterov = True)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
@@ -85,8 +89,8 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
           update.run()
 
-          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
-          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
+          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0, use_nesterov = True)
+          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1, use_nesterov = True)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
@@ -106,7 +110,7 @@ class AdamOptimizerTest(test.TestCase):
         var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
-        opt = adam.AdamOptimizer()
+        opt = adam.AdamOptimizer(use_nesterov = True)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
@@ -122,8 +126,8 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
           update.run()
 
-          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
-          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
+          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0, use_nesterov = True)
+          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1, use_nesterov = True)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
@@ -143,7 +147,7 @@ class AdamOptimizerTest(test.TestCase):
         var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
-        opt = adam.AdamOptimizer(constant_op.constant(0.001))
+        opt = adam.AdamOptimizer(constant_op.constant(0.001), use_nesterov = True)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
@@ -159,8 +163,8 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(0.999**t, beta2_power.eval())
           update.run()
 
-          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
-          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
+          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0, use_nesterov = True)
+          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1, use_nesterov = True)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
@@ -180,7 +184,7 @@ class AdamOptimizerTest(test.TestCase):
         var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
-        opt = adam.AdamOptimizer()
+        opt = adam.AdamOptimizer(use_nesterov = True)
         update1 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
@@ -200,15 +204,15 @@ class AdamOptimizerTest(test.TestCase):
           else:
             update2.run()
 
-          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0)
-          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1)
+          var0_np, m0, v0 = adam_update_numpy(var0_np, grads0_np, t, m0, v0, use_nesterov = True)
+          var1_np, m1, v1 = adam_update_numpy(var1_np, grads1_np, t, m1, v1, use_nesterov = True)
 
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testTwoSessions(self):
-    optimizer = adam.AdamOptimizer()
+    optimizer = adam.AdamOptimizer(use_nesterov = True)
     g = ops.Graph()
     with g.as_default():
       with session.Session():
