@@ -64,7 +64,7 @@ class AssignAddVariableOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationDataHandle handle;
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &handle));
-    handle = ctx->builder()->Add(handle, ctx->Input(1));
+    handle = ctx->builder()->AssignAdd(handle, ctx->Input(1));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
   }
 };
@@ -78,7 +78,7 @@ class AssignSubVariableOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationDataHandle handle;
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &handle));
-    handle = ctx->builder()->Sub(handle, ctx->Input(1));
+    handle = ctx->builder()->AssignSub(handle, ctx->Input(1));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
   }
 };

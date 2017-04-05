@@ -201,6 +201,10 @@ message OpMetadata {
   // e.g. it could be be the file and line of user code that generated the op.
   string source_file = 3;
   int32 source_line = 4;
+
+  // Indicates that an operation is assigning to a variable, for instance the
+  // add operation in an AssignAdd Op
+  bool hint_assignment = 6;
 }
 
 // Profile data from the execution of a computation.

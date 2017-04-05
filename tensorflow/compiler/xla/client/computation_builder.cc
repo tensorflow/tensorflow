@@ -555,42 +555,42 @@ ComputationDataHandle ComputationBuilder::GetTupleElement(
 ComputationDataHandle ComputationBuilder::Eq(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_EQ, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_EQ, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Ne(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_NE, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_NE, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Ge(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_GE, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_GE, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Gt(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_GT, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_GT, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Le(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_LE, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_LE, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Lt(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_LT, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_LT, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Dot(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
-  return BinaryOp(BINOP_DOT, lhs, rhs, /*broadcast_dimensions=*/{});
+  return BinaryOp(BINOP_DOT, lhs, rhs, /*broadcast_dimensions=*/{}, false);
 }
 
 ComputationDataHandle ComputationBuilder::Conv(
@@ -880,55 +880,70 @@ ComputationDataHandle ComputationBuilder::CustomCall(
 ComputationDataHandle ComputationBuilder::Add(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_ADD, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_ADD, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Sub(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_SUB, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_SUB, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Mul(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_MUL, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_MUL, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Div(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_DIV, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_DIV, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Rem(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_REM, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_REM, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Max(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_MAX, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_MAX, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::Min(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_MIN, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_MIN, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::LogicalAnd(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_LOGICAL_AND, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_LOGICAL_AND, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::LogicalOr(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_LOGICAL_OR, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_LOGICAL_OR, lhs, rhs, broadcast_dimensions, false);
+}
+
+ComputationDataHandle ComputationBuilder::AssignAdd(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
+  return BinaryOp(BINOP_ADD, lhs, rhs, {}, true);
+}
+
+ComputationDataHandle ComputationBuilder::AssignSub(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
+  return BinaryOp(BINOP_SUB, lhs, rhs, {}, true);
+}
+
+ComputationDataHandle ComputationBuilder::AssignMul(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
+  return BinaryOp(BINOP_MUL, lhs, rhs, {}, true);
 }
 
 ComputationDataHandle ComputationBuilder::LogicalNot(
@@ -1030,13 +1045,13 @@ ComputationDataHandle ComputationBuilder::Sort(
 ComputationDataHandle ComputationBuilder::SqrtF32(
     const ComputationDataHandle& operand) {
   return BinaryOp(BINOP_POW, operand, ConstantR0<float>(0.5),
-                  /*broadcast_dimensions=*/{});
+                  /*broadcast_dimensions=*/{}, false);
 }
 
 ComputationDataHandle ComputationBuilder::Pow(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  return BinaryOp(BINOP_POW, lhs, rhs, broadcast_dimensions);
+  return BinaryOp(BINOP_POW, lhs, rhs, broadcast_dimensions, false);
 }
 
 ComputationDataHandle ComputationBuilder::ConvertElementType(
@@ -1071,13 +1086,13 @@ ComputationDataHandle ComputationBuilder::ConvertElementType(
 ComputationDataHandle ComputationBuilder::SquareF32(
     const ComputationDataHandle& operand) {
   return BinaryOp(BINOP_POW, operand, ConstantR0<float>(2.0),
-                  /*broadcast_dimensions=*/{});
+                  /*broadcast_dimensions=*/{}, false);
 }
 
 ComputationDataHandle ComputationBuilder::ReciprocalF32(
     const ComputationDataHandle& operand) {
   return BinaryOp(BINOP_POW, operand, ConstantR0<float>(-1.0),
-                  /*broadcast_dimensions=*/{});
+                  /*broadcast_dimensions=*/{}, false);
 }
 
 ComputationDataHandle ComputationBuilder::Neg(
@@ -1115,7 +1130,8 @@ ComputationDataHandle ComputationBuilder::UnaryOp(
 ComputationDataHandle ComputationBuilder::BinaryOp(
     BinaryOperation binop, const ComputationDataHandle& lhs,
     const ComputationDataHandle& rhs,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions,
+    bool hint_assignment) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
   }
@@ -1131,6 +1147,7 @@ ComputationDataHandle ComputationBuilder::BinaryOp(
   *op_request.mutable_computation() = computation_.handle();
   *op_request.mutable_binary_op_request() = request;
   AddOpMetadata(&op_request);
+  op_request.mutable_metadata()->set_hint_assignment(hint_assignment);
   OpResponse response;
 
   VLOG(2) << "making binop request";
