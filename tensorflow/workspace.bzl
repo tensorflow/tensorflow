@@ -164,17 +164,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix="or-tools-253f7955c6a1fd805408fba2e42ac6d45b312d15/src",
       build_file=str(Label("//third_party:ortools.BUILD")),)
 
-  native.new_http_archive(
-      name = "ortools_archive",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/google/or-tools/archive/253f7955c6a1fd805408fba2e42ac6d45b312d15.tar.gz",
-          "https://github.com/google/or-tools/archive/253f7955c6a1fd805408fba2e42ac6d45b312d15.tar.gz",
-      ],
-      sha256 = "932075525642b04ac6f1b50589f1df5cd72ec2f448b721fd32234cf183f0e755",
-      strip_prefix = "or-tools-253f7955c6a1fd805408fba2e42ac6d45b312d15/src",
-      build_file = str(Label("//third_party:ortools.BUILD")),
-  )
-
   native.http_archive(
       name="com_googlesource_code_re2",
       urls=[
