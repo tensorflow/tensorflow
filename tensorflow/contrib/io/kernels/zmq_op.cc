@@ -23,9 +23,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-class PollZmqOp : public OpKernel {
+class PollZmqOp : public AsyncOpKernel {
  public:
-  explicit PollZmqOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit PollZmqOp(OpKernelConstruction* context) : AsyncOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("address", &address_));
     OP_REQUIRES_OK(context, context->GetAttr("timeout", &timeout_));
     // Create a context and connect a REQ socket
@@ -52,8 +52,8 @@ class PollZmqOp : public OpKernel {
     }
   }
 
-  using OpKernel::OpKernel;
-  void Compute(OpKernelContext* context) override {
+  using AsyncOpKernel::AsyncOpKernel;
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
     const Tensor* input;
     OP_REQUIRES_OK(context, context->input("request", &input));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(input->shape()),
@@ -92,6 +92,7 @@ class PollZmqOp : public OpKernel {
     memmove(&reply[0], zmq_msg_data(&reply_msg), zmq_msg_size(&reply_msg));
     OP_REQUIRES(context, zmq_msg_close(&reply_msg) == 0,
                 errors::Internal("Failed to close reply message."));
+    done();
   }
 
  private:
