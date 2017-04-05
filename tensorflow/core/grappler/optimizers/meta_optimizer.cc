@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
@@ -80,6 +81,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           optimizer->Optimize(nullptr, optimized_item, optimized_graph));
     }
   }
+
+  // Copy the graph version.
+  *optimized_graph->mutable_versions() = item.graph.versions();
 
   return Status::OK();
 }
