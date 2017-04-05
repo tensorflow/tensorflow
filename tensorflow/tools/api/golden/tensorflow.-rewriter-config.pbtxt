@@ -19,6 +19,22 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
+    name: "MANUAL"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "MEMORY_OPTIMIZATION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "MemOptType"
+    mtype: "<class \'google.protobuf.internal.enum_type_wrapper.EnumTypeWrapper\'>"
+  }
+  member {
+    name: "NO_MEM_OPT"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "OPTIMIZERS_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }

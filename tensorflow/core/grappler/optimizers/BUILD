@@ -213,6 +213,7 @@ cc_library(
         ":constant_folding",
         ":graph_optimizer",
         ":layout_optimizer",
+        ":memory_optimizer",
         ":model_pruner",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
