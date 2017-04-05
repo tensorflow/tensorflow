@@ -35,7 +35,7 @@ class AdamOptimizer(optimizer.Optimizer):
   """
 
   def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
-               use_locking=False, name="Adam"):
+               use_locking=False, name="Adam", use_nesterov=False):
     """Construct a new Adam optimizer.
 
     Initialization:
@@ -76,12 +76,14 @@ class AdamOptimizer(optimizer.Optimizer):
       use_locking: If True use locks for update operations.
       name: Optional name for the operations created when applying gradients.
         Defaults to "Adam".
+      use_nesterov: If `True` use Nesterov Momentum.
     """
     super(AdamOptimizer, self).__init__(use_locking, name)
     self._lr = learning_rate
     self._beta1 = beta1
     self._beta2 = beta2
     self._epsilon = epsilon
+    self._use_nesterov = use_nesterov
 
     # Tensor versions of the constructor arguments, created in _prepare().
     self._lr_t = None
@@ -151,6 +153,11 @@ class AdamOptimizer(optimizer.Optimizer):
                            use_locking=self._use_locking)
     m_t = state_ops.scatter_add(m_t, grad.indices, m_scaled_g_values,
                                use_locking=self._use_locking)
+    if (self._use_nesterov):
+      # m_bar = (1 - beta1)g_t + beta1 * m_t
+      m_bar = m_scaled_g_values + beta1_t * m_t
+    else:
+      m_bar = m_t
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
     v_scaled_g_values = (grad.values * grad.values) * (1 - beta2_t)
@@ -159,7 +166,7 @@ class AdamOptimizer(optimizer.Optimizer):
                                use_locking=self._use_locking)
     v_sqrt = math_ops.sqrt(v_t)
     var_update = state_ops.assign_sub(var,
-                                      lr * m_t / (v_sqrt + epsilon_t),
+                                      lr * m_bar / (v_sqrt + epsilon_t),
                                       use_locking=self._use_locking)
     return control_flow_ops.group(*[var_update, m_t, v_t])
 
