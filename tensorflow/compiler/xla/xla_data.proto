@@ -204,7 +204,7 @@ message OpMetadata {
 
   // Indicates that an operation is assigning to a variable, for instance the
   // add operation in an AssignAdd Op
-  bool hint_assignment = 6;
+  bool hint_assignment = 5;
 }
 
 // Profile data from the execution of a computation.
