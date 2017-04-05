@@ -106,6 +106,7 @@ std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
 // *) Is a loop fusion instruction where the only use of 'operand' at 'index'
 //    in the set 'user.fused_instructions' is a DynamicUpdateSlice fused root
 //    at operand 0.
+// *) Use of 'operand' is DynamicUpdateSlice at operand index 0.
 bool CanShareOperandBufferWithUser(
     HloInstruction* operand, const ShapeIndex& operand_index,
     HloInstruction* user, const ShapeIndex& user_index,
@@ -143,6 +144,11 @@ bool CanShareOperandBufferWithUser(
       break;
     }
     return false;
+  } else if (user->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    // We eliminated other users in BufferLiveness::live_range_strictly_before,
+    // so here we just need to check that the use is at operand index 0.
+    std::vector<int64> operand_indices = user->OperandIndices(operand);
+    return operand_indices.size() == 1 && operand_indices[0] == 0;
   }
   // Check if 'user' is element-wise.
   return user->IsElementwise();

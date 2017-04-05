@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+#include "tensorflow/core/framework/types.h"
+
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -26,17 +28,13 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 
 struct AdjustHueGPU {
-  void operator()(
-      GPUDevice* device,
-      const int64 number_of_elements,
-      const float* const input,
-      const float* const delta,
-      float* const output
-  );
+  void operator()(GPUDevice* device, const int64 number_of_elements,
+                  const float* const input, const float* const delta,
+                  float* const output);
 };
 
-} // namespace functor
-} // namespace tensorflow
+}  // namespace functor
+}  // namespace tensorflow
 
-#endif // GOOGLE_CUDA
-#endif // _TENSORFLOW_CORE_KERNELS_ADJUST_HUE_OP_H
+#endif  // GOOGLE_CUDA
+#endif  // _TENSORFLOW_CORE_KERNELS_ADJUST_HUE_OP_H

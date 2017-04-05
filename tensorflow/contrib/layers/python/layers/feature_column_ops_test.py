@@ -187,27 +187,28 @@ class TransformerTest(test.TestCase):
       self.assertAllEqual(output.dense_shape.eval(), [2, 2])
 
   def testEmbeddingColumn(self):
-    hashed_sparse = feature_column.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = sparse_tensor.SparseTensor(
         values=["omar", "stringer", "marlo"],
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
     features = {"wire": wire_tensor}
-    output = feature_column_ops._Transformer(features).transform(
-        feature_column.embedding_column(hashed_sparse, 10))
-    expected = feature_column_ops._Transformer(features).transform(
-        hashed_sparse)
-    with self.test_session():
-      self.assertAllEqual(output.values.eval(), expected.values.eval())
-      self.assertAllEqual(output.indices.eval(), expected.indices.eval())
-      self.assertAllEqual(output.dense_shape.eval(),
-                          expected.dense_shape.eval())
+    hashed_sparse = feature_column.sparse_column_with_hash_bucket("wire", 10)
+    wire_embedding = feature_column.embedding_column(hashed_sparse, 10)
 
     # Test transform features.
     output = feature_column_ops.transform_features(
-        features=features, feature_columns=[hashed_sparse])
-    self.assertEqual(len(output), 1)
+        features=features, feature_columns=[hashed_sparse, wire_embedding])
+    # Check that features dict haven't changed
+    self.assertEqual({"wire": wire_tensor}, features)
+    self.assertEqual(len(output), 2)
     self.assertIn(hashed_sparse, output)
+    self.assertIn(wire_embedding, output)
+    with self.test_session():
+      self.assertAllEqual(output[wire_embedding].indices.eval(),
+                          wire_tensor.indices.eval())
+      self.assertAllEqual(output[wire_embedding].dense_shape.eval(), [2, 2])
+      self.assertAllEqual(output[wire_embedding].values.eval(),
+                          output[hashed_sparse].values.eval())
 
   def testSparseColumnWithKeys(self):
     keys_sparse = feature_column.sparse_column_with_keys(
@@ -1331,6 +1332,35 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
                  [1, 0, 0], [1, 0, 1], [1, 1, 0],
                  [3, 2, 0]],
         dense_shape=[4, 3, 2])
+
+    expected_input_shape = np.array([4, 3, embedding_dimension])
+
+    hashed_ids_column = feature_column.sparse_column_with_hash_bucket(
+        "ids", hash_buckets)
+    embedded_column = feature_column.embedding_column(hashed_ids_column,
+                                                      embedding_dimension)
+    columns_to_tensors = {"ids": ids_tensor}
+    model_input_tensor = feature_column_ops.sequence_input_from_feature_columns(
+        columns_to_tensors, [embedded_column])
+
+    with self.test_session() as sess:
+      variables_lib.global_variables_initializer().run()
+      data_flow_ops.tables_initializer().run()
+      model_input = sess.run(model_input_tensor)
+
+    self.assertAllEqual(expected_input_shape, model_input.shape)
+
+  def testEmbeddingColumnWithAutoReshape(self):
+    hash_buckets = 10
+    embedding_dimension = 5
+    ids_tensor = sparse_tensor.SparseTensor(
+        values=["c", "b",
+                "a", "c", "b",
+                "b"],
+        indices=[[0, 0], [0, 1],
+                 [1, 0], [1, 1], [1, 2],
+                 [3, 2]],
+        dense_shape=[4, 3])
 
     expected_input_shape = np.array([4, 3, embedding_dimension])
 

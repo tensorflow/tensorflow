@@ -25,6 +25,7 @@ from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.distributions.python.ops import normal
 from tensorflow.contrib.distributions.python.ops import transformed_distribution
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
@@ -51,6 +52,16 @@ or
 ```
 
 """
+
+
+def _broadcast_shape(shape1, shape2):
+  """Convenience function which statically broadcasts shape when possible."""
+  if (tensor_util.constant_value(shape1) is not None and
+      tensor_util.constant_value(shape2) is not None):
+    return array_ops.broadcast_static_shape(
+        tensor_shape.TensorShape(tensor_util.constant_value(shape1)),
+        tensor_shape.TensorShape(tensor_util.constant_value(shape2)))
+  return array_ops.broadcast_dynamic_shape(shape1, shape2)
 
 
 # TODO(b/35290280): Import in `../../__init__.py` after adding unit-tests.
@@ -179,12 +190,25 @@ class MultivariateNormalLinearOperator(
     if not scale.dtype.is_floating:
       raise TypeError("`scale` parameter must have floating-point dtype.")
 
-    # Since expand_dims doesn't preserve constant-ness, we obtain the
-    # non-dynamic value if possible.
-    event_shape = scale.domain_dimension_tensor()
-    if tensor_util.constant_value(event_shape) is not None:
-      event_shape = tensor_util.constant_value(event_shape)
-    event_shape = event_shape[array_ops.newaxis]
+    with ops.name_scope(name, values=[loc] + scale.graph_parents):
+      # Since expand_dims doesn't preserve constant-ness, we obtain the
+      # non-dynamic value if possible.
+      event_shape = scale.range_dimension_tensor()
+      if tensor_util.constant_value(event_shape) is not None:
+        event_shape = tensor_util.constant_value(event_shape).reshape([1])
+      else:
+        event_shape = event_shape[array_ops.newaxis]
+      batch_shape = scale.batch_shape_tensor()
+      if loc is not None:
+        loc = ops.convert_to_tensor(loc, name="loc")
+        loc_batch_shape = loc.get_shape().with_rank_at_least(1)[:-1]
+        if (loc.get_shape().ndims is None or
+            not loc_batch_shape.is_fully_defined()):
+          loc_batch_shape = array_ops.shape(loc)[:-1]
+        else:
+          loc_batch_shape = ops.convert_to_tensor(loc_batch_shape,
+                                                  name="loc_batch_shape")
+        batch_shape = _broadcast_shape(batch_shape, loc_batch_shape)
 
     super(MultivariateNormalLinearOperator, self).__init__(
         distribution=normal.Normal(
@@ -192,7 +216,7 @@ class MultivariateNormalLinearOperator(
             scale=array_ops.ones([], dtype=scale.dtype)),
         bijector=bijectors.AffineLinearOperator(
             shift=loc, scale=scale, validate_args=validate_args),
-        batch_shape=scale.batch_shape_tensor(),
+        batch_shape=batch_shape,
         event_shape=event_shape,
         validate_args=validate_args,
         name=name)

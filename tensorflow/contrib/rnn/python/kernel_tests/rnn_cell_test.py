@@ -66,7 +66,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
         output, state = rnn_cell.CoupledInputForgetGateLSTMCell(
-            num_units=num_units, forget_bias=1.0)(x, m)
+            num_units=num_units, forget_bias=1.0, state_is_tuple=False)(x, m)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state], {
             x.name:
@@ -173,7 +173,6 @@ class RNNCellTest(test.TestCase):
     with self.test_session() as sess:
       num_units = 8
       batch_size = 3
-      input_size = 4
       feature_size = 2
       frequency_skip = 1
       num_frequency_blocks = [1, 1]
@@ -755,6 +754,133 @@ class RNNCellTest(test.TestCase):
         self.assertEqual(new_h.shape[0], batch_size)
         self.assertEqual(new_h.shape[1], num_proj)
         self.assertAllClose(np.concatenate(res[1], axis=1), expected_state)
+
+  def testUGRNNCell(self):
+    num_units = 2
+    batch_size = 3
+    expected_state_and_output = np.array(
+        [[0.13752282, 0.13752282],
+         [0.10545051, 0.10545051],
+         [0.10074195, 0.10074195]],
+        dtype=np.float32)
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "ugrnn_cell_test",
+          initializer=init_ops.constant_initializer(0.5)):
+        cell = rnn_cell.UGRNNCell(num_units=num_units)
+        inputs = constant_op.constant(
+            np.array([[1., 1., 1., 1.],
+                      [2., 2., 2., 2.],
+                      [3., 3., 3., 3.]],
+                     dtype=np.float32),
+            dtype=dtypes.float32)
+        init_state = constant_op.constant(
+            0.1 * np.ones(
+                (batch_size, num_units), dtype=np.float32),
+            dtype=dtypes.float32)
+        output, state = cell(inputs, init_state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state])
+        # This is a smoke test: Only making sure expected values didn't change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_state_and_output)
+        self.assertAllClose(res[1], expected_state_and_output)
+
+  def testIntersectionRNNCell(self):
+    num_units = 2
+    batch_size = 3
+    expected_state = np.array(
+        [[0.13752282, 0.13752282],
+         [0.10545051, 0.10545051],
+         [0.10074195, 0.10074195]],
+        dtype=np.float32)
+    expected_output = np.array(
+        [[2.00431061, 2.00431061],
+         [4.00060606, 4.00060606],
+         [6.00008249, 6.00008249]],
+        dtype=np.float32)
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "intersection_rnn_cell_test",
+          initializer=init_ops.constant_initializer(0.5)):
+        cell = rnn_cell.IntersectionRNNCell(num_units=num_units,
+                                            num_in_proj=num_units)
+        inputs = constant_op.constant(
+            np.array([[1., 1., 1., 1.],
+                      [2., 2., 2., 2.],
+                      [3., 3., 3., 3.]],
+                     dtype=np.float32),
+            dtype=dtypes.float32)
+        init_state = constant_op.constant(
+            0.1 * np.ones(
+                (batch_size, num_units), dtype=np.float32),
+            dtype=dtypes.float32)
+        output, state = cell(inputs, init_state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state])
+        # This is a smoke test: Only making sure expected values didn't change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_output)
+        self.assertAllClose(res[1], expected_state)
+
+  def testIntersectionRNNCellFailure(self):
+    num_units = 2
+    batch_size = 3
+    cell = rnn_cell.IntersectionRNNCell(num_units=num_units)
+    inputs = constant_op.constant(
+        np.array([[1., 1., 1., 1.],
+                  [2., 2., 2., 2.],
+                  [3., 3., 3., 3.]],
+                 dtype=np.float32),
+        dtype=dtypes.float32)
+    init_state = constant_op.constant(
+        0.1 * np.ones(
+            (batch_size, num_units), dtype=np.float32),
+        dtype=dtypes.float32)
+    with self.assertRaisesRegexp(
+        ValueError, "Must have input size == output size for "
+                    "Intersection RNN. To fix, num_in_proj should "
+                    "be set to num_units at cell init."):
+      cell(inputs, init_state)
+
+  def testPhasedLSTMCell(self):
+    with self.test_session() as sess:
+      num_units = 2
+      batch_size = 3
+      input_size = 4
+      expected_state_c = np.array(
+          [[2.954548e-01, 8.354891e-04],
+           [2.834632e-01, 8.158963e-01],
+           [2.291694e-01, 1.325745e-04]],
+          dtype=np.float32)
+      expected_state_h = np.array(
+          [[2.116566e-01, 5.985238e-04],
+           [2.137760e-01, 6.153145e-01],
+           [1.742966e-01, 1.008306e-04]],
+          dtype=np.float32)
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        t = array_ops.zeros([batch_size, 1], dtype=dtypes.float64)
+        x = array_ops.zeros([batch_size, input_size])
+        c0 = array_ops.zeros([batch_size, 2])
+        h0 = array_ops.zeros([batch_size, 2])
+        state0 = core_rnn_cell_impl.LSTMStateTuple(c0, h0)
+        output, state = rnn_cell.PhasedLSTMCell(num_units=num_units)((t, x),
+                                                                     state0)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state], {
+            t.name:
+                np.array([[1.], [2.], [3.]]),
+            x.name:
+                np.array([[1., 1., 1., 1.],
+                          [2., 2., 2., 2.],
+                          [3., 3., 3., 3.]]),
+        })
+        # This is a smoke test, making sure expected values are unchanged.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], res[1].h)
+        self.assertAllClose(res[1].c, expected_state_c)
+        self.assertAllClose(res[1].h, expected_state_h)
 
 
 class LayerNormBasicLSTMCellTest(test.TestCase):

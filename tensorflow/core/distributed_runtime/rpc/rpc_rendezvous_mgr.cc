@@ -38,9 +38,9 @@ namespace {
 
 class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  public:
-  RpcRemoteRendezvous(const WorkerEnv* env, WorkerCacheInterface* cache,
-                      int64 step_id)
-      : BaseRemoteRendezvous(env, step_id, false), cache_(cache) {}
+  RpcRemoteRendezvous(const WorkerEnv* env, const string& worker_name,
+                      WorkerCacheInterface* cache, int64 step_id)
+      : BaseRemoteRendezvous(env, worker_name, step_id, false), cache_(cache) {}
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
@@ -50,7 +50,7 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  private:
   ~RpcRemoteRendezvous() override {}
 
-  WorkerCacheInterface* cache_;  // Not owned.
+  WorkerCacheInterface* const cache_;  // Not owned.
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRemoteRendezvous);
 };
 
@@ -204,7 +204,7 @@ static RpcRecvTensorFreeList* get_call_freelist() {
   return call_freelist;
 }
 
-// A private cache that wraps env->worker_cache and allows reuse of
+// A private cache that wraps worker_cache and allows reuse of
 // WorkerInterface objects.
 class WorkerFreeListCache : public WorkerCacheInterface {
  public:
@@ -275,15 +275,6 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     DoneCallback done) {
   Status s;
 
-  // TODO(jeff): Consider checking for a valid worker_cache during the
-  // constructor of RpcRemoteRendezvous, rather than here, to simplify
-  // the twisty logic below.
-  if (env_->worker_cache == nullptr) {
-    s = errors::Internal("No remote worker cache available.");
-    done(s, Args(), recv_args, Tensor{}, false);
-    return;
-  }
-
   // Prepare a RecvTensor call that can handle being aborted.
   RpcRecvTensorCall* call = get_call_freelist()->New();
 
@@ -332,13 +323,17 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 
 }  // namespace
 
-RpcRendezvousMgr::RpcRendezvousMgr(const WorkerEnv* env)
-    : BaseRendezvousMgr(env),
-      cache_(new WorkerFreeListCache(env->worker_cache)) {}
+RpcRendezvousMgr::RpcRendezvousMgr(const WorkerEnv* env,
+                                   const string& worker_name,
+                                   WorkerCacheInterface* worker_cache)
+    : BaseRendezvousMgr(env, worker_name),
+      cache_(new WorkerFreeListCache(worker_cache)) {}
 
 BaseRemoteRendezvous* RpcRendezvousMgr::Create(int64 step_id,
-                                               const WorkerEnv* worker_env) {
-  return new RpcRemoteRendezvous(worker_env, cache_.get(), step_id);
+                                               const WorkerEnv* worker_env,
+                                               const string& worker_name) {
+  return new RpcRemoteRendezvous(worker_env, worker_name, cache_.get(),
+                                 step_id);
 }
 
 }  // end namespace tensorflow

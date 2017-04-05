@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -71,45 +72,6 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Sum"};
   return ops_format_agnostic;
 }
-
-class NodeMap {
- public:
-  explicit NodeMap(GraphDef* graph) : graph_(graph) {
-    for (int i = 0; i < graph_->node_size(); i++) {
-      auto node = graph_->mutable_node(i);
-      nodes_.insert(std::make_pair(node->name(), node));
-      for (const auto& input : node->input()) {
-        outputs_[input].insert(nodes_[node->name()]);
-      }
-    }
-  }
-
-  NodeDef* GetNode(const string& name) {
-    string node_name = NodeName(name);
-    return nodes_[node_name];
-  }
-
-  std::set<NodeDef*> GetOutputs(const string& name) { return outputs_[name]; }
-
-  void AddNode(const string& name, NodeDef* node) {
-    nodes_.insert(std::make_pair(name, node));
-  }
-
-  void AddOutput(const string& node, const string& output) {
-    outputs_[node].insert(nodes_[output]);
-  }
-
-  void UpdateOutput(const string& node, const string& old_output,
-                    const string& new_output) {
-    outputs_[node].erase(nodes_[old_output]);
-    outputs_[node].insert(nodes_[new_output]);
-  }
-
- private:
-  GraphDef* graph_;
-  std::unordered_map<string, NodeDef*> nodes_;
-  std::unordered_map<string, std::set<NodeDef*>> outputs_;
-};
 
 bool IsNodeNHWCToNCHW(const string& node_name) {
   const string transpose_node_prefix = kTransposeNHWCToNCHW;
@@ -227,8 +189,7 @@ class NodeProcessor {
     }
   }
 
-  Status UpdateAttrValue(const string& name) {
-    NodeDef* node = node_map_->GetNode(name);
+  Status UpdateAttrValue(NodeDef* node) {
     TF_RETURN_IF_ERROR(HasAttribute(*node, "value"));
     Tensor tensor;
     auto success =
@@ -310,14 +271,26 @@ class NodeProcessor {
       auto it = std::find_if(output->mutable_input()->begin(),
                              output->mutable_input()->end(),
                              [this](const string& input) {
-                               return input.compare(node_->name()) == 0;
+                               string node_name = NodeName(input);
+                               return node_name.compare(node_->name()) == 0;
                              });
+      if (it == output->mutable_input()->end()) {
+        return Status(error::INVALID_ARGUMENT,
+                      strings::StrCat("Expect ", node_->name(),
+                                      " to be an input of ", output->name()));
+      }
       int output_pos = NodePosition(*it);
+      // No need to process control nodes or nodes that use an output
+      // other than the first output: only the first output is of 4D NCHW/NHWC
+      // format and thus relevant here.
+      if (output_pos != 0) {
+        continue;
+      }
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
       AddNodeTranspose(
           node_name_NCHWToNHWC, node_->name(), node_->attr().at("T").type(),
-          node_->attr().at("_output_shapes").list().shape(output_pos), false);
+          node_->attr().at("_output_shapes").list().shape(0), false);
       *it = node_name_NCHWToNHWC;
       node_map_->UpdateOutput(node_->name(), output->name(),
                               node_name_NCHWToNHWC);
@@ -354,7 +327,8 @@ class AvgPoolGradProcessor : public NodeProcessor {
     return input_pos;
   }
   Status CustomizedProcessing() override {
-    return UpdateAttrValue(node_->input(0));
+    NodeDef* node = node_map_->GetNode(node_->input(0));
+    return UpdateAttrValue(node);
   }
 };
 
@@ -408,7 +382,8 @@ class Conv2DBackpropInputProcessor : public NodeProcessor {
     return input_pos;
   }
   Status CustomizedProcessing() override {
-    return UpdateAttrValue(node_->input(0));
+    NodeDef* node = node_map_->GetNode(node_->input(0));
+    return UpdateAttrValue(node);
   }
 };
 
@@ -533,7 +508,7 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     AttrValue attr_tensor;
     Tensor tensor(DT_INT32, TensorShape({4}));
     std::vector<int> shape = {1, num_channels, 1, 1};
-    for (int i = 0; i < shape.size(); i++) {
+    for (int i = 0; static_cast<size_t>(i) < shape.size(); i++) {
       tensor.flat<int>()(i) = shape[i];
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -640,11 +615,9 @@ class ReluGradProcessor : public AgnosticNodeProcessor {
   }
 };
 
-// This is the older, less optimized gather-based SliceProcessor. We keep it as
-// a test case for constant propagation optimization.
-class SliceProcessorGatherBased : public AgnosticNodeProcessor {
+class SliceProcessor : public AgnosticNodeProcessor {
  public:
-  SliceProcessorGatherBased(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+  SliceProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
       : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
@@ -688,9 +661,30 @@ class SliceProcessorGatherBased : public AgnosticNodeProcessor {
   }
 };
 
-class SliceProcessor : public AgnosticNodeProcessor {
+// Specialized SliceProcessor, used if the second and third input are const
+// nodes, which could be the case if a constant folding pass is applied
+// before this optimization.
+class SliceProcessorConst : public AgnosticNodeProcessor {
  public:
-  SliceProcessor(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+  SliceProcessorConst(GraphDef* graph, NodeDef* node, NodeMap* node_map)
+      : AgnosticNodeProcessor(graph, node, node_map) {}
+
+ protected:
+  Status CustomizedProcessing() override {
+    // Skip the first input, which is the data to be sliced.
+    for (int i = 1; i < node_->input_size(); i++) {
+      auto shape_node = node_map_->GetNode(node_->input(i));
+      TF_RETURN_IF_ERROR(UpdateAttrValue(shape_node));
+    }
+    return Status::OK();
+  }
+};
+
+// Specialized SliceProcessor, used if the second input is ConcatOffset. An
+// example use case is in the gradient computation of Concat for InceptionV3.
+class SliceProcessorConcatOffset : public AgnosticNodeProcessor {
+ public:
+  SliceProcessorConcatOffset(GraphDef* graph, NodeDef* node, NodeMap* node_map)
       : AgnosticNodeProcessor(graph, node, node_map) {}
 
  protected:
@@ -698,28 +692,35 @@ class SliceProcessor : public AgnosticNodeProcessor {
     auto maybe_concatoffset_node =
         node_map_->GetNode(NodeName(node_->input(1)));
     if (maybe_concatoffset_node->op() == "ConcatOffset") {
-      auto axis_node = node_map_->GetNode(maybe_concatoffset_node->input(0));
+      auto maybe_axis_node =
+          node_map_->GetNode(maybe_concatoffset_node->input(0));
+      NodeDef* axis_node;
+      if (maybe_axis_node->op() == "Const") {
+        axis_node = maybe_axis_node;
+        // A FloorMod node might be added between ConcatOffset and the concat
+        // dimension const node to handle a negative dimension index -1, meaning
+        // the last dimension, which is consistent with the python's notation
+        // for negative index.
+      } else if (maybe_axis_node->op() == "FloorMod") {
+        axis_node = node_map_->GetNode(maybe_axis_node->input(0));
+      } else {
+        return Status(error::INVALID_ARGUMENT,
+                      strings::StrCat("Expect either Const or FloorMod for the "
+                                      "input 1 of ConcatOffset"));
+      }
       // Need to process if the channel is at dimension 3, which indicates the
       // NHWC format is being used. As mutiple Slice nodes may share the same
       // ConcatOffset node, the NHWC to NCHW conversion may have already
       // been performed when processing other Slice nodes.
       TF_RETURN_IF_ERROR(HasAttribute(*axis_node, "value"));
-      if (axis_node->attr().at("value").tensor().int_val(0) == 3) {
+      int concat_dim = axis_node->attr().at("value").tensor().int_val(0);
+      if (concat_dim == -1 || concat_dim == 3) {
+        // Update the dimension order for shape input nodes. Note that the input
+        // 2 of Slice also shares one of the shape nodes.
         for (int i = 1; i < maybe_concatoffset_node->input_size(); i++) {
           auto shape_node =
               node_map_->GetNode(maybe_concatoffset_node->input(i));
-          AttrValue attr_tensor;
-          Tensor tensor;
-          TF_RETURN_IF_ERROR(HasAttribute(*shape_node, "value"));
-          CHECK(tensor.FromProto(shape_node->attr().at({"value"}).tensor()));
-          int h = tensor.flat<int>()(1);
-          int w = tensor.flat<int>()(2);
-          int c = tensor.flat<int>()(3);
-          tensor.flat<int>()(1) = c;
-          tensor.flat<int>()(2) = h;
-          tensor.flat<int>()(3) = w;
-          tensor.AsProtoTensorContent(
-              shape_node->mutable_attr()->at({"value"}).mutable_tensor());
+          TF_RETURN_IF_ERROR(UpdateAttrValue(shape_node));
         }
         // Set the channel dimension to 1, as we have converted the vector
         // element order from NHWC to NCHW.
@@ -850,7 +851,7 @@ class DataLayoutOptimizer {
     node->mutable_attr()->insert({"dtype", attr_data_type});
     AttrValue attr_tensor;
     Tensor tensor(DT_INT32, TensorShape({4}));
-    for (int i = 0; i < permutation.size(); i++) {
+    for (int i = 0; static_cast<size_t>(i) < permutation.size(); i++) {
       tensor.flat<int>()(i) = permutation[i];
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -884,7 +885,7 @@ class DataLayoutOptimizer {
     AttrValue attr_tensor;
     Tensor tensor(DT_INT32, TensorShape({3}));
     std::vector<int> axis = {0, 2, 3};
-    for (int i = 0; i < axis.size(); i++) {
+    for (int i = 0; static_cast<size_t>(i) < axis.size(); i++) {
       tensor.flat<int>()(i) = axis[i];
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -956,7 +957,19 @@ class DataLayoutOptimizer {
             node_processor.reset(
                 new ReluGradProcessor(graph_, node, &node_map_));
           } else if (node->op().compare("Slice") == 0) {
-            node_processor.reset(new SliceProcessor(graph_, node, &node_map_));
+            auto input1 = node_map_.GetNode(NodeName(node->input(1)));
+            auto input2 = node_map_.GetNode(NodeName(node->input(2)));
+            if (input1->op() == "ConcatOffset") {
+              node_processor.reset(
+                  new SliceProcessorConcatOffset(graph_, node, &node_map_));
+            } else if (input1->op() == "Const" && input2->op() == "Const") {
+              node_processor.reset(
+                  new SliceProcessorConst(graph_, node, &node_map_));
+            } else {
+              node_processor.reset(
+                  new SliceProcessor(graph_, node, &node_map_));
+            }
+
           } else if (node->op().compare("Squeeze") == 0) {
             node_processor.reset(
                 new SqueezeProcessor(graph_, node, &node_map_));
@@ -1016,6 +1029,10 @@ class DataLayoutOptimizer {
 
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
+  if (GetNumAvailableGPUs() < 1) {
+    // LayoutOptimizer is currently only tuned for GPU.
+    return Status::OK();
+  }
   *output = item.graph;
   DataLayoutOptimizer layout_optimizer(output);
   auto status = layout_optimizer.Optimize();

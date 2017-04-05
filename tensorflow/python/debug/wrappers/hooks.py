@@ -39,14 +39,19 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
   `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
   """
 
-  def __init__(self, ui_type="curses"):
+  def __init__(self, ui_type="curses", dump_root=None):
     """Create a local debugger command-line interface (CLI) hook.
 
     Args:
       ui_type: (str) user-interface type.
+      dump_root: (`str`) optional path to the dump root directory. Must be a
+        directory that does not exist or an empty directory. If the directory
+        does not exist, it will be created by the debugger core during debug
+        `run()` calls and removed afterwards.
     """
 
     self._ui_type = ui_type
+    self._dump_root = dump_root
     self._wrapper_initialized = False
     self._pending_tensor_filters = {}
 
@@ -77,7 +82,10 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
   def before_run(self, run_context):
     if not self._wrapper_initialized:
       local_cli_wrapper.LocalCLIDebugWrapperSession.__init__(
-          self, run_context.session, ui_type=self._ui_type)
+          self,
+          run_context.session,
+          ui_type=self._ui_type,
+          dump_root=self._dump_root)
 
       # Actually register tensor filters registered prior to the construction
       # of the underlying LocalCLIDebugWrapperSession object.
@@ -102,8 +110,18 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
     run_args = session_run_hook.SessionRunArgs(
         None, feed_dict=None, options=config_pb2.RunOptions())
     if self._performed_action == framework.OnRunStartAction.DEBUG_RUN:
-      self._decorate_options_for_debug(run_args.options,
-                                       run_context.session.graph)
+      self._decorate_options_for_debug(
+          run_args.options,
+          run_context.session.graph,
+          framework.WatchOptions(
+              node_name_regex_whitelist=(
+                  on_run_start_response.node_name_regex_whitelist),
+              op_type_regex_whitelist=(
+                  on_run_start_response.op_type_regex_whitelist),
+              tensor_dtype_regex_whitelist=(
+                  on_run_start_response.tensor_dtype_regex_whitelist),
+              tolerate_debug_op_creation_failures=(
+                  on_run_start_response.tolerate_debug_op_creation_failures)))
     elif self._performed_action == framework.OnRunStartAction.INVOKE_STEPPER:
       # The _finalized property must be set to False so that the NodeStepper
       # can insert ops for retrieving TensorHandles.
@@ -128,16 +146,17 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
                                                    run_values.run_metadata)
     self.on_run_end(on_run_end_request)
 
-  def _decorate_options_for_debug(self, options, graph):
-    """Modify RunOptions.debug_options.debug_tensor_watch_opts for debugging.
-
-    Args:
-      options: (config_pb2.RunOptions) The RunOptions instance to be modified.
-      graph: A TensorFlow Graph object.
-    """
-
+  def _decorate_options_for_debug(self, options, graph, watch_options):
+    """Modify RunOptions.debug_options.debug_tensor_watch_opts for debugging."""
     debug_utils.watch_graph(
-        options, graph, debug_urls=self._get_run_debug_urls())
+        options,
+        graph,
+        debug_urls=self._get_run_debug_urls(),
+        node_name_regex_whitelist=watch_options.node_name_regex_whitelist,
+        op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
+        tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
+        tolerate_debug_op_creation_failures=(
+            watch_options.tolerate_debug_op_creation_failures))
     options.output_partition_graphs = True
 
 

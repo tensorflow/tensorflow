@@ -2607,12 +2607,12 @@ op {
   name: "BatchMatMul"
   input_arg {
     name: "x"
-    description: "3-D or higher with shape `[..., r_x, c_x]`."
+    description: "2-D or higher with shape `[..., r_x, c_x]`."
     type_attr: "T"
   }
   input_arg {
     name: "y"
-    description: "3-D or higher with shape `[..., r_y, c_y]`."
+    description: "2-D or higher with shape `[..., r_y, c_y]`."
     type_attr: "T"
   }
   output_arg {
@@ -2651,7 +2651,7 @@ op {
     description: "If `True`, adjoint the slices of `y`. Defaults to `False`."
   }
   summary: "Multiplies slices of two tensors in batches."
-  description: "Multiplies all slices of `Tensor` `x` and `y` (each slice can be\nviewed as an element of a batch), and arranges the individual results\nin a single output tensor of the same batch size. Each of the\nindividual slices can optionally be adjointed (to adjoint a matrix\nmeans to transpose and conjugate it) before multiplication by setting\nthe `adj_x` or `adj_y` flag to `True`, which are by default `False`.\n\nThe input tensors `x` and `y` are 3-D or higher with shape `[..., r_x, c_x]`\nand `[..., r_y, c_y]`.\n\nThe output tensor is 3-D or higher with shape `[..., r_o, c_o]`, where:\n\n    r_o = c_x if adj_x else r_x\n    c_o = r_y if adj_y else c_y\n\nIt is computed as:\n\n    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])"
+  description: "Multiplies all slices of `Tensor` `x` and `y` (each slice can be\nviewed as an element of a batch), and arranges the individual results\nin a single output tensor of the same batch size. Each of the\nindividual slices can optionally be adjointed (to adjoint a matrix\nmeans to transpose and conjugate it) before multiplication by setting\nthe `adj_x` or `adj_y` flag to `True`, which are by default `False`.\n\nThe input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`\nand `[..., r_y, c_y]`.\n\nThe output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:\n\n    r_o = c_x if adj_x else r_x\n    c_o = r_y if adj_y else c_y\n\nIt is computed as:\n\n    output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])"
 }
 op {
   name: "BatchMatrixBandPart"
@@ -5633,6 +5633,42 @@ op {
   summary: "Reinterpret the bytes of a string as a vector of numbers."
 }
 op {
+  name: "DecodeWav"
+  input_arg {
+    name: "contents"
+    description: "The WAV-encoded audio, usually from a file."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "audio"
+    description: "2-D with shape `[length, channels]`."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "sample_rate"
+    description: "Scalar holding the sample rate found in the WAV header."
+    type: DT_INT32
+  }
+  attr {
+    name: "desired_channels"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Number of sample channels wanted."
+  }
+  attr {
+    name: "desired_samples"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Length of audio requested."
+  }
+  summary: "Decode a 16-bit PCM WAV file to a float tensor."
+  description: "The -32768 to 32767 signed 16-bit values will be scaled to -1.0 to 1.0 in float.\n\nWhen desired_channels is set, if the input contains fewer channels than this\nthen the last channel will be duplicated to give the requested number, else if\nthe input has more channels than requested then the additional channels will be\nignored.\n\nIf desired_samples is set, then the audio will be cropped or padded with zeroes\nto the requested length.\n\nThe first output contains a Tensor with the content of the audio samples. The\nlowest dimension will be the number of channels, and the second will be the\nnumber of samples. For example, a ten-sample-long stereo WAV file should give an\noutput shape of [10, 2]."
+}
+op {
   name: "DeleteSessionTensor"
   input_arg {
     name: "handle"
@@ -6753,6 +6789,26 @@ op {
   description: "`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`\nwhere `channels` is:\n\n*   1: for grayscale.\n*   2: for grayscale + alpha.\n*   3: for RGB.\n*   4: for RGBA.\n\nThe ZLIB compression level, `compression`, can be -1 for the PNG-encoder\ndefault or a value from 0 to 9.  9 is the highest compression level, generating\nthe smallest output, but is slower."
 }
 op {
+  name: "EncodeWav"
+  input_arg {
+    name: "audio"
+    description: "2-D with shape `[length, channels]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sample_rate"
+    description: "Scalar containing the sample frequency."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "contents"
+    description: "0-D. WAV-encoded file contents."
+    type: DT_STRING
+  }
+  summary: "Encode audio data using the WAV file format."
+  description: "This operation will generate a string suitable to be saved out to create a .wav\naudio file. It will be encoded in the 16-bit PCM format. It takes in float\nvalues in the range -1.0f to 1.0f, and any outside that value will be clamped to\nthat range.\n\n`audio` is a 2-D float Tensor of shape `[length, channels]`.\n`sample_rate` is a scalar Tensor holding the rate to use (e.g. 44100)."
+}
+op {
   name: "Enter"
   input_arg {
     name: "data"
@@ -7106,11 +7162,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most\n  dimension of `input` is replaced with its 1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fft\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\n  dimension of `input` is replaced with its 1D Fourier transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fft\n@end_compatibility"
     type: DT_COMPLEX64
   }
-  summary: "Compute the 1-dimensional discrete Fourier Transform over the inner-most"
-  description: "dimension of `input`."
+  summary: "Fast Fourier transform."
+  description: "Computes the 1-dimensional discrete Fourier transform over the inner-most\ndimension of `input`."
 }
 op {
   name: "FFT2D"
@@ -7121,11 +7177,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fft2\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
-  summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
-  description: "2 dimensions of `input`."
+  summary: "2D fast Fourier transform."
+  description: "Computes the 2-dimensional discrete Fourier transform over the inner-most\n2 dimensions of `input`."
 }
 op {
   name: "FFT3D"
@@ -7136,11 +7192,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fftn with 3 dimensions.\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their 3D Fourier transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.fftn with 3 dimensions.\n@end_compatibility"
     type: DT_COMPLEX64
   }
-  summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
-  description: "dimensions of `input`."
+  summary: "3D fast Fourier transform."
+  description: "Computes the 3-dimensional discrete Fourier transform over the inner-most 3\ndimensions of `input`."
 }
 op {
   name: "FIFOQueue"
@@ -8693,11 +8749,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most\n  dimension of `input` is replaced with its inverse 1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifft\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\n  dimension of `input` is replaced with its inverse 1D Fourier transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifft\n@end_compatibility"
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most"
-  description: "dimension of `input`."
+  summary: "Inverse fast Fourier transform."
+  description: "Computes the inverse 1-dimensional discrete Fourier transform over the\ninner-most dimension of `input`."
 }
 op {
   name: "IFFT2D"
@@ -8708,11 +8764,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their inverse 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifft2\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\n  dimensions of `input` are replaced with their inverse 2D Fourier transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
-  description: "2 dimensions of `input`."
+  summary: "Inverse 2D fast Fourier transform."
+  description: "Computes the inverse 2-dimensional discrete Fourier transform over the\ninner-most 2 dimensions of `input`."
 }
 op {
   name: "IFFT3D"
@@ -8723,11 +8779,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their inverse 3D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifftn with 3 dimensions.\n@end_compatibility"
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\n  dimensions of `input` are replaced with their inverse 3D Fourier transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.ifftn with 3 dimensions.\n@end_compatibility"
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
-  description: "3 dimensions of `input`."
+  summary: "Inverse 3D fast Fourier transform."
+  description: "Computes the inverse 3-dimensional discrete Fourier transform over the\ninner-most 3 dimensions of `input`."
 }
 op {
   name: "IRFFT"
@@ -8743,11 +8799,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A float32 tensor of the same rank as `input`. The inner-most\n  dimension of `input` is replaced with the `fft_length` samples of its inverse\n  1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.irfft\n@end_compatibility"
+    description: "A float32 tensor of the same rank as `input`. The inner-most\n  dimension of `input` is replaced with the `fft_length` samples of its inverse\n  1D Fourier transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.irfft\n@end_compatibility"
     type: DT_FLOAT
   }
-  summary: "Compute the inverse 1-dimensional discrete Fourier Transform of a real-valued"
-  description: "signal over the inner-most dimension of `input`.\n\nThe inner-most dimension of `input` is assumed to be the result of `RFFT`: the\n`fft_length / 2 + 1` unique components of the DFT of a real-valued signal. If\n`fft_length` is not provided, it is computed from the size of the inner-most\ndimension of `input` (`fft_length = 2 * (inner - 1)`). If the FFT length used to\ncompute `input` is odd, it should be provided since it cannot be inferred\nproperly."
+  summary: "Inverse real-valued fast Fourier transform."
+  description: "Computes the inverse 1-dimensional discrete Fourier transform of a real-valued\nsignal over the inner-most dimension of `input`.\n\nThe inner-most dimension of `input` is assumed to be the result of `RFFT`: the\n`fft_length / 2 + 1` unique components of the DFT of a real-valued signal. If\n`fft_length` is not provided, it is computed from the size of the inner-most\ndimension of `input` (`fft_length = 2 * (inner - 1)`). If the FFT length used to\ncompute `input` is odd, it should be provided since it cannot be inferred\nproperly."
 }
 op {
   name: "IRFFT2D"
@@ -8763,11 +8819,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A float32 tensor of the same rank as `input`. The inner-most 2\n  dimensions of `input` are replaced with the `fft_length` samples of their\n  inverse 2D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.irfft2\n@end_compatibility"
+    description: "A float32 tensor of the same rank as `input`. The inner-most 2\n  dimensions of `input` are replaced with the `fft_length` samples of their\n  inverse 2D Fourier transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.irfft2\n@end_compatibility"
     type: DT_FLOAT
   }
-  summary: "Compute the inverse 2-dimensional discrete Fourier Transform of a real-valued"
-  description: "signal over the inner-most 2 dimensions of `input`.\n\nThe inner-most 2 dimensions of `input` are assumed to be the result of `RFFT2D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 2 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly."
+  summary: "Inverse 2D real-valued fast Fourier transform."
+  description: "Computes the inverse 2-dimensional discrete Fourier transform of a real-valued\nsignal over the inner-most 2 dimensions of `input`.\n\nThe inner-most 2 dimensions of `input` are assumed to be the result of `RFFT2D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 2 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly."
 }
 op {
   name: "IRFFT3D"
@@ -8783,11 +8839,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A float32 tensor of the same rank as `input`. The inner-most 3\n  dimensions of `input` are replaced with the `fft_length` samples of their\n  inverse 3D real Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.irfftn with 3 dimensions.\n@end_compatibility"
+    description: "A float32 tensor of the same rank as `input`. The inner-most 3\n  dimensions of `input` are replaced with the `fft_length` samples of their\n  inverse 3D real Fourier transform.\n\n@compatibility(numpy)\nEquivalent to np.irfftn with 3 dimensions.\n@end_compatibility"
     type: DT_FLOAT
   }
-  summary: "Compute the inverse 3-dimensional discrete Fourier Transform of a real-valued"
-  description: "signal over the inner-most 3 dimensions of `input`.\n\nThe inner-most 3 dimensions of `input` are assumed to be the result of `RFFT3D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 3 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly."
+  summary: "Inverse 3D real-valued fast Fourier transform."
+  description: "Computes the inverse 3-dimensional discrete Fourier transform of a real-valued\nsignal over the inner-most 3 dimensions of `input`.\n\nThe inner-most 3 dimensions of `input` are assumed to be the result of `RFFT3D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 3 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly."
 }
 op {
   name: "Identity"
@@ -11820,6 +11876,34 @@ op {
   description: "The locations represented by indices in `indices` take value `on_value`,\nwhile all other locations take value `off_value`.\n\nIf the input `indices` is rank `N`, the output will have rank `N+1`,\nThe new axis is created at dimension `axis` (default: the new axis is\nappended at the end).\n\nIf `indices` is a scalar the output shape will be a vector of length `depth`.\n\nIf `indices` is a vector of length `features`, the output shape will be:\n```\n  features x depth if axis == -1\n  depth x features if axis == 0\n```\n\nIf `indices` is a matrix (batch) with shape `[batch, features]`,\nthe output shape will be:\n```\n  batch x features x depth if axis == -1\n  batch x depth x features if axis == 1\n  depth x batch x features if axis == 0\n```\n\n\nExamples\n=========\n\nSuppose that\n\n```\n  indices = [0, 2, -1, 1]\n  depth = 3\n  on_value = 5.0\n  off_value = 0.0\n  axis = -1\n```\n\nThen output is `[4 x 3]`:\n\n    ```output =\n      [5.0 0.0 0.0]  // one_hot(0)\n      [0.0 0.0 5.0]  // one_hot(2)\n      [0.0 0.0 0.0]  // one_hot(-1)\n      [0.0 5.0 0.0]  // one_hot(1)\n    ```\n\nSuppose that\n\n```\n  indices = [0, 2, -1, 1]\n  depth = 3\n  on_value = 0.0\n  off_value = 3.0\n  axis = 0\n```\n\nThen output is `[3 x 4]`:\n\n    ```output =\n      [0.0 3.0 3.0 3.0]\n      [3.0 3.0 3.0 0.0]\n      [3.0 3.0 3.0 3.0]\n      [3.0 0.0 3.0 3.0]\n    //  ^                one_hot(0)\n    //      ^            one_hot(2)\n    //          ^        one_hot(-1)\n    //              ^    one_hot(1)\n    ```\nSuppose that\n\n```\n  indices = [[0, 2], [1, -1]]\n  depth = 3\n  on_value = 1.0\n  off_value = 0.0\n  axis = -1\n```\n\nThen output is `[2 x 2 x 3]`:\n\n    ```output =\n      [\n        [1.0, 0.0, 0.0]  // one_hot(0)\n        [0.0, 0.0, 1.0]  // one_hot(2)\n      ][\n        [0.0, 1.0, 0.0]  // one_hot(1)\n        [0.0, 0.0, 0.0]  // one_hot(-1)\n      ]```"
 }
 op {
+  name: "OnesLike"
+  input_arg {
+    name: "x"
+    description: "a tensor of type T."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    description: "a tensor of the same shape and type as x but filled with ones."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Returns a tensor of ones with the same shape and type as x."
+}
+op {
   name: "Pack"
   input_arg {
     name: "values"
@@ -14582,11 +14666,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same rank as `input`. The inner-most\n  dimension of `input` is replaced with the `fft_length / 2 + 1` unique\n  frequency components of its 1D Fourier Transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfft\n@end_compatibility"
+    description: "A complex64 tensor of the same rank as `input`. The inner-most\n  dimension of `input` is replaced with the `fft_length / 2 + 1` unique\n  frequency components of its 1D Fourier transform.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfft\n@end_compatibility"
     type: DT_COMPLEX64
   }
-  summary: "Compute the 1-dimensional discrete Fourier Transform of a real-valued signal"
-  description: "over the inner-most dimension of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the\n`fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,\nfollowed by the `fft_length / 2` positive-frequency terms."
+  summary: "Real-valued fast Fourier transform."
+  description: "Computes the 1-dimensional discrete Fourier transform of a real-valued signal\nover the inner-most dimension of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the\n`fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,\nfollowed by the `fft_length / 2` positive-frequency terms."
 }
 op {
   name: "RFFT2D"
@@ -14602,11 +14686,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same rank as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier Transform. The\n  inner-most dimension contains `fft_length / 2 + 1` unique frequency\n  components.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfft2\n@end_compatibility"
+    description: "A complex64 tensor of the same rank as `input`. The inner-most 2\n  dimensions of `input` are replaced with their 2D Fourier transform. The\n  inner-most dimension contains `fft_length / 2 + 1` unique frequency\n  components.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfft2\n@end_compatibility"
     type: DT_COMPLEX64
   }
-  summary: "Compute the 2-dimensional discrete Fourier Transform of a real-valued signal"
-  description: "over the inner-most 2 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms."
+  summary: "2D real-valued fast Fourier transform."
+  description: "Computes the 2-dimensional discrete Fourier transform of a real-valued signal\nover the inner-most 2 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms."
 }
 op {
   name: "RFFT3D"
@@ -14622,11 +14706,11 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same rank as `input`. The inner-most 3\n  dimensions of `input` are replaced with the their 3D Fourier Transform. The\n  inner-most dimension contains `fft_length / 2 + 1` unique frequency\n  components.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfftn with 3 dimensions.\n@end_compatibility"
+    description: "A complex64 tensor of the same rank as `input`. The inner-most 3\n  dimensions of `input` are replaced with the their 3D Fourier transform. The\n  inner-most dimension contains `fft_length / 2 + 1` unique frequency\n  components.\n\n@compatibility(numpy)\nEquivalent to np.fft.rfftn with 3 dimensions.\n@end_compatibility"
     type: DT_COMPLEX64
   }
-  summary: "Compute the 3-dimensional discrete Fourier Transform of a real-valued signal"
-  description: "over the inner-most 3 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms."
+  summary: "3D real-valued fast Fourier transform."
+  description: "Computes the 3-dimensional discrete Fourier transform of a real-valued signal\nover the inner-most 3 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms."
 }
 op {
   name: "RGBToHSV"
@@ -23529,7 +23613,9 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_DOUBLE
         type: DT_INT32
+        type: DT_INT64
       }
     }
   }

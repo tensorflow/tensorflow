@@ -1,6 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 filegroup(
     name = "all_files",
@@ -17,6 +17,8 @@ filegroup(
 filegroup(
     name = "android_srcs",
     srcs = [
+        "devices.cc",
+        "devices.h",
         "grappler_item.h",
         "utils.cc",
         "utils.h",
@@ -35,6 +37,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -49,13 +52,13 @@ cc_test(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "devices",
     srcs = ["devices.cc"],
     hdrs = ["devices.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:gpu_runtime",
+        "//tensorflow/core:gpu_init",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor",

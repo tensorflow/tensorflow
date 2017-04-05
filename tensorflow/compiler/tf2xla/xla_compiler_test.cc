@@ -17,12 +17,14 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -32,6 +34,65 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+// Helper class to test the ability to pass resources through to XLA
+// compiled kernels.
+class DummyResourceForTest : public ResourceBase {
+ public:
+  string DebugString() override { return "dummy"; }
+  void Increment() { ++value_; }
+  int Get() { return value_; }
+
+ private:
+  int value_ = 0;
+};
+
+class DummyReadResourceOp : public XlaOpKernel {
+ public:
+  explicit DummyReadResourceOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    ResourceMgr* rm = ctx->op_kernel_context()->resource_manager();
+    OP_REQUIRES(ctx, rm, errors::Internal("No resource manager."));
+    DummyResourceForTest* dummy;
+    OP_REQUIRES_OK(ctx, rm->Lookup<DummyResourceForTest>(
+                            rm->default_container(), "dummy", &dummy));
+    dummy->Increment();
+    dummy->Unref();
+
+    ctx->SetOutput(0, ctx->Input(0));
+  }
+};
+
+class DummyReadResourceCC {
+ public:
+  DummyReadResourceCC(const Scope& scope, const Input& value) {
+    if (!scope.ok()) return;
+    auto _value = ops::AsNodeOut(scope, value);
+    if (!scope.ok()) return;
+    Node* ret;
+    const auto unique_name = scope.GetUniqueNameForOp("DummyReadResource");
+    auto builder = NodeBuilder(unique_name, "DummyReadResource").Input(_value);
+    scope.UpdateBuilder(&builder);
+    scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+    if (!scope.ok()) return;
+    this->output_ = Output(ret, 0);
+  }
+  Node* node() const { return output_.node(); }
+
+  Output output_;
+};
+
+REGISTER_OP("DummyReadResource")
+    .Input("input: int32")
+    .Output("output: int32")
+    .Doc(R"doc(
+A dummy Op.
+
+input: dummy input.
+output: dummy output.
+)doc");
+
+REGISTER_XLA_OP(Name("DummyReadResource"), DummyReadResourceOp);
 
 class XlaCompilerTest : public ::testing::Test {
  protected:
@@ -222,6 +283,46 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
         xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
     xla::LiteralTestUtil::ExpectEqual(*expected, *actual_literal);
   }
+}
+
+// Tests compilation and execution of a graph that adds two tensors.
+TEST_F(XlaCompilerTest, ResourceManager) {
+  // Builds a graph that calls the dummy resource Op.
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto b = DummyReadResourceCC(scope.WithOpName("B"), a);
+  auto c = ops::_Retval(scope.WithOpName("C"), b.output_, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the argument.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+
+  DummyResourceForTest* resource = new DummyResourceForTest();
+
+  // Compiles the graph.
+  auto options = DefaultOptions();
+  std::function<Status(ResourceMgr*)> populate_function =
+      [resource](ResourceMgr* rm) {
+        resource->Ref();
+        return rm->Create(rm->default_container(), "dummy", resource);
+      };
+  options.populate_resource_manager = &populate_function;
+  XlaCompiler compiler(options);
+  auto flr = BuildFunctionLibraryRuntime(compiler);
+
+  EXPECT_EQ(0, resource->Get());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph("dummy", std::move(graph), flr.get(), args,
+                                     &result));
+
+  EXPECT_EQ(1, resource->Get());
+
+  resource->Unref();
 }
 
 }  // namespace

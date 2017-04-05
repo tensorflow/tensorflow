@@ -109,7 +109,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
                is_self_adjoint=None,
                is_positive_definite=None,
                name="LinearOperatorFullMatrix"):
-    """Initialize a `LinearOperatorFullMatrix`.
+    r"""Initialize a `LinearOperatorFullMatrix`.
 
     Args:
       matrix:  Shape `[B1,...,Bb, M, N]` with `b >= 0`, `M, N >= 0`.
@@ -118,9 +118,10 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
       is_positive_definite:  Expect that this operator is positive definite,
-        meaning the real part of all eigenvalues is positive.  We do not require
-        the operator to be self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       name: A name for this `LinearOperator`.
 

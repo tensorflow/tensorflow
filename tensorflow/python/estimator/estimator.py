@@ -38,7 +38,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
@@ -199,10 +198,10 @@ class Estimator(object):
     if (steps is not None) and (max_steps is not None):
       raise ValueError('Can not provide both steps and max_steps.')
     if steps is not None and steps <= 0:
-      raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+      raise ValueError('Must specify steps > 0, given: {}'.format(steps))
     if max_steps is not None and max_steps <= 0:
       raise ValueError(
-          'Must specify max_steps >= 0, given: {}'.format(max_steps))
+          'Must specify max_steps > 0, given: {}'.format(max_steps))
 
     if max_steps is not None:
       start_step = _load_global_step_from_checkpoint_dir(self._model_dir)
@@ -257,7 +256,7 @@ class Estimator(object):
     hooks = _check_hooks_type(hooks)
     if steps is not None:
       if steps <= 0:
-        raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+        raise ValueError('Must specify steps > 0, given: {}'.format(steps))
       hooks.append(evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
           num_evals=steps))
 
@@ -267,7 +266,7 @@ class Estimator(object):
         checkpoint_path=checkpoint_path,
         name=name)
 
-  def predict(self, input_fn, predict_keys=None, hooks=None):
+  def predict(self, input_fn, predict_keys=None, hooks=None, checkpoint_path=None):
     """Returns predictions for given features.
 
     Args:
@@ -282,6 +281,8 @@ class Estimator(object):
         `None`, returns all.
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the prediction call.
+      checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
+        latest checkpoint in `model_dir` is used.
 
     Yields:
       Evaluated values of `predictions` tensors.
@@ -295,7 +296,8 @@ class Estimator(object):
     """
     hooks = _check_hooks_type(hooks)
     # Check that model has been trained.
-    checkpoint_path = saver.latest_checkpoint(self._model_dir)
+    if not checkpoint_path:
+      checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:
       raise ValueError('Could not find trained model in model_dir: {}.'.format(
           self._model_dir))
@@ -418,7 +420,6 @@ class Estimator(object):
       with tf_session.Session() as session:
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
-            variables._all_saveable_objects(),  # pylint: disable=protected-access
             sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
 

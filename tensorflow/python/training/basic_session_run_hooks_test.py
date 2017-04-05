@@ -346,6 +346,98 @@ class CheckpointSaverHookTest(test.TestCase):
           'end': 1
       }, listener.get_counts())
 
+  def test_listener_with_monitored_session(self):
+    with ops.Graph().as_default():
+      scaffold = monitored_session.Scaffold()
+      global_step = variables.get_or_create_global_step()
+      train_op = state_ops.assign_add(global_step, 1)
+      listener = MockCheckpointSaverListener()
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir,
+          save_steps=1,
+          scaffold=scaffold,
+          listeners=[listener])
+      with monitored_session.SingularMonitoredSession(
+          hooks=[hook],
+          scaffold=scaffold,
+          checkpoint_dir=self.model_dir) as sess:
+        sess.run(train_op)
+        sess.run(train_op)
+        global_step_val = sess.run(global_step)
+      listener_counts = listener.get_counts()
+    self.assertEqual(2, global_step_val)
+    self.assertEqual({
+        'begin': 1,
+        'before_save': 2,
+        'after_save': 2,
+        'end': 1
+    }, listener_counts)
+
+  def test_listener_with_default_saver(self):
+    with ops.Graph().as_default():
+      global_step = variables.get_or_create_global_step()
+      train_op = state_ops.assign_add(global_step, 1)
+      listener = MockCheckpointSaverListener()
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir,
+          save_steps=1,
+          listeners=[listener])
+      with monitored_session.SingularMonitoredSession(
+          hooks=[hook],
+          checkpoint_dir=self.model_dir) as sess:
+        sess.run(train_op)
+        sess.run(train_op)
+        global_step_val = sess.run(global_step)
+      listener_counts = listener.get_counts()
+    self.assertEqual(2, global_step_val)
+    self.assertEqual({
+        'begin': 1,
+        'before_save': 2,
+        'after_save': 2,
+        'end': 1
+    }, listener_counts)
+
+    with ops.Graph().as_default():
+      global_step = variables.get_or_create_global_step()
+      with monitored_session.SingularMonitoredSession(
+          checkpoint_dir=self.model_dir) as sess2:
+        global_step_saved_val = sess2.run(global_step)
+    self.assertEqual(2, global_step_saved_val)
+
+  def test_two_listeners_with_default_saver(self):
+    with ops.Graph().as_default():
+      global_step = variables.get_or_create_global_step()
+      train_op = state_ops.assign_add(global_step, 1)
+      listener1 = MockCheckpointSaverListener()
+      listener2 = MockCheckpointSaverListener()
+      hook = basic_session_run_hooks.CheckpointSaverHook(
+          self.model_dir,
+          save_steps=1,
+          listeners=[listener1, listener2])
+      with monitored_session.SingularMonitoredSession(
+          hooks=[hook],
+          checkpoint_dir=self.model_dir) as sess:
+        sess.run(train_op)
+        sess.run(train_op)
+        global_step_val = sess.run(global_step)
+      listener1_counts = listener1.get_counts()
+      listener2_counts = listener2.get_counts()
+    self.assertEqual(2, global_step_val)
+    self.assertEqual({
+        'begin': 1,
+        'before_save': 2,
+        'after_save': 2,
+        'end': 1
+    }, listener1_counts)
+    self.assertEqual(listener1_counts, listener2_counts)
+
+    with ops.Graph().as_default():
+      global_step = variables.get_or_create_global_step()
+      with monitored_session.SingularMonitoredSession(
+          checkpoint_dir=self.model_dir) as sess2:
+        global_step_saved_val = sess2.run(global_step)
+    self.assertEqual(2, global_step_saved_val)
+
   @test.mock.patch('time.time')
   def test_save_secs_saves_periodically(self, mock_time):
     # Let's have a realistic start time

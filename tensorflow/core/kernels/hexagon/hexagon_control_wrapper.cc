@@ -28,7 +28,7 @@ constexpr const char* const INPUT_OP_NAME = "INPUT";
 constexpr const char* const OUTPUT_OP_NAME = "OUTPUT";
 
 const bool DBG_DUMP_VERIFICATION_STRING = false;
-const bool SHOW_DBG_IN_SOC = false;
+const int DBG_LEVEL = 0;  // -2: verbose, -1: debug, 0: info
 const bool DBG_USE_DUMMY_INPUT = false;
 const bool DBG_USE_SAMPLE_INPUT = false;
 const int64 FLAG_ENABLE_PANDA_BINARY_INPUT = 0x01;
@@ -51,12 +51,25 @@ int HexagonControlWrapper::GetVersion() {
 }
 
 bool HexagonControlWrapper::Init(const RemoteFusedGraphExecuteInfo& info) {
-  soc_interface_SetLogLevel(SHOW_DBG_IN_SOC ? -1 /* debug */ : 0 /* info */);
+  soc_interface_SetLogLevel(DBG_LEVEL);
   if (DBG_USE_SAMPLE_INPUT) {
     soc_interface_SetDebugFlag(FLAG_ENABLE_PANDA_BINARY_INPUT);
   }
-  graph_transferer_.SetSerializedGraphTransferInfo(
-      info.serialized_executor_parameters());
+  if (info.serialized_executor_parameters().empty()) {
+    std::vector<std::pair<string, Tensor>> inputs;
+    std::vector<string> outputs;
+    RemoteFusedGraphExecuteUtils::BuildRemoteGraphInputsAndOutputsFromProto(
+        info, &inputs, &outputs);
+    graph_transferer_.LoadGraphFromProto(
+        HexagonOpsDefinitions::getInstance(), info.remote_graph(), inputs,
+        outputs,
+        false  // shape_inference_for_unknown_shape
+        );
+  } else {
+    // If graph transfer info is attached, just import it.
+    graph_transferer_.SetSerializedGraphTransferInfo(
+        info.serialized_executor_parameters());
+  }
   execute_info_ = &info;
   return soc_interface_Init();
 }
@@ -98,9 +111,12 @@ bool HexagonControlWrapper::SetupGraph() {
     new_output_node_info.set_input_count(1);
     new_output_node_info.set_output_count(0);
 
+    const TensorId tid = ParseTensorName(graph_output.name());
+    const string node_name = tid.first.ToString();
+    const int port = tid.second;
     // Register node input for the new output node
     const GraphTransferInfo::NodeInfo* node_info =
-        FindNodeInfo(graph_output.name(), &graph_transfer_info);
+        FindNodeInfo(node_name, &graph_transfer_info);
     CHECK_NE(node_info, nullptr);
     GraphTransferInfo::NodeInputInfo& node_input_info =
         *graph_transfer_info.add_node_input_info();
@@ -108,7 +124,7 @@ bool HexagonControlWrapper::SetupGraph() {
     GraphTransferInfo::NodeInput& node_input =
         *node_input_info.add_node_input();
     node_input.set_node_id(node_info->node_id());
-    node_input.set_output_port(0);
+    node_input.set_output_port(port);
   }
 
   if (DBG_DUMP_VERIFICATION_STRING) {
@@ -290,11 +306,14 @@ bool HexagonControlWrapper::ReadOutputNode(
   }
   std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
   ReadOutputNode(node_name, &outputs);
-  Tensor* output = tensor_allocator(output_shape);
-  CHECK(output->TotalBytes() >= std::get<1>(outputs[0]));
+  CHECK_EQ(1, outputs.size());
+  IRemoteFusedGraphExecutor::ByteArray& output = outputs[0];
+  Tensor* output_tensor = tensor_allocator(output_shape);
+  CHECK(output_tensor->TotalBytes() >= std::get<1>(output))
+      << output_tensor->TotalBytes() << ", " << std::get<1>(output);
   // TODO(satok): Avoid specifying float
-  std::memcpy(output->flat<float>().data(), std::get<0>(outputs[0]),
-              std::get<1>(outputs[0]));
+  std::memcpy(output_tensor->flat<float>().data(), std::get<0>(output),
+              std::get<1>(output));
 }
 
 bool HexagonControlWrapper::ReadOutputNode(

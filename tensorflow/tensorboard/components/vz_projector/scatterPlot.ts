@@ -102,9 +102,9 @@ export class ScatterPlot {
   private pointColors: Float32Array;
   private pointScaleFactors: Float32Array;
   private labels: LabelRenderParams;
-  private traceColors: {[trace: number]: Float32Array};
-  private traceOpacities: Float32Array;
-  private traceWidths: Float32Array;
+  private polylineColors: {[polylineIndex: number]: Float32Array};
+  private polylineOpacities: Float32Array;
+  private polylineWidths: Float32Array;
 
   private selecting = false;
   private nearestPoint: number;
@@ -596,7 +596,8 @@ export class ScatterPlot {
         this.camera, cameraType, this.orbitCameraControls.target, this.width,
         this.height, cameraSpacePointExtents[0], cameraSpacePointExtents[1],
         this.backgroundColor, this.pointColors, this.pointScaleFactors,
-        this.labels, this.traceColors, this.traceOpacities, this.traceWidths);
+        this.labels, this.polylineColors, this.polylineOpacities,
+        this.polylineWidths);
 
     // Render first pass to picking target. This render fills pickingTexture
     // with colors that are actually point ids, so that sampling the texture at
@@ -644,17 +645,17 @@ export class ScatterPlot {
     this.labels = labels;
   }
 
-  /** Set the colors for every data trace. (RGB triplets) */
-  setTraceColors(colors: {[trace: number]: Float32Array}) {
-    this.traceColors = colors;
+  /** Set the colors for every data polyline. (RGB triplets) */
+  setPolylineColors(colors: {[polylineIndex: number]: Float32Array}) {
+    this.polylineColors = colors;
   }
 
-  setTraceOpacities(opacities: Float32Array) {
-    this.traceOpacities = opacities;
+  setPolylineOpacities(opacities: Float32Array) {
+    this.polylineOpacities = opacities;
   }
 
-  setTraceWidths(widths: Float32Array) {
-    this.traceWidths = widths;
+  setPolylineWidths(widths: Float32Array) {
+    this.polylineWidths = widths;
   }
 
   getMouseMode(): MouseMode {

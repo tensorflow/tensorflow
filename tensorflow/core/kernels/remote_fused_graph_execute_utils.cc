@@ -135,20 +135,29 @@ RemoteFusedGraphExecuteUtils::GetExecutorBuildRegistry() {
   std::vector<Tensor> output_tensors;
   output_tensors.reserve(graph_def.node_size());
   std::vector<string> output_node_names;
-  for (const NodeDef& node : graph_def.node()) {
-    if (!IsInputNode(input_node_info_list, node.name())) {
-      // CAVEAT: We only support one output.  Use shape Inference Version
-      // if there are two or more outputs in a node.
-      output_node_names.emplace_back(strings::StrCat(node.name(), ":", 0));
+
+  Graph graph(OpRegistry::Global());
+  Status status = ImportGraphDef({}, graph_def, &graph, nullptr);
+  if (!status.ok()) {
+    return status;
+  }
+
+  for (const Node* node : graph.nodes()) {
+    if (IsInputNode(input_node_info_list, node->name())) {
+      continue;
+    }
+    for (int i = 0; i < node->num_outputs(); ++i) {
+      output_node_names.emplace_back(strings::StrCat(node->name(), ":", i));
     }
   }
-  const Status status =
-      DryRunInference(graph_def, input_node_info_list, output_node_names,
-                      initialize_by_zero, &output_tensors);
+
+  status = DryRunInference(graph_def, input_node_info_list, output_node_names,
+                           initialize_by_zero, &output_tensors);
   if (!status.ok()) {
     VLOG(1) << "Failed to dryrun " << status;
     return status;
   }
+
   CHECK_EQ(output_node_names.size(), output_tensors.size())
       << output_node_names.size() << ", " << output_tensors.size();
 
@@ -159,17 +168,18 @@ RemoteFusedGraphExecuteUtils::GetExecutorBuildRegistry() {
     output_tensors.push_back(input_node_info.second);
   }
 
-  for (int i = 0; i < output_node_names.size(); ++i) {
+  for (int i = 0; static_cast<size_t>(i) < output_node_names.size(); ++i) {
     const string& name = output_node_names.at(i);
     const Tensor& tensor = output_tensors.at(i);
     EmplaceTensorShapeType(name, tensor, tensor_shape_map);
   }
-  for (int i = 0; i < input_node_info_list.size(); ++i) {
+  for (int i = 0; static_cast<size_t>(i) < input_node_info_list.size(); ++i) {
     const string& name = input_node_info_list.at(i).first;
     const Tensor& tensor = output_tensors.at(output_node_names.size() + i);
     EmplaceTensorShapeType(name, tensor, tensor_shape_map);
   }
-  CHECK(graph_def.node_size() == output_tensors.size());
+  CHECK_EQ(output_node_names.size() + input_node_info_list.size(),
+           output_tensors.size());
   return status;
 }
 
@@ -248,6 +258,26 @@ RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
   return Status::OK();
 }
 
+/* static */ Status RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
+    const NodeDef& node_def, std::vector<DataType>* data_types,
+    std::vector<TensorShape>* shapes) {
+  Status status;
+  if (data_types != nullptr) {
+    status = GetNodeAttr(node_def, ATTR_OUTPUT_DATA_TYPES, data_types);
+  }
+  if (!status.ok()) {
+    return status;
+  }
+  if (shapes != nullptr) {
+    status = GetNodeAttr(node_def, ATTR_OUTPUT_SHAPES, shapes);
+    if (status.ok() && data_types != nullptr) {
+      CHECK_EQ(data_types->size(), shapes->size());
+    }
+  }
+
+  return status;
+}
+
 /* static */ Status RemoteFusedGraphExecuteUtils::PropagateShapeInference(
     const GraphDef& graph_def,
     const std::vector<std::pair<string, Tensor>>& input_node_info_list,
@@ -269,8 +299,13 @@ RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
         shape_inference::ShapeHandle handle;
         status = context->MakeShapeFromTensorShape(
             input_node_info.second.shape(), &handle);
-        // TODO(b/32704451): Don't just ignore this status!
-        shape_refiner->SetShape(node, 0, handle).IgnoreError();
+        if (!status.ok()) {
+          break;
+        }
+        status = shape_refiner->SetShape(node, 0, handle);
+        if (!status.ok()) {
+          break;
+        }
         is_input_node = true;
       }
       if (!status.ok()) {
@@ -280,9 +315,9 @@ RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
     // If not an input node call AddNode() that recomputes the shape.
     if (!is_input_node && status.ok()) {
       status = shape_refiner->AddNode(node);
-      if (!status.ok()) {
-        VLOG(1) << "Shape inference failed for node: " << node->name();
-      }
+    }
+    if (!status.ok()) {
+      VLOG(1) << "Shape inference failed for node: " << node->name();
     }
   };
 
@@ -350,6 +385,24 @@ RemoteFusedGraphExecuteUtils::GetTensorShapeType(
     }
   }
   return nullptr;
+}
+
+/* static */ void
+RemoteFusedGraphExecuteUtils::BuildRemoteGraphInputsAndOutputsFromProto(
+    const RemoteFusedGraphExecuteInfo& proto,
+    std::vector<std::pair<string, Tensor>>* inputs,
+    std::vector<string>* outputs) {
+  CHECK_EQ(proto.graph_input_node_name_size(),
+           proto.default_graph_input_tensor_shape_size());
+  for (int i = 0; i < proto.graph_input_node_name_size(); ++i) {
+    inputs->emplace_back(
+        proto.graph_input_node_name(i),
+        Tensor(proto.default_graph_input_tensor_shape(i).dtype(),
+               TensorShape(proto.default_graph_input_tensor_shape(i).shape())));
+  }
+  for (const string& output_node_name : proto.graph_output_node_name()) {
+    outputs->emplace_back(output_node_name);
+  }
 }
 
 /* static */ void RemoteFusedGraphExecuteUtils::EmplaceTensorShapeType(

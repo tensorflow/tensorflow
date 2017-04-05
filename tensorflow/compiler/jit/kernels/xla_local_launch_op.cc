@@ -260,6 +260,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     xla::ExecutableRunOptions run_options;
     run_options.set_stream(stream);
     run_options.set_allocator(&xla_allocator);
+    run_options.set_inter_op_thread_pool(
+        ctx->device()->tensorflow_cpu_worker_threads()->workers);
     run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
     Env* env = Env::Default();
     auto start_time = env->NowMicros();

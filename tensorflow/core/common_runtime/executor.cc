@@ -232,7 +232,7 @@ struct NodeItem {
   int input_start = 0;
 
   // Number of output edges.
-  int num_output_edges;
+  size_t num_output_edges;
 
   PendingCounts::Handle pending_id;
 
@@ -307,7 +307,7 @@ class GraphView {
   void Initialize(const Graph* g);
   Status SetAllocAttrs(const Graph* g, const Device* device);
 
-  NodeItem* node(int id) const {
+  NodeItem* node(size_t id) const {
     DCHECK_GE(id, 0);
     DCHECK_LT(id, num_nodes_);
     uint32 offset = node_offsets_[id];
@@ -454,7 +454,7 @@ GraphView::~GraphView() {
 }
 
 size_t GraphView::NodeItemBytes(const Node* n) {
-  const int num_output_edges = n->out_edges().size();
+  const size_t num_output_edges = n->out_edges().size();
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
 
@@ -500,11 +500,11 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   // pointers). Casting to int64 is needed on 32bit CPU to avoid comparing
   // values as "int" vs "size_t" in CHECK_LE.
   CHECK_LE(static_cast<int64>(ptr - space_), kuint32max);
-  const uint32 offset = ptr - space_;
+  const uint32 offset = static_cast<uint32>(ptr - space_);
   node_offsets_[id] = offset;
   ptr += bytes;
 
-  const int num_output_edges = n->out_edges().size();
+  const size_t num_output_edges = n->out_edges().size();
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
 
@@ -580,9 +580,10 @@ void GraphView::Initialize(const Graph* g) {
   CHECK_EQ(ptr, space_ + total_bytes);
 }
 
-void GetMaxPendingCounts(const Node* n, int* max_pending, int* max_dead_count) {
-  const int num_in_edges = n->in_edges().size();
-  int initial_count;
+void GetMaxPendingCounts(const Node* n, size_t* max_pending,
+                         size_t* max_dead_count) {
+  const size_t num_in_edges = n->in_edges().size();
+  size_t initial_count;
   if (IsMerge(n)) {
     // merge waits all control inputs so we initialize the pending
     // count to be the number of control edges.
@@ -626,8 +627,7 @@ Status ExecutorImpl::Initialize() {
     FrameInfo* frame_info = EnsureFrameInfo(frame_name);
 
     // See if this node is a root node, and if so, add to root_nodes_.
-    const int num_in_edges = n->in_edges().size();
-    if (num_in_edges == 0) {
+    if (n->in_edges().empty()) {
       root_nodes_.push_back(n);
     }
 
@@ -659,7 +659,7 @@ Status ExecutorImpl::Initialize() {
     // pending counts data structure, and allocate a handle in
     // that frame's pending counts data structure that has enough
     // space to store these maximal count values.
-    int max_pending, max_dead;
+    size_t max_pending, max_dead;
     GetMaxPendingCounts(n, &max_pending, &max_dead);
     item->pending_id =
         frame_info->pending_counts_layout.CreateHandle(max_pending, max_dead);
@@ -896,7 +896,7 @@ class ExecutorState {
     Entry* input_tensors;
 
     // The number of outstanding ops for each iteration.
-    int outstanding_ops;
+    size_t outstanding_ops;
 
     // The number of outstanding frames for each iteration.
     int outstanding_frame_count;
@@ -1037,13 +1037,13 @@ class ExecutorState {
 
     inline IterationState* GetIteration(int64 iter)
         EXCLUSIVE_LOCKS_REQUIRED(mu) {
-      int index = iter % iterations.size();
+      size_t index = iter % iterations.size();
       return iterations[index];
     }
 
     inline void SetIteration(int64 iter, IterationState* state)
         EXCLUSIVE_LOCKS_REQUIRED(mu) {
-      int index = iter % iterations.size();
+      size_t index = iter % iterations.size();
       DCHECK(state == nullptr || iterations[index] == nullptr);
       iterations[index] = state;
     }
@@ -1404,7 +1404,7 @@ void ExecutorImpl::InitializePending(const Graph* graph,
   for (const Node* n : graph->nodes()) {
     const int id = n->id();
     const string& name = cf_info.frame_names[id];
-    int max_pending, max_dead;
+    size_t max_pending, max_dead;
     GetMaxPendingCounts(n, &max_pending, &max_dead);
     const NodeItem* item = gview_.node(id);
     PendingCounts* counts = EnsureFrameInfo(name)->pending_counts;
@@ -2027,7 +2027,7 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
   }
 
   bool completed = false;
-  int ready_size = ready.size();
+  size_t ready_size = ready.size();
   if (ready_size == 0 || !s.ok()) {
     completed = (num_outstanding_ops_.fetch_sub(1) == 1);
   } else if (ready_size > 1) {
@@ -2375,10 +2375,10 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
                                               TaggedNodeSeq* ready) {
   const GraphView& gview = executor->gview_;
   IterationState* iter_state = GetIteration(iter);
-  const int num_output_edges = item->num_output_edges;
+  const size_t num_output_edges = item->num_output_edges;
   const EdgeInfo* edges = item->output_edge_list();
   Entry* input_tensors = iter_state->input_tensors;
-  for (int out_index = 0; out_index < num_output_edges; out_index++) {
+  for (size_t out_index = 0; out_index < num_output_edges; out_index++) {
     const EdgeInfo& e = edges[out_index];
     const int dst_id = e.dst_id;
     const NodeItem* dst_item = gview.node(dst_id);

@@ -341,10 +341,11 @@ Invoke python:
 Enter the following short program inside the python interactive shell:
 
 ```python
->>> import tensorflow as tf
->>> hello = tf.constant('Hello, TensorFlow!')
->>> sess = tf.Session()
->>> print(sess.run(hello))
+# Python
+import tensorflow as tf
+hello = tf.constant('Hello, TensorFlow!')
+sess = tf.Session()
+print(sess.run(hello))
 ```
 
 If the system outputs the following, then you are ready to begin writing
@@ -352,7 +353,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started$Getting Started with
+If you are new to TensorFlow, see @{$get_started/get_started$Getting Started with
 TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see [Common

@@ -11,6 +11,8 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 filegroup(
     name = "all_files",
@@ -127,10 +129,36 @@ py_library(
     ],
 )
 
-py_library(
+tf_kernel_library(
+    name = "tensor_forest_kernels",
+    srcs = [
+        "kernels/best_splits_op.cc",
+        "kernels/count_extremely_random_stats_op.cc",
+        "kernels/finished_nodes_op.cc",
+        "kernels/grow_tree_op.cc",
+        "kernels/reinterpret_string_to_float_op.cc",
+        "kernels/sample_inputs_op.cc",
+        "kernels/scatter_add_ndim_op.cc",
+        "kernels/tree_predictions_op.cc",
+        "kernels/update_fertile_slots_op.cc",
+    ],
+    deps = [
+        ":tree_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:bounds_check",
+    ],
+)
+
+tf_custom_op_py_library(
     name = "tensor_forest_ops_py",
     srcs = ["python/ops/tensor_forest_ops.py"],
-    data = ["python/ops/_tensor_forest_ops.so"],
+    dso = ["python/ops/_tensor_forest_ops.so"],
+    kernels = [
+        ":tensor_forest_kernels",
+        ":tensor_forest_ops_op_lib",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":constants",

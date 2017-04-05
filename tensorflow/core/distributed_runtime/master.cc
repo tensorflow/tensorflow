@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/macros.h"
@@ -134,6 +135,7 @@ class DeviceFinder {
       const protobuf::RepeatedPtrField<string>& device_filters, MasterEnv* env,
       WorkerCacheInterface* worker_cache)
       : env_(env), worker_cache_(worker_cache) {
+    CHECK(worker_cache) << "Worker cache was null!";
     auto process_filter = [this](const string& filter) {
       DeviceNameUtils::ParsedName parsed;
       if (DeviceNameUtils::ParseFullName(filter, &parsed)) {
@@ -196,7 +198,7 @@ class DeviceFinder {
     while (num_pending_ != 0) {
       pending_zero_.wait_for(l, std::chrono::milliseconds(kLoggingPeriodMs));
       if (num_pending_ != 0) {
-        for (int i = 0; i < targets_.size(); ++i) {
+        for (int i = 0; static_cast<size_t>(i) < targets_.size(); ++i) {
           if (!seen_targets_[i]) {
             LOG(INFO)
                 << "CreateSession still waiting for response from worker: "
@@ -287,41 +289,37 @@ class DeviceFinder {
 void Master::CreateSession(const CreateSessionRequest* req,
                            CreateSessionResponse* resp, MyClosure done) {
   SchedClosure([this, req, resp, done]() {
-    Status status = ValidateExternalGraphDefSyntax(req->graph_def());
-    if (status.ok()) {
-      // Ping all the workers and build the list of devices that the
-      // session will use.
-      // TODO(saeta): Convert to std::make_unique when available.
-      std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devices(
-          new std::vector<std::unique_ptr<Device>>());
-      status = DeviceFinder::GetRemoteDevices(req->config().device_filters(),
-                                              env_, env_->worker_cache,
-                                              remote_devices.get());
-      if (!status.ok()) {
-        done(status);
-        return;
-      }
-      SessionOptions options;
-      options.config = req->config();
-      MasterSession* session = env_->master_session_factory(
-          options, env_, std::move(remote_devices));
-      GraphDef* gdef =
-          const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
-      Status create_status = session->Create(gdef);
-      if (!create_status.ok()) {
-        session->Close().IgnoreError();
-        session->Unref();
-        done(create_status);
-        return;
-      }
-      resp->set_session_handle(session->handle());
-      // Insert into the session map, which takes ownership of the session.
-      {
-        mutex_lock l(mu_);
-        CHECK(sessions_.insert({session->handle(), session}).second);
-      }
+    Status status;
+    auto call_done = gtl::MakeCleanup([&status, &done] { done(status); });
+    status = ValidateExternalGraphDefSyntax(req->graph_def());
+    if (!status.ok()) return;
+    // Ping all the workers and build the list of devices that the
+    // session will use.
+    // TODO(saeta): Convert to std::make_unique when available.
+    std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devices(
+        new std::vector<std::unique_ptr<Device>>());
+    status = DeviceFinder::GetRemoteDevices(req->config().device_filters(),
+                                            env_, env_->worker_cache,
+                                            remote_devices.get());
+    if (!status.ok()) return;
+    SessionOptions options;
+    options.config = req->config();
+    MasterSession* session =
+        env_->master_session_factory(options, env_, std::move(remote_devices));
+    GraphDef* gdef =
+        const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
+    status = session->Create(gdef);
+    if (!status.ok()) {
+      session->Close().IgnoreError();
+      session->Unref();
+      return;
     }
-    done(status);
+    resp->set_session_handle(session->handle());
+    // Insert into the session map, which takes ownership of the session.
+    {
+      mutex_lock l(mu_);
+      CHECK(sessions_.insert({session->handle(), session}).second);
+    }
   });
 }
 

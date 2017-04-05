@@ -40,8 +40,7 @@ Executable::ExecuteOnStreams(
 
   std::vector<perftools::gputools::DeviceMemoryBase> return_values(
       run_options.size());
-  for (tensorflow::gtl::ArraySlice<const ExecutableRunOptions>::size_type i = 0;
-       i < run_options.size(); ++i) {
+  for (size_t i = 0; i < run_options.size(); ++i) {
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
     // executions may never complete if not all executions are running.

@@ -598,7 +598,9 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     // Build computation and add it to module as entry computation.
     BuildModule(builder.Build());
     // Run instruction fusion HloPass.
-    EXPECT_TRUE(InstructionFusion().Run(module_.get()).ValueOrDie());
+    EXPECT_TRUE(InstructionFusion(InstructionFusion::IsExpensive)
+                    .Run(module_.get())
+                    .ValueOrDie());
     // Get computation root instruction (should be a kFusion).
     auto* fusion = module_->entry_computation()->root_instruction();
     EXPECT_EQ(HloOpcode::kFusion, fusion->opcode());

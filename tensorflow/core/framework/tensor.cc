@@ -531,7 +531,7 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
 // one both for the SubBuffer _and_ the underlying TensorBuffer.
 bool Tensor::RefCountIsOne() const {
   return buf_ != nullptr && buf_->RefCountIsOne() &&
-         buf_->root_buffer()->RefCountIsOne();
+         buf_->root_buffer()->RefCountIsOne() && buf_->OwnsMemory();
 }
 
 // The macro CASES() expands to a switch statement conditioned on

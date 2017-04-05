@@ -15,23 +15,47 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
 
+Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
+                               GraphDef* optimized_graph) {
+  bool already_optimized = false;
+  if (!cfg_.disable_model_pruning()) {
+    already_optimized = true;
+    ModelPruner pruner;
+    TF_RETURN_IF_ERROR(pruner.Optimize(nullptr, item, optimized_graph));
+  }
+  if (cfg_.optimize_tensor_layout()) {
+    LayoutOptimizer layout_optimizer;
+    if (!already_optimized) {
+      return layout_optimizer.Optimize(nullptr, item, optimized_graph);
+    } else {
+      GrapplerItem optimized_item = item;
+      optimized_item.graph = *optimized_graph;
+      return layout_optimizer.Optimize(nullptr, optimized_item,
+                                       optimized_graph);
+    }
+  }
+  return Status::OK();
+}
+
+void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
+                             const GraphDef& pruned_graph, double result) {
+  // Nothing to do for MetaOptimizer.
+}
+
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
-  // We've only open sourced a single optimizer for now.
   return cfg.optimize_tensor_layout();
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
                         GraphDef* optimized_graph) {
-  if (cfg.optimize_tensor_layout()) {
-    LayoutOptimizer layout_optimizer;
-    return layout_optimizer.Optimize(nullptr, item, optimized_graph);
-  }
-  return Status::OK();
+  MetaOptimizer optimizer(cfg);
+  return optimizer.Optimize(nullptr, item, optimized_graph);
 }
 
 }  // namespace grappler

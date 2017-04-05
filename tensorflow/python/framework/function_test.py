@@ -338,6 +338,23 @@ class FunctionTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllEqual(z.eval(), 101.)
 
+  def testResourceVarAsImplicitInput(self):
+    g = ops.Graph()
+    with g.as_default():
+      v = variable_scope.get_variable(
+          "var", (4, 4), dtypes.float32, use_resource=True)
+
+      @function.Defun()
+      def Foo():
+        return array_ops.identity(v)
+
+      y = v.value()
+      z = Foo()
+
+    with self.test_session(graph=g):
+      v.initializer.run()
+      self.assertAllEqual(y.eval(), z.eval())
+
   def testDefineErrors(self):
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(ValueError, "can not return None"):
@@ -704,6 +721,58 @@ class FunctionTest(test.TestCase):
       self.assertEqual(x.get_shape().as_list(), [2])
       y = Bar(array_ops.zeros([1, 2, 3]))
       self.assertAllEqual(y.get_shape().as_list(), [1, 1, 2, 3])
+
+  def testVariableReuse(self):
+    def LinearWithReuse(input_tensor, reuse=None):
+      size = input_tensor.shape.dims[1]
+      with variable_scope.variable_scope("linear", reuse=reuse):
+        w = variable_scope.get_variable("w", shape=[size, size],
+                                        dtype=input_tensor.dtype)
+      return math_ops.matmul(input_tensor, w)
+
+    @function.Defun(dtypes.float32)
+    def Foo(inputs):
+      inputs = array_ops.reshape(inputs, [32, 100])
+      hidden = LinearWithReuse(inputs)
+      return LinearWithReuse(hidden, reuse=True)
+
+    input_op = array_ops.placeholder(shape=[32, 100], dtype=dtypes.float32)
+    output_op = Foo(input_op)
+
+    global_vars = variables.global_variables()
+    self.assertEqual(len(global_vars), 1)
+    self.assertEqual(global_vars[0].name, "linear/w:0")
+
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      output_val = sess.run(output_op,
+                            feed_dict={input_op: np.random.rand(32, 100)})
+      self.assertEqual(output_val.shape, (32, 100))
+
+  def testFunctionCallInDifferentVariableScopes(self):
+    @function.Defun(dtypes.float32)
+    def Foo(inputs):
+      var = variable_scope.get_variable("var", shape=[10], dtype=dtypes.float32,
+                                        initializer=init_ops.ones_initializer())
+      return inputs + var
+
+    input_op = array_ops.placeholder(shape=[10], dtype=dtypes.float32)
+    with variable_scope.variable_scope("vs1"):
+      out1_op = Foo(input_op)
+
+    with variable_scope.variable_scope("vs2"):
+      out2_op = Foo(input_op)
+
+    global_vars = variables.global_variables()
+    self.assertEqual(len(global_vars), 1)
+    self.assertEqual(global_vars[0].name, "vs1/var:0")
+
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      out1, out2 = sess.run([out1_op, out2_op],
+                            feed_dict={input_op: np.linspace(1, 10, 10)})
+      self.assertAllEqual(out1, np.linspace(2, 11, 10))
+      self.assertAllEqual(out2, np.linspace(2, 11, 10))
 
 
 class FunctionsFromProtos(test.TestCase):

@@ -44,8 +44,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-GraphMgr::GraphMgr(const WorkerEnv* worker_env)
-    : worker_env_(worker_env), table_(5) {}
+GraphMgr::GraphMgr(const WorkerEnv* worker_env,
+                   RendezvousMgrInterface* rendezvous_mgr)
+    : worker_env_(worker_env), rendezvous_mgr_(rendezvous_mgr), table_(5) {
+  CHECK(rendezvous_mgr) << "Rendezvous mgr was null";
+}
 
 GraphMgr::~GraphMgr() {
   for (auto p : table_) p.second->Unref();
@@ -372,9 +375,7 @@ void GraphMgr::RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous,
             }
           }
           call_state->mu.lock();
-          if (status.ok()) {
-            call_state->shared_status = status;
-          }
+          call_state->shared_status.Update(status);
           call_state->done_counter--;
           // If we are the last async call to return, call the done callback.
           if (call_state->done_counter == 0) {
@@ -390,14 +391,14 @@ void GraphMgr::RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous,
 }
 
 Status GraphMgr::SendInputs(const int64 step_id, const NamedTensors& in) {
-  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Rendezvous* rendezvous = rendezvous_mgr_->Find(step_id);
   Status s = SendInputsToRendezvous(rendezvous, in);
   rendezvous->Unref();
   return s;
 }
 
 Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
-  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Rendezvous* rendezvous = rendezvous_mgr_->Find(step_id);
   Status s = RecvOutputsFromRendezvous(rendezvous, out);
   rendezvous->Unref();
   return s;
@@ -405,7 +406,7 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
 
 void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
                                 StatusCallback done) {
-  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Rendezvous* rendezvous = rendezvous_mgr_->Find(step_id);
   RecvOutputsFromRendezvousAsync(rendezvous, out,
                                  [done, rendezvous](const Status s) {
                                    rendezvous->Unref();
@@ -435,7 +436,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
     return;
   }
 
-  Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
+  Rendezvous* rendezvous = rendezvous_mgr_->Find(step_id);
 
   // Sends values specified by the caller.
   Status s = SendInputsToRendezvous(rendezvous, in);

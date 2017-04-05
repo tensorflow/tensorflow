@@ -43,11 +43,34 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
+
+
+class _RNNCellForTest(rnn_cell_impl._RNNCell):  # pylint: disable=protected-access
+  """RNN cell for testing."""
+
+  def __init__(self, input_output_size, state_size):
+    self._input_output_size = input_output_size
+    self._state_size = state_size
+    self._w = variables.Variable(1.0, dtype=dtypes.float32, name="w")
+
+  @property
+  def output_size(self):
+    return self._input_output_size
+
+  @property
+  def state_size(self):
+    return self._state_size
+
+  def __call__(self, input_, state, scope=None):
+    return (math_ops.multiply(self._w, input_), state)
 
 
 class SessionDebugTestBase(test_util.TensorFlowTestCase):
@@ -435,6 +458,51 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(
           [[12], [14], [16]],
           dump.get_tensors("while/NextIteration", 0, "DebugIdentity"))
+
+  def testDebugTrainingDynamicRNNWorks(self):
+    with session.Session() as sess:
+      input_size = 3
+      state_size = 2
+      time_steps = 4
+      batch_size = 2
+
+      input_values = np.random.randn(time_steps, batch_size, input_size)
+      sequence_length = np.random.randint(0, time_steps, size=batch_size)
+      concat_inputs = array_ops.placeholder(
+          dtypes.float32, shape=(time_steps, batch_size, input_size))
+
+      outputs_dynamic, _ = rnn.dynamic_rnn(
+          _RNNCellForTest(input_size, state_size),
+          inputs=concat_inputs,
+          sequence_length=sequence_length,
+          time_major=True,
+          dtype=dtypes.float32)
+      toy_loss = math_ops.reduce_sum(outputs_dynamic * outputs_dynamic)
+      train_op = gradient_descent.GradientDescentOptimizer(
+          learning_rate=0.1).minimize(toy_loss, name="train_op")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      if any(url.startswith("grpc://") for url in self._debug_urls()):
+        debug_utils.watch_graph_with_blacklists(
+            run_options,
+            sess.graph,
+            node_name_regex_blacklist="(.*rnn/while/.*|.*TensorArray.*)",
+            debug_urls=self._debug_urls())
+        # b/36870549: Nodes with these name patterns need to be excluded from
+        # tfdbg in order to prevent MSAN warnings of uninitialized Tensors
+        # under the grpc:// debug URL scheme.
+      else:
+        debug_utils.watch_graph(
+            run_options, sess.graph, debug_urls=self._debug_urls())
+
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(train_op, feed_dict={concat_inputs: input_values},
+               options=run_options, run_metadata=run_metadata)
+
+      debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
 
   def testDebugCondWatchingWholeGraphWorks(self):
     with session.Session() as sess:

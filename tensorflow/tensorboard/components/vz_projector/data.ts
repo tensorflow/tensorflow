@@ -52,8 +52,8 @@ export interface SpriteAndMetadataInfo {
   spriteMetadata?: SpriteMetadata;
 }
 
-/** A single collection of points which make up a trace through space. */
-export interface DataTrace {
+/** A single collection of points which make up a sequence through space. */
+export interface Sequence {
   /** Indices into the DataPoints array in the Data object. */
   pointIndices: number[];
 }
@@ -68,8 +68,8 @@ export interface DataPoint {
    */
   metadata: PointMetadata;
 
-  /** index of the trace, used for highlighting on click */
-  traceIndex?: number;
+  /** index of the sequence, used for highlighting on click */
+  sequenceIndex?: number;
 
   /** index in the original data source */
   index: number;
@@ -88,8 +88,25 @@ export const PCA_SAMPLE_SIZE = 50000;
 export const PCA_SAMPLE_DIM = 200;
 /** Number of pca components to compute. */
 const NUM_PCA_COMPONENTS = 10;
-/** Reserved metadata attribute used for trace information. */
-const TRACE_METADATA_ATTR = '__next__';
+/**
+ * Reserved metadata attributes used for sequence information
+ * NOTE: Use "__seq_next__" as "__next__" is deprecated.
+ */
+const SEQUENCE_METADATA_ATTRS = ['__next__', '__seq_next__'];
+
+function getSequenceNextPointIndex(pointMetadata: PointMetadata): number|null {
+  let sequenceAttr = null;
+  for (let metadataAttr of SEQUENCE_METADATA_ATTRS) {
+    if (metadataAttr in pointMetadata && pointMetadata[metadataAttr] !== '') {
+      sequenceAttr = pointMetadata[metadataAttr];
+      break;
+    }
+  }
+  if (sequenceAttr == null) {
+    return null;
+  }
+  return +sequenceAttr;
+}
 
 /**
  * Dataset contains a DataPoints array that should be treated as immutable. This
@@ -100,7 +117,7 @@ const TRACE_METADATA_ATTR = '__next__';
  */
 export class DataSet {
   points: DataPoint[];
-  traces: DataTrace[];
+  sequences: Sequence[];
 
   shuffledDataIndices: number[] = [];
 
@@ -125,53 +142,53 @@ export class DataSet {
       points: DataPoint[], spriteAndMetadataInfo?: SpriteAndMetadataInfo) {
     this.points = points;
     this.shuffledDataIndices = util.shuffle(d3.range(this.points.length));
-    this.traces = this.computeTraces(points);
+    this.sequences = this.computeSequences(points);
     this.dim = [this.points.length, this.points[0].vector.length];
     this.spriteAndMetadataInfo = spriteAndMetadataInfo;
   }
 
-  private computeTraces(points: DataPoint[]) {
-    // Keep a list of indices seen so we don't compute traces for a given
+  private computeSequences(points: DataPoint[]) {
+    // Keep a list of indices seen so we don't compute sequences for a given
     // point twice.
     let indicesSeen = new Int8Array(points.length);
-    // Compute traces.
-    let indexToTrace: {[index: number]: DataTrace} = {};
-    let traces: DataTrace[] = [];
+    // Compute sequences.
+    let indexToSequence: {[index: number]: Sequence} = {};
+    let sequences: Sequence[] = [];
     for (let i = 0; i < points.length; i++) {
       if (indicesSeen[i]) {
         continue;
       }
       indicesSeen[i] = 1;
 
-      // Ignore points without a trace attribute.
-      let next = points[i].metadata[TRACE_METADATA_ATTR];
-      if (next == null || next === '') {
+      // Ignore points without a sequence attribute.
+      let next = getSequenceNextPointIndex(points[i].metadata);
+      if (next == null) {
         continue;
       }
-      if (next in indexToTrace) {
-        let existingTrace = indexToTrace[+next];
+      if (next in indexToSequence) {
+        let existingSequence = indexToSequence[next];
         // Pushing at the beginning of the array.
-        existingTrace.pointIndices.unshift(i);
-        indexToTrace[i] = existingTrace;
+        existingSequence.pointIndices.unshift(i);
+        indexToSequence[i] = existingSequence;
         continue;
       }
-      // The current point is pointing to a new/unseen trace.
-      let newTrace: DataTrace = {pointIndices: []};
-      indexToTrace[i] = newTrace;
-      traces.push(newTrace);
+      // The current point is pointing to a new/unseen sequence.
+      let newSequence: Sequence = {pointIndices: []};
+      indexToSequence[i] = newSequence;
+      sequences.push(newSequence);
       let currentIndex = i;
       while (points[currentIndex]) {
-        newTrace.pointIndices.push(currentIndex);
-        let next = points[currentIndex].metadata[TRACE_METADATA_ATTR];
-        if (next != null && next !== '') {
-          indicesSeen[+next] = 1;
-          currentIndex = +next;
+        newSequence.pointIndices.push(currentIndex);
+        let next = getSequenceNextPointIndex(points[currentIndex].metadata);
+        if (next != null) {
+          indicesSeen[next] = 1;
+          currentIndex = next;
         } else {
           currentIndex = -1;
         }
       }
     }
-    return traces;
+    return sequences;
   }
 
   projectionCanBeRendered(projection: ProjectionType): boolean {

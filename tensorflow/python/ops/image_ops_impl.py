@@ -546,9 +546,10 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
                         'height must be >= target + offset.')
   image = control_flow_ops.with_dependencies(assert_ops, image)
 
-  cropped = array_ops.slice(image,
-                            array_ops.stack([0, offset_height, offset_width, 0]),
-                            array_ops.stack([-1, target_height, target_width, -1]))
+  cropped = array_ops.slice(
+      image,
+      array_ops.stack([0, offset_height, offset_width, 0]),
+      array_ops.stack([-1, target_height, target_width, -1]))
 
   cropped_shape = [None if _is_tensor(i) else i
                    for i in [batch, target_height, target_width, depth]]
@@ -907,7 +908,6 @@ def adjust_brightness(image, delta):
     adjusted = math_ops.add(flt_image,
                             math_ops.cast(delta, dtypes.float32),
                             name=name)
-    adjusted = clip_ops.clip_by_value(adjusted, 0.0, 1.0)
 
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 

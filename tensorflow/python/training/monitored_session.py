@@ -22,7 +22,6 @@ from __future__ import print_function
 import abc
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -180,11 +179,7 @@ class Scaffold(object):
                                                  summary.merge_all)
     # pylint: disable=g-long-lambda
     if self._saver is None:
-      self._saver = Scaffold.get_or_default(
-          'saver',
-          ops.GraphKeys.SAVERS,
-          lambda: training_saver.Saver(sharded=True, allow_empty=True,
-                                       write_version=saver_pb2.SaverDef.V2))
+      self._saver = training_saver._get_saver_or_default()  # pylint: disable=protected-access
     # pylint: enable=g-long-lambda
     self._saver.build()
 
@@ -256,7 +251,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              save_summaries_steps=100,
                              save_summaries_secs=None,
                              config=None,
-                             stop_grace_period_secs=120):
+                             stop_grace_period_secs=120,
+                             log_step_count_steps=10000):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -292,6 +288,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       It's the `config` argument of constructor of `tf.Session`.
     stop_grace_period_secs: Number of seconds given to threads to stop after
       `close()` has been called.
+    log_step_count_steps: The frequency, in number of global steps, that the
+      global step/sec is logged.
 
   Returns:
     A `MonitoredSession` object.
@@ -313,8 +311,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       config=config)
 
   if checkpoint_dir:
-    all_hooks.append(
-        basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
+    all_hooks.append(basic_session_run_hooks.StepCounterHook(
+        output_dir=checkpoint_dir, every_n_steps=log_step_count_steps))
 
     if (save_summaries_steps and save_summaries_steps > 0) or (
         save_summaries_secs and save_summaries_secs > 0):

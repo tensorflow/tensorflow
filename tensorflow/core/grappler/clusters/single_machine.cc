@@ -90,8 +90,6 @@ Status SingleMachine::Run(const GraphDef& graph_def,
                           const std::vector<std::pair<string, Tensor>>& feed,
                           const std::vector<string>& fetch,
                           RunMetadata* metadata) {
-  // Interface idea: What about having Initialize(item, graph_def), which
-  // initializes the graph, and then Run(feed, fetch, metadata).
   {
     mutex_lock l(this->last_graph_mu_);
     if (last_graph_ != &graph_def) {
@@ -118,18 +116,23 @@ Status SingleMachine::Run(const GraphDef& graph_def,
             coordinator_->RegisterRunner(std::move(queue_runner)));
         TF_RETURN_IF_ERROR(coordinator_->GetStatus());
       }
-      last_graph_ = &graph_def;
 
       // Warmup TensorFlow if needed
       for (int i = 0;
            i < options_.config.graph_options().build_cost_model_after(); ++i) {
         TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, nullptr));
       }
+
+      last_graph_ = &graph_def;
     }
   }
 
   TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
-  return coordinator_->ExportCostGraph(metadata->mutable_cost_graph());
+  if (metadata) {
+    return coordinator_->ExportCostGraph(metadata->mutable_cost_graph());
+  } else {
+    return Status::OK();
+  }
 }
 
 Status SingleMachine::RunWithTimeout(
@@ -149,8 +152,6 @@ Status SingleMachine::RunWithTimeout(
       },
       timeout_s_ * 1000, thread_pool_.get());
   if (!executed_in_time) {
-    mutex_lock l(last_graph_mu_);
-    last_graph_ = nullptr;
     return errors::DeadlineExceeded("Failed to run the graph after ",
                                     timeout_s_, " seconds, aborting");
   } else if (run_metadata && status->ok()) {

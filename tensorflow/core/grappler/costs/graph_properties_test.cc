@@ -49,9 +49,9 @@ TEST_F(GraphPropertiesTest, StaticProperties) {
   TF_CHECK_OK(s);
 
   for (const auto& node : item.graph.node()) {
-    if (node.op() == "Const") {
-      // The const node has no input.
-      EXPECT_EQ(0, properties.GetInputProperties(node.name()).size());
+    if (node.op() == "RandomStandardNormal") {
+      // The node has one input (the shape of the tensor to generate).
+      EXPECT_EQ(1, properties.GetInputProperties(node.name()).size());
       // The const node has one output.
       const auto props = properties.GetOutputProperties(node.name());
       EXPECT_EQ(1, props.size());
@@ -94,12 +94,13 @@ TEST_F(GraphPropertiesTest, DynamicProperties) {
   TF_CHECK_OK(s);
 
   for (const auto& node : item.graph.node()) {
-    if (node.op() == "Const") {
-      // The constant node is missing from the cost graph
+    if (node.op() == "RandomStandardNormal") {
+      // The random node is missing from the cost graph (why ?)
       EXPECT_EQ(0, properties.GetInputProperties(node.name()).size());
     } else if (node.op() == "AddN") {
-      // Since the const node is missing, we can't infer the input properties of
-      // the first AddN node. THe other AddN have the expected properties
+      // Since the random node is missing, we can't infer the input properties
+      // of the first AddN node. The other AddN nodes have the expected
+      // properties.
       if (node.name() == "AddN") {
         const auto props = properties.GetInputProperties(node.name());
         EXPECT_EQ(1, props.size());

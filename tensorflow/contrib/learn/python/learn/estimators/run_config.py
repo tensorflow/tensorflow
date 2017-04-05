@@ -18,12 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 import json
 import os
 
 import six
 
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.training import server_lib
 
@@ -198,6 +200,7 @@ class RunConfig(ClusterConfig):
   parameter servers), you probably want to use `learn_runner.EstimatorConfig`
   instead.
   """
+  _USE_DEFAULT = 0
 
   def __init__(self,
                master=None,
@@ -206,7 +209,7 @@ class RunConfig(ClusterConfig):
                gpu_memory_fraction=1,
                tf_random_seed=None,
                save_summary_steps=100,
-               save_checkpoints_secs=600,
+               save_checkpoints_secs=_USE_DEFAULT,
                save_checkpoints_steps=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
@@ -258,6 +261,11 @@ class RunConfig(ClusterConfig):
     self._tf_random_seed = tf_random_seed
     self._save_summary_steps = save_summary_steps
     self._save_checkpoints_secs = save_checkpoints_secs
+    if save_checkpoints_secs == RunConfig._USE_DEFAULT:
+      if save_checkpoints_steps is None:
+        self._save_checkpoints_secs = 600
+      else:
+        self._save_checkpoints_secs = None
     self._save_checkpoints_steps = save_checkpoints_steps
 
     # TODO(weiho): Remove these after ModelFn refactoring, when users can
@@ -285,7 +293,7 @@ class RunConfig(ClusterConfig):
 
     new_copy = copy.deepcopy(self)
 
-    # TODO(xiejw): Allow more fields, such as the user allowed changed ones.
+    # TODO(b/33295821): Allow more fields to be replaced.
     for key, new_value in six.iteritems(kwargs):
       if key == 'model_dir':
         new_copy._model_dir = new_value  # pylint: disable=protected-access
@@ -294,6 +302,24 @@ class RunConfig(ClusterConfig):
       raise ValueError('{} is not supported by RunConfig replace'.format(key))
 
     return new_copy
+
+  @experimental
+  def uid(self):
+    """Generates a 'Unique Identifier' based on all internal fields.
+
+    Caller should use the uid string to check `RunConfig` instance integrity
+    in one session use, but should not rely on the implementation details, which
+    is subject to change.
+
+    Returns:
+      A uid string.
+    """
+    # TODO(b/33295821): Allows user to specify a whitelist.
+    state = {k: v for k, v in self.__dict__.items() if not k.startswith('__')}
+    ordered_state = collections.OrderedDict(
+        sorted(state.items(), key=lambda t: t[0]))
+    return ', '.join(
+        '%s=%r' % (k, v) for (k, v) in six.iteritems(ordered_state))
 
   @property
   def model_dir(self):

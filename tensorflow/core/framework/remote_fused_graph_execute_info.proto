@@ -6,7 +6,7 @@ option java_outer_classname = "RemoteFusedGraphExecuteInfoProto";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
-import "tensorflow/core/framework/node_def.proto";
+import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
@@ -19,8 +19,8 @@ message RemoteFusedGraphExecuteInfo {
     TensorShapeProto shape = 2;
   }
 
-  // Nodes in remote fused graph
-  repeated NodeDef node = 1;
+  // Definition of remote graph
+  GraphDef remote_graph = 1;
 
   // Remote fused graph input node name
   repeated string graph_input_node_name = 2;

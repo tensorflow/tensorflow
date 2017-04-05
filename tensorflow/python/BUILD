@@ -165,6 +165,15 @@ cc_library(
 )
 
 cc_library(
+    name = "ndarray_tensor_bridge",
+    srcs = ["lib/core/ndarray_tensor_bridge.cc"],
+    hdrs = ["lib/core/ndarray_tensor_bridge.h"],
+    deps = [
+        ":numpy_lib",
+    ],
+)
+
+cc_library(
     name = "kernel_registry",
     srcs = ["util/kernel_registry.cc"],
     hdrs = ["util/kernel_registry.h"],
@@ -180,6 +189,7 @@ cc_library(
     srcs = ["lib/core/py_func.cc"],
     hdrs = ["lib/core/py_func.h"],
     deps = [
+        ":ndarray_tensor_bridge",
         ":numpy_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2447,22 +2457,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "quantize_training_test",
-    size = "small",
-    srcs = [
-        "client/quantize_training_test.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client",
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":math_ops",
-        ":pywrap_tensorflow",
-    ],
-)
-
 py_library(
     name = "device_lib",
     srcs = ["client/device_lib.py"],
@@ -2510,6 +2504,7 @@ tf_cuda_library(
     hdrs = ["client/tf_session_helper.h"],
     deps = [
         ":construction_fails_op",
+        ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":test_ops_kernels",
         "//tensorflow/c:c_api",
@@ -2537,7 +2532,6 @@ tf_py_wrap_cc(
     swig_includes = [
         "client/device_lib.i",
         "client/events_writer.i",
-        "client/quantize_training.i",
         "client/tf_session.i",
         "framework/cpp_shape_inference.i",
         "framework/python_op_gen.i",
@@ -2547,6 +2541,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
+        "training/quantize_training.i",
         "training/server_lib.i",
         "util/kernel_registry.i",
         "util/port.i",
@@ -2771,6 +2766,7 @@ py_library(
     name = "timeline",
     srcs = ["client/timeline.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":platform",
     ],
@@ -2893,6 +2889,7 @@ cuda_py_tests(
         "training/optimizer_test.py",
         "training/proximal_adagrad_test.py",
         "training/proximal_gradient_descent_test.py",
+        "training/quantize_training_test.py",
         "training/queue_runner_test.py",
         "training/rmsprop_test.py",
         "training/slot_creator_test.py",
@@ -3165,6 +3162,7 @@ py_tests(
     srcs = [
         "summary/plugin_asset_test.py",
         "summary/summary_test.py",
+        "summary/text_summary_test.py",
         "summary/writer/writer_test.py",
     ],
     additional_deps = [
@@ -3309,39 +3307,6 @@ py_test(
     ],
 )
 
-py_library(
-    name = "docs",
-    srcs = ["framework/docs.py"],
-    srcs_version = "PY2AND3",
-)
-
-py_library(
-    name = "gen_docs_combined_lib",
-    srcs = ["framework/gen_docs_combined.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":docs",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
-        "//tensorflow/python/debug:debug_py",
-    ],
-)
-
-py_binary(
-    name = "gen_docs_combined",
-    srcs = ["framework/gen_docs_combined.py"],
-    main = "framework/gen_docs_combined.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client",
-        ":docs",
-        ":framework",
-        ":framework_for_generated_wrappers",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python/debug:debug_py",
-    ],
-)
-
 # -----------------------------------------------------------------------------
 # Quantization
 
@@ -3455,6 +3420,25 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     main = "ops/split_benchmark.py",
+)
+
+cuda_py_test(
+    name = "transpose_benchmark",
+    size = "medium",
+    srcs = ["ops/transpose_benchmark.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":platform",
+        ":platform_benchmark",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/transpose_benchmark.py",
 )
 
 cuda_py_test(

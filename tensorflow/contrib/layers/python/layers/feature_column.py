@@ -791,9 +791,11 @@ def weighted_sparse_column(sparse_id_column,
       weight or value of the corresponding sparse id feature.
     dtype: Type of weights, such as `tf.float32`. Only floating and integer
       weights are supported.
+
   Returns:
     A _WeightedSparseColumn composed of two sparse features: one represents id,
     the other represents weight (value) of the id feature in that example.
+
   Raises:
     ValueError: if dtype is not convertible to float.
   """
@@ -1248,21 +1250,29 @@ def scattered_embedding_column(column_name,
                                initializer=None):
   """Creates an embedding column of a sparse feature using parameter hashing.
 
-  The i-th embedding component of a value v is found by retrieving an
-  embedding weight whose index is a fingerprint of the pair (v,i).
+  This is a useful shorthand when you have a sparse feature you want to use an
+  embedding for, but also want to hash the embedding's values in each dimension
+  to a variable based on a different hash.
+
+  Specifically, the i-th embedding component of a value v is found by retrieving
+  an embedding weight whose index is a fingerprint of the pair (v,i).
 
   An embedding column with sparse_column_with_hash_bucket such as
-    embedding_column(
+
+      embedding_column(
         sparse_column_with_hash_bucket(column_name, bucket_size),
         dimension)
 
   could be replaced by
-    scattered_embedding_column(
-        column_name, size=bucket_size * dimension, dimension=dimension,
+
+      scattered_embedding_column(
+        column_name,
+        size=bucket_size * dimension,
+        dimension=dimension,
         hash_key=tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
 
-  for the same number of embedding parameters and hopefully reduced impact of
-  collisions with a cost of slowing down training.
+  for the same number of embedding parameters. This should hopefully reduce the
+  impact of collisions, but adds the cost of slowing down training.
 
   Args:
     column_name: A string defining sparse column name.
@@ -2013,7 +2023,7 @@ def _get_feature_config(feature_column):
   if isinstance(feature_column, (_SparseColumn, _WeightedSparseColumn,
                                  _EmbeddingColumn, _RealValuedColumn,
                                  _BucketizedColumn, _CrossedColumn,
-                                 _OneHotColumn)):
+                                 _OneHotColumn, _ScatteredEmbeddingColumn)):
     return feature_column.config
 
   raise TypeError("Not supported _FeatureColumn type. "

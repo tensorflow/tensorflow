@@ -24,6 +24,7 @@ See the @{$python/summary} guide.
 @@histogram
 @@audio
 @@image
+@@text
 @@merge
 @@merge_all
 @@get_summary_description
@@ -56,7 +57,13 @@ from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 # pylint: disable=unused-import
 from tensorflow.python.ops.summary_ops import tensor_summary
 # pylint: enable=unused-import
+
 from tensorflow.python.platform import tf_logging as _logging
+
+# exports text
+# pylint: disable=unused-import
+from tensorflow.python.summary.text_summary import text_summary as text
+# pylint: enable=unused-import
 
 # exports FileWriter, FileWriterCache
 # pylint: disable=unused-import

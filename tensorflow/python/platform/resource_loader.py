@@ -122,9 +122,10 @@ def get_path_to_datafile(path):
   return _os.path.join(data_files_path, path)
 
 
-def readahead_file_path(path, unused_readahead=None):
+def readahead_file_path(path, readahead='128M'):  # pylint: disable=unused-argument
   """Readahead files not implemented; simply returns given path."""
   return path
+
 
 _allowed_symbols = []
 remove_undocumented(__name__, _allowed_symbols)

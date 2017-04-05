@@ -49,11 +49,11 @@ def  _is_free_function(py_object, full_name, index):
   return True
 
 
-def write_docs(output_dir, parser_config, duplicate_of, index, yaml_toc):
+def write_docs(output_dir, parser_config, yaml_toc):
   """Write previously extracted docs to disk.
 
-  Write a docs page for each symbol in `index` to a tree of docs at
-  `output_dir`.
+  Write a docs page for each symbol included in the indices of parser_config to
+  a tree of docs at `output_dir`.
 
   Symbols with multiple aliases will have only one page written about
   them, which is referenced for all aliases.
@@ -61,11 +61,8 @@ def write_docs(output_dir, parser_config, duplicate_of, index, yaml_toc):
   Args:
     output_dir: Directory to write documentation markdown files to. Will be
       created if it doesn't exist.
-    parser_config: A `parser.ParserConfig` object.
-    duplicate_of: A `dict` mapping fully qualified names to "master" names.
-      Used to determine which docs pages to write.
-    index: A `dict` mapping fully qualified names to the corresponding Python
-      objects. Used to produce docs for child objects.
+    parser_config: A `parser.ParserConfig` object, containing all the necessary
+      indices.
     yaml_toc: Set to `True` to generate a "_toc.yaml" file.
   """
   # Make output_dir.
@@ -84,15 +81,14 @@ def write_docs(output_dir, parser_config, duplicate_of, index, yaml_toc):
   symbol_to_file = {}
 
   # Parse and write Markdown pages, resolving cross-links (@{symbol}).
-  for full_name, py_object in six.iteritems(index):
+  for full_name, py_object in six.iteritems(parser_config.index):
 
-    if full_name in duplicate_of:
+    if full_name in parser_config.duplicate_of:
       continue
 
     # Methods and some routines are documented only as part of their class.
-    if not (inspect.ismodule(py_object) or
-            inspect.isclass(py_object) or
-            _is_free_function(py_object, full_name, index)):
+    if not (inspect.ismodule(py_object) or inspect.isclass(py_object) or
+            _is_free_function(py_object, full_name, parser_config.index)):
       continue
 
     sitepath = os.path.join('api_docs/python',
@@ -113,7 +109,7 @@ def write_docs(output_dir, parser_config, duplicate_of, index, yaml_toc):
       subname = str(full_name)
       while True:
         subname = subname[:subname.rindex('.')]
-        if inspect.ismodule(index[subname]):
+        if inspect.ismodule(parser_config.index[subname]):
           module_children.setdefault(subname, []).append(full_name)
           break
 
@@ -149,20 +145,21 @@ def write_docs(output_dir, parser_config, duplicate_of, index, yaml_toc):
         f.write('  - title: ' + module + '\n'
                 '    section:\n' +
                 '    - title: Overview\n' +
-                '      path: /TARGET_DOC_ROOT/' + symbol_to_file[module] + '\n')
+                '      path: /TARGET_DOC_ROOT/VERSION/' +
+                symbol_to_file[module] + '\n')
 
         symbols_in_module = module_children.get(module, [])
         symbols_in_module.sort(key=lambda a: a.upper())
 
         for full_name in symbols_in_module:
           f.write('    - title: ' + full_name[len(module)+1:] + '\n'
-                  '      path: /TARGET_DOC_ROOT/' +
+                  '      path: /TARGET_DOC_ROOT/VERSION/' +
                   symbol_to_file[full_name] + '\n')
 
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:
-    f.write(parser.generate_global_index(
-        'TensorFlow', index, parser_config.reference_resolver))
+    f.write(parser.generate_global_index('TensorFlow', parser_config.index,
+                                         parser_config.reference_resolver))
 
 
 def add_dict_to_dict(add_from, add_to):
@@ -462,17 +459,17 @@ class DocGenerator(object):
     return [name for (name, _) in self._py_modules]
 
   def make_reference_resolver(self, visitor, doc_index):
-    return parser.ReferenceResolver(
-        duplicate_of=visitor.duplicate_of,
-        doc_index=doc_index, index=visitor.index,
-        py_module_names=self.py_module_names())
+    return parser.ReferenceResolver.from_visitor(
+        visitor, doc_index, py_module_names=self.py_module_names())
 
   def make_parser_config(self, visitor, reference_resolver, guide_index,
                          base_dir):
     return parser.ParserConfig(
         reference_resolver=reference_resolver,
         duplicates=visitor.duplicates,
+        duplicate_of=visitor.duplicate_of,
         tree=visitor.tree,
+        index=visitor.index,
         reverse_index=visitor.reverse_index,
         guide_index=guide_index,
         base_dir=base_dir)
@@ -485,14 +482,15 @@ class DocGenerator(object):
     doc_index = build_doc_index(flags.src_dir)
     visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
+
     guide_index = _build_guide_index(
         os.path.join(flags.src_dir, 'api_guides/python'))
+
     parser_config = self.make_parser_config(visitor, reference_resolver,
                                             guide_index, flags.base_dir)
     output_dir = os.path.join(flags.output_dir, 'api_docs/python')
 
-    write_docs(output_dir, parser_config, visitor.duplicate_of, visitor.index,
-               yaml_toc=self.yaml_toc)
+    write_docs(output_dir, parser_config, yaml_toc=self.yaml_toc)
     _other_docs(flags.src_dir, flags.output_dir, reference_resolver)
 
     if parser.all_errors:

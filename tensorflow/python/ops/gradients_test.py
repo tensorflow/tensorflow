@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import warnings
 
 import numpy as np
@@ -333,6 +334,21 @@ class GradientsTest(test_util.TensorFlowTestCase):
       gradient = gradients.gradients(var._ref(), var)
       self.assertIsNotNone(gradient)
 
+  def testDependentYs(self):
+    with self.test_session():
+      x = constant_op.constant(3.0)
+      y = math_ops.square(x)
+      y1 = math_ops.square(y)
+      y2 = math_ops.square(y1)
+      g = gradients.gradients([y, y2], x)
+      self.assertAllClose(17502.0, g[0].eval())
+      g = gradients.gradients(y + y2, x)
+      self.assertAllClose(17502.0, g[0].eval())
+      z = array_ops.identity(y)
+      z2 = array_ops.identity(y2)
+      g = gradients.gradients([z, z2], x)
+      self.assertAllClose(17502.0, g[0].eval())
+
 
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
@@ -559,13 +575,16 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       self.assertAllClose(np_val, c_dense.eval())
 
   def testWarnings(self):
-    # Smaller than the threshold: no warning.
-    c_sparse = ops.IndexedSlices(
-        array_ops.placeholder(dtypes.float32),
-        array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
-    with warnings.catch_warnings(record=True) as w:
-      math_ops.multiply(c_sparse, 1.0)
-    self.assertEqual(0, len(w))
+    # TODO(gunan) Reenable after this issue is fixed:
+    # https://github.com/google/protobuf/issues/2812
+    if sys.version_info < (3, 6):
+      # Smaller than the threshold: no warning.
+      c_sparse = ops.IndexedSlices(
+          array_ops.placeholder(dtypes.float32),
+          array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
+      with warnings.catch_warnings(record=True) as w:
+        math_ops.multiply(c_sparse, 1.0)
+      self.assertEqual(0, len(w))
 
     # Greater than or equal to the threshold: warning.
     c_sparse = ops.IndexedSlices(

@@ -7,8 +7,6 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
-
 py_library(
     name = "contrib_py",
     srcs = glob(["**/*.py"]),
@@ -34,6 +32,7 @@ py_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
         "//tensorflow/contrib/keras",
+        "//tensorflow/contrib/kernel_methods",
         "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
@@ -45,6 +44,7 @@ py_library(
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/memory_stats:memory_stats_py",
         "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
@@ -64,9 +64,7 @@ py_library(
         "//tensorflow/contrib/tfprof",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
-    ] + if_not_windows([
-        "//tensorflow/contrib/nccl:nccl_py",
-    ]),
+    ],
 )
 
 cc_library(
@@ -77,7 +75,7 @@ cc_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:bucketization_op_kernel",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
-        "//tensorflow/contrib/tensor_forest:all_ops",
+        "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
     ],
 )
 
@@ -90,6 +88,7 @@ cc_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
         "//tensorflow/contrib/layers:bucketization_op_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
+        "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
     ],
 )
 

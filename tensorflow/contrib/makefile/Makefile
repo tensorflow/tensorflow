@@ -370,6 +370,7 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),I386)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch i386 \
+		-mno-sse \
 		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
@@ -458,7 +459,6 @@ $(wildcard tensorflow/core/*/*/*main.cc) \
 $(wildcard tensorflow/core/debug/*.cc) \
 $(wildcard tensorflow/core/framework/op_gen_lib.cc) \
 $(wildcard tensorflow/core/graph/dot.*) \
-$(wildcard tensorflow/core/grappler/devices.*) \
 $(wildcard tensorflow/core/lib/gif/*) \
 $(wildcard tensorflow/core/lib/io/zlib*) \
 $(wildcard tensorflow/core/lib/io/record*) \

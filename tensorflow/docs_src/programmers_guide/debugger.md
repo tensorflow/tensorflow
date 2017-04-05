@@ -407,6 +407,39 @@ python -m tensorflow.python.debug.examples.debug_errors \
     --error uninitialized_variable --debug
 ```
 
+**Q**: _The model I am debugging is very large. The data dumped by tfdbg
+fills up the free space of my disk. What can I do?_
+
+**A**:
+For large models, i.e., models with many intermediate tensors, large sizes in
+individual intermediate tensors and/or many iterations in any `tf.while_loop`s
+that the graph contains, this kind of disk space issue can happen.
+
+There are three possible workarounds or solutions:
+
+1. The constructors of `LocalCLIDebugWrapperSession` and `LocalCLIDebugHook`
+   provide a keyword argument, `dump_root`, with which you can specify the path
+   to which **tfdbg** dumps the debug data. For example:
+
+   ``` python
+   # For LocalCLIDebugWrapperSession
+   sess = tf_debug.LocalCLIDebugWrapperSession(dump_root="/with/lots/of/space")
+
+   # For LocalCLIDebugHook
+   hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
+   ```
+   Make sure that the directory pointed to by dump_root is empty or nonexistent.
+   **tfdbg** cleans up the dump directories before exiting.
+2. Reduce the batch size used during the runs.
+3. Use the filtering options of **tfdbg**'s `run` command to watch only specific
+   nodes in the graph. For example:
+
+   ```
+   tfdbg> run --node_name_filter .*hidden.*
+   tfdbg> run --op_type_filter Variable.*
+   tfdbg> run --tensor_dtype_filter int.*
+   ```
+
 **Q**: _Why can't I select text in the tfdbg CLI?_
 
 **A**: This is because the tfdbg CLI enables mouse events in the terminal by

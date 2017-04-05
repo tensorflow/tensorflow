@@ -2339,6 +2339,14 @@ TEST_F(OpTest, ZerosLike) {
   });
 }
 
+TEST_F(OpTest, OnesLike) {
+  Repeatedly([this]() {
+    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("OnesLike").Input(RandomTensor(type)).Attr("T", type));
+  });
+}
+
 }  // anonymous namespace
 }  // namespace tensorflow
 
