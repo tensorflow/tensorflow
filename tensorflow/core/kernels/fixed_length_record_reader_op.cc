@@ -28,12 +28,14 @@ namespace tensorflow {
 class FixedLengthRecordReader : public ReaderBase {
  public:
   FixedLengthRecordReader(const string& node_name, int64 header_bytes,
-                          int64 record_bytes, int64 footer_bytes, Env* env)
+                          int64 record_bytes, int64 footer_bytes,
+                          int64 hop_bytes, Env* env)
       : ReaderBase(
             strings::StrCat("FixedLengthRecordReader '", node_name, "'")),
         header_bytes_(header_bytes),
         record_bytes_(record_bytes),
         footer_bytes_(footer_bytes),
+        hop_bytes_(hop_bytes),
         env_(env),
         file_pos_limit_(-1),
         record_number_(0) {}
@@ -66,10 +68,20 @@ class FixedLengthRecordReader : public ReaderBase {
       *at_end = true;
       return Status::OK();
     }
+    auto current_position = input_buffer_->Tell();
     TF_RETURN_IF_ERROR(input_buffer_->ReadNBytes(record_bytes_, value));
     *key = strings::StrCat(current_work(), ":", record_number_);
     *produced = true;
     ++record_number_;
+
+    if (hop_bytes_ > 0) {
+      // Only hop when hop_bytes_ > 0
+      if (current_position + hop_bytes_ >= file_pos_limit_) {
+        *at_end = true;
+      } else {
+        input_buffer_->Seek(current_position + hop_bytes_);
+      }
+    }
     return Status::OK();
   }
 
@@ -87,6 +99,7 @@ class FixedLengthRecordReader : public ReaderBase {
   const int64 header_bytes_;
   const int64 record_bytes_;
   const int64 footer_bytes_;
+  const int64 hop_bytes_;
   Env* const env_;
   int64 file_pos_limit_;
   int64 record_number_;
@@ -98,10 +111,11 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
  public:
   explicit FixedLengthRecordReaderOp(OpKernelConstruction* context)
       : ReaderOpKernel(context) {
-    int64 header_bytes = -1, record_bytes = -1, footer_bytes = -1;
+    int64 header_bytes = -1, record_bytes = -1, footer_bytes = -1, hop_bytes = -1;
     OP_REQUIRES_OK(context, context->GetAttr("header_bytes", &header_bytes));
     OP_REQUIRES_OK(context, context->GetAttr("record_bytes", &record_bytes));
     OP_REQUIRES_OK(context, context->GetAttr("footer_bytes", &footer_bytes));
+    OP_REQUIRES_OK(context, context->GetAttr("hop_bytes", &footer_bytes));
     OP_REQUIRES(context, header_bytes >= 0,
                 errors::InvalidArgument("header_bytes must be >= 0 not ",
                                         header_bytes));
@@ -111,10 +125,14 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
     OP_REQUIRES(context, footer_bytes >= 0,
                 errors::InvalidArgument("footer_bytes must be >= 0 not ",
                                         footer_bytes));
+    OP_REQUIRES(context, hop_bytes >= 0,
+                errors::InvalidArgument("hop_bytes must be >= 0 not ",
+                                        hop_bytes));
     Env* env = context->env();
-    SetReaderFactory([this, header_bytes, record_bytes, footer_bytes, env]() {
+    SetReaderFactory([this, header_bytes, record_bytes, footer_bytes,
+                      hop_bytes, env]() {
       return new FixedLengthRecordReader(name(), header_bytes, record_bytes,
-                                         footer_bytes, env);
+                                         footer_bytes, hop_bytes, env);
     });
   }
 };
