@@ -64,9 +64,10 @@ class EventFileWriter(object):
     self._event_queue = six.moves.queue.Queue(max_queue)
     self._ev_writer = pywrap_tensorflow.EventsWriter(
         compat.as_bytes(os.path.join(self._logdir, "events")))
+    self._flush_secs = flush_secs
     self._closed = False
     self._worker = _EventLoggerThread(self._event_queue, self._ev_writer,
-                                      flush_secs)
+                                      self._flush_secs)
 
     self._worker.start()
 
@@ -83,6 +84,9 @@ class EventFileWriter(object):
     Does nothing if the EventFileWriter was not closed.
     """
     if self._closed:
+      self._worker = _EventLoggerThread(self._event_queue, self._ev_writer,
+                                        self._flush_secs)
+      self._worker.start()
       self._closed = False
 
   def add_event(self, event):
@@ -108,7 +112,9 @@ class EventFileWriter(object):
 
     Call this method when you do not need the summary writer anymore.
     """
+    self._worker.stop()
     self.flush()
+    self._worker.join()
     self._ev_writer.Close()
     self._closed = True
 
@@ -133,9 +139,15 @@ class _EventLoggerThread(threading.Thread):
     self._flush_secs = flush_secs
     # The first event will be flushed immediately.
     self._next_event_flush_time = 0
+    self._stop_flag = False
 
   def run(self):
     while True:
+      if self._queue.empty():
+        if self._stop_flag:
+          break
+        else:
+          continue
       event = self._queue.get()
       try:
         self._ev_writer.WriteEvent(event)
@@ -147,3 +159,6 @@ class _EventLoggerThread(threading.Thread):
           self._next_event_flush_time = now + self._flush_secs
       finally:
         self._queue.task_done()
+
+  def stop(self):
+    self._stop_flag = True
