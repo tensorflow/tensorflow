@@ -1,36 +1,15 @@
-NOTE: Only file GitHub issues for bugs and feature requests.  All other topics will be closed.
+NOTE: Issues that are not bugs or feature requests will be closed. Please ask usage questions on StackOverflow.
 
-For general support from the community, see [StackOverflow](https://stackoverflow.com/questions/tagged/tensorflow).
-To make bugs and feature requests more easy to find and organize, we close issues that are deemed
-out of scope for GitHub Issues and point people to StackOverflow.
+### You must complete this information or else your issue will be closed
+- *Have I written custom code (as opposed to using a stock example script provided in TensorFlow)?*:
+- *TensorFlow installed from (source or binary)?*:
+- *TensorFlow version*:
+- *Bazel version (if compiling from source)*:
+- *CUDA/cuDNN version*:
+- *GPU Model and Memory*:
+- *Exact command to reproduce*:
 
-For bugs or installation issues, please provide the following information.
-The more information you provide, the more easily we will be able to offer
-help and advice.
+### Describe the problem clearly
 
-### What related GitHub issues or StackOverflow threads have you found by searching the web for your problem?
-
-### Environment info
-Operating System:
-
-Installed version of CUDA and cuDNN: 
-(please attach the output of `ls -l /path/to/cuda/lib/libcud*`):
-
-If installed from binary pip package, provide:
-
-1. A link to the pip package you installed:
-2. The output from `python -c "import tensorflow; print(tensorflow.__version__)"`.
-
-If installed from source, provide 
-
-1. The commit hash (`git rev-parse HEAD`)
-2. The output of `bazel version`
-
-### If possible, provide a minimal reproducible example (We usually don't have time to read hundreds of lines of your code)
-
-
-### What other attempted solutions have you tried?
-
-
-### Logs or other output that would be helpful
-(If logs are large, please upload as attachment or provide link).
+### Source Code / Logs
+Include any logs or source code that would be helpful to diagnose the problem. If including tracebacks, please include the full-traceback. Large logs and files should be attached. Try to reproducible test-case code the bare-minimum necessary to generate the problem
