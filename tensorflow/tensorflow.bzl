@@ -117,33 +117,6 @@ def if_x86(a):
 
 # LINT.IfChange
 def tf_copts():
-<<<<<<< HEAD
-  return (["-DEIGEN_AVOID_STL_ARRAY",
-           "-Iexternal/gemmlowp",
-           "-Wno-sign-compare",
-           "-fno-exceptions",] +
-          if_cuda(["-DGOOGLE_CUDA=1"]) +
-          if_mkl(["-DINTEL_MKL=1"]) +
-          if_android_arm(["-mfpu=neon"]) +
-          if_x86(["-msse3"]) +
-          select({
-              str(Label("//tensorflow:android")): [
-                  "-std=c++11",
-                  "-DTF_LEAN_BINARY",
-                  "-O2",
-              ],
-              str(Label("//tensorflow:darwin")): [],
-              str(Label("//tensorflow:windows")): [
-                "/DLANG_CXX11",
-                "/D__VERSION__=\\\"MSVC\\\"",
-                "/DPLATFORM_WINDOWS",
-                "/DTF_COMPILE_LIBRARY",
-                "/DEIGEN_HAS_C99_MATH",
-                "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-              ],
-              str(Label("//tensorflow:ios")): ["-std=c++11"],
-              "//conditions:default": ["-pthread"]}))
-=======
   return ([
       "-DEIGEN_AVOID_STL_ARRAY",
       "-Iexternal/gemmlowp",
@@ -169,7 +142,6 @@ def tf_copts():
           "//conditions:default": ["-pthread"]
       }))
 
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
 
 def tf_opts_nortti_if_android():
   return if_android([
@@ -190,18 +162,6 @@ def tf_gen_op_libs(op_lib_names, deps=None):
   if not deps:
     deps = []
   for n in op_lib_names:
-<<<<<<< HEAD
-    native.cc_library(name=n + "_op_lib",
-                      copts=tf_copts(),
-                      srcs=["ops/" + n + ".cc"],
-                      deps=deps + [str(Label("//tensorflow/core:framework"))],
-                      visibility=["//visibility:public"],
-                      alwayslink=1,
-                      linkstatic=1,)
-
-def tf_gen_op_wrapper_cc(name, out_ops_file, pkg="",
-                         op_gen=str(Label("//tensorflow/cc:cc_op_gen_main")),
-=======
     native.cc_library(
         name=n + "_op_lib",
         copts=tf_copts(),
@@ -216,7 +176,6 @@ def tf_gen_op_wrapper_cc(name,
                          out_ops_file,
                          pkg="",
                          op_gen="//tensorflow/cc:cc_op_gen_main",
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
                          deps=None,
                          override_file=None,
                          include_internal_ops=0):
@@ -308,36 +267,6 @@ def tf_gen_op_wrappers_cc(name,
     internalsrcs += ["ops/" + n + "_internal.cc"]
     internalhdrs += ["ops/" + n + "_internal.h"]
 
-<<<<<<< HEAD
-  native.cc_library(name=name,
-                    srcs=subsrcs,
-                    hdrs=subhdrs,
-                    deps=deps + if_not_android([
-                        str(Label("//tensorflow/core:core_cpu")),
-                        str(Label("//tensorflow/core:framework")),
-                        str(Label("//tensorflow/core:lib")),
-                        str(Label("//tensorflow/core:protos_all_cc")),
-                    ]) + if_android([
-                        str(Label("//tensorflow/core:android_tensorflow_lib")),
-                    ]),
-                    copts=tf_copts(),
-                    alwayslink=1,
-                    visibility=visibility)
-  native.cc_library(name=name + "_internal",
-                    srcs=internalsrcs,
-                    hdrs=internalhdrs,
-                    deps=deps + if_not_android([
-                        str(Label("//tensorflow/core:core_cpu")),
-                        str(Label("//tensorflow/core:framework")),
-                        str(Label("//tensorflow/core:lib")),
-                        str(Label("//tensorflow/core:protos_all_cc")),
-                    ]) + if_android([
-                        str(Label("//tensorflow/core:android_tensorflow_lib")),
-                    ]),
-                    copts=tf_copts(),
-                    alwayslink=1,
-                    visibility=[str(Label("//tensorflow:internal"))])
-=======
   native.cc_library(
       name=name,
       srcs=subsrcs,
@@ -369,7 +298,6 @@ def tf_gen_op_wrappers_cc(name,
       alwayslink=1,
       visibility=["//tensorflow:internal"])
 
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name,
@@ -385,16 +313,6 @@ def tf_gen_op_wrapper_py(name,
   if not deps:
     deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
   native.cc_binary(
-<<<<<<< HEAD
-      name = tool_name,
-      linkopts = ["-lm"],
-      copts = tf_copts(),
-      linkstatic = 1,   # Faster to link this one-time-use binary dynamically
-      deps = ([str(Label("//tensorflow/core:framework")),
-               str(Label("//tensorflow/python:python_op_gen_main"))] + deps),
-      visibility = [str(Label("//tensorflow:internal"))],
-  )
-=======
       name=tool_name,
       linkopts=["-lm"],
       copts=tf_copts(),
@@ -404,7 +322,6 @@ def tf_gen_op_wrapper_py(name,
           "//tensorflow/python:python_op_gen_main"
       ] + deps),
       visibility=["//tensorflow:internal"],)
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
 
   # Invoke the previous cc_binary to generate a python file.
   if not out:
@@ -440,15 +357,6 @@ def tf_gen_op_wrapper_py(name,
   # Make a py_library out of the generated python file.
   if not generated_target_name:
     generated_target_name = name
-<<<<<<< HEAD
-  native.py_library(name=generated_target_name,
-                    srcs=[out],
-                    srcs_version="PY2AND3",
-                    visibility=visibility,
-                    deps=[
-                        str(Label("//tensorflow/python:framework_for_generated_wrappers_v2")),
-                    ],)
-=======
   native.py_library(
       name=generated_target_name,
       srcs=[out],
@@ -458,7 +366,6 @@ def tf_gen_op_wrapper_py(name,
           "//tensorflow/python:framework_for_generated_wrappers_v2",
       ],)
 
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
 
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
@@ -488,34 +395,6 @@ def tf_cc_test(name,
 
 # Part of the testing workflow requires a distinguishable name for the build
 # rules that involve a GPU, even if otherwise identical to the base rule.
-<<<<<<< HEAD
-def tf_cc_test_gpu(name, srcs, deps, linkstatic=0, tags=[], data=[],
-                   size="medium", suffix="", args=None):
-  tf_cc_test(name, srcs, deps, linkstatic=linkstatic, tags=tags, data=data,
-             size=size, suffix=suffix, args=args)
-
-def tf_cuda_cc_test(name, srcs=[], deps=[], tags=[], data=[], size="medium",
-                    linkstatic=0, args=[], linkopts=[]):
-  tf_cc_test(name=name,
-             srcs=srcs,
-             deps=deps,
-             tags=tags + ["manual"],
-             data=data,
-             size=size,
-             linkstatic=linkstatic,
-             linkopts=linkopts,
-             args=args)
-  tf_cc_test(name=name,
-             srcs=srcs,
-             suffix="_gpu",
-             deps=deps + if_cuda([str(Label("//tensorflow/core:gpu_runtime"))]),
-             linkstatic=if_cuda(1, 0),
-             tags=tags + tf_cuda_tests_tags(),
-             data=data,
-             size=size,
-             linkopts=linkopts,
-             args=args)
-=======
 def tf_cc_test_gpu(name,
                    srcs,
                    deps,
@@ -568,7 +447,6 @@ def tf_cuda_cc_test(name,
       linkopts=linkopts,
       args=args)
 
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(srcs,
@@ -665,21 +543,12 @@ def tf_gpu_kernel_library(srcs,
   copts = copts + _cuda_copts() + if_cuda(cuda_copts) + tf_copts()
 
   native.cc_library(
-<<<<<<< HEAD
-      srcs = srcs,
-      hdrs = hdrs,
-      copts = copts,
-      deps = deps + if_cuda([
-          str(Label("//tensorflow/core:cuda")),
-          str(Label("//tensorflow/core:gpu_lib")),
-=======
       srcs=srcs,
       hdrs=hdrs,
       copts=copts,
       deps=deps + if_cuda([
           "//tensorflow/core:cuda",
           "//tensorflow/core:gpu_lib",
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
       ]),
       alwayslink=1,
       **kwargs)
@@ -709,13 +578,8 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=None, **kwargs):
     copts = []
 
   native.cc_library(
-<<<<<<< HEAD
-      deps = deps + if_cuda(cuda_deps + [
-          str(Label("//tensorflow/core:cuda")),
-=======
       deps=deps + if_cuda(cuda_deps + [
           "//tensorflow/core:cuda",
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
           "@local_config_cuda//cuda:cuda_headers"
       ]),
       copts=copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]),
@@ -790,13 +654,6 @@ def tf_kernel_library(name,
       deps=deps,
       **kwargs)
 
-<<<<<<< HEAD
-def tf_mkl_kernel_library(name, prefix=None, srcs=None, gpu_srcs=None, hdrs=None,
-                      deps=None, alwayslink=1, copts=tf_copts(), **kwargs):
-  if_mkl(tf_kernel_library(name, prefix=prefix, srcs=srcs, gpu_srcs=gpu_srcs, 
-                                 hdrs=hdrs, deps=deps, alwayslink=alwayslink, 
-                                 copts=copts, **kwargs))
-=======
 
 def tf_mkl_kernel_library(name,
                           prefix=None,
@@ -819,7 +676,6 @@ def tf_mkl_kernel_library(name,
           copts=copts,
           **kwargs))
 
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
 
 # Bazel rules for building swig files.
 def _py_wrap_cc_impl(ctx):
@@ -1028,29 +884,6 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
         deps=deps + if_cuda(cuda_deps))
     cuda_deps.extend([":" + basename + "_gpu"])
 
-<<<<<<< HEAD
-  check_deps(name=name+"_check_deps",
-             deps=deps + if_cuda(cuda_deps),
-             disallowed_deps=[str(Label("//tensorflow/core:framework")),
-                              str(Label("//tensorflow/core:lib"))])
-
-  native.cc_binary(name=name,
-                   srcs=srcs,
-                   deps=deps + if_cuda(cuda_deps),
-                   data=[name + "_check_deps"],
-                   copts=tf_copts(),
-                   linkshared=1,
-                   linkopts = select({
-                       "//conditions:default": [
-                           "-lm",
-                       ],
-                       str(Label("//tensorflow:darwin")): [],
-                   }),
-  )
-
-def tf_custom_op_py_library(name, srcs=[], dso=[], kernels=[],
-                            srcs_version="PY2AND3", visibility=None, deps=[]):
-=======
   check_deps(
       name=name + "_check_deps",
       deps=deps + if_cuda(cuda_deps),
@@ -1081,7 +914,6 @@ def tf_custom_op_py_library(name,
                             srcs_version="PY2AND3",
                             visibility=None,
                             deps=[]):
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
   kernels = kernels  # unused argument
   native.py_library(
       name=name,
@@ -1126,19 +958,6 @@ def tf_py_wrap_cc(name,
           "-Wl,-exported_symbols_list",
           str(Label("//tensorflow:tf_exported_symbols.lds"))
       ],
-<<<<<<< HEAD
-      str(Label("//tensorflow:windows")): [
-      ],
-      "//conditions:default": [
-          "-Wl,--version-script",
-          str(Label("//tensorflow:tf_version_script.lds"))
-      ]})
-  extra_deps += select({
-      "@local_config_cuda//cuda:darwin": [
-        str(Label("//tensorflow:tf_exported_symbols.lds"))
-      ],
-      str(Label("//tensorflow:windows")): [
-=======
       str(Label("//tensorflow:windows")): [],
       "//conditions:default": [
           "-Wl,--version-script",
@@ -1148,15 +967,10 @@ def tf_py_wrap_cc(name,
   extra_deps += select({
       "@local_config_cuda//cuda:darwin": [
           "//tensorflow:tf_exported_symbols.lds"
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
       ],
       "//tensorflow:windows": [],
       "//conditions:default": [
-<<<<<<< HEAD
-        str(Label("//tensorflow:tf_version_script.lds"))
-=======
           "//tensorflow:tf_version_script.lds"
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
       ]
   })
 
@@ -1171,20 +985,6 @@ def tf_py_wrap_cc(name,
       linkshared=1,
       deps=deps + extra_deps)
   native.genrule(
-<<<<<<< HEAD
-      name = "gen_" + cc_library_pyd_name,
-      srcs = [":" + cc_library_name],
-      outs = [cc_library_pyd_name],
-      cmd = "cp $< $@",
-  )
-  native.py_library(name=name,
-                    srcs=[":" + name + ".py"],
-                    srcs_version="PY2AND3",
-                    data=select({
-                      str(Label("//tensorflow:windows")): [":" + cc_library_pyd_name],
-                      "//conditions:default": [":" + cc_library_name],
-                    }))
-=======
       name="gen_" + cc_library_pyd_name,
       srcs=[":" + cc_library_name],
       outs=[cc_library_pyd_name],
@@ -1198,18 +998,12 @@ def tf_py_wrap_cc(name,
           "//conditions:default": [":" + cc_library_name],
       }))
 
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
 
 def py_test(deps=[], **kwargs):
   native.py_test(
       deps=select({
-<<<<<<< HEAD
-          "//conditions:default" : deps,
-          str(Label("//tensorflow:no_tensorflow_py_deps")) : []
-=======
           "//conditions:default": deps,
           "//tensorflow:no_tensorflow_py_deps": []
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
       }),
       **kwargs)
 
@@ -1238,19 +1032,11 @@ def tf_py_test(name,
       shard_count=shard_count,
       data=data,
       deps=select({
-<<<<<<< HEAD
-          "//conditions:default" : [
-            str(Label("//tensorflow/python:extra_py_tests_deps")),
-            str(Label("//tensorflow/python:gradient_checker")),
-          ] + additional_deps,
-          str(Label("//tensorflow:no_tensorflow_py_deps")) : []
-=======
           "//conditions:default": [
               "//tensorflow/python:extra_py_tests_deps",
               "//tensorflow/python:gradient_checker",
           ] + additional_deps,
           "//tensorflow:no_tensorflow_py_deps": []
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
       }),
       flaky=flaky,
       srcs_version="PY2AND3")
@@ -1366,15 +1152,6 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs):
        for p in srcs] + [p.replace(".proto", ".pb_text-impl.h") for p in srcs])
   out_srcs = [p.replace(".proto", ".pb_text.cc") for p in srcs]
   native.genrule(
-<<<<<<< HEAD
-        name = name,
-        srcs = srcs + [str(Label("//tensorflow/tools/proto_text:placeholder.txt"))],
-        outs = out_hdrs + out_srcs,
-        cmd = "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
-              "$(@D) " + srcs_relative_dir + " $(SRCS)",
-        tools = [str(Label("//tensorflow/tools/proto_text:gen_proto_text_functions"))],
-    )
-=======
       name=name,
       srcs=srcs + ["//tensorflow/tools/proto_text:placeholder.txt"],
       outs=out_hdrs + out_srcs,
@@ -1384,7 +1161,6 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs):
       tools=[
           "//tensorflow/tools/proto_text:gen_proto_text_functions"
       ],)
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
   return struct(hdrs=out_hdrs, srcs=out_srcs)
 
 
@@ -1395,22 +1171,6 @@ def tf_genrule_cmd_append_to_srcs(to_append):
 
 def tf_version_info_genrule():
   native.genrule(
-<<<<<<< HEAD
-      name = "version_info_gen",
-      srcs = [
-          str(Label("//tensorflow/tools/git:gen/spec.json")),
-          str(Label("//tensorflow/tools/git:gen/head")),
-          str(Label("//tensorflow/tools/git:gen/branch_ref")),
-      ],
-      outs = ["util/version_info.cc"],
-      cmd = "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\"",
-      local = 1,
-      tools = [str(Label("//tensorflow/tools/git:gen_git_source.py"))],
-  )
-
-def cc_library_with_android_deps(deps, android_deps=[],
-                                common_deps=[], **kwargs):
-=======
       name="version_info_gen",
       srcs=[
           "//tensorflow/tools/git:gen/spec.json",
@@ -1428,6 +1188,5 @@ def cc_library_with_android_deps(deps,
                                  android_deps=[],
                                  common_deps=[],
                                  **kwargs):
->>>>>>> 2a276a0e9fadd2a13c4e165344ad1abedf67884c
   deps = if_not_android(deps) + if_android(android_deps) + common_deps
   native.cc_library(deps=deps, **kwargs)
