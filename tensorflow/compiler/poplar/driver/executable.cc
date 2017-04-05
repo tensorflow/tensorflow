@@ -43,7 +43,12 @@ PoplarExecutable::ExecuteOnStream(
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
 
-  LOG(INFO) << "Execute " << module().name();
+  VLOG(1) << "Execute " << module().name();
+  if (VLOG_IS_ON(2)) {
+    for (const auto& a : arguments) {
+      VLOG(2) << "-- argument " << a.opaque();
+    }
+  }
 
   perftools::gputools::StreamExecutor* executor(stream->parent());
   sep::PoplarExecutor* poplarExecutor(

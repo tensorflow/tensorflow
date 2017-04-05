@@ -63,6 +63,7 @@ void *PoplarExecutor::Allocate(uint64 size) {
   void* raw_buf = new char[size + sizeof(TensorControl)];
   TensorControl* allocated = reinterpret_cast<TensorControl*>(raw_buf);
   allocated->on_device = false;
+  VLOG(2) << "Allocated " << size << " bytes at " << allocated;
   return allocated;
 }
 
@@ -74,6 +75,7 @@ void *PoplarExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
 
 void PoplarExecutor::Deallocate(DeviceMemoryBase *mem) {
   if (!mem->is_sub_buffer()) {
+    VLOG(2) << "Deallocated " << mem->opaque();
     delete[] static_cast<char *>(mem->opaque());
   }
 }
@@ -99,6 +101,7 @@ port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
                                              uint64 size) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(pop_dst->opaque());
   memcpy(tc->data, host_src, size);
+  VLOG(2) << "Memcpy H" << host_src << " -> D" << pop_dst->opaque();
   return port::Status::OK();
 }
 
@@ -108,6 +111,7 @@ port::Status PoplarExecutor::SynchronousMemcpy(void *host_dst,
   const TensorControl* tc =
           reinterpret_cast<const TensorControl*>(pop_src.opaque());
   memcpy(host_dst, tc->data, size);
+  VLOG(2) << "Memcpy D" << tc << " -> H" << host_dst;
   return port::Status::OK();
 }
 

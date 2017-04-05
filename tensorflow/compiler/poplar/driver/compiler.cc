@@ -137,7 +137,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  LOG(INFO) << "Generate graph " << hlo_module->name();
+  VLOG(1) << "Generate graph " << hlo_module->name();
 
   TF_RETURN_IF_ERROR(
           RunHloOptimization(hlo_module.get(), module_config.get(), dump_hlo));
@@ -184,7 +184,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   progs.push_back(visitor.sequence);
 
   try {
-    LOG(INFO) << "Compile engine " << hlo_module->name();
+    VLOG(1) << "Compile engine " << hlo_module->name();
 
     engine.reset(new poplar::Engine(*graph, progs));
   }

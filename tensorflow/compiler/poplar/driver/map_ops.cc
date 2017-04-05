@@ -152,7 +152,6 @@ CreateWhileOp(poplar::Graph &graph,
   main_seq.add(poplar::program::Copy(init, body_input));
 
   // Body
-  LOG(INFO) << "Generating body";
   std::vector<poplar::Tensor> body_inputs(1, body_input);
   PoplarCallVisitor body_visitor(&graph, body_inputs);
   TF_RETURN_IF_ERROR(inst->while_body()->Accept(&body_visitor));
@@ -165,7 +164,6 @@ CreateWhileOp(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, body_output));
 
   // Condition
-  LOG(INFO) << "Generating condition";
   std::vector<poplar::Tensor> condition_inputs(1, body_output);
   PoplarCallVisitor condition_visitor(&graph, condition_inputs);
   TF_RETURN_IF_ERROR(inst->while_condition()->Accept(&condition_visitor));
