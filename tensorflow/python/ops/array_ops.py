@@ -470,7 +470,10 @@ def _SliceHelper(tensor, slice_spec, var=None):
     else:
       begin.append(s)
       end.append(s + 1)
-      strides.append(1)
+      if isinstance(s, ops.Tensor):
+        strides.append(constant(1, s.dtype))
+      else:
+        strides.append(np.ones_like(s).dtype.type(1))
       shrink_axis_mask |= (1 << index)
     index += 1
 
