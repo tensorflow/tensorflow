@@ -315,7 +315,7 @@ public class CameraConnectionFragment extends Fragment {
     FloatingActionButton myFab = (FloatingActionButton)  view.findViewById(R.id.cameraFloatingActionButton);
     myFab.setOnClickListener(new View.OnClickListener() {
       public void onClick(View v) {
-
+        // TODO: Actually add the flipping camera capture thing.
       }
     });
   }
