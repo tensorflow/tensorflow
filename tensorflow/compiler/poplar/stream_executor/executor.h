@@ -35,6 +35,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
+#include <list>
+
 #include <poplar/Tensor.hpp>
 #include <poplar/Engine.hpp>
 
@@ -196,14 +198,23 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   std::string GetPathToGraphProgFile();
 
  private:
+  struct TensorControl {
+    bool on_device = false;
+    int64 input_handle = -1;
+    int64 output_handle = -1;
+    char data[0];
+  };
+
   port::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape&);
 
-  void CopyDataToPoplar(const Args& args) const;
-  void CopyDataFromPoplar(const xla::Shape& shape, DeviceMemoryBase& mem) const;
+  port::Status MoveDeviceToHost(TensorControl* tc) const;
+  port::Status MoveHostToDevice(TensorControl* tc) const;
 
   const PluginConfig plugin_config_;
 
   poplar::Engine* current_engine_;
+
+  std::list<TensorControl*> allocations_;
 };
 
 }  // namespace poplarplugin

@@ -42,12 +42,6 @@ GetCopyHandle(int64 i) {
   return tensorflow::strings::Printf("%lld", i);
 }
 
-struct TensorControl {
-  bool on_device = false;
-  poplar::Tensor device_tensor;
-  char data[0];
-};
-
 host::HostStream *AsPoplarStream(Stream *stream) {
   DCHECK(stream != nullptr);
   return dynamic_cast<host::HostStream *>(stream->implementation());
@@ -63,7 +57,9 @@ void *PoplarExecutor::Allocate(uint64 size) {
   void* raw_buf = new char[size + sizeof(TensorControl)];
   TensorControl* allocated = reinterpret_cast<TensorControl*>(raw_buf);
   allocated->on_device = false;
-  VLOG(2) << "Allocated " << size << " bytes at " << allocated;
+  allocated->input_handle = -1;
+  allocated->output_handle = -1;
+  allocations_.push_back(allocated);
   return allocated;
 }
 
@@ -75,7 +71,8 @@ void *PoplarExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
 
 void PoplarExecutor::Deallocate(DeviceMemoryBase *mem) {
   if (!mem->is_sub_buffer()) {
-    VLOG(2) << "Deallocated " << mem->opaque();
+    TensorControl* tc = reinterpret_cast<TensorControl*>(mem->opaque());
+    allocations_.remove(tc);
     delete[] static_cast<char *>(mem->opaque());
   }
 }
@@ -101,7 +98,7 @@ port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
                                              uint64 size) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(pop_dst->opaque());
   memcpy(tc->data, host_src, size);
-  VLOG(2) << "Memcpy H" << host_src << " -> D" << pop_dst->opaque();
+  tc->on_device = false;
   return port::Status::OK();
 }
 
@@ -110,8 +107,10 @@ port::Status PoplarExecutor::SynchronousMemcpy(void *host_dst,
                                              uint64 size) {
   const TensorControl* tc =
           reinterpret_cast<const TensorControl*>(pop_src.opaque());
+  if (tc->on_device) {
+    TF_RETURN_IF_ERROR(MoveDeviceToHost(const_cast<TensorControl*>(tc)));
+  }
   memcpy(host_dst, tc->data, size);
-  VLOG(2) << "Memcpy D" << tc << " -> H" << host_dst;
   return port::Status::OK();
 }
 
@@ -170,17 +169,20 @@ PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape) {
     void* buf(Allocate(size));
     TensorControl* tc = reinterpret_cast<TensorControl*>(buf);
     tc->on_device = true;
+    tc->output_handle = 0;
     return se::DeviceMemoryBase(buf, size);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     TensorControl* tc = reinterpret_cast<TensorControl*>(Allocate(size));
 
     void** buf = reinterpret_cast<void**>(tc->data);
-    for (const auto& s : shape.tuple_shapes()) {
+    for (int64 n=0; n<xla::ShapeUtil::TupleElementCount(shape); n++) {
+      const auto& s(shape.tuple_shapes(n));
       TensorControl* tc =
               reinterpret_cast<TensorControl*>(
                       Allocate(xla::ShapeUtil::ByteSizeOf(s)));
       tc->on_device = true;
+      tc->output_handle = n;
       *buf++ = tc;
     }
 
@@ -188,30 +190,28 @@ PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape) {
   }
 }
 
-void
-PoplarExecutor::CopyDataToPoplar(const Args& args) const {
-  for (int64 a = 0; a < args.size(); a++) {
-    auto mem = args[a];
-    TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
-    void *buf(static_cast<void *>(tc->data));
-    current_engine_->writeTensor(GetCopyHandle(a), buf);
+port::Status
+PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
+  if (tc->on_device == true && tc->output_handle != -1) {
+    void* buf(static_cast<void*>(tc->data));
+    current_engine_->readTensor(GetCopyHandle(tc->output_handle), buf);
+    tc->on_device = false;
+    tc->output_handle = -1;
+    return port::Status::OK();
+  } else {
+    return tensorflow::errors::Internal("Tensor not on device");
   }
 }
 
-void
-PoplarExecutor::CopyDataFromPoplar(const xla::Shape& shape,
-                                   DeviceMemoryBase& mem) const {
-  TensorControl* tc = reinterpret_cast<TensorControl*>(mem.opaque());
-  if (xla::ShapeUtil::IsTuple(shape)) {
-    TensorControl** subs(reinterpret_cast<TensorControl**>(tc->data));
-
-    for (int64 i=0; i<xla::ShapeUtil::TupleElementCount(shape); i++) {
-      void* buf(static_cast<void*>(subs[i]->data));
-      current_engine_->readTensor(GetCopyHandle(i), buf);
-    }
+port::Status
+PoplarExecutor::MoveHostToDevice(TensorControl* tc) const {
+  if (tc->input_handle != -1) {
+    void *buf(static_cast<void *>(tc->data));
+    current_engine_->writeTensor(GetCopyHandle(tc->input_handle), buf);
+    tc->on_device = true;
+    return port::Status::OK();
   } else {
-    void* buf(static_cast<void*>(tc->data));
-    current_engine_->readTensor(GetCopyHandle(0), buf);
+    return tensorflow::errors::Internal("Tensor not on host");
   }
 }
 
@@ -220,16 +220,44 @@ PoplarExecutor::ExecuteEngine(Stream *stream,
                               poplar::Engine* engine,
                               const xla::Shape& shape,
                               const Args& args) {
-  // TODO Check if we have changed engines and retreive old data
+
+  bool engine_changed(current_engine_ != engine);
+
+  // Pull output data back from device if:
+  // a) the engine is changing
+  // b) it isn't currently in the right place for the new input
+  for (const auto& tc : allocations_) {
+    if (tc->on_device == true && tc->output_handle != -1) {
+      if (engine_changed) {
+        TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+      } else if ((void*)tc != args[tc->input_handle].opaque()) {
+        TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+      }
+    }
+  }
+
+  current_engine_ = engine;
+
+  // Put data on the device if:
+  // a) the engine has changed
+  // b) it is not on the device
+  // c) it is on the device, but in the wrong place
+  for (int64 a = 0; a < args.size(); a++) {
+    auto mem = args[a];
+    TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
+    if (tc->on_device == false || tc->input_handle != a || engine_changed) {
+      tc->input_handle = a;
+      TF_RETURN_IF_ERROR(MoveHostToDevice(tc));
+    }
+  }
+
   perftools::gputools::DeviceMemoryBase retbuf;
   TF_ASSIGN_OR_RETURN(retbuf, AllocateOutputBuffer(shape));
 
-  current_engine_ = engine;
   AsPoplarStream(stream)->EnqueueTask(
           [this, engine, shape, &retbuf, args]() {
-            CopyDataToPoplar(args);
             current_engine_->run(0);
-            CopyDataFromPoplar(shape, retbuf);
+            return port::Status::OK();
           });
 
   stream->BlockHostUntilDone();
