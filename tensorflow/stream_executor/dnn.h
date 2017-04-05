@@ -1315,7 +1315,6 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<double>& output_data,
                               const DeviceMemory<double>& input_diff_data,
-                              DeviceMemory<double>* output_diff_data) = 0;
                               DeviceMemory<double>* output_diff_data) {
     LOG(FATAL) << "DoPoolBackward not implemented.";
     return false;
