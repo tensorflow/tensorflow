@@ -2335,6 +2335,7 @@ class ApplyAdamOp : public OpKernel {
 
  private:
   bool use_exclusive_lock_;
+  bool use_nesterov_;
 };
 
 using CPUDevice = Eigen::ThreadPoolDevice;
