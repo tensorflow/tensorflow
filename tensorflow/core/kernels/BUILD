@@ -3284,7 +3284,7 @@ STATE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:state_ops_op_lib",
-]
+] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
 tf_kernel_library(
     name = "count_up_to_op",
