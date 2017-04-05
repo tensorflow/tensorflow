@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
 #ifdef INTEL_MKL
 
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
@@ -63,9 +63,7 @@ class MklShape {
 
   void SetMklTensor(const bool isMklTensor) { isMklTensor_ = isMklTensor; }
 
-  void SetDimensions(const size_t dimension) {
-    dimension_ = dimension;
-  }
+  void SetDimensions(const size_t dimension) { dimension_ = dimension; }
 
   void SetMklLayout(const void* primitive, size_t resourceType) {
     CHECK_EQ(
@@ -408,8 +406,8 @@ static inline bool IsMklLayer(const std::string& op_name, DataType T) {
   // the type is float. Actually, we should query kernel registration and
   // find out if op is supported for type T. But there is no API to query
   // kernel registration using name and type.
-  bool result = (kernel.find(kMklLayerLabelPattern) != string::npos) &&
-                (T == DT_FLOAT);
+  bool result =
+      (kernel.find(kMklLayerLabelPattern) != string::npos) && (T == DT_FLOAT);
   if (result == true) {
     VLOG(1) << "mkl_layer_registry::" << op_name << " is " << kMklLayerLabel;
   }

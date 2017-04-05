@@ -785,7 +785,7 @@ class Iterator(object):
           index_array = np.random.permutation(n)
 
       current_index = (self.batch_index * batch_size) % n
-      if n >= current_index + batch_size:
+      if n > current_index + batch_size:
         current_batch_size = batch_size
         self.batch_index += 1
       else:

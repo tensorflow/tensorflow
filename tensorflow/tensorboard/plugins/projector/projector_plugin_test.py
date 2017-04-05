@@ -104,10 +104,8 @@ class ProjectorAppTest(test.TestCase):
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
     plugin = projector_plugin.ProjectorPlugin()
-    plugin.get_plugin_apps(multiplexer, self.log_dir)
-    plugins = {'projector': plugin}
     wsgi_app = application.TensorBoardWSGIApp(
-        self.log_dir, plugins, multiplexer, reload_interval=0)
+        self.log_dir, [plugin], multiplexer, reload_interval=0)
     self.server = werkzeug_test.Client(wsgi_app, wrappers.BaseResponse)
 
   def _Get(self, path):

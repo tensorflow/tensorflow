@@ -333,11 +333,11 @@ namespace functor {
 
 template <typename T>
 bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
-    const T* bottom_data, const int batch, const int height,
-    const int width, const int channels, const int pooled_height,
-    const int pooled_width, const int kernel_h, const int kernel_w,
-    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
-    T* top_data, int64* mask, const Eigen::GpuDevice& d) {
+    const T* bottom_data, const int batch, const int height, const int width,
+    const int channels, const int pooled_height, const int pooled_width,
+    const int kernel_h, const int kernel_w, const int stride_h,
+    const int stride_w, const int pad_t, const int pad_l, T* top_data,
+    int64* mask, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   const int output_size = batch * channels * pooled_height * pooled_width;
 
@@ -351,14 +351,11 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
 
 template <typename T>
 bool MaxPoolBackwardNoMask<T>::operator()(
-    const T* bottom_data, const int batch,
-    const int height, const int width,
-    const int channels, const int pooled_height,
-    const int pooled_width, const int kernel_h,
-    const int kernel_w, const int stride_h,
-    const int stride_w, const int pad_t, const int pad_l,
-    const T* top_diff, T* bottom_diff,
-    const Eigen::GpuDevice& d) {
+    const T* bottom_data, const int batch, const int height, const int width,
+    const int channels, const int pooled_height, const int pooled_width,
+    const int kernel_h, const int kernel_w, const int stride_h,
+    const int stride_w, const int pad_t, const int pad_l, const T* top_diff,
+    T* bottom_diff, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   const int bottom_size = batch * channels * height * width;
   const int top_size = batch * channels * pooled_height * pooled_width;
@@ -377,9 +374,8 @@ bool MaxPoolBackwardNoMask<T>::operator()(
 
 template <typename T>
 bool MaxPoolBackwardWithArgmax<T>::operator()(
-    const int output_size, const int input_size,
-    const T* top_diff, const int64* mask,
-    const int top_offset, const int bottom_offset,
+    const int output_size, const int input_size, const T* top_diff,
+    const int64* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   SetZero<<<(input_size + kThreadsPerBlock - 1) / kThreadsPerBlock,

@@ -113,8 +113,6 @@ struct ImportGraphDefOptions {
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the
   // python API.
-
-  // TODO(skyewm): Enable importing functions
 };
 
 // Each `return_tensors` entry is the requested node and output index. The index

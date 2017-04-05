@@ -26,6 +26,7 @@ import six
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.framework import get_graph_from_inputs
 from tensorflow.contrib.learn.python.learn.estimators import constants
+from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.python.estimator import model_fn as core_model_fn_lib
 from tensorflow.python.estimator.export import export_output as core_export_lib
@@ -255,12 +256,20 @@ class ModelFnOps(
       export_outputs_dict = {key: _export_output(*val) for key, val in
                              output_alternatives.items()}
 
+    def _get_eval_metric_ops():
+      """Returns self.eval_metric_ops without loss metric."""
+      result = {}
+      for key, value in six.iteritems(self.eval_metric_ops):
+        if key != metric_key.MetricKey.LOSS:
+          result[key] = value
+      return result
+
     return core_model_fn_lib.EstimatorSpec(
         mode=mode,
         predictions=self.predictions,
         loss=self.loss,
         train_op=self.train_op,
-        eval_metric_ops=self.eval_metric_ops,
+        eval_metric_ops=_get_eval_metric_ops(),
         export_outputs=export_outputs_dict,
         training_chief_hooks=self.training_chief_hooks,
         training_hooks=self.training_hooks,

@@ -1,5 +1,4 @@
-#!/usr/bin/env bash
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,27 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 # ==============================================================================
+"""Switch between Google or open source dependencies."""
+# Switch between Google and OSS dependencies
+USE_OSS = True
 
-set -e
-set -x
-
-N_JOBS=$(grep -c ^processor /proc/cpuinfo)
-
-echo ""
-echo "Bazel will use ${N_JOBS} concurrent job(s)."
-echo ""
-
-# Run configure.
-export TF_NEED_GCP=0
-export TF_NEED_HDFS=0
-export TF_NEED_CUDA=0
-export PYTHON_BIN_PATH=`which python3`
-yes "" | ./configure
-
-# Run bazel test command. Double test timeouts to avoid flakes.
-bazel test --test_tag_filters=-gpu,-benchmark-test -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
-    --test_output=errors -- \
-    //tensorflow/contrib/...
+# Per-dependency switches determining whether each dependency is ready
+# to be replaced by its OSS equivalence.
+# TODO(danmane,mrry,opensource): Flip these switches, then remove them
+OSS_APP = True
+OSS_FLAGS = True
+OSS_GFILE = True
+OSS_GOOGLETEST = True
+OSS_LOGGING = True
+OSS_PARAMETERIZED = True

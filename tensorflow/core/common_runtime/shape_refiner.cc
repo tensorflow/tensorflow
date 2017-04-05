@@ -299,6 +299,13 @@ Status ShapeRefiner::ExtractConstantSubgraph(
       return Status::OK();
     }
 
+    // Don't constant fold enter/exit currently either, as it's easy to end
+    // up with a partial frame.
+    if (IsEnter(current_node) || IsExit(current_node)) {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
     // If there is nothing more to recurse down, see if
     // the generator node is a constant.
     if (current_node->num_inputs() == 0) {

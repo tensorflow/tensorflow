@@ -212,7 +212,7 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
     // Check if src with is Mkl-compliant, while dst is not Mkl-compliant.
 
     if (IsMklSupportedOp(src->type_string(), src_datatype) &&
-       !IsMklSupportedOp(dst->type_string(), dst_datatype)) {
+        !IsMklSupportedOp(dst->type_string(), dst_datatype)) {
       VLOG(1) << "MklToTfConversionPass: Scheduled nodes " << src->name()
               << " and " << dst->name() << " for inserting conversion nodes";
       candidate_edges.push_back(const_cast<Edge*>(e));

@@ -181,7 +181,6 @@ Status MaxPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("MaxPool", MaxPoolGrad);
 
-
 Status MaxPoolGradGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(

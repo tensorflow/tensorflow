@@ -34,7 +34,7 @@ from tensorflow.tensorboard.backend.event_processing import event_file_loader
 from tensorflow.tensorboard.plugins import base_plugin
 
 # The prefix of routes provided by this plugin.
-PLUGIN_PREFIX_ROUTE = 'debugger'
+_PLUGIN_PREFIX_ROUTE = 'debugger'
 
 # HTTP routes.
 _HEALTH_PILLS_ROUTE = '/health_pills'
@@ -62,6 +62,8 @@ class DebuggerPlugin(base_plugin.TBPlugin):
   That data could include health pills, which unveil the status of tensor
   values.
   """
+
+  plugin_name = _PLUGIN_PREFIX_ROUTE
 
   def get_plugin_apps(self, multiplexer, logdir):
     """Obtains a mapping between routes and handlers. Stores the logdir.

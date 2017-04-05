@@ -234,17 +234,15 @@ bool TrySinkReshapeOrTranspose(HloComputation* computation,
 }  // namespace
 
 StatusOr<bool> ReshapeMover::Run(HloModule* module) {
-  return std::any_of(
-      module->computations().begin(), module->computations().end(),
-      [](const std::unique_ptr<HloComputation>& computation) {
-        std::list<HloInstruction*> postorder =
-            computation->MakeInstructionPostOrder();
-        return std::any_of(postorder.begin(), postorder.end(),
-                           [&computation](HloInstruction* instruction) {
-                             return TrySinkReshapeOrTranspose(computation.get(),
-                                                              instruction);
-                           });
-      });
+  bool changed = false;
+  for (const auto& comp : module->computations()) {
+    for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
+      if (TrySinkReshapeOrTranspose(comp.get(), instruction)) {
+        changed = true;
+      }
+    }
+  }
+  return changed;
 }
 
 }  // namespace xla

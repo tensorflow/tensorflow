@@ -266,7 +266,11 @@ class Estimator(object):
         checkpoint_path=checkpoint_path,
         name=name)
 
-  def predict(self, input_fn, predict_keys=None, hooks=None, checkpoint_path=None):
+  def predict(self,
+              input_fn,
+              predict_keys=None,
+              hooks=None,
+              checkpoint_path=None):
     """Returns predictions for given features.
 
     Args:

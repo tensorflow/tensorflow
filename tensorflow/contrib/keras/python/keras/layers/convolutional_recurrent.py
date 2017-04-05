@@ -357,7 +357,7 @@ class ConvLSTM2D(ConvRecurrent2D):
       self.states = [None, None]
 
     if self.data_format == 'channels_first':
-      channel_axis = 1
+      channel_axis = 2
     else:
       channel_axis = -1
     if input_shape[channel_axis] is None:

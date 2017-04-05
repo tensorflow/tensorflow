@@ -154,7 +154,7 @@ class BatchNormalization(Layer):
     broadcast_shape[self.axis] = input_shape[self.axis]
 
     # Determines whether broadcasting is needed.
-    needs_broadcasting = (sorted(reduction_axes) != range(ndim)[:-1])
+    needs_broadcasting = (sorted(reduction_axes) != list(range(ndim))[:-1])
 
     normed, mean, variance = K.normalize_batch_in_training(
         inputs, self.gamma, self.beta, reduction_axes, epsilon=self.epsilon)

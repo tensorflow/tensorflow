@@ -1348,13 +1348,14 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum,
 StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
-  bool changed =
-      std::any_of(module->computations().begin(), module->computations().end(),
-                  [=](const std::unique_ptr<HloComputation>& computation) {
-                    return AlgebraicSimplifierVisitor::Run(
-                        computation.get(), is_layout_sensitive_,
-                        valid_bitcast_callback_, enable_dot_simplification_);
-                  });
+  bool changed = false;
+  for (auto& comp : module->computations()) {
+    if (AlgebraicSimplifierVisitor::Run(comp.get(), is_layout_sensitive_,
+                                        valid_bitcast_callback_,
+                                        enable_dot_simplification_)) {
+      changed = true;
+    }
+  }
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), after:\n" + module->ToString());
   return changed;

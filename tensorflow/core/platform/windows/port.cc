@@ -58,21 +58,20 @@ int NumSchedulableCPUs() {
 
 void* AlignedMalloc(size_t size, int minimum_alignment) {
 #ifdef TENSORFLOW_USE_JEMALLOC
-    void* ptr = NULL;
-    // posix_memalign requires that the requested alignment be at least
-    // sizeof(void*). In this case, fall back on malloc which should return
-    // memory aligned to at least the size of a pointer.
-    const int required_alignment = sizeof(void*);
-    if (minimum_alignment < required_alignment) return Malloc(size);
-    int err = jemalloc_posix_memalign(&ptr, minimum_alignment, size);
-    if (err != 0) {
-        return NULL;
-    }
-    else {
-        return ptr;
-    }
+  void* ptr = NULL;
+  // posix_memalign requires that the requested alignment be at least
+  // sizeof(void*). In this case, fall back on malloc which should return
+  // memory aligned to at least the size of a pointer.
+  const int required_alignment = sizeof(void*);
+  if (minimum_alignment < required_alignment) return Malloc(size);
+  int err = jemalloc_posix_memalign(&ptr, minimum_alignment, size);
+  if (err != 0) {
+    return NULL;
+  } else {
+    return ptr;
+  }
 #else
-    return _aligned_malloc(size, minimum_alignment);
+  return _aligned_malloc(size, minimum_alignment);
 #endif
 }
 

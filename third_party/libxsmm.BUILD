@@ -96,7 +96,8 @@ cc_library(
         "include/libxsmm.h",
         "include/libxsmm_config.h",
         "include/libxsmm_dispatch.h",
-    ] + glob([ # trigger rebuild if template changed
+    ] + glob([
+        # trigger rebuild if template changed
         "src/template/*.c",
     ]),
     copts = [

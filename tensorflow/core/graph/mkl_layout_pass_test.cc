@@ -18,9 +18,9 @@ limitations under the License.
 #include "tensorflow/core/graph/mkl_layout_pass.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-#include <vector>
-#include <string>
 #include <algorithm>
+#include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -112,8 +112,7 @@ class MklLayoutPassTest : public ::testing::Test {
 REGISTER_OP("Input").Output("o: float").SetIsStateful();
 REGISTER_OP("HalfInput").Output("o: half").SetIsStateful();
 REGISTER_OP("MklInput").Output("o: uint8").SetIsStateful();
-REGISTER_OP("MklInput2").Output("o: uint8")
-                        .Output("o1: uint8").SetIsStateful();
+REGISTER_OP("MklInput2").Output("o: uint8").Output("o1: uint8").SetIsStateful();
 
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to node merge optiimization
@@ -240,7 +239,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_Negative_NoAddBias) {
       " input: ['A', 'M', 'B', 'N']}");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(MklConv2D);M(MklInput);N(MklInput)|"
-             "A->C;B->C:2;M->C:1;N->C:3");
+            "A->C;B->C:2;M->C:1;N->C:3");
 }
 
 // MklConv2D output does not go to BiasAdd.
@@ -372,7 +371,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackprop_Negative_NoConv2D) {
       " input: ['D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(Add);D(Sub);E(BiasAddGrad)|"
-             "A->C;A->D:1;B->C:1;C->D;D->E");
+            "A->C;A->D:1;B->C:1;C->D;D->E");
 }
 
 // No Conv2D in the context for BiasAddGrad, but MatMul in context.
@@ -396,7 +395,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackprop_Negative_NoConv2D_MatMul) {
       " input: ['D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(MatMul);D(Sub);E(BiasAddGrad)|"
-             "A->C;A->D:1;B->C:1;C->D;D->E");
+            "A->C;A->D:1;B->C:1;C->D;D->E");
 }
 
 // Test set 3: MatMul..BiasAddGrad -> BiasAddGrad rewrite tests
@@ -419,7 +418,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_MatMulBiasAddGrad_Positive) {
       " input: ['D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(MatMul);D(Sub);E(BiasAddGrad)|"
-             "A->C;A->D:1;B->C:1;C->D;D->E");
+            "A->C;A->D:1;B->C:1;C->D;D->E");
 }
 
 // No MatMul in the context for BiasAddGrad. No rewrite should happen.
@@ -440,7 +439,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_MatMulBiasAddGrad_Negative_NoMatMul) {
       " input: ['D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(Add);D(Sub);E(BiasAddGrad)|"
-             "A->C;A->D:1;B->C:1;C->D;D->E");
+            "A->C;A->D:1;B->C:1;C->D;D->E");
 }
 
 /////////////////////////////////////////////////////////////////////
