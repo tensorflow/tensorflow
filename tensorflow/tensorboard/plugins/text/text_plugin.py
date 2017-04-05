@@ -39,7 +39,7 @@ from tensorflow.tensorboard.backend import http_util
 from tensorflow.tensorboard.plugins import base_plugin
 
 # The prefix of routes provided by this plugin.
-PLUGIN_PREFIX_ROUTE = 'text'
+_PLUGIN_PREFIX_ROUTE = 'text'
 
 # HTTP routes
 RUNS_ROUTE = '/runs'
@@ -250,6 +250,8 @@ def process_string_tensor_event(event):
 
 class TextPlugin(base_plugin.TBPlugin):
   """Text Plugin for TensorBoard."""
+
+  plugin_name = _PLUGIN_PREFIX_ROUTE
 
   def index_impl(self):
     run_to_series = {}

@@ -156,6 +156,18 @@ class SaverTest(test.TestCase):
   def testResourceBasic(self):
     self.basicSaveRestore(resource_variable_ops.ResourceVariable)
 
+  def testResourceSaveRestoreCachingDevice(self):
+    save_path = os.path.join(self.get_temp_dir(), "resource_cache")
+    v = resource_variable_ops.ResourceVariable([1], caching_device="/cpu:0")
+    with self.test_session() as sess:
+      variables.global_variables_initializer().run()
+      save = saver_module.Saver()
+      save.save(sess, save_path)
+    with self.test_session() as sess:
+      save2 = saver_module.Saver()
+      save2.restore(sess, save_path)
+      self.assertEquals(v.eval(), [1])
+
   def testSaveCopyRestoreWithSaveRelativePaths(self):
     """Save, copy checkpoint dir and restore from copied dir.
 

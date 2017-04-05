@@ -72,8 +72,7 @@ class DeviceSimple : public DeviceBase {
                              Tensor* tensor) override {
     Tensor parsed(tensor_proto.dtype());
     if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                     tensor_proto.DebugString());
+      return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
     }
     *tensor = parsed;
     return Status::OK();

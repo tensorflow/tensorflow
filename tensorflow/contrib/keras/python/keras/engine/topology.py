@@ -295,8 +295,14 @@ class Layer(object):
     # are only applicable to input layers: do not pass these keywords
     # to non-input layers.
     allowed_kwargs = {
-        'input_shape', 'batch_input_shape', 'batch_size', 'dtype', 'name',
-        'trainable', 'weights'
+        'input_shape',
+        'batch_input_shape',
+        'batch_size',
+        'dtype',
+        'name',
+        'trainable',
+        'weights',
+        'input_dtype',  # legacy
     }
     for kwarg in kwargs:
       if kwarg not in allowed_kwargs:
@@ -320,8 +326,15 @@ class Layer(object):
           batch_size = None
         batch_input_shape = (batch_size,) + tuple(kwargs['input_shape'])
       self.batch_input_shape = batch_input_shape
-      dtype = kwargs.get('dtype', K.floatx())
+
+      # Set dtype.
+      dtype = kwargs.get('dtype')
+      if dtype is None:
+        dtype = kwargs.get('input_dtype')
+      if dtype is None:
+        dtype = K.floatx()
       self.dtype = dtype
+
     if 'weights' in kwargs:
       self._initial_weights = kwargs['weights']
     else:
@@ -485,11 +498,12 @@ class Layer(object):
                                  ': expected shape=' + str(spec.shape) +
                                  ', found shape=' + str(x_shape))
 
-  def call(self, inputs):
+  def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
     Arguments:
-        inputs: input tensor, or list/tuple of input tensors.
+        inputs: Input tensor, or list/tuple of input tensors.
+        **kwargs: Additional keyword arguments.
 
     Returns:
         A tensor or list/tuple of tensors.
@@ -518,6 +532,8 @@ class Layer(object):
         ValueError: in case the layer is missing shape information
             for its `build` call.
     """
+    if isinstance(inputs, list):
+      inputs = inputs[:]
     with K.name_scope(self.name):
       # Handle laying building (weight creating, input spec locking).
       if not self.built:
@@ -1417,7 +1433,7 @@ class Container(Layer):
       get_weights
       set_weights
       get_config
-      get_output_shape_for
+      compute_output_shape
 
   # Class Methods
       from_config
@@ -2029,7 +2045,7 @@ class Container(Layer):
       for i in range(len(input_shapes)):
         layer = self.input_layers[i]
         input_shape = input_shapes[i]
-        # It's an input layer: get_output_shape_for is identity,
+        # It's an input layer: compute_output_shape is identity,
         # and there is only one node and one tensor output.
         shape_key = layer.name + '_0_0'
         layers_to_output_shapes[shape_key] = input_shape

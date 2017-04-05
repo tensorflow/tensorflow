@@ -159,16 +159,15 @@ class ResourceVariable(object):
     with ops.control_dependencies(None):
       with ops.name_scope(name, "Variable", [] if init_from_fn else
                           [initial_value]) as name:
+        # pylint: disable=protected-access
+        true_name = ops._name_from_scope_name(name)
         if init_from_fn:
           # Use attr_scope and device(None) to simulate the behavior of
           # colocate_with when the variable we want to colocate with doesn't
           # yet exist.
-          # pylint: disable=protected-access
-          true_name = ops._name_from_scope_name(name)
           attr = attr_value_pb2.AttrValue(
               list=attr_value_pb2.AttrValue.ListValue(
                   s=[compat.as_bytes("loc:@%s" % true_name)]))
-          # pylint: disable=protected-access
           with ops.get_default_graph()._attr_scope({"_class": attr}):
             with ops.name_scope("Initializer"), ops.device(None):
               self._initial_value = ops.convert_to_tensor(
@@ -176,7 +175,8 @@ class ResourceVariable(object):
             self._handle = gen_resource_variable_ops.var_handle_op(
                 shape=self._initial_value.get_shape(),
                 dtype=self._initial_value.dtype.base_dtype,
-                shared_name=name, name=name)
+                shared_name=true_name, name=name)
+        # pylint: enable=protected-access
 
         # Or get the initial value from a Tensor or Python object.
         else:
@@ -185,7 +185,7 @@ class ResourceVariable(object):
           self._handle = gen_resource_variable_ops.var_handle_op(
               shape=self._initial_value.get_shape(),
               dtype=self._initial_value.dtype.base_dtype,
-              shared_name=name, name=name)
+              shared_name=true_name, name=name)
 
         self._dtype = self._initial_value.dtype.base_dtype
 
@@ -201,8 +201,16 @@ class ResourceVariable(object):
               self._handle, dtype=self._dtype)
           self._graph_element = value
           if caching_device is not None:
-            with ops.device(caching_device):
-              self._cached_value = array_ops.identity(value)
+            # Variables may be created in a tf.device() or ops.colocate_with()
+            # context. At the same time, users would expect caching device to be
+            # independent of this context, and/or would not expect the current
+            # device context to be merged with the caching device spec.
+            # Therefore we reset the colocation stack before creating the cached
+            # value. Note that resetting the colocation stack will also reset
+            # the device stack.
+            with ops.colocate_with(None, ignore_existing=True):
+              with ops.device(caching_device):
+                self._cached_value = array_ops.identity(value)
           else:
             self._cached_value = None
           ops.add_to_collections(collections, self)
@@ -422,6 +430,8 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
   if dtype is not None and dtype != var.value().dtype:
     print("trying to switch the dtype to ", dtype, " from ", var.value().dtype)
     return NotImplemented
+  if as_ref:
+    return var.read_value().op.inputs[0]
   return var.value()
 # pylint: enable=unused-argument,protected-access
 
