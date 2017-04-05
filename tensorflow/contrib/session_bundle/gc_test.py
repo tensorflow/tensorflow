@@ -29,10 +29,6 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
 
-def tearDownModule():
-  gfile.DeleteRecursively(test.get_temp_dir())
-
-
 class GcTest(test_util.TensorFlowTestCase):
 
   def testLargestExportVersions(self):
