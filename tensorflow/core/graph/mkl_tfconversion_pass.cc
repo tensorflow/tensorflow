@@ -77,6 +77,7 @@ class MklToTfConversionPass : public GraphOptimizationPass {
   // false, otherwise.
   bool RunPass(std::unique_ptr<Graph>* g);
 
+
  private:
   // Is the input Op supported by Mkl-specific layout?
   //
@@ -106,7 +107,7 @@ const OptimizationPassRegistry::Grouping kMklTfConvPassGroup =
 REGISTER_OPTIMIZATION(kMklTfConvPassGroup, 1, MklToTfConversionPass);
 
 Status MklToTfConversionPass::InsertConversionNodeOnEdge(
-    std::unique_ptr<Graph>* g, Edge* e) {
+    std::unique_ptr<Graph>* g, Edge *e) {
   CHECK_NOTNULL(e);
 
   Node* src = e->src();
@@ -123,22 +124,22 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   TF_CHECK_OK(GetNodeAttr(src->def(), "T", &src_datatype));
   TF_CHECK_OK(GetNodeAttr(dst->def(), "T", &dst_datatype));
   if (src_datatype != dst_datatype) {
-    string err_msg = "T attribute of " + src->name() + " and " + dst->name() +
-                     " do not match. Will not insert" +
+    string err_msg = "T attribute of " + src->name() + " and " +
+                      dst->name() + " do not match. Will not insert" +
                      " MklToTf node in such case.";
     return Status(error::Code::INVALID_ARGUMENT, err_msg.c_str());
   }
 
   // Lets build the conversion node and specify src as input.
-  TF_CHECK_OK(
-      NodeBuilder((*g)->NewName("Mkl2Tf"), "MklToTf")
-          .Input(src, e->src_output())
-          .Input(src, e->src_output() + 1)  // Mkl tensor immediately
-                                            // follows Tf tensor.
-          .Device(src->def().device())      // We want to get conversion node
-                                            // on same device as source node.
-          .Attr("T", src_datatype)
-          .Finalize(&**g, &conversion_node));
+  TF_CHECK_OK(NodeBuilder((*g)->NewName("Mkl2Tf"), "MklToTf")
+        .Input(src, e->src_output())
+        .Input(src, DataIndexToMetaDataIndex(
+            e->src_output(), src->num_outputs()))  // Get Mkl tensor slot
+                                        // from Tf tensor slot.
+        .Device(src->def().device())  // We want to get conversion node
+                                      // on same device as source node.
+        .Attr("T", src_datatype)
+        .Finalize(&**g, &conversion_node));
 
   CHECK_NOTNULL(conversion_node);
   if (GetNodeAttr(src->def(), "data_format", &data_format) == Status::OK()) {
@@ -180,7 +181,7 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
   // are candidate for inserting conversion node
   std::vector<Edge*> candidate_edges;
 
-  for (const Edge* e : (*g)->edges()) {
+  for (const Edge *e : (*g)->edges()) {
     Node* src = e->src();
     Node* dst = e->dst();
 
@@ -210,7 +211,6 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
     GetNodeAttr(dst->def(), "T", &dst_datatype);
 
     // Check if src with is Mkl-compliant, while dst is not Mkl-compliant.
-
     if (IsMklSupportedOp(src->type_string(), src_datatype) &&
         !IsMklSupportedOp(dst->type_string(), dst_datatype)) {
       VLOG(1) << "MklToTfConversionPass: Scheduled nodes " << src->name()
@@ -247,7 +247,8 @@ bool InsertMklToTfConversionNodes(std::unique_ptr<Graph>* g) {
   return MklToTfConversionPass().RunPass(g);
 }
 
-Status MklToTfConversionPass::Run(const GraphOptimizationPassOptions& options) {
+Status MklToTfConversionPass::Run(
+  const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
     return Status::OK();
   }
