@@ -42,7 +42,7 @@ from tensorflow.tensorboard.plugins.base_plugin import TBPlugin
 from tensorflow.tensorboard.plugins.projector import projector_config_pb2
 
 # The prefix of routes provided by this plugin.
-PLUGIN_PREFIX_ROUTE = 'projector'
+_PLUGIN_PREFIX_ROUTE = 'projector'
 
 PROJECTOR_FILENAME = 'projector_config.pbtxt'
 
@@ -304,6 +304,8 @@ def _parse_positive_int_param(request, param_name):
 
 class ProjectorPlugin(TBPlugin):
   """Embedding projector."""
+
+  plugin_name = _PLUGIN_PREFIX_ROUTE
 
   def __init__(self):
     self._handlers = None

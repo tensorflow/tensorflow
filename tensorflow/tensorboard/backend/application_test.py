@@ -48,6 +48,7 @@ from tensorflow.python.summary.writer import writer as writer_lib
 from tensorflow.tensorboard import tensorboard
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
 
 
 class TensorboardServerTest(test.TestCase):
@@ -61,7 +62,7 @@ class TensorboardServerTest(test.TestCase):
     multiplexer = event_multiplexer.EventMultiplexer(
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
-    plugins = {}
+    plugins = []
     app = application.TensorBoardWSGIApp(
         self.temp_dir, plugins, multiplexer, reload_interval=0)
     try:
@@ -478,6 +479,35 @@ class TensorboardSimpleServerConstructionTest(test.TestCase):
       # IPv6 is not supported
       pass
     self.assertTrue(one_passed)  # We expect either IPv4 or IPv6 to be supported
+
+
+class TensorBoardApplcationConstructionTest(test.TestCase):
+
+  def testExceptions(self):
+
+    class UnnamedPlugin(base_plugin.TBPlugin):
+
+      def get_plugin_apps(self):
+        pass
+
+    class MockPlugin(UnnamedPlugin):
+      plugin_name = 'mock'
+
+    class OtherMockPlugin(UnnamedPlugin):
+      plugin_name = 'mock'
+
+    logdir = '/fake/foo'
+    multiplexer = event_multiplexer.EventMultiplexer()
+
+    # Fails if there is an unnamed plugin
+    with self.assertRaises(ValueError):
+      plugins = [UnnamedPlugin()]
+      application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
+
+    # Fails if there are two plugins with same name
+    with self.assertRaises(ValueError):
+      plugins = [MockPlugin(), OtherMockPlugin()]
+      application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
 
 
 if __name__ == '__main__':

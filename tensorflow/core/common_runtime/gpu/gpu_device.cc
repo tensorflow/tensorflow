@@ -274,14 +274,14 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
                                      DeviceContextMap* device_context_map) {
   VLOG(2) << "FillContextMap";
 
-  const auto num_streams = streams_.size();
+  const size_t num_streams = streams_.size();
   // Special case for single stream.
   if (num_streams == 1) {
     return Status::OK();
   }
   const int64 before = Env::Default()->NowMicros();
   gpu_stream_util::AssignStreamsOpts opts;
-  opts.max_streams = num_streams;
+  opts.max_streams = static_cast<int32>(num_streams);
   std::unordered_map<int, int> node_to_stream_id;
   TF_RETURN_IF_ERROR(
       gpu_stream_util::AssignStreams(graph, opts, &node_to_stream_id));
@@ -519,7 +519,7 @@ void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
 Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
                                            const string& name_prefix,
                                            std::vector<Device*>* devices) {
-  int n = INT_MAX;
+  size_t n = INT_MAX;
   auto iter = options.config.device_count().find("GPU");
   if (iter != options.config.device_count().end()) {
     n = iter->second;
@@ -971,7 +971,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       continue;
     }
 
-    int new_id = ids->size();
+    size_t new_id = ids->size();
     ids->push_back(visible_gpu_id);
 
     LOG(INFO) << "Creating TensorFlow device (/gpu:" << new_id << ") -> "

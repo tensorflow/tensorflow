@@ -96,7 +96,7 @@ class DebuggerPluginTest(test.TestCase):
     })
     self.plugin = debugger_plugin.DebuggerPlugin()
     wsgi_app = application.TensorBoardWSGIApp(
-        self.log_dir, {'debugger': self.plugin},
+        self.log_dir, [self.plugin],
         self.multiplexer,
         reload_interval=0)
     self.server = werkzeug_test.Client(wsgi_app, wrappers.BaseResponse)

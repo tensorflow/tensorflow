@@ -244,7 +244,7 @@ class _Conv(Layer):
         'kernel_initializer':
             initializers.serialize(self.kernel_initializer),
         'bias_initializer':
-            initializers.serialize(self.kernel_initializer),
+            initializers.serialize(self.bias_initializer),
         'kernel_regularizer':
             regularizers.serialize(self.kernel_regularizer),
         'bias_regularizer':
@@ -289,7 +289,7 @@ class Conv1D(_Conv):
           any `dilation_rate` value != 1.
       padding: One of `"valid"`, `"causal"` or `"same"` (case-insensitive).
           `"causal"` results in causal (dilated) convolutions, e.g. output[t]
-          depends solely on input[:t-1]. Useful when modeling temporal data
+          does not depend on input[t+1:]. Useful when modeling temporal data
           where the model should not violate the temporal order.
           See [WaveNet: A Generative Model for Raw Audio, section
             2.1](https://arxiv.org/abs/1609.03499).
@@ -395,9 +395,9 @@ class Conv2D(_Conv):
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".
@@ -621,7 +621,7 @@ class Conv2DTranspose(Conv2D):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the
           width and height of the 2D convolution window.
           Can be a single integer to specify the same value for
@@ -637,9 +637,9 @@ class Conv2DTranspose(Conv2D):
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".
@@ -688,7 +688,7 @@ class Conv2DTranspose(Conv2D):
                kernel_size,
                strides=(1, 1),
                padding='valid',
-               data_format='channels_last',
+               data_format=None,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -845,9 +845,9 @@ class SeparableConv2D(Conv2D):
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".
@@ -1079,9 +1079,9 @@ class UpSampling2D(Layer):
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".
@@ -1257,7 +1257,7 @@ class ZeroPadding2D(Layer):
           - If tuple of 2 ints:
               interpreted as two different
               symmetric padding values for height and width:
-              `(symmetric_height_pad, symmetrc_width_pad)`.
+              `(symmetric_height_pad, symmetric_width_pad)`.
           - If tuple of 2 tuples of 2 ints:
               interpreted as
               `((top_pad, bottom_pad), (left_pad, right_pad))`
@@ -1265,9 +1265,9 @@ class ZeroPadding2D(Layer):
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".
@@ -1498,7 +1498,7 @@ class Cropping2D(Layer):
           - If tuple of 2 ints:
               interpreted as two different
               symmetric cropping values for height and width:
-              `(symmetric_height_crop, symmetrc_width_crop)`.
+              `(symmetric_height_crop, symmetric_width_crop)`.
           - If tuple of 2 tuples of 2 ints:
               interpreted as
               `((top_crop, bottom_crop), (left_crop, right_crop))`
@@ -1506,9 +1506,9 @@ class Cropping2D(Layer):
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".

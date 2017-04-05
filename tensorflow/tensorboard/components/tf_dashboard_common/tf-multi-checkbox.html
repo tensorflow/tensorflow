@@ -194,10 +194,11 @@ handle these situations gracefully.
         type: Object,
         observer: "synchronizeColors",
       }, // map from run name to css class
-      numRunsEnabledByDefault: {
-        // When TB first loads, first k runs are enabled, rest are disabled.
+      maxRunsToEnableByDefault: {
+        // When TB first loads, if it has k or fewer runs, they are all enabled
+        // by default. If there are more, then they are all disabled.
         type: Number,
-        value: 10,
+        value: 40,
       },
       _debouncedRegexChange: {
         type: Function,
@@ -230,8 +231,24 @@ handle these situations gracefully.
     },
     observers: [
       "_setIsolatorIcon(runSelectionState, names)",
-      "_storeRunToIsCheckedMapping(runSelectionState)",
+      "_storeRunToIsCheckedMappingWithDefault(runSelectionState, namesMatchingRegex)",
     ],
+    _storeRunToIsCheckedMappingWithDefault() {
+      var runSelectionStateIsDefault = Object.keys(this.runSelectionState).length == 0;
+      if (runSelectionStateIsDefault || this.namesMatchingRegex == null) {
+        return;
+      }
+      var _this = this;
+      var allToggledOn = this.namesMatchingRegex
+              .every(function(n) {return _this.runSelectionState[n]});
+      var allToggledOff = this.namesMatchingRegex
+              .every(function(n) {return !_this.runSelectionState[n]});
+      var defaultOff = this.namesMatchingRegex.length > this.maxRunsToEnableByDefault;
+      if (defaultOff && allToggledOff || !defaultOff && allToggledOn) {
+        this.runSelectionState = {};
+      }
+      this._storeRunToIsCheckedMapping(this.runSelectionState);
+    },
     _storeRunToIsCheckedMapping: TF.URIStorage.getObjectObserver('runSelectionState', {}),
     _makeRegex: function(regex) {
       try {
@@ -261,9 +278,10 @@ handle these situations gracefully.
     },
     computeOutSelected: function(__, ___) {
       var runSelectionState = this.runSelectionState;
-      var num = this.numRunsEnabledByDefault;
+      var num = this.maxRunsToEnableByDefault;
+      var allEnabled = this.namesMatchingRegex.length <= num;
       return this.namesMatchingRegex.filter(function(n, i) {
-        return runSelectionState[n] == null ? i<num : runSelectionState[n];
+        return runSelectionState[n] == null ? allEnabled : runSelectionState[n];
       });
     },
     synchronizeColors: function(e) {
@@ -313,18 +331,24 @@ handle these situations gracefully.
     _regexInputObserver: TF.URIStorage.getStringObserver("regexInput", ""),
     toggleAll: function() {
       var _this = this;
-      var allToggledOn = this.namesMatchingRegex
-                    .every(function(n) {return _this.runSelectionState[n]});
+      var anyToggledOn = this.namesMatchingRegex
+                    .some(function(n) {return _this.runSelectionState[n]});
+
 
       var runSelectionStateIsDefault = Object.keys(this.runSelectionState).length == 0;
 
-      var numRuns = this.namesMatchingRegex.length;
+      var defaultOff = this.namesMatchingRegex.length > this.maxRunsToEnableByDefault;
+      // We have runs toggled either if some were explicitly toggled on, or if
+      // we are in the default state, and there are few enough that we default
+      // to toggling on.
+      anyToggledOn = anyToggledOn || runSelectionStateIsDefault && !defaultOff;
 
-      var shouldDisable = allToggledOn || runSelectionStateIsDefault;
+      // If any are toggled on, we turn everything off. Or, if none are toggled
+      // on, we turn everything on.
 
       var newRunsDisabled = {};
       this.names.forEach(function(n) {
-        newRunsDisabled[n] = !shouldDisable;
+        newRunsDisabled[n] = !anyToggledOn;
       })
       this.runSelectionState = newRunsDisabled;
     },
