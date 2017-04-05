@@ -73,6 +73,7 @@ OLD_MINOR=$(cat ${VERSION_H} | grep -E "^#define TF_MINOR_VERSION [0-9]+" | \
 cut -d ' ' -f 3)
 OLD_PATCH=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [[:alnum:]-]+" | \
 cut -d ' ' -f 3)
+OLD_PIP_PATCH="${OLD_PATCH//-}"
 
 sed -i -e "s/^#define TF_MAJOR_VERSION ${OLD_MAJOR}/#define TF_MAJOR_VERSION ${MAJOR}/g" ${VERSION_H}
 sed -i -e "s/^#define TF_MINOR_VERSION ${OLD_MINOR}/#define TF_MINOR_VERSION ${MINOR}/g" ${VERSION_H}
@@ -92,6 +93,26 @@ check_existence file "${README_MD}"
 
 sed -i -r -e "s/${OLD_MAJOR}\.${OLD_MINOR}\.([[:alnum:]]+)-/${MAJOR}.${MINOR}.${PIP_PATCH}-/g" "${README_MD}"
 
+# Update the install md files
+NEW_PIP_TAG=$MAJOR.$MINOR.$PIP_PATCH
+OLD_PIP_TAG=$OLD_MAJOR.$OLD_MINOR.$OLD_PIP_PATCH
+
+for file in ${TF_SRC_DIR}/docs_src/install/install_{linux,mac,windows,sources}.md
+do
+  sed -i "s/tensorflow-${OLD_PIP_TAG}/tensorflow-${NEW_PIP_TAG}/g" $file
+  sed -i "s/tensorflow_gpu-${OLD_PIP_TAG}/tensorflow_gpu-${NEW_PIP_TAG}/g" $file
+  sed -i "s/TensorFlow ${OLD_PIP_TAG}/TensorFlow ${NEW_PIP_TAG}/g" $file
+done
+
+NEW_TAG=$MAJOR.$MINOR.$PATCH
+OLD_TAG=$OLD_MAJOR.$OLD_MINOR.$OLD_PATCH
+
+for file in ${TF_SRC_DIR}/docs_src/install/install_{java,go,c}.md
+do
+  sed -i "s/x86_64-${OLD_TAG}/x86_64-${NEW_TAG}/g" $file
+  sed -i "s/libtensorflow-${OLD_TAG}.jar/libtensorflow-${NEW_TAG}.jar/g" $file
+  sed -i "s/<version>${OLD_TAG}<\/version>/<version>${NEW_TAG}<\/version>/g" $file
+done
 
 # Updates to be made if there are major / minor version changes
 MAJOR_MINOR_CHANGE=0
