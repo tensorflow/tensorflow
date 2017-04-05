@@ -283,6 +283,28 @@ class PyOpTest(test.TestCase):
     with self.test_session() as sess:
       self.assertEqual(sess.run(f), [])
 
+  def _testExceptionHandling(self, py_exp, tf_exp):
+
+    def raise_exception():
+      raise py_exp("blah")  # pylint: disable=not-callable
+
+    f = script_ops.py_func(raise_exception, [], [])
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(tf_exp, "blah"):
+        sess.run(f)
+
+  def testExceptionHandling(self):
+    self._testExceptionHandling(ValueError, errors.InvalidArgumentError)
+    self._testExceptionHandling(TypeError, errors.InvalidArgumentError)
+    self._testExceptionHandling(StopIteration, errors.OutOfRangeError)
+    self._testExceptionHandling(MemoryError, errors.ResourceExhaustedError)
+    self._testExceptionHandling(NotImplementedError, errors.UnimplementedError)
+
+    class WeirdError(Exception):
+      pass
+
+    self._testExceptionHandling(WeirdError, errors.UnknownError)
+
 
 if __name__ == "__main__":
   test.main()

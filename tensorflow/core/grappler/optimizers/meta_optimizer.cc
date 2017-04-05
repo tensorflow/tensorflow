@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -21,25 +24,67 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
+    const string& optimizer) {
+  VLOG(1) << "Adding graph optimization pass: " << optimizer;
+  std::unique_ptr<GraphOptimizer> graph_optimizer;
+  if (optimizer == "pruning") {
+    graph_optimizer.reset(new ModelPruner());
+  }
+  if (optimizer == "constfold") {
+    graph_optimizer.reset(new ConstantFolding());
+  }
+  if (optimizer == "layout") {
+    graph_optimizer.reset(new LayoutOptimizer());
+  }
+  return graph_optimizer;
+}
+
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
-  bool already_optimized = false;
-  if (!cfg_.disable_model_pruning()) {
-    already_optimized = true;
-    ModelPruner pruner;
-    TF_RETURN_IF_ERROR(pruner.Optimize(nullptr, item, optimized_graph));
+  std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
+  if (cfg_.optimizers().empty()) {
+    if (!cfg_.disable_model_pruning()) {
+      optimizers.push_back(std::unique_ptr<GraphOptimizer>(new ModelPruner()));
+    }
+    if (cfg_.constant_folding()) {
+      optimizers.push_back(
+          std::unique_ptr<GraphOptimizer>(new ConstantFolding()));
+    }
+    if (cfg_.optimize_tensor_layout()) {
+      optimizers.push_back(
+          std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
+    }
+  } else {
+    std::set<string> avaliable_optimizers = {"pruning", "constfold", "layout"};
+    for (const auto& optimizer : cfg_.optimizers()) {
+      if (avaliable_optimizers.find(optimizer) != avaliable_optimizers.end()) {
+        optimizers.push_back(NewOptimizer(optimizer));
+      }
+    }
   }
-  if (cfg_.optimize_tensor_layout()) {
-    LayoutOptimizer layout_optimizer;
+
+  if (optimizers.empty()) {
+    *optimized_graph = item.graph;
+    return Status::OK();
+  }
+
+  bool already_optimized = false;
+  for (const auto& optimizer : optimizers) {
     if (!already_optimized) {
-      return layout_optimizer.Optimize(nullptr, item, optimized_graph);
+      TF_RETURN_IF_ERROR(optimizer->Optimize(nullptr, item, optimized_graph));
+      already_optimized = true;
     } else {
       GrapplerItem optimized_item = item;
       optimized_item.graph = *optimized_graph;
-      return layout_optimizer.Optimize(nullptr, optimized_item,
-                                       optimized_graph);
+      TF_RETURN_IF_ERROR(
+          optimizer->Optimize(nullptr, optimized_item, optimized_graph));
     }
   }
+
+  // Copy the graph version.
+  *optimized_graph->mutable_versions() = item.graph.versions();
+
   return Status::OK();
 }
 

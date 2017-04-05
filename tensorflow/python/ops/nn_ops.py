@@ -39,6 +39,8 @@ from tensorflow.python.ops.gen_nn_ops import *
 # Aliases for some automatically-generated names.
 local_response_normalization = gen_nn_ops.lrn
 
+# pylint: disable=protected-access
+
 
 def _non_atrous_convolution(input, filter, padding, data_format=None,  # pylint: disable=redefined-builtin
                             strides=None, name=None):

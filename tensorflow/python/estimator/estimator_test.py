@@ -627,7 +627,10 @@ class EstimatorPredictTest(test.TestCase):
   def test_no_trained_model_invalid_checkpoint_path(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
     with self.assertRaises(ValueError):
-      next(est.predict(dummy_input_fn, checkpoint_path=saver.latest_checkpoint("fakedir")))
+      next(
+          est.predict(
+              dummy_input_fn,
+              checkpoint_path=saver.latest_checkpoint('fakedir')))
 
   def test_tensor_predictions(self):
 
@@ -848,9 +851,12 @@ class EstimatorPredictTest(test.TestCase):
     est1 = estimator.Estimator(model_fn=_model_fn)
     est1.train(dummy_input_fn, steps=1)
     est2 = estimator.Estimator(model_fn=_model_fn, model_dir=est1.model_dir)
-    self.assertEqual([32.], next(est2.predict(
-      dummy_input_fn,
-      checkpoint_path=saver.latest_checkpoint(est1.model_dir))))
+    self.assertEqual(
+        [32.],
+        next(
+            est2.predict(
+                dummy_input_fn,
+                checkpoint_path=saver.latest_checkpoint(est1.model_dir))))
 
   def test_scaffold_is_used(self):
 

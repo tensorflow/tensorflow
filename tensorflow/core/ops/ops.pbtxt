@@ -2034,8 +2034,14 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
-        type: DT_HALF
         type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
       }
     }
   }
@@ -2259,8 +2265,14 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
-        type: DT_HALF
         type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
       }
     }
   }
@@ -8465,7 +8477,7 @@ op {
     }
   }
   summary: "Gather slices from `params` according to `indices`."
-  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n```python\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n```\n\nIf `indices` is a permutation and `len(indices) == params.shape[0]` then\nthis operation will permute `params` accordingly.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/Gather.png\" alt>\n</div>"
+  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n```python\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n```\n\nIf `indices` is a permutation and `len(indices) == params.shape[0]` then\nthis operation will permute `params` accordingly.\n\n`validate_indices`: DEPRECATED. If this operation is assigned to CPU, values in\n`indices` are always validated to be within range. If assigned to GPU,\nout-of-bound indices result in unspecified behavior (currently the result is\n`0`, but this may become an error in the future).\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/Gather.png\" alt>\n</div>"
 }
 op {
   name: "GatherNd"
@@ -10574,6 +10586,13 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
         type: DT_HALF
       }
     }
@@ -10699,12 +10718,12 @@ op {
   input_arg {
     name: "orig_input"
     description: "The original input tensor."
-    type: DT_FLOAT
+    type_attr: "TInput"
   }
   input_arg {
     name: "orig_output"
     description: "The original output tensor."
-    type: DT_FLOAT
+    type_attr: "TInput"
   }
   input_arg {
     name: "grad"
@@ -10757,6 +10776,34 @@ op {
   attr {
     name: "T"
     type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "TInput"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
     allowed_values {
       list {
         type: DT_FLOAT
@@ -10777,6 +10824,86 @@ op {
     }
   }
   summary: "Computes gradients of max pooling function."
+}
+op {
+  name: "MaxPool3DGradGrad"
+  input_arg {
+    name: "orig_input"
+    description: "The original input tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "orig_output"
+    description: "The original output tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "Output backprop of shape `[batch, depth, rows, cols, channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Gradients of gradients w.r.t. the input to `max_pool`."
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The size of the window for each dimension of\nthe input tensor. Must have `ksize[0] = ksize[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D tensor of length 5. The stride of the sliding window for each\ndimension of `input`. Must have `strides[0] = strides[4] = 1`."
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NDHWC"
+    }
+    description: "The data format of the input and output data. With the\ndefault format \"NDHWC\", the data is stored in the order of:\n    [batch, in_depth, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCDHW\", the data storage order is:\n    [batch, in_channels, in_depth, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NDHWC"
+        s: "NCDHW"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes second-order gradients of the maxpooling function."
 }
 op {
   name: "MaxPoolGrad"
@@ -10848,11 +10975,174 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
         type: DT_HALF
       }
     }
   }
   summary: "Computes gradients of the maxpooling function."
+}
+op {
+  name: "MaxPoolGradGrad"
+  input_arg {
+    name: "orig_input"
+    description: "The original input tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "orig_output"
+    description: "The original output tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "4-D.  Gradients of gradients w.r.t. the input of `max_pool`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Gradients of gradients w.r.t. the input to `max_pool`."
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    description: "The size of the window for each dimension of the input tensor."
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "The stride of the sliding window for each dimension of the\ninput tensor."
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+    description: "Specify the data format of the input and output data. With the\ndefault format \"NHWC\", the data is stored in the order of:\n    [batch, in_height, in_width, in_channels].\nAlternatively, the format could be \"NCHW\", the data storage order of:\n    [batch, in_channels, in_height, in_width]."
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes second-order gradients of the maxpooling function."
+}
+op {
+  name: "MaxPoolGradGradWithArgmax"
+  input_arg {
+    name: "input"
+    description: "The original input."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    description: "4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the\ninput of `max_pool`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "argmax"
+    description: "The indices of the maximum values chosen for each output of `max_pool`."
+    type_attr: "Targmax"
+  }
+  output_arg {
+    name: "output"
+    description: "Gradients of gradients w.r.t. the input of `max_pool`."
+    type_attr: "T"
+  }
+  attr {
+    name: "ksize"
+    type: "list(int)"
+    description: "The size of the window for each dimension of the input tensor."
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "The stride of the sliding window for each dimension of the\ninput tensor."
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  attr {
+    name: "Targmax"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes second-order gradients of the maxpooling function."
 }
 op {
   name: "MaxPoolGradWithArgmax"
@@ -10914,12 +11204,16 @@ op {
   attr {
     name: "T"
     type: "type"
-    default_value {
-      type: DT_FLOAT
-    }
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
         type: DT_HALF
       }
     }
@@ -10984,12 +11278,16 @@ op {
   attr {
     name: "T"
     type: "type"
-    default_value {
-      type: DT_FLOAT
-    }
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
         type: DT_HALF
       }
     }

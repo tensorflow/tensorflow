@@ -1942,6 +1942,7 @@ def separable_convolution2d(
                                             dtype=dtype,
                                             initializer=biases_initializer,
                                             regularizer=biases_regularizer,
+                                            trainable=trainable,
                                             collections=biases_collections)
           outputs = nn.bias_add(outputs, biases)
 

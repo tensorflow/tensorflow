@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Seq2seq loss operations for use in sequence models.
 """
 
@@ -28,16 +27,21 @@ from tensorflow.python.ops import nn_ops
 __all__ = ["sequence_loss"]
 
 
-def sequence_loss(logits, targets, weights,
-                  average_across_timesteps=True, average_across_batch=True,
-                  softmax_loss_function=None, name=None):
-  """Weighted cross-entropy loss for a sequence of logits. Depending on the
-  values of `average_across_timesteps` and `average_across_batch`, the return
-  Tensor will have rank 0, 1, or 2 as these arguments reduce the cross-entropy
-  at each target, which has shape `[batch_size, sequence_length]`, over their
-  respective dimensions. For example, if `average_across_timesteps` is `True`
-  and `average_across_batch` is `False`, then the return Tensor will have shape
-  `[batch_size]`.
+def sequence_loss(logits,
+                  targets,
+                  weights,
+                  average_across_timesteps=True,
+                  average_across_batch=True,
+                  softmax_loss_function=None,
+                  name=None):
+  """Weighted cross-entropy loss for a sequence of logits.
+
+  Depending on the values of `average_across_timesteps` and
+  `average_across_batch`, the return Tensor will have rank 0, 1, or 2 as these
+  arguments reduce the cross-entropy at each target, which has shape
+  `[batch_size, sequence_length]`, over their respective dimensions. For
+  example, if `average_across_timesteps` is `True` and `average_across_batch`
+  is `False`, then the return Tensor will have shape `[batch_size]`.
 
   Args:
     logits: A Tensor of shape

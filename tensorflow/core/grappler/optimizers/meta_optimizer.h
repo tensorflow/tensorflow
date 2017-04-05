@@ -39,6 +39,7 @@ class MetaOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  std::unique_ptr<GraphOptimizer> NewOptimizer(const string& optimizer);
   RewriterConfig cfg_;
 };
 

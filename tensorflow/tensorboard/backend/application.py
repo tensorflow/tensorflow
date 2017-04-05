@@ -102,11 +102,11 @@ def standard_tensorboard_wsgi(logdir, purge_orphaned_data, reload_interval):
       size_guidance=DEFAULT_SIZE_GUIDANCE,
       purge_orphaned_data=purge_orphaned_data)
 
-  plugins = {
-      debugger_plugin.PLUGIN_PREFIX_ROUTE: debugger_plugin.DebuggerPlugin(),
-      projector_plugin.PLUGIN_PREFIX_ROUTE: projector_plugin.ProjectorPlugin(),
-      text_plugin.PLUGIN_PREFIX_ROUTE: text_plugin.TextPlugin(),
-  }
+  plugins = [
+      debugger_plugin.DebuggerPlugin(),
+      projector_plugin.ProjectorPlugin(),
+      text_plugin.TextPlugin(),
+  ]
 
   return TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval)
 
@@ -128,12 +128,16 @@ class TensorBoardWSGIApp(object):
       logdir: the logdir spec that describes where data will be loaded.
         may be a directory, or comma,separated list of directories, or colons
         can be used to provide named directories
-      plugins: Map from plugin name to plugin application
+      plugins: List of plugins that extend tensorboard.plugins.BasePlugin
       multiplexer: The EventMultiplexer with TensorBoard data to serve
       reload_interval: How often (in seconds) to reload the Multiplexer
 
     Returns:
       A WSGI application that implements the TensorBoard backend.
+
+    Raises:
+      ValueError: If some plugin has no plugin_name
+      ValueError: If two plugins have the same plugin_name
     """
     self._logdir = logdir
     self._plugins = plugins
@@ -177,15 +181,22 @@ class TensorBoardWSGIApp(object):
     # Serve the routes from the registered plugins using their name as the route
     # prefix. For example if plugin z has two routes /a and /b, they will be
     # served as /data/plugin/z/a and /data/plugin/z/b.
-    for name in self._plugins:
+    plugin_names_encountered = set()
+    for plugin in self._plugins:
+      if plugin.plugin_name is None:
+        raise ValueError('Plugin %s has no plugin_name' % plugin)
+      if plugin.plugin_name in plugin_names_encountered:
+        raise ValueError('Duplicate plugins for name %s' % plugin.plugin_name)
+      plugin_names_encountered.add(plugin.plugin_name)
+
       try:
-        plugin = self._plugins[name]
         plugin_apps = plugin.get_plugin_apps(self._multiplexer, self._logdir)
       except Exception as e:  # pylint: disable=broad-except
-        logging.warning('Plugin %s failed. Exception: %s', name, str(e))
+        logging.warning('Plugin %s failed. Exception: %s', plugin.plugin_name,
+                        str(e))
         continue
       for route, app in plugin_apps.items():
-        path = DATA_PREFIX + PLUGIN_PREFIX + '/' + name + route
+        path = DATA_PREFIX + PLUGIN_PREFIX + '/' + plugin.plugin_name + route
         self.data_applications[path] = app
 
   # We use underscore_names for consistency with inherited methods.
