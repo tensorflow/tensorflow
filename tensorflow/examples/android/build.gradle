@@ -87,3 +87,7 @@ assemble.dependsOn copyNativeLibs
 afterEvaluate {
     assembleDebug.dependsOn copyNativeLibs
 }
+
+dependencies {
+    compile 'com.android.support:design:25.2.0'
+}

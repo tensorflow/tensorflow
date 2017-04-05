@@ -27,7 +27,7 @@ import org.tensorflow.demo.Classifier.Recognition;
 import java.util.List;
 
 public class RecognitionScoreView extends View implements ResultsView {
-  private static final float TEXT_SIZE_DIP = 24;
+  private static final float TEXT_SIZE_DIP = 20;
   private List<Recognition> results;
   private final float textSizePx;
   private final Paint fgPaint;
@@ -43,7 +43,7 @@ public class RecognitionScoreView extends View implements ResultsView {
     fgPaint.setTextSize(textSizePx);
 
     bgPaint = new Paint();
-    bgPaint.setColor(0xcc4285f4);
+    bgPaint.setColor(0xFFFFFFFF);
   }
 
   @Override

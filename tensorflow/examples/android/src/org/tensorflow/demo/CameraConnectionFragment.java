@@ -42,6 +42,7 @@ import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.support.design.widget.FloatingActionButton;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
@@ -310,6 +311,13 @@ public class CameraConnectionFragment extends Fragment {
   @Override
   public void onViewCreated(final View view, final Bundle savedInstanceState) {
     textureView = (AutoFitTextureView) view.findViewById(R.id.texture);
+
+    FloatingActionButton myFab = (FloatingActionButton)  view.findViewById(R.id.cameraFloatingActionButton);
+    myFab.setOnClickListener(new View.OnClickListener() {
+      public void onClick(View v) {
+
+      }
+    });
   }
 
   @Override
