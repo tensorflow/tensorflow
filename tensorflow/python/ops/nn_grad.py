@@ -21,10 +21,10 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import gen_nn_ops
 
 
 @ops.RegisterGradient("Conv2DBackpropInput")
@@ -132,12 +132,12 @@ def _AvgPool3DGrad(op, grad):
 
 @ops.RegisterGradient("AvgPool3DGrad")
 def _AvgPool3DGradGrad(op, grad):
-  return (array_ops.stop_gradient(op.inputs[0]),
-          gen_nn_ops.avg_pool3d(grad,
-                                op.get_attr("ksize"),
-                                op.get_attr("strides"),
-                                op.get_attr("padding"),
-                                data_format=op.get_attr("data_format")))
+  return (array_ops.stop_gradient(op.inputs[0]), gen_nn_ops.avg_pool3d(
+      grad,
+      op.get_attr("ksize"),
+      op.get_attr("strides"),
+      op.get_attr("padding"),
+      data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("MaxPool3D")
@@ -154,32 +154,34 @@ def _MaxPool3DGrad(op, grad):
 
 @ops.RegisterGradient("MaxPool3DGrad")
 def _MaxPool3DGradGrad(op, grad):
-  return (array_ops.zeros(shape=array_ops.shape(op.inputs[0]),
-                          dtype=op.inputs[0].dtype),
-          array_ops.zeros(shape=array_ops.shape(op.inputs[1]),
-                          dtype=op.inputs[1].dtype),
-          gen_nn_ops._max_pool3d_grad_grad(op.inputs[0],
-                                           op.inputs[1],
-                                           grad,
-                                           op.get_attr("ksize"),
-                                           op.get_attr("strides"),
-                                           padding=op.get_attr("padding"),
-                                           data_format=op.get_attr("data_format")))
+  return (array_ops.zeros(
+      shape=array_ops.shape(op.inputs[0]),
+      dtype=op.inputs[0].dtype), array_ops.zeros(
+          shape=array_ops.shape(op.inputs[1]), dtype=op.inputs[1].dtype),
+          gen_nn_ops._max_pool3d_grad_grad(
+              op.inputs[0],
+              op.inputs[1],
+              grad,
+              op.get_attr("ksize"),
+              op.get_attr("strides"),
+              padding=op.get_attr("padding"),
+              data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("MaxPool3DGradGrad")
 def _MaxPool3DGradGradGrad(op, grad):
-  return (array_ops.zeros(shape=array_ops.shape(op.inputs[0]),
-                          dtype=op.inputs[0].dtype),
-          array_ops.zeros(shape=array_ops.shape(op.inputs[1]),
-                          dtype=op.inputs[1].dtype),
-          gen_nn_ops._max_pool3d_grad(op.inputs[0],
-                                      op.inputs[1],
-                                      grad,
-                                      op.get_attr("ksize"),
-                                      op.get_attr("strides"),
-                                      padding=op.get_attr("padding"),
-                                      data_format=op.get_attr("data_format")))
+  return (array_ops.zeros(
+      shape=array_ops.shape(op.inputs[0]),
+      dtype=op.inputs[0].dtype), array_ops.zeros(
+          shape=array_ops.shape(op.inputs[1]), dtype=op.inputs[1].dtype),
+          gen_nn_ops._max_pool3d_grad(
+              op.inputs[0],
+              op.inputs[1],
+              grad,
+              op.get_attr("ksize"),
+              op.get_attr("strides"),
+              padding=op.get_attr("padding"),
+              data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("Softmax")
@@ -328,7 +330,7 @@ def _EluGradGrad(op, grad):
   return (gen_nn_ops._elu_grad(grad, op.outputs[0]),
           array_ops.where(
               x < 0., gen_nn_ops._elu_grad(grad, op.outputs[0] + 1),
-              array_ops.zeros(shape = array_ops.shape(x), dtype = x.dtype)))
+              array_ops.zeros(shape=array_ops.shape(x), dtype=x.dtype)))
 
 
 @ops.RegisterGradient("Relu6")
@@ -385,12 +387,13 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   softmax_grad = op.outputs[1]
   grad = _BroadcastMul(grad_loss, softmax_grad)
 
-  if grad_grad.op.type not in ('ZerosLike', 'Zeros'):
+  if grad_grad.op.type not in ("ZerosLike", "Zeros"):
     logits = op.inputs[0]
     softmax = nn_ops.softmax(logits)
 
-    grad += ((grad_grad - array_ops.squeeze(math_ops.matmul(grad_grad[:, None, :],
-                                                              softmax[:, :, None]), axis=1)) * softmax)
+    grad += ((grad_grad - array_ops.squeeze(
+        math_ops.matmul(grad_grad[:, None, :],
+                        softmax[:, :, None]), axis=1)) * softmax)
 
   return grad, None
 
@@ -482,12 +485,12 @@ def _AvgPoolGrad(op, grad):
 
 @ops.RegisterGradient("AvgPoolGrad")
 def _AvgPoolGradGrad(op, grad):
-  return (array_ops.stop_gradient(op.inputs[0]),
-          gen_nn_ops._avg_pool(grad,
-                               op.get_attr("ksize"),
-                               op.get_attr("strides"),
-                               op.get_attr("padding"),
-                               data_format=op.get_attr("data_format")))
+  return (array_ops.stop_gradient(op.inputs[0]), gen_nn_ops._avg_pool(
+      grad,
+      op.get_attr("ksize"),
+      op.get_attr("strides"),
+      op.get_attr("padding"),
+      data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("MaxPool")
@@ -503,32 +506,34 @@ def _MaxPoolGrad(op, grad):
 
 @ops.RegisterGradient("MaxPoolGrad")
 def _MaxPoolGradGrad(op, grad):
-  return (array_ops.zeros(shape=array_ops.shape(op.inputs[0]),
-                          dtype=op.inputs[0].dtype),
-          array_ops.zeros(shape=array_ops.shape(op.inputs[1]),
-                          dtype=op.inputs[1].dtype),
-          gen_nn_ops._max_pool_grad_grad(op.inputs[0],
-                                         op.inputs[1],
-                                         grad,
-                                         op.get_attr("ksize"),
-                                         op.get_attr("strides"),
-                                         padding=op.get_attr("padding"),
-                                         data_format=op.get_attr("data_format")))
+  return (array_ops.zeros(
+      shape=array_ops.shape(op.inputs[0]),
+      dtype=op.inputs[0].dtype), array_ops.zeros(
+          shape=array_ops.shape(op.inputs[1]), dtype=op.inputs[1].dtype),
+          gen_nn_ops._max_pool_grad_grad(
+              op.inputs[0],
+              op.inputs[1],
+              grad,
+              op.get_attr("ksize"),
+              op.get_attr("strides"),
+              padding=op.get_attr("padding"),
+              data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("MaxPoolGradGrad")
 def _MaxPoolGradGradGrad(op, grad):
-  return (array_ops.zeros(shape=array_ops.shape(op.inputs[0]),
-                          dtype=op.inputs[0].dtype),
-          array_ops.zeros(shape=array_ops.shape(op.inputs[1]),
-                          dtype=op.inputs[1].dtype),
-          gen_nn_ops._max_pool_grad(op.inputs[0],
-                                    op.inputs[1],
-                                    grad,
-                                    op.get_attr("ksize"),
-                                    op.get_attr("strides"),
-                                    padding=op.get_attr("padding"),
-                                    data_format=op.get_attr("data_format")))
+  return (array_ops.zeros(
+      shape=array_ops.shape(op.inputs[0]),
+      dtype=op.inputs[0].dtype), array_ops.zeros(
+          shape=array_ops.shape(op.inputs[1]), dtype=op.inputs[1].dtype),
+          gen_nn_ops._max_pool_grad(
+              op.inputs[0],
+              op.inputs[1],
+              grad,
+              op.get_attr("ksize"),
+              op.get_attr("strides"),
+              padding=op.get_attr("padding"),
+              data_format=op.get_attr("data_format")))
 
 
 @ops.RegisterGradient("FractionalMaxPool")

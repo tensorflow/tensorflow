@@ -167,15 +167,12 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*', 'third_party/eigen3')) +
            list(find_files('*', 'external/eigen_archive')))
 
-tf_long_description = (
-    'Note: TensorFlow manylinux1 wheels do not conform to the '
-    'specification in PEP531.')
 
 setup(
     name=project_name,
     version=_VERSION.replace('-', ''),
     description='TensorFlow helps the tensors flow',
-    long_description=tf_long_description,
+    long_description='',
     url='http://tensorflow.org/',
     author='Google Inc.',
     author_email='opensource@google.com',

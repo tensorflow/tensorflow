@@ -69,10 +69,6 @@ int GetXCR0EAX() {
 // Structure for basic CPUID info
 class CPUIDInfo {
 public:
-  string vendor_str;
-  int family;
-  int model_num;
-
   CPUIDInfo()
       : have_adx_(0),
         have_aes_(0),
@@ -121,9 +117,9 @@ public:
 
     // Get vendor string (issue CPUID with eax = 0)
     GETCPUID(eax, ebx, ecx, edx, 0, 0);
-    cpuid->vendor_str.append(reinterpret_cast<char *>(&ebx), 4);
-    cpuid->vendor_str.append(reinterpret_cast<char *>(&edx), 4);
-    cpuid->vendor_str.append(reinterpret_cast<char *>(&ecx), 4);
+    cpuid->vendor_str_.append(reinterpret_cast<char *>(&ebx), 4);
+    cpuid->vendor_str_.append(reinterpret_cast<char *>(&edx), 4);
+    cpuid->vendor_str_.append(reinterpret_cast<char *>(&ecx), 4);
 
     // To get general information and extended features we send eax = 1 and
     // ecx = 0 to cpuid.  The response is returned in eax, ebx, ecx and edx.
@@ -131,8 +127,8 @@ public:
     // Volume 2A: Instruction Set Reference, A-M CPUID).
     GETCPUID(eax, ebx, ecx, edx, 1, 0);
 
-    cpuid->model_num = static_cast<int>((eax >> 4) & 0xf);
-    cpuid->family = static_cast<int>((eax >> 8) & 0xf);
+    cpuid->model_num_ = static_cast<int>((eax >> 4) & 0xf);
+    cpuid->family_ = static_cast<int>((eax >> 8) & 0xf);
 
     cpuid->have_aes_ = (ecx >> 25) & 0x1;
     cpuid->have_cmov_ = (edx >> 15) & 0x1;
@@ -254,6 +250,10 @@ public:
     return false;
   }
 
+  string vendor_str() const { return vendor_str_; }
+  int family() const { return family_; }
+  int model_num() { return model_num_; }
+
  private:
   int highest_eax_;
   int have_adx_ : 1;
@@ -293,6 +293,9 @@ public:
   int have_sse4_2_ : 1;
   int have_ssse3_ : 1;
   int have_hypervisor_ : 1;
+  string vendor_str_;
+  int family_;
+  int model_num_;
 };
 
 std::once_flag cpuid_once_flag;
@@ -318,7 +321,7 @@ bool TestCPUFeature(CPUFeature feature) {
 std::string CPUVendorIDString() {
 #ifdef PLATFORM_IS_X86
   InitCPUIDInfo();
-  return cpuid->vendor_str;
+  return cpuid->vendor_str();
 #else
   return "";
 #endif
@@ -327,7 +330,7 @@ std::string CPUVendorIDString() {
 int CPUFamily() {
 #ifdef PLATFORM_IS_X86
   InitCPUIDInfo();
-  return cpuid->family;
+  return cpuid->family();
 #else
   return 0;
 #endif
@@ -336,7 +339,7 @@ int CPUFamily() {
 int CPUModelNum() {
 #ifdef PLATFORM_IS_X86
   InitCPUIDInfo();
-  return cpuid->model_num;
+  return cpuid->model_num();
 #else
   return 0;
 #endif

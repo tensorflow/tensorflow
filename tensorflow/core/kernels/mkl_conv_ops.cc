@@ -107,10 +107,10 @@ class MklConv2DOp : public OpKernel {
     const int64 input_depth =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'C')
                             : GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(
-        context, input_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                input_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, input_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", input_depth,
+                    " vs ", filter.dim_size(2)));
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
 
@@ -119,9 +119,10 @@ class MklConv2DOp : public OpKernel {
     const int64 input_rows_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'H')
                             : GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input rows too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
@@ -130,9 +131,10 @@ class MklConv2DOp : public OpKernel {
     const int64 input_cols_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'W')
                             : GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input cols too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -140,9 +142,10 @@ class MklConv2DOp : public OpKernel {
     const int64 input_batch_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'N')
                             : GetTensorDim(input, data_format_, 'N');
-    OP_REQUIRES(context, FastBoundsCheck(input_batch_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("batch is too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_batch_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("batch is too large"));
     const int batch = static_cast<int>(input_batch_raw);
 
     // For now we take the stride from the second and third dimensions only (we

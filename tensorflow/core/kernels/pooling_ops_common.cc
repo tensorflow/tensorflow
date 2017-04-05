@@ -373,7 +373,7 @@ void DnnPoolingGradOp<T>::Compute(
   }
 }
 
-#define DEFINE_DNN_OPS(T)       \
+#define DEFINE_DNN_OPS(T)         \
   template class DnnPoolingOp<T>; \
   template class DnnPoolingGradOp<T>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_DNN_OPS)

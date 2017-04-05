@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from types import FunctionType, GeneratorType
 from collections import Container
+from types import FunctionType
+from types import GeneratorType
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_functions
 
@@ -33,7 +34,7 @@ def generator_input_fn(x,
                        num_threads=1):
   """Returns input function that would dicts of numpy arrays
        yielded from a generator.
-  
+
   It is assumed that every dict yielded from the dictionary represents
   a single sample. The generator should consume a single epoch of the data.
 
@@ -82,47 +83,44 @@ def generator_input_fn(x,
     KeyError: `key` mismatch between dicts emitted from `x()`
   """
   if not isinstance(x, FunctionType):
-    raise TypeError('x must be generator function; got {}'.format(
-        type(x).__name__))
+    raise TypeError(
+        'x must be generator function; got {}'.format(type(x).__name__))
   generator = x()
   if not isinstance(generator, GeneratorType):
-    raise TypeError('x() must be generator; got {}'.format(
-        type(generator).__name__))
+    raise TypeError(
+        'x() must be generator; got {}'.format(type(generator).__name__))
   data = next(generator)
   if not isinstance(data, dict):
-    raise TypeError('x() must yield dict; got {}'.format(
-        type(data).__name__))
+    raise TypeError('x() must yield dict; got {}'.format(type(data).__name__))
   input_keys = sorted(next(x()).keys())
   if target_key is not None:
     if isinstance(target_key, str):
       target_key = [target_key]
-    elif isinstance(target_key,  Container):
+    elif isinstance(target_key, Container):
       for item in target_key:
         if not isinstance(item, str):
-          raise TypeError(
-              'target_key must be str or Container of str; got {}'.format(
-                  type(item).__name__))
+          raise TypeError('target_key must be str or Container of str; got {}'.
+                          format(type(item).__name__))
         if item not in input_keys:
           raise KeyError(
               'target_key not in yielded dict. Expected {} keys; got {}'.format(
                   input_keys, item))
     else:
-      raise TypeError(
-          'target_key must be str or Container of str; got {}'.format(
-              type(target_key).__name__))
+      raise TypeError('target_key must be str or Container of str; got {}'.
+                      format(type(target_key).__name__))
 
   def _generator_input_fn():
     """generator input function."""
     queue = feeding_functions.enqueue_data(
-      x,
-      queue_capacity,
-      shuffle=shuffle,
-      num_threads=num_threads,
-      enqueue_size=batch_size,
-      num_epochs=num_epochs)
+        x,
+        queue_capacity,
+        shuffle=shuffle,
+        num_threads=num_threads,
+        enqueue_size=batch_size,
+        num_epochs=num_epochs)
 
-    features = (queue.dequeue_many(batch_size) if num_epochs is None
-                else queue.dequeue_up_to(batch_size))
+    features = (queue.dequeue_many(batch_size)
+                if num_epochs is None else queue.dequeue_up_to(batch_size))
     if not isinstance(features, list):
       features = [features]
     features = dict(zip(input_keys, features))

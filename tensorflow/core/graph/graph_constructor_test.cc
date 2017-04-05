@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/version.h"
 
 // TODO(josh11b): Test InitCostModel().
@@ -2008,30 +2009,196 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
 #undef EXPECT_IMPORT_FAILURE
 }
 
-TEST_F(GraphConstructorTest, ImportGraphDef_ErrorFunctionDefsUnimplemented) {
-  ExpectError(
+TEST_F(GraphConstructorTest, ImportGraphDef_FunctionDefs) {
+  // Import a graph def containing a function. The graph def was generated using
+  // this python code:
+  // @function.Defun(tf.float32, tf.float32, tf.float32)
+  // def FooGrad(x, y, dz): return dz, dz
+  //
+  // @function.Defun(tf.float32, tf.float32, grad_func=FooGrad)
+  // def Foo(x, y): return x + y
+  //
+  // p1 = tf.placeholder(tf.float32)
+  // p2 = tf.placeholder(tf.float32)
+  // foo = Foo(p1, p2)
+  ImportGraphDefOptions opts;
+  ExpectOK(
       R"EOF(
-library {
-  function {
-    signature {
-      name: "Foo_cc661786"
-      input_arg {
-        name: "x"
-        type: DT_FLOAT
+      node {
+        name: "Placeholder" op: "Placeholder"
+        attr { key: "dtype" value { type: DT_FLOAT } }
+        attr { key: "shape" value { shape { } } }
       }
-      output_arg {
-        name: "x"
-        type: DT_FLOAT
+      node {
+        name: "Placeholder_1" op: "Placeholder"
+        attr { key: "dtype" value { type: DT_FLOAT } }
+        attr { key: "shape" value { shape { } } }
       }
-    }
-    ret {
-      key: "x"
-      value: "x:0"
-    }
-  }
-})EOF",
-      ImportGraphDefOptions(),
-      {"Importing GraphDefs containing functions not yet implemented"});
+      node {
+        name: "Foo_d03c39a3" op: "Foo_d03c39a3"
+        input: "Placeholder" input: "Placeholder_1"
+      }
+      library {
+        function {
+          signature {
+            name: "Foo_d03c39a3"
+            input_arg { name: "x" type: DT_FLOAT }
+            input_arg { name: "y" type: DT_FLOAT }
+            output_arg { name: "add" type: DT_FLOAT }
+          }
+          node_def {
+            name: "add" op: "Add" input: "x" input: "y"
+            attr { key: "T" value { type: DT_FLOAT } }
+          }
+          ret { key: "add" value: "add:z:0" }
+        }
+        function {
+          signature {
+            name: "FooGrad_dc60abc8"
+            input_arg { name: "x" type: DT_FLOAT }
+            input_arg { name: "y" type: DT_FLOAT }
+            input_arg { name: "dz" type: DT_FLOAT }
+            output_arg { name: "dz" type: DT_FLOAT }
+            output_arg { name: "dz_U0" type: DT_FLOAT }
+          }
+          ret { key: "dz" value: "dz:0" }
+          ret { key: "dz_U0" value: "dz:0" }
+        }
+        gradient {
+          function_name: "Foo_d03c39a3" gradient_func: "FooGrad_dc60abc8"
+        }
+      }
+      versions { producer: 21 min_consumer: 12 }
+      )EOF",
+      opts);
+
+  EXPECT_TRUE(HasNode("Placeholder"));
+  EXPECT_TRUE(HasNode("Placeholder_1"));
+  EXPECT_TRUE(HasNode("Foo_d03c39a3"));
+  // Check that Foo and FooGrad have been imported
+  const OpDef* op_def;
+  TF_ASSERT_OK(graph_.op_registry()->LookUpOpDef("Foo_d03c39a3", &op_def));
+  TF_ASSERT_OK(graph_.op_registry()->LookUpOpDef("FooGrad_dc60abc8", &op_def));
+
+  // Re-serialize and run the graph. This tests that re-serialized functions can
+  // be imported again and that imported functions can be run.
+  GraphDef gdef;
+  graph_.ToGraphDef(&gdef);
+  EXPECT_EQ(gdef.library().function_size(), 2);
+  EXPECT_EQ(gdef.library().gradient_size(), 1);
+  EXPECT_EQ(gdef.library().gradient()[0].function_name(), "Foo_d03c39a3");
+  EXPECT_EQ(gdef.library().gradient()[0].gradient_func(), "FooGrad_dc60abc8");
+
+  std::unique_ptr<Session> sess(NewSession(SessionOptions()));
+  TF_ASSERT_OK(sess->Create(gdef));
+
+  Tensor p1(DT_FLOAT, TensorShape({1}));
+  p1.scalar<float>()() = 1.0;
+  Tensor p2(DT_FLOAT, TensorShape({1}));
+  p2.scalar<float>()() = 2.0;
+  std::vector<std::pair<string, Tensor>> inputs = {{"Placeholder", p1},
+                                                   {"Placeholder_1", p2}};
+  std::vector<string> output_names = {"Foo_d03c39a3"};
+  std::vector<string> target_names;
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(sess->Run(inputs, output_names, target_names, &outputs));
+
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_EQ(outputs[0].scalar<float>()(), 3.0);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
+  // Import a graph def containing a function. The graph def was generated using
+  // this python code:
+  //   @function.Defun(tf.float32, tf.float32)
+  //   def Inner(x, y): return x + y
+  //
+  //   @function.Defun(tf.float32, tf.float32)
+  //   def Outer(x, y): return Inner(x, y)
+  //
+  //   p1 = tf.placeholder(tf.float32)
+  //   p2 = tf.placeholder(tf.float32)
+  //   Outer(p1, p2)
+  ImportGraphDefOptions opts;
+  ExpectOK(
+      R"EOF(
+      node {
+        name: "Placeholder" op: "Placeholder"
+        attr { key: "dtype" value { type: DT_FLOAT } }
+        attr { key: "shape" value { shape { } } }
+      }
+      node {
+        name: "Placeholder_1" op: "Placeholder"
+        attr { key: "dtype" value { type: DT_FLOAT } }
+        attr { key: "shape" value { shape { } } }
+      }
+      node {
+        name: "Outer_966fa13d" op: "Outer_966fa13d"
+        input: "Placeholder" input: "Placeholder_1"
+      }
+      library {
+        function {
+          signature {
+            name: "Outer_966fa13d"
+            input_arg { name: "x" type: DT_FLOAT }
+            input_arg { name: "y" type: DT_FLOAT }
+            output_arg { name: "Inner_d03c39a3" type: DT_FLOAT }
+          }
+          node_def {
+            name: "Inner_d03c39a3" op: "Inner_d03c39a3" input: "x" input: "y"
+          }
+          ret { key: "Inner_d03c39a3" value: "Inner_d03c39a3:add:0" }
+        }
+        function {
+          signature {
+            name: "Inner_d03c39a3"
+            input_arg { name: "x" type: DT_FLOAT }
+            input_arg { name: "y" type: DT_FLOAT }
+            output_arg { name: "add" type: DT_FLOAT }
+          }
+          node_def {
+            name: "add" op: "Add" input: "x" input: "y"
+            attr { key: "T" value { type: DT_FLOAT } }
+          }
+          ret { key: "add" value: "add:z:0" }
+        }
+      }
+      versions { producer: 21 min_consumer: 12 }
+      )EOF",
+      opts);
+
+  EXPECT_TRUE(HasNode("Placeholder"));
+  EXPECT_TRUE(HasNode("Placeholder_1"));
+  EXPECT_TRUE(HasNode("Outer_966fa13d"));
+  // Check that Inner and Outer have been imported
+  const OpDef* op_def;
+  Status s = graph_.op_registry()->LookUpOpDef("Inner_d03c39a3", &op_def);
+  ASSERT_TRUE(s.ok()) << s.error_message();
+  s = graph_.op_registry()->LookUpOpDef("Outer_966fa13d", &op_def);
+  ASSERT_TRUE(s.ok()) << s.error_message();
+
+  // Re-serialize and run the graph. This tests that re-serialized functions can
+  // be imported again and that imported functions can be run.
+  GraphDef gdef;
+  graph_.ToGraphDef(&gdef);
+  std::unique_ptr<Session> sess(NewSession(SessionOptions()));
+  s = sess->Create(gdef);
+  ASSERT_TRUE(s.ok()) << s.error_message();
+
+  Tensor p1(DT_FLOAT, TensorShape({1}));
+  p1.scalar<float>()() = 1.0;
+  Tensor p2(DT_FLOAT, TensorShape({1}));
+  p2.scalar<float>()() = 2.0;
+  std::vector<std::pair<string, Tensor>> inputs = {{"Placeholder", p1},
+                                                   {"Placeholder_1", p2}};
+  std::vector<string> output_names = {"Outer_966fa13d"};
+  std::vector<string> target_names;
+  std::vector<Tensor> outputs;
+  s = sess->Run(inputs, output_names, target_names, &outputs);
+  ASSERT_TRUE(s.ok()) << s.error_message();
+
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_EQ(outputs[0].scalar<float>()(), 3.0);
 }
 
 TEST_F(GraphConstructorTest, CopyGraph) {

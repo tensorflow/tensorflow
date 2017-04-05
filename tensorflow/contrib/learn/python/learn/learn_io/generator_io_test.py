@@ -35,17 +35,24 @@ from tensorflow.python.training import queue_runner_impl
 
 
 class GeneratorIoTest(test.TestCase):
+ 
   def testGeneratorInputFn(self):
 
     def generator():
       for index in range(2):
-        yield {'a': np.ones(1) * index,
-               'b': np.ones(1) * index + 32,
-               'label': np.ones(1) * index - 32}
+        yield {
+            'a': np.ones(1) * index,
+            'b': np.ones(1) * index + 32,
+            'label': np.ones(1) * index - 32
+        }
 
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
-        generator, target_key='label', batch_size=2, shuffle=False, num_epochs=1)
+          generator,
+          target_key='label',
+          batch_size=2,
+          shuffle=False,
+          num_epochs=1)
       features, target = input_fn()
 
       coord = coordinator.Coordinator()
@@ -71,7 +78,7 @@ class GeneratorIoTest(test.TestCase):
 
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
-        generator, target_key=None, batch_size=2, shuffle=False, num_epochs=1)
+          generator, target_key=None, batch_size=2, shuffle=False, num_epochs=1)
       features = input_fn()
 
       coord = coordinator.Coordinator()
@@ -91,15 +98,20 @@ class GeneratorIoTest(test.TestCase):
 
     def generator():
       for index in range(2):
-        yield {'a': np.ones(1) * index,
-               'b': np.ones(1) * index + 32,
-               'label': np.ones(1) * index - 32,
-               'label2': np.ones(1) * index - 64,
-               }
+        yield {
+            'a': np.ones(1) * index,
+            'b': np.ones(1) * index + 32,
+            'label': np.ones(1) * index - 32,
+            'label2': np.ones(1) * index - 64,
+        }
 
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
-        generator, target_key=['label','label2'], batch_size=2, shuffle=False, num_epochs=1)
+          generator,
+          target_key=['label', 'label2'],
+          batch_size=2,
+          shuffle=False,
+          num_epochs=1)
       features, target = input_fn()
 
       coord = coordinator.Coordinator()
@@ -108,8 +120,10 @@ class GeneratorIoTest(test.TestCase):
       res = session.run([features, target])
       self.assertAllEqual(res[0]['a'], np.asarray([0, 1]).reshape(-1, 1))
       self.assertAllEqual(res[0]['b'], np.asarray([32, 33]).reshape(-1, 1))
-      self.assertAllEqual(res[1]['label'], np.asarray([-32, -31]).reshape(-1, 1))
-      self.assertAllEqual(res[1]['label2'], np.asarray([-64, -63]).reshape(-1, 1))
+      self.assertAllEqual(res[1]['label'], np.asarray([-32, -31]).reshape(
+          -1, 1))
+      self.assertAllEqual(res[1]['label2'],
+                          np.asarray([-64, -63]).reshape(-1, 1))
 
       session.run([features])
       with self.assertRaises(errors.OutOfRangeError):
@@ -122,22 +136,34 @@ class GeneratorIoTest(test.TestCase):
 
     def generator():
       for index in range(100):
-        yield {'a': np.ones((10, 10)) * index,
-               'b': np.ones((5, 5)) * index + 32,
-               'label': np.ones((3, 3)) * index - 32}
+        yield {
+            'a': np.ones((10, 10)) * index,
+            'b': np.ones((5, 5)) * index + 32,
+            'label': np.ones((3, 3)) * index - 32
+        }
 
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
-        generator, target_key="label", batch_size=2, shuffle=False, num_epochs=1)
+          generator,
+          target_key='label',
+          batch_size=2,
+          shuffle=False,
+          num_epochs=1)
       features, target = input_fn()
 
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(session, coord=coord)
 
       res = session.run([features, target])
-      self.assertAllEqual(res[0]['a'], np.vstack((np.zeros((10, 10)), np.ones((10, 10)))).reshape(2, 10, 10))
-      self.assertAllEqual(res[0]['b'], np.vstack((np.zeros((5, 5)), np.ones((5, 5)))).reshape(2, 5, 5) + 32)
-      self.assertAllEqual(res[1], np.vstack((np.zeros((3, 3)), np.ones((3, 3)))).reshape(2, 3, 3) - 32)
+      self.assertAllEqual(res[0]['a'],
+                          np.vstack((np.zeros((10, 10)), np.ones(
+                              (10, 10)))).reshape(2, 10, 10))
+      self.assertAllEqual(res[0]['b'],
+                          np.vstack((np.zeros((5, 5)), np.ones(
+                              (5, 5)))).reshape(2, 5, 5) + 32)
+      self.assertAllEqual(res[1],
+                          np.vstack((np.zeros((3, 3)), np.ones(
+                              (3, 3)))).reshape(2, 3, 3) - 32)
 
       coord.request_stop()
       coord.join(threads)
@@ -147,82 +173,97 @@ class GeneratorIoTest(test.TestCase):
     with self.test_session():
       with self.assertRaisesRegexp(TypeError, 'x must be generator function'):
         failing_input_fn = generator_io.generator_input_fn(
-          x, batch_size=2, shuffle=False, num_epochs=1)
+            x, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
   def testGeneratorInputFnWithXAsNonGenerator(self):
+
     def generator():
       return np.arange(32, 36)
+
     with self.test_session():
-      with self.assertRaisesRegexp(TypeError, "x\(\) must be generator"):
+      with self.assertRaisesRegexp(TypeError, 'x\(\) must be generator'):
         failing_input_fn = generator_io.generator_input_fn(
-          generator, batch_size=2, shuffle=False, num_epochs=1)
+            generator, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
   def testGeneratorInputFnWithXAsNonGeneratorYieldingDicts(self):
+
     def generator():
       yield np.arange(32, 36)
+
     with self.test_session():
-      with self.assertRaisesRegexp(TypeError, "x\(\) must yield dict"):
+      with self.assertRaisesRegexp(TypeError, 'x\(\) must yield dict'):
         failing_input_fn = generator_io.generator_input_fn(
-          generator, batch_size=2, shuffle=False, num_epochs=1)
+            generator, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
   def testGeneratorInputFNWithTargetLabelNotString(self):
+
     def generator():
       for index in range(2):
-        yield {'a': np.ones((10, 10)) * index,
-               'b': np.ones((5, 5)) * index + 32,
-               'label': np.ones((3, 3)) * index - 32}
+        yield {
+            'a': np.ones((10, 10)) * index,
+            'b': np.ones((5, 5)) * index + 32,
+            'label': np.ones((3, 3)) * index - 32
+        }
 
     y = np.arange(32, 36)
     with self.test_session():
       with self.assertRaisesRegexp(TypeError, 'target_key must be str or'
-                                              ' Container of str'):
+                                   ' Container of str'):
         failing_input_fn = generator_io.generator_input_fn(
-          generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
+            generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
   def testGeneratorInputFNWithTargetLabelListNotString(self):
+
     def generator():
       for index in range(2):
-        yield {'a': np.ones((10, 10)) * index,
-               'b': np.ones((5, 5)) * index + 32,
-               'label': np.ones((3, 3)) * index - 32}
+        yield {
+            'a': np.ones((10, 10)) * index,
+            'b': np.ones((5, 5)) * index + 32,
+            'label': np.ones((3, 3)) * index - 32
+        }
 
-    y = ["label", np.arange(10)]
+    y = ['label', np.arange(10)]
     with self.test_session():
       with self.assertRaisesRegexp(TypeError, 'target_key must be str or'
-                                              ' Container of str'):
+                                   ' Container of str'):
         failing_input_fn = generator_io.generator_input_fn(
-          generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
+            generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
   def testGeneratorInputFNWithTargetLabelNotInDict(self):
+
     def generator():
       for index in range(2):
-        yield {'a': np.ones((10, 10)) * index,
-               'b': np.ones((5, 5)) * index + 32,
-               'label': np.ones((3, 3)) * index - 32}
+        yield {
+            'a': np.ones((10, 10)) * index,
+            'b': np.ones((5, 5)) * index + 32,
+            'label': np.ones((3, 3)) * index - 32
+        }
 
-    y = ["label", "target"]
+    y = ['label', 'target']
     with self.test_session():
-      with self.assertRaisesRegexp(KeyError,
-                                   'target_key not in yielded dict'):
+      with self.assertRaisesRegexp(KeyError, 'target_key not in yielded dict'):
         failing_input_fn = generator_io.generator_input_fn(
-          generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
+            generator, target_key=y, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
   def testGeneratorInputFnWithNoTargetKey(self):
+
     def generator():
       for index in range(2):
-        yield {'a': np.ones(1) * index,
-               'b': np.ones(1) * index + 32,
-               'label': np.ones(1) * index - 32}
+        yield {
+            'a': np.ones(1) * index,
+            'b': np.ones(1) * index + 32,
+            'label': np.ones(1) * index - 32
+        }
 
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
-        generator, target_key=None, batch_size=2, shuffle=False, num_epochs=1)
+          generator, target_key=None, batch_size=2, shuffle=False, num_epochs=1)
       features = input_fn()
 
       coord = coordinator.Coordinator()
@@ -241,15 +282,18 @@ class GeneratorIoTest(test.TestCase):
       coord.join(threads)
 
   def testGeneratorInputFnWithBatchLargerthanData(self):
+
     def generator():
       for index in range(2):
-        yield {'a': np.ones(1) * index,
-               'b': np.ones(1) * index + 32,
-               'label': np.ones(1) * index - 32}
+        yield {
+            'a': np.ones(1) * index,
+            'b': np.ones(1) * index + 32,
+            'label': np.ones(1) * index - 32
+        }
 
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
-        generator, target_key=None, batch_size=4, shuffle=False, num_epochs=1)
+          generator, target_key=None, batch_size=4, shuffle=False, num_epochs=1)
       features = input_fn()
 
       coord = coordinator.Coordinator()
@@ -268,19 +312,24 @@ class GeneratorIoTest(test.TestCase):
       coord.join(threads)
 
   def testGeneratorInputFnWithMismatchinGeneratorKeys(self):
+
     def generator():
       index = 0
-      yield {'a': np.ones(1) * index,
-             'b': np.ones(1) * index + 32,
-             'label': np.ones(1) * index - 32}
+      yield {
+          'a': np.ones(1) * index,
+          'b': np.ones(1) * index + 32,
+          'label': np.ones(1) * index - 32
+      }
       index = 1
-      yield {'a': np.ones(1) * index,
-             'c': np.ones(1) * index + 32,
-             'label': np.ones(1) * index - 32}
+      yield {
+          'a': np.ones(1) * index,
+          'c': np.ones(1) * index + 32,
+          'label': np.ones(1) * index - 32
+      }
 
     with self.test_session() as session:
       input_fn = generator_io.generator_input_fn(
-        generator, target_key=None, batch_size=2, shuffle=False, num_epochs=1)
+          generator, target_key=None, batch_size=2, shuffle=False, num_epochs=1)
       features = input_fn()
 
       coord = coordinator.Coordinator()
@@ -290,9 +339,10 @@ class GeneratorIoTest(test.TestCase):
         session.run([features])
 
       with self.assertRaisesRegex(KeyError, 'key mismatch between dicts emitted'
-                                            ' by GenFunExpected'):
+                                  ' by GenFunExpected'):
         coord.request_stop()
         coord.join(threads)
+
 
 if __name__ == '__main__':
   test.main()

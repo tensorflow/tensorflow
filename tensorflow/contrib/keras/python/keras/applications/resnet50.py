@@ -163,8 +163,8 @@ def ResNet50(include_top=True,
   specified in your Keras config file.
 
   Arguments:
-      include_top: whether to include the 3 fully-connected
-          layers at the top of the network.
+      include_top: whether to include the fully-connected
+          layer at the top of the network.
       weights: one of `None` (random initialization)
           or "imagenet" (pre-training on ImageNet).
       input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)

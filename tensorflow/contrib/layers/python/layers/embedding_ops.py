@@ -22,11 +22,13 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import embedding_ops
@@ -555,8 +557,13 @@ def _sampled_scattered_embedding_lookup_sparse(params,
                                          name=name_scope)
 
 
-def embedding_lookup_sparse_with_distributed_aggregation(params, sp_ids,
-    sp_weights, partition_strategy="mod", name=None, combiner=None,
+def embedding_lookup_sparse_with_distributed_aggregation(
+    params,
+    sp_ids,
+    sp_weights,
+    partition_strategy="mod",
+    name=None,
+    combiner=None,
     max_norm=None):
   """Computes embeddings for the given ids and weights.
 
@@ -638,8 +645,13 @@ def embedding_lookup_sparse_with_distributed_aggregation(params, sp_ids,
 
     weights = None if ignore_weights else sp_weights.values
     embeddings = _embedding_lookup_with_distributed_aggregation(
-        params, ids, partition_strategy=partition_strategy, max_norm=max_norm,
-        weights=weights, idx=idx, segment_ids=segment_ids)
+        params,
+        ids,
+        partition_strategy=partition_strategy,
+        max_norm=max_norm,
+        weights=weights,
+        idx=idx,
+        segment_ids=segment_ids)
     # Set weights to all one if ignore weights.
     if ignore_weights:
       weights = array_ops.fill([array_ops.shape(segment_ids)[0]], 1)
@@ -648,13 +660,13 @@ def embedding_lookup_sparse_with_distributed_aggregation(params, sp_ids,
     # Reshape weights.
     ones = array_ops.fill(
         array_ops.expand_dims(array_ops.rank(embeddings) - 1, 0), 1)
-    bcast_weights_shape = array_ops.concat([array_ops.shape(weights), ones],
-                                           0)
+    bcast_weights_shape = array_ops.concat([array_ops.shape(weights), ones], 0)
     orig_weights_shape = weights.get_shape()
     weights = array_ops.reshape(weights, bcast_weights_shape)
     if embeddings.get_shape().ndims is not None:
-      weights.set_shape(orig_weights_shape.concatenate(
-          [1 for _ in range(embeddings.get_shape().ndims - 1)]))
+      weights.set_shape(
+          orig_weights_shape.concatenate(
+              [1 for _ in range(embeddings.get_shape().ndims - 1)]))
 
     if combiner == "mean":
       weight_sum = math_ops.segment_sum(weights, segment_ids)
@@ -677,16 +689,23 @@ def _do_gather(params, ids, validate_indices=True, name=None):
       params, ids, name=name, validate_indices=validate_indices)
 
 
-def _embedding_lookup_with_distributed_aggregation(params, ids,
-    partition_strategy="mod", name=None, validate_indices=True, max_norm=None,
-    weights=None, idx=None, segment_ids=None):
-  """ Lookup helper for embedding_lookup_sparse_with_distributed_aggregation."""
+def _embedding_lookup_with_distributed_aggregation(params,
+                                                   ids,
+                                                   partition_strategy="mod",
+                                                   name=None,
+                                                   validate_indices=True,
+                                                   max_norm=None,
+                                                   weights=None,
+                                                   idx=None,
+                                                   segment_ids=None):
+  """Lookup helper for embedding_lookup_sparse_with_distributed_aggregation."""
   if params is None or params == []:  # pylint: disable=g-explicit-bool-comparison
     raise ValueError("Need at least one param")
   if isinstance(params, variables.PartitionedVariable):
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
     params = [params]
+
   def maybe_normalize(x):
     if max_norm is not None:
       if x.get_shape().ndims is not None:
@@ -695,18 +714,18 @@ def _embedding_lookup_with_distributed_aggregation(params, ids,
         ndims = array_ops.size(array_ops.shape(x))
       return clip_ops.clip_by_norm(x, max_norm, axes=list(range(1, ndims)))
     return x
+
   with ops.name_scope(name, "embedding_lookup_with_distributed_aggregation",
-      params + [ids]) as name:
+                      params + [ids]) as name:
     np = len(params)  # Number of partitions
     # Preserve the resource variable status to avoid accidental dense reads.
-    if not any(isinstance(p, resource_variable_ops.ResourceVariable)
-               for p in params):
+    if not any(
+        isinstance(p, resource_variable_ops.ResourceVariable) for p in params):
       params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     if np == 1:
       with ops.colocate_with(params[0]):
         ret = maybe_normalize(
-            _do_gather(
-                params[0], ids, validate_indices=validate_indices))
+            _do_gather(params[0], ids, validate_indices=validate_indices))
         ignore_weights = weights is None
         if not ignore_weights:
           if weights.dtype != ret.dtype:
@@ -720,8 +739,9 @@ def _embedding_lookup_with_distributed_aggregation(params, ids,
           weights = array_ops.reshape(weights, bcast_weights_shape)
           # Set weights shape after reshape
           if ret.get_shape().ndims is not None:
-            weights.set_shape(orig_weights_shape.concatenate(
-                [1 for _ in range(ret.get_shape().ndims - 1)]))
+            weights.set_shape(
+                orig_weights_shape.concatenate(
+                    [1 for _ in range(ret.get_shape().ndims - 1)]))
           ret *= weights
           return math_ops.segment_sum(ret, segment_ids, name=name)
         else:
@@ -757,18 +777,16 @@ def _embedding_lookup_with_distributed_aggregation(params, ids,
         ids_per_partition = num_total_ids // np
         extras = num_total_ids % np
 
-        p_assignments = math_ops.maximum(
-            flat_ids // (ids_per_partition + 1),
-            (flat_ids - extras) // ids_per_partition)
+        p_assignments = math_ops.maximum(flat_ids // (ids_per_partition + 1), (
+            flat_ids - extras) // ids_per_partition)
 
         # Emulate a conditional using a boolean indicator tensor
-        is_in_first_extras_partitions = math_ops.cast(
-            p_assignments < extras, flat_ids.dtype)
-        new_ids = (
-            is_in_first_extras_partitions * (
-                flat_ids % (ids_per_partition + 1)) +
-            (1 - is_in_first_extras_partitions) * (
-                (flat_ids - extras) % ids_per_partition))
+        is_in_first_extras_partitions = math_ops.cast(p_assignments < extras,
+                                                      flat_ids.dtype)
+        new_ids = (is_in_first_extras_partitions * (flat_ids %
+                                                    (ids_per_partition + 1)) +
+                   (1 - is_in_first_extras_partitions) * (
+                       (flat_ids - extras) % ids_per_partition))
       else:
         raise ValueError("Unrecognized partition strategy: " +
                          partition_strategy)
@@ -786,8 +804,8 @@ def _embedding_lookup_with_distributed_aggregation(params, ids,
       for p in xrange(np):
         with ops.colocate_with(params[p]):
           partitioned_result.append(
-              _do_gather(params[p], gather_ids[p],
-                         validate_indices=validate_indices))
+              _do_gather(
+                  params[p], gather_ids[p], validate_indices=validate_indices))
 
       ignore_weights = weights is None
       if not ignore_weights:
@@ -802,17 +820,21 @@ def _embedding_lookup_with_distributed_aggregation(params, ids,
       if element_shape.is_fully_defined():
         for p in xrange(np):
           with ops.colocate_with(params[p]):
-            partitioned_result[p] = array_ops.reshape(partitioned_result[p],
-                array_ops.concat(
-                    [array_ops.shape(pindices[p]), element_shape], 0))
+            partitioned_result[p] = array_ops.reshape(
+                partitioned_result[p],
+                array_ops.concat([array_ops.shape(pindices[p]), element_shape],
+                                 0))
       else:
         with ops.colocate_with(params[0]):
           params_shape = array_ops.shape(params[0])
         for p in xrange(np):
           with ops.colocate_with(params[p]):
-            partitioned_result[p] = array_ops.reshape(partitioned_result[p],
-                array_ops.concat([array_ops.shape(pindices[p]),
-                    array_ops.slice(params_shape, [1], [-1])], 0))
+            partitioned_result[p] = array_ops.reshape(
+                partitioned_result[p],
+                array_ops.concat([
+                    array_ops.shape(pindices[p]), array_ops.slice(
+                        params_shape, [1], [-1])
+                ], 0))
       # Normalize each partition result.
       for p in xrange(np):
         with ops.colocate_with(params[p]):
@@ -823,7 +845,7 @@ def _embedding_lookup_with_distributed_aggregation(params, ids,
           with ops.colocate_with(params[p]):
             if partitioned_weight[p].dtype != partitioned_result[p].dtype:
               partitioned_weight[p] = math_ops.cast(partitioned_weight[p],
-                  partitioned_result[p].dtype)
+                                                    partitioned_result[p].dtype)
             # Reshape partition weights.
             ones = array_ops.fill(
                 array_ops.expand_dims(
@@ -834,9 +856,12 @@ def _embedding_lookup_with_distributed_aggregation(params, ids,
             partitioned_weight[p] = array_ops.reshape(partitioned_weight[p],
                                                       bcast_weights_shape)
             if partitioned_result[p].get_shape().ndims is not None:
-              partitioned_weight[p].set_shape(orig_weights_shape.concatenate(
-                  [1 for _ in range(
-                      partitioned_result[p].get_shape().ndims - 1)]))
+              partitioned_weight[p].set_shape(
+                  orig_weights_shape.concatenate([
+                      1
+                      for _ in range(partitioned_result[p].get_shape().ndims -
+                                     1)
+                  ]))
             partitioned_result[p] *= partitioned_weight[p]
       partitioned_segment_ids = []
       for p in xrange(np):
@@ -874,5 +899,7 @@ def _embedding_lookup_with_distributed_aggregation(params, ids,
       concat_segment_ids = array_ops.concat(partitioned_segment_ids, 0)
       concat_partitioned_result = array_ops.concat(partitioned_result, 0)
       return math_ops.unsorted_segment_sum(
-          concat_partitioned_result, concat_segment_ids,
-          math_ops.reduce_max(concat_segment_ids) + 1, name=name)
+          concat_partitioned_result,
+          concat_segment_ids,
+          math_ops.reduce_max(concat_segment_ids) + 1,
+          name=name)

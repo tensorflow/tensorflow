@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -172,6 +173,48 @@ bool IsSingleNone(PyObject* obj) {
   return item == Py_None;
 }
 
+// py.__class__.__name__
+const char* ClassName(PyObject* py) {
+/* PyPy doesn't have a separate C API for old-style classes. */
+#if PY_MAJOR_VERSION < 3 && !defined(PYPY_VERSION)
+  if (PyClass_Check(py))
+    return PyString_AS_STRING(
+        CHECK_NOTNULL(reinterpret_cast<PyClassObject*>(py)->cl_name));
+  if (PyInstance_Check(py))
+    return PyString_AS_STRING(CHECK_NOTNULL(
+        reinterpret_cast<PyInstanceObject*>(py)->in_class->cl_name));
+#endif
+  if (Py_TYPE(py) == &PyType_Type) {
+    return reinterpret_cast<PyTypeObject*>(py)->tp_name;
+  }
+  return Py_TYPE(py)->tp_name;
+}
+
+string PyExcFetch() {
+  CHECK(PyErr_Occurred()) << "Must only call PyExcFetch after an exception.";
+  PyObject* ptype;
+  PyObject* pvalue;
+  PyObject* ptraceback;
+  PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+  PyErr_NormalizeException(&ptype, &pvalue, &ptraceback);
+  string err = ClassName(ptype);
+  if (pvalue) {
+    PyObject* str = PyObject_Str(pvalue);
+    if (str) {
+#if PY_MAJOR_VERSION < 3
+      strings::StrAppend(&err, ": ", PyString_AS_STRING(str));
+#else
+      strings::StrAppend(&err, ": ", PyUnicode_AsUTF8(str));
+#endif
+      Py_DECREF(str);
+    }
+    Py_DECREF(pvalue);
+  }
+  Py_DECREF(ptype);
+  Py_XDECREF(ptraceback);
+  return err;
+}
+
 // Calls the registered py function through the trampoline.
 Status DoCallPyFunc(PyCall* call) {
   PyObject* trampoline = GetPyTrampoline();
@@ -189,11 +232,24 @@ Status DoCallPyFunc(PyCall* call) {
   Py_DECREF(args);
   if (result == nullptr) {
     if (PyErr_Occurred()) {
-      // TODO(zhifengc): Consider pretty-print error using LOG(STDERR).
-      PyErr_Print();
+      if (PyErr_ExceptionMatches(PyExc_ValueError) ||
+          PyErr_ExceptionMatches(PyExc_TypeError)) {
+        return errors::InvalidArgument(PyExcFetch());
+      } else if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
+        return errors::OutOfRange(PyExcFetch());
+      } else if (PyErr_ExceptionMatches(PyExc_MemoryError)) {
+        return errors::ResourceExhausted(PyExcFetch());
+      } else if (PyErr_ExceptionMatches(PyExc_NotImplementedError)) {
+        return errors::Unimplemented(PyExcFetch());
+      } else {
+        // TODO(ebrevdo): Check if exception is an OpError and use the
+        // OpError.error_code property to map it back in the Status.
+        return errors::Unknown(PyExcFetch());
+      }
+    } else {
+      return errors::Internal("Failed to run py callback ", call->token,
+                              ": see error log.");
     }
-    return errors::Internal("Failed to run py callback ", call->token,
-                            ": see error log.");
   }
 
   // Process the return values and converts them to tf Tensors.
