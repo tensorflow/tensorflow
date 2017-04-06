@@ -33,7 +33,7 @@ class ResourceApplyGradientDescent : public XlaOpKernel {
     xla::ComputationDataHandle handle;
     xla::ComputationBuilder* b = ctx->builder();
     OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &handle));
-    handle = b->Sub(handle, b->Mul(ctx->Input(1), ctx->Input(2)));
+    handle = b->AssignSub(handle, b->Mul(ctx->Input(1), ctx->Input(2)));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
   }
 };
@@ -93,14 +93,14 @@ class ResourceApplyMomentum : public XlaOpKernel {
     xla::ComputationDataHandle grad = ctx->Input(3);
     xla::ComputationDataHandle momentum = ctx->Input(4);
 
-    accum = b->Add(b->Mul(accum, momentum), grad);
+    accum = b->AssignAdd(b->AssignMul(accum, momentum), grad);
     if (use_nesterov_) {
       // See https://github.com/tensorflow/tensorflow/pull/2798 for an
       // explanation of the reparameterization used here.
-      var = b->Sub(
+      var = b->AssignSub(
           var, b->Add(b->Mul(grad, lr), b->Mul(b->Mul(accum, momentum), lr)));
     } else {
-      var = b->Sub(var, b->Mul(accum, lr));
+      var = b->AssignSub(var, b->Mul(accum, lr));
     }
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
@@ -155,8 +155,9 @@ class ResourceApplyAdagrad : public XlaOpKernel {
     xla::ComputationDataHandle lr = ctx->Input(2);
     xla::ComputationDataHandle grad = ctx->Input(3);
 
-    accum = b->Add(accum, b->Pow(grad, XlaHelpers::FloatLiteral(b, type, 2.0)));
-    var = b->Sub(
+    accum = b->AssignAdd(accum,
+                         b->Pow(grad, XlaHelpers::FloatLiteral(b, type, 2.0)));
+    var = b->AssignSub(
         var, b->Mul(b->Mul(grad, lr),
                     b->Pow(accum, XlaHelpers::FloatLiteral(b, type, -0.5))));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
@@ -246,16 +247,16 @@ class ResourceApplyRMSProp : public XlaOpKernel {
     //    ms <- grad**2 (1 - rho) + ms * rho
     //
     // Which is the equation listed above.
-    xla::ComputationDataHandle new_ms = b->Add(
+    xla::ComputationDataHandle new_ms = b->AssignAdd(
         ms,
         b->Mul(b->Sub(b->Pow(grad, XlaHelpers::FloatLiteral(b, type, 2.0)), ms),
                b->Sub(XlaHelpers::FloatLiteral(b, type, 1.0), rho)));
     xla::ComputationDataHandle new_mom =
-        b->Add(b->Mul(mom, momentum),
+        b->AssignAdd(b->Mul(mom, momentum),
                b->Div(b->Mul(grad, lr),
                       b->Pow(b->Add(new_ms, epsilon),
                              XlaHelpers::FloatLiteral(b, type, 0.5))));
-    xla::ComputationDataHandle new_var = b->Sub(var, new_mom);
+    xla::ComputationDataHandle new_var = b->AssignSub(var, new_mom);
 
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, new_var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, new_ms));

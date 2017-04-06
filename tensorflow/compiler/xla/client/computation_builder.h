@@ -444,6 +444,16 @@ class ComputationBuilder {
 
   ComputationDataHandle LogicalNot(const ComputationDataHandle& lhs);
 
+  // Binary ops that are part of a variable assignment
+  ComputationDataHandle AssignAdd(
+          const ComputationDataHandle& lhs, const ComputationDataHandle& rhs);
+
+  ComputationDataHandle AssignSub(
+          const ComputationDataHandle& lhs, const ComputationDataHandle& rhs);
+
+  ComputationDataHandle AssignMul(
+          const ComputationDataHandle& lhs, const ComputationDataHandle& rhs);
+
   // Reduces an array among the provided dimensions, given "computation" as a
   // reduction operator.
   ComputationDataHandle Reduce(
@@ -701,10 +711,13 @@ class ComputationBuilder {
   // Internal helper method that does the building for an arbitrary binary op.
   // broadcast_dimensions specifies which dimensions to use for broadcasting
   // when the operation is between tensors of different ranks.
+  // hint_assignment indicates if this operation is part of an assignment
+  // operation.
   ComputationDataHandle BinaryOp(
       BinaryOperation binop, const ComputationDataHandle& lhs,
       const ComputationDataHandle& rhs,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions,
+      bool hint_assignment);
 
   // Internal helper method that does the building for an arbitrary ternary op.
   ComputationDataHandle TernaryOp(TernaryOperation triop,
