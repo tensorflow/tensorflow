@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector_test_util
-from tensorflow.contrib.distributions.python.ops.bijectors import identity as identity_lib
+from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_scalar_congruency
+from tensorflow.contrib.distributions.python.ops.bijectors.identity import Identity
 from tensorflow.python.platform import test
 
 
@@ -28,7 +28,7 @@ class IdentityBijectorTest(test.TestCase):
 
   def testBijector(self):
     with self.test_session():
-      bijector = identity_lib.Identity()
+      bijector = Identity()
       self.assertEqual("identity", bijector.name)
       x = [[[0.], [1.]]]
       self.assertAllEqual(x, bijector.forward(x).eval())
@@ -38,8 +38,8 @@ class IdentityBijectorTest(test.TestCase):
 
   def testScalarCongruency(self):
     with self.test_session():
-      bijector = identity_lib.Identity()
-      bijector_test_util.assert_scalar_congruency(
+      bijector = Identity()
+      assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=2.)
 
 
