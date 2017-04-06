@@ -1243,7 +1243,10 @@ def _sparse_inner_flatten(inputs, new_rank):
   """Helper function for `inner_flatten`."""
   inputs_rank = inputs.dense_shape.get_shape().as_list()[0]
   if inputs_rank < new_rank:
-    raise ValueError('inputs has rank less than new_rank.')
+    raise ValueError(
+        'Inputs has rank less than new_rank. {} must have rank at least'
+        ' {}. Received rank {}, shape {}'.format(inputs, new_rank, inputs_rank,
+                                                 inputs.get_shape()))
 
   outer_dimensions = inputs.dense_shape[:new_rank - 1]
   inner_dimensions = inputs.dense_shape[new_rank - 1:]
