@@ -26,6 +26,7 @@ tf_kernel_library(
         "depthwise_conv_ops.cc",
         "diag_op.cc",
         "dynamic_stitch_op.cc",
+        "elu_op.cc",
         "fill_op.cc",
         "function_ops.cc",
         "identity_op.cc",

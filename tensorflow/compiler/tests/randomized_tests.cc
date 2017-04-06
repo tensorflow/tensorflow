@@ -1214,6 +1214,23 @@ TEST_F(OpTest, DynamicStitch) {
   });
 }
 
+TEST_F(OpTest, Elu) {
+  Repeatedly([this]() {
+    ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Elu").Input(RandomTensor(DT_FLOAT)).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, EluGrad) {
+  Repeatedly([this]() {
+    auto dims = RandomDims();
+    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("EluGrad")
+                                      .Input(RandomTensor(DT_FLOAT, dims))
+                                      .Input(RandomTensor(DT_FLOAT, dims))
+                                      .Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Equal) {
   Repeatedly([this]() {
     DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
