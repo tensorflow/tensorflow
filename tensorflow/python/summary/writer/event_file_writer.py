@@ -138,6 +138,7 @@ class _EventLoggerThread(threading.Thread):
     while True:
       try:
         self._ev_writer.WriteEvent(self._queue.get())
+        
         # Flush the event writer every so often.
         now = time.time()
         if now > self._next_event_flush_time:
