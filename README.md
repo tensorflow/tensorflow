@@ -7,7 +7,7 @@
 **1.) Clone this repository by using.**
 
 ```
-git clone --recurse-submodules https://github.com/tensorflow/tensorflow.git
+git clone --recurse-submodules https://github.com/handroissuazo/tensorflow.git
 ```
 
 Note that `--recurse-submodules` is necessary to prevent some issues with protobuf compilation.
@@ -19,8 +19,8 @@ it and the Android NDK and SDK must be installed on your system.
 
 Get the recommended Bazel version listed in [os_setup.html](https://www.tensorflow.org/versions/master/get_started/os_setup.html#source)
 
-**3.) Download [Android Studio](https://developer.android.com/studio/index.html).** Build
-        tools API >= 23 is required to build the TF Android demo.
+**3.) Download [Android Studio](https://developer.android.com/studio/index.html).** 
+- Build tools API >= 23 is required to build the ELeaf Android Application.
         
 **4.) Open Android Studio then open SDK Manager from the Configure dropdown.**
 
