@@ -32,7 +32,7 @@ Get the recommended Bazel version listed in [os_setup.html](https://www.tensorfl
 - Install Android NDK
 
 **5.) Make note where android installs SDK and NDK.**
-- Usually /home/<user>/Android/Sdk and /home/<user>/Android/Sdk/ndk-bundle respectively
+- Usually /home/[user]/Android/Sdk and /home/[user]/Android/Sdk/ndk-bundle respectively
 - You can check by opening SDK manager, going to the SDK tools tab and clicking the installed SDK and the path will be on the top of the window.
 
 **6.) Open Android Studio project located in tensorflow/examples/android**
