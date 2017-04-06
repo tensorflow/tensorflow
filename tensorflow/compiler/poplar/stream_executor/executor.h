@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 #include <list>
+#include <mutex>
 
 #include <poplar/Tensor.hpp>
 #include <poplar/Engine.hpp>
@@ -211,6 +212,8 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   port::Status MoveHostToDevice(TensorControl* tc) const;
 
   const PluginConfig plugin_config_;
+
+  std::mutex mutex_;
 
   poplar::Engine* current_engine_;
 
