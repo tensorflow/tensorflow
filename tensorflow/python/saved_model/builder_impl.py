@@ -76,25 +76,16 @@ class SavedModelBuilder(object):
   ```
   """
 
-  def __init__(self, export_dir, overwrite=False):
-    """Construct a SavedModelBuilder.
-
-    Args:
-      export_dir: The directory to export to
-      overwrite: If `True` deletes export_dir if it already exists
-    """
+  def __init__(self, export_dir):
     self._saved_model = saved_model_pb2.SavedModel()
     self._saved_model.saved_model_schema_version = (
         constants.SAVED_MODEL_SCHEMA_VERSION)
 
     self._export_dir = export_dir
     if file_io.file_exists(export_dir):
-      if overwrite:
-        file_io.delete_recursively(export_dir)
-      else:
-        raise AssertionError(
-            "Export directory already exists. Please specify a different export "
-            "directory: %s or change overwrite flag to `True`" % export_dir)
+      raise AssertionError(
+          "Export directory already exists. Please specify a different export "
+          "directory: %s" % export_dir)
 
     file_io.recursive_create_dir(self._export_dir)
 
