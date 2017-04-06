@@ -81,7 +81,7 @@ class SavedModelBuilder(object):
 
     Args:
       export_dir: The directory to export to
-      overwrite: If `True` overwrites if a directory already exists
+      overwrite: If `True` deletes export_dir if it already exists
     """
     self._saved_model = saved_model_pb2.SavedModel()
     self._saved_model.saved_model_schema_version = (
