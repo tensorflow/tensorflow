@@ -2,14 +2,7 @@
 
 set -ex
 
-HOME_CLEAN=$(/usr/bin/realpath "${HOME}")
-
-PATH=${HOME_CLEAN}/bin/:$PATH
-export PATH
-
-LD_LIBRARY_PATH=${HOME_CLEAN}/DeepSpeech/CUDA/lib64/:$LD_LIBRARY_PATH
-export LD_LIBRARY_PATH
-
+### First define some variables that will just be sources/inherited
 BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.4.2/bazel-0.4.2-installer-linux-x86_64.sh
 BAZEL_SHA256=b76b62a8c0eead1fc2215699382f1608c7bb98529fc48c5e9ef3dfa1b8b7585e
 
@@ -18,6 +11,15 @@ CUDA_SHA256=64dc4ab867261a0d690735c46d7cc9fc60d989da0d69dc04d1714e409cacbdf0
 
 CUDNN_URL=http://developer.download.nvidia.com/compute/redist/cudnn/v5.1/cudnn-8.0-linux-x64-v5.1.tgz
 CUDNN_SHA256=c10719b36f2dd6e9ddc63e3189affaa1a94d7d027e63b71c3f64d449ab0645ce
+
+HOME_CLEAN=$(/usr/bin/realpath "${HOME}")
+
+### Define variables that needs to be exported to other processes
+PATH=${HOME_CLEAN}/bin/:$PATH
+export PATH
+
+LD_LIBRARY_PATH=${HOME_CLEAN}/DeepSpeech/CUDA/lib64/:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH
 
 PYTHON_BIN_PATH=${HOME_CLEAN}/DeepSpeech/tf-venv/bin/python
 export PYTHON_BIN_PATH
@@ -43,6 +45,8 @@ export TF_ENABLE_XLA
 GCC_HOST_COMPILER_PATH=/usr/bin/gcc
 export GCC_HOST_COMPILER_PATH
 
+## Below, define or export some build variables
+
 # Enable some SIMD support. Limit ourselves to what Tensorflow needs.
 # Also ensure to not require too recent CPU: AVX2/FMA introduced by:
 #  - Intel with Haswell (2013)
@@ -54,9 +58,12 @@ CC_OPT_FLAGS="-mtune=generic -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2
 BAZEL_OPT_FLAGS="--copt=-mtune=generic --cxxopt=-mtune=generic --copt=-march=x86-64 --cxxopt=-march=x86-64 --copt=-msse --cxxopt=-msse --copt=-msse2 --cxxopt=-msse2 --copt=-msse3 --cxxopt=-msse3 --copt=-msse4.1 --cxxopt=-msse4.1 --copt=-msse4.2 --cxxopt=-msse4.2 --copt=-mavx --cxxopt=-mavx --copt=-mavx2 --cxxopt=-mavx2 --copt=-mfma --cxxopt=-mfma"
 export CC_OPT_FLAGS
 
+### Define build parameters/env variables that we will re-ues in sourcing scripts.
 TF_CUDA_FLAGS="TF_CUDA_VERSION=8.0 TF_CUDNN_VERSION=5 CUDA_TOOLKIT_PATH=${HOME_CLEAN}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${HOME_CLEAN}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
 BAZEL_ARM_FLAGS="--host_crosstool_top=@bazel_tools//tools/cpp:toolchain --crosstool_top=//tools/arm_compiler:toolchain --cpu=rpi-armeabi"
 BAZEL_CUDA_FLAGS="--config=cuda"
 
+### Define build targets that we will re-ues in sourcing scripts.
 BUILD_TARGET_PIP="//tensorflow/tools/pip_package:build_pip_package"
-BUILD_TARGET_LIB="//tensorflow:libtensorflow.so"
+BUILD_TARGET_LIB_CPP_API="//tensorflow:libtensorflow_cc.so"
+BUILD_TARGET_GRAPH_TRANSFORMS="//tensorflow/tools/graph_transforms:transform_graph"

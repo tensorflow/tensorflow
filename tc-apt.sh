@@ -16,6 +16,7 @@ apt-get -qq -y install \
 	swig \
 	wget \
 	software-properties-common \
+	pixz \
 	zip \
 	zlib1g-dev \
 	unzip
