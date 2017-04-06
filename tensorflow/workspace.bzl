@@ -500,16 +500,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name="zlib",
       actual="@zlib_archive//:zlib",)
 
-  native.new_http_archive(
-      name = "fft2d",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/www.kurims.kyoto-u.ac.jp/~ooura/fft.tgz",
-          "http://www.kurims.kyoto-u.ac.jp/~ooura/fft.tgz",
-      ],
-      sha256 = "52bb637c70b971958ec79c9c8752b1df5ff0218a4db4510e60826e0cb79b5296",
-      build_file = str(Label("//third_party/fft2d:fft2d.BUILD")),
-  )
-
   temp_workaround_http_archive(
       name="snappy",
       urls=[

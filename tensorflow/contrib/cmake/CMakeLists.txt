@@ -108,7 +108,6 @@ include(eigen)
 include(gemmlowp)
 include(jsoncpp)
 include(farmhash)
-include(fft2d)
 include(highwayhash)
 include(protobuf)
 if (tensorflow_BUILD_CC_TESTS)
@@ -122,7 +121,6 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${jpeg_STATIC_LIBRARIES}
     ${jsoncpp_STATIC_LIBRARIES}
     ${farmhash_STATIC_LIBRARIES}
-    ${fft2d_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
 )
@@ -137,7 +135,6 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     protobuf
     eigen
     gemmlowp
-    fft2d
 )
 
 include_directories(
