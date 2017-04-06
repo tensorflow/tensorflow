@@ -30,6 +30,16 @@ filegroup(
 )
 
 cc_library(
+    name = "op_types",
+    srcs = ["op_types.cc"],
+    hdrs = ["op_types.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
@@ -88,6 +98,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":grappler_item",
+        ":op_types",
         ":utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",
