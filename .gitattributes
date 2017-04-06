@@ -1,8 +1,0 @@
-WORKSPACE merge=ours
-*.gradle merge=ours
-/tensorflow/examples/android/.idea/misc.xml merge=ours
-/tensorflow/examples/android/.idea/workspace.xml merge=ours
-/tensorflow/examples/android/android.iml merge=ours
-/tensorflow/examples/android/build.gradle merge=ours
-/tensorflow/examples/android/gradle/wrapper/gradle-wrapper.properties merge=ours
-/tensorflow/exmaples/local.properties merge=ours

@@ -18,3 +18,6 @@ __pycache__
 /tensorflow/examples/android/.gradle/3.3/*
 tensorflow/examples/android/.idea/workspace.xml
 tensorflow/examples/android/AndroidManifest.xml
+WORKSPACE
+/tensorflow/examples/android/local.properties
+/tensorflow/examples/android/build.gradle
