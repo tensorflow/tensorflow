@@ -1486,7 +1486,7 @@ class PartialFlattenTest(test.TestCase):
     inputs = sparse_tensor.SparseTensor(indices, values, shape)
 
     with self.assertRaisesRegexp(ValueError,
-                                 'inputs has rank less than new_rank'):
+                                 'Inputs has rank less than new_rank'):
       _layers._inner_flatten(inputs, new_rank)
 
 
