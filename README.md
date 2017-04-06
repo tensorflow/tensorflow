@@ -1,8 +1,8 @@
-##Installation Requirements for Android project:
+## Installation Requirements for Android project:
 
 1.) Use Ubuntu 16.04 or higher.
 
-##Installation for android client:
+## Installation for android client:
 
 **1.) Clone this repository by using.**
 
