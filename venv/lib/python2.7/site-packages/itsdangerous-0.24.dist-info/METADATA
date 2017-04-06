@@ -1,0 +1,16 @@
+Metadata-Version: 2.0
+Name: itsdangerous
+Version: 0.24
+Summary: Various helpers to pass trusted data to untrusted environments and back.
+Home-page: http://github.com/mitsuhiko/itsdangerous
+Author: Armin Ronacher
+Author-email: armin.ronacher@active-4.com
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+
+UNKNOWN
+
+

@@ -1,0 +1,60 @@
+Metadata-Version: 2.0
+Name: setuptools
+Version: 34.3.1
+Summary: Easily download, build, install, upgrade, and uninstall Python packages
+Home-page: https://github.com/pypa/setuptools
+Author: Python Packaging Authority
+Author-email: distutils-sig@python.org
+License: UNKNOWN
+Keywords: CPAN PyPI distutils eggs package management
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.6
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: System :: Archiving :: Packaging
+Classifier: Topic :: System :: Systems Administration
+Classifier: Topic :: Utilities
+Requires-Python: >=2.6,!=3.0.*,!=3.1.*,!=3.2.*
+Requires-Dist: appdirs (>=1.4.0)
+Requires-Dist: packaging (>=16.8)
+Requires-Dist: six (>=1.6.0)
+Provides-Extra: certs
+Requires-Dist: certifi (==2016.9.26); extra == 'certs'
+Provides-Extra: ssl
+Requires-Dist: wincertstore (==0.2); sys_platform=='win32' and extra == 'ssl'
+
+.. image:: https://readthedocs.org/projects/setuptools/badge/?version=latest
+    :target: https://setuptools.readthedocs.io
+
+See the `Installation Instructions
+<https://packaging.python.org/installing/>`_ in the Python Packaging
+User's Guide for instructions on installing, upgrading, and uninstalling
+Setuptools.
+
+The project is `maintained at GitHub <https://github.com/pypa/setuptools>`_.
+
+Questions and comments should be directed to the `distutils-sig
+mailing list <http://mail.python.org/pipermail/distutils-sig/>`_.
+Bug reports and especially tested patches may be
+submitted directly to the `bug tracker
+<https://github.com/pypa/setuptools/issues>`_.
+
+
+Code of Conduct
+---------------
+
+Everyone interacting in the setuptools project's codebases, issue trackers,
+chat rooms, and mailing lists is expected to follow the
+`PyPA Code of Conduct <https://www.pypa.io/en/latest/code-of-conduct/>`_.
+
+
