@@ -36,7 +36,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.10.0',
     'protobuf >= 3.2.0',
     'werkzeug >= 0.11.10',
-    'html5lib == 1.0b8',
+    'html5lib == 0.9999999',  # identical to 1.0b8
     'markdown == 2.2.0',
     'bleach == 1.5.0',
 ]
