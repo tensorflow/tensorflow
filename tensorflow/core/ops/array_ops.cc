@@ -41,10 +41,10 @@ Status GetAxisForPackAndUnpack(InferenceContext* c, int32 rank_after_pack,
 }
 
 template <typename T>
-std::vector<int64> AsInt64(const Tensor* tensor, int num_elements) {
+std::vector<int64> AsInt64(const Tensor* tensor, int64 num_elements) {
   std::vector<int64> ret(num_elements);
   auto data = tensor->vec<T>();
-  for (int i = 0; i < num_elements; ++i) {
+  for (int64 i = 0; i < num_elements; ++i) {
     ret[i] = data(i);
   }
   return ret;
@@ -52,11 +52,11 @@ std::vector<int64> AsInt64(const Tensor* tensor, int num_elements) {
 
 template <typename T>
 Status PadKnown(InferenceContext* c, ShapeHandle input,
-                const Tensor* paddings_t, int32 num_dims) {
+                const Tensor* paddings_t, int64 num_dims) {
   // paddings_t is known.
   std::vector<DimensionHandle> dims(num_dims);
   auto paddings_data = paddings_t->matrix<T>();
-  for (int i = 0; i < num_dims; ++i) {
+  for (int64 i = 0; i < num_dims; ++i) {
     const T pad0 = paddings_data(i, 0);
     const T pad1 = paddings_data(i, 1);
     if (pad0 < 0 || pad1 < 0) {
@@ -2644,10 +2644,10 @@ output: The padded tensor.
 namespace {
 template <typename T>
 Status MirrorPadKnown(InferenceContext* c, ShapeHandle input,
-                      const Tensor* paddings_t, int32 input_rank) {
+                      const Tensor* paddings_t, int64 input_rank) {
   auto paddings_data = paddings_t->matrix<T>();
   std::vector<DimensionHandle> dims(input_rank);
-  for (int i = 0; i < input_rank; ++i) {
+  for (int64 i = 0; i < input_rank; ++i) {
     const int64 pad0 = static_cast<int64>(paddings_data(i, 0));
     const int64 pad1 = static_cast<int64>(paddings_data(i, 1));
     if (pad0 < 0 || pad1 < 0) {
