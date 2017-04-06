@@ -792,6 +792,7 @@ def embedding_attention_seq2seq(encoder_inputs,
                                 num_encoder_symbols,
                                 num_decoder_symbols,
                                 embedding_size,
+                                encoder_cell=None,
                                 num_heads=1,
                                 output_projection=None,
                                 feed_previous=False,
@@ -846,7 +847,8 @@ def embedding_attention_seq2seq(encoder_inputs,
       scope or "embedding_attention_seq2seq", dtype=dtype) as scope:
     dtype = scope.dtype
     # Encoder.
-    encoder_cell = copy.deepcopy(cell)
+    if encoder_cell is None:
+        encoder_cell = copy.deepcopy(cell)
     encoder_cell = core_rnn_cell.EmbeddingWrapper(
         encoder_cell,
         embedding_classes=num_encoder_symbols,
