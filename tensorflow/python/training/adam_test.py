@@ -26,7 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-import adam
+from tensorflow.python.training import adam
 
 
 def adam_update_numpy(param,
@@ -54,8 +54,8 @@ def adam_update_numpy(param,
 class AdamOptimizerTest(test.TestCase):
 
   def testSparse(self):
-    _testSparse()
-    _testSparse(use_nesterov = True)
+    self._testSparse()
+    self._testSparse(use_nesterov = True)
 
   def _testSparse(self, use_nesterov = False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -101,8 +101,8 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testBasic(self):
-    _testBasic()
-    _testBasic(use_nesterov = True)
+    self._testBasic()
+    self._testBasic(use_nesterov = True)
 
   def _testBasic(self, use_nesterov = False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -142,8 +142,8 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testTensorLearningRate(self):
-    _testTensorLearningRate()
-    _testTensorLearningRate(use_nesterov = True)
+    self._testTensorLearningRate()
+    self._testTensorLearningRate(use_nesterov = True)
 
   def _testTensorLearningRate(self, use_nesterov = False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -183,8 +183,8 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testSharing(self):
-    _testSharing()
-    _testSharing(use_nesterov = True)
+    self._testSharing()
+    self._testSharing(use_nesterov = True)
 
   def _testSharing(self, use_nesterov = False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -228,8 +228,8 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testTwoSessions(self):
-    _testTwoSessions()
-    _testTwoSessions(use_nesterov = True)
+    self._testTwoSessions()
+    self._testTwoSessions(use_nesterov = True)
 
   def _testTwoSessions(self, use_nesterov = False):
     optimizer = adam.AdamOptimizer(use_nesterov = use_nesterov)

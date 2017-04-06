@@ -126,7 +126,6 @@ class AdamOptimizer(optimizer.Optimizer):
     self._epsilon_t = ops.convert_to_tensor(self._epsilon, name="epsilon")
 
   def _apply_dense(self, grad, var):
-    print ('dense')
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     return training_ops.apply_adam(
@@ -141,7 +140,6 @@ class AdamOptimizer(optimizer.Optimizer):
         use_nesterov=self._use_nesterov).op
 
   def _apply_sparse(self, grad, var):
-    print ('sparse')
     beta1_power = math_ops.cast(self._beta1_power, var.dtype.base_dtype)
     beta2_power = math_ops.cast(self._beta2_power, var.dtype.base_dtype)
     lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
