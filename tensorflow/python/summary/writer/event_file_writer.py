@@ -108,9 +108,14 @@ class EventFileWriter(object):
 
     Call this method when you do not need the summary writer anymore.
     """
+    # Need to mark it closed first then event_queue would stop to accept new events.
+    self._closed = True
+
+    self._worker.stop()
+    self._worker.join()
+
     self.flush()
     self._ev_writer.Close()
-    self._closed = True
 
 
 class _EventLoggerThread(threading.Thread):
@@ -128,15 +133,16 @@ class _EventLoggerThread(threading.Thread):
     """
     threading.Thread.__init__(self)
     self.daemon = True
+    self._stop_flag = False
     self._queue = queue
     self._ev_writer = ev_writer
     self._flush_secs = flush_secs
     # The first event will be flushed immediately.
     self._next_event_flush_time = 0
 
-  def run(self):
+  def _run(self):
     while True:
-      event = self._queue.get()
+      event = self._queue.get(False)
       try:
         self._ev_writer.WriteEvent(event)
         # Flush the event writer every so often.
@@ -147,3 +153,17 @@ class _EventLoggerThread(threading.Thread):
           self._next_event_flush_time = now + self._flush_secs
       finally:
         self._queue.task_done()
+
+  def run(self):
+    while True:
+      try:
+        self._run()
+      except:
+        # We check `_stop_flag` first to ensure there is no active producers
+        # when we check if `self._queue` is empty.
+        if self._stop_flag and self._queue.empty():
+          self._ev_writer.Flush()
+          break
+
+  def stop(self):
+    self._stop_flag = True

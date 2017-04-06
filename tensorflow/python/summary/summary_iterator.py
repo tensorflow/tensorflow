@@ -90,6 +90,7 @@ class SummaryWriter(object):
     if not gfile.IsDirectory(self._logdir):
       gfile.MakeDirs(self._logdir)
     self._event_queue = six.moves.queue.Queue(max_queue)
+    self._add_events_counter = 0
     self._ev_writer = pywrap_tensorflow.EventsWriter(
         compat.as_bytes(os.path.join(self._logdir, "events")))
     self._closed = False
@@ -168,13 +169,16 @@ class SummaryWriter(object):
     """
     if not self._closed:
       self._event_queue.put(event)
+      self._add_events_counter += 1
+    else:
+      raise Exception("Event queue is closed.")
 
   def _add_graph_def(self, graph_def, global_step=None):
     graph_bytes = graph_def.SerializeToString()
     event = event_pb2.Event(wall_time=time.time(), graph_def=graph_bytes)
     if global_step is not None:
       event.step = int(global_step)
-    self._event_queue.put(event)
+    self.add_event(event)
 
   def add_graph(self, graph, global_step=None, graph_def=None):
     """Adds a `Graph` to the event file.
@@ -253,7 +257,7 @@ class SummaryWriter(object):
                             tagged_run_metadata=tagged_metadata)
     if global_step is not None:
       event.step = int(global_step)
-    self._event_queue.put(event)
+    self.add_event(event)
 
   def flush(self):
     """Flushes the event file to disk.
@@ -269,9 +273,14 @@ class SummaryWriter(object):
 
     Call this method when you do not need the summary writer anymore.
     """
+    # Need to mark it closed first then event_queue would stop to accept new events.
+    self._closed = True
+
+    self._worker.stop()
+    self._worker.join()
+
     self.flush()
     self._ev_writer.Close()
-    self._closed = True
 
 
 class _EventLoggerThread(threading.Thread):
@@ -289,15 +298,17 @@ class _EventLoggerThread(threading.Thread):
     """
     threading.Thread.__init__(self)
     self.daemon = True
+    self._stop_flag = False
     self._queue = queue
     self._ev_writer = ev_writer
     self._flush_secs = flush_secs
     # The first event will be flushed immediately.
     self._next_event_flush_time = 0
+    self._success_events_counter = 0
 
-  def run(self):
+  def _run(self):
     while True:
-      event = self._queue.get()
+      event = self._queue.get(False)
       try:
         self._ev_writer.WriteEvent(event)
         # Flush the event writer every so often.
@@ -306,8 +317,24 @@ class _EventLoggerThread(threading.Thread):
           self._ev_writer.Flush()
           # Do it again in two minutes.
           self._next_event_flush_time = now + self._flush_secs
+
+        self._success_events_counter += 1
       finally:
         self._queue.task_done()
+
+  def run(self):
+    while True:
+      try:
+        self._run()
+      except:
+        # We check `_stop_flag` first to ensure there is no active producers
+        # when we check if `self._queue` is empty.
+        if self._stop_flag and self._queue.empty():
+          self._ev_writer.Flush()
+          break
+
+  def stop(self):
+    self._stop_flag = True
 
 
 def summary_iterator(path):
