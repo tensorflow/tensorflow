@@ -1292,6 +1292,17 @@ def matrix_transpose(a, name="matrix_transpose"):
   # tf.matrix_transpose(x) is shape [1, 2, 4, 3]
   ```
 
+  Note that `tf.matmul` provides kwargs allowing for transpose of arguments.
+  This is done with minimal cost, and is preferable to using this function. E.g.
+
+  ```
+  # Good!  Transpose is taken at minimal additional cost.
+  tf.matmul(matrix, b, transpose_b=True)
+
+  # Inefficient!
+  tf.matmul(matrix, tf.matrix_transpose(b))
+  ```
+
   Args:
     a: A `Tensor` with `rank >= 2`.
     name: A name for the operation (optional).
