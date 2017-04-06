@@ -1904,39 +1904,6 @@ op {
   summary: "Computes atan of x element-wise."
 }
 op {
-  name: "AudioSpectrogram"
-  input_arg {
-    name: "input"
-    description: "Float representation of audio data."
-    type: DT_FLOAT
-  }
-  output_arg {
-    name: "spectrogram"
-    description: "3D representation of the audio frequencies as an image."
-    type: DT_FLOAT
-  }
-  attr {
-    name: "window_size"
-    type: "int"
-    description: "How wide the input window is in samples. For the highest efficiency\nthis should be a power of two, but other values are accepted."
-  }
-  attr {
-    name: "stride"
-    type: "int"
-    description: "How widely apart the center of adjacent sample windows should be."
-  }
-  attr {
-    name: "magnitude_squared"
-    type: "bool"
-    default_value {
-      b: false
-    }
-    description: "Whether to return the squared magnitude or just the\nmagnitude. Using squared magnitude can avoid extra calculations."
-  }
-  summary: "Produces a visualization of audio data over time."
-  description: "Spectrograms are a standard way of representing audio information as a series of\nslices of frequency information, one slice for each window of time. By joining\nthese together into a sequence, they form a distinctive fingerprint of the sound\nover time.\n\nThis op expects to receive audio data as an input, stored as floats in the range\n-1 to 1, together with a window width in samples, and a stride specifying how\nfar to move the window between slices. From this it generates a three\ndimensional output. The lowest dimension has an amplitude value for each\nfrequency during that time slice. The next dimension is time, with successive\nfrequency slices. The final dimension is for the channels in the input, so a\nstereo audio input would have two here for example.\n\nThis means the layout when converted and saved as an image is rotated 90 degrees\nclockwise from a typical spectrogram. Time is descending down the Y axis, and\nthe frequency decreases from left to right.\n\nEach value in the result represents the square root of the sum of the real and\nimaginary parts of an FFT on the current window of samples. In this way, the\nlowest dimension represents the power of each frequency in the current window,\nand adjacent windows are concatenated in the next dimension.\n\nTo get a more intuitive and visual look at what this operation does, you can run\ntensorflow/examples/wav_to_spectrogram to read in an audio file and save out the\nresulting spectrogram as a PNG image."
-}
-op {
   name: "AudioSummary"
   input_arg {
     name: "tag"
