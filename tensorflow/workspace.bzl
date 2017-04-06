@@ -271,11 +271,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name="org_html5lib",
       urls=[
-          "http://bazel-mirror.storage.googleapis.com/github.com/html5lib/html5lib-python/archive/1.0b8.tar.gz",
-          "https://github.com/html5lib/html5lib-python/archive/1.0b8.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/html5lib/html5lib-python/archive/0.9999999.tar.gz",
+          "https://github.com/html5lib/html5lib-python/archive/0.9999999.tar.gz",  # identical to 1.0b8
       ],
-      sha256="adb36c879264e8880b92589c4c4fe0814cd9d157b73328b14d728f48a6bab0a4",
-      strip_prefix="html5lib-python-1.0b8",
+      sha256="184257f98539159a433e2a2197309657ae1283b4c44dbd9c87b2f02ff36adce8",
+      strip_prefix="html5lib-python-0.9999999",
       build_file=str(Label("//third_party:html5lib.BUILD")),)
 
   native.new_http_archive(
