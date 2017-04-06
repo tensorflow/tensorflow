@@ -15,6 +15,7 @@ tf_kernel_library(
     srcs = [
         "aggregate_ops.cc",
         "batch_matmul_op.cc",
+        "batchtospace_op.cc",
         "bcast_ops.cc",
         "bias_ops.cc",
         "binary_ops.cc",
@@ -50,6 +51,7 @@ tf_kernel_library(
         "shape_op.cc",
         "slice_op.cc",
         "softmax_op.cc",
+        "spacetobatch_op.cc",
         "split_op.cc",
         "strided_slice_op.cc",
         "tile_ops.cc",
