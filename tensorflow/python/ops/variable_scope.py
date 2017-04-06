@@ -974,6 +974,8 @@ class VariableScope(object):
       partitioner = self._partitioner
     if dtype is None:
       dtype = self._dtype
+    if use_resource is None:
+      use_resource = self._use_resource
 
     if self._custom_getter is not None:
       raise ValueError(
