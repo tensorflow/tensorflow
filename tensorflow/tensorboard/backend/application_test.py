@@ -490,6 +490,9 @@ class TensorBoardApplcationConstructionTest(test.TestCase):
       def get_plugin_apps(self):
         pass
 
+      def is_active(self):
+        return True
+
     class MockPlugin(UnnamedPlugin):
       plugin_name = 'mock'
 

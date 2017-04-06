@@ -328,6 +328,16 @@ class ProjectorPlugin(TBPlugin):
     }
     return self._handlers
 
+  def is_active(self):
+    """Determines whether this plugin is active.
+
+    This plugin is only active if any run has an embedding.
+
+    Returns:
+      A boolean. Whether this plugin is active.
+    """
+    return bool(self.configs)
+
   @property
   def configs(self):
     """Returns a map of run paths to `ProjectorConfig` protos."""

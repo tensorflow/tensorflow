@@ -99,13 +99,26 @@ class ProjectorAppTest(test.TestCase):
     expected_tensor = np.array([[6, 6]], dtype='float32')
     self.assertTrue(np.array_equal(tensor, expected_tensor))
 
+  def testPluginIsActive(self):
+    self._GenerateProjectorTestData()
+    self._SetupWSGIApp()
+
+    # Embedding data is available.
+    self.assertTrue(self.plugin.is_active())
+
+  def testPluginIsNotActive(self):
+    self._SetupWSGIApp()
+
+    # Embedding data is not available.
+    self.assertFalse(self.plugin.is_active())
+
   def _SetupWSGIApp(self):
     multiplexer = event_multiplexer.EventMultiplexer(
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
-    plugin = projector_plugin.ProjectorPlugin()
+    self.plugin = projector_plugin.ProjectorPlugin()
     wsgi_app = application.TensorBoardWSGIApp(
-        self.log_dir, [plugin], multiplexer, reload_interval=0)
+        self.log_dir, [self.plugin], multiplexer, reload_interval=0)
     self.server = werkzeug_test.Client(wsgi_app, wrappers.BaseResponse)
 
   def _Get(self, path):
