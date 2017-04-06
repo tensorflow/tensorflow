@@ -13,3 +13,8 @@ node_modules
 *.pyc
 __pycache__
 *.swp
+/static/uploads/*
+/tensorflow/examples/android/gradleBuild/*
+/tensorflow/examples/android/.gradle/3.3/*
+tensorflow/examples/android/.idea/workspace.xml
+tensorflow/examples/android/AndroidManifest.xml
