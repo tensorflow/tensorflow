@@ -23,6 +23,8 @@ import tempfile
 
 import numpy as np
 
+from google.protobuf import text_format
+
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
@@ -34,6 +36,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import layers
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -48,6 +51,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import saver
 from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import session_run_hook
@@ -235,6 +239,40 @@ class EstimatorTrainTest(test.TestCase):
     est.train(dummy_input_fn, max_steps=5)
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
+
+  def test_checkpoint_contains_relative_paths(self):
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(
+        model_dir=tmpdir,
+        model_fn=model_fn_global_step_incrementer)
+    est.train(dummy_input_fn, steps=5)
+
+    checkpoint_file_content = file_io.read_file_to_string(
+        os.path.join(tmpdir, 'checkpoint'))
+    ckpt = checkpoint_state_pb2.CheckpointState()
+    text_format.Merge(checkpoint_file_content, ckpt)
+    self.assertEqual(ckpt.model_checkpoint_path, 'model.ckpt-5')
+    self.assertAllEqual(
+        ['model.ckpt-1', 'model.ckpt-5'], ckpt.all_model_checkpoint_paths)
+
+  def test_train_save_copy_reload(self):
+    tmpdir = tempfile.mkdtemp()
+    model_dir1 = os.path.join(tmpdir, 'model_dir1')
+    est1 = estimator.Estimator(
+        model_dir=model_dir1,
+        model_fn=model_fn_global_step_incrementer)
+    est1.train(dummy_input_fn, steps=5)
+
+    model_dir2 = os.path.join(tmpdir, 'model_dir2')
+    os.renames(model_dir1, model_dir2)
+    est2 = estimator.Estimator(
+        model_dir=model_dir2,
+        model_fn=model_fn_global_step_incrementer)
+    self.assertEqual(
+        5, estimator._load_global_step_from_checkpoint_dir(est2.model_dir))
+    est2.train(dummy_input_fn, steps=5)
+    self.assertEqual(
+        10, estimator._load_global_step_from_checkpoint_dir(est2.model_dir))
 
   def test_steps0_raises_error(self):
     est = estimator.Estimator(

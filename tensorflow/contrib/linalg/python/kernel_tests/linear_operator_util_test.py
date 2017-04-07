@@ -229,6 +229,29 @@ class MatmulWithBroadcastTest(test.TestCase):
       self.assertAllEqual(expected, result)
 
 
+class MatrixAdjointTest(test.TestCase):
+
+  def testNonBatchMatrix(self):
+    a = [[1, 2, 3j], [4, 5, -6j]]  # Shape (2, 3)
+    expected = [[1, 4], [2, 5], [-3j, 6j]]  # Shape (3, 2)
+    with self.test_session():
+      a_adj = linear_operator_util.matrix_adjoint(a)
+      self.assertEqual((3, 2), a_adj.get_shape())
+      self.assertAllClose(expected, a_adj.eval())
+
+  def testBatchMatrix(self):
+    matrix_0 = [[1j, 2, 3], [4, 5, 6]]
+    matrix_0_a = [[-1j, 4], [2, 5], [3, 6]]
+    matrix_1 = [[11, 22, 33], [44, 55, 66j]]
+    matrix_1_a = [[11, 44], [22, 55], [33, -66j]]
+    batch_matrix = [matrix_0, matrix_1]  # Shape (2, 2, 3)
+    expected_adj = [matrix_0_a, matrix_1_a]  # Shape (2, 3, 2)
+    with self.test_session():
+      matrix_adj = linear_operator_util.matrix_adjoint(batch_matrix)
+      self.assertEqual((2, 3, 2), matrix_adj.get_shape())
+      self.assertAllEqual(expected_adj, matrix_adj.eval())
+
+
 class DomainDimensionStubOperator(object):
 
   def __init__(self, domain_dimension):

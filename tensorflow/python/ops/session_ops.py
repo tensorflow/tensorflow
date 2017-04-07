@@ -116,7 +116,7 @@ class TensorHandle(object):
       raise TypeError("Persistent tensor %s may have already been deleted."
                       % self.handle)
     self._auto_gc_enabled = False
-    holder, deleter = _get_handle_deleter(self._session.graph, self._handle)
+    holder, deleter = _get_handle_deleter(self._session.graph, 0, self._handle)
     self._session.run(deleter, feed_dict={holder: self.handle})
 
   def get_raw_handle(self):
@@ -140,11 +140,6 @@ class TensorHandle(object):
     """The graph key for reader."""
     handle_parts = str(handle).split(";")
     return handle_parts[0] + ";" + handle_parts[-1]
-
-  @staticmethod
-  def _get_deleter_key(handle):
-    """The graph key for deleter."""
-    return str(handle).split(";")[-1]
 
   @staticmethod
   def _get_mover_key(feeder, handle):
@@ -302,10 +297,9 @@ def _get_handle_mover(graph, feeder, handle):
   return result
 
 
-def _get_handle_deleter(graph, handle):
+def _get_handle_deleter(graph, deleter_key, handle):
   """Return a deletion subgraph for this handle."""
-  graph_key = TensorHandle._get_deleter_key(handle)
-  result = graph._handle_deleters.get(graph_key)
+  result = graph._handle_deleters.get(deleter_key)
   if result is None:
     # Create deleter if we haven't done it.
     handle_device = TensorHandle._get_device_name(handle)
@@ -313,5 +307,5 @@ def _get_handle_deleter(graph, handle):
       holder = array_ops.placeholder(dtypes.string)
       deleter = gen_data_flow_ops._delete_session_tensor(holder)
     result = (holder, deleter)
-    graph._handle_deleters[graph_key] = result
+    graph._handle_deleters[deleter_key] = result
   return result

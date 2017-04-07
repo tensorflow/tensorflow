@@ -484,6 +484,25 @@ class ExperimentTest(test.TestCase):
       self.assertAllEqual([noop_hook, another_noop_hook], ex._train_monitors)
       self.assertAllEqual([noop_hook], input_hooks)
 
+  def test_invalid_export_strategies(self):
+    for est in self._estimators_for_tests():
+      with self.assertRaisesRegexp(ValueError, 'ExportStrategy'):
+        experiment.Experiment(
+            est,
+            train_input_fn='train_input',
+            eval_input_fn='eval_input',
+            train_steps=100,
+            eval_steps=100,
+            export_strategies='not_an_export_strategy')
+      with self.assertRaisesRegexp(ValueError, 'ExportStrategy'):
+        experiment.Experiment(
+            est,
+            train_input_fn='train_input',
+            eval_input_fn='eval_input',
+            train_steps=100,
+            eval_steps=100,
+            export_strategies=['not_an_export_srategy'])
+
   def test_export_strategies_reset(self):
     for est in self._estimators_for_tests():
       eval_metrics = 'eval_metrics' if not isinstance(
@@ -498,7 +517,7 @@ class ExperimentTest(test.TestCase):
           eval_metrics=eval_metrics,
           train_steps=100,
           eval_steps=100,
-          export_strategies=[export_strategy_1])
+          export_strategies=(export_strategy_1,))
       ex.train_and_evaluate()
       self.assertEqual(1, est.export_count)
 
@@ -728,7 +747,7 @@ class ExperimentTest(test.TestCase):
           est,
           train_input_fn='train_input',
           eval_input_fn='eval_input',
-          export_strategies=[exp_strategy])
+          export_strategies=(exp_strategy,))
       ex.test()
       self.assertEqual(1, est.fit_count)
       self.assertEqual(1, est.eval_count)

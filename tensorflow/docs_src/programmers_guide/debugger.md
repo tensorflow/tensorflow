@@ -130,6 +130,8 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | `lo -r hidden/Relu:0` | List the recipients of the output of the node `hidden/Relu`, recursively—i.e., the output recipient tree. |
 | `lt -n softmax.*` | List all dumped tensors whose names match the regular-expression pattern `softmax.*`. |
 | `lt -t MatMul` | List all dumped tensors whose node type is `MatMul`. |
+| `ls` | List all Python source files responsible for constructing the nodes (and tensors) in the current graph. |
+| `ls -n softmax.*` | List Python source files responsible for constructing the nodes whose names match the pattern `softmax.*`. |
 | `ps /path/to/source.py` | Print the Python source file source.py, with the lines annotated with the ops created at each of them, respectively. |
 | `ps -t /path/to/source.py` | Same as the command above, but perform annotation using dumped Tensors, instead of ops. |
 | `ps -b 30 /path/to/source.py` | Annotate source.py beginning at line 30. |

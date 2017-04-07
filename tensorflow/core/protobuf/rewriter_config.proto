@@ -10,6 +10,15 @@ message RewriterConfig {
   bool optimize_tensor_layout = 1;
   bool disable_model_pruning = 2;
   bool constant_folding = 3;
+
+  enum MemOptType {
+    // Fully disabled
+    NO_MEM_OPT = 0;
+    // Driven by manual annotations
+    MANUAL = 1;
+  }
+  MemOptType memory_optimization = 4;
+
   // If non-empty, will use this as an alternative way to specify a list of
   // optimizations to turn on and the order of the optimizations.
   repeated string optimizers = 100;

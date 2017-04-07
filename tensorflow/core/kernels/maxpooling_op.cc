@@ -587,8 +587,8 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
         errors::InvalidArgument("out_grad_backprop must be 4-dimensional"));
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {2}, 0, tensor_out.shape(), &output));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, tensor_out.shape(), &output));
 
     PoolParameters params{context,  ksize_,       stride_,
                           padding_, data_format_, tensor_in.shape()};

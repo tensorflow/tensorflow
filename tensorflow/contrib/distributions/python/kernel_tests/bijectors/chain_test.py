@@ -70,7 +70,8 @@ class ChainBijectorTest(test.TestCase):
           softmax_centered_lib.SoftmaxCentered(
               event_ndims=1, validate_args=True),
           softmax_centered_lib.SoftmaxCentered(
-              event_ndims=0, validate_args=True)])
+              event_ndims=0, validate_args=True)
+      ])
       x = tensor_shape.TensorShape([])
       y = tensor_shape.TensorShape([2 + 1])
       self.assertAllEqual(y, bijector.forward_event_shape(x))
