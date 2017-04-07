@@ -303,7 +303,6 @@ def tf_gen_op_wrappers_cc(name,
       copts=tf_copts(),
       alwayslink=1,
       visibility=[clean_dep("//tensorflow:internal")])
->>>>>>> 1f8f71d9c25014458d12124364cc942c61a28c28
 
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
