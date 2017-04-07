@@ -213,16 +213,6 @@ class FFTOpsTest(BaseFFTOpsTest):
 
 class RFFTOpsTest(BaseFFTOpsTest):
 
-  def _CompareForward(self, x, rank, fft_length=None, use_placeholder=False):
-    if test.is_gpu_available(cuda_only=True):
-      super(RFFTOpsTest, self)._CompareForward(x, rank, fft_length,
-                                               use_placeholder)
-
-  def _CompareBackward(self, x, rank, fft_length=None, use_placeholder=False):
-    if test.is_gpu_available(cuda_only=True):
-      super(RFFTOpsTest, self)._CompareBackward(x, rank, fft_length,
-                                                use_placeholder)
-
   def _tfFFT(self, x, rank, fft_length=None, use_gpu=False, feed_dict=None):
     with self.test_session(use_gpu=use_gpu):
       return self._tfFFTForRank(rank)(x, fft_length).eval(feed_dict=feed_dict)
