@@ -1,3 +1,4 @@
+# Must run "./configure" at least once prior to using this script. It installs the required tensorflow libs on your machine.
 bazel build tensorflow/python/tools:strip_unused && \
 bazel-bin/tensorflow/python/tools/strip_unused \
 --input_graph=/home/alejandro/Documents/School/tensorflow/tensorflow/examples/android/assets/new/tensorflow_inception_graph.pb \
