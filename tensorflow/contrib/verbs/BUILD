@@ -119,7 +119,7 @@ cc_library(
     srcs = ["rdma_mgr.cc"],
     hdrs = ["rdma_mgr.h"],
     deps = [
-        ":grpc_verbs_client"
+        ":grpc_verbs_client",
         ":rdma",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
