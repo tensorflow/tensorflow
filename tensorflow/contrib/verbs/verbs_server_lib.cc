@@ -71,7 +71,7 @@ Status VerbsServer::ChannelCacheFactory(const ServerDef& server_def,
   return Status::OK();
 }
 
-Status VerbsServer::Init(ServiceCreationFunction service_func, 
+Status VerbsServer::Init(ServiceInitFunction service_func,
               RendezvousMgrCreationFunction rendezvous_mgr_func) {
   Status s = GrpcServer::Init(service_func, rendezvous_mgr_func);
   {
@@ -124,7 +124,7 @@ Status VerbsServer::Join() {
 Status VerbsServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<ServerInterface>* out_server) {
   std::unique_ptr<VerbsServer> ret(new VerbsServer(server_def, Env::Default()));
-  ServiceCreationFunction service_func = [&ret](const WorkerEnv* worker_env,
+  ServiceInitFunction service_func = [&ret](const WorkerEnv* worker_env,
       ::grpc::ServerBuilder* builder) {
     return SetNewVerbsService(&ret->verbs_service_, worker_env, builder);
   };

@@ -62,16 +62,16 @@ cc_library(
     srcs = ["grpc_verbs_service.cc"],
     hdrs = ["grpc_verbs_service.h"],
     deps = [
+       ":grpc_verbs_service_impl",
+        ":rdma_mgr",
+        ":verbs_service_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/distributed_runtime:session_mgr",
+        "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/core/distributed_runtime/rpc:grpc_call",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "//tensorflow/core/distributed_runtime:session_mgr",
-        "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core:lib",
-        ":grpc_verbs_service_impl",
         "@grpc//:grpc++_unsecure",
-        ":verbs_service_proto_cc",
-        ":rdma_mgr",
     ],
     alwayslink = 1,
 )
@@ -91,11 +91,11 @@ cc_library(
     srcs = ["grpc_verbs_client.cc"],
     hdrs = ["grpc_verbs_client.h"],
     deps = [
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "//tensorflow/core/distributed_runtime:call_options",
-        "//tensorflow/core:lib",
-        ":verbs_service_proto_cc",
         ":grpc_verbs_service_impl",
+        ":verbs_service_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/distributed_runtime:call_options",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
     ],
     alwayslink = 1,
 )
@@ -105,12 +105,12 @@ cc_library(
     srcs = ["rdma_rendezvous_mgr.cc"],
     hdrs = ["rdma_rendezvous_mgr.h"],
     deps = [
+        ":rdma_mgr",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime:worker_env",
-        ":rdma_mgr",
     ],
 )
 
@@ -119,15 +119,15 @@ cc_library(
     srcs = ["rdma_mgr.cc"],
     hdrs = ["rdma_mgr.h"],
     deps = [
+        ":grpc_verbs_client"
+        ":rdma",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
-        "//tensorflow/core/distributed_runtime:worker_env",
-        ":rdma",
-        ":grpc_verbs_client",
     ],
 )
 
@@ -135,7 +135,11 @@ cc_library(
     name = "rdma",
     srcs = ["rdma.cc"],
     hdrs = ["rdma.h"],
+    linkopts = [
+	"-libverbs",
+    ],
     deps = [
+        ":verbs_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
@@ -144,10 +148,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_env",
-        ":verbs_util",
-    ],
-    linkopts = [ 
-	"-libverbs",
     ],
 )
 
@@ -158,8 +158,8 @@ cc_library(
     linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
         ":grpc_verbs_service",
-        ":rdma_rendezvous_mgr",
         ":rdma_mgr",
+        ":rdma_rendezvous_mgr",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
     ],
     alwayslink = 1,

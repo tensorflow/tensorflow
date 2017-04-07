@@ -36,12 +36,15 @@ namespace tensorflow {
 class GrpcWorker;
 class Master;
 
+// function that creates a RendezvousMgr.
 typedef std::function<RendezvousMgrInterface*(const WorkerEnv*, 
           const std::string& worker_name, WorkerCacheInterface* worker_cache)> 
         RendezvousMgrCreationFunction;
 
+// function that registers a service to the server. The service needs to
+// be registered before builder.BuildAndStart().
 typedef std::function<void(const WorkerEnv*, ::grpc::ServerBuilder*)> 
-        ServiceCreationFunction;
+        ServiceInitFunction;
 
 class GrpcServer : public ServerInterface {
  protected:
@@ -62,7 +65,7 @@ class GrpcServer : public ServerInterface {
   const string target() const override;
 
  protected:
-  Status Init(ServiceCreationFunction service_func, 
+  Status Init(ServiceInitFunction service_func,
               RendezvousMgrCreationFunction rendezvous_mgr_func);
 
   // A subclass can override this method to support secure credentials.

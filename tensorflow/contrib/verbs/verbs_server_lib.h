@@ -39,7 +39,7 @@ class VerbsServer : public GrpcServer {
   Status Join() override;
   
  protected:
-  Status Init(ServiceCreationFunction service_func, 
+  Status Init(ServiceInitFunction service_func,
               RendezvousMgrCreationFunction rendezvous_mgr_func);
   Status ChannelCacheFactory(const ServerDef& server_def,
                              GrpcChannelCache** channel_cache);

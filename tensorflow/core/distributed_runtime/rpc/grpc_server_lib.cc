@@ -76,7 +76,7 @@ GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
 GrpcServer::~GrpcServer() {
   TF_CHECK_OK(Stop());
   TF_CHECK_OK(Join());
-  
+ 
   delete master_service_;
   delete worker_service_;
 
@@ -99,7 +99,7 @@ GrpcServer::~GrpcServer() {
   // - worker_env_.compute_pool
 }
 
-Status GrpcServer::Init(ServiceCreationFunction service_func, 
+Status GrpcServer::Init(ServiceInitFunction service_func,
     RendezvousMgrCreationFunction rendevous_mgr_func) {
   mutex_lock l(mu_);
   CHECK_EQ(state_, NEW);
@@ -176,8 +176,9 @@ Status GrpcServer::Init(ServiceCreationFunction service_func,
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
   // extra service:
-  if (service_func != NULL)
+  if (service_func != nullptr) {
     service_func(&worker_env_, &builder);
+  }
   server_ = builder.BuildAndStart();
 
   if (!server_) {
@@ -350,7 +351,7 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<ServerInterface>* out_server) {
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
-  ServiceCreationFunction service_func = NULL;
+  ServiceInitFunction service_func = nullptr;
   TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr));
   *out_server = std::move(ret);
   return Status::OK();

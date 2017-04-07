@@ -2571,8 +2571,8 @@ tf_py_wrap_cc(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
-    ] + tf_additional_lib_deps() 
-      + tf_additional_plugin_deps() + tf_additional_verbs_deps(),
+    ] + tf_additional_lib_deps() +
+    tf_additional_plugin_deps() + tf_additional_verbs_deps(),
 )
 
 py_library(
