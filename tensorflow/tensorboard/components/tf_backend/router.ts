@@ -20,7 +20,6 @@ export type RunTagUrlFn = (tag: string, run: string) => string;
 export interface Router {
   logdir: () => string;
   runs: () => string;
-  scalars: RunTagUrlFn;
   histograms: RunTagUrlFn;
   compressedHistograms: RunTagUrlFn;
   images: RunTagUrlFn;
@@ -34,6 +33,8 @@ export interface Router {
   textRuns: () => string;
   text: RunTagUrlFn;
   healthPills: () => string;
+  pluginRoute: (pluginName: string, route: string) => string;
+  pluginRunTagRoute: (pluginName: string, route: string) => RunTagUrlFn;
 }
 ;
 
@@ -93,13 +94,20 @@ export function router(dataDir = 'data', demoMode = false): Router {
     }
     return url;
   }
+  function pluginRoute(pluginName: string, route: string): string {
+    return `${dataDir}/plugin/${pluginName}${route}`;
+  }
+  function pluginRunTagRoute(pluginName: string, route: string):
+      ((tag: string, run: string) => string) {
+    const base = pluginRoute(pluginName, route);
+    return (tag, run) => base + clean(queryEncoder({tag, run}));
+  }
   return {
     logdir: () => dataDir + '/logdir',
     runs: () => dataDir + '/runs' + (demoMode ? '.json' : ''),
     individualImage: individualImageUrl,
     individualAudio: individualAudioUrl,
     graph: graphUrl,
-    scalars: standardRoute('scalars'),
     histograms: standardRoute('histograms'),
     compressedHistograms: standardRoute('compressedHistograms'),
     images: standardRoute('images'),
@@ -108,5 +116,7 @@ export function router(dataDir = 'data', demoMode = false): Router {
     healthPills: () => dataDir + '/plugin/debugger/health_pills',
     textRuns: () => dataDir + '/plugin/text/runs' + (demoMode ? '.json' : ''),
     text: standardRoute('plugin/text/text'),
+    pluginRoute,
+    pluginRunTagRoute,
   };
 };

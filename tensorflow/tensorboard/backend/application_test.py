@@ -33,7 +33,6 @@ import threading
 
 from six import BytesIO
 from six.moves import http_client
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from werkzeug import serving
 from google.protobuf import text_format
@@ -90,9 +89,6 @@ class FakePlugin(base_plugin.TBPlugin):
 
 class TensorboardServerTest(test.TestCase):
   _only_use_meta_graph = False  # Server data contains only a GraphDef
-
-  # Number of scalar-containing events to make.
-  _SCALAR_COUNT = 99
 
   def setUp(self):
     self.temp_dir = self._GenerateTestData()
@@ -178,7 +174,6 @@ class TensorboardServerTest(test.TestCase):
         {
             'run1': {
                 'compressedHistograms': ['histogram'],
-                'scalars': ['simple_values'],
                 'histograms': ['histogram'],
                 'images': ['image'],
                 'audio': ['audio'],
@@ -207,8 +202,6 @@ class TensorboardServerTest(test.TestCase):
   def testDataPaths_disableAllCaching(self):
     """Test the format of the /data/runs endpoint."""
     for path in ('/data/runs', '/data/logdir',
-                 '/data/scalars?run=run1&tag=simple_values',
-                 '/data/scalars?run=run1&tag=simple_values&format=csv',
                  '/data/images?run=run1&tag=image',
                  '/data/individualImage?run=run1&tag=image&index=0',
                  '/data/audio?run=run1&tag=audio',
@@ -221,19 +214,6 @@ class TensorboardServerTest(test.TestCase):
       self.assertEqual(response.getheader('Expires'), '0', msg=path)
       response.read()
       connection.close()
-
-  def testScalars(self):
-    """Test the format of /data/scalars."""
-    data = self._getJson('/data/scalars?run=run1&tag=simple_values')
-    self.assertEqual(len(data), self._SCALAR_COUNT)
-
-  def testScalarsCsv(self):
-    """Test the csv format of /data/scalars."""
-    data = self._get(
-        '/data/scalars?run=run1&tag=simple_values&format=csv').read()
-    line_count = data.count('\n')
-    self.assertEqual(line_count,
-                     self._SCALAR_COUNT + 1)  # include 1 more line for header
 
   def testHistograms(self):
     """Test the format of /data/histograms."""
@@ -340,8 +320,6 @@ class TensorboardServerTest(test.TestCase):
     The test data has a single run named run1 which contains:
      - a histogram
      - an image at timestamp and step 0
-     - scalar events containing the value i at step 10 * i and wall time
-         100 * i, for i in [1, _SCALAR_COUNT).
      - a graph definition
 
     Returns:
@@ -406,18 +384,6 @@ class TensorboardServerTest(test.TestCase):
                         tag='audio', audio=audio_value)
             ])))
 
-    # Write 100 simple values.
-    for i in xrange(1, self._SCALAR_COUNT + 1):
-      writer.add_event(
-          event_pb2.Event(
-              # We use different values for wall time, step, and the value so we
-              # can tell them apart.
-              wall_time=100 * i,
-              step=10 * i,
-              summary=summary_pb2.Summary(value=[
-                  summary_pb2.Summary.Value(
-                      tag='simple_values', simple_value=i)
-              ])))
     writer.flush()
     writer.close()
 

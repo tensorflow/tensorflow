@@ -133,7 +133,7 @@ describe('backend tests', () => {
         done();
       }
     }
-    backend.scalarRuns().then((x) => {
+    backend.scalarTags().then((x) => {
       chai.assert.deepEqual(x, scalar);
       next();
     });

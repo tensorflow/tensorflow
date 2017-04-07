@@ -245,7 +245,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         });
       },
       _getScalarUrl: function() {
-        return this.router.scalars;
+        return this.router.pluginRunTagRoute('scalars', '/scalars');
       },
       _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
           '_showDownloadLinks', /*default=*/ false, /*useLocalStorage=*/ true),

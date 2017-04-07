@@ -53,12 +53,20 @@ DEFAULT_SIZE_GUIDANCE = {
     event_accumulator.HISTOGRAMS: 50,
 }
 
+# The following types of data shouldn't be shown in the output of the
+# /data/runs route, because they're now handled by independent plugins
+# (e.g., the content at the 'scalars' key should now be fetched from
+# /data/plugin/scalars/runs).
+#
+# Once everything has been migrated, we should be able to delete
+# /data/runs entirely.
+_MIGRATED_DATA_KEYS = frozenset(('scalars',))
+
 DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
 PLUGIN_PREFIX = '/plugin'
 PLUGINS_LISTING_ROUTE = '/plugins_listing'
-SCALARS_ROUTE = '/' + event_accumulator.SCALARS
 IMAGES_ROUTE = '/' + event_accumulator.IMAGES
 AUDIO_ROUTE = '/' + event_accumulator.AUDIO
 HISTOGRAMS_ROUTE = '/' + event_accumulator.HISTOGRAMS
@@ -191,8 +199,6 @@ class TensorBoardWSGIApp(object):
             self._serve_run_metadata,
         DATA_PREFIX + RUNS_ROUTE:
             self._serve_runs,
-        DATA_PREFIX + SCALARS_ROUTE:
-            self._serve_scalars,
     }
 
     # Serve the routes from the registered plugins using their name as the route
@@ -295,23 +301,6 @@ class TensorBoardWSGIApp(object):
     """Respond with a JSON object containing this TensorBoard's logdir."""
     return http_util.Respond(
         request, {'logdir': self._logdir}, 'application/json')
-
-  @wrappers.Request.application
-  def _serve_scalars(self, request):
-    """Given a tag and single run, return array of ScalarEvents."""
-    # TODO(cassandrax): return HTTP status code for malformed requests
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-    values = self._multiplexer.Scalars(run, tag)
-
-    if request.args.get('format') == _OutputFormat.CSV:
-      string_io = StringIO()
-      writer = csv.writer(string_io)
-      writer.writerow(['Wall time', 'Step', 'Value'])
-      writer.writerows(values)
-      return http_util.Respond(request, string_io.getvalue(), 'text/csv')
-    else:
-      return http_util.Respond(request, values, 'application/json')
 
   @wrappers.Request.application
   def _serve_graph(self, request):
@@ -540,12 +529,14 @@ class TensorBoardWSGIApp(object):
       A werkzeug Response with the following content:
       {runName: {images: [tag1, tag2, tag3],
                  audio: [tag4, tag5, tag6],
-                 scalars: [tagA, tagB, tagC],
                  histograms: [tagX, tagY, tagZ],
                  firstEventTimestamp: 123456.789}}
     """
     runs = self._multiplexer.Runs()
     for run_name, run_data in runs.items():
+      for key in _MIGRATED_DATA_KEYS:
+        if key in run_data:
+          del run_data[key]
       try:
         run_data['firstEventTimestamp'] = self._multiplexer.FirstEventTimestamp(
             run_name)

@@ -379,6 +379,7 @@ filegroup(
         "//tensorflow/tensorboard/java/org/tensorflow/tensorboard/vulcanize:all_files",
         "//tensorflow/tensorboard/plugins:all_files",
         "//tensorflow/tensorboard/plugins/projector:all_files",
+        "//tensorflow/tensorboard/plugins/scalars:all_files",
         "//tensorflow/tensorboard/plugins/text:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
         "//tensorflow/tools/api/golden:all_files",

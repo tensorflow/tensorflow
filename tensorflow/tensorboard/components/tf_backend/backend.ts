@@ -142,8 +142,9 @@ export class Backend {
   /**
    * Return a promise showing the Run-to-Tag mapping for scalar data.
    */
-  public scalarRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'scalars'));
+  public scalarTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('scalars', '/tags'));
   }
 
   /**
@@ -226,7 +227,7 @@ export class Backend {
    */
   public scalar(tag: string, run: string): Promise<Array<ScalarDatum>> {
     let p: Promise<TupleData<number>[]>;
-    const url = this.router.scalars(tag, run);
+    const url = this.router.pluginRunTagRoute('scalars', '/scalars')(tag, run);
     p = this.requestManager.request(url);
     return p.then(map(detupler(createScalar)));
   }

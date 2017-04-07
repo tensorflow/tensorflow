@@ -29,17 +29,17 @@ window.addEventListener('WebComponentsReady', function() {
 });
 
 describe('data-behavior', function() {
-  var testElement;
-  var resolve;
-  var reject;
-  var fakeBackend = {
-    scalarRuns: function() {
-      return new Promise(function(_resolve, _reject) {
+  let testElement;
+  let resolve;
+  let reject;
+  const fakeBackend = {
+    scalarTags() {
+      return new Promise((_resolve, _reject) => {
         resolve = (x) => _resolve(x);
         reject = (x) => _reject(x);
       });
     },
-    scalar: function(x) {
+    scalar(x) {
       return this;
     },
   };
@@ -123,7 +123,7 @@ describe('data-behavior', function() {
   it('reloads as soon as setup, if autoReload is true', function(done) {
     var r2t = {foo: [], bar: []};
     var fakeBackend = {
-      scalarRuns: () => Promise.resolve(r2t),
+      scalarTags: () => Promise.resolve(r2t),
       scalar: () => null,
     };
     testElement = fixture('testElementFixture');
@@ -139,12 +139,12 @@ describe('data-behavior', function() {
     var r2t_1 = {foo: ['1', '2'], bar: ['3', '4']};
     var r2t_2 = {foo: ['1', '2'], bar: ['3', '4']};
     var fakeBackend = {
-      scalarRuns: () => Promise.resolve(r2t_1),
+      scalarTags: () => Promise.resolve(r2t_1),
       scalar: () => null,
     };
     testElement.backend = fakeBackend;
     testElement.reload().then(() => {
-      fakeBackend.scalarRuns = () => Promise.resolve(r2t_2);
+      fakeBackend.scalarTags = () => Promise.resolve(r2t_2);
       var tags = testElement.tags;
       testElement.reload().then(() => {
         // shallow equality ensures it wasn't recomputed

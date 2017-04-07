@@ -107,7 +107,9 @@ export const BackendBehavior = {
     if (this.backend == null) {
       throw new Error('BackendBehavior: Need a backend to reload.');
     }
-    const runsRoute = this.backend[this.dataType + 'Runs'].bind(this.backend);
+    const runsRoute = (this.backend[this.dataType + 'Runs'] ||
+                       this.backend[this.dataType + 'Tags'])
+                          .bind(this.backend);
     this._setLoadState('pending');
     return runsRoute().then(
         (x) => {
