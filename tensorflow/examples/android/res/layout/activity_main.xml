@@ -9,17 +9,28 @@
     <LinearLayout
         android:layout_width="395dp"
         android:layout_height="587dp"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         tools:layout_editor_absoluteX="8dp"
         tools:layout_editor_absoluteY="8dp">
 
         <Button
             android:id="@+id/classify_button"
-            style="@style/Widget.AppCompat.Button.Borderless"
-            android:layout_width="wrap_content"
+            style="@style/Widget.AppCompat.Button"
+            android:textSize="24dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:onClick="onClassifyPressed"
-            android:text="Classify" />
+            android:onClick="classify"
+            android:text="@string/classify" />
+
+        <Button
+            android:id="@+id/history_button"
+            style="@style/Widget.AppCompat.Button"
+            android:textSize="24dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:onClick="classifyHistory"
+            android:text="@string/previous_classifications" />
     </LinearLayout>
 </android.support.constraint.ConstraintLayout>
