@@ -61,6 +61,7 @@ DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
 PLUGIN_PREFIX = '/plugin'
+PLUGINS_LISTING_ROUTE = '/plugins_listing'
 SCALARS_ROUTE = '/' + event_accumulator.SCALARS
 IMAGES_ROUTE = '/' + event_accumulator.IMAGES
 AUDIO_ROUTE = '/' + event_accumulator.AUDIO
@@ -152,30 +153,34 @@ class TensorBoardWSGIApp(object):
       reload_multiplexer(self._multiplexer, path_to_run)
 
     self.data_applications = {
-        DATA_PREFIX + LOGDIR_ROUTE:
-            self._serve_logdir,
-        DATA_PREFIX + SCALARS_ROUTE:
-            self._serve_scalars,
-        DATA_PREFIX + GRAPH_ROUTE:
-            self._serve_graph,
-        DATA_PREFIX + RUN_METADATA_ROUTE:
-            self._serve_run_metadata,
-        DATA_PREFIX + HISTOGRAMS_ROUTE:
-            self._serve_histograms,
-        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
-            self._serve_compressed_histograms,
-        DATA_PREFIX + IMAGES_ROUTE:
-            self._serve_images,
-        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE:
-            self._serve_image,
+        '/app.js':
+            self._serve_js,
         DATA_PREFIX + AUDIO_ROUTE:
             self._serve_audio,
+        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
+            self._serve_compressed_histograms,
+        DATA_PREFIX + GRAPH_ROUTE:
+            self._serve_graph,
+        DATA_PREFIX + HISTOGRAMS_ROUTE:
+            self._serve_histograms,
+        DATA_PREFIX + IMAGES_ROUTE:
+            self._serve_images,
         DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE:
             self._serve_individual_audio,
+        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE:
+            self._serve_image,
+        DATA_PREFIX + LOGDIR_ROUTE:
+            self._serve_logdir,
+        # TODO(chizeng): Delete this RPC once we have skylark rules that obviate
+        # the need for the frontend to determine which plugins are active.
+        DATA_PREFIX + PLUGINS_LISTING_ROUTE:
+            self._serve_plugins_listing,
+        DATA_PREFIX + RUN_METADATA_ROUTE:
+            self._serve_run_metadata,
         DATA_PREFIX + RUNS_ROUTE:
             self._serve_runs,
-        '/app.js':
-            self._serve_js
+        DATA_PREFIX + SCALARS_ROUTE:
+            self._serve_scalars,
     }
 
     # Serve the routes from the registered plugins using their name as the route
@@ -487,6 +492,21 @@ class TensorBoardWSGIApp(object):
         'index': index
     })
     return query_string
+
+  @wrappers.Request.application
+  def _serve_plugins_listing(self, request):
+    """Serves an object mapping plugin name to whether it is enabled.
+
+    Args:
+      request: The werkzeug.Request object.
+
+    Returns:
+      A werkzeug.Response object.
+    """
+    return http_util.Respond(
+        request,
+        {plugin.plugin_name: plugin.is_active() for plugin in self._plugins},
+        'application/json')
 
   @wrappers.Request.application
   def _serve_runs(self, request):
