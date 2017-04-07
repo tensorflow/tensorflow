@@ -160,7 +160,7 @@ class MklConcatOp : public OpKernel {
 
     // Get input tensors.
     OpInputList input_tensors;
-    MklGetInputList(context, "values", &input_tensors);
+    GetMklInputList(context, "values", &input_tensors);
     const int N = input_tensors.size();
     // Get MKL shapes.
     MklShapeList input_shapes(N);
@@ -300,7 +300,7 @@ class MklConcatOp : public OpKernel {
       static_cast<dnnLayout_t>(mkl_output_mkl_shape.GetMklLayout()))/sizeof(T));
 
     Tensor* output = nullptr;
-    AllocateOutputSetMklshape(context, 0, &output, mkl_output_tf_shape,
+    AllocateOutputSetMklShape(context, 0, &output, mkl_output_tf_shape,
                               mkl_output_mkl_shape);
 
     // Set destination resource.

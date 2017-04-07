@@ -144,13 +144,13 @@ class MklShape {
   bool IsMklChannelDim(int d) const { return tf_dim_idx(d) == MklDims::C; }
   // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
   // corresponds to MKL's Batch dimension.
-  bool IsMklBatchDim(int d)   const { return tf_dim_idx(d) == MklDims::N; }
+  bool IsMklBatchDim(int d) const { return tf_dim_idx(d) == MklDims::N; }
   // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
   // corresponds to MKL's Width dimension.
-  bool IsMklWidthDim(int d)   const { return tf_dim_idx(d) == MklDims::W; }
+  bool IsMklWidthDim(int d) const { return tf_dim_idx(d) == MklDims::W; }
   // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
   // corresponds to MKL's Height dimension.
-  bool IsMklHeightDim(int d)  const { return tf_dim_idx(d) == MklDims::H; }
+  bool IsMklHeightDim(int d) const { return tf_dim_idx(d) == MklDims::H; }
 
   // Check if the TF-Mkl dimension ordering map specifies if the input
   // tensor is in NCHW format.
@@ -373,8 +373,8 @@ inline int DataIndexToMetaDataIndex(int n, int total_tensors) {
     return n + 1;
   } else {
     CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
-    // For contiguous ordering, Mkl tensor is n+total_tensors/2 away.
-    return n + total_tensors/2;
+    // For contiguous ordering, Mkl tensor is n+total_tensors / 2 away.
+    return n + total_tensors / 2;
   }
 }
 
@@ -410,7 +410,7 @@ inline const Tensor& MklGetInput(OpKernelContext* ctext, int n) {
   return ctext->input(GetTensorDataIndex(n, ctext->num_inputs()));
 }
 
-inline void MklGetInputList(OpKernelContext* ctext,
+inline void GetMklInputList(OpKernelContext* ctext,
     StringPiece name, OpInputList* input_tensors) {
   CHECK_NOTNULL(input_tensors);
   ctext->input_list(name, input_tensors);
@@ -419,7 +419,7 @@ inline void MklGetInputList(OpKernelContext* ctext,
 inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
                             MklShapeList* mkl_shapes) {
   OpInputList input_mkl_tensors;
-  MklGetInputList(ctext, strings::StrCat("mkl_", name), &input_mkl_tensors);
+  GetMklInputList(ctext, strings::StrCat("mkl_", name), &input_mkl_tensors);
 
   for (int i = 0; i < input_mkl_tensors.size(); i++) {
     (*mkl_shapes)[i].DeSerializeMklShape(
@@ -428,39 +428,39 @@ inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
   }
 }
 
-// Allocate the output tensor, create a second output tensor that will contain
+// Allocate the second output tensor that will contain
 // the MKL shape serialized
-inline void AllocateOutputSetMklshape(OpKernelContext* ctext, int n,
-                                      const MklShape& mklshape) {
+inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
+                                      const MklShape& mkl_shape) {
   Tensor* second_tensor = nullptr;
   TensorShape second_shape;
-  second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mklshape.GetDimension()));
+  second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mkl_shape.GetDimension()));
   OP_REQUIRES_OK(ctext, ctext->allocate_output(GetTensorMetaDataIndex(n,
                                                 ctext->num_outputs()),
                                                second_shape, &second_tensor));
-  mklshape.SerializeMklShape(
+  mkl_shape.SerializeMklShape(
       second_tensor->flat<uint8>().data(),
       second_tensor->flat<uint8>().size() * sizeof(uint8));
 }
 
 // Allocate the output tensor, create a second output tensor that will contain
 // the MKL shape serialized
-inline void AllocateOutputSetMklshape(OpKernelContext* ctext, int n,
+inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
                                       Tensor** output,
-                                      const TensorShape& tfshape,
-                                      const MklShape& mklshape) {
+                                      const TensorShape& tf_shape,
+                                      const MklShape& mkl_shape) {
   Tensor* second_tensor = nullptr;
   TensorShape second_shape;
-  second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mklshape.GetDimension()));
+  second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mkl_shape.GetDimension()));
   OP_REQUIRES_OK(
       ctext,
       ctext->allocate_output(GetTensorDataIndex(n, ctext->num_outputs()),
-      tfshape, output));
+      tf_shape, output));
   OP_REQUIRES_OK(
       ctext,
       ctext->allocate_output(GetTensorMetaDataIndex(n, ctext->num_outputs()),
       second_shape, &second_tensor));
-  mklshape.SerializeMklShape(
+  mkl_shape.SerializeMklShape(
       second_tensor->flat<uint8>().data(),
       second_tensor->flat<uint8>().size() * sizeof(uint8));
 }
@@ -499,9 +499,9 @@ inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
 
 inline void MklSizesToTFSizes(OpKernelContext* context,
                               TensorFormat data_format_,
-                              const MklShape& mklshape, TensorShape* tfshape) {
-  size_t tf_dim = mklshape.GetDimension();
-  const size_t* tf_sizes = mklshape.GetSizes();
+                              const MklShape& mkl_shape, TensorShape* tf_shape) {
+  size_t tf_dim = mkl_shape.GetDimension();
+  const size_t* tf_sizes = mkl_shape.GetSizes();
 
   OP_REQUIRES(context, tf_dim == 4,
               errors::InvalidArgument("MKLSizesToTFSizes: size must be 4-dim"));
@@ -519,7 +519,7 @@ inline void MklSizesToTFSizes(OpKernelContext* context,
     sizes.push_back(tf_sizes[0]);
   }
 
-  OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(sizes, tfshape));
+  OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(sizes, tf_shape));
 }
 
 inline int32 GetMklTensorDimIndex(char dimension) {
@@ -538,11 +538,11 @@ inline int32 GetMklTensorDimIndex(char dimension) {
   }
 }
 
-inline int64 GetMklTensorDim(const MklShape& mklshape, char dimension) {
+inline int64 GetMklTensorDim(const MklShape& mkl_shape, char dimension) {
   int index = GetMklTensorDimIndex(dimension);
-  CHECK(index >= 0 && index < mklshape.GetDimension())
+  CHECK(index >= 0 && index < mkl_shape.GetDimension())
       << "Invalid index from the dimension: " << index << ", " << dimension;
-  return mklshape.dim_size(index);
+  return mkl_shape.dim_size(index);
 }
 
 namespace mkl_layer_registry {

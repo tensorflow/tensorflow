@@ -2861,7 +2861,7 @@ REGISTER_OP("MklLRN")
     })
     .Doc(R"doc(
 MKL version of LRN operator. Uses MKL DNN APIs to perform local response
-normalization
+normalization.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
@@ -2894,7 +2894,7 @@ REGISTER_OP("MklLRNGrad")
     })
     .Doc(R"doc(
 MKL version of LRNGrad operator. Uses MKL DNN APIs to compute gradient for
-local response normalization
+local response normalization.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
@@ -2960,7 +2960,7 @@ REGISTER_OP("MklFusedBatchNorm")
     })
     .Doc(R"doc(
 MKL version of FusedBatchNorm operator. Uses MKL DNN APIs to perform fused
-batch normalization
+batch normalization.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
@@ -3042,7 +3042,7 @@ REGISTER_OP("MklFusedBatchNormGrad")
     })
     .Doc(R"doc(
 MKL version of FusedBatchNormGrad operator. Uses MKL DNN APIs to compute
-gradients for fused batch normalization
+gradients for fused batch normalization.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.

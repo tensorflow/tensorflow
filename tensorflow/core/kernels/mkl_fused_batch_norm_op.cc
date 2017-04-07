@@ -121,7 +121,7 @@ class MklFusedBatchNormOp : public OpKernel {
     tf_shape_output.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                                mkl_shape_output.GetMklLayout())) /
                            sizeof(T));
-    AllocateOutputSetMklshape(context, 0, &output, tf_shape_output,
+    AllocateOutputSetMklShape(context, 0, &output, tf_shape_output,
                               mkl_shape_output);
     mkl_context.mkl_res_batchnorm[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());
@@ -130,13 +130,13 @@ class MklFusedBatchNormOp : public OpKernel {
     Tensor* batch_mean = nullptr;
     MklShape mkl_shape_batch_mean;
     mkl_shape_batch_mean.SetMklTensor(false);
-    AllocateOutputSetMklshape(context, 1, &batch_mean, scale.shape(),
+    AllocateOutputSetMklShape(context, 1, &batch_mean, scale.shape(),
                               mkl_shape_batch_mean);
     // Batch variance in TF layout
     Tensor* batch_variance = nullptr;
     MklShape mkl_shape_batch_variance;
     mkl_shape_batch_variance.SetMklTensor(false);
-    AllocateOutputSetMklshape(context, 2, &batch_variance, scale.shape(),
+    AllocateOutputSetMklShape(context, 2, &batch_variance, scale.shape(),
                               mkl_shape_batch_variance);
     // If training mode, set dnnResourceMean and dnnResourceVariance to
     // output tensors for batch mean and variance.
@@ -157,7 +157,7 @@ class MklFusedBatchNormOp : public OpKernel {
     Tensor* saved_mean = nullptr;
     MklShape mkl_shape_saved_mean;
     mkl_shape_saved_mean.SetMklTensor(false);
-    AllocateOutputSetMklshape(context, 3, &saved_mean, scale.shape(),
+    AllocateOutputSetMklShape(context, 3, &saved_mean, scale.shape(),
                               mkl_shape_saved_mean);
     std::memcpy(
         reinterpret_cast<char*>(saved_mean->flat<float>().data()),
@@ -166,7 +166,7 @@ class MklFusedBatchNormOp : public OpKernel {
     Tensor* saved_variance = nullptr;
     MklShape mkl_shape_saved_variance;
     mkl_shape_saved_variance.SetMklTensor(false);
-    AllocateOutputSetMklshape(context, 4, &saved_variance, scale.shape(),
+    AllocateOutputSetMklShape(context, 4, &saved_variance, scale.shape(),
                               mkl_shape_saved_variance);
     std::memcpy(reinterpret_cast<char*>(saved_variance->flat<float>().data()),
                 reinterpret_cast<char*>(
@@ -420,7 +420,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
         dnnLayoutGetMemorySize_F32(
             static_cast<dnnLayout_t>(mkl_shape_in_backprop.GetMklLayout())) /
         sizeof(T));
-    AllocateOutputSetMklshape(context, 0, &in_backprop, tf_shape_in_backprop,
+    AllocateOutputSetMklShape(context, 0, &in_backprop, tf_shape_in_backprop,
                               mkl_shape_in_backprop);
     mkl_context.mkl_res_batchnorm_bwd[dnnResourceDiffSrc] =
         static_cast<void*>(in_backprop->flat<T>().data());
@@ -442,13 +442,13 @@ class MklFusedBatchNormGradOp : public OpKernel {
     // Allocate tensor for grad w.r.t. scale (beta)
     Tensor* scale_backprop = nullptr;
     MklShape mkl_shape_scale_backprop;
-    AllocateOutputSetMklshape(context, 1, &scale_backprop, tf_shape_scale_shift,
+    AllocateOutputSetMklShape(context, 1, &scale_backprop, tf_shape_scale_shift,
                               mkl_shape_scale_backprop);
 
     // Allocate tensor for grad w.r.t. shift(gamma)
     Tensor* shift_backprop = nullptr;
     MklShape mkl_shape_shift_backprop;
-    AllocateOutputSetMklshape(context, 2, &shift_backprop, tf_shape_scale_shift,
+    AllocateOutputSetMklShape(context, 2, &shift_backprop, tf_shape_scale_shift,
                               mkl_shape_shift_backprop);
 
     // copy scale and shift grads to tensors
@@ -468,11 +468,11 @@ class MklFusedBatchNormGradOp : public OpKernel {
     // used for inference and thus not needed here for gradient computation.
     Tensor* placeholder_1 = nullptr;
     MklShape mkl_shape_placeholder_1;
-    AllocateOutputSetMklshape(context, 3, &placeholder_1, TensorShape({}),
+    AllocateOutputSetMklShape(context, 3, &placeholder_1, TensorShape({}),
                               mkl_shape_placeholder_1);
     Tensor* placeholder_2 = nullptr;
     MklShape mkl_shape_placeholder_2;
-    AllocateOutputSetMklshape(context, 4, &placeholder_2, TensorShape({}),
+    AllocateOutputSetMklShape(context, 4, &placeholder_2, TensorShape({}),
                               mkl_shape_placeholder_2);
 
     mkl_context.MklCleanup();

@@ -178,7 +178,7 @@ class MklConv2DOp : public OpKernel {
       // Nothing to do, allocate output tensor and return
       MklShape mkl_output_mkl_shape;
       mkl_output_mkl_shape.SetMklTensor(false);
-      AllocateOutputSetMklshape(context, 0, &output, input.shape(),
+      AllocateOutputSetMklShape(context, 0, &output, input.shape(),
                                 mkl_output_mkl_shape);
       return;
     }
@@ -264,7 +264,7 @@ class MklConv2DOp : public OpKernel {
         dnnLayoutGetMemorySize_F32(
             static_cast<dnnLayout_t>(mkl_output_mkl_shape.GetMklLayout())) /
         sizeof(T));
-    AllocateOutputSetMklshape(context, 0, &output, mkl_output_tf_shape,
+    AllocateOutputSetMklShape(context, 0, &output, mkl_output_tf_shape,
                               mkl_output_mkl_shape);
     mkl_context.conv_res[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());

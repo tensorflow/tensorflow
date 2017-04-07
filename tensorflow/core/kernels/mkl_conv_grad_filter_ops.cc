@@ -217,7 +217,7 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     mkl_context.grad_filter_shape.SetTfLayout(mkl_context.filter_dims,
                                               mkl_context.filter_sizes,
                                               mkl_context.filter_strides);
-    AllocateOutputSetMklshape(context, 0, &grad_filter, filter_shape,
+    AllocateOutputSetMklShape(context, 0, &grad_filter, filter_shape,
                               mkl_context.grad_filter_shape);
 
     // Need to set member variable for TF layout
