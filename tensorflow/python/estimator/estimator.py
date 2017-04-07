@@ -141,6 +141,11 @@ class Estimator(object):
 
     logging.info('Using config: %s', str(vars(self._config)))
 
+    if self._config.session_config is None:
+      self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    else:
+      self._session_config = self._config.session_config
+
     self._device_fn = _get_replica_device_setter(self._config)
 
     if model_fn is None:
@@ -317,7 +322,7 @@ class Estimator(object):
           session_creator=training.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
               scaffold=estimator_spec.scaffold,
-              config=config_pb2.ConfigProto(allow_soft_placement=True)),
+              config=self._session_config),
           hooks=hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
@@ -580,7 +585,7 @@ class Estimator(object):
           chief_only_hooks=chief_hooks + estimator_spec.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=config_pb2.ConfigProto(allow_soft_placement=True)) as mon_sess:
+          config=self._session_config) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([estimator_spec.train_op, estimator_spec.loss])
@@ -635,7 +640,7 @@ class Estimator(object):
           eval_ops=update_op,
           final_ops=eval_dict,
           hooks=hooks,
-          config=config_pb2.ConfigProto(allow_soft_placement=True))
+          config=self._session_config)
 
       _write_dict_to_summary(
           output_dir=eval_dir,
