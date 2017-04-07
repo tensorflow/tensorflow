@@ -78,8 +78,9 @@ class LinearOperatorApplyOnly(linalg.LinearOperator):
   def _shape_tensor(self):
     return array_ops.shape(self._matrix)
 
-  def _apply(self, x, adjoint=False):
-    return math_ops.matmul(self._matrix, x, adjoint_a=adjoint)
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
+    return math_ops.matmul(
+        self._matrix, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
 
 class LinearOperatorTest(test.TestCase):
