@@ -324,6 +324,10 @@ When run, it produces
 W: [-0.9999969] b: [ 0.99999082] loss: 5.69997e-11
 ```
 
+Notice that the loss is a very small number (close to zero). If you run this
+program your loss will not be exactly the same, because the model is initialized
+with random values.
+
 This more complicated program can still be visualized in TensorBoard
 ![TensorBoard final model visualization](../images/getting_started_final.png)
 
