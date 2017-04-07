@@ -384,6 +384,7 @@ tf_cuda_library(
         "util/bcast.h",
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
+        "util/env_var.h",
         "util/events_writer.h",
         "util/example_proto_fast_parsing.h",
         "util/example_proto_helper.h",
@@ -1536,7 +1537,10 @@ cc_library(
 tf_cuda_library(
     name = "direct_session_internal",
     srcs = ["common_runtime/direct_session.cc"],
-    hdrs = ["common_runtime/direct_session.h"],
+    hdrs = [
+        "common_runtime/direct_session.h",
+        "util/env_var.h",
+    ],
     copts = tf_copts(),
     cuda_deps = [
         ":gpu_tracer",
