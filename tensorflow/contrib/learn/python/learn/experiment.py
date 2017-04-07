@@ -118,7 +118,8 @@ class Experiment(object):
         occur if no new snapshot is available, hence, this is the minimum.
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
-      export_strategies: A list of `ExportStrategy`s, or a single one, or None.
+      export_strategies: Iterable of `ExportStrategy`s, or a single one, or
+        `None`.
       train_steps_per_iteration: (applies only to continuous_train_and_eval).
         Perform this many (integer) number of train steps for each
         training-evaluation iteration. With a small value, the model will be
@@ -184,16 +185,19 @@ class Experiment(object):
   def eval_steps(self):
     return self._eval_steps
 
-  def _set_export_strategies(self, value):
-    if value is None:
-      self._export_strategies = []
-    elif isinstance(value, list):
-      self._export_strategies = value[:]
-    elif isinstance(value, export_strategy.ExportStrategy):
-      self._export_strategies = [value]
-    else:
-      raise ValueError("`export_strategies` must be an ExportStrategy, "
-                       "a list of ExportStrategies, or None.")
+  def _set_export_strategies(self, values):  # pylint: disable=missing-docstring
+    export_strategies = []
+    if values:
+      if isinstance(values, export_strategy.ExportStrategy):
+        export_strategies.append(values)
+      else:
+        for value in values:
+          if not isinstance(value, export_strategy.ExportStrategy):
+            raise ValueError("`export_strategies` must be an ExportStrategy,"
+                             " an iterable of ExportStrategy, or `None`,"
+                             " found %s." % value)
+          export_strategies.append(value)
+    self._export_strategies = tuple(export_strategies)
 
   def extend_train_hooks(self, additional_hooks):
     """Extends the hooks for training."""
