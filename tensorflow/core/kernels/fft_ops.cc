@@ -84,7 +84,7 @@ class FFTBase : public OpKernel {
   virtual bool IsForward() const = 0;
   virtual bool IsReal() const = 0;
 
-  // The function that actually computes the FFT
+  // The function that actually computes the FFT.
   virtual void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
                      Tensor* out) = 0;
 };
@@ -96,17 +96,11 @@ template <typename Device, typename TInput, typename TOutput,
 struct FFTFunctor {
   void operator()(const Device& d,
                   typename TTypes<TOutput, FFTRank + 1>::Tensor output,
-                  typename TTypes<TInput, FFTRank + 1>::ConstTensor input) {
-      // Cast to non-const data type to ensure we can call the template fft
-      // function
-      // TODO(tillahoffmann): Remove reinterpret_cast once Eigen supports const
-      // arguments for tensor fft
-      auto casted_input =
-       *reinterpret_cast<typename TTypes<TInput, FFTRank + 1>::Tensor*>(&input);
-      // Create the axes (which are always trailing)
+                  typename TTypes<TInput, FFTRank + 1>::Tensor input) {
+      // Create the axes (which are always trailing).
       auto axes = Eigen::ArrayXi::LinSpaced(FFTRank, 1, FFTRank);
-      // Evaluate the fft on the specified device
-      output.device(d) = casted_input.template fft<FFTResultType, FFTDir>(axes);
+      // Evaluate the fft on the specified device.
+      output.device(d) = input.template fft<FFTResultType, FFTDir>(axes);
   }
 };
 
@@ -122,11 +116,11 @@ class FFTCPU : public FFTBase {
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
              Tensor* out) override {
     // TODO(tillahoffmann): Support RFFTs by slicing away the negative
-    // frequency components
+    // frequency components.
     OP_REQUIRES(ctx, !IsReal(), errors::Internal("Real FFT not supported."));
-    auto input = in.flat_inner_dims<complex64, FFTRank + 1>();
+    auto input = ((Tensor) in).flat_inner_dims<complex64, FFTRank + 1>();
 
-    // Apply the functor
+    // Apply the functor.
     FFTFunctor<CPUDevice, complex64, complex64, Eigen::BothParts,
                Forward ? Eigen::FFT_FORWARD : Eigen::FFT_REVERSE,
                FFTRank> functor;
