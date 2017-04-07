@@ -132,6 +132,7 @@ See the @{$python/math_ops} guide.
 @@unique
 @@edit_distance
 @@invert_permutation
+@@partial_sum
 """
 from __future__ import absolute_import
 from __future__ import division

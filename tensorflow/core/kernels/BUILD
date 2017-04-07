@@ -2180,6 +2180,7 @@ cc_library(
         ":reduction_ops",
         ":scan_ops",
         ":segment_reduction_ops",
+        ":partial_reduction_ops",
         ":sequence_ops",
     ],
 )
@@ -2274,6 +2275,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
+    deps = MATH_DEPS,
+)
+
+tf_kernel_library(
+    name = "partial_reduction_ops",
+    prefix = "partial_reduction_ops",
     deps = MATH_DEPS,
 )
 

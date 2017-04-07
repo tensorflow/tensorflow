@@ -2365,4 +2365,37 @@ output_max: the computed max output.
 
 )doc");
 
+// --------------------------------------------------------------------------
+
+namespace {
+
+Status ParticalReductionShapeFn(InferenceContext* c) {
+  ShapeHandle handle;
+  DimensionHandle dimhandle;
+  // "data" must have rank at least 1
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &handle));
+  // "indices" must have rank 2 and the number of columns must be 2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &handle));
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(c->input(1),1), c->MakeDim(2), &dimhandle));
+  // shape of output tensor
+  // TODO: change this to support different rank
+  c->set_output(0, c->Matrix(c->Dim(c->input(1),0),c->Dim(c->input(0),1)));
+  return Status::OK();
+}
+
+} // namespace
+
+REGISTER_OP("PartialSum")
+    .Input("data: T")
+    .Input("indices: Tindices")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .SetShapeFn(ParticalReductionShapeFn)
+    .Doc(R"doc(
+Dynamically sum rows of a matrix according to start and end indices specified at "index".
+For example if input is [[1,1,1],[10,10,10],[100,100,100],[1000,1000,1000]] and
+index is [[0,1],[1,1],[0,2]], the the output will be [[1,1,1],[0,0,0],[11,11,11]]
+)doc"); // TODO: change the doc here to support more ranks
+
 }  // namespace tensorflow
