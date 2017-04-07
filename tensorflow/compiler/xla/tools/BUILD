@@ -181,6 +181,8 @@ cc_library(
     srcs = ["hlo_tfgraph_builder.cc"],
     hdrs = ["hlo_tfgraph_builder.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

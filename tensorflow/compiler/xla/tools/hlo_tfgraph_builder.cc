@@ -14,19 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/tools/hlo_tfgraph_builder.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 using ::tensorflow::GraphDef;
 using ::tensorflow::NodeDef;
+using ::tensorflow::TensorShapeProto;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
+using ::tensorflow::str_util::Join;
 
 namespace xla {
 namespace tools {
+namespace {
 
-static string GetOpDefName(const HloInstruction* instruction) {
+string GetOpDefName(const HloInstruction* instruction) {
   string name = StrCat("hlo-", HloOpcodeString(instruction->opcode()));
   tensorflow::str_util::TitlecaseString(&name, "-");
   name.erase(std::remove(name.begin(), name.end(), '-'), name.end());
@@ -37,6 +45,17 @@ static string GetOpDefName(const HloInstruction* instruction) {
   }
   return name;
 }
+
+TensorShapeProto GetTensorShape(const HloInstruction* instruction) {
+  TensorShapeProto tensor_shape;
+  const Shape& shape = instruction->shape();
+  for (auto dim : shape.dimensions()) {
+    tensor_shape.add_dim()->set_size(dim);
+  }
+  return tensor_shape;
+}
+
+}  // namespace
 
 void CleanNodeName(string* name) {
   name->erase(std::remove(name->begin(), name->end(), '%'), name->end());
@@ -87,14 +106,70 @@ const string& HloTfGraphBuilder::GetNodeNameForInstruction(
   return ret.first->second;
 }
 
-// TODO(b/36987876): Add more attribute information e.g. shapes, dimensions etc.
 void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
                                      NodeDef* node_def) const {
+  auto& attrs = *node_def->mutable_attr();
+
   // Set the number of arguments for instructions that have variadic operands.
   if (HloOpcodeIsVariadic(instruction->opcode())) {
     tensorflow::AttrValue attr_value;
     attr_value.set_i(instruction->operands().size());
-    (*node_def->mutable_attr())["ArgNum"] = attr_value;
+    attrs["arg_num"] = attr_value;
+  }
+
+  // Set the node type.
+  attrs["type"].set_s(
+      xla::PrimitiveType_Name(instruction->shape().element_type()));
+
+  // Set the shape of the output tensor. "_output_shapes" is a special attribute
+  // name used by Tensorboard for shapes of output tensors.
+  tensorflow::AttrValue shapes;
+  *shapes.mutable_list()->add_shape() = GetTensorShape(instruction);
+  attrs["_output_shapes"] = shapes;
+
+  // Set the layout.
+  if (LayoutUtil::HasLayout(instruction->shape())) {
+    string layout_string;
+    if (ShapeUtil::IsTuple(instruction->shape())) {
+      // For tuples, emit the full shape because the layout of a tuple is not
+      // represented in a single Layout field.
+      layout_string = ShapeUtil::HumanStringWithLayout(instruction->shape());
+    } else {
+      layout_string = StrCat(
+          "{", Join(instruction->shape().layout().minor_to_major(), ","), "}");
+    }
+    attrs["layout"].set_s(layout_string);
+  }
+
+  // Set op-specific attributes.
+  switch (instruction->opcode()) {
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReverse:
+    case HloOpcode::kTranspose:
+      for (auto dim : instruction->dimensions()) {
+        attrs["dims"].mutable_list()->add_i(dim);
+      }
+      break;
+    case HloOpcode::kGetTupleElement:
+      attrs["index"].set_i(instruction->tuple_index());
+      break;
+    case HloOpcode::kRng:
+      attrs["dist"].set_s(
+          RandomDistribution_Name(instruction->random_distribution()));
+      break;
+    case HloOpcode::kConstant:
+      if (ShapeUtil::IsScalar(instruction->shape())) {
+        attrs["value"].set_s(
+            LiteralUtil::GetAsString(instruction->literal(), {}));
+      }
+      break;
+    case HloOpcode::kCustomCall:
+      attrs["custom_call_target"].set_s(instruction->custom_call_target());
+      break;
+    default:
+      break;
   }
 }
 

@@ -51,6 +51,53 @@ class HloTfGraphBuilderTest : public HloTestBase {
   Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
 };
 
+TEST_F(HloTfGraphBuilderTest, CheckConcatenateDimsAndShapes) {
+  auto builder = HloComputation::Builder("Concatenate");
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto param_1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param0"));
+  auto param_2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param1"));
+  builder.AddInstruction(HloInstruction::CreateConcatenate(
+      ShapeUtil::MakeShape(F32, {2, 4}), {param_1, param_2}, 1));
+  TF_CHECK_OK(generator_.AddComputation(*builder.Build()));
+  GraphDef graph_def = generator_.GetGraphDef();
+  EXPECT_EQ(graph_def.node_size(), 3);
+  const auto &node = graph_def.node(2);
+  EXPECT_EQ(node.name(), "Concatenate/concatenate");
+
+  // Check dimensions.
+  auto dims_value = node.attr().find("dims");
+  CHECK(dims_value != node.attr().end());
+  EXPECT_EQ(dims_value->second.list().i_size(), 1);
+  EXPECT_EQ(dims_value->second.list().i(0), 1);
+
+  // Check shapes.
+  auto shape_value = node.attr().find("_output_shapes");
+  CHECK(shape_value != node.attr().end());
+  EXPECT_EQ(shape_value->second.list().shape_size(), 1);
+  EXPECT_EQ(shape_value->second.list().shape(0).dim_size(), 2);
+  EXPECT_EQ(shape_value->second.list().shape(0).dim(0).size(), 2);
+  EXPECT_EQ(shape_value->second.list().shape(0).dim(1).size(), 4);
+}
+
+TEST_F(HloTfGraphBuilderTest, CheckScalarValue) {
+  auto builder = HloComputation::Builder("Const");
+  builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(123)));
+  TF_CHECK_OK(generator_.AddComputation(*builder.Build()));
+  GraphDef graph_def = generator_.GetGraphDef();
+  EXPECT_EQ(graph_def.node_size(), 1);
+  const auto &node = graph_def.node(0);
+  auto value = node.attr().find("value");
+  CHECK(value != node.attr().end());
+  EXPECT_EQ(value->second.s(), "123");
+
+  auto type = node.attr().find("type");
+  CHECK(type != node.attr().end());
+  EXPECT_EQ(type->second.s(), "S32");
+}
+
 TEST_F(HloTfGraphBuilderTest, SimpleNegateComputation) {
   auto negate_computation = CreateNegateComputation();
   TF_CHECK_OK(generator_.AddComputation(*negate_computation));
