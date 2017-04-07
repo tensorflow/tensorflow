@@ -33,6 +33,7 @@ import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
@@ -63,6 +64,11 @@ import org.tensorflow.demo.R;
 
 public class CameraConnectionFragment extends Fragment {
   private static final Logger LOGGER = new Logger();
+
+  /**
+   * The parent view containing most of the elements. It is set onViewCreated.
+   */
+  private View parentView;
 
   /**
    * The camera preview size will be chosen to be the smallest frame by pixel size capable of
@@ -160,6 +166,7 @@ public class CameraConnectionFragment extends Fragment {
           cameraOpenCloseLock.release();
           cameraDevice = cd;
           createCameraPreviewSession();
+          configureCameraFloatingActionButton();
         }
 
         @Override
@@ -190,11 +197,6 @@ public class CameraConnectionFragment extends Fragment {
    * A {@link Handler} for running tasks in the background.
    */
   private Handler backgroundHandler;
-
-  /**
-   * An {@link ImageReader} that handles preview frame capture.
-   */
-  private ImageReader previewReader;
 
   /**
    * {@link android.hardware.camera2.CaptureRequest.Builder} for the camera preview
@@ -311,13 +313,7 @@ public class CameraConnectionFragment extends Fragment {
   @Override
   public void onViewCreated(final View view, final Bundle savedInstanceState) {
     textureView = (AutoFitTextureView) view.findViewById(R.id.texture);
-
-    FloatingActionButton myFab = (FloatingActionButton)  view.findViewById(R.id.cameraFloatingActionButton);
-    myFab.setOnClickListener(new View.OnClickListener() {
-      public void onClick(View v) {
-        // TODO: Actually add the flipping camera capture thing.
-      }
-    });
+    parentView = view;
   }
 
   @Override
@@ -446,10 +442,6 @@ public class CameraConnectionFragment extends Fragment {
         cameraDevice.close();
         cameraDevice = null;
       }
-      if (null != previewReader) {
-        previewReader.close();
-        previewReader = null;
-      }
     } catch (final InterruptedException e) {
       throw new RuntimeException("Interrupted while trying to lock camera closing.", e);
     } finally {
@@ -492,7 +484,10 @@ public class CameraConnectionFragment extends Fragment {
         public void onCaptureCompleted(
             final CameraCaptureSession session,
             final CaptureRequest request,
-            final TotalCaptureResult result) {}
+            final TotalCaptureResult result)
+        {
+          createCameraPreviewSession();
+        }
       };
 
   /**
@@ -515,17 +510,9 @@ public class CameraConnectionFragment extends Fragment {
 
       LOGGER.i("Opening camera preview: " + previewSize.getWidth() + "x" + previewSize.getHeight());
 
-      // Create the reader for the preview frames.
-      previewReader =
-          ImageReader.newInstance(
-              previewSize.getWidth(), previewSize.getHeight(), ImageFormat.YUV_420_888, 2);
-
-      previewReader.setOnImageAvailableListener(imageListener, backgroundHandler);
-      previewRequestBuilder.addTarget(previewReader.getSurface());
-
       // Here, we create a CameraCaptureSession for camera preview.
       cameraDevice.createCaptureSession(
-          Arrays.asList(surface, previewReader.getSurface()),
+          Arrays.asList(surface),
           new CameraCaptureSession.StateCallback() {
 
             @Override
@@ -537,22 +524,9 @@ public class CameraConnectionFragment extends Fragment {
 
               // When the session is ready, we start displaying the preview.
               captureSession = cameraCaptureSession;
-              try {
-                // Auto focus should be continuous for camera preview.
-                previewRequestBuilder.set(
-                    CaptureRequest.CONTROL_AF_MODE,
-                    CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-                // Flash is automatically enabled when necessary.
-                previewRequestBuilder.set(
-                    CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
 
-                // Finally, we start displaying the camera preview.
-                previewRequest = previewRequestBuilder.build();
-                captureSession.setRepeatingRequest(
-                    previewRequest, captureCallback, backgroundHandler);
-              } catch (final CameraAccessException e) {
-                LOGGER.e(e, "Exception!");
-              }
+              // Configure the preview screen and show the camera footage.
+              updatePreview();
             }
 
             @Override
@@ -564,6 +538,111 @@ public class CameraConnectionFragment extends Fragment {
     } catch (final CameraAccessException e) {
       LOGGER.e(e, "Exception!");
     }
+  }
+
+  /**
+   * Update the preview object with the correct configurations.
+   */
+  private void updatePreview()
+  {
+    // The camera is already closed
+    if (null == cameraDevice) {
+      LOGGER.e("Preview:", "Camera close before update was called");
+      return;
+    }
+    try {
+      // Auto focus should be continuous for camera preview.
+      previewRequestBuilder.set(
+              CaptureRequest.CONTROL_AF_MODE,
+              CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+      // Flash is automatically enabled when necessary.
+      previewRequestBuilder.set(
+              CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
+
+      // Finally, we start displaying the camera preview.
+      previewRequest = previewRequestBuilder.build();
+
+      // This initiates the camera preview.
+      captureSession.setRepeatingRequest(
+              previewRequest, null, backgroundHandler);
+
+    }
+    catch (final CameraAccessException e) {
+      LOGGER.e(e, "Camera Access Exception during preview!");
+    }
+  }
+
+  /**
+   * This creates a new capture session to actually take the photo and analyze it.
+   */
+  private void takePhoto()
+  {
+    try {
+      final SurfaceTexture texture = textureView.getSurfaceTexture();
+      assert texture != null;
+
+      // We configure the size of default buffer to be the size of camera preview we want.
+      texture.setDefaultBufferSize(previewSize.getWidth(), previewSize.getHeight());
+
+      // This is the output Surface we need to start preview.
+      final Surface surface = new Surface(texture);
+
+      // We set up a CaptureRequest.Builder with the output Surface.
+      final CaptureRequest.Builder captureBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+      //captureBuilder.addTarget(surface);
+
+      LOGGER.i("Taking a photo: " + previewSize.getWidth() + "x" + previewSize.getHeight());
+
+      // Create the reader for the preview frames.
+      ImageReader reader =
+              ImageReader.newInstance(
+                      previewSize.getWidth(), previewSize.getHeight(), ImageFormat.YUV_420_888, 2);
+
+      reader.setOnImageAvailableListener(imageListener, backgroundHandler);
+      captureBuilder.addTarget(reader.getSurface());
+      captureBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+
+      // Here, we create a CameraCaptureSession for camera preview.
+      cameraDevice.createCaptureSession(
+              Arrays.asList(surface, reader.getSurface()),
+              new CameraCaptureSession.StateCallback() {
+
+                @Override
+                public void onConfigured(final CameraCaptureSession cameraCaptureSession) {
+                  // The camera is already closed
+                  if (null == cameraDevice) {
+                    return;
+                  }
+                  try {
+                    cameraCaptureSession.capture(captureBuilder.build(), captureCallback, backgroundHandler);
+                  }
+                  catch (final CameraAccessException e) {
+                    LOGGER.e(e, "Camera Access Exception: ");
+                  }
+                }
+
+                @Override
+                public void onConfigureFailed(final CameraCaptureSession cameraCaptureSession) {
+                  showToast("Failed");
+                }
+              },
+              null);
+    } catch (final CameraAccessException e) {
+      LOGGER.e(e, "Exception!");
+    }
+  }
+
+  /**
+   * Configures the Camera Floating Action Button to associate a press with a camera capture.
+   */
+  private void configureCameraFloatingActionButton()
+  {
+    FloatingActionButton myFab = (FloatingActionButton) parentView.findViewById(R.id.cameraFloatingActionButton);
+    myFab.setOnClickListener(new View.OnClickListener() {
+      public void onClick(View v) {
+        takePhoto();
+      }
+    });
   }
 
   /**
