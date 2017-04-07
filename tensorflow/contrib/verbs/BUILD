@@ -62,7 +62,7 @@ cc_library(
     srcs = ["grpc_verbs_service.cc"],
     hdrs = ["grpc_verbs_service.h"],
     deps = [
-       ":grpc_verbs_service_impl",
+        ":grpc_verbs_service_impl",
         ":rdma_mgr",
         ":verbs_service_proto_cc",
         "//tensorflow/core:lib",
@@ -136,7 +136,7 @@ cc_library(
     srcs = ["rdma.cc"],
     hdrs = ["rdma.h"],
     linkopts = [
-	"-libverbs",
+        "-libverbs",
     ],
     deps = [
         ":verbs_util",
