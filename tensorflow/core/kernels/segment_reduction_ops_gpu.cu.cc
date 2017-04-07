@@ -19,8 +19,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 
-#include <stdio.h>
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
