@@ -107,7 +107,7 @@ const OptimizationPassRegistry::Grouping kMklTfConvPassGroup =
 REGISTER_OPTIMIZATION(kMklTfConvPassGroup, 1, MklToTfConversionPass);
 
 Status MklToTfConversionPass::InsertConversionNodeOnEdge(
-    std::unique_ptr<Graph>* g, Edge *e) {
+    std::unique_ptr<Graph>* g, Edge* e) {
   CHECK_NOTNULL(e);
 
   Node* src = e->src();
@@ -181,7 +181,7 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
   // are candidate for inserting conversion node
   std::vector<Edge*> candidate_edges;
 
-  for (const Edge *e : (*g)->edges()) {
+  for (const Edge* e : (*g)->edges()) {
     Node* src = e->src();
     Node* dst = e->dst();
 
