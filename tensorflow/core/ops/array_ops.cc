@@ -1244,9 +1244,12 @@ REGISTER_OP("_ParallelConcatStart")
     .Attr("dtype: type")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
-      c->set_output(0, out);
+      TensorShapeProto shape_proto;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(
+          c->MakeShapeFromShapeProto(shape_proto, &output_shape));
+      c->set_output(0, output_shape);
       return Status::OK();
     })
     .Doc(R"doc(
