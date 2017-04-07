@@ -76,7 +76,7 @@ class Experiment(object):
                local_eval_frequency=None,
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60,
-               min_eval_frequency=None,
+               min_eval_frequency=1,
                delay_workers_by_global_step=False,
                export_strategies=None,
                train_steps_per_iteration=None):
@@ -116,8 +116,6 @@ class Experiment(object):
       min_eval_frequency: (applies only to train_and_evaluate). the minimum
         number of steps between evaluations. Of course, evaluation does not
         occur if no new snapshot is available, hence, this is the minimum.
-        If None, defaults to 1, unless model_dir is on GCS, in which case the
-        default is 1000.
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
       export_strategies: A list of `ExportStrategy`s, or a single one, or None.
@@ -158,12 +156,7 @@ class Experiment(object):
     self._local_eval_frequency = local_eval_frequency
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
-    # Using 1 on a non-cached file system requires a lot of overhead to
-    # read the checkpoint state file. This is particular bad on GCS, so
-    # we use a different default. This is a temporary band-aid, to be
-    # fixed holistically later (b/36498507).
-    default_min_eval_frequency = 1000 if _is_gcs(estimator.model_dir) else 1
-    self._min_eval_frequency = min_eval_frequency or default_min_eval_frequency
+    self._min_eval_frequency = min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
     self._train_monitors = train_monitors[:] if train_monitors else []
     self._eval_hooks = eval_hooks[:] if eval_hooks else []
@@ -702,7 +695,3 @@ def _new_attr_context(obj, attr):
     yield
   finally:
     setattr(obj, attr, saved)
-
-
-def _is_gcs(model_dir):
-  return model_dir and model_dir.startswith("gs://")
