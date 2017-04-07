@@ -720,10 +720,7 @@ void FillPhiloxRandom<SYCLDevice, Distribution>::operator()(
       PhiloxRandomOp<                                                        \
           SYCLDevice,                                                        \
           random::TruncatedNormalDistribution<                               \
-              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >);   \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("RandomGamma").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"),     \
-      RandomGammaOp<TYPE>)
+              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >);
 
 #define REGISTER_INT(IntType)                                    \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")               \
@@ -734,7 +731,6 @@ void FillPhiloxRandom<SYCLDevice, Distribution>::operator()(
                               .TypeConstraint<IntType>("Tout"),  \
                           RandomUniformIntOp<SYCLDevice, IntType>);
 
-TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 TF_CALL_int32(REGISTER_INT);
