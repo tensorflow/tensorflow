@@ -55,7 +55,7 @@ class ProjectorAppTest(test.TestCase):
     self._GenerateProjectorTestData()
     self._SetupWSGIApp()
     run_json = self._GetJson('/data/plugin/projector/runs')
-    self.assertEqual(run_json, ['.'])
+    self.assertTrue(run_json)
 
   def testRunsWithNoCheckpoint(self):
     self._SetupWSGIApp()
@@ -73,6 +73,19 @@ class ProjectorAppTest(test.TestCase):
     run_json = self._GetJson('/data/plugin/projector/runs')
     self.assertEqual(run_json, [])
 
+  def testRunsWithInvalidModelCheckpointPathInConfig(self):
+    config_path = os.path.join(self.log_dir, 'projector_config.pbtxt')
+    config = projector_config_pb2.ProjectorConfig()
+    config.model_checkpoint_path = 'does_not_exist'
+    embedding = config.embeddings.add()
+    embedding.tensor_name = 'var1'
+    with gfile.GFile(config_path, 'w') as f:
+      f.write(text_format.MessageToString(config))
+    self._SetupWSGIApp()
+
+    run_json = self._GetJson('/data/plugin/projector/runs')
+    self.assertEqual(run_json, [])
+
   def testInfoWithValidCheckpoint(self):
     self._GenerateProjectorTestData()
     self._SetupWSGIApp()
@@ -80,7 +93,8 @@ class ProjectorAppTest(test.TestCase):
     info_json = self._GetJson('/data/plugin/projector/info?run=.')
     self.assertItemsEqual(info_json['embeddings'], [{
         'tensorShape': [1, 2],
-        'tensorName': 'var1'
+        'tensorName': 'var1',
+        'bookmarksPath': 'bookmarks.json'
     }, {
         'tensorShape': [10, 10],
         'tensorName': 'var2'
@@ -95,8 +109,264 @@ class ProjectorAppTest(test.TestCase):
 
     url = '/data/plugin/projector/tensor?run=.&name=var1'
     tensor_bytes = self._Get(url).data
-    tensor = np.reshape(np.fromstring(tensor_bytes, dtype='float32'), [1, 2])
-    expected_tensor = np.array([[6, 6]], dtype='float32')
+    expected_tensor = np.array([[6, 6]], dtype=np.float32)
+    self._AssertTensorResponse(tensor_bytes, expected_tensor)
+
+  def testBookmarksRequestMissingRunAndName(self):
+    self._GenerateProjectorTestData()
+    self._SetupWSGIApp()
+
+    url = '/data/plugin/projector/bookmarks'
+    self.assertEqual(self._Get(url).status_code, 400)
+
+  def testBookmarksRequestMissingName(self):
+    self._GenerateProjectorTestData()
+    self._SetupWSGIApp()
+
+    url = '/data/plugin/projector/bookmarks?run=.'
+    self.assertEqual(self._Get(url).status_code, 400)
+
+  def testBookmarksRequestMissingRun(self):
+    self._GenerateProjectorTestData()
+    self._SetupWSGIApp()
+
+    url = '/data/plugin/projector/bookmarks?name=var1'
+    self.assertEqual(self._Get(url).status_code, 400)
+
+  def testBookmarksUnknownRun(self):
+    self._GenerateProjectorTestData()
+    self._SetupWSGIApp()
+
+    url = '/data/plugin/projector/bookmarks?run=unknown&name=var1'
+    self.assertEqual(self._Get(url).status_code, 400)
+
+  def testBookmarksUnknownName(self):
+    self._GenerateProjectorTestData()
+    self._SetupWSGIApp()
+
+    url = '/data/plugin/projector/bookmarks?run=.&name=unknown'
+    self.assertEqual(self._Get(url).status_code, 400)
+
+  def testBookmarks(self):
+    self._GenerateProjectorTestData()
+    self._SetupWSGIApp()
+
+    url = '/data/plugin/projector/bookmarks?run=.&name=var1'
+    bookmark = self._GetJson(url)
+    self.assertEqual(bookmark, {'a': 'b'})
+
+  def testEndpointsNoAssets(self):
+    g = ops.Graph()
+    with g.as_default():
+      plugin_asset.get_plugin_asset(projector_plugin.ProjectorPluginAsset)
+
+    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw.close()
+
+    self._SetupWSGIApp()
+    run_json = self._GetJson('/data/plugin/projector/runs')
+    self.assertEqual(run_json, [])
+
+  def testEndpointsMetadataForVariableAssets(self):
+    self._GenerateProjectorTestData()
+    g = ops.Graph()
+    with g.as_default():
+      manager = plugin_asset.get_plugin_asset(
+          projector_plugin.ProjectorPluginAsset)
+
+    metadata = projector_plugin.EmbeddingMetadata(3)
+    metadata.add_column('labels', ['a', 'b', 'c'])
+    manager.add_metadata_for_embedding_variable('test', metadata)
+
+    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw.close()
+
+    self._SetupWSGIApp()
+    run_json = self._GetJson('/data/plugin/projector/runs')
+    self.assertTrue(run_json)
+
+    run = run_json[0]
+    metedata_query = '/data/plugin/projector/metadata?run=%s&name=test' % run
+    metadata_tsv = self._Get(metedata_query).data
+    self.assertEqual(metadata_tsv, b'a\nb\nc\n')
+
+    unk_tensor_query = '/data/plugin/projector/tensor?run=%s&name=test' % run
+    response = self._Get(unk_tensor_query)
+    self.assertEqual(response.status_code, 400)
+
+    expected_tensor = np.array([[6, 6]], dtype=np.float32)
+    tensor_query = '/data/plugin/projector/tensor?run=%s&name=var1' % run
+    tensor_bytes = self._Get(tensor_query).data
+    self._AssertTensorResponse(tensor_bytes, expected_tensor)
+
+  def testEndpointsMetadataForVariableAssetsButNoCheckpoint(self):
+    g = ops.Graph()
+    with g.as_default():
+      manager = plugin_asset.get_plugin_asset(
+          projector_plugin.ProjectorPluginAsset)
+
+    metadata = projector_plugin.EmbeddingMetadata(3)
+    metadata.add_column('labels', ['a', 'b', 'c'])
+    manager.add_metadata_for_embedding_variable('test', metadata)
+
+    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw.close()
+
+    self._SetupWSGIApp()
+    run_json = self._GetJson('/data/plugin/projector/runs')
+    self.assertEqual(run_json, [])
+
+  def testEndpointsTensorAndMetadataAssets(self):
+    g = ops.Graph()
+    with g.as_default():
+      manager = plugin_asset.get_plugin_asset(
+          projector_plugin.ProjectorPluginAsset)
+
+    metadata = projector_plugin.EmbeddingMetadata(3)
+    metadata.add_column('labels', ['a', 'b', 'c'])
+    manager.add_metadata_for_embedding_variable('test', metadata)
+    expected_tensor = np.array([[1, 2], [3, 4], [5, 6]])
+    image1 = np.array([[[1, 2, 3], [4, 5, 6]],
+                       [[7, 8, 9], [10, 11, 12]]])
+    image2 = np.array([[[10, 20, 30], [40, 50, 60]],
+                       [[70, 80, 90], [100, 110, 120]]])
+    manager.add_embedding('emb', expected_tensor, metadata, [image1, image2],
+                          [2, 2])
+
+    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw.close()
+
+    self._SetupWSGIApp()
+    run_json = self._GetJson('/data/plugin/projector/runs')
+    self.assertTrue(run_json)
+
+    run = run_json[0]
+    metadata_query = '/data/plugin/projector/metadata?run=%s&name=emb' % run
+    metadata_tsv = self._Get(metadata_query).data
+    self.assertEqual(metadata_tsv, b'a\nb\nc\n')
+
+    unk_metadata_query = '/data/plugin/projector/metadata?run=%s&name=q' % run
+    response = self._Get(unk_metadata_query)
+    self.assertEqual(response.status_code, 400)
+
+    tensor_query = '/data/plugin/projector/tensor?run=%s&name=emb' % run
+    tensor_bytes = self._Get(tensor_query).data
+    self._AssertTensorResponse(tensor_bytes, expected_tensor)
+
+    unk_tensor_query = '/data/plugin/projector/tensor?run=%s&name=var1' % run
+    response = self._Get(unk_tensor_query)
+    self.assertEqual(response.status_code, 400)
+
+    image_query = '/data/plugin/projector/sprite_image?run=%s&name=emb' % run
+    image_bytes = self._Get(image_query).data
+    with ops.Graph().as_default():
+      s = session.Session()
+      image_array = image_ops.decode_png(image_bytes).eval(session=s).tolist()
+    expected_sprite_image = [
+        [[1, 2, 3], [4, 5, 6], [10, 20, 30], [40, 50, 60]],
+        [[7, 8, 9], [10, 11, 12], [70, 80, 90], [100, 110, 120]],
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    ]
+    self.assertEqual(image_array, expected_sprite_image)
+
+  def testSpriteImageRequestMissingRunAndName(self):
+    self._SetupWSGIApp()
+    q = '/data/plugin/projector/sprite_image'
+    response = self._Get(q)
+    self.assertEqual(response.status_code, 400)
+
+  def testSpriteImageRequestMissingName(self):
+    self._SetupWSGIApp()
+    q = '/data/plugin/projector/sprite_image?run=.'
+    response = self._Get(q)
+    self.assertEqual(response.status_code, 400)
+
+  def testSpriteImageRequestMissingRun(self):
+    self._SetupWSGIApp()
+    q = '/data/plugin/projector/sprite_image?name=emb'
+    response = self._Get(q)
+    self.assertEqual(response.status_code, 400)
+
+  def testSpriteImageUnknownRun(self):
+    self._GenerateProjectorTestData()
+    g = ops.Graph()
+    with g.as_default():
+      manager = plugin_asset.get_plugin_asset(
+          projector_plugin.ProjectorPluginAsset)
+    image1 = np.array([[[1, 2, 3], [4, 5, 6]],
+                       [[7, 8, 9], [10, 11, 12]]])
+    image2 = np.array([[[10, 20, 30], [40, 50, 60]],
+                       [[70, 80, 90], [100, 110, 120]]])
+    manager.add_metadata_for_embedding_variable('var1',
+                                                thumbnails=[image1, image2],
+                                                thumbnail_dim=[2, 2])
+    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw.close()
+    self._SetupWSGIApp()
+
+    q = '/data/plugin/projector/sprite_image?run=unknown&name=var1'
+    response = self._Get(q)
+    self.assertEqual(response.status_code, 400)
+
+  def testSpriteImageUnknownName(self):
+    self._GenerateProjectorTestData()
+    g = ops.Graph()
+    with g.as_default():
+      manager = plugin_asset.get_plugin_asset(
+          projector_plugin.ProjectorPluginAsset)
+    image1 = np.array([[[1, 2, 3], [4, 5, 6]],
+                       [[7, 8, 9], [10, 11, 12]]])
+    image2 = np.array([[[10, 20, 30], [40, 50, 60]],
+                       [[70, 80, 90], [100, 110, 120]]])
+    manager.add_metadata_for_embedding_variable('var1',
+                                                thumbnails=[image1, image2],
+                                                thumbnail_dim=[2, 2])
+    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw.close()
+    self._SetupWSGIApp()
+    q = '/data/plugin/projector/sprite_image?run=.&name=unknown'
+    response = self._Get(q)
+    self.assertEqual(response.status_code, 400)
+
+  def testEndpointsComboTensorAssetsAndCheckpoint(self):
+    self._GenerateProjectorTestData()
+    g = ops.Graph()
+    with g.as_default():
+      manager = plugin_asset.get_plugin_asset(
+          projector_plugin.ProjectorPluginAsset)
+
+    metadata = projector_plugin.EmbeddingMetadata(3)
+    metadata.add_column('labels', ['a', 'b', 'c'])
+    manager.add_metadata_for_embedding_variable('var1', metadata)
+
+    new_tensor_values = np.array([[1, 2], [3, 4], [5, 6]])
+    manager.add_embedding('new_tensor', new_tensor_values)
+
+    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw.close()
+
+    self._SetupWSGIApp()
+    run_json = self._GetJson('/data/plugin/projector/runs')
+    self.assertTrue(run_json)
+
+    run = run_json[0]
+    var1_values = np.array([[6, 6]], dtype=np.float32)
+    var1_tensor_query = '/data/plugin/projector/tensor?run=%s&name=var1' % run
+    tensor_bytes = self._Get(var1_tensor_query).data
+    self._AssertTensorResponse(tensor_bytes, var1_values)
+
+    metadata_query = '/data/plugin/projector/metadata?run=%s&name=var1' % run
+    metadata_tsv = self._Get(metadata_query).data
+    self.assertEqual(metadata_tsv, b'a\nb\nc\n')
+
+    tensor_query = '/data/plugin/projector/tensor?run=%s&name=new_tensor' % run
+    tensor_bytes = self._Get(tensor_query).data
+    self._AssertTensorResponse(tensor_bytes, new_tensor_values)
+
+  def _AssertTensorResponse(self, tensor_bytes, expected_tensor):
+    tensor = np.reshape(np.fromstring(tensor_bytes, dtype=np.float32),
+                        expected_tensor.shape)
     self.assertTrue(np.array_equal(tensor, expected_tensor))
 
   def testPluginIsActive(self):
@@ -137,6 +407,11 @@ class ProjectorAppTest(test.TestCase):
     embedding = config.embeddings.add()
     # Add an embedding by its canonical tensor name.
     embedding.tensor_name = 'var1:0'
+
+    with gfile.GFile(os.path.join(self.log_dir, 'bookmarks.json'), 'w') as f:
+      f.write('{"a": "b"}')
+    embedding.bookmarks_path = 'bookmarks.json'
+
     config_pbtxt = text_format.MessageToString(config)
     with gfile.GFile(config_path, 'w') as f:
       f.write(config_pbtxt)
@@ -355,6 +630,30 @@ class ProjectorPluginAssetTest(test.TestCase):
           'test', np.array([[1], [2], [3]]), thumbnails=thumbnails,
           thumbnail_dim=[4])
 
+  def testAddEmbeddingThumbnailListHasNoEntries(self):
+    manager = plugin_asset.get_plugin_asset(
+        projector_plugin.ProjectorPluginAsset)
+
+    with self.assertRaises(ValueError):
+      manager.add_embedding('test', np.array([[1]]), thumbnails=[],
+                            thumbnail_dim=[1, 1])
+
+  def testAddEmbeddingThumbnailListNotOfRank4(self):
+    manager = plugin_asset.get_plugin_asset(
+        projector_plugin.ProjectorPluginAsset)
+
+    with self.assertRaises(ValueError):
+      manager.add_embedding('test2', np.array([[1]]),
+                            thumbnails=np.array([[1]]), thumbnail_dim=[1, 1])
+
+  def testAddEmbeddingThumbnailListEntriesNot3DTensors(self):
+    manager = plugin_asset.get_plugin_asset(
+        projector_plugin.ProjectorPluginAsset)
+
+    with self.assertRaises(ValueError):
+      manager.add_embedding('test3', np.array([[1]]), thumbnails=[[1, 2, 3]],
+                            thumbnail_dim=[1, 1])
+
   def testAddEmbeddingWithMetadataOfIncorrectLength(self):
     manager = plugin_asset.get_plugin_asset(
         projector_plugin.ProjectorPluginAsset)
@@ -405,8 +704,8 @@ class ProjectorPluginAssetTest(test.TestCase):
 
     with ops.Graph().as_default() as g:
       plugin_asset.get_plugin_asset(projector_plugin.ProjectorPluginAsset)
-      fw = writer.FileWriter(logdir)
-      fw.add_graph(g)
+      fw = writer.FileWriter(logdir, graph=g)
+      fw.close()
 
     with gfile.Open(os.path.join(plugin_dir, 'projector_config.pbtxt')) as f:
       content = f.read()
@@ -418,8 +717,8 @@ class ProjectorPluginAssetTest(test.TestCase):
                               projector_plugin.ProjectorPluginAsset.plugin_name)
 
     with ops.Graph().as_default() as g:
-      fw = writer.FileWriter(logdir)
-      fw.add_graph(g)
+      fw = writer.FileWriter(logdir, graph=g)
+      fw.close()
 
     self.assertFalse(
         gfile.Exists(plugin_dir),
