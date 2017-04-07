@@ -125,6 +125,23 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   }
 }
 
+Status OpKernel::MakeShape(const Tensor& shape, TensorShape* out) const {
+  if (!IsLegacyVector(shape.shape())) {
+    return errors::InvalidArgument(
+        "shape must be a vector of {int32,int64}, got shape ",
+        shape.shape().DebugString());
+  }
+  if (shape.dtype() == DataType::DT_INT32) {
+    auto vec = shape.flat<int32>();
+    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
+  } else if (shape.dtype() == DataType::DT_INT64) {
+    auto vec = shape.flat<int64>();
+    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
+  } else {
+    return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
+  }
+}
+
 void AsyncOpKernel::Compute(OpKernelContext* context) {
   Notification n;
   ComputeAsync(context, [&n]() { n.Notify(); });
