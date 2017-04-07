@@ -868,7 +868,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x2x1_6x1x1x1) {
       computation->root_instruction()->dimensions();
   EXPECT_EQ(1, broadcast_dims.size());
   EXPECT_TRUE(broadcast_dims[0] == 1 || broadcast_dims[0] == 2 ||
-              broadcast_dims[3] == 3);
+              broadcast_dims[0] == 3);
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4x2_6x8) {

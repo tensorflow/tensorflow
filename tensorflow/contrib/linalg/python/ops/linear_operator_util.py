@@ -289,6 +289,53 @@ def matmul_with_broadcast(a,
         b_is_sparse=b_is_sparse)
 
 
+def matrix_adjoint(a, name="matrix_adjoint"):
+  """Transposes last two dimensions of tensor `a`, and takes complex conjugate.
+
+  If `a` is real valued, the result is equivalent to `matrix_transpose`.
+
+  For example:
+
+  ```python
+  # Matrix with no batch dimension.
+  # 'x' is [[1 2 3j]
+  #         [4 5 -6j]]
+  tf.matrix_adjoint(x) ==> [[1 4]
+                            [2 5]
+                            [-3j 6j]]
+
+  # Matrix with two batch dimensions.
+  # x.shape is [1, 2, 3, 4]
+  # tf.matrix_adjoint(x) is shape [1, 2, 4, 3]
+  ```
+
+  Note that `tf.matmul` provides kwargs allowing for adjoint of arguments.  This
+  is done with minimal cost, and is preferable to using this function. E.g.
+
+  ```
+  # Good!  Adjoint is taken at minimal additional cost.
+  tf.matmul(matrix, b, adjoint_b=True)
+
+  # Inefficient!
+  tf.matmul(matrix, tf.matrix_adjoint(b))
+  ```
+
+  Args:
+    a: A `Tensor` with `rank >= 2`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A batch matrix `Tensor` with same `dtype` as `a`.
+
+  Raises:
+    ValueError:  If `a` is determined statically to have `rank < 2`.
+  """
+  with ops.name_scope(name, values=[a]):
+    a = ops.convert_to_tensor(a, name="a")
+    a_transpose = array_ops.matrix_transpose(a)
+    return math_ops.conj(a_transpose)
+
+
 def shape_tensor(shape, name=None):
   """Convert Tensor using default type, unless empty list or tuple."""
   # Works just like random_ops._ShapeTensor.

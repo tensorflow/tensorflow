@@ -28,6 +28,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import analyzer_cli
+from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.lib import debug_data
@@ -569,6 +570,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         cls._analyzer.print_source,
         cls._analyzer.get_help("print_source"),
         prefix_aliases=["ps"])
+    cls._registry.register_command_handler(
+        "list_source",
+        cls._analyzer.list_source,
+        cls._analyzer.get_help("list_source"),
+        prefix_aliases=["ls"])
 
   @classmethod
   def tearDownClass(cls):
@@ -906,7 +912,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         ["ERROR: There is no node named \"bar\" in the partition graphs"],
         out.lines)
     # Check color indicating error.
-    self.assertEqual({0: [(0, 59, "red")]}, out.font_attr_segs)
+    self.assertEqual({0: [(0, 59, cli_shared.COLOR_RED)]}, out.font_attr_segs)
     check_main_menu(self, out, list_tensors_enabled=True)
 
   def testPrintTensor(self):
@@ -1172,7 +1178,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
                      out.font_attr_segs[index + 1][0][2].content)
     # simple_mul_add/u/Assign is not used in this run because the Variable has
     # already been initialized.
-    self.assertEqual("blue", out.font_attr_segs[index + 2][0][2])
+    self.assertEqual(cli_shared.COLOR_BLUE, out.font_attr_segs[index + 2][0][2])
     self.assertEqual("pt simple_mul_add/u/read",
                      out.font_attr_segs[index + 3][0][2].content)
 
@@ -1234,6 +1240,12 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         screen_info={"cols": 80})
 
     self.assertIn("Omitted 2 source lines", out.lines[0])
+    self.assertTrue(out.lines[0].endswith("+5"))
+    expand_lines_command = out.font_attr_segs[0][-1][2].content
+    self.assertStartsWith(expand_lines_command,
+                          "ps %s " % self._curr_file_path)
+    self.assertIn("-b 1", expand_lines_command)
+
     self.assertIsNone(self._findSourceLine(out, 1))
     self.assertIsNone(self._findSourceLine(out, 2))
     self.assertIsNotNone(self._findSourceLine(out, 3))
@@ -1250,7 +1262,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
                      out.font_attr_segs[index + 1][0][2].content)
     # simple_mul_add/u/Assign is not used in this run because the Variable has
     # already been initialized.
-    self.assertEqual("blue", out.font_attr_segs[index + 2][0][2])
+    self.assertEqual(cli_shared.COLOR_BLUE, out.font_attr_segs[index + 2][0][2])
     self.assertEqual("pt simple_mul_add/u/read",
                      out.font_attr_segs[index + 3][0][2].content)
 
@@ -1266,10 +1278,81 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         ["L%d         u = variables.Variable(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u",
-         "    (... Omitted 2 of 3 op(s) ...)"],
+         "    (... Omitted 2 of 3 op(s) ...) +5"],
         out.lines[index : index + 3])
     self.assertEqual("pt simple_mul_add/u",
                      out.font_attr_segs[index + 1][0][2].content)
+    more_elements_command = out.font_attr_segs[index + 2][-1][2].content
+    self.assertStartsWith(more_elements_command,
+                          "ps %s " % self._curr_file_path)
+    self.assertIn(" -m 6", more_elements_command)
+
+  def testListSourceWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command("list_source", [])
+
+    non_tf_lib_files_start = [
+        i for i in xrange(len(out.lines))
+        if out.lines[i].startswith("Source file path")][0] + 1
+    non_tf_lib_files_end = [
+        i for i in xrange(len(out.lines))
+        if out.lines[i].startswith("TensorFlow Python library file(s):")][0] - 1
+    non_tf_lib_files = [
+        line.split(" ")[0] for line
+        in out.lines[non_tf_lib_files_start : non_tf_lib_files_end]]
+    self.assertIn(self._curr_file_path, non_tf_lib_files)
+
+    # Check that the TF library files are marked with special color attribute.
+    for i in xrange(non_tf_lib_files_end + 1, len(out.lines)):
+      if not out.lines[i]:
+        continue
+      for attr_seg in  out.font_attr_segs[i]:
+        self.assertTrue(cli_shared.COLOR_GRAY in attr_seg[2] or
+                        attr_seg[2] == cli_shared.COLOR_GRAY)
+
+  def testListSourceWithNodeNameFilterWithMatchesWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command("list_source", ["-n", ".*/read"])
+
+    self.assertStartsWith(out.lines[1], "Node name regex filter: \".*/read\"")
+
+    non_tf_lib_files_start = [
+        i for i in xrange(len(out.lines))
+        if out.lines[i].startswith("Source file path")][0] + 1
+    non_tf_lib_files_end = [
+        i for i in xrange(len(out.lines))
+        if out.lines[i].startswith("TensorFlow Python library file(s):")][0] - 1
+    non_tf_lib_files = [
+        line.split(" ")[0] for line
+        in out.lines[non_tf_lib_files_start : non_tf_lib_files_end]]
+    self.assertIn(self._curr_file_path, non_tf_lib_files)
+
+    # Check that the TF library files are marked with special color attribute.
+    for i in xrange(non_tf_lib_files_end + 1, len(out.lines)):
+      if not out.lines[i]:
+        continue
+      for attr_seg in  out.font_attr_segs[i]:
+        self.assertTrue(cli_shared.COLOR_GRAY in attr_seg[2] or
+                        attr_seg[2] == cli_shared.COLOR_GRAY)
+
+  def testListSourceWithNodeNameFilterWithNoMatchesWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command("list_source", ["-n", "^$"])
+
+    self.assertEqual([
+        "List of source files that created nodes in this run",
+        "Node name regex filter: \"^$\"", "",
+        "[No source file information.]"], out.lines)
+
+  def testListSourceWithPathAndNodeNameFiltersWorks(self):
+    self._debug_dump.set_python_graph(self._sess.graph)
+    out = self._registry.dispatch_command(
+        "list_source", ["-p", self._curr_file_path, "-n", ".*read"])
+
+    self.assertEqual([
+        "List of source files that created nodes in this run",
+        "File path regex filter: \"%s\"" % self._curr_file_path,
+        "Node name regex filter: \".*read\"", ""], out.lines[:4])
 
 
 class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):

@@ -196,7 +196,7 @@ def broadcast_dynamic_shape(shape_x, shape_y):
 
   Args:
     shape_x: A rank 1 integer `Tensor`, representing the shape of x.
-    shape_y: A rank 1 integer `Tensor`, representing the shape of x.
+    shape_y: A rank 1 integer `Tensor`, representing the shape of y.
   Returns:
     A rank 1 integer `Tensor` representing the broadcasted shape.
   """
@@ -1290,6 +1290,17 @@ def matrix_transpose(a, name="matrix_transpose"):
   # Matrix with two batch dimensions.
   # x.shape is [1, 2, 3, 4]
   # tf.matrix_transpose(x) is shape [1, 2, 4, 3]
+  ```
+
+  Note that `tf.matmul` provides kwargs allowing for transpose of arguments.
+  This is done with minimal cost, and is preferable to using this function. E.g.
+
+  ```
+  # Good!  Transpose is taken at minimal additional cost.
+  tf.matmul(matrix, b, transpose_b=True)
+
+  # Inefficient!
+  tf.matmul(matrix, tf.matrix_transpose(b))
   ```
 
   Args:

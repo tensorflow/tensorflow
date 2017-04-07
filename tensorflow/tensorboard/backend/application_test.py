@@ -51,6 +51,40 @@ from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.plugins import base_plugin
 
 
+class FakePlugin(base_plugin.TBPlugin):
+  """A plugin with no functionality."""
+
+  def __init__(self, plugin_name, is_active_value):
+    """Constructs a fake plugin.
+
+    Args:
+      plugin_name: The name of this plugin.
+      is_active_value: Whether the plugin is active.
+    """
+    self.plugin_name = plugin_name
+    self._is_active_value = is_active_value
+
+  def get_plugin_apps(self, multiplexer, logdir):
+    """Returns a mapping from routes to handlers offered by this plugin.
+
+    Args:
+      multiplexer: The event multiplexer.
+      logdir: The path to the directory containing logs.
+
+    Returns:
+      An empty dict. This plugin offers no routes.
+    """
+    return {}
+
+  def is_active(self):
+    """Returns whether this plugin is active.
+
+    Returns:
+      A boolean. Whether this plugin is active.
+    """
+    return self._is_active_value
+
+
 class TensorboardServerTest(test.TestCase):
   _only_use_meta_graph = False  # Server data contains only a GraphDef
 
@@ -62,7 +96,10 @@ class TensorboardServerTest(test.TestCase):
     multiplexer = event_multiplexer.EventMultiplexer(
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
-    plugins = []
+    plugins = [
+        FakePlugin(plugin_name='foo', is_active_value=True),
+        FakePlugin(plugin_name='bar', is_active_value=False)
+    ]
     app = application.TensorBoardWSGIApp(
         self.temp_dir, plugins, multiplexer, reload_interval=0)
     try:
@@ -123,6 +160,12 @@ class TensorboardServerTest(test.TestCase):
     """Test the format of the data/logdir endpoint."""
     parsed_object = self._getJson('/data/logdir')
     self.assertEqual(parsed_object, {'logdir': self.temp_dir})
+
+  def testPluginsListing(self):
+    """Test the format of the data/plugins_listing endpoint."""
+    parsed_object = self._getJson('/data/plugins_listing')
+    # Plugin foo is active. Plugin bar is not.
+    self.assertEqual(parsed_object, {'foo': True, 'bar': False})
 
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
@@ -484,29 +527,21 @@ class TensorboardSimpleServerConstructionTest(test.TestCase):
 class TensorBoardApplcationConstructionTest(test.TestCase):
 
   def testExceptions(self):
-
-    class UnnamedPlugin(base_plugin.TBPlugin):
-
-      def get_plugin_apps(self):
-        pass
-
-    class MockPlugin(UnnamedPlugin):
-      plugin_name = 'mock'
-
-    class OtherMockPlugin(UnnamedPlugin):
-      plugin_name = 'mock'
-
     logdir = '/fake/foo'
     multiplexer = event_multiplexer.EventMultiplexer()
 
     # Fails if there is an unnamed plugin
     with self.assertRaises(ValueError):
-      plugins = [UnnamedPlugin()]
+      # This plugin lacks a name.
+      plugins = [FakePlugin(plugin_name=None, is_active_value=True)]
       application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
 
     # Fails if there are two plugins with same name
     with self.assertRaises(ValueError):
-      plugins = [MockPlugin(), OtherMockPlugin()]
+      plugins = [
+          FakePlugin(plugin_name='foo', is_active_value=True),
+          FakePlugin(plugin_name='foo', is_active_value=True),
+      ]
       application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
 
 

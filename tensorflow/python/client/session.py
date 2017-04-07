@@ -1094,8 +1094,9 @@ class BaseSession(SessionInterface):
     if tensors_to_delete:
       feeds = {}
       fetches = []
-      for tensor_handle in tensors_to_delete:
+      for deleter_key, tensor_handle in enumerate(tensors_to_delete):
         holder, deleter = session_ops._get_handle_deleter(self.graph,
+                                                          deleter_key,
                                                           tensor_handle)
         feeds[holder] = tensor_handle
         fetches.append(deleter)

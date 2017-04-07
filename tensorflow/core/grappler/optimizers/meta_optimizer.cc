@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -37,6 +38,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
   if (optimizer == "layout") {
     graph_optimizer.reset(new LayoutOptimizer());
   }
+  if (optimizer == "memory") {
+    graph_optimizer.reset(new MemoryOptimizer());
+  }
   return graph_optimizer;
 }
 
@@ -55,8 +59,13 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(
           std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
     }
+    if (cfg_.memory_optimization() > 0) {
+      optimizers.push_back(
+          std::unique_ptr<GraphOptimizer>(new MemoryOptimizer()));
+    }
   } else {
-    std::set<string> avaliable_optimizers = {"pruning", "constfold", "layout"};
+    std::set<string> avaliable_optimizers = {"pruning", "constfold", "layout",
+                                             "memory"};
     for (const auto& optimizer : cfg_.optimizers()) {
       if (avaliable_optimizers.find(optimizer) != avaliable_optimizers.end()) {
         optimizers.push_back(NewOptimizer(optimizer));
@@ -81,7 +90,6 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           optimizer->Optimize(nullptr, optimized_item, optimized_graph));
     }
   }
-
   // Copy the graph version.
   *optimized_graph->mutable_versions() = item.graph.versions();
 

@@ -252,7 +252,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              save_summaries_secs=None,
                              config=None,
                              stop_grace_period_secs=120,
-                             log_step_count_steps=10000):
+                             log_step_count_steps=100):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also

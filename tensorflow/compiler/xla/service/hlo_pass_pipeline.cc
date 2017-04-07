@@ -40,6 +40,8 @@ void DumpModule(const Compiler::HloDumper& dumper_, const HloModule& module,
 }  // namespace
 
 StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
+  run_called_ = true;
+
   legacy_flags::HloPassPipelineFlags* flags =
       legacy_flags::GetHloPassPipelineFlags();
   std::vector<string> tmp =
