@@ -131,7 +131,8 @@ class DenseTest(test.TestCase):
 
     inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None, 3])
     dense = core_layers.Dense(4, name='my_dense')
-    dense(inputs)
+    with self.assertRaises(ValueError):
+      dense(inputs)
 
   def testActivation(self):
     dense = core_layers.Dense(2, activation=nn_ops.relu, name='dense1')
@@ -281,7 +282,7 @@ class DenseTest(test.TestCase):
         [None, 2],
         dense._compute_output_shape(ts([None, 3])).as_list())
     self.assertEqual(
-        [None, 4, 2],
+        [None, 2],
         dense._compute_output_shape(ts([None, 4, 3])).as_list())
     # pylint: enable=protected-access
 
