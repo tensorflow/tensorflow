@@ -206,14 +206,16 @@ def main(unused_argv):
           init_op=init_op,
           local_init_op=local_init_op,
           ready_for_local_init_op=ready_for_local_init_op,
-          recovery_wait_secs=1,
+          save_model_secs=60,
+          recovery_wait_secs=10,
           global_step=global_step)
     else:
       sv = tf.train.Supervisor(
           is_chief=is_chief,
           logdir=train_dir,
           init_op=init_op,
-          recovery_wait_secs=1,
+          save_model_secs=60,
+          recovery_wait_secs=10,
           global_step=global_step)
 
     sess_config = tf.ConfigProto(
