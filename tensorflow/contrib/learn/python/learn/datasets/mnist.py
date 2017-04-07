@@ -27,7 +27,8 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python.framework import dtypes
 
-SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
+# CVDF mirror of http://yann.lecun.com/exdb/mnist/
+SOURCE_URL = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
 
 
 def _read32(bytestream):

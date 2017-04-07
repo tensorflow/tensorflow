@@ -82,6 +82,21 @@ class DebuggerPlugin(base_plugin.TBPlugin):
         _HEALTH_PILLS_ROUTE: self._serve_health_pills_handler,
     }
 
+  def is_active(self):
+    """Determines whether this plugin is active.
+
+    This plugin is active if any health pills information is present for any
+    run. This method must be called only after get_plugin_apps has been called.
+
+    Returns:
+      A boolean. Whether this plugin is active.
+    """
+    for run_name in self._event_multiplexer.Runs():
+      if self._event_multiplexer.GetOpsWithHealthPills(run_name):
+        return True
+
+    return False
+
   @wrappers.Request.application
   def _serve_health_pills_handler(self, request):
     """A (wrapped) werkzeug handler for serving health pills.

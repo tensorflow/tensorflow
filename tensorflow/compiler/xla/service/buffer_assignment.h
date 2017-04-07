@@ -465,7 +465,7 @@ class BufferAssigner {
   // ColocatedBufferSet aggregates a set of related LogicalBuffers from 'module'
   // which should be colocated in the same buffer allocation.
   void BuildColocatedBufferSets(
-      const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+      const HloModule* module, const BufferLiveness& buffer_liveness,
       std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
   // For each buffer set in 'colocated_buffer_sets', assigns all buffers in the
@@ -480,6 +480,14 @@ class BufferAssigner {
   // the invariant that all sets in 'colocated_buffer_sets' are disjoint.
   void AddSetToColocatedBufferSets(
       const std::vector<const LogicalBuffer*>& colocated_set,
+      std::vector<ColocatedBufferSet>* colocated_buffer_sets);
+
+  // Conceptually the same as AddSetToColocatedBufferSets, but specific to the
+  // colocated buffers for while instructions.
+  void AddWhileSetToColocatedBufferSets(
+      const std::vector<const LogicalBuffer*>& colocated_set,
+      const LogicalBuffer* while_init_buffer, const HloInstruction* while_hlo,
+      const HloComputation& computation, const BufferLiveness& buffer_liveness,
       std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
   const HloModule* module_;

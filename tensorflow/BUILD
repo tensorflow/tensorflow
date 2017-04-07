@@ -312,6 +312,9 @@ filegroup(
         "//tensorflow/tensorboard/plugins/projector:all_files",
         "//tensorflow/tensorboard/plugins/text:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
+        "//tensorflow/tools/api/golden:all_files",
+        "//tensorflow/tools/api/lib:all_files",
+        "//tensorflow/tools/api/tests:all_files",
         "//tensorflow/tools/common:all_files",
         "//tensorflow/tools/compatibility:all_files",
         "//tensorflow/tools/dist_test/server:all_files",
@@ -351,9 +354,24 @@ filegroup(
 # -------------------------------------------
 cc_binary(
     name = "libtensorflow.so",
+    linkopts = select({
+        "//tensorflow:darwin": [
+            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
+            "//tensorflow/c:exported_symbols.lds",
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-z defs",
+            "-s",
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "//tensorflow/c:version_script.lds",
+        ],
+    }),
     linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:exported_symbols.lds",
+        "//tensorflow/c:version_script.lds",
         "//tensorflow/core:tensorflow",
     ],
 )

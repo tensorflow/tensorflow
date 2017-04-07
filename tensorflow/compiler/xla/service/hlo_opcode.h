@@ -104,6 +104,9 @@ inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {
 // Returns true iff the given opcode is a comparison operation.
 bool HloOpcodeIsComparison(HloOpcode opcode);
 
+// Returns true iff the given opcode has variadic operands.
+bool HloOpcodeIsVariadic(HloOpcode opcode);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_OPCODE_H_

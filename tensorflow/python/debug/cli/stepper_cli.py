@@ -68,19 +68,19 @@ class NodeStepperCLI(object):
   _UPDATED_ATTRIBUTE = "bold"
 
   _STATE_COLORS = {
-      STATE_CONT: "green",
-      STATE_DIRTY_VARIABLE: "magenta",
-      STATE_DUMPED_INTERMEDIATE: "blue",
-      STATE_OVERRIDDEN: "yellow",
-      STATE_IS_PLACEHOLDER: "cyan",
-      STATE_UNFEEDABLE: "red",
+      STATE_CONT: cli_shared.COLOR_GREEN,
+      STATE_DIRTY_VARIABLE: cli_shared.COLOR_MAGENTA,
+      STATE_DUMPED_INTERMEDIATE: cli_shared.COLOR_BLUE,
+      STATE_OVERRIDDEN: cli_shared.COLOR_YELLOW,
+      STATE_IS_PLACEHOLDER: cli_shared.COLOR_CYAN,
+      STATE_UNFEEDABLE: cli_shared.COLOR_RED,
   }
 
   _FEED_COLORS = {
-      stepper.NodeStepper.FEED_TYPE_CLIENT: "white",
-      stepper.NodeStepper.FEED_TYPE_HANDLE: "green",
-      stepper.NodeStepper.FEED_TYPE_OVERRIDE: "yellow",
-      stepper.NodeStepper.FEED_TYPE_DUMPED_INTERMEDIATE: "blue",
+      stepper.NodeStepper.FEED_TYPE_CLIENT: cli_shared.COLOR_WHITE,
+      stepper.NodeStepper.FEED_TYPE_HANDLE: cli_shared.COLOR_GREEN,
+      stepper.NodeStepper.FEED_TYPE_OVERRIDE: cli_shared.COLOR_YELLOW,
+      stepper.NodeStepper.FEED_TYPE_DUMPED_INTERMEDIATE: cli_shared.COLOR_BLUE,
   }
 
   def __init__(self, node_stepper):
