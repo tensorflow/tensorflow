@@ -2372,14 +2372,14 @@ namespace {
 Status ParticalReductionShapeFn(InferenceContext* c) {
   ShapeHandle handle;
   DimensionHandle dimhandle;
-  // "data" must have rank at least 1
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &handle));
   // "indices" must have rank 2 and the number of columns must be 2
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &handle));
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(c->input(1),1), c->MakeDim(2), &dimhandle));
+  // "data" must have rank at least 1
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &handle));
   // shape of output tensor
-  // TODO: change this to support different rank
-  c->set_output(0, c->Matrix(c->Dim(c->input(1),0),c->Dim(c->input(0),1)));
+  TF_RETURN_IF_ERROR(c->ReplaceDim(handle, 0, c->Dim(c->input(0),0), &handle));
+  c->set_output(0, handle);
   return Status::OK();
 }
 
@@ -2393,9 +2393,16 @@ REGISTER_OP("PartialSum")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
-Dynamically sum rows of a matrix according to start and end indices specified at "index".
-For example if input is [[1,1,1],[10,10,10],[100,100,100],[1000,1000,1000]] and
-index is [[0,1],[1,1],[0,2]], the the output will be [[1,1,1],[0,0,0],[11,11,11]]
-)doc"); // TODO: change the doc here to support more ranks
+Dynamically sum over the first dimension of a tensor according to start and end
+indices specified at "index". For example if input is
+[[1,1,1],[10,10,10],[100,100,100],[1000,1000,1000]] and index is [[0,1],[1,1],[0,2]],
+the the output will be [[1,1,1],[0,0,0],[11,11,11]]
+
+data: The source of data where the sum will be taken from.
+indices: indices that controls which part will be summed.
+T: the type of data.
+Tindices: the type of indices, must be int32 or int64.
+output: the computed sum values.
+)doc");
 
 }  // namespace tensorflow
