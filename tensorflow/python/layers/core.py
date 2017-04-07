@@ -108,15 +108,17 @@ class Dense(base._Layer):  # pylint: disable=protected-access
       raise ValueError('Inputs to `Dense` should have known rank.')
     if len(input_shape) < 2:
       raise ValueError('Inputs to `Dense` should have rank >= 2.')
-    if input_shape[-1].value is None:
-      raise ValueError('The last dimension of the inputs to `Dense` '
+    if None in [s.value for s in input_shape[1:]]:
+      raise ValueError('The dimensions other than first of the inputs to `Dense` '
                        'should be defined. Found `None`.')
     # Note that we set `trainable=True` because this is a trainable
     # weight of the layer. If the layer is not trainable
     # (self.trainable = False), the variable will not be added to
     # tf.trainable_variables(), and self.trainable_weights will be empty.
+    kernel_input_shape = six.moves.reduce(lambda x,y: x*y, input_shape.as_list()[1:])
+
     self.kernel = vs.get_variable('kernel',
-                                  shape=[input_shape[-1].value, self.units],
+                                  shape=[kernel_input_shape, self.units],
                                   initializer=self.kernel_initializer,
                                   regularizer=self.kernel_regularizer,
                                   dtype=self.dtype,
@@ -133,16 +135,21 @@ class Dense(base._Layer):  # pylint: disable=protected-access
 
   def call(self, inputs):
     inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
-    shape = inputs.get_shape().as_list()
-    output_shape = shape[:-1] + [self.units]
-    if len(output_shape) > 2:
-      # Broadcasting is required for the inputs.
-      outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
-                                                             [0]])
-      # Reshape the output back to the original ndim of the input.
-      outputs.set_shape(output_shape)
-    else:
-      outputs = standard_ops.matmul(inputs, self.kernel)
+    inputs_rank = inputs.get_shape().ndims
+    output_shape = shape[:1] + [self.units]
+
+    if inputs_rank > 2:
+      inputs_shape = array_ops.shape(inputs)
+      batch_dim = array_ops.slice(inputs_shape, [0], [1])
+      spatial_dims = array_ops.slice(inputs_shape, [1], [inputs_rank - 1])
+
+      flat_spatial_dim = math_ops.reduce_prod(spatial_dims)
+      flat_spatial_dim = array_ops.expand_dims(flat_spatial_dim, 0)
+      flat_shape = array_ops.concat([batch_dim, flat_spatial_dim], 0)
+
+      inputs = array_ops.reshape(inputs, flat_shape)
+
+    outputs = standard_ops.matmul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
     if self.activation is not None:
@@ -152,11 +159,11 @@ class Dense(base._Layer):  # pylint: disable=protected-access
   def _compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
-    if input_shape[-1].value is None:
+    if None in [s.value for s in input_shape[1:]]:
       raise ValueError(
-          'The innermost dimension of input_shape must be defined, but saw: %s'
+          'The dimensions other than first of input_shape must be defined, but saw: %s'
           % input_shape)
-    return input_shape[:-1].concatenate(self.units)
+    return input_shape[:1].concatenate(self.units)
 
 
 def dense(

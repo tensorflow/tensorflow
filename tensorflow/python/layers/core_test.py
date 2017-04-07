@@ -102,11 +102,11 @@ class DenseTest(test.TestCase):
 
     inputs = random_ops.random_uniform((5, 2, 3), seed=1)
     outputs = dense(inputs)
-    self.assertEqual(outputs.get_shape().as_list(), [5, 2, 7])
+    self.assertEqual(outputs.get_shape().as_list(), [5, 7])
 
     inputs = random_ops.random_uniform((1, 2, 4, 3), seed=1)
     outputs = dense.apply(inputs)
-    self.assertEqual(outputs.get_shape().as_list(), [1, 2, 4, 7])
+    self.assertEqual(outputs.get_shape().as_list(), [1, 7])
 
   def testCallOnPlaceHolder(self):
     inputs = array_ops.placeholder(dtype=dtypes.float32)
