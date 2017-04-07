@@ -491,8 +491,18 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   flat_input = nest.flatten(inputs)
 
   if not time_major:
-    # (B,T,D) => (T,B,D)
-    flat_input = tuple(array_ops.transpose(input_, [1, 0, 2])
+    def _transpose_indices(x):
+      # Only swap the first two dimensions; rest are unchanged.
+      x = ops.convert_to_tensor(x)
+      x_rank = x.get_shape().ndims
+      if x_rank is None:
+        x_rank = array_ops.rank(x)
+        indices = array_ops.concat([[1, 0], math_ops.range(2, x_rank)], 0)
+      else:
+        indices = [1, 0] + list(range(2, x_rank))
+      return indices
+    # (B, T, ...) => (T, B, ...)
+    flat_input = tuple(array_ops.transpose(input_, _transpose_indices(input_))
                        for input_ in flat_input)
 
   parallel_iterations = parallel_iterations or 32
@@ -557,10 +567,10 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     if not time_major:
       # (T,B,D) => (B,T,D)
       flat_output = nest.flatten(outputs)
-      flat_output = [array_ops.transpose(output, [1, 0, 2])
+      flat_output = [array_ops.transpose(output, _transpose_indices(output))
                      for output in flat_output]
-      outputs = nest.pack_sequence_as(
-          structure=outputs, flat_sequence=flat_output)
+      outputs = nest.pack_sequence_as(structure=outputs,
+                                      flat_sequence=flat_output)
 
     return (outputs, final_state)
 
@@ -618,22 +628,24 @@ def _dynamic_rnn_loop(cell,
   inputs_got_shape = tuple(input_.get_shape().with_rank_at_least(3)
                            for input_ in flat_input)
 
-  const_time_steps, const_batch_size = inputs_got_shape[0].as_list()[:2]
+  # ensure that the time-steps and batch-sizes are the same, if available:
+  const_time_steps,const_batch_size = inputs_got_shape[0][:2].as_list()
+  if const_time_steps is not None:
+    for shape in inputs_got_shape[1:]:
+      got_time_steps = shape[0].value
+      if got_time_steps is not None:
+        if const_time_steps != got_time_steps:
+          raise ValueError(
+              "Time steps is not the same for all the elements in the input in "
+              "a batch.")
+  if const_batch_size is not None:
+    for shape in inputs_got_shape[1:]:
+      got_batch_size = shape[1].value
+      if got_batch_size is not None:
+        if const_batch_size != got_batch_size:
+          raise ValueError(
+              "Batch_size is not the same for all the elements in the input.")
 
-  for shape in inputs_got_shape:
-    if not shape[2:].is_fully_defined():
-      raise ValueError(
-          "Input size (depth of inputs) must be accessible via shape inference,"
-          " but saw value None.")
-    got_time_steps = shape[0].value
-    got_batch_size = shape[1].value
-    if const_time_steps != got_time_steps:
-      raise ValueError(
-          "Time steps is not the same for all the elements in the input in a "
-          "batch.")
-    if const_batch_size != got_batch_size:
-      raise ValueError(
-          "Batch_size is not the same for all the elements in the input.")
 
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
