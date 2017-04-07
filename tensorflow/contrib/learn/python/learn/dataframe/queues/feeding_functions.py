@@ -25,5 +25,4 @@ from tensorflow.python.estimator.inputs.queues.feeding_functions import _enqueue
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _GeneratorFeedFn
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _OrderedDictNumpyFeedFn
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _PandasFeedFn
-from tensorflow.python.estimator.inputs.queues.feeding_functions import _GeneratorFeedFn
 # pylint: enable=unused-import

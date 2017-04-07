@@ -2023,7 +2023,7 @@ def top_k(input, k=1, sorted=True, name=None):
 def conv1d(value, filters, stride, padding,
            use_cudnn_on_gpu=None, data_format=None,
            name=None):
-  """Computes a 1-D convolution given 3-D input and filter tensors.
+  r"""Computes a 1-D convolution given 3-D input and filter tensors.
 
   Given an input tensor of shape
     [batch, in_width, in_channels]
