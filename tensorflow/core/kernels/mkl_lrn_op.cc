@@ -220,7 +220,7 @@ class MklLRNOp : public OpKernel {
           dnnLayoutGetMemorySize_F32(
               static_cast<dnnLayout_t>(mkl_output_mkl_shape.GetMklLayout())) /
           sizeof(T));
-      AllocateOutputSetMklshape(context, 0, output,
+      AllocateOutputSetMklShape(context, 0, output,
                                 mkl_output_tf_shape /* First tensor */,
                                 mkl_output_mkl_shape /* Second Tensor */);
 
@@ -238,7 +238,7 @@ class MklLRNOp : public OpKernel {
             dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                 mkl_workspace_mkl_shape.GetMklLayout())) /
             sizeof(T));
-        AllocateOutputSetMklshape(context, 1, workspace,
+        AllocateOutputSetMklShape(context, 1, workspace,
                                   mkl_workspace_tf_shape /* First tensor */,
                                   mkl_workspace_mkl_shape /* Second Tensor */);
       }
@@ -292,12 +292,12 @@ class MklLRNOp : public OpKernel {
       MklShape mkl_output_mkl_shape, mkl_workspace_mkl_shape;
       mkl_output_mkl_shape.SetMklTensor(false);
       mkl_output_mkl_shape.SetDimensions(4);
-      AllocateOutputSetMklshape(context, 0, &output, input.shape(),
+      AllocateOutputSetMklShape(context, 0, &output, input.shape(),
                                 mkl_output_mkl_shape);
 
       mkl_workspace_mkl_shape.SetMklTensor(false);
       mkl_workspace_mkl_shape.SetDimensions(4);
-      AllocateOutputSetMklshape(context, 1, &workspace, input.shape(),
+      AllocateOutputSetMklShape(context, 1, &workspace, input.shape(),
                                 mkl_workspace_mkl_shape);
 
       auto out_shaped = output->shaped<T, 2>({nodes * batch, depth});
@@ -459,7 +459,7 @@ class MklLRNGradOp : public OpKernel {
             static_cast<dnnLayout_t>(mkl_output_mkl_shape.GetMklLayout())) /
         sizeof(T));
     Tensor* output = nullptr;
-    AllocateOutputSetMklshape(context, 0, &output, mkl_output_tf_shape,
+    AllocateOutputSetMklShape(context, 0, &output, mkl_output_tf_shape,
                               mkl_output_mkl_shape);
 
     // Get pointers to output data.
@@ -677,7 +677,7 @@ class MklLRNGradOp : public OpKernel {
       MklShape mkl_output_mkl_shape;
       mkl_output_mkl_shape.SetMklTensor(false);
       mkl_output_mkl_shape.SetDimensions(4);
-      AllocateOutputSetMklshape(context, 0, &output, in_grads.shape(),
+      AllocateOutputSetMklShape(context, 0, &output, in_grads.shape(),
                                 mkl_output_mkl_shape);
 
       auto out_shaped = output->shaped<T, 2>({nodes * batch, depth});

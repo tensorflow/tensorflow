@@ -202,7 +202,7 @@ class MklConv2DCustomBackpropInputOp : public OpKernel {
     mkl_out_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                              mklOutputShape.GetMklLayout())) /
                          sizeof(T));
-    AllocateOutputSetMklshape(context, 0, &in_backprop, mkl_out_shape,
+    AllocateOutputSetMklShape(context, 0, &in_backprop, mkl_out_shape,
                               mklOutputShape);
 
     mkl_context.conv_res[dnnResourceDiffSrc] =

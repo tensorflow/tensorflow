@@ -87,7 +87,7 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
     Tensor* bias_backprop = nullptr;
     MklShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(false);
-    AllocateOutputSetMklshape(context, 0, &bias_backprop, output_shape,
+    AllocateOutputSetMklShape(context, 0, &bias_backprop, output_shape,
                               output_mkl_shape);
 
     mkl_context.in_dims = 4;

@@ -120,7 +120,7 @@ class MklAvgPoolingOp : public UnaryOp<T> {
                                 mkl_out_shape.GetMklLayout())) /
                             sizeof(T));
 
-    AllocateOutputSetMklshape(context, 0, &output, tensor_out_shape,
+    AllocateOutputSetMklShape(context, 0, &output, tensor_out_shape,
                               mkl_out_shape);
     mkl_context.pooling_res[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());
@@ -304,7 +304,7 @@ class MklAvgPoolingGradOp : public OpKernel {
                                 mkl_out_shape.GetMklLayout())) /
                             sizeof(T));
 
-    AllocateOutputSetMklshape(context, 0, &output, tensor_out_shape,
+    AllocateOutputSetMklShape(context, 0, &output, tensor_out_shape,
                               mkl_out_shape);
 
     // Set output tensor.
