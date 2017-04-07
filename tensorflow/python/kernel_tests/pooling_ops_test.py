@@ -97,7 +97,7 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = [f * 1.0 for f in range(1, total_size + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=use_gpu):
       t = constant_op.constant(x, shape=input_sizes, dtype=data_type)
       if data_format == "NCHW":
         t = test_util.NHWCToNCHW(t)
@@ -497,7 +497,7 @@ class PoolingTest(test.TestCase):
                                          strides,
                                          error_msg,
                                          use_gpu=False):
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=use_gpu):
       t = constant_op.constant(1.0, shape=in_size)
       with self.assertRaisesRegexp(errors_impl.UnimplementedError, error_msg):
         t = nn_ops.max_pool(
@@ -620,7 +620,7 @@ class PoolingTest(test.TestCase):
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     tensor_input = [11.0, 12.0, 13.0, 14.0]
     tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session(use_gpu=True):
       orig_in = constant_op.constant(orig_input, shape=[1, 3, 3, 1])
       t = constant_op.constant(tensor_input, shape=[1, 2, 2, 1])
       argmax = constant_op.constant(
@@ -952,7 +952,7 @@ class PoolingTest(test.TestCase):
                              expected_input_backprop, input_sizes, output_sizes,
                              window_rows, window_cols, row_stride, col_stride,
                              padding, use_gpu):
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=use_gpu):
       input_tensor = constant_op.constant(input_data, shape=input_sizes)
       output_tensor = nn_ops.max_pool(input_tensor,
                                       [1, window_rows, window_cols, 1],

@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from types import FunctionType, GeneratorType
 from collections import Container
+from types import FunctionType
+from types import GeneratorType
 
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_functions
 
@@ -33,7 +34,7 @@ def generator_input_fn(x,
                        num_threads=1):
   """Returns input function that would dicts of numpy arrays
        yielded from a generator.
-  
+
   It is assumed that every dict yielded from the dictionary represents
   a single sample. The generator should consume a single epoch of the data.
 

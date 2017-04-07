@@ -20,9 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_bijective_and_finite
-from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_scalar_congruency
-from tensorflow.contrib.distributions.python.ops.bijectors.exp import Exp
+from tensorflow.contrib.distributions.python.ops.bijectors import bijector_test_util
+from tensorflow.contrib.distributions.python.ops.bijectors import exp as exp_lib
 from tensorflow.python.platform import test
 
 
@@ -31,7 +30,7 @@ class ExpBijectorTest(test.TestCase):
 
   def testBijector(self):
     with self.test_session():
-      bijector = Exp(event_ndims=1)
+      bijector = exp_lib.Exp(event_ndims=1)
       self.assertEqual("exp", bijector.name)
       x = [[[1.], [2.]]]
       y = np.exp(x)
@@ -45,16 +44,16 @@ class ExpBijectorTest(test.TestCase):
 
   def testScalarCongruency(self):
     with self.test_session():
-      bijector = Exp()
-      assert_scalar_congruency(
+      bijector = exp_lib.Exp()
+      bijector_test_util.assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=1.5, rtol=0.05)
 
   def testBijectiveAndFinite(self):
     with self.test_session():
-      bijector = Exp(event_ndims=0)
+      bijector = exp_lib.Exp(event_ndims=0)
       x = np.linspace(-10, 10, num=10).astype(np.float32)
       y = np.logspace(-10, 10, num=10).astype(np.float32)
-      assert_bijective_and_finite(bijector, x, y)
+      bijector_test_util.assert_bijective_and_finite(bijector, x, y)
 
 
 if __name__ == "__main__":

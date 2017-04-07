@@ -208,7 +208,6 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
                    context->allocate_output(0, filter_shape, &filter_backprop));
 
 #if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
-
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
     OP_REQUIRES_OK(
@@ -229,8 +228,9 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
               context, context->eigen_device<Device>(), input.tensor<T, 4>(),
               filter_backprop->tensor<T, 4>(), out_backprop.tensor<T, 4>(),
               dims.spatial_dims[0].input_size, dims.spatial_dims[1].input_size,
-              (int)dims.spatial_dims[0].stride,
-              (int)dims.spatial_dims[1].stride, (int)pad_top, (int)pad_left,
+              static_cast<int>(dims.spatial_dims[0].stride),
+              static_cast<int>(dims.spatial_dims[1].stride),
+              static_cast<int>(pad_top), static_cast<int>(pad_left),
               data_format_)) {
         return;
       }
@@ -321,8 +321,9 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
               context, context->eigen_device<Device>(), input.tensor<T, 4>(),
               filter_backprop->tensor<T, 4>(), out_backprop.tensor<T, 4>(),
               dims.spatial_dims[0].input_size, dims.spatial_dims[1].input_size,
-              (int)dims.spatial_dims[0].stride,
-              (int)dims.spatial_dims[1].stride, (int)pad_top, (int)pad_left,
+              static_cast<int>(dims.spatial_dims[0].stride),
+              static_cast<int>(dims.spatial_dims[1].stride),
+              static_cast<int>(pad_top), static_cast<int>(pad_left),
               data_format_)) {
         return;
       }

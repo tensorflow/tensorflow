@@ -191,7 +191,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   ```
 
   For more examples of how to construct the `scale` matrix, see the
-  `tf.contrib.distributions.bijectors.Affine` docstring.
+  `bijectors.Affine` docstring.
 
   """
 

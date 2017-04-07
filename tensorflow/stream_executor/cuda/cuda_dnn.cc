@@ -1202,7 +1202,8 @@ class CudnnRnnSequenceTensorDescriptor
     // Only the first one needs to be destroyed. All others are the same.
     cudnnStatus_t status =
         wrap::cudnnDestroyTensorDescriptor(parent_, handles_[0]);
-    CUDNN_RETURN_IF_FAIL(status, "Failed to destroy sequence tensor descriptor");
+    CUDNN_RETURN_IF_FAIL(status,
+                         "Failed to destroy sequence tensor descriptor");
   }
 
   const cudnnTensorDescriptor_t* handles() const {

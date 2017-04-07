@@ -258,8 +258,10 @@ class Conv2DFastBackpropInputOp : public OpKernel {
               context, context->eigen_device<Device>(),
               in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
               out_backprop.tensor<T, 4>(), dims.spatial_dims[0].input_size,
-              dims.spatial_dims[1].input_size, (int)dims.spatial_dims[0].stride,
-              (int)dims.spatial_dims[1].stride, (int)pad_top, (int)pad_left,
+              dims.spatial_dims[1].input_size,
+              static_cast<int>(dims.spatial_dims[0].stride),
+              static_cast<int>(dims.spatial_dims[1].stride),
+              static_cast<int>(pad_top), static_cast<int>(pad_left),
               data_format_)) {
         return;
       }
@@ -352,8 +354,10 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
               context, context->eigen_device<Device>(),
               in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
               out_backprop.tensor<T, 4>(), dims.spatial_dims[0].input_size,
-              dims.spatial_dims[1].input_size, (int)dims.spatial_dims[0].stride,
-              (int)dims.spatial_dims[1].stride, (int)pad_top, (int)pad_left,
+              dims.spatial_dims[1].input_size,
+              static_cast<int>(dims.spatial_dims[0].stride),
+              static_cast<int>(dims.spatial_dims[1].stride),
+              static_cast<int>(pad_top), static_cast<int>(pad_left),
               data_format_)) {
         return;
       }

@@ -1,4 +1,3 @@
-
 # Getting Started With TensorFlow
 
 This guide gets you started programming in TensorFlow. Before using this guide,
