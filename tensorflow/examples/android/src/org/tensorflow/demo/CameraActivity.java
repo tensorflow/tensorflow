@@ -28,6 +28,8 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Size;
 import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
@@ -151,19 +153,19 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   }
 
   protected void setFragment() {
-    final Fragment fragment = CameraConnectionFragment.newInstance(
-        new CameraConnectionFragment.ConnectionCallback(){
-          @Override
-          public void onPreviewSizeChosen(final Size size, final int rotation) {
-            CameraActivity.this.onPreviewSizeChosen(size, rotation);
-          }
-        },
-        this, getLayoutId(), getDesiredPreviewFrameSize());
+      final Fragment fragment = CameraConnectionFragment.newInstance(
+              new CameraConnectionFragment.ConnectionCallback(){
+                  @Override
+                  public void onPreviewSizeChosen(final Size size, final int rotation) {
+                      CameraActivity.this.onPreviewSizeChosen(size, rotation);
+                  }
+              },
+              this, getLayoutId(), getDesiredPreviewFrameSize());
 
-    getFragmentManager()
-        .beginTransaction()
-        .replace(R.id.container, fragment)
-        .commit();
+      getFragmentManager()
+              .beginTransaction()
+              .replace(R.id.container, fragment)
+              .commit();
   }
 
   protected void fillBytes(final Plane[] planes, final byte[][] yuvBytes) {

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Demo de TensorFlow</string>
+    <string name="about">Acerca de</string>
+    <string name="activity_name_classification">TF Clasificar</string>
+    <string name="activity_name_detection">TF Detectar</string>
+    <string name="activity_name_stylize">TF Estilizar</string>
+    <string name="camera_error">Este dispositivo no es compatible con la interfaz de Camera2.</string>
+    <string name="description_info">Información</string>
+    <string name="request_permission">Esta muestra requiere permiso de cámara.</string>
+    <string name="update_model">Actualizar el modelo</string>
+    <string name="classify">Clasificar</string>
+</resources>

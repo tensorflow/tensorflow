@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/update_model"
+        android:title="@string/update_model"
+        android:showAsAction="collapseActionView" />
+    <item android:id="@+id/about"
+        android:title="@string/about"
+        android:showAsAction="collapseActionView" />
+</menu>

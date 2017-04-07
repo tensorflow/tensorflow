@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TensorFlow Demo</string>
+    <string name="about">About</string>
+    <string name="activity_name_classification">TF Classify</string>
+    <string name="activity_name_detection">TF Detect</string>
+    <string name="activity_name_stylize">TF Stylize</string>
+    <string name="camera_error">This device doesn\'t support Camera2 API.</string>
+    <string name="description_info">Info</string>
+    <string name="request_permission">This sample needs camera permission.</string>
+    <string name="update_model">Update model</string>
+    <string name="classify">Classify</string>
+</resources>
