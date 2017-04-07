@@ -136,10 +136,10 @@ class Dense(base._Layer):  # pylint: disable=protected-access
   def call(self, inputs):
     inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
     inputs_rank = inputs.get_shape().ndims
-    output_shape = shape[:1] + [self.units]
+    inputs_shape = array_ops.shape(inputs)
+    output_shape = [inputs_shape[0].value] + [self.units]
 
     if inputs_rank > 2:
-      inputs_shape = array_ops.shape(inputs)
       batch_dim = array_ops.slice(inputs_shape, [0], [1])
       spatial_dims = array_ops.slice(inputs_shape, [1], [inputs_rank - 1])
 
