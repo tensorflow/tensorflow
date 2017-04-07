@@ -128,6 +128,28 @@ __device__ __host__ inline T ldg(const T* address) {
 #endif
 }
 
+template <>
+__device__ __host__ inline std::complex<float> ldg(
+    const std::complex<float>* address) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+  float2 mem = __ldg(reinterpret_cast<const float2*>(address));
+  return std::complex<float>(mem.x, mem.y);
+#else
+  return *address;
+#endif
+}
+
+template <>
+__device__ __host__ inline std::complex<double> ldg(
+    const std::complex<double>* address) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+  double2 mem = __ldg(reinterpret_cast<const double2*>(address));
+  return std::complex<double>(mem.x, mem.y);
+#else
+  return *address;
+#endif
+}
+
 // CUDA provides atomic ops, but not for all types.  We provide wrappers
 // for some ops and provide implementation for all reasonable types.
 #define CUDA_ATOMIC_WRAPPER(op, T) \
