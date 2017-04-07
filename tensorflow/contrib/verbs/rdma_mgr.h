@@ -31,7 +31,7 @@ class RdmaMgr {
   explicit RdmaMgr(const WorkerEnv* const worker_env, 
                    GrpcChannelCache* const channel_cache);
   ~RdmaMgr();
-  RdmaChannel* FindChannel(string& key);
+  RdmaChannel* FindChannel(const string& key);
   void SetupChannels();
   const string& local_worker() { return local_worker_; }
 

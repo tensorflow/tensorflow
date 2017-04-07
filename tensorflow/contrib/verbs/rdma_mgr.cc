@@ -119,7 +119,7 @@ RdmaMgr::~RdmaMgr() {
 //   name: peer name, e.g. worker1
 // Returns
 //   channel object that is connected to the named peer.
-RdmaChannel* RdmaMgr::FindChannel(string& name) {
+RdmaChannel* RdmaMgr::FindChannel(const string& name) {
   ChannelTable::iterator iter = channel_table_.find(name);
   CHECK(iter != channel_table_.end());
   return iter->second;

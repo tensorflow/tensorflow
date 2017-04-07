@@ -107,7 +107,7 @@ class RdmaChannel {
   RdmaAddress address() const;
   inline const std::vector<RdmaBuffer*>& message_buffers() const {
       return message_buffers_;}
-  void Connect(RdmaAddress& remoteAddr);
+  void Connect(const RdmaAddress& remoteAddr);
   void Connect();
   void Recv();
   RdmaBuffer* FindBuffer(const uint32_t index);
@@ -115,8 +115,8 @@ class RdmaChannel {
   RdmaBuffer* FindOrCreateBuffer(const string& name, 
                                  BufferType buffer_type = TENSOR);
   uint32_t LookupBufferIndex (const string& buffer_name);
-  void SetRemoteAddress(RdmaAddress ra, bool override);
-  void InsertRecvCallback(string& key, std::function<void()> recv_done);
+  void SetRemoteAddress(const RdmaAddress& ra, bool override);
+  void InsertRecvCallback(const string& key, std::function<void()> recv_done);
   void RemoveRecvCallback(const string& key);
   void RunRecvCallback(const string& key);
   static const int kNumMessageBuffers = 4;

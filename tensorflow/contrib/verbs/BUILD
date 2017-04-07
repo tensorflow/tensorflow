@@ -32,7 +32,7 @@ load(
 )
 
 package(default_visibility = [
-    "//tensorflow:internal",
+    "//tensorflow:__subpackages__",
 ])
 
 tf_proto_library_cc(
@@ -40,7 +40,7 @@ tf_proto_library_cc(
     srcs = ["verbs_service.proto"],
     cc_api_version = 2,
     visibility = [
-        "//tensorflow:internal",
+        "//tensorflow:__subpackages__",
     ],
 )
 

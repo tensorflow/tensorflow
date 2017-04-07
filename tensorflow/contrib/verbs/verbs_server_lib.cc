@@ -138,7 +138,7 @@ namespace {
 class VerbsServerFactory : public ServerFactory {
  public:
   bool AcceptsOptions(const ServerDef& server_def) override {
-    return server_def.protocol() == "grpc-verbs";
+    return server_def.protocol() == "grpc+verbs";
   }
 
   Status NewServer(const ServerDef& server_def,

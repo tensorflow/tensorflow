@@ -87,9 +87,7 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
       if (!s.ok()) {
         done(s, Args(), recv_args, Tensor(), true);
         return;
-      }
-      AllocatorAttributes src_alloc_attr;
-      src_alloc_attr.set_on_host(true);             
+      }             
       RdmaBuffer* rb = rc->FindBuffer(key);
       RdmaMessage rm;
       CHECK(rb->size_ >= RdmaMessage::kMessageTotalBytes);

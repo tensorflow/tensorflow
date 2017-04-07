@@ -108,8 +108,9 @@ Status GrpcVerbsService::GetRemoteAddressSync(
                         GetRemoteAddressResponse* response) {
   // analyzing request
   // the channel setting part is redundant.
-  string remote_host_name = request->host_name();
+  const string remote_host_name = request->host_name();
   RdmaChannel* rc = rdma_mgr_->FindChannel(remote_host_name);
+  CHECK(rc);
   RdmaAddress ra;
   ra.lid = request->channel().lid();
   ra.qpn = request->channel().qpn(); 
@@ -119,6 +120,7 @@ Status GrpcVerbsService::GetRemoteAddressSync(
   int i = 0;
   int idx[] = {1, 0, 3, 2};
   std::vector<RdmaBuffer*> mb(rc->message_buffers());
+  CHECK_EQ(request->mr_size(), 4);
   for (const auto& mr : request->mr()) {
     // the connections are crossed, i.e.
     // local tx_message_buffer <---> remote rx_message_buffer_

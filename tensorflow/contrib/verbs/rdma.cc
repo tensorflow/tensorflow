@@ -317,8 +317,8 @@ RdmaChannel::~RdmaChannel() {
   delete rx_ack_buffer_;
 }
 
-void RdmaChannel::SetRemoteAddress(RdmaAddress ra, bool override) {
-    mu_.lock();
+void RdmaChannel::SetRemoteAddress(const RdmaAddress& ra, bool override) {
+    mutex_lock lock{mu_};
     if ((override) || (!remote_set_)) { 
       remote_.lid = ra.lid;
       remote_.qpn = ra.qpn;
@@ -329,7 +329,6 @@ void RdmaChannel::SetRemoteAddress(RdmaAddress ra, bool override) {
       CHECK(remote_.qpn == ra.qpn);
       CHECK(remote_.psn == ra.psn);   
     }
-    mu_.unlock();
 }
 
 // Adding tokens to the completion queue
@@ -348,11 +347,11 @@ void RdmaChannel::Recv() {
 // Returns:
 //   32-bit index     
 uint32_t RdmaChannel::LookupBufferIndex(const string& buffer_name){
-  bt_mu_.lock();
+  
+  mutex_lock lock{bt_mu_};
   BufferNameIndexTable::iterator iter = buffer_name_index_table_.find(
           buffer_name);
   CHECK(iter != buffer_name_index_table_.end());
-  bt_mu_.unlock();
   return iter->second;
 }
 
@@ -362,10 +361,9 @@ uint32_t RdmaChannel::LookupBufferIndex(const string& buffer_name){
 // Returns:
 //   name of the tensor buffer
 RdmaBuffer* RdmaChannel::FindBuffer(const uint32_t index) {
-  bt_mu_.lock();
+  mutex_lock lock{bt_mu_};
   BufferTable::iterator iter = buffer_table_.find(index);
   CHECK(iter != buffer_table_.end());
-  bt_mu_.unlock();
   return iter->second;
 }
 
@@ -388,8 +386,8 @@ RdmaBuffer* RdmaChannel::FindBuffer(const string& name) {
 //   the named buffer
 RdmaBuffer* RdmaChannel::FindOrCreateBuffer(const string& name, 
                                 BufferType buffer_type) {
+  mutex_lock lock{bt_mu_};
   RdmaBuffer* rb;
-  bt_mu_.lock();
   // find index
   BufferNameIndexTable::iterator iter = buffer_name_index_table_.find(name);
   if (iter != buffer_name_index_table_.end()) {
@@ -411,7 +409,7 @@ RdmaBuffer* RdmaChannel::FindOrCreateBuffer(const string& name,
     buffer_index_name_table_.insert({index, name});
     buffer_table_.insert({index, rb});
   }
-  bt_mu_.unlock();
+  CHECK(rb);
   return rb;
 }
 
@@ -422,11 +420,11 @@ RdmaBuffer* RdmaChannel::FindOrCreateBuffer(const string& name,
 //   recv_done: the callback associated with the tensor.
 // Returns:
 //   None
-void RdmaChannel::InsertRecvCallback(string& key, 
+void RdmaChannel::InsertRecvCallback(const string& key, 
         std::function<void()> recv_done) {
-  ct_mu_.lock();
+  
+  mutex_lock lock{ct_mu_};
   callback_table_.insert({key, recv_done});
-  ct_mu_.unlock();
 }
 
 // Remove callback from the callback_table.
@@ -435,9 +433,8 @@ void RdmaChannel::InsertRecvCallback(string& key,
 // Returns:
 //   None
 void RdmaChannel::RemoveRecvCallback(const string& key) {
-  ct_mu_.lock();
+  mutex_lock lock{ct_mu_};
   callback_table_.erase(key);
-  ct_mu_.unlock();
 }
 
 // Run named callback in the callback_table.
@@ -446,19 +443,22 @@ void RdmaChannel::RemoveRecvCallback(const string& key) {
 // Returns:
 //   None
 void RdmaChannel::RunRecvCallback(const string& key) {
-  ct_mu_.lock();
-  CallbackTable::iterator iter = callback_table_.find(key);
-  CHECK(iter != callback_table_.end());
-  std::function<void()> recv_done = iter->second;
-  ct_mu_.unlock();
+  std::function<void()> recv_done;
+  {
+    mutex_lock lock{ct_mu_};
+    CallbackTable::iterator iter = callback_table_.find(key);
+    CHECK(iter != callback_table_.end());
+    recv_done = iter->second;
+  }
   recv_done();
 }
 
 void RdmaChannel::Connect() {
-    mu_.lock();
+  {
+    mutex_lock lock{mu_};
     CHECK(remote_set_) << "remote channel is not set";
-    mu_.unlock();
-    Connect(remote_);
+  }
+  Connect(remote_);
 }
 
 // Setup channel to a remote node
@@ -466,8 +466,8 @@ void RdmaChannel::Connect() {
 //   remoteAddr: the rdma address of a remote channel.
 // Returns:
 //   None
-void RdmaChannel::Connect(RdmaAddress& remoteAddr) {
-  mu_.lock();
+void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
+  mutex_lock lock{mu_};
   if (!connected_) {
     struct ibv_qp_attr attr;
     memset(&attr, 0, sizeof(ibv_qp_attr));
@@ -513,7 +513,6 @@ void RdmaChannel::Connect(RdmaAddress& remoteAddr) {
   } else {
     LOG(INFO) << "channel already connected";
   }
-  mu_.unlock();
 }
 
 RdmaBuffer::RdmaBuffer(RdmaChannel* channel, string name)
@@ -570,7 +569,7 @@ void RdmaBuffer::CreateCPUBuffer(size_t size, bool lock) {
 // Returns:
 //   None
 void RdmaBuffer::SetRemoteMR(RemoteMR rmr, bool override) {
-  mu_.lock();
+  mutex_lock lock{mu_};
   if ((override) || (remote_status_ == none)) { 
     remote_.remote_addr = rmr.remote_addr;
     remote_.rkey = rmr.rkey;
@@ -578,15 +577,13 @@ void RdmaBuffer::SetRemoteMR(RemoteMR rmr, bool override) {
   } else {
     CHECK(remote_.remote_addr == rmr.remote_addr);
     CHECK(remote_.rkey == rmr.rkey);  
-  }
-  mu_.unlock();  
+  } 
 }
 
 // Put a task in the buffer's job queue
 void RdmaBuffer::EnqueueItem(string item){
-  mu_.lock();
+  mutex_lock lock{mu_};
   queue_.push(item);
-  mu_.unlock();
 }
 
 // Rdma-Write the content of the buffer
@@ -657,12 +654,13 @@ void RdmaMessageBuffer::SendNextItem() {
 void RdmaTensorBuffer::SendNextItem() {
   // get the key
   string key_with_step_id = "";
-  mu_.lock();
-  if (!queue_.empty()) {
-    key_with_step_id = queue_.front();
-    queue_.pop();
+  {
+    mutex_lock lock{mu_};
+    if (!queue_.empty()) {
+      key_with_step_id = queue_.front();
+      queue_.pop();
+    }
   }
-  mu_.unlock();
   // send the tensor if a key is acquired.
   if (key_with_step_id != "") {
     VLOG(2) << "try to send tensor: " << key_with_step_id; 

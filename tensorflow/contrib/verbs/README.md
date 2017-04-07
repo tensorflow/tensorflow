@@ -3,9 +3,9 @@
 
     ```Do you wish to build TensorFlow with VERBS-RDMA support [y/N]```
 
-2. To turn on Rdma connection, add the protocol "verbs" in server definition:
+2. To turn on Rdma connection, add the protocol "grpc+verbs" in server definition:
 
-    ```server = tf.train.Server(cluster, job_name="local", task_index=0, protocol='verbs') # default protocol is 'grpc'```
+    ```server = tf.train.Server(cluster, job_name="local", task_index=0, protocol='grpc+verbs') # default protocol is 'grpc'```
 
 ## Overview
 The design is based on Tensorflow r1.0. An Rdma path is added between servers for tensor transfer (weights, gradients, etc). The existing GRPC path remains and is responsible for "administrative" tasks, such as setting up the Rdma path, exchanging computation graphs, etc.
