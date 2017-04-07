@@ -1,7 +1,0 @@
-Golden file update requested!
-All test failures have been skipped, see the logs for detected diffs.
-This test is now going to write new golden files.
-Make sure to package the updates together with your change.
-
-You will need an explicit API approval. This may take longer than a normal
-review.
