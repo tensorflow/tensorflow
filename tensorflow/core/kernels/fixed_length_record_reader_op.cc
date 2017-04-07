@@ -64,7 +64,8 @@ class FixedLengthRecordReader : public ReaderBase {
 
   Status ReadLocked(string* key, string* value, bool* produced,
                     bool* at_end) override {
-    if (input_buffer_->Tell() >= file_pos_limit_) {
+    if (input_buffer_->Tell() >= file_pos_limit_ ||
+        input_buffer_->Tell() + record_bytes_ > file_pos_limit_) {
       *at_end = true;
       return Status::OK();
     }
@@ -74,14 +75,9 @@ class FixedLengthRecordReader : public ReaderBase {
     *produced = true;
     ++record_number_;
 
-    if (hop_bytes_ > 0) {
-      // Only hop when hop_bytes_ > 0
-      if (current_position + hop_bytes_ >= file_pos_limit_) {
-        *at_end = true;
-      } else {
+    if (hop_bytes_ > 0)
         input_buffer_->Seek(current_position + hop_bytes_);
-      }
-    }
+
     return Status::OK();
   }
 

@@ -23,6 +23,7 @@ import gzip
 import os
 import threading
 import zlib
+import math
 
 import six
 
@@ -348,12 +349,21 @@ class FixedLengthRecordReaderTest(test.TestCase):
     super(FixedLengthRecordReaderTest, self).setUp()
     self._num_files = 2
     self._num_records = 7
+    self._num_overlapped_records = 10
     self._header_bytes = 5
     self._record_bytes = 3
     self._footer_bytes = 2
+    self._hop_bytes = 2
 
   def _Record(self, f, r):
     return compat.as_bytes(str(f * 2 + r) * self._record_bytes)
+
+  def _Overlapped_Record(self, f, r):
+    orig_r = int(math.floor((self._hop_bytes * r) / self._record_bytes))
+    offset = self._hop_bytes * r % self._record_bytes
+    record_str = str(f * 2 + orig_r) * (self._record_bytes - offset) + \
+                 str(f * 2 + orig_r + 1) * offset
+    return compat.as_bytes(record_str)
 
   def _CreateFiles(self):
     filenames = []
@@ -374,6 +384,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
           header_bytes=self._header_bytes,
           record_bytes=self._record_bytes,
           footer_bytes=self._footer_bytes,
+          hop_bytes=self._hop_bytes,
           name="test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
@@ -381,15 +392,14 @@ class FixedLengthRecordReaderTest(test.TestCase):
       queue.enqueue_many([files]).run()
       queue.close().run()
       for i in range(self._num_files):
-        for j in range(self._num_records):
+        for j in range(self._num_overlapped_records):
           k, v = sess.run([key, value])
           self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
-          self.assertAllEqual(self._Record(i, j), v)
+          self.assertAllEqual(self._Overlapped_Record(i, j), v)
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
         k, v = sess.run([key, value])
-
 
 class TFRecordReaderTest(test.TestCase):
 
