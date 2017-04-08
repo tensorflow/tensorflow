@@ -91,12 +91,11 @@ class WeightedQuantilesStream {
     // and push weighted quantile summary up the level chain.
     if (buffer_.IsFull()) {
       PushBuffer(buffer_);
-      buffer_.Clear();
     }
   }
 
   // Pushes full buffer while maintaining approximation error invariants.
-  void PushBuffer(const Buffer& buffer) {
+  void PushBuffer(Buffer& buffer) {
     // Validate state.
     QCHECK(!finalized_) << "Finalize() already called.";
 
@@ -124,7 +123,6 @@ class WeightedQuantilesStream {
 
     // Flush any remaining buffer elements.
     PushBuffer(buffer_);
-    buffer_.Clear();
 
     // Create final merged summary.
     local_summary_.Clear();
