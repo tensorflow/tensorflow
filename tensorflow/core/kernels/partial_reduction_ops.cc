@@ -29,6 +29,23 @@ using thread::ThreadPool;
 
 namespace functor {
 
+#if !GOOGLE_CUDA
+namespace reduce_functions {
+
+template <typename T>
+inline T sum(T a,T b) { return a+b; }
+
+template <typename T>
+inline T prod(T a,T b) { return a*b; }
+
+template <typename T>
+inline T max(T a,T b) { return a>b?a:b; }
+
+template <typename T>
+inline T min(T a,T b) { return a<b?a:b; }
+}
+#endif // !GOOGLE_CUDA
+
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
 struct PartialReductionFunctor<CPUDevice, T, Index, beginning, reduce>{
   virtual ~PartialReductionFunctor(){}
@@ -59,23 +76,33 @@ struct PartialReductionFunctor<CPUDevice, T, Index, beginning, reduce>{
   }
 };
 
-#define DEFINE_CPU_SPECS_INDEX(T, Index)                                       \
+#define DEFINE_CPU_SUMPROD_SPECS_INDEX(T, Index)                                       \
   template struct PartialReductionFunctor<CPUDevice, T, Index,                 \
            reduce_functions::zero<T>, reduce_functions::sum<T>>;               \
   template struct PartialReductionFunctor<CPUDevice, T, Index,                 \
-           reduce_functions::one<T>, reduce_functions::prod<T>>;               \
+           reduce_functions::one<T>, reduce_functions::prod<T>>;
+
+#define DEFINE_CPU_MINMAX_SPECS_INDEX(T, Index)                                       \
   template struct PartialReductionFunctor<CPUDevice, T, Index,                 \
            reduce_functions::negative_infinity<T>, reduce_functions::max<T>>;  \
   template struct PartialReductionFunctor<CPUDevice, T, Index,                 \
            reduce_functions::infinity<T>, reduce_functions::min<T>>;
-#define DEFINE_CPU_SPECS(T)          \
-  DEFINE_CPU_SPECS_INDEX(T, int32);  \
-  DEFINE_CPU_SPECS_INDEX(T, int64);
 
-TF_CALL_NUMBER_TYPES(DEFINE_CPU_SPECS)
+#define DEFINE_CPU_SUMPROD_SPECS(T)          \
+  DEFINE_CPU_SUMPROD_SPECS_INDEX(T, int32);  \
+  DEFINE_CPU_SUMPROD_SPECS_INDEX(T, int64);
 
-#undef DEFINE_CPU_SPECS
-#undef DEFINE_CPU_SPECS_INDEX
+#define DEFINE_CPU_MINMAX_SPECS(T)          \
+  DEFINE_CPU_MINMAX_SPECS_INDEX(T, int32);  \
+  DEFINE_CPU_MINMAX_SPECS_INDEX(T, int64);
+
+TF_CALL_NUMBER_TYPES(DEFINE_CPU_SUMPROD_SPECS)
+TF_CALL_REAL_NUMBER_TYPES(DEFINE_CPU_MINMAX_SPECS)
+
+#undef DEFINE_CPU_SUMPROD_SPECS_INDEX
+#undef DEFINE_CPU_MINMAX_SPECS_INDEX
+#undef DEFINE_CPU_SUMPROD_SPECS
+#undef DEFINE_CPU_MINMAX_SPECS
 
 } // namespace functor
 
@@ -140,7 +167,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL);
 
 #endif  // GOOGLE_CUDA
 
-#define REGISTER_CPU_PARTIAL_REDUCE_KERNELS(type, index_type)                  \
+#define REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS(type, index_type)          \
   REGISTER_KERNEL_BUILDER(Name("PartialSum")                                   \
                               .Device(DEVICE_CPU)                              \
                               .TypeConstraint<type>("T")                       \
@@ -154,7 +181,9 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL);
                               .TypeConstraint<index_type>("Tindices"),         \
                           PartialReduce<CPUDevice, type, index_type,           \
                           functor::reduce_functions::one<type>,                \
-                          functor::reduce_functions::prod<type>>);             \
+                          functor::reduce_functions::prod<type>>);
+
+#define REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS(type, index_type)           \
   REGISTER_KERNEL_BUILDER(Name("PartialMax")                                   \
                               .Device(DEVICE_CPU)                              \
                               .TypeConstraint<type>("T")                       \
@@ -170,14 +199,20 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL);
                           functor::reduce_functions::infinity<type>,           \
                           functor::reduce_functions::min<type>>);
 
-#define REGISTER_CPU_PARTIAL_REDUCE_KERNELS_ALL(type) \
-  REGISTER_CPU_PARTIAL_REDUCE_KERNELS(type, int32);   \
-  REGISTER_CPU_PARTIAL_REDUCE_KERNELS(type, int64);
+#define REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS_ALL(type)           \
+  REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS(type, int32);             \
+  REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS(type, int64);
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_PARTIAL_REDUCE_KERNELS_ALL);
+#define REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS_ALL(type)           \
+  REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS(type, int32);             \
+  REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS(type, int64);
 
-#undef REGISTER_CPU_PARTIAL_REDUCE_KERNELS
-#undef REGISTER_CPU_PARTIAL_REDUCE_KERNELS_ALL
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS_ALL)
+TF_CALL_NUMBER_TYPES(REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS_ALL)
 
+#undef REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS
+#undef REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS
+#undef REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS_ALL
+#undef REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS_ALL
 
 }  // namespace tensorflow

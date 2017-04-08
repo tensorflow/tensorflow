@@ -33,10 +33,24 @@ template <typename T> T sum(T a,T b);
 template <typename T> T prod(T a,T b);
 template <typename T> T max(T a,T b);
 template <typename T> T min(T a,T b);
-template <typename T> T zero();
-template <typename T> T one();
-template <typename T> T infinity();
-template <typename T> T negative_infinity();
+
+template <typename T>
+inline T zero() { return T(0); }
+
+template <typename T>
+inline T one() { return T(1); }
+
+template <typename T>
+inline T infinity() {
+    return std::max<T>(std::numeric_limits<T>::max(),
+                       std::numeric_limits<T>::infinity());
+}
+
+template <typename T>
+inline T negative_infinity() {
+    return std::min<T>(-std::numeric_limits<T>::infinity(),
+                       std::numeric_limits<T>::min());
+}
 
 } // namespace reduce_functions
 

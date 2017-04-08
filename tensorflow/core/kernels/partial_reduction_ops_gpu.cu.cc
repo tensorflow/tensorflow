@@ -44,24 +44,6 @@ __host__ __device__ T max(T a,T b) { return a>b?a:b; }
 template <typename T>
 __host__ __device__ T min(T a,T b) { return a<b?a:b; }
 
-template <typename T>
-T zero() { return T(0); }
-
-template <typename T>
-T one() { return T(1); }
-
-template <typename T>
-T infinity() {
-    return std::max<T>(std::numeric_limits<T>::max(),
-                       std::numeric_limits<T>::infinity());
-}
-
-template <typename T>
-T negative_infinity() {
-    return std::min<T>(-std::numeric_limits<T>::infinity(),
-                       std::numeric_limits<T>::min());
-}
-
 } // namespace reduce_functions
 
 // Kernel to do the reducton:
