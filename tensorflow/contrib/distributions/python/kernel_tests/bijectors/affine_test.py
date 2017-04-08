@@ -488,9 +488,7 @@ class AffineBijectorTest(test.TestCase):
             shift=mu,
             scale_identity_multiplier=2.,
             scale_perturb_diag=[2., 1],
-            scale_perturb_factor=[[2., 0],
-                                  [0., 0],
-                                  [0, 1]])
+            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]])
         bijector_ref = affine_lib.Affine(shift=mu, scale_diag=[10., 2, 3])
 
         self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
@@ -526,9 +524,7 @@ class AffineBijectorTest(test.TestCase):
             shift=mu,
             scale_diag=[2., 3, 4],
             scale_perturb_diag=[2., 1],
-            scale_perturb_factor=[[2., 0],
-                                  [0., 0],
-                                  [0, 1]])
+            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]])
         bijector_ref = affine_lib.Affine(shift=mu, scale_diag=[10., 3, 5])
 
         self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
@@ -561,17 +557,11 @@ class AffineBijectorTest(test.TestCase):
         # Corresponds to scale = [[10, 0, 0], [1, 3, 0], [2, 3, 5]]
         bijector = affine_lib.Affine(
             shift=mu,
-            scale_tril=[[2., 0, 0],
-                        [1, 3, 0],
-                        [2, 3, 4]],
+            scale_tril=[[2., 0, 0], [1, 3, 0], [2, 3, 4]],
             scale_perturb_diag=[2., 1],
-            scale_perturb_factor=[[2., 0],
-                                  [0., 0],
-                                  [0, 1]])
+            scale_perturb_factor=[[2., 0], [0., 0], [0, 1]])
         bijector_ref = affine_lib.Affine(
-            shift=mu, scale_tril=[[10., 0, 0],
-                                  [1, 3, 0],
-                                  [2, 3, 5]])
+            shift=mu, scale_tril=[[10., 0, 0], [1, 3, 0], [2, 3, 5]])
 
         self.assertEqual(1, bijector.event_ndims.eval())  # "is vector"
         x = [1., 2, 3]  # Vector.

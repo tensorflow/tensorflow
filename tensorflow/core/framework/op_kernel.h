@@ -151,6 +151,10 @@ class OpKernel {
     return shape.dims() == 1 || (allow_legacy_scalars() && shape.dims() == 0);
   }
 
+  // Turn a shape Tensor into a TensorShape
+  // TODO(irving): Move to TensorShapeUtils once !allow_legacy_scalars
+  Status MakeShape(const Tensor& shape, TensorShape* out) const;
+
  private:
   const NodeDef def_;
   const DataTypeVector input_types_;

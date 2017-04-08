@@ -135,8 +135,9 @@ from tensorflow.contrib.distributions.python.ops.wishart import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['ConditionalDistribution',
-                    'ConditionalTransformedDistribution',
-                    'FULLY_REPARAMETERIZED', 'NOT_REPARAMETERIZED']
+_allowed_symbols = [
+    'ConditionalDistribution', 'ConditionalTransformedDistribution',
+    'FULLY_REPARAMETERIZED', 'NOT_REPARAMETERIZED'
+]
 
 remove_undocumented(__name__, _allowed_symbols)

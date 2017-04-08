@@ -214,7 +214,8 @@ class RunConfig(ClusterConfig):
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                evaluation_master='',
-               model_dir=None):
+               model_dir=None,
+               session_config=None):
     """Constructor.
 
     Note that the superclass `ClusterConfig` may set properties like
@@ -246,6 +247,9 @@ class RunConfig(ClusterConfig):
       evaluation_master: the master on which to perform evaluation.
       model_dir: directory where model parameters, graph etc are saved. If
         `None`, see `Estimator` about where the model will be saved.
+      session_config: a ConfigProto used to set session parameters, or None.
+         Note - using this argument, it is easy to provide settings which break
+         otherwise perfectly good models. Use with care.
     """
     super(RunConfig, self).__init__(
         master=master, evaluation_master=evaluation_master)
@@ -261,6 +265,7 @@ class RunConfig(ClusterConfig):
     self._tf_random_seed = tf_random_seed
     self._save_summary_steps = save_summary_steps
     self._save_checkpoints_secs = save_checkpoints_secs
+    self._session_config = session_config
     if save_checkpoints_secs == RunConfig._USE_DEFAULT:
       if save_checkpoints_steps is None:
         self._save_checkpoints_secs = 600
@@ -344,6 +349,10 @@ class RunConfig(ClusterConfig):
   @property
   def save_checkpoints_steps(self):
     return self._save_checkpoints_steps
+
+  @property
+  def session_config(self):
+    return self._session_config
 
   @property
   def keep_checkpoint_max(self):

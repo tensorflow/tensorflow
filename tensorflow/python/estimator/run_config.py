@@ -73,6 +73,10 @@ class RunConfig(object):
     return 600
 
   @property
+  def session_config(self):
+    return None
+
+  @property
   def save_checkpoints_steps(self):
     return None
 

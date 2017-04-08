@@ -375,7 +375,9 @@ def with_space_to_batch(
     input_shape_list = input.get_shape().as_list()
     input_spatial_shape = [input_shape_list[i] for i in spatial_dims]
   if input_spatial_shape is None or None in input_spatial_shape:
-    input_spatial_shape = array_ops.gather(array_ops.shape(input), spatial_dims)
+    input_shape_tensor = array_ops.shape(input)
+    input_spatial_shape = array_ops.stack(
+        [input_shape_tensor[i] for i in spatial_dims])
 
   paddings, crops = array_ops.required_space_to_batch_paddings(
       input_shape=input_spatial_shape,
@@ -2021,7 +2023,7 @@ def top_k(input, k=1, sorted=True, name=None):
 def conv1d(value, filters, stride, padding,
            use_cudnn_on_gpu=None, data_format=None,
            name=None):
-  """Computes a 1-D convolution given 3-D input and filter tensors.
+  r"""Computes a 1-D convolution given 3-D input and filter tensors.
 
   Given an input tensor of shape
     [batch, in_width, in_channels]

@@ -131,4 +131,5 @@ def generator_input_fn(x,
         target = features.pop(target_key[0])
       return features, target
     return features
+
   return _generator_input_fn

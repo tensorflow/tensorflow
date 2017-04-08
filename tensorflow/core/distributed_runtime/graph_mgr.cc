@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -48,6 +49,13 @@ GraphMgr::GraphMgr(const WorkerEnv* worker_env,
                    RendezvousMgrInterface* rendezvous_mgr)
     : worker_env_(worker_env), rendezvous_mgr_(rendezvous_mgr), table_(5) {
   CHECK(rendezvous_mgr) << "Rendezvous mgr was null";
+  // The default value of sync_on_finish will be flipped soon and this
+  // environment variable will be removed as well.
+  Status status =
+      ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
+  }
 }
 
 GraphMgr::~GraphMgr() {
@@ -486,7 +494,7 @@ void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
   args.cancellation_manager = cancellation_manager;
   args.stats_collector = collector;
   args.step_container = step_container;
-  args.sync_on_finish = true;
+  args.sync_on_finish = sync_on_finish_;
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, handle);
   }

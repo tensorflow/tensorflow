@@ -137,6 +137,9 @@ class GraphMgr {
   mutex mu_;
   int64 next_id_ GUARDED_BY(mu_) = 0;
 
+  // If true, blocks until device has finished all queued operations in a step.
+  bool sync_on_finish_ = true;
+
   // Table mapping graph handles to registered graphs.
   //
   // TODO(zhifengc): If the client does not call Deregister, we'll

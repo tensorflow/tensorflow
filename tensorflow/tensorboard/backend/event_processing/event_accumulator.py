@@ -438,6 +438,14 @@ class EventAccumulator(object):
     """
     return self._health_pills.Items(node_name)
 
+  def GetOpsWithHealthPills(self):
+    """Determines which ops have at least 1 health pill event.
+
+    Returns:
+      A list of names of ops with at least 1 health pill event.
+    """
+    return self._health_pills.Keys()
+
   def Graph(self):
     """Return the graph definition, if there is one.
 
