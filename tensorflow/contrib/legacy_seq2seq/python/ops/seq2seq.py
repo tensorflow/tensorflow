@@ -819,6 +819,9 @@ def embedding_attention_seq2seq(encoder_inputs,
     num_encoder_symbols: Integer; number of symbols on the encoder side.
     num_decoder_symbols: Integer; number of symbols on the decoder side.
     embedding_size: Integer, the length of the embedding vector for each symbol.
+    encoder_cell: core_rnn_cell.RNNCell defining the encoder_cell function and
+      size. This allows user to explicitly provide a cell for the encoding step.
+      If it's none (default), deepcopy the 'cell' arg.
     num_heads: Number of attention heads that read from attention_states.
     output_projection: None or a pair (W, B) of output projection weights and
       biases; W has shape [output_size x num_decoder_symbols] and B has
