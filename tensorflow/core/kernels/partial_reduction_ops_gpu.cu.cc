@@ -28,16 +28,22 @@ namespace tensorflow {
 using GPUDevice = Eigen::GpuDevice;
 
 template <typename T>
+__device__ T zero_gpu() { return T(0); }
+
+template <typename T>
 __device__ T sum_gpu(T a,T b) { return a+b; }
 
 template <typename T>
-__device__ T zero_gpu() { return T(0); }
+__device__ T max_gpu(T a,T b) { return a>b?a:b; }
+
+template <typename T>
+__device__ T min_gpu(T a,T b) { return a<b?a:b; }
 
 // Kernel to do the reducton:
 // x is row index of output
 // y is column index
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
-__global__ void PartialReduceKernel(Index num_rows, Index num_cols,
+__global__ void PartialReduceKernel(Index num_rows, Index num_cols, Index bound
     const Index *indices, const T *input, T *out)
 {
   Index x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -46,7 +52,9 @@ __global__ void PartialReduceKernel(Index num_rows, Index num_cols,
   if( x<num_rows && y<num_cols ) {
     out[outidx] = beginning();
     Index start = indices[x*2];
-    Index end   = indices[x*2+1];
+    Index end   = min_gpu(bound,indices[x*2+1]);
+    if(end>bound)
+        end = bound;
     for(Index j=start;j<end;j++) {
       Index inidx = j*num_cols + y;
       out[outidx] = reduce(out[outidx],input[inidx]);
@@ -63,11 +71,12 @@ struct PartialReductionFunctor<GPUDevice, T, Index, beginning, reduce>{
       OpKernelContext* ctx, const GPUDevice& d,typename TTypes<Index>::ConstMatrix indices,
       typename TTypes<T>::ConstMatrix data,typename TTypes<T>::Matrix output)
   {
+    Index bound = data.dimension(0);
     Index rows = output.dimension(0);
     Index cols = output.dimension(1);
     Cuda2DLaunchConfig config = GetCuda2DLaunchConfig(rows,cols,d);
     PartialReduceKernel<T,Index,beginning,reduce><<<config.block_count,
-      config.thread_per_block, 0, d.stream()>>>(rows, cols, indices.data(), data.data(), output.data());
+      config.thread_per_block, 0, d.stream()>>>(rows, cols, bound, indices.data(), data.data(), output.data());
   }
 };
 

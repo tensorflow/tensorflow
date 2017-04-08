@@ -2396,10 +2396,17 @@ REGISTER_OP("PartialSum")
 Dynamically sum over the first dimension of a tensor according to start and end
 indices specified at "index". For example if input is
 [[1,1,1],[10,10,10],[100,100,100],[1000,1000,1000]] and index is [[0,1],[1,1],[0,2]],
-the the output will be [[1,1,1],[0,0,0],[11,11,11]]
+the the output will be [[1,1,1],[0,0,0],[11,11,11]]. The data must be at least rank
+one. The indices must be of shape (?,2) where the first column is start indices and
+the second column is end indices. The end index is not included in the sum, which
+means, if you want to do a sum over 0,1,2, the you should have start index 0 and end
+index 3. If end index is smaller than or equal to start, the result will be zero.
+If end index is out of bounds, then the sum will automatically stop at the bound,
+so feel free to put a large number as your end of your index if you want to sum until
+the bound.
 
 data: The source of data where the sum will be taken from.
-indices: indices that controls which part will be summed.
+indices: start, end indices that controls which part will be summed.
 T: the type of data.
 Tindices: the type of indices, must be int32 or int64.
 output: the computed sum values.
