@@ -1263,7 +1263,7 @@ cc_library(
     copts = tf_copts(),
     defines = tf_additional_lib_defines() +
               ["SNAPPY"] +
-              tf_additional_verbs_lib_defines,
+              tf_additional_verbs_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
