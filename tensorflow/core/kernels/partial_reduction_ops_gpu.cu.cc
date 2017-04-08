@@ -60,8 +60,6 @@ __global__ void PartialReduceKernel(Index num_rows, Index num_cols, Index bound,
     out[outidx] = beginning;
     Index start = indices[x*2];
     Index end   = reduce_functions::min<Index>(bound,indices[x*2+1]);
-    if(end>bound)
-        end = bound;
     for(Index j=start;j<end;j++) {
       Index inidx = j*num_cols + y;
       out[outidx] = reduce(out[outidx],input[inidx]);
