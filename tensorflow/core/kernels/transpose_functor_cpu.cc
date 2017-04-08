@@ -144,8 +144,42 @@ Status DoTranspose<CPUDevice>(const CPUDevice& d, const Tensor& in,
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 
+template <typename Device, typename T>
+void TransposeSYCL(const Device& d, const Tensor& in,
+               const gtl::ArraySlice<int32> perm, Tensor* out) {
+  switch (in.dims()) {
+    case 1:
+      internal::TransposeUsingEigen<Device, T, 1>(d, in, perm, out);
+      break;
+    case 2:
+      internal::TransposeUsingEigen<Device, T, 2>(d, in, perm, out);
+      break;
+    case 3:
+      internal::TransposeUsingEigen<Device, T, 3>(d, in, perm, out);
+      break;
+    case 4:
+      internal::TransposeUsingEigen<Device, T, 4>(d, in, perm, out);
+      break;
+    case 5:
+      internal::TransposeUsingEigen<Device, T, 5>(d, in, perm, out);
+      break;
+    case 6:
+      internal::TransposeUsingEigen<Device, T, 6>(d, in, perm, out);
+      break;
+    case 7:
+      internal::TransposeUsingEigen<Device, T, 7>(d, in, perm, out);
+      break;
+    case 8:
+      internal::TransposeUsingEigen<Device, T, 8>(d, in, perm, out);
+      break;
+    default:
+      errors::Unimplemented("Unsupported TransposeUsingEigen for: ", in.dims());
+      break;
+  }
+}
+
 template <typename T>
-struct internal::Transpose<SYCLDevice, T> {
+struct Transpose<SYCLDevice, T> {
   static void run(const SYCLDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
     // Should add a specialized implementation for SYCLDevice here.
@@ -165,7 +199,7 @@ Status DoTranspose<SYCLDevice>(const SYCLDevice& d, const Tensor& in,
     case DT_QINT8:
     case DT_QUINT8:
     case DT_UINT8:
-      tensorflow::internal::TransposeSYCL<SYCLDevice, uint8>(d, in, perm, out);
+      TransposeSYCL<SYCLDevice, uint8>(d, in, perm, out);
       break;
 
     case DT_BFLOAT16:
@@ -174,23 +208,22 @@ Status DoTranspose<SYCLDevice>(const SYCLDevice& d, const Tensor& in,
     case DT_QINT16:
     case DT_QUINT16:
     case DT_UINT16:
-      tensorflow::internal::TransposeSYCL<SYCLDevice, uint16>(d, in, perm, out);
+      TransposeSYCL<SYCLDevice, uint16>(d, in, perm, out);
       break;
     case DT_FLOAT:
     case DT_INT32:
     case DT_QINT32:
-      tensorflow::internal::TransposeSYCL<SYCLDevice, uint32>(d, in, perm, out);
+      TransposeSYCL<SYCLDevice, uint32>(d, in, perm, out);
       break;
 
     case DT_COMPLEX64:
     case DT_DOUBLE:
     case DT_INT64:
-      tensorflow::internal::TransposeSYCL<SYCLDevice, uint64>(d, in, perm, out);
+      TransposeSYCL<SYCLDevice, uint64>(d, in, perm, out);
       break;
 
     case DT_COMPLEX128:
-      tensorflow::internal::TransposeSYCL<SYCLDevice, complex128>(d, in, perm,
-                                                                  out);
+      TransposeSYCL<SYCLDevice, complex128>(d, in, perm, out);
       break;
 
     default:

@@ -69,16 +69,16 @@ class CopyOp : public OpKernel {
         *copied_tensor = tensor::DeepCopy(src_tensor);
       }
 #elif defined(TENSORFLOW_USE_SYCL)
-      Device* device = static_cast<Device*>(context->device());
       // Determine if the input tensor is not on CPU (e.g., on GPU).
-      bool off_host_input = device->device_type() == DEVICE_SYCL &&
-                            !context->input_alloc_attr(0).on_host();
-      if(off_host_input) {
-         auto size = src_tensor.NumElements() * sizeof(src_tensor.dtype());
-         auto dst_ptr = GetBase(copied_tensor);
-         auto src_ptr = GetBase(&src_tensor);
-         typedef decltype(src_tensor.dtype()) ttype;
-         device->eigen_sycl_device()->memcpy(dst_ptr, static_cast<const ttype *>(src_ptr), size);
+      bool off_host_input = !context->input_alloc_attr(0).on_host();
+
+      if (off_host_input) {
+        auto size = src_tensor.NumElements() * sizeof(src_tensor.dtype());
+        auto dst_ptr = GetBase(copied_tensor);
+        auto src_ptr = GetBase(&src_tensor);
+        typedef decltype(src_tensor.dtype()) ttype;
+        context->eigen_sycl_device().memcpy(
+            dst_ptr, static_cast<const ttype*>(src_ptr), size);
       } else {
         *copied_tensor = tensor::DeepCopy(src_tensor);
       }
