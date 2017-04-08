@@ -2378,7 +2378,7 @@ Status ParticalReductionShapeFn(InferenceContext* c) {
   // "data" must have rank at least 1
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &handle));
   // shape of output tensor
-  TF_RETURN_IF_ERROR(c->ReplaceDim(handle, 0, c->Dim(c->input(0),0), &handle));
+  TF_RETURN_IF_ERROR(c->ReplaceDim(handle, 0, c->Dim(c->input(1),0), &handle));
   c->set_output(0, handle);
   return Status::OK();
 }
