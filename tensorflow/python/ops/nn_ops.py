@@ -806,11 +806,12 @@ def pool(input,  # pylint: disable=redefined-builtin
 
 
 def atrous_conv2d(value, filters, rate, padding, strides=None, name=None):
-  """This function is a simpler wrapper around the more general
+  """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
+
+  This function is a simpler wrapper around the more general
   @{tf.nn.convolution}, and exists only for backwards compatibility. You can
   use @{tf.nn.convolution} to perform 1-D, 2-D, or 3-D atrous convolution.
 
-  Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
   Computes a 2-D atrous convolution, also known as convolution with holes or
   dilated convolution, given 4-D `value` and `filters` tensors. If the `rate`
