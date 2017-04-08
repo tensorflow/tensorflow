@@ -104,18 +104,21 @@ struct PartialReductionFunctor<GPUDevice, T, Index, beginning, reduce>{
   }
 };
 
-#define DEFINE_GPU_SPECS_INDEX(T, Index)                                                                    \
-  template struct PartialReductionFunctor<GPUDevice, T, Index, reduce_functions::zero<T>, reduce_functions::sum<T>>;                    \
-  template struct PartialReductionFunctor<GPUDevice, T, Index, reduce_functions::one<T>, reduce_functions::prod<T>>;                    \
-  template struct PartialReductionFunctor<GPUDevice, T, Index, reduce_functions::negative_infinity<T>, reduce_functions::max<T>>; \
-  template struct PartialReductionFunctor<GPUDevice, T, Index, reduce_functions::infinity<T>, reduce_functions::min<T>>;
+#define DEFINE_GPU_SPECS_INDEX(T, Index)                                       \
+  template struct PartialReductionFunctor<GPUDevice, T, Index,                 \
+           reduce_functions::zero<T>, reduce_functions::sum<T>>;               \
+  template struct PartialReductionFunctor<GPUDevice, T, Index,                 \
+           reduce_functions::one<T>, reduce_functions::prod<T>>;               \
+  template struct PartialReductionFunctor<GPUDevice, T, Index,                 \
+           reduce_functions::negative_infinity<T>, reduce_functions::max<T>>;  \
+  template struct PartialReductionFunctor<GPUDevice, T, Index,                 \
+           reduce_functions::infinity<T>, reduce_functions::min<T>>;
 
 #define DEFINE_GPU_SPECS(T)          \
   DEFINE_GPU_SPECS_INDEX(T, int32);  \
   DEFINE_GPU_SPECS_INDEX(T, int64);
 
 TF_CALL_REAL_NUMBER_TYPES(DEFINE_GPU_SPECS)
-// template struct PartialReductionFunctor<GPUDevice, int, int, infinity<int>, min_gpu<int>>;
 
 #undef DEFINE_GPU_SPECS
 #undef DEFINE_GPU_SPECS_INDEX
