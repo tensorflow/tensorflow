@@ -43,7 +43,7 @@ __device__ T min_gpu(T a,T b) { return a<b?a:b; }
 // x is row index of output
 // y is column index
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
-__global__ void PartialReduceKernel(Index num_rows, Index num_cols, Index bound
+__global__ void PartialReduceKernel(Index num_rows, Index num_cols, Index bound,
     const Index *indices, const T *input, T *out)
 {
   Index x = blockIdx.x * blockDim.x + threadIdx.x;
