@@ -320,24 +320,22 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # and com_google_protobuf_cc to enable proto_library support in bazel.
   # Unfortunately there is no way to alias http_archives at the moment.
   native.http_archive(
-      name = "com_google_protobuf",
-      urls = [
+      name="com_google_protobuf",
+      urls=[
           "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
           "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
       ],
-      sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
-      strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
-  )
+      sha256="e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
+      strip_prefix="protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",)
 
   native.http_archive(
-      name = "com_google_protobuf_cc",
-      urls = [
+      name="com_google_protobuf_cc",
+      urls=[
           "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
           "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
       ],
-      sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
-      strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
-  )
+      sha256="e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
+      strip_prefix="protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",)
 
   native.new_http_archive(
       name="gmock_archive",
@@ -358,10 +356,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual="@gmock_archive//:gtest_main",)
 
   native.git_repository(
-    name   = "com_github_gflags_gflags",
-    commit = "f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
-    remote = "https://github.com/gflags/gflags.git",
-  )
+      name="com_github_gflags_gflags",
+      commit="f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
+      remote="https://github.com/gflags/gflags.git",)
 
   native.bind(
       name="python_headers",
@@ -613,13 +610,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name="com_microsoft_typescript",
       licenses=["notice"],  # Apache 2.0
       sha256_urls={
-          "e3d9e320a2cae99be4aaa37953961a48323cdf16ba9aa2557a44d69571cd9b8d": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/tsc.js",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/tsc.js",
+          "43a7c763fe024d5add8d5365e5a7981f4a359ba5bf86481f545a0db8f60d48cc": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/tsc.js",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/tsc.js",
           ],
-          "f189cebe96eb76b238c6e364e72d4b0324e699f83eeae5deac23506cb3764fc6": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/lib.es6.d.ts",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/lib.es6.d.ts",
+          "aecec1e47a3b3d872e214cb9adb82b30d6bd0471ea0aad7311ad81428566627c": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/lib.es6.d.ts",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/lib.es6.d.ts",
           ],
       },
       extra_build_file_content="\n".join([

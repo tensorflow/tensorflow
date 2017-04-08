@@ -36,17 +36,19 @@ class SigmoidBijectorTest(test.TestCase):
       y = special.expit(x)
       ildj = -np.log(y) - np.log1p(-y)
       self.assertAllClose(
-          y, sigmoid.Sigmoid().forward(x).eval(),
-          atol=0., rtol=1e-2)
+          y, sigmoid.Sigmoid().forward(x).eval(), atol=0., rtol=1e-2)
       self.assertAllClose(
-          x, sigmoid.Sigmoid().inverse(y).eval(),
-          atol=0., rtol=1e-4)
+          x, sigmoid.Sigmoid().inverse(y).eval(), atol=0., rtol=1e-4)
       self.assertAllClose(
-          ildj, sigmoid.Sigmoid().inverse_log_det_jacobian(y).eval(),
-          atol=0., rtol=1e-6)
+          ildj,
+          sigmoid.Sigmoid().inverse_log_det_jacobian(y).eval(),
+          atol=0.,
+          rtol=1e-6)
       self.assertAllClose(
-          -ildj, sigmoid.Sigmoid().forward_log_det_jacobian(x).eval(),
-          atol=0., rtol=1e-4)
+          -ildj,
+          sigmoid.Sigmoid().forward_log_det_jacobian(x).eval(),
+          atol=0.,
+          rtol=1e-4)
 
   def testScalarCongruency(self):
     with self.test_session():

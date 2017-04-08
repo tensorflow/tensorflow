@@ -594,8 +594,10 @@ cc_test(
     deps = [
         ":buffer_assignment",
         ":computation_tracker",
+        ":copy_insertion",
         ":cpu_plugin",
         ":hlo",
+        ":hlo_ordering",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",

@@ -3614,7 +3614,7 @@ _config_path = os.path.expanduser(os.path.join(_keras_dir, 'keras.json'))
 if os.path.exists(_config_path):
   try:
     _config = json.load(open(_config_path))
-  except json.decoder.JSONDecodeError:
+  except ValueError:
     _config = {}
   _floatx = _config.get('floatx', floatx())
   assert _floatx in {'float16', 'float32', 'float64'}

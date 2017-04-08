@@ -51,3 +51,15 @@ class TBPlugin(object):
       A dict mapping route paths to WSGI applications.
     """
     raise NotImplementedError()
+
+  @abstractmethod
+  def is_active(self):
+    """Determines whether this plugin is active.
+
+    A plugin may not be active for instance if it lacks relevant data. If a
+    plugin is inactive, the frontend may avoid issuing requests to its routes.
+
+    Returns:
+      A boolean value. Whether this plugin is active.
+    """
+    raise NotImplementedError()

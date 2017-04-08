@@ -33,6 +33,7 @@ from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -40,6 +41,37 @@ from tensorflow.python.platform import googletest
 
 def line_number_above():
   return inspect.stack()[1][2] - 1
+
+
+class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self.curr_file_path = os.path.normpath(os.path.abspath(__file__))
+
+  def tearDown(self):
+    ops.reset_default_graph()
+
+  def testGuessedBaseDirIsProbablyCorrect(self):
+    self.assertEqual(
+        "tensorflow", os.path.basename(source_utils._TENSORFLOW_BASEDIR))
+
+  def testUnitTestFileReturnsFalse(self):
+    self.assertFalse(source_utils._guess_is_tensorflow_py_library(
+        self.curr_file_path))
+
+  def _disabledtestSourceUtilModuleReturnsTrue(self):
+    self.assertTrue(source_utils._guess_is_tensorflow_py_library(
+        source_utils.__file__))
+
+  def testFileInPythonKernelsPathReturnsTrue(self):
+    x = constant_op.constant(42.0, name="x")
+    self.assertTrue(source_utils._guess_is_tensorflow_py_library(
+        x.op.traceback[-1][0]))
+
+  def testNonPythonFileRaisesException(self):
+    with self.assertRaisesRegexp(ValueError, r"is not a Python source file"):
+      source_utils._guess_is_tensorflow_py_library(
+          os.path.join(os.path.dirname(self.curr_file_path), "foo.cc"))
 
 
 class SourceHelperTest(test_util.TensorFlowTestCase):
@@ -197,6 +229,132 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
     # Clean up unrelated source file.
     os.remove(unrelated_source_path)
+
+
+class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
+
+  def createAndRunGraphWithWhileLoop(self):
+    """Create and run a TensorFlow Graph with a while loop to generate dumps."""
+
+    self.dump_root = self.get_temp_dir()
+    self.curr_file_path = os.path.abspath(
+        inspect.getfile(inspect.currentframe()))
+
+    # Run a simple TF graph to generate some debug dumps that can be used in
+    # source annotation.
+    with session.Session() as sess:
+      loop_body = lambda i: math_ops.add(i, 2)
+      self.traceback_first_line = line_number_above()
+
+      loop_cond = lambda i: math_ops.less(i, 16)
+
+      i = constant_op.constant(10, name="i")
+      loop = control_flow_ops.while_loop(loop_cond, loop_body, [i])
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options, sess.graph, debug_urls=["file://%s" % self.dump_root])
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(loop, options=run_options, run_metadata=run_metadata)
+
+      self.dump = debug_data.DebugDumpDir(
+          self.dump_root, partition_graphs=run_metadata.partition_graphs)
+      self.dump.set_python_graph(sess.graph)
+
+  def setUp(self):
+    self.createAndRunGraphWithWhileLoop()
+
+  def tearDown(self):
+    if os.path.isdir(self.dump_root):
+      shutil.rmtree(self.dump_root)
+    ops.reset_default_graph()
+
+  def testGenerateSourceList(self):
+    source_list = source_utils.list_source_files_against_dump(self.dump)
+
+    # Assert that the file paths are sorted and unique.
+    file_paths = [item[0] for item in source_list]
+    self.assertEqual(sorted(file_paths), file_paths)
+    self.assertEqual(len(set(file_paths)), len(file_paths))
+
+    # Assert that each item of source_list has length 6.
+    for item in source_list:
+      self.assertTrue(isinstance(item, tuple))
+      self.assertEqual(6, len(item))
+
+    # The while loop body should have executed 3 times. The following table
+    # lists the tensors and how many times each of them is dumped.
+    #   Tensor name            # of times dumped:
+    #   i:0                    1
+    #   while/Enter:0          1
+    #   while/Merge:0          4
+    #   while/Merge:1          4
+    #   while/Less/y:0         4
+    #   while/Less:0           4
+    #   while/LoopCond:0       4
+    #   while/Switch:0         1
+    #   while/Swtich:1         3
+    #   while/Identity:0       3
+    #   while/Add/y:0          3
+    #   while/Add:0            3
+    #   while/NextIteration:0  3
+    #   while/Exit:0           1
+    # ----------------------------
+    #   (Total)                39
+    #
+    # The total number of nodes is 12.
+    # The total number of tensors is 14 (2 of the nodes have 2 outputs:
+    #   while/Merge, while/Switch).
+
+    _, is_tf_py_library, num_nodes, num_tensors, num_dumps, first_line = (
+        source_list[file_paths.index(self.curr_file_path)])
+    self.assertFalse(is_tf_py_library)
+    self.assertEqual(12, num_nodes)
+    self.assertEqual(14, num_tensors)
+    self.assertEqual(39, num_dumps)
+    self.assertEqual(self.traceback_first_line, first_line)
+
+  def testGenerateSourceListWithNodeNameFilter(self):
+    source_list = source_utils.list_source_files_against_dump(
+        self.dump, node_name_regex_whitelist=r"while/Add.*")
+
+    # Assert that the file paths are sorted.
+    file_paths = [item[0] for item in source_list]
+    self.assertEqual(sorted(file_paths), file_paths)
+    self.assertEqual(len(set(file_paths)), len(file_paths))
+
+    # Assert that each item of source_list has length 4.
+    for item in source_list:
+      self.assertTrue(isinstance(item, tuple))
+      self.assertEqual(6, len(item))
+
+    # Due to the node-name filtering the result should only contain 2 nodes
+    # and 2 tensors. The total number of dumped tensors should be 6:
+    #   while/Add/y:0          3
+    #   while/Add:0            3
+    _, is_tf_py_library, num_nodes, num_tensors, num_dumps, _ = (
+        source_list[file_paths.index(self.curr_file_path)])
+    self.assertFalse(is_tf_py_library)
+    self.assertEqual(2, num_nodes)
+    self.assertEqual(2, num_tensors)
+    self.assertEqual(6, num_dumps)
+
+  def testGenerateSourceListWithPathRegexFilter(self):
+    curr_file_basename = os.path.basename(self.curr_file_path)
+    source_list = source_utils.list_source_files_against_dump(
+        self.dump,
+        path_regex_whitelist=(
+            ".*" + curr_file_basename.replace(".", "\\.") + "$"))
+
+    self.assertEqual(1, len(source_list))
+    (file_path, is_tf_py_library, num_nodes, num_tensors, num_dumps,
+     first_line) = source_list[0]
+    self.assertEqual(self.curr_file_path, file_path)
+    self.assertFalse(is_tf_py_library)
+    self.assertEqual(12, num_nodes)
+    self.assertEqual(14, num_tensors)
+    self.assertEqual(39, num_dumps)
+    self.assertEqual(self.traceback_first_line, first_line)
 
 
 if __name__ == "__main__":

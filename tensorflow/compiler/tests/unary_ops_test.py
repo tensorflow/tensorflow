@@ -210,6 +210,11 @@ class UnaryOpsTest(XLATestCase):
               dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
+          nn_ops.elu,
+          np.array([[-1, 0, 1]], dtype=dtype),
+          expected=np.array([[-0.63212056, 0, 1]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
           nn_ops.relu,
           np.array([[-1, 1]], dtype=dtype),
           expected=np.array([[0, 1]], dtype=dtype))

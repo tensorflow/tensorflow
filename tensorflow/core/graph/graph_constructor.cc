@@ -839,11 +839,6 @@ Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
 Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
                       Graph* g, ShapeRefiner* refiner,
                       std::vector<std::pair<Node*, int>>* return_tensors) {
-  ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
-  if (refiner == nullptr) {
-    refiner = &default_refiner;
-  }
-
   if (!opts.return_tensors.empty()) {
     if (return_tensors == nullptr) {
       return errors::InvalidArgument(
@@ -857,6 +852,36 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
           return_tensors->size(), ")");
     }
   }
+
+  ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
+  if (refiner == nullptr) {
+    refiner = &default_refiner;
+  } else {
+    // Log a warning if we are importing a GraphDef at an older
+    // producer version after already having added non-source/sink
+    // nodes to the graph in the past.
+    if (gdef.versions().producer() > 0 &&
+        gdef.versions().producer() < refiner->graph_def_version() &&
+        g->num_nodes() > 2) {
+      LOG(WARNING) << "Importing a graph with a lower producer version "
+                   << gdef.versions().producer()
+                   << " into an existing graph with producer version "
+                   << refiner->graph_def_version() << ". Shape inference will "
+                   << "have run different parts of the graph with different "
+                   << "producer versions.";
+    }
+  }
+
+  // Set the graph def version of the refiner as the min of the
+  // current value and the version from the graph we are about to
+  // import.
+  //
+  // Note: to match Run() semantics, we should re-run shape inference
+  // on the entire graph if the producer version has changed.  For now
+  // we log the warning above.
+  refiner->set_graph_def_version(
+      std::min(refiner->graph_def_version(), gdef.versions().producer()));
+
   return GraphConstructor::Construct(opts, &gdef, g, refiner, return_tensors);
 }
 
