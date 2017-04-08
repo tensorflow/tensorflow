@@ -133,6 +133,9 @@ See the @{$python/math_ops} guide.
 @@edit_distance
 @@invert_permutation
 @@partial_sum
+@@partial_prod
+@@partial_min
+@@partial_max
 """
 from __future__ import absolute_import
 from __future__ import division
