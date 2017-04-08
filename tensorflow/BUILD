@@ -338,6 +338,11 @@ filegroup(
     ),
 )
 
+filegroup(
+    name = "docs_src",
+    data = glob(["docs_src/**/*.md"]),
+)
+
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------
