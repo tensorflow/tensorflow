@@ -124,7 +124,7 @@ class PoissonHeadTest(test.TestCase):
           train_op_fn=head_lib.no_op_train_fn,
           logits=logits)
       self._assert_output_alternatives(model_fn_ops)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["regression_head/loss"])
       _assert_no_variables(self)
       loss = self._log_poisson_loss(logits, labels)
       _assert_metrics(self, loss, {"loss": loss}, model_fn_ops)
@@ -150,7 +150,7 @@ class RegressionHeadTest(test.TestCase):
           train_op_fn=head_lib.no_op_train_fn,
           logits=((1.,), (1.,), (3.,)))
       self._assert_output_alternatives(model_fn_ops)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["regression_head/loss"])
       _assert_no_variables(self)
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
@@ -180,7 +180,7 @@ class RegressionHeadTest(test.TestCase):
       _assert_variables(
           self, expected_global=w, expected_model=w, expected_trainable=w)
       variables.global_variables_initializer().run()
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["regression_head/loss"])
       _assert_metrics(self, 2. / 3, {"loss": 2. / 3}, model_fn_ops)
 
   def testRegressionWithLogitsAndLogitsInput(self):
@@ -208,7 +208,7 @@ class RegressionHeadTest(test.TestCase):
       self._assert_output_alternatives(model_fn_ops)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["regression_head/loss"])
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
   def testRegressionWithLabelName(self):
@@ -223,7 +223,7 @@ class RegressionHeadTest(test.TestCase):
           logits=((1.,), (1.,), (3.,)))
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["regression_head/loss"])
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
   def testRegressionWithWeights(self):
@@ -238,7 +238,7 @@ class RegressionHeadTest(test.TestCase):
           logits=((1.,), (1.,), (3.,)))
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["regression_head/loss"])
       _assert_metrics(self, 2. / len(weights), {"loss": 2. / np.sum(weights)},
                       model_fn_ops)
 
@@ -261,7 +261,7 @@ class RegressionHeadTest(test.TestCase):
           expected_trainable=("regression_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
       _assert_summary_tags(
-          self, ["loss", "regression_head/centered_bias/bias_0"])
+          self, ["regression_head/loss", "regression_head/centered_bias/bias_0"])
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
   def testRegressionErrorInSparseTensorLabels(self):
@@ -330,7 +330,7 @@ class MultiLabelHeadTest(test.TestCase):
           logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_label_head/loss"])
       expected_loss = .89985204
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -347,7 +347,7 @@ class MultiLabelHeadTest(test.TestCase):
           train_op_fn=head_lib.no_op_train_fn, logits=logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_label_head/loss"])
       expected_loss = 1.00320443
       _assert_metrics(self, expected_loss, {
           "accuracy": 0.,
@@ -387,7 +387,7 @@ class MultiLabelHeadTest(test.TestCase):
       _assert_variables(
           self, expected_global=w, expected_model=w, expected_trainable=w)
       variables.global_variables_initializer().run()
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_label_head/loss"])
       expected_loss = .69314718
       _assert_metrics(self, expected_loss, {
           "accuracy": 2. / 3,
@@ -432,7 +432,7 @@ class MultiLabelHeadTest(test.TestCase):
       self._assert_output_alternatives(model_fn_ops)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_label_head/loss"])
       expected_loss = .89985204
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -451,7 +451,7 @@ class MultiLabelHeadTest(test.TestCase):
       self._assert_output_alternatives(model_fn_ops)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_label_head/loss"])
       expected_loss = 1.377779
       expected_eval_metrics = {
           "accuracy": 1. / 3,
@@ -519,7 +519,7 @@ class MultiLabelHeadTest(test.TestCase):
           head_lib.no_op_train_fn, logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_label_head/loss"])
       expected_loss = .89985204
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -539,7 +539,7 @@ class MultiLabelHeadTest(test.TestCase):
           logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_label_head/loss"])
       _assert_metrics(self, .089985214,
                       self._expected_eval_metrics(2.69956), model_fn_ops)
 
@@ -559,7 +559,7 @@ class MultiLabelHeadTest(test.TestCase):
           logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_label_head/loss"])
       _assert_metrics(self, 0.089985214,
                       self._expected_eval_metrics(0.089985214), model_fn_ops)
 
@@ -583,7 +583,7 @@ class MultiLabelHeadTest(test.TestCase):
           expected_trainable=("multi_label_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
       _assert_summary_tags(self, (
-          "loss",
+          "multi_label_head/loss",
           "multi_label_head/centered_bias/bias_0",
           "multi_label_head/centered_bias/bias_1",
           "multi_label_head/centered_bias/bias_2"
@@ -608,7 +608,7 @@ class MultiLabelHeadTest(test.TestCase):
           train_op_fn=head_lib.no_op_train_fn,
           logits=self._logits)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_label_head/loss"])
       expected_loss = .89985204
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -674,7 +674,7 @@ class BinaryClassificationHeadTest(test.TestCase):
           logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_logistic_head/loss"])
       expected_loss = .81326175
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -702,7 +702,7 @@ class BinaryClassificationHeadTest(test.TestCase):
       _assert_variables(
           self, expected_global=w, expected_model=w, expected_trainable=w)
       variables.global_variables_initializer().run()
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_logistic_head/loss"])
       expected_loss = .69314718
       label_mean = np.mean(self._labels)
       _assert_metrics(self, expected_loss, {
@@ -738,7 +738,7 @@ class BinaryClassificationHeadTest(test.TestCase):
       self._assert_output_alternatives(model_fn_ops)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_logistic_head/loss"])
       expected_loss = .81326175
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -817,7 +817,7 @@ class BinaryClassificationHeadTest(test.TestCase):
           logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_logistic_head/loss"])
       expected_loss = .81326175
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -838,7 +838,7 @@ class BinaryClassificationHeadTest(test.TestCase):
           logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_logistic_head/loss"])
       expected_total_loss = .31326166
       _assert_metrics(
           self,
@@ -871,7 +871,7 @@ class BinaryClassificationHeadTest(test.TestCase):
           logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_logistic_head/loss"])
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       # expected_loss is (total_weighted_loss)/1 since htere is 1 nonzero
@@ -911,7 +911,8 @@ class BinaryClassificationHeadTest(test.TestCase):
           expected_trainable=("binary_logistic_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
       _assert_summary_tags(
-          self, ["loss", "binary_logistic_head/centered_bias/bias_0"])
+          self, ["binary_logistic_head/loss",
+		 "binary_logistic_head/centered_bias/bias_0"])
       expected_loss = .81326175
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -960,7 +961,7 @@ class MultiClassHeadTest(test.TestCase):
           logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_class_head/loss"])
       expected_loss = 1.5514447
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -999,7 +1000,7 @@ class MultiClassHeadTest(test.TestCase):
       _assert_variables(
           self, expected_global=w, expected_model=w, expected_trainable=w)
       variables.global_variables_initializer().run()
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_class_head/loss"])
       expected_loss = 1.0986123
       _assert_metrics(self, expected_loss, {
           "accuracy": 0.,
@@ -1050,7 +1051,7 @@ class MultiClassHeadTest(test.TestCase):
           expected_trainable=("multi_class_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
       _assert_summary_tags(self,
-                           ["loss",
+                           ["multi_class_head/loss",
                             "multi_class_head/centered_bias/bias_0",
                             "multi_class_head/centered_bias/bias_1",
                             "multi_class_head/centered_bias/bias_2"])
@@ -1068,7 +1069,7 @@ class MultiClassHeadTest(test.TestCase):
       self._assert_output_alternatives(model_fn_ops)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_class_head/loss"])
       expected_loss = 1.5514447
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -1087,7 +1088,7 @@ class MultiClassHeadTest(test.TestCase):
       self._assert_output_alternatives(model_fn_ops)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_class_head/loss"])
       expected_loss = 3.1698461
       expected_eval_metrics = {
           "accuracy": 0.,
@@ -1126,7 +1127,7 @@ class MultiClassHeadTest(test.TestCase):
           logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_class_head/loss"])
       expected_loss = 1.5514447
       _assert_metrics(self, expected_loss * weight,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -1150,7 +1151,7 @@ class MultiClassHeadTest(test.TestCase):
           logits=self._logits)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["multi_class_head/loss"])
       expected_loss = 1.5514447 * weight
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -1257,7 +1258,7 @@ class MultiClassHeadTest(test.TestCase):
         data_flow_ops.tables_initializer().run()
         self.assertIsNone(model_fn_ops.train_op)
         _assert_no_variables(self)
-        _assert_summary_tags(self, ["loss"])
+        _assert_summary_tags(self, ["multi_class_head/loss"])
         expected_loss = 1.5514447
         expected_eval_metrics = {
             "accuracy": 0.,
@@ -1283,7 +1284,7 @@ class MultiClassHeadTest(test.TestCase):
         data_flow_ops.tables_initializer().run()
         self.assertIsNone(model_fn_ops.train_op)
         _assert_no_variables(self)
-        _assert_summary_tags(self, ["loss"])
+        _assert_summary_tags(self, ["multi_class_head/loss"])
         expected_loss = 0.5514447
         expected_eval_metrics = {
             "accuracy": 1.,
@@ -1322,7 +1323,7 @@ class BinarySvmHeadTest(test.TestCase):
           logits=self._predictions)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_svm_head/loss"])
       expected_loss = np.average(self._expected_losses)
       _assert_metrics(self, expected_loss, {
           "accuracy": 1.,
@@ -1352,7 +1353,7 @@ class BinarySvmHeadTest(test.TestCase):
       _assert_variables(
           self, expected_global=w, expected_model=w, expected_trainable=w)
       variables.global_variables_initializer().run()
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_svm_head/loss"])
       expected_loss = 1.
       _assert_metrics(self, expected_loss, {
           "accuracy": .5,
@@ -1384,7 +1385,7 @@ class BinarySvmHeadTest(test.TestCase):
       self._assert_output_alternatives(model_fn_ops)
       self.assertIsNone(model_fn_ops.train_op)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_svm_head/loss"])
       expected_loss = np.average(self._expected_losses)
       _assert_metrics(self, expected_loss, {
           "accuracy": 1.,
@@ -1403,7 +1404,7 @@ class BinarySvmHeadTest(test.TestCase):
           logits=self._predictions)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_svm_head/loss"])
       expected_loss = np.average(self._expected_losses)
       _assert_metrics(self, expected_loss, {
           "accuracy": 1.,
@@ -1422,7 +1423,7 @@ class BinarySvmHeadTest(test.TestCase):
           logits=self._predictions)
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
-      _assert_summary_tags(self, ["loss"])
+      _assert_summary_tags(self, ["binary_svm_head/loss"])
       expected_weighted_sum = np.sum(
           np.multiply(weights, self._expected_losses))
       _assert_metrics(self, expected_weighted_sum / len(weights), {
@@ -1450,7 +1451,8 @@ class BinarySvmHeadTest(test.TestCase):
           expected_trainable=("binary_svm_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
       _assert_summary_tags(
-          self, ["loss", "binary_svm_head/centered_bias/bias_0"])
+          self, ["binary_svm_head/loss",
+		 "binary_svm_head/centered_bias/bias_0"])
       expected_loss = np.average(self._expected_losses)
       _assert_metrics(self, expected_loss, {
           "accuracy": 1.,
