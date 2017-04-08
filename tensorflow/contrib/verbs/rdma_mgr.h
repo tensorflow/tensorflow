@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
 #define THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
 
+#ifdef TENSORFLOW_USE_VERBS
+
 #include <string>
 #include <unordered_map>
 
@@ -49,4 +51,5 @@ class RdmaMgr {
 
 } // namespace tensorflow
 
+#endif // TENSORFLOW_USE_VERBS
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef TENSORFLOW_USE_VERBS
+
 #include<vector>
 #include "tensorflow/contrib/verbs/rdma_mgr.h"
 #include "tensorflow/contrib/verbs/grpc_verbs_client.h"
@@ -126,3 +128,5 @@ RdmaChannel* RdmaMgr::FindChannel(const string& name) {
 }
 
 }  // end namespace tensorflow
+
+#endif

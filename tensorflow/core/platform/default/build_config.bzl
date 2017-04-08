@@ -245,3 +245,9 @@ def tf_lib_proto_parsing_deps():
       ":protos_all_cc",
       "//tensorflow/core/platform/default/build_config:proto_parsing",
   ]
+
+def tf_additional_verbs_lib_defines():
+  return select({
+      "//tensorflow:with_verbs_support": ["TENSORFLOW_USE_VERBS"],
+      "//conditions:default": [],
+  })

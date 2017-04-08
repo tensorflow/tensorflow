@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef TENSORFLOW_USE_VERBS
+
 #include "tensorflow/contrib/verbs/verbs_server_lib.h"
 
 #include "tensorflow/contrib/verbs/rdma_mgr.h"
@@ -163,3 +165,5 @@ static VerbsServerRegistrar registrar;
 
 }  // namespace
 }  // namespace tensorflow
+
+#endif

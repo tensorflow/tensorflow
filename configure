@@ -244,7 +244,7 @@ fi
 # Verbs configuration
 while [ "$TF_NEED_VERBS" == "" ]; do
   read -p "Do you wish to build TensorFlow with "\
-"VERBS-RDMA support? [y/N] " INPUT
+"VERBS support? [y/N] " INPUT
   case $INPUT in
     [Yy]* ) echo "VERBS support will be enabled for "\
 "TensorFlow"; TF_NEED_VERBS=1;;

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef TENSORFLOW_USE_VERBS
+
 #include <cstdlib>
 #include "tensorflow/contrib/verbs/rdma.h"
 #include "tensorflow/contrib/verbs/verbs_util.h"
@@ -888,3 +890,5 @@ void RdmaMessage::ParseMessage(RdmaMessage& rm, void* buffer) {
 }
 
 }  // end namespace tensorflow
+
+#endif

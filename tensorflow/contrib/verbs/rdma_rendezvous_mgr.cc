@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef TENSORFLOW_USE_VERBS
+
 #include <unordered_set>
 #include "tensorflow/contrib/verbs/rdma_rendezvous_mgr.h"
 #include "tensorflow/contrib/verbs/verbs_util.h"
@@ -141,3 +143,5 @@ BaseRemoteRendezvous* RdmaRendezvousMgr::Create(int64 step_id,
 }
  
 }  // end namespace tensorflow
+
+#endif
