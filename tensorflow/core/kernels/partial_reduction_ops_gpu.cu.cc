@@ -22,37 +22,62 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/framework/register_types.h"
+#include <limits>
 
 namespace tensorflow {
 
 using GPUDevice = Eigen::GpuDevice;
 
-template <typename T>
-__device__ T zero_gpu() { return T(0); }
+namespace functor {
+
+namespace reduce_functions {
 
 template <typename T>
-__device__ T sum_gpu(T a,T b) { return a+b; }
+__host__ __device__ T sum(T a,T b) { return a+b; }
 
 template <typename T>
-__device__ T max_gpu(T a,T b) { return a>b?a:b; }
+__host__ __device__ T prod(T a,T b) { return a*b; }
 
 template <typename T>
-__device__ T min_gpu(T a,T b) { return a<b?a:b; }
+__host__ __device__ T max(T a,T b) { return a>b?a:b; }
+
+template <typename T>
+__host__ __device__ T min(T a,T b) { return a<b?a:b; }
+
+template <typename T>
+T zero() { return T(0); }
+
+template <typename T>
+T one() { return T(1); }
+
+template <typename T>
+T infinity() {
+    return std::max<T>(std::numeric_limits<T>::max(),
+                       std::numeric_limits<T>::infinity());
+}
+
+template <typename T>
+T negative_infinity() {
+    return std::min<T>(-std::numeric_limits<T>::infinity(),
+                       std::numeric_limits<T>::min());
+}
+
+} // namespace reduce_functions
 
 // Kernel to do the reducton:
 // x is row index of output
 // y is column index
-template <typename T, typename Index, T beginning(), T reduce(T,T)>
+template <typename T, typename Index, T reduce(T,T)>
 __global__ void PartialReduceKernel(Index num_rows, Index num_cols, Index bound,
-    const Index *indices, const T *input, T *out)
+    const T beginning, const Index *indices, const T *input, T *out)
 {
   Index x = blockIdx.x * blockDim.x + threadIdx.x;
   Index y = blockIdx.y * blockDim.y + threadIdx.y;
   Index outidx = x*num_cols + y;
   if( x<num_rows && y<num_cols ) {
-    out[outidx] = beginning();
+    out[outidx] = beginning;
     Index start = indices[x*2];
-    Index end   = min_gpu(bound,indices[x*2+1]);
+    Index end   = reduce_functions::min<Index>(bound,indices[x*2+1]);
     if(end>bound)
         end = bound;
     for(Index j=start;j<end;j++) {
@@ -61,8 +86,6 @@ __global__ void PartialReduceKernel(Index num_rows, Index num_cols, Index bound,
     }
   }
 }
-
-namespace functor {
 
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
 struct PartialReductionFunctor<GPUDevice, T, Index, beginning, reduce>{
@@ -75,19 +98,24 @@ struct PartialReductionFunctor<GPUDevice, T, Index, beginning, reduce>{
     Index rows = output.dimension(0);
     Index cols = output.dimension(1);
     Cuda2DLaunchConfig config = GetCuda2DLaunchConfig(rows,cols,d);
-    PartialReduceKernel<T,Index,beginning,reduce><<<config.block_count,
-      config.thread_per_block, 0, d.stream()>>>(rows, cols, bound, indices.data(), data.data(), output.data());
+    PartialReduceKernel<T,Index,reduce><<<config.block_count,
+      config.thread_per_block, 0, d.stream()>>>(rows, cols, bound, beginning(),
+            indices.data(), data.data(), output.data());
   }
 };
 
-#define DEFINE_GPU_SPECS_INDEX(T, Index) \
-  template struct PartialReductionFunctor<GPUDevice, T, Index, zero_gpu<T>, sum_gpu<T>>
+#define DEFINE_GPU_SPECS_INDEX(T, Index)                                                                    \
+  template struct PartialReductionFunctor<GPUDevice, T, Index, reduce_functions::zero<T>, reduce_functions::sum<T>>;                    \
+  template struct PartialReductionFunctor<GPUDevice, T, Index, reduce_functions::one<T>, reduce_functions::prod<T>>;                    \
+  template struct PartialReductionFunctor<GPUDevice, T, Index, reduce_functions::negative_infinity<T>, reduce_functions::max<T>>; \
+  template struct PartialReductionFunctor<GPUDevice, T, Index, reduce_functions::infinity<T>, reduce_functions::min<T>>;
 
-#define DEFINE_GPU_SPECS(T)         \
-  DEFINE_GPU_SPECS_INDEX(T, int32); \
+#define DEFINE_GPU_SPECS(T)          \
+  DEFINE_GPU_SPECS_INDEX(T, int32);  \
   DEFINE_GPU_SPECS_INDEX(T, int64);
 
-TF_CALL_REAL_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_REAL_NUMBER_TYPES(DEFINE_GPU_SPECS)
+// template struct PartialReductionFunctor<GPUDevice, int, int, infinity<int>, min_gpu<int>>;
 
 #undef DEFINE_GPU_SPECS
 #undef DEFINE_GPU_SPECS_INDEX

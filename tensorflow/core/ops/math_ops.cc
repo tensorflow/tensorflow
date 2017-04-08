@@ -2405,11 +2405,92 @@ If end index is out of bounds, then the sum will automatically stop at the bound
 so feel free to put a large number as your end of your index if you want to sum until
 the bound.
 
-data: The source of data where the sum will be taken from.
-indices: start, end indices that controls which part will be summed.
+data: The source of data where the computation will be taken from.
+indices: start, end indices that controls which part to be included.
 T: the type of data.
 Tindices: the type of indices, must be int32 or int64.
 output: the computed sum values.
+)doc");
+
+REGISTER_OP("PartialProd")
+    .Input("data: T")
+    .Input("indices: Tindices")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .SetShapeFn(ParticalReductionShapeFn)
+    .Doc(R"doc(
+Dynamically compute the product over the first dimension of a tensor according
+to start and end indices specified at "index". For example if input is
+[[1,2,3],[10,20,30],[100,200,300],[10,10,10]] and index is [[0,1],[1,1],[0,2]],
+the the output will be [[1,2,3],[1,1,1],[10,40,90]]. The data must be at least rank
+one. The indices must be of shape (?,2) where the first column is start indices and
+the second column is end indices. The end index is not included in the product, which
+means, if you want to do a product over 0,1,2, the you should have start index 0 and end
+index 3. If end index is smaller than or equal to start, the result will be one.
+If end index is out of bounds, then the sum will automatically stop at the bound,
+so feel free to put a large number as your end of your index if you want to multiply until
+the bound.
+
+data: The source of data where the computation will be taken from.
+indices: start, end indices that controls which part to be included.
+T: the type of data.
+Tindices: the type of indices, must be int32 or int64.
+output: the computed product values.
+)doc");
+
+REGISTER_OP("PartialMax")
+    .Input("data: T")
+    .Input("indices: Tindices")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .SetShapeFn(ParticalReductionShapeFn)
+    .Doc(R"doc(
+Dynamically compute the maximum over the first dimension of a tensor according
+to start and end indices specified at "index". For example if input is
+[[1,2,3],[10,20,30],[100,200,300],[10,10,10]] and index is [[0,1],[1,1],[0,2]],
+the the output will be [[1,2,3],[-BIG_VALUE,-BIG_VALUE,-BIG_VALUE],[10,20,30]].
+The data must be at least rank one. The indices must be of shape (?,2) where the
+first column is start indices and the second column is end indices. The end index
+is not included in the maximum, which means, if you want to compute a maximum over
+0,1,2, the you should have start index 0 and end index 3. If end index is smaller
+than or equal to start, the result will be -BIG_VALUE or -inf if exist. If end index
+is out of bounds, then the maximum will automatically stop at the bound, so feel free to
+put a large number as your end of your index if you want to multiply until the bound.
+
+data: The source of data where the computation will be taken from.
+indices: start, end indices that controls which part to be included.
+T: the type of data.
+Tindices: the type of indices, must be int32 or int64.
+output: the computed product values.
+)doc");
+
+REGISTER_OP("PartialMin")
+    .Input("data: T")
+    .Input("indices: Tindices")
+    .Output("output: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32,int64}")
+    .SetShapeFn(ParticalReductionShapeFn)
+    .Doc(R"doc(
+Dynamically compute the minimum over the first dimension of a tensor according
+to start and end indices specified at "index". For example if input is
+[[1,2,3],[10,20,30],[100,200,300],[10,10,10]] and index is [[0,1],[1,1],[0,2]],
+the the output will be [[1,2,3],[+BIG_VALUE,+BIG_VALUE,+BIG_VALUE],[1,2,3]].
+The data must be at least rank one. The indices must be of shape (?,2) where the
+first column is start indices and the second column is end indices. The end index
+is not included in the minimum, which means, if you want to compute a minimum over
+0,1,2, the you should have start index 0 and end index 3. If end index is smaller
+than or equal to start, the result will be +BIG_VALUE or +inf if exist. If end index is out
+of bounds, then the minimum will automatically stop at the bound, so feel free to
+put a large number as your end of your index if you want to multiply until the bound.
+
+data: The source of data where the computation will be taken from.
+indices: start, end indices that controls which part to be included.
+T: the type of data.
+Tindices: the type of indices, must be int32 or int64.
+output: the computed product values.
 )doc");
 
 }  // namespace tensorflow

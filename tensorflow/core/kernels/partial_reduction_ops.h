@@ -27,6 +27,19 @@ class OpKernelContext;
 
 namespace functor {
 
+namespace reduce_functions {
+
+template <typename T> T sum(T a,T b);
+template <typename T> T prod(T a,T b);
+template <typename T> T max(T a,T b);
+template <typename T> T min(T a,T b);
+template <typename T> T zero();
+template <typename T> T one();
+template <typename T> T infinity();
+template <typename T> T negative_infinity();
+
+} // namespace reduce_functions
+
 // BaseFunctor for definition of PartialReductionOp
 template <typename Device, typename T, typename Index, T beginning(), T reduce(T,T)>
 struct PartialReductionFunctor{

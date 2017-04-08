@@ -41,18 +41,35 @@ public:
 
 #if GOOGLE_CUDA
 
-template <typename T>
-T sum_gpu(T a,T b);
-
-template <typename T>
-T zero_gpu();
-
 #define REGISTER_GPU_PARTIAL_REDUCE_KERNELS(type, index_type)          \
   REGISTER_KERNEL_BUILDER(Name("PartialSum")                           \
                               .Device(DEVICE_GPU)                      \
                               .TypeConstraint<type>("T")               \
                               .TypeConstraint<index_type>("Tindices"), \
-                          PartialReduce<GPUDevice, type, index_type, zero_gpu<type>, sum_gpu<type>>);
+                          PartialReduce<GPUDevice, type, index_type,   \
+                          functor::reduce_functions::zero<type>,               \
+                          functor::reduce_functions::sum<type>>);          \
+  REGISTER_KERNEL_BUILDER(Name("PartialProd")                          \
+                              .Device(DEVICE_GPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          PartialReduce<GPUDevice, type, index_type,   \
+                          functor::reduce_functions::one<type>,                \
+                          functor::reduce_functions::prod<type>>);         \
+  REGISTER_KERNEL_BUILDER(Name("PartialMax")                           \
+                              .Device(DEVICE_GPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          PartialReduce<GPUDevice, type, index_type,   \
+                          functor::reduce_functions::negative_infinity<type>,  \
+                          functor::reduce_functions::max<type>>);   \
+  REGISTER_KERNEL_BUILDER(Name("PartialMin")                           \
+                              .Device(DEVICE_GPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          PartialReduce<GPUDevice, type, index_type,   \
+                          functor::reduce_functions::infinity<type>,   \
+                          functor::reduce_functions::min<type>>);
 
 #define REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL(type) \
   REGISTER_GPU_PARTIAL_REDUCE_KERNELS(type, int32);   \
