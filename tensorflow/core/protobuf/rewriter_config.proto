@@ -6,6 +6,11 @@ option java_outer_classname = "RewriterConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
+message AutoParallelOptions {
+  bool enable = 1;
+  int32 num_replicas = 2;
+}
+
 message RewriterConfig {
   bool optimize_tensor_layout = 1;
   bool disable_model_pruning = 2;
@@ -18,6 +23,8 @@ message RewriterConfig {
     MANUAL = 1;
   }
   MemOptType memory_optimization = 4;
+
+  AutoParallelOptions auto_parallel = 5;
 
   // If non-empty, will use this as an alternative way to specify a list of
   // optimizations to turn on and the order of the optimizations.
