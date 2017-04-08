@@ -120,7 +120,8 @@ public:
     Tensor *output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     auto functor = functor::PartialReductionFunctor<Device, T, Index, beginning, reduce>();
-    functor(context, context->eigen_device<Device>(), indices.matrix<Index>(), data.matrix<T>(), output->matrix<T>());
+    functor(context, context->eigen_device<Device>(), indices.flat_outer_dims<Index,2>(),
+        data.flat_outer_dims<T,2>(), output->flat_outer_dims<T,2>());
   }
 };
 

@@ -431,7 +431,15 @@ class PartialReduceTest(test_util.TensorFlowTestCase):
     result = np.array([[1, 2, 3], [741, 852, 963], [40, 50, 60], [740, 850, 960], [41, 52, 63]], dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = math_ops.partial_sum(x,indices).eval()
-      self.assertEqual(y_tf, result)
+      self.assertAllEqual(y_tf, result)
+
+  def testPartialSum1D(self):
+    x = np.array([1, 40, 700], dtype=np.int32)
+    indices = np.array([[0, 1], [0, 3], [1, 2], [1, 3], [0,2]], dtype=np.int32)
+    result = np.array([1, 741, 40, 740, 41], dtype=np.int32)
+    with self.test_session(use_gpu=True):
+      y_tf = math_ops.partial_sum(x,indices).eval()
+      self.assertAllEqual(y_tf, result)
 
   def testPartialProd(self):
     x = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.int32)
@@ -439,7 +447,7 @@ class PartialReduceTest(test_util.TensorFlowTestCase):
     result = np.array([[1, 2, 3], [28, 80, 162], [4, 5, 6], [28, 40, 54], [4, 10, 18]], dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = math_ops.partial_prod(x,indices).eval()
-      self.assertEqual(y_tf, result)
+      self.assertAllEqual(y_tf, result)
 
   def testPartialMax(self):
     x = np.array([[1, 2, 3], [4, 5, 6], [7,8,9]], dtype=np.int32)
@@ -447,7 +455,7 @@ class PartialReduceTest(test_util.TensorFlowTestCase):
     result = np.array([[1, 2, 3], [7,8,9], [4, 5, 6], [7, 8, 9], [4, 5, 6]], dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = math_ops.partial_max(x,indices).eval()
-      self.assertEqual(y_tf, result)
+      self.assertAllEqual(y_tf, result)
 
   def testPartialMin(self):
     x = np.array([[1, 2, 3], [4, 5, 6], [7,8,9]], dtype=np.int32)
@@ -455,7 +463,7 @@ class PartialReduceTest(test_util.TensorFlowTestCase):
     result = np.array([[1, 2, 3], [1, 2, 3], [4, 5, 6], [4, 5, 6], [1, 2, 3]], dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = math_ops.partial_min(x,indices).eval()
-      self.assertEqual(y_tf, result)
+      self.assertAllEqual(y_tf, result)
 
   def testPartialReduceEmptyDataRows(self):
     x = np.empty((0,1,2,3,4,5,6), dtype=np.int32)
@@ -463,7 +471,7 @@ class PartialReduceTest(test_util.TensorFlowTestCase):
     result = np.zeros((5,1,2,3,4,5,6), dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = math_ops.partial_sum(x,indices).eval()
-      self.assertEqual(y_tf, result)
+      self.assertAllEqual(y_tf, result)
 
   def testPartialReduceEmptyDataCols(self):
     x = np.empty((100,0,2,3,4,5,6), dtype=np.int32)
@@ -471,7 +479,7 @@ class PartialReduceTest(test_util.TensorFlowTestCase):
     result = np.empty((5,0,2,3,4,5,6), dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = math_ops.partial_sum(x,indices).eval()
-      self.assertEqual(y_tf, result)
+      self.assertAllEqual(y_tf, result)
 
   def testPartialReduceEmptyIndicesRows(self):
     x = np.array([[1, 2, 3], [4, 5, 6], [7,8,9]], dtype=np.int32)
@@ -479,7 +487,7 @@ class PartialReduceTest(test_util.TensorFlowTestCase):
     result = np.empty((0,3), dtype=np.int32)
     with self.test_session(use_gpu=True):
       y_tf = math_ops.partial_sum(x,indices).eval()
-      self.assertEqual(y_tf, result)
+      self.assertAllEqual(y_tf, result)
 
 
 if __name__ == "__main__":
