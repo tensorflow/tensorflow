@@ -133,7 +133,13 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
       pass.AddPass<HloConstantFolding>();
     }
     pipeline.AddPass<ConvolutionFolding>();
-    pipeline.AddPass<TransposeFolding>(ImplementedAsGemm);
+    pipeline.AddPass<TransposeFolding>(
+        [](const HloInstruction& dot,
+           const TransposeFolding::OperandIndices& candidate_operands) {
+          return ImplementedAsGemm(dot) ? candidate_operands
+                                        : TransposeFolding::OperandIndices{};
+        },
+        TransposeFolding::NeverFoldTranspose);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();

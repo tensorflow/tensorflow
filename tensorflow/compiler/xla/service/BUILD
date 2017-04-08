@@ -1431,7 +1431,9 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/core:lib",
     ],
@@ -1442,11 +1444,13 @@ cc_test(
     srcs = ["transpose_folding_test.cc"],
     deps = [
         ":hlo",
+        ":shape_inference",
         ":transpose_folding",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
