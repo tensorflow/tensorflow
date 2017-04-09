@@ -69,14 +69,15 @@ class FixedLengthRecordReader : public ReaderBase {
       *at_end = true;
       return Status::OK();
     }
-    auto current_position = input_buffer_->Tell();
+    const int64 pos_before_read = input_buffer_->Tell();
     TF_RETURN_IF_ERROR(input_buffer_->ReadNBytes(record_bytes_, value));
     *key = strings::StrCat(current_work(), ":", record_number_);
     *produced = true;
     ++record_number_;
 
-    if (hop_bytes_ > 0)
-        input_buffer_->Seek(current_position + hop_bytes_);
+    if (hop_bytes_ > 0) {
+        input_buffer_->Seek(pos_before_read + hop_bytes_);
+    }
 
     return Status::OK();
   }
