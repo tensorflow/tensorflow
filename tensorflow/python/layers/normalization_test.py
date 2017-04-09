@@ -60,7 +60,7 @@ class BNTest(test.TestCase):
         ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES),
         bn.trainable_variables)
 
-  def _test3DInputAxis1(self, dtype=dtypes.float32):
+  def _test3DInputAxis1(self, dtype=dtypes.float32, atol=1e-2, places=1):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
         axis=1, epsilon=epsilon, momentum=0.9, dtype=dtype)
@@ -83,8 +83,8 @@ class BNTest(test.TestCase):
                                    feed_dict={training: True})
         # Verify that the axis is normalized during training.
         normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
@@ -92,24 +92,24 @@ class BNTest(test.TestCase):
       mean = np.mean(np_inputs, axis=(0, 2))
       std = np.std(np_inputs, axis=(0, 2))
       variance = np.square(std)
-      self.assertAllClose(mean, moving_mean, atol=1e-2)
-      self.assertAllClose(variance, moving_var, atol=1e-2)
+      self.assertAllClose(mean, moving_mean, atol=atol)
+      self.assertAllClose(variance, moving_var, atol=atol)
 
       # Test inference with placeholder learning phase.
       np_output = sess.run(outputs, feed_dict={training: False})
 
       # Verify that the axis is normalized during inference.
       normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
   def test3DInputAxis1(self):
     self._test3DInputAxis1()
 
   def test3DInputAxis1Float16(self):
-    self._test3DInputAxis1(dtype=dtypes.float16)
+    self._test3DInputAxis1(dtype=dtypes.float16, atol=1, places=-1)
 
-  def _test3DInputAxis2(self, dtype=dtypes.float16):
+  def _test3DInputAxis2(self, dtype=dtypes.float32, atol=1e-2, places=1):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
         axis=2, epsilon=epsilon, momentum=0.9, dtype=dtype)
@@ -130,8 +130,8 @@ class BNTest(test.TestCase):
                                    feed_dict={training: True})
         # Verify that the axis is normalized during training.
         normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
@@ -139,24 +139,24 @@ class BNTest(test.TestCase):
       mean = np.mean(np_inputs, axis=(0, 1))
       std = np.std(np_inputs, axis=(0, 1))
       variance = np.square(std)
-      self.assertAllClose(mean, moving_mean, atol=1e-2)
-      self.assertAllClose(variance, moving_var, atol=1e-2)
+      self.assertAllClose(mean, moving_mean, atol=atol)
+      self.assertAllClose(variance, moving_var, atol=atol)
 
       # Test inference with placeholder learning phase.
       np_output = sess.run(outputs, feed_dict={training: False})
 
       # Verify that the axis is normalized during inference.
       normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
   def test3DInputAxis2(self):
     self._test3DInputAxis2()
 
   def test3DInputAxis2Float16(self):
-    self._test3DInputAxis2(dtype=dtypes.float16)
+    self._test3DInputAxis2(dtype=dtypes.float16, atol=1, places=-1)
 
-  def _test4DInputAxis1(self, dtype=dtypes.float32):
+  def _test4DInputAxis1(self, dtype=dtypes.float32, atol=1e-2, places=1):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
         axis=1, epsilon=epsilon, momentum=0.9, dtype=dtype)
@@ -176,8 +176,8 @@ class BNTest(test.TestCase):
                                    feed_dict={training: True})
         # Verify that the axis is normalized during training.
         normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
@@ -185,24 +185,24 @@ class BNTest(test.TestCase):
       mean = np.mean(np_inputs, axis=(0, 2, 3))
       std = np.std(np_inputs, axis=(0, 2, 3))
       variance = np.square(std)
-      self.assertAllClose(mean, moving_mean, atol=1e-2)
-      self.assertAllClose(variance, moving_var, atol=1e-2)
+      self.assertAllClose(mean, moving_mean, atol=atol)
+      self.assertAllClose(variance, moving_var, atol=atol)
 
       # Test inference with placeholder learning phase.
       np_output = sess.run(outputs, feed_dict={training: False})
 
       # Verify that the axis is normalized during inference.
       normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
   def test4DInputAxis1(self):
     self._test4DInputAxis1()
 
   def test4DInputAxis1Float16(self):
-    self._test4DInputAxis1(dtype=dtypes.float16)
+    self._test4DInputAxis1(dtype=dtypes.float16, atol=1, places=-1)
 
-  def _test4DInputAxis2(self, dtype=dtypes.float32):
+  def _test4DInputAxis2(self, dtype=dtypes.float32, atol=1e-2, places=1):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
         axis=2, epsilon=epsilon, momentum=0.9, dtype=dtype)
@@ -222,8 +222,8 @@ class BNTest(test.TestCase):
                                    feed_dict={training: True})
         # Verify that the axis is normalized during training.
         normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
@@ -231,24 +231,24 @@ class BNTest(test.TestCase):
       mean = np.mean(np_inputs, axis=(0, 1, 3))
       std = np.std(np_inputs, axis=(0, 1, 3))
       variance = np.square(std)
-      self.assertAllClose(mean, moving_mean, atol=1e-2)
-      self.assertAllClose(variance, moving_var, atol=1e-2)
+      self.assertAllClose(mean, moving_mean, atol=atol)
+      self.assertAllClose(variance, moving_var, atol=atol)
 
       # Test inference with placeholder learning phase.
       np_output = sess.run(outputs, feed_dict={training: False})
 
       # Verify that the axis is normalized during inference.
       normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
   def test4DInputAxis2(self):
     self._test4DInputAxis2()
 
   def test4DInputAxis2Float16(self):
-    self._test4DInputAxis2(dtype=dtypes.float16)
+    self._test4DInputAxis2(dtype=dtypes.float16, atol=1, places=-1)
 
-  def _test4DInputAxis3(self, dtype=dtypes.float32):
+  def _test4DInputAxis3(self, dtype=dtypes.float32, atol=1e-2, places=1):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
         axis=3, epsilon=epsilon, momentum=0.9, dtype=dtype)
@@ -268,8 +268,8 @@ class BNTest(test.TestCase):
                                    feed_dict={training: True})
         # Verify that the axis is normalized during training.
         normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
@@ -277,24 +277,24 @@ class BNTest(test.TestCase):
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
       variance = np.square(std)
-      self.assertAllClose(mean, moving_mean, atol=1e-2)
-      self.assertAllClose(variance, moving_var, atol=1e-2)
+      self.assertAllClose(mean, moving_mean, atol=atol)
+      self.assertAllClose(variance, moving_var, atol=atol)
 
       # Test inference with placeholder learning phase.
       np_output = sess.run(outputs, feed_dict={training: False})
 
       # Verify that the axis is normalized during inference.
       normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
   def test4DInputAxis3(self):
     self._test4DInputAxis3()
 
   def test4DInputAxis3Float16(self):
-    self._test4DInputAxis3(dtype=dtypes.float16)
+    self._test4DInputAxis3(dtype=dtypes.float16, atol=1, places=-1)
 
-  def _testNegativeAxis(self, dtype=dtypes.float32):
+  def _testNegativeAxis(self, dtype=dtypes.float32, atol=1e-2, places=1):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
         axis=-1, epsilon=epsilon, momentum=0.9, dtype=dtype)
@@ -315,8 +315,8 @@ class BNTest(test.TestCase):
 
         # Verify that the axis is normalized during training.
         normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
@@ -324,24 +324,24 @@ class BNTest(test.TestCase):
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
       variance = np.square(std)
-      self.assertAllClose(mean, moving_mean, atol=1e-2)
-      self.assertAllClose(variance, moving_var, atol=1e-2)
+      self.assertAllClose(mean, moving_mean, atol=atol)
+      self.assertAllClose(variance, moving_var, atol=atol)
 
       # Test inference with placeholder learning phase.
       np_output = sess.run(outputs, feed_dict={training: False})
 
       # Verify that the axis is normalized during inference.
       normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
   def testNegativeAxis(self):
     self._testNegativeAxis()
 
   def testNegativeAxisFloat16(self):
-    self._testNegativeAxis(dtype=dtypes.float16)
+    self._testNegativeAxis(dtype=dtypes.float16, atol=1, places=-1)
 
-  def _testBooleanLearningPhase(self, dtype=dtypes.float32):
+  def _testBooleanLearningPhase(self, dtype=dtypes.float32, atol=1e-2, places=1):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(
         axis=-1, epsilon=epsilon, momentum=0.9, dtype=dtype)
@@ -360,8 +360,8 @@ class BNTest(test.TestCase):
         np_output, _, _ = sess.run([outputs_training] + bn.updates)
         # Verify that the axis is normalized during training.
         normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=2)
-        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
@@ -369,22 +369,22 @@ class BNTest(test.TestCase):
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
       variance = np.square(std)
-      self.assertAllClose(mean, moving_mean, atol=1e-2)
-      self.assertAllClose(variance, moving_var, atol=1e-2)
+      self.assertAllClose(mean, moving_mean, atol=atol)
+      self.assertAllClose(variance, moving_var, atol=atol)
 
       # Test inference with placeholder learning phase.
       np_output = sess.run(outputs_infer)
 
       # Verify that the axis is normalized during inference.
       normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
-      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
-      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=places)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=places)
 
   def testBooleanLearningPhase(self):
     self._testBooleanLearningPhase()
 
   def testBooleanLearningPhaseFloat16(self):
-    self._testBooleanLearningPhase(dtype=dtypes.float16)
+    self._testBooleanLearningPhase(dtype=dtypes.float16, atol=1, places=-1)
 
   def testFunctionalNoReuse(self):
     inputs = variables.Variable(
