@@ -105,7 +105,6 @@ class StatusOr {
   // In optimized builds, passing Status::OK here will have the effect
   // of passing tensorflow::error::INTERNAL as a fallback.
   StatusOr(Status status);              // NOLINT
-  StatusOr(tensorflow::Status status);  // NOLINT
 
   // Construct a new StatusOr with the given value. If T is a plain pointer,
   // value must not be NULL. After calling this constructor, calls to
@@ -196,8 +195,6 @@ class StatusOr<T, false> : public StatusOr<T, true> {
       : StatusOr<T, true>::StatusOr(std::move(value)) {}
   StatusOr(Status status)  // NOLINT
       : StatusOr<T, true>::StatusOr(std::move(status)) {}
-  StatusOr(tensorflow::Status status)  // NOLINT
-      : StatusOr<T, true>::StatusOr(std::move(status)) {}
   template <typename U>
   StatusOr(StatusOr<U>&& other)  // NOLINT
       : StatusOr<T, true>::StatusOr(std::move(other)) {}
@@ -240,14 +237,6 @@ inline StatusOr<T, CopyConstructible>::StatusOr()
 template <typename T, bool CopyConstructible>
 inline StatusOr<T, CopyConstructible>::StatusOr(Status status)
     : status_(std::move(status)) {
-  if (status_.ok()) {
-    status_ = internal::StatusOrHelper::HandleInvalidStatusCtorArg();
-  }
-}
-
-template <typename T, bool CopyConstructible>
-inline StatusOr<T, CopyConstructible>::StatusOr(tensorflow::Status status)
-    : status_(status) {
   if (status_.ok()) {
     status_ = internal::StatusOrHelper::HandleInvalidStatusCtorArg();
   }

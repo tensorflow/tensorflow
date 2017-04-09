@@ -224,6 +224,18 @@ class TFExampleDecoderTest(test.TestCase):
 
     self.assertAllClose(image, decoded_image, atol=0)
 
+  def testDecodeExampleWithJpegEncodingAt16BitCausesError(self):
+    image_shape = (2, 3, 3)
+    unused_image, serialized_example = self.GenerateImage(
+        image_format='jpeg', image_shape=image_shape)
+    expected_regex = ('jpeg decoder can only be used to decode to tf.uint8 but '
+                      '.* was requested for a jpeg image.')
+    with self.assertRaisesRegexp(ValueError, expected_regex):
+      unused_decoded_image = self.RunDecodeExample(
+          serialized_example,
+          tfexample_decoder.Image(dtype=dtypes.uint16),
+          image_format='jpeg')
+
   def testDecodeExampleWithStringTensor(self):
     tensor_shape = (2, 3, 1)
     np_array = np.array([[['ab'], ['cd'], ['ef']],

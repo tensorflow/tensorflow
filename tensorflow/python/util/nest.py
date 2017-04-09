@@ -99,7 +99,7 @@ def flatten(nest):
   return list(_yield_flat_nest(nest)) if is_sequence(nest) else [nest]
 
 
-def _recursive_assert_same_structure(nest1, nest2):
+def _recursive_assert_same_structure(nest1, nest2, check_types):
   is_sequence_nest1 = is_sequence(nest1)
   if is_sequence_nest1 != is_sequence(nest2):
     raise ValueError(
@@ -109,28 +109,31 @@ def _recursive_assert_same_structure(nest1, nest2):
   if is_sequence_nest1:
     type_nest1 = type(nest1)
     type_nest2 = type(nest2)
-    if type_nest1 != type_nest2:
+    if check_types and type_nest1 != type_nest2:
       raise TypeError(
           "The two structures don't have the same sequence type. First "
           "structure has type %s, while second structure has type %s."
           % (type_nest1, type_nest2))
 
     for n1, n2 in zip(nest1, nest2):
-      _recursive_assert_same_structure(n1, n2)
+      _recursive_assert_same_structure(n1, n2, check_types)
 
 
-def assert_same_structure(nest1, nest2):
+def assert_same_structure(nest1, nest2, check_types=True):
   """Asserts that two structures are nested in the same way.
 
   Args:
     nest1: an arbitrarily nested structure.
     nest2: an arbitrarily nested structure.
+    check_types: if `True` (default) types of sequences are checked as
+      well. If set to `False`, for example a list and a tuple of objects will
+      look same if they have the same size.
 
   Raises:
     ValueError: If the two structures do not have the same number of elements or
       if the two structures are not nested in the same way.
     TypeError: If the two structures differ in the type of sequence in any of
-      their substructures.
+      their substructures. Only possible if `check_types` is `True`.
   """
   len_nest1 = len(flatten(nest1)) if is_sequence(nest1) else 1
   len_nest2 = len(flatten(nest2)) if is_sequence(nest2) else 1
@@ -138,7 +141,7 @@ def assert_same_structure(nest1, nest2):
     raise ValueError("The two structures don't have the same number of "
                      "elements. First structure: %s, second structure: %s."
                      % (nest1, nest2))
-  _recursive_assert_same_structure(nest1, nest2)
+  _recursive_assert_same_structure(nest1, nest2, check_types)
 
 
 def flatten_dict_items(dictionary):
@@ -266,7 +269,7 @@ def pack_sequence_as(structure, flat_sequence):
   return _sequence_like(structure, packed)
 
 
-def map_structure(func, *structure):
+def map_structure(func, *structure, **check_types_dict):
   """Applies `func` to each entry in `structure` and returns a new structure.
 
   Applies `func(x[0], x[1], ...)` where x[i] is an entry in
@@ -277,17 +280,24 @@ def map_structure(func, *structure):
     func: A callable that acceps as many arguments are there are structures.
     *structure: scalar, or tuple or list of constructed scalars and/or other
       tuples/lists, or scalars.  Note: numpy arrays are considered scalars.
+    **check_types_dict: only valid keyword argument is `check_types`. If set to
+      `True` (default) the types of iterables within the  structures have to be
+      same (e.g. `map_structure(func, [1], (1,))` raises a `TypeError`
+      exception). To allow this set this argument to `False`.
 
   Returns:
     A new structure with the same arity as `structure`, whose values correspond
     to `func(x[0], x[1], ...)` where `x[i]` is a value in the corresponding
-    location in `structure[i]`.
+    location in `structure[i]`. If there are different sequence types and
+    `check_types` is `False` the sequence types of the first structure will be
+    used.
 
   Raises:
     TypeError: If `func` is not callable or if the structures do not match
       each other by depth tree.
     ValueError: If no structure is provided or if the structures do not match
       each other by type.
+    ValueError: If wrong keyword arguments are provided.
   """
   if not callable(func):
     raise TypeError("func must be callable, got: %s" % func)
@@ -295,8 +305,15 @@ def map_structure(func, *structure):
   if not structure:
     raise ValueError("Must provide at least one structure")
 
+  if check_types_dict:
+    if "check_types" not in check_types_dict or len(check_types_dict) > 1:
+      raise ValueError("Only valid keyword argument is check_types")
+    check_types = check_types_dict["check_types"]
+  else:
+    check_types = True
+
   for other in structure[1:]:
-    assert_same_structure(structure[0], other)
+    assert_same_structure(structure[0], other, check_types=check_types)
 
   flat_structure = [flatten(s) for s in structure]
   entries = zip(*flat_structure)
@@ -315,7 +332,7 @@ def _yield_flat_up_to(shallow_tree, input_tree):
     yield input_tree
 
 
-def assert_shallow_structure(shallow_tree, input_tree):
+def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
   """Asserts that `shallow_tree` is a shallow structure of `input_tree`.
 
   That is, this function tests if the `input_tree` structure can be created from
@@ -341,11 +358,13 @@ def assert_shallow_structure(shallow_tree, input_tree):
   Args:
     shallow_tree: an arbitrarily nested structure.
     input_tree: an arbitrarily nested structure.
+    check_types: if `True` (default) the sequence types of `shallow_tree` and
+      `input_tree` have to be the same.
 
   Raises:
     TypeError: If `shallow_tree` is a sequence but `input_tree` is not.
     TypeError: If the sequence types of `shallow_tree` are different from
-      `input_tree`.
+      `input_tree`. Only raised if `check_types` is `True`.
     ValueError: If the sequence lengths of `shallow_tree` are different from
       `input_tree`.
   """
@@ -355,7 +374,7 @@ def assert_shallow_structure(shallow_tree, input_tree):
           "If shallow structure is a sequence, input must also be a sequence. "
           "Input has type: %s." % type(input_tree))
 
-    if not isinstance(input_tree, type(shallow_tree)):
+    if check_types and not isinstance(input_tree, type(shallow_tree)):
       raise TypeError(
           "The two structures don't have the same sequence type. Input "
           "structure has type %s, while shallow structure has type %s."
@@ -368,7 +387,8 @@ def assert_shallow_structure(shallow_tree, input_tree):
           % (len(input_tree), len(shallow_tree)))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
-      assert_shallow_structure(shallow_branch, input_branch)
+      assert_shallow_structure(shallow_branch, input_branch,
+                               check_types=check_types)
 
 
 def flatten_up_to(shallow_tree, input_tree):

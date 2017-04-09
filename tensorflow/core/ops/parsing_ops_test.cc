@@ -61,11 +61,19 @@ TEST(ParsingOpsTest, DecodeCSV_ShapeFn) {
 }
 
 static std::vector<TensorShapeProto> MakeDenseShapes(int size,
-                                                     bool add_extra_shape) {
+                                                     bool add_extra_shape,
+                                                     int unknown_outer_dims) {
   std::vector<TensorShapeProto> shapes(size);
   for (int i = 0; i < size; ++i) {
-    // Make shapes be the sequence [1]; [1,2], [1,2,3]...
-    if (i > 0) shapes[i] = shapes[i - 1];
+    // Make shapes be the sequence [?,1]; [?,1,2], [?,1,2,3]...
+    // where the number of prefixed ? depends on unknown_outer_dims.
+    if (i == 0) {
+      for (int d = 0; d < unknown_outer_dims; ++d) {
+        shapes[i].add_dim()->set_size(-1);
+      }
+    } else {
+      shapes[i] = shapes[i - 1];
+    }
     shapes[i].add_dim()->set_size(i + 1);
   }
   if (add_extra_shape) {
@@ -77,7 +85,8 @@ static std::vector<TensorShapeProto> MakeDenseShapes(int size,
 TEST(ParsingOpsTest, ParseExample_ShapeFn) {
   ShapeInferenceTestOp op("ParseExample");
   auto set_outputs = [&op](int num_sparse, int num_dense,
-                           bool add_extra_shape = false) {
+                           bool add_extra_shape = false,
+                           int unknown_outer_dims = 0) {
     using NodeOutList = std::vector<NodeDefBuilder::NodeOut>;
     using DataTypeList = std::vector<DataType>;
     NodeDefBuilder::NodeOut string_in{"a", 0, DT_STRING};
@@ -91,7 +100,8 @@ TEST(ParsingOpsTest, ParseExample_ShapeFn) {
             .Input(NodeOutList(num_dense, string_in))
             .Attr("sparse_types", DataTypeList(num_sparse, DT_FLOAT))
             .Attr("dense_types", DataTypeList(num_dense, DT_FLOAT))
-            .Attr("dense_shapes", MakeDenseShapes(num_dense, add_extra_shape))
+            .Attr("dense_shapes", MakeDenseShapes(num_dense, add_extra_shape,
+                                                  unknown_outer_dims))
             .Finalize(&op.node_def));
   };
 
@@ -114,6 +124,24 @@ TEST(ParsingOpsTest, ParseExample_ShapeFn) {
   // Confirm an error from ParseSingleExampleAttrs.Init().
   set_outputs(2, 3, true /* add_extra_shape */);
   INFER_ERROR("len(dense_keys) != len(dense_shapes)", op,
+              "?;?;?;?;?;?;?;?;?;?");
+
+  // Allow variable strides
+  set_outputs(2, 3, false /* add_extra_shape */, 1 /* unknown_outer_dims */);
+  INFER_OK(op, "?;?;?;?;?;?;?;?;?;?",
+           ("[?,2];[?,2];[?];[?];[2];[2];"      // sparse outputs
+            "[?,?,1];[?,?,1,2];[?,?,1,2,3]"));  // dense outputs
+  INFER_OK(op, "[10];?;?;?;?;?;?;?;?;?",
+           ("[?,2];[?,2];[?];[?];[2];[2];"               // sparse outputs
+            "[d0_0,?,1];[d0_0,?,1,2];[d0_0,?,1,2,3]"));  // dense outputs
+
+  set_outputs(2, 3, true /* add_extra_shape */, 1 /* unknown_outer_dims */);
+  INFER_ERROR("len(dense_keys) != len(dense_shapes)", op,
+              "?;?;?;?;?;?;?;?;?;?");
+
+  // Variable inner dimensions are not supported
+  set_outputs(2, 3, false /* add_extra_shape */, 2 /* unknown_outer_dims */);
+  INFER_ERROR("shapes[0] has unknown rank or unknown inner dimensions", op,
               "?;?;?;?;?;?;?;?;?;?");
 }
 
@@ -142,13 +170,13 @@ TEST(ParsingOpsTest, ParseSingleSequenceExample_ShapeFn) {
             .Attr("context_dense_types",
                   DataTypeList(num_context_dense, DT_FLOAT))
             .Attr("context_dense_shapes",
-                  MakeDenseShapes(num_context_dense, add_extra_shape))
+                  MakeDenseShapes(num_context_dense, add_extra_shape, 0))
             .Attr("feature_list_sparse_types",
                   DataTypeList(num_feature_list_sparse, DT_FLOAT))
             .Attr("feature_list_dense_types",
                   DataTypeList(num_feature_list_dense, DT_FLOAT))
             .Attr("feature_list_dense_shapes",
-                  MakeDenseShapes(num_feature_list_dense, add_extra_shape))
+                  MakeDenseShapes(num_feature_list_dense, add_extra_shape, 0))
             .Finalize(&op.node_def));
   };
 

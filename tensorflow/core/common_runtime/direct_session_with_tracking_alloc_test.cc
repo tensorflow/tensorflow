@@ -69,7 +69,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
 
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
-  options.config.mutable_graph_options()->set_build_cost_model(true);
+  options.config.mutable_graph_options()->set_build_cost_model(1);
   std::unique_ptr<Session> session(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
@@ -112,6 +112,37 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
   ASSERT_EQ(2, graph_cnt);
 }
 
+TEST(DirectSessionWithTrackingAllocTest, CostModelWarmup) {
+  Graph g(OpRegistry::Global());
+  Tensor vx(DT_FLOAT, TensorShape({}));
+  vx.scalar<float>()() = 1.0;
+  Node* x = test::graph::Constant(&g, vx);
+
+  int warmup_steps = 10;
+  int measure_steps = 15;
+  SessionOptions options;
+  options.config.mutable_graph_options()->set_build_cost_model(1);
+  options.config.mutable_graph_options()->set_build_cost_model_after(
+      warmup_steps);
+  std::unique_ptr<Session> session(NewSession(options));
+
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+  TF_ASSERT_OK(session->Create(def));
+  std::vector<Tensor> outputs;
+
+  for (int i = 0; i < warmup_steps + measure_steps; i++) {
+    TF_EXPECT_OK(session->Run({}, {x->name() + ":0"}, {}, &outputs));
+  }
+
+  DirectSession* ds = static_cast<DirectSession*>(session.get());
+  CostModelManager::CostModelMap cost_models;
+  ds->ExportCostModels(&cost_models);
+  CHECK_EQ(cost_models.size(), 1);
+  const CostModel* cm = (*cost_models.begin()).second;
+  EXPECT_EQ(measure_steps, cm->GetUpdateTimes());
+}
+
 static void TestHWAccelerator(bool enableHWTrace) {
   Graph graph(OpRegistry::Global());
 
@@ -139,7 +170,7 @@ static void TestHWAccelerator(bool enableHWTrace) {
   (*options.config.mutable_device_count())["CPU"] = 1;
   (*options.config.mutable_device_count())["GPU"] = 1;
   options.config.set_allow_soft_placement(true);
-  options.config.mutable_graph_options()->set_build_cost_model(true);
+  options.config.mutable_graph_options()->set_build_cost_model(1);
   std::unique_ptr<Session> session(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
@@ -219,7 +250,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostGraph) {
 
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
-  options.config.mutable_graph_options()->set_build_cost_model(true);
+  options.config.mutable_graph_options()->set_build_cost_model(1);
   options.config.mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions::L0);

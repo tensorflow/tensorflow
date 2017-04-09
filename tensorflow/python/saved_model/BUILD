@@ -20,10 +20,13 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":builder",
+        ":constants",
         ":loader",
+        ":main_op",
         ":signature_constants",
         ":signature_def_utils",
         ":tag_constants",
+        ":utils",
     ],
 )
 
@@ -83,8 +86,10 @@ py_library(
 
 py_library(
     name = "main_op",
-    testonly = 1,
-    srcs = ["main_op.py"],
+    srcs = [
+        "main_op.py",
+        "main_op_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:control_flow_ops",
@@ -108,6 +113,7 @@ py_test(
         ":main_op",
         ":signature_def_utils",
         ":tag_constants",
+        ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -116,6 +122,7 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
@@ -124,7 +131,10 @@ py_test(
 
 py_library(
     name = "utils",
-    srcs = ["utils.py"],
+    srcs = [
+        "utils.py",
+        "utils_impl.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",

@@ -170,8 +170,9 @@ class ConstantTest(test.TestCase):
         constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
   # pylint: enable=g-long-lambda
-
-  def testTooLargeConstant(self):
+  # TODO(b/35396543): Temporarily disable: suspicion that
+  # this is causing test timeouts.
+  def _testTooLargeConstant(self):
     with ops.Graph().as_default():
       large_array = np.zeros((512, 1024, 1024), dtype=np.float32)
       with self.assertRaisesRegexp(
@@ -179,7 +180,9 @@ class ConstantTest(test.TestCase):
           "Cannot create a tensor proto whose content is larger than 2GB."):
         c = constant_op.constant(large_array)
 
-  def testTooLargeGraph(self):
+  # TODO(b/35396543): Temporarily disable: suspicion that
+  # this is causing test timeouts.
+  def _testTooLargeGraph(self):
     with ops.Graph().as_default() as g:
       large_array = np.zeros((256, 1024, 1024), dtype=np.float32)
       c = constant_op.constant(large_array)
@@ -325,16 +328,20 @@ class ZerosTest(test.TestCase):
           dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
           dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
           dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64,
-          dtypes_lib.bool
+          dtypes_lib.bool, dtypes_lib.string
       ]:
         z = array_ops.zeros([2, 3], dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
-        self.assertAllEqual(z.eval(), np.zeros([2, 3]))
+        z_value = z.eval()
+        self.assertFalse(np.any(z_value))
+        self.assertEqual((2, 3), z_value.shape)
         z = array_ops.zeros(array_ops.shape(d), dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
-        self.assertAllEqual(z.eval(), np.zeros([2, 3]))
+        z_value = z.eval()
+        self.assertFalse(np.any(z_value))
+        self.assertEqual((2, 3), z_value.shape)
 
 
 class ZerosLikeTest(test.TestCase):
@@ -342,30 +349,40 @@ class ZerosLikeTest(test.TestCase):
   def _compareZeros(self, dtype, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       # Creates a tensor of non-zero values with shape 2 x 3.
-      numpy_dtype = dtype.as_numpy_dtype
+      # NOTE(kearnes): The default numpy dtype associated with tf.string is
+      # np.object (and can't be changed without breaking a lot things), which
+      # causes a TypeError in constant_op.constant below. Here we catch the
+      # special case of tf.string and set the numpy dtype appropriately.
+      if dtype == dtypes_lib.string:
+        numpy_dtype = np.string_
+      else:
+        numpy_dtype = dtype.as_numpy_dtype
       d = constant_op.constant(np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
       # Constructs a tensor of zeros of the same dimensions and type as "d".
       z_var = array_ops.zeros_like(d)
       # Test that the type is correct
       self.assertEqual(z_var.dtype, dtype)
-      z_value = z_var.eval()
+      # Test that the shape is correct
+      self.assertEqual([2, 3], z_var.get_shape())
 
       # Test that the value is correct
-      self.assertTrue(np.array_equal(z_value, np.array([[0] * 3] * 2)))
-      self.assertEqual([2, 3], z_var.get_shape())
+      z_value = z_var.eval()
+      self.assertFalse(np.any(z_value))
+      self.assertEqual((2, 3), z_value.shape)
 
   def testZerosLikeCPU(self):
     for dtype in [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
         dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
-        dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64
+        dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64,
+        dtypes_lib.string
     ]:
       self._compareZeros(dtype, False)
 
   def testZerosLikeGPU(self):
     for dtype in [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
-        dtypes_lib.bool, dtypes_lib.int64
+        dtypes_lib.bool, dtypes_lib.int64, dtypes_lib.string
     ]:
       self._compareZeros(dtype, True)
 
@@ -754,6 +771,12 @@ class PlaceholderWithDefaultTest(test.TestCase):
       self.assertAllEqual(
           [[3, 3], [3, 3]], a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
 
+  def testGradient(self):
+    with self.test_session():
+      x = array_ops.placeholder(dtypes_lib.float32, [5, 7])
+      y = array_ops.placeholder_with_default(x, None)
+      err = gradient_checker.compute_gradient_error(x, [5, 7], y, [5, 7])
+      self.assertLess(err, 1e-3)
 
 if __name__ == "__main__":
   test.main()

@@ -17,13 +17,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -97,6 +101,17 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(read.eval(), [[3]])
 
+  def testGPU(self):
+    with self.test_session(use_gpu=True) as sess:
+      abc = variable_scope.get_variable(
+          "abc",
+          shape=[1],
+          initializer=init_ops.ones_initializer(),
+          use_resource=True)
+
+      sess.run(variables.global_variables_initializer())
+      print(sess.run(abc))
+
   def testInitFn(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
@@ -108,26 +123,111 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
                                                  dtype=dtypes.float32)
-      self.assertEqual(dtypes.float32, v.value.dtype)
+      self.assertEqual(dtypes.float32, v.value().dtype)
 
   def testInitFnNoDtype(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1)
-      self.assertEqual(dtypes.int32, v.value.dtype)
+      self.assertEqual(dtypes.int32, v.value().dtype)
 
   def testInitializeAllVariables(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.float32)
       with self.assertRaises(errors.NotFoundError):
-        v.value.eval()
+        v.value().eval()
       variables.global_variables_initializer().run()
-      self.assertEqual(1.0, v.value.eval())
+      self.assertEqual(1.0, v.value().eval())
 
   def testOperatorOverload(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       self.assertEqual(2.0, (v+v).eval())
+
+  def testAssignMethod(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      v.assign(2.0).eval()
+      self.assertEqual(2.0, v.value().eval())
+
+  def testAssignAddMethod(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      v.assign_add(1.0).eval()
+      self.assertEqual(2.0, v.value().eval())
+
+  def testAssignSubMethod(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(3.0)
+      variables.global_variables_initializer().run()
+      v.assign_sub(1.0).eval()
+      self.assertEqual(2.0, v.value().eval())
+
+  def testDestroyResource(self):
+    with self.test_session() as sess:
+      v = resource_variable_ops.ResourceVariable(3.0)
+      variables.global_variables_initializer().run()
+      self.assertEqual(3.0, v.value().eval())
+      sess.run(resource_variable_ops.destroy_resource_op(v.handle))
+      with self.assertRaises(errors.NotFoundError):
+        v.value().eval()
+      # Handle to a resource not actually created.
+      handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
+      # Should raise no exception
+      sess.run(resource_variable_ops.destroy_resource_op(
+          handle, ignore_lookup_error=True))
+
+  def testAssignDifferentShapes(self):
+    with self.test_session() as sess, variable_scope.variable_scope(
+        "foo", use_resource=True):
+      var = variable_scope.get_variable("x", shape=[1, 1], dtype=dtypes.float32)
+      placeholder = array_ops.placeholder(dtypes.float32)
+      assign = var.assign(placeholder)
+      sess.run([assign],
+               feed_dict={placeholder: np.zeros(shape=[2, 2],
+                                                dtype=np.float32)})
+
+  def testDtypeAfterFromProto(self):
+    v = resource_variable_ops.ResourceVariable(2.0)
+    w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
+    self.assertIsInstance(w.dtype, dtypes.DType)
+    self.assertEqual(v.dtype, w.dtype)
+
+  def testCachingDevice(self):
+    with ops.device("/job:server/task:1"):
+      v = resource_variable_ops.ResourceVariable(
+          2.0, caching_device="/job:localhost")
+      self.assertEqual("/job:localhost", v.value().device)
+      with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
+        _ = v.value().op.get_attr("_class")
+
+    with ops.colocate_with(v.op):
+      w = resource_variable_ops.ResourceVariable(
+          2.0, caching_device="/job:localhost")
+      self.assertEqual("/job:localhost", w.value().device)
+      with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
+        _ = w.value().op.get_attr("_class")
+
+  def testSharedName(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(300.0, name="var1")
+      v.initializer.run()
+
+      w = resource_variable_ops.var_handle_op(dtype=v.dtype.base_dtype,
+                                              shape=v.get_shape(),
+                                              shared_name="var1")
+      w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
+      self.assertEqual(300.0, w_read.eval())
+
+      x = resource_variable_ops.var_handle_op(dtype=v.dtype.base_dtype,
+                                              shape=v.get_shape(),
+                                              shared_name="var1/")
+      x_read = resource_variable_ops.read_variable_op(x, v.dtype.base_dtype)
+      with self.assertRaisesOpError("Resource .*/var1//.* does not exist"):
+        _ = x_read.eval()
+
 
 if __name__ == "__main__":
   test.main()

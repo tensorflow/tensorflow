@@ -21,6 +21,24 @@ config_setting(
 )
 
 config_setting(
+    name = "android_x86",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "x86",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "android_x86_64",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "x86_64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "android_arm",
     values = {
         "crosstool_top": "//external:android/crosstool",
@@ -70,6 +88,56 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "debug",
+    values = {
+        "compilation_mode": "dbg",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "optimized",
+    values = {
+        "compilation_mode": "opt",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
+    visibility = ["//visibility:public"],
+)
+
+# TODO(jhseu): Enable on other platforms other than Linux.
+config_setting(
+    name = "with_jemalloc",
+    values = {
+        "cpu": "k8",
+        "define": "with_jemalloc=true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_gcp_support",
+    values = {"define": "with_gcp_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_hdfs_support",
+    values = {"define": "with_hdfs_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_xla_support",
+    values = {"define": "with_xla_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = ["//tensorflow/..."],
@@ -107,7 +175,9 @@ filegroup(
         "//tensorflow/compiler/aot/tests:all_files",
         "//tensorflow/compiler/jit:all_files",
         "//tensorflow/compiler/jit/graphcycles:all_files",
+        "//tensorflow/compiler/jit/kernels:all_files",
         "//tensorflow/compiler/jit/legacy_flags:all_files",
+        "//tensorflow/compiler/jit/ops:all_files",
         "//tensorflow/compiler/tests:all_files",
         "//tensorflow/compiler/tf2xla:all_files",
         "//tensorflow/compiler/tf2xla/kernels:all_files",
@@ -125,7 +195,16 @@ filegroup(
         "//tensorflow/compiler/xla/tools:all_files",
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/android:all_files",
+        "//tensorflow/contrib/batching:all_files",
+        "//tensorflow/contrib/batching/test_util:all_files",
+        "//tensorflow/contrib/batching/util:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
+        "//tensorflow/contrib/boosted_trees:all_files",
+        "//tensorflow/contrib/boosted_trees/lib:all_files",
+        "//tensorflow/contrib/boosted_trees/proto:all_files",
+        "//tensorflow/contrib/boosted_trees/resources:all_files",
+        "//tensorflow/contrib/cloud:all_files",
+        "//tensorflow/contrib/cloud/kernels:all_files",
         "//tensorflow/contrib/compiler:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
         "//tensorflow/contrib/crf:all_files",
@@ -138,10 +217,14 @@ filegroup(
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
         "//tensorflow/contrib/grid_rnn:all_files",
+        "//tensorflow/contrib/hooks:all_files",
         "//tensorflow/contrib/image:all_files",
+        "//tensorflow/contrib/imperative:all_files",
         "//tensorflow/contrib/input_pipeline:all_files",
         "//tensorflow/contrib/input_pipeline/kernels:all_files",
         "//tensorflow/contrib/integrate:all_files",
+        "//tensorflow/contrib/keras:all_files",
+        "//tensorflow/contrib/kernel_methods:all_files",
         "//tensorflow/contrib/labeled_tensor:all_files",
         "//tensorflow/contrib/layers:all_files",
         "//tensorflow/contrib/layers/kernels:all_files",
@@ -156,6 +239,7 @@ filegroup(
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/rnn:all_files",
+        "//tensorflow/contrib/saved_model:all_files",
         "//tensorflow/contrib/seq2seq:all_files",
         "//tensorflow/contrib/session_bundle:all_files",
         "//tensorflow/contrib/session_bundle/example:all_files",
@@ -163,6 +247,7 @@ filegroup(
         "//tensorflow/contrib/slim/python/slim/data:all_files",
         "//tensorflow/contrib/slim/python/slim/nets:all_files",
         "//tensorflow/contrib/solvers:all_files",
+        "//tensorflow/contrib/sparsemax:all_files",
         "//tensorflow/contrib/specs:all_files",
         "//tensorflow/contrib/stat_summarizer:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
@@ -172,12 +257,17 @@ filegroup(
         "//tensorflow/contrib/tfprof/python/tools/tfprof:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
+        "//tensorflow/contrib/xla_tf_graph:all_files",
         "//tensorflow/core:all_files",
         "//tensorflow/core/debug:all_files",
         "//tensorflow/core/distributed_runtime:all_files",
         "//tensorflow/core/distributed_runtime/rpc:all_files",
+        "//tensorflow/core/grappler:all_files",
+        "//tensorflow/core/grappler/clusters:all_files",
+        "//tensorflow/core/grappler/costs:all_files",
+        "//tensorflow/core/grappler/inputs:all_files",
+        "//tensorflow/core/grappler/optimizers:all_files",
         "//tensorflow/core/kernels:all_files",
-        "//tensorflow/core/kernels/cloud:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/ops/compat:all_files",
         "//tensorflow/core/platform/cloud:all_files",
@@ -194,25 +284,33 @@ filegroup(
         "//tensorflow/examples/tutorials/estimators:all_files",
         "//tensorflow/examples/tutorials/mnist:all_files",
         "//tensorflow/examples/tutorials/word2vec:all_files",
-        "//tensorflow/g3doc/how_tos/adding_an_op:all_files",
-        "//tensorflow/g3doc/tutorials:all_files",
         "//tensorflow/go:all_files",
         "//tensorflow/java:all_files",
         "//tensorflow/java/src/main/java/org/tensorflow/examples:all_files",
         "//tensorflow/java/src/main/native:all_files",
         "//tensorflow/python:all_files",
         "//tensorflow/python/debug:all_files",
+        "//tensorflow/python/estimator:all_files",
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/saved_model:all_files",
         "//tensorflow/python/tools:all_files",
         "//tensorflow/tensorboard:all_files",
         "//tensorflow/tensorboard/app:all_files",
         "//tensorflow/tensorboard/backend:all_files",
+        "//tensorflow/tensorboard/backend/event_processing:all_files",
         "//tensorflow/tensorboard/components:all_files",
+        "//tensorflow/tensorboard/components/tf_text_dashboard:all_files",
         "//tensorflow/tensorboard/components/vz_data_summary:all_files",
+        "//tensorflow/tensorboard/components/vz_line_chart:all_files",
+        "//tensorflow/tensorboard/components/vz_line_chart/demo:all_files",
         "//tensorflow/tensorboard/components/vz_projector:all_files",
+        "//tensorflow/tensorboard/components/vz_sorting:all_files",
+        "//tensorflow/tensorboard/components/vz_sorting/test:all_files",
         "//tensorflow/tensorboard/lib:all_files",
-        "//tensorflow/tensorboard/lib/python:all_files",
+        "//tensorflow/tensorboard/plugins:all_files",
+        "//tensorflow/tensorboard/plugins/debugger:all_files",
+        "//tensorflow/tensorboard/plugins/projector:all_files",
+        "//tensorflow/tensorboard/plugins/text:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
         "//tensorflow/tools/common:all_files",
         "//tensorflow/tools/compatibility:all_files",
@@ -234,23 +332,43 @@ filegroup(
     visibility = [":__subpackages__"],
 )
 
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
+
+filegroup(
+    name = "intel_binary_blob",
+    data = if_mkl(
+        [
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------
 cc_binary(
     name = "libtensorflow.so",
+    linkopts = select({
+        "//tensorflow:darwin": [
+            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
+            "//tensorflow/c:exported_symbols.lds",
+        ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-z defs",
+            "-s",
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "//tensorflow/c:version_script.lds",
+        ],
+    }),
     linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
-        "//tensorflow/core:tensorflow",
-    ],
-)
-
-cc_binary(
-    name = "libtensorflow_c.so",
-    linkshared = 1,
-    deps = [
-        "//tensorflow/c:c_api",
+        "//tensorflow/c:exported_symbols.lds",
+        "//tensorflow/c:version_script.lds",
         "//tensorflow/core:tensorflow",
     ],
 )
@@ -261,6 +379,8 @@ cc_binary(
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:tensorflow",
     ],
 )

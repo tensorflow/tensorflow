@@ -51,6 +51,7 @@ import android.widget.Toast;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Vector;
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 import org.tensorflow.demo.OverlayView.DrawCallback;
@@ -71,8 +72,8 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
   private static final Logger LOGGER = new Logger();
 
   private static final String MODEL_FILE = "file:///android_asset/stylize_quantized.pb";
-  private static final String INPUT_NODE = "input:0";
-  private static final String STYLE_NODE = "style_num:0";
+  private static final String INPUT_NODE = "input";
+  private static final String STYLE_NODE = "style_num";
   private static final String OUTPUT_NODE = "transformer/expand/conv3/conv/Sigmoid";
   private static final int NUM_STYLES = 26;
 
@@ -86,7 +87,9 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
   private static final boolean DEBUG_MODEL = false;
 
-  private static final int[] SIZES = {32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024};
+  private static final int[] SIZES = {128, 192, 256, 384, 512, 720};
+
+  private static final Size DESIRED_PREVIEW_SIZE = new Size(1280, 720);
 
   // Start at a medium size, but let the user step up through smaller sizes so they don't get
   // immediately stuck processing a large image.
@@ -171,6 +174,9 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
                 slider = null;
               }
               break;
+
+            default: // fall out
+
           }
           return true;
         }
@@ -187,8 +193,8 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
   }
 
   @Override
-  protected int getDesiredPreviewFrameSize() {
-    return SIZES[SIZES.length - 1];
+  protected Size getDesiredPreviewFrameSize() {
+    return DESIRED_PREVIEW_SIZE;
   }
 
   public static Bitmap getBitmapFromAsset(final Context context, final String filePath) {
@@ -264,7 +270,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
   private class ImageGridAdapter extends BaseAdapter {
     final ImageSlider[] items = new ImageSlider[NUM_STYLES];
-    final ArrayList<Button> buttons = new ArrayList<Button>();
+    final ArrayList<Button> buttons = new ArrayList<>();
 
     {
       final Button sizeButton =
@@ -295,7 +301,9 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
               setMeasuredDimension(getMeasuredWidth(), getMeasuredWidth());
             }
           };
-      saveButton.setText("Save");
+      saveButton.setText("save");
+      saveButton.setTextSize(12);
+
       saveButton.setOnClickListener(
           new OnClickListener() {
             @Override
@@ -365,8 +373,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    inferenceInterface = new TensorFlowInferenceInterface();
-    inferenceInterface.initializeTensorFlow(getAssets(), MODEL_FILE);
+    inferenceInterface = new TensorFlowInferenceInterface(getAssets(), MODEL_FILE);
 
     previewWidth = size.getWidth();
     previewHeight = size.getHeight();
@@ -428,7 +435,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
         // Everything else is 0, so just pick a suitable slider to push up when the
         // selected one goes down.
         if (adapter.items[lastOtherStyle] == slider) {
-          lastOtherStyle = lastOtherStyle + 1 % NUM_STYLES;
+          lastOtherStyle = (lastOtherStyle + 1) % NUM_STYLES;
         }
         adapter.items[lastOtherStyle].setValue(1.0f - value);
       }
@@ -553,8 +560,6 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     Trace.endSection();
   }
 
-  String outputNode = "";
-
   private void stylizeImage(final Bitmap bitmap) {
     ++frameNum;
     bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
@@ -583,12 +588,12 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     }
 
     // Copy the input data into TensorFlow.
-    inferenceInterface.fillNodeFloat(
-        INPUT_NODE, new int[] {1, bitmap.getWidth(), bitmap.getHeight(), 3}, floatValues);
-    inferenceInterface.fillNodeFloat(STYLE_NODE, new int[] {NUM_STYLES}, styleVals);
+    inferenceInterface.feed(
+        INPUT_NODE, floatValues, 1, bitmap.getWidth(), bitmap.getHeight(), 3);
+    inferenceInterface.feed(STYLE_NODE, styleVals, NUM_STYLES);
 
-    inferenceInterface.runInference(new String[] {OUTPUT_NODE});
-    inferenceInterface.readNodeFloat(OUTPUT_NODE, floatValues);
+    inferenceInterface.run(new String[] {OUTPUT_NODE}, isDebug());
+    inferenceInterface.fetch(OUTPUT_NODE, floatValues);
 
     for (int i = 0; i < intValues.length; ++i) {
       intValues[i] =
@@ -599,11 +604,6 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     }
 
     bitmap.setPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
-  }
-
-  @Override
-  public void onSetDebug(final boolean debug) {
-    inferenceInterface.enableStatLogging(debug);
   }
 
   private void renderDebug(final Canvas canvas) {
@@ -640,12 +640,10 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
         canvas.getHeight() - copy.getHeight() * scaleFactor);
     canvas.drawBitmap(copy, matrix, new Paint());
 
-    final Vector<String> lines = new Vector<String>();
+    final Vector<String> lines = new Vector<>();
 
     final String[] statLines = inferenceInterface.getStatString().split("\n");
-    for (final String line : statLines) {
-      lines.add(line);
-    }
+    Collections.addAll(lines, statLines);
 
     lines.add("");
 

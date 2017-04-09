@@ -31,8 +31,8 @@ Coordinator::Coordinator(const std::vector<error::Code>& clean_stop_errors)
 }
 
 Coordinator::~Coordinator() {
-  RequestStop();
-  Join();
+  RequestStop().IgnoreError();
+  Join().IgnoreError();
 }
 
 Status Coordinator::RegisterRunner(std::unique_ptr<RunnerInterface> runner) {
@@ -113,6 +113,21 @@ void Coordinator::WaitForStop() {
   while (!should_stop_) {
     wait_for_stop_.wait(l);
   }
+}
+
+Status Coordinator::ExportCostGraph(CostGraphDef* cost_graph) const {
+  RunMetadata tmp_metadata;
+  {
+    mutex_lock l(runners_lock_);
+    for (auto& t : runners_) {
+      Status s = t->ExportRunMetadata(&tmp_metadata);
+      if (!s.ok()) {
+        return s;
+      }
+    }
+  }
+  cost_graph->MergeFrom(tmp_metadata.cost_graph());
+  return Status::OK();
 }
 
 }  // namespace

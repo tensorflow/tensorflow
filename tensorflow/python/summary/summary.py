@@ -13,24 +13,23 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Generation of summaries.
+"""Tensor summaries for exporting information about a model.
 
-### Class for writing Summaries
+See the @{$python/summary} guide.
+
 @@FileWriter
 @@FileWriterCache
-
-### Summary Ops
 @@tensor_summary
 @@scalar
 @@histogram
 @@audio
 @@image
+@@text
 @@merge
 @@merge_all
-
-## Utilities
 @@get_summary_description
-
+@@get_plugin_asset
+@@get_all_plugin_assets
 """
 
 from __future__ import absolute_import
@@ -40,6 +39,7 @@ from __future__ import print_function
 import re as _re
 
 from google.protobuf import json_format as _json_format
+
 # exports Summary, SummaryDescription, Event, TaggedRunMetadata, SessionLog
 # pylint: disable=unused-import
 from tensorflow.core.framework.summary_pb2 import Summary
@@ -52,16 +52,25 @@ from tensorflow.core.util.event_pb2 import TaggedRunMetadata
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
+
 # exports tensor_summary
 # pylint: disable=unused-import
 from tensorflow.python.ops.summary_ops import tensor_summary
 # pylint: enable=unused-import
+
 from tensorflow.python.platform import tf_logging as _logging
+
+# exports text
+# pylint: disable=unused-import
+from tensorflow.python.summary.text_summary import text_summary as text
+# pylint: enable=unused-import
+
 # exports FileWriter, FileWriterCache
 # pylint: disable=unused-import
 from tensorflow.python.summary.writer.writer import FileWriter
 from tensorflow.python.summary.writer.writer_cache import FileWriterCache
 # pylint: enable=unused-import
+
 from tensorflow.python.util import compat as _compat
 from tensorflow.python.util.all_util import remove_undocumented
 

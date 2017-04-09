@@ -29,6 +29,7 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Intrinsics.h"
 #include "external/llvm/include/llvm/IR/Module.h"
 #include "external/llvm/include/llvm/IR/Type.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -49,12 +50,63 @@ namespace gpu {
 
 using llvm_ir::IrArray;
 using llvm_ir::SetToFirstInsertPoint;
+using tensorflow::strings::StrAppend;
+
+// Returns whether operand is a floating-point literal with the given value.
+bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
+  return operand->opcode() == HloOpcode::kConstant &&
+         LiteralUtil::IsAllFloat(operand->literal(), value);
+}
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
     llvm::IRBuilder<>* ir_builder, NestedComputer compute_nested)
     : ElementalIrEmitter(hlo_module_config, module, ir_builder),
+      hlo_module_config_(hlo_module_config),
       compute_nested_(std::move(compute_nested)) {}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
+    const string& callee_name,
+    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
+    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
+    PrimitiveType output_type) const {
+  // The libdevice math functions differentiate between "double" and "float" by
+  // appending an 'f' to the function's name.
+  string munged_callee = callee_name;
+  switch (output_type) {
+    case F32:
+      StrAppend(&munged_callee, "f");
+      break;
+    case F64:
+      break;
+    default:
+      return Unimplemented("Bad type for libdevice math call: %s",
+                           PrimitiveType_Name(output_type).c_str());
+  }
+  return EmitMathCall(munged_callee, operands, input_types, output_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
+    const string& callee_name,
+    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
+    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
+    PrimitiveType output_type) const {
+  // llvm intrinsics differentiate between float/double functions via the ".f32"
+  // and ".f64" suffixes.
+  string munged_callee = callee_name;
+  switch (output_type) {
+    case F32:
+      StrAppend(&munged_callee, ".f32");
+      break;
+    case F64:
+      StrAppend(&munged_callee, ".f64");
+      break;
+    default:
+      return Unimplemented("Bad type for llvm intrinsic math call: %s",
+                           PrimitiveType_Name(output_type).c_str());
+  }
+  return EmitMathCall(munged_callee, operands, input_types, output_type);
+}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     const string& callee_name,
@@ -70,22 +122,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     }
   }
 
-  // The libdevice math functions differentiate between "double" and "float" by
-  // appending an 'f' to the function's name.
-  string function_name = callee_name;
-  switch (output_type) {
-    case F32:
-      function_name += 'f';
-      break;
-    case F64:
-      break;
-    default:
-      return Unimplemented("Bad type for math call: %s",
-                           PrimitiveType_Name(output_type).c_str());
-  }
-
   return EmitDeviceFunctionCall(
-      function_name, operands, input_types, output_type,
+      callee_name, operands, input_types, output_type,
       {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind});
 }
 
@@ -97,21 +135,63 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
   PrimitiveType output_type = op->shape().element_type();
   switch (op->opcode()) {
     case HloOpcode::kRemainder: {
-      return EmitMathCall("__nv_fmod", {lhs_value, rhs_value},
-                          {lhs_input_type, rhs_input_type}, output_type);
+      return EmitLibdeviceMathCall("__nv_fmod", {lhs_value, rhs_value},
+                                   {lhs_input_type, rhs_input_type},
+                                   output_type);
     }
     case HloOpcode::kPower: {
-      return EmitMathCall("__nv_pow", {lhs_value, rhs_value},
-                          {lhs_input_type, rhs_input_type}, output_type);
+      return EmitPowerOp(op, lhs_value, rhs_value);
     }
     default:
       return ElementalIrEmitter::EmitFloatBinaryOp(op, lhs_value, rhs_value);
   }
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
+    const HloInstruction* op, llvm::Value* lhs_value,
+    llvm::Value* rhs_value) const {
+  CHECK_EQ(op->opcode(), HloOpcode::kPower);
+  PrimitiveType lhs_input_type = op->operand(0)->shape().element_type();
+  PrimitiveType rhs_input_type = op->operand(1)->shape().element_type();
+  PrimitiveType output_type = op->shape().element_type();
+  llvm::Type* llvm_ty = lhs_value->getType();
+
+  auto make_sqrt = [&, this]() -> StatusOr<llvm::Value*> {
+    // NVPTX has four relevant square root instructions:
+    //   sqrt.approx{.ftz}.f32
+    //   sqrt.rn{.ftz}.f32
+    //   sqrt.rn.f64
+    //   rsqrt.approx.f64
+    // We rely on LLVM's NVPTX backend to pick the right one based on our
+    // fast-math options.  (If fast-math is enabled, llvm may compute the 64-bit
+    // sqrt from the rsqrt approximation.)
+    return EmitLlvmIntrinsicMathCall("llvm.sqrt", {lhs_value}, {lhs_input_type},
+                                     output_type);
+  };
+
+  const HloInstruction* rhs = op->operand(1);
+  if (IsFPLiteralWithValue(rhs, .5)) {
+    VLOG(10) << "emitting pow(A, .5) as sqrt(A): " << op->ToString();
+    return make_sqrt();
+  }
+
+  if (!hlo_module_config_.fast_math_disabled() &&
+      IsFPLiteralWithValue(rhs, -.5)) {
+    VLOG(10) << "emitting pow(A, -.5) as 1/sqrt(A): " << op->ToString();
+    // LLVM's NVPTX backend knows how to transform 1/sqrt(A) into the NVPTX
+    // rsqrt.approx instruction.
+    TF_ASSIGN_OR_RETURN(auto* sqrt, make_sqrt());
+    return ir_builder_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 1), sqrt);
+  }
+
+  VLOG(10) << "emitting pow as regular call to pow(): " << op->ToString();
+  return EmitLibdeviceMathCall("__nv_pow", {lhs_value, rhs_value},
+                               {lhs_input_type, rhs_input_type}, output_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErfcInv(
     PrimitiveType prim_type, llvm::Value* value) const {
-  return EmitMathCall("__nv_erfcinv", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall("__nv_erfcinv", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
@@ -120,20 +200,20 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
   PrimitiveType output_type = op->shape().element_type();
   switch (op->opcode()) {
     case HloOpcode::kExp:
-      return EmitMathCall("__nv_exp", {operand_value}, {input_type},
-                          output_type);
+      return EmitLibdeviceMathCall("__nv_exp", {operand_value}, {input_type},
+                                   output_type);
     case HloOpcode::kFloor:
-      return EmitMathCall("__nv_floor", {operand_value}, {input_type},
-                          output_type);
+      return EmitLibdeviceMathCall("__nv_floor", {operand_value}, {input_type},
+                                   output_type);
     case HloOpcode::kCeil:
-      return EmitMathCall("__nv_ceil", {operand_value}, {input_type},
-                          output_type);
+      return EmitLibdeviceMathCall("__nv_ceil", {operand_value}, {input_type},
+                                   output_type);
     case HloOpcode::kLog:
-      return EmitMathCall("__nv_log", {operand_value}, {input_type},
-                          output_type);
+      return EmitLibdeviceMathCall("__nv_log", {operand_value}, {input_type},
+                                   output_type);
     case HloOpcode::kTanh:
-      return EmitMathCall("__nv_tanh", {operand_value}, {input_type},
-                          output_type);
+      return EmitLibdeviceMathCall("__nv_tanh", {operand_value}, {input_type},
+                                   output_type);
     default:
       return ElementalIrEmitter::EmitFloatUnaryOp(op, operand_value);
   }
@@ -190,69 +270,6 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
     const HloToElementGeneratorMap& operand_to_generator) const {
   switch (hlo->opcode()) {
-    case HloOpcode::kPad:
-      return [=, &operand_to_generator](
-                 const IrArray::Index& padded_index) -> StatusOr<llvm::Value*> {
-        auto index = padded_index;
-        llvm::Value* in_bounds =
-            llvm::ConstantInt::get(ir_builder_->getInt1Ty(), 1);
-        for (int i = 0; i < index.size(); ++i) {
-          auto index_typed_const = [=](int64 n) {
-            return llvm::ConstantInt::get(index[i]->getType(), n);
-          };
-          const auto& pad_dim = hlo->padding_config().dimensions(i);
-          index[i] = ir_builder_->CreateSub(
-              index[i], index_typed_const(pad_dim.edge_padding_low()));
-          in_bounds = ir_builder_->CreateAnd(
-              in_bounds,
-              ir_builder_->CreateICmpSGE(index[i], index_typed_const(0)),
-              "in_bounds");
-          in_bounds = ir_builder_->CreateAnd(
-              in_bounds,
-              ir_builder_->CreateICmpEQ(
-                  index_typed_const(0),
-                  ir_builder_->CreateURem(
-                      index[i],
-                      index_typed_const(pad_dim.interior_padding() + 1))),
-              "in_bounds");
-          index[i] = ir_builder_->CreateSDiv(
-              index[i], index_typed_const(pad_dim.interior_padding() + 1));
-          in_bounds = ir_builder_->CreateAnd(
-              in_bounds,
-              ir_builder_->CreateICmpSLT(
-                  index[i],
-                  index_typed_const(hlo->operand(0)->shape().dimensions(i))),
-              "in_bounds");
-        }
-
-        // if (in_bounds) {
-        //   ret_value = operand0[index];  // source
-        // } else {
-        //   ret_value = *operand1;        // padding
-        // }
-        llvm::Value* ret_value_addr = llvm_ir::EmitAllocaAtFunctionEntry(
-            llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(),
-                                           ir_builder_),
-            "pad_result_addr", ir_builder_);
-        llvm_ir::LlvmIfData if_data =
-            llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", ir_builder_);
-        SetToFirstInsertPoint(if_data.true_block, ir_builder_);
-        TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                            operand_to_generator.at(hlo->operand(0))(index));
-        ir_builder_->CreateStore(operand_value, ret_value_addr);
-
-        SetToFirstInsertPoint(if_data.false_block, ir_builder_);
-        TF_ASSIGN_OR_RETURN(llvm::Value * padding_value,
-                            operand_to_generator.at(hlo->operand(1))({}));
-        ir_builder_->CreateStore(padding_value, ret_value_addr);
-
-        SetToFirstInsertPoint(if_data.after_block, ir_builder_);
-        // Don't create phi(operand_value, padding_value) here, because invoking
-        // operand_to_generator may create new basic blocks, making the parent
-        // of operand_value or padding_value no longer a predecessor of
-        // if_data.after_block.
-        return ir_builder_->CreateLoad(ret_value_addr);
-      };
     case HloOpcode::kMap:
       return [=, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {

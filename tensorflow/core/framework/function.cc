@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 
@@ -252,6 +253,7 @@ Status InstantiateNode(const NodeDef& fnode,
   NodeDef* gnode = gdef->add_node();
   gnode->set_name(Name(gdef->node_size() - 1));
   gnode->set_op(fnode.op());
+  gnode->set_device(fnode.device());
 
   // Input
   const int num_args = fnode_sig->input_arg_size();
@@ -651,6 +653,36 @@ string DebugStringWhole(const GraphDef& gdef) {
   return ret;
 }
 
+bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
+  // NOTE(skyewm): Using MessageDifferencer would be better here, but that is
+  // currently not included in tensorflow/core/platform/default/protobuf.h, so
+  // play fast and loose here.  I don't see anything in OpDef that should allow
+  // multiple equivalent string serializations, with the exception of
+  // AttrValues, which can vary for tensor values (see AreAttrValuesEqual()
+  // comments).
+  string sig1, sig2;
+  f1.signature().SerializeToString(&sig1);
+  f2.signature().SerializeToString(&sig2);
+  if (sig1 != sig2) return false;
+
+  if (f1.attr().size() != f2.attr().size()) return false;
+  for (auto iter1 : f1.attr()) {
+    auto iter2 = f2.attr().find(iter1.first);
+    if (iter2 == f2.attr().end()) return false;
+    if (!AreAttrValuesEqual(iter1.second, iter2->second)) return false;
+  }
+
+  if (!EqualRepeatedNodeDef(f1.node_def(), f2.node_def(), nullptr)) {
+    return false;
+  }
+
+  std::map<string, string> ret1(f1.ret().begin(), f1.ret().end());
+  std::map<string, string> ret2(f2.ret().begin(), f2.ret().end());
+  if (ret1 != ret2) return false;
+
+  return true;
+}
+
 string Canonicalize(const string& funcname,
                     const InstantiateAttrValueMap& attrs) {
   std::vector<string> entries;
@@ -775,6 +807,40 @@ Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
                                    " already exists in function library.");
   }
   ptr.reset(new FunctionDefAndOpRegistration(fdef));
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::AddGradientDef(const GradientDef& grad) {
+  if (func_grad_.count(grad.function_name()) > 0) {
+    return errors::InvalidArgument("Gradient for function '",
+                                   grad.function_name(), "' already exists.");
+  }
+  func_grad_[grad.function_name()] = grad.gradient_func();
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::AddLibrary(
+    const FunctionLibraryDefinition& other) {
+  for (auto iter : other.function_defs_) {
+    TF_RETURN_IF_ERROR(AddFunctionDef(iter.second->fdef));
+  }
+  for (auto iter : other.func_grad_) {
+    GradientDef grad;
+    grad.set_function_name(iter.first);
+    grad.set_gradient_func(iter.second);
+    TF_RETURN_IF_ERROR(AddGradientDef(grad));
+  }
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::AddLibrary(
+    const FunctionDefLibrary& lib_def) {
+  for (const FunctionDef& fdef : lib_def.function()) {
+    TF_RETURN_IF_ERROR(AddFunctionDef(fdef));
+  }
+  for (const GradientDef& grad : lib_def.gradient()) {
+    TF_RETURN_IF_ERROR(AddGradientDef(grad));
+  }
   return Status::OK();
 }
 

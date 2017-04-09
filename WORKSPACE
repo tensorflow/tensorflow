@@ -1,25 +1,39 @@
 workspace(name = "org_tensorflow")
 
-load("//tensorflow:workspace.bzl", "check_version", "tf_workspace")
+http_archive(
+    name = "io_bazel_rules_closure",
+    sha256 = "60fc6977908f999b23ca65698c2bb70213403824a84f7904310b6000d78be9ce",
+    strip_prefix = "rules_closure-5ca1dab6df9ad02050f7ba4e816407f88690cf7d",
+    urls = [
+        "http://bazel-mirror.storage.googleapis.com/github.com/bazelbuild/rules_closure/archive/5ca1dab6df9ad02050f7ba4e816407f88690cf7d.tar.gz",  # 2017-02-03
+        "https://github.com/bazelbuild/rules_closure/archive/5ca1dab6df9ad02050f7ba4e816407f88690cf7d.tar.gz",
+    ],
+)
 
-# We must check the bazel version before trying to parse any other BUILD files,
-# in case the parsing of those build files depends on the bazel version we
-# require here.
-check_version("0.4.2")
+load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
+
+closure_repositories()
+
+load("//tensorflow:workspace.bzl", "tf_workspace")
 
 # Uncomment and update the paths in these entries to build the Android demo.
 #android_sdk_repository(
 #    name = "androidsdk",
 #    api_level = 23,
-#    build_tools_version = "23.0.1",
+#    # Ensure that you have the build_tools_version below installed in the 
+#    # SDK manager as it updates periodically.
+#    build_tools_version = "25.0.2",
 #    # Replace with path to Android SDK on your system
 #    path = "<PATH_TO_SDK>",
 #)
 #
+# Android NDK r12b is recommended (higher may cause issues with Bazel)
 #android_ndk_repository(
 #    name="androidndk",
 #    path="<PATH_TO_NDK>",
-#    api_level=21)
+#    # This needs to be 14 or higher to compile TensorFlow. 
+#    # Note that the NDK version is not the API level.
+#    api_level=14)
 
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_workspace()

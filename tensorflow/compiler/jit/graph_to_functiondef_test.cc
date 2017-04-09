@@ -19,11 +19,11 @@ limitations under the License.
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace {
@@ -54,7 +54,7 @@ TEST(GraphToFunctionDefTest, Basics) {
   auto h = ops::_Retval(root.WithOpName("H"), g, 0);
 
   GraphDef graph_def;
-  root.ToGraphDef(&graph_def);
+  TF_EXPECT_OK(root.ToGraphDef(&graph_def));
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   GraphConstructorOptions options;

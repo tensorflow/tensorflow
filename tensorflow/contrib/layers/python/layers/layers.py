@@ -28,6 +28,7 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import initializers
 from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.layers import convolutional as convolutional_layers
@@ -68,6 +69,7 @@ __all__ = ['avg_pool2d',
            'relu',
            'relu6',
            'repeat',
+           'scale_gradient',
            'separable_conv2d',
            'separable_convolution2d',
            'softmax',
@@ -112,7 +114,7 @@ def avg_pool2d(inputs,
     A `Tensor` representing the results of the pooling operation.
 
   Raises:
-    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
   """
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
@@ -160,19 +162,18 @@ def _fused_batch_norm(
   they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    if update_ops:
-      updates = tf.group(*update_ops)
-      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss)
 
   One can set updates_collections=None to force the updates in place, but that
-  can have speed penalty, specially in distributed settings.
+  can have speed penalty, especially in distributed settings.
 
   Args:
-    inputs: a tensor with 2 or more dimensions, where the first dimension has
+    inputs: A tensor with 2 or more dimensions, where the first dimension has
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average. Reasonable values for `decay` are close
+    decay: Decay for the moving average. Reasonable values for `decay` are close
       to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc.
       Lower `decay` value (recommend trying `decay`=0.9) if model experiences
       reasonably good training performance but poor validation and/or test
@@ -182,24 +183,24 @@ def _fused_batch_norm(
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
-    epsilon: small float added to variance to avoid dividing by zero.
-    activation_fn: activation function, default set to None to skip it and
+    epsilon: Small float added to variance to avoid dividing by zero.
+    activation_fn: Activation function, default set to None to skip it and
       maintain a linear activation.
-    param_initializers: optional initializers for beta, gamma, moving mean and
+    param_initializers: Optional initializers for beta, gamma, moving mean and
       moving variance.
-    updates_collections: collections to collect the update ops for computation.
+    updates_collections: Collections to collect the update ops for computation.
       The updates_ops need to be executed with the train_op.
       If None, a control dependency would be added to make sure the updates are
       computed in place.
-    is_training: whether or not the layer is in training mode. In training mode
+    is_training: Whether or not the layer is in training mode. In training mode
       it would accumulate the statistics of the moments into `moving_mean` and
       `moving_variance` using an exponential moving average with the given
       `decay`. When it is not in training mode then it would use the values of
       the `moving_mean` and the `moving_variance`.
-    reuse: whether or not the layer and its variables should be reused. To be
+    reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
-    variables_collections: optional collections for the variables.
-    outputs_collections: collections to add the outputs.
+    variables_collections: Optional collections for the variables.
+    outputs_collections: Collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     data_format: A string. `NHWC` (default) and `NCHW` are supported.
@@ -210,10 +211,10 @@ def _fused_batch_norm(
     A `Tensor` representing the output of the operation.
 
   Raises:
-    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-    ValueError: if the rank of `inputs` is undefined.
-    ValueError: if the rank of `inputs` is neither 2 or 4.
-    ValueError: if rank or `C` dimension of `inputs` is undefined.
+    ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: If the rank of `inputs` is undefined.
+    ValueError: If the rank of `inputs` is neither 2 or 4.
+    ValueError: If rank or `C` dimension of `inputs` is undefined.
   """
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
@@ -221,6 +222,7 @@ def _fused_batch_norm(
       scope, 'BatchNorm', [inputs], reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     original_shape = inputs.get_shape()
+    original_inputs = inputs
     original_rank = original_shape.ndims
     if original_rank is None:
       raise ValueError('Inputs %s has undefined rank' % inputs.name)
@@ -351,7 +353,7 @@ def _fused_batch_norm(
 
     outputs.set_shape(inputs_shape)
     if original_shape.ndims == 2:
-      outputs = array_ops.reshape(outputs, original_shape)
+      outputs = array_ops.reshape(outputs, array_ops.shape(original_inputs))
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
@@ -359,25 +361,28 @@ def _fused_batch_norm(
 
 
 @add_arg_scope
-def batch_norm(
-    inputs,
-    decay=0.999,
-    center=True,
-    scale=False,
-    epsilon=0.001,
-    activation_fn=None,
-    param_initializers=None,
-    updates_collections=ops.GraphKeys.UPDATE_OPS,
-    is_training=True,
-    reuse=None,
-    variables_collections=None,
-    outputs_collections=None,
-    trainable=True,
-    batch_weights=None,
-    fused=False,
-    data_format=DATA_FORMAT_NHWC,
-    zero_debias_moving_mean=False,
-    scope=None):
+def batch_norm(inputs,
+               decay=0.999,
+               center=True,
+               scale=False,
+               epsilon=0.001,
+               activation_fn=None,
+               param_initializers=None,
+               param_regularizers=None,
+               updates_collections=ops.GraphKeys.UPDATE_OPS,
+               is_training=True,
+               reuse=None,
+               variables_collections=None,
+               outputs_collections=None,
+               trainable=True,
+               batch_weights=None,
+               fused=False,
+               data_format=DATA_FORMAT_NHWC,
+               zero_debias_moving_mean=False,
+               scope=None,
+               renorm=False,
+               renorm_clipping=None,
+               renorm_decay=0.99):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -392,19 +397,18 @@ def batch_norm(
   they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    if update_ops:
-      updates = tf.group(*update_ops)
-      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss)
 
   One can set updates_collections=None to force the updates in place, but that
-  can have speed penalty, specially in distributed settings.
+  can have speed penalty, especially in distributed settings.
 
   Args:
-    inputs: a tensor with 2 or more dimensions, where the first dimension has
+    inputs: A tensor with 2 or more dimensions, where the first dimension has
       `batch_size`. The normalization is over all but the last dimension if
       `data_format` is `NHWC` and the second dimension if `data_format` is
       `NCHW`.
-    decay: decay for the moving average. Reasonable values for `decay` are close
+    decay: Decay for the moving average. Reasonable values for `decay` are close
       to 1.0, typically in the multiple-nines range: 0.999, 0.99, 0.9, etc.
       Lower `decay` value (recommend trying `decay`=0.9) if model experiences
       reasonably good training performance but poor validation and/or test
@@ -414,24 +418,25 @@ def batch_norm(
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
-    epsilon: small float added to variance to avoid dividing by zero.
-    activation_fn: activation function, default set to None to skip it and
+    epsilon: Small float added to variance to avoid dividing by zero.
+    activation_fn: Activation function, default set to None to skip it and
       maintain a linear activation.
-    param_initializers: optional initializers for beta, gamma, moving mean and
+    param_initializers: Optional initializers for beta, gamma, moving mean and
       moving variance.
-    updates_collections: collections to collect the update ops for computation.
+    param_regularizers: Optional regularizer for beta and gamma.
+    updates_collections: Collections to collect the update ops for computation.
       The updates_ops need to be executed with the train_op.
       If None, a control dependency would be added to make sure the updates are
       computed in place.
-    is_training: whether or not the layer is in training mode. In training mode
+    is_training: Whether or not the layer is in training mode. In training mode
       it would accumulate the statistics of the moments into `moving_mean` and
       `moving_variance` using an exponential moving average with the given
       `decay`. When it is not in training mode then it would use the values of
       the `moving_mean` and the `moving_variance`.
-    reuse: whether or not the layer and its variables should be reused. To be
+    reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
-    variables_collections: optional collections for the variables.
-    outputs_collections: collections to add the outputs.
+    variables_collections: Optional collections for the variables.
+    outputs_collections: Collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     batch_weights: An optional tensor of shape `[batch_size]`,
@@ -444,20 +449,39 @@ def batch_norm(
     zero_debias_moving_mean: Use zero_debias for moving_mean. It creates a new
       pair of variables 'moving_mean/biased' and 'moving_mean/local_step'.
     scope: Optional scope for `variable_scope`.
+    renorm: Whether to use Batch Renormalization
+      (https://arxiv.org/abs/1702.03275). This adds extra variables during
+      training. The inference is the same for either value of this parameter.
+    renorm_clipping: A dictionary that may map keys 'rmax', 'rmin', 'dmax' to
+      scalar `Tensors` used to clip the renorm correction. The correction
+      `(r, d)` is used as `corrected_value = normalized_value * r + d`, with
+      `r` clipped to [rmin, rmax], and `d` to [-dmax, dmax]. Missing rmax, rmin,
+      dmax are set to inf, 0, inf, respectively.
+    renorm_decay: Momentum used to update the moving means and standard
+      deviations with renorm. Unlike `momentum`, this affects training
+      and should be neither too small (which would add noise) nor too large
+      (which would give stale estimates). Note that `decay` is still applied
+      to get the means and variances for inference.
 
   Returns:
     A `Tensor` representing the output of the operation.
 
   Raises:
-    ValueError: if `batch_weights` is not None and `fused` is True.
-    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-    ValueError: if the rank of `inputs` is undefined.
-    ValueError: if rank or channels dimension of `inputs` is undefined.
+    ValueError: If `batch_weights` is not None and `fused` is True.
+    ValueError: If `param_regularizers` is not None and `fused` is True.
+    ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: If the rank of `inputs` is undefined.
+    ValueError: If rank or channels dimension of `inputs` is undefined.
   """
   if fused:
     if batch_weights is not None:
       raise ValueError('Weighted mean and variance is not currently '
                        'supported for fused batch norm.')
+    if param_regularizers is not None:
+      raise ValueError('Regularizers are not currently '
+                       'supported for fused batch norm.')
+    if renorm:
+      raise ValueError('Renorm is not supported for fused batch norm.')
     return _fused_batch_norm(
         inputs,
         decay=decay,
@@ -501,6 +525,10 @@ def batch_norm(
           'moving_mean', init_ops.zeros_initializer())
       moving_variance_initializer = param_initializers.get(
           'moving_variance', init_ops.ones_initializer())
+      if not param_regularizers:
+        param_regularizers = {}
+      beta_regularizer = param_regularizers.get('beta')
+      gamma_regularizer = param_regularizers.get('gamma')
       layer = normalization_layers.BatchNormalization(
           axis=axis,
           momentum=decay,
@@ -511,7 +539,12 @@ def batch_norm(
           gamma_initializer=gamma_initializer,
           moving_mean_initializer=moving_mean_initializer,
           moving_variance_initializer=moving_variance_initializer,
+          beta_regularizer=beta_regularizer,
+          gamma_regularizer=gamma_regularizer,
           trainable=trainable,
+          renorm=renorm,
+          renorm_clipping=renorm_clipping,
+          renorm_momentum=renorm_decay,
           name=sc.name,
           _scope=sc,
           _reuse=reuse)
@@ -525,7 +558,8 @@ def batch_norm(
       if layer.beta:
         _add_variable_to_collections(layer.beta, variables_collections, 'beta')
       if layer.gamma:
-        _add_variable_to_collections(layer.beta, variables_collections, 'gamma')
+        _add_variable_to_collections(
+            layer.gamma, variables_collections, 'gamma')
 
       if activation_fn is not None:
         outputs = activation_fn(outputs)
@@ -538,6 +572,9 @@ def batch_norm(
     # Custom updates collections are not supported because the update logic
     # is different in this case, in particular w.r.t. "forced updates" and
     # update op reuse.
+    if renorm:
+      raise ValueError('renorm is not supported with batch_weights, '
+                       'updates_collections or zero_debias_moving_mean')
     inputs_shape = inputs.get_shape()
     inputs_rank = inputs_shape.ndims
     if inputs_rank is None:
@@ -715,30 +752,30 @@ def bias_add(inputs,
   Can be used as a normalizer function for conv2d and fully_connected.
 
   Args:
-    inputs: a tensor of with at least rank 2 and value for the last dimension,
+    inputs: A tensor of with at least rank 2 and value for the last dimension,
       e.g. `[batch_size, depth]`, `[None, None, None, depth]`.
-    activation_fn: activation function, default set to None to skip it and
+    activation_fn: Activation function, default set to None to skip it and
       maintain a linear activation.
     initializer: An initializer for the bias, defaults to 0.
     regularizer: A regularizer like the result of
       `l1_regularizer` or `l2_regularizer`.
-    reuse: whether or not the layer and its variables should be reused. To be
+    reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
-    variables_collections: optional collections for the variables.
-    outputs_collections: collections to add the outputs.
+    variables_collections: Optional collections for the variables.
+    outputs_collections: Collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     scope: Optional scope for variable_scope.
 
   Returns:
-    a tensor representing the result of adding biases to the inputs.
+    A tensor representing the result of adding biases to the inputs.
 
   Raises:
-    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-    ValueError: if `data_format` is `NCHW` and rank of `inputs` is not 4.
-    ValueError: if the rank of `inputs` is undefined.
-    ValueError: if rank or `C` dimension of `inputs` is undefined.
+    ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: If `data_format` is `NCHW` and rank of `inputs` is not 4.
+    ValueError: If the rank of `inputs` is undefined.
+    ValueError: If rank or `C` dimension of `inputs` is undefined.
   """
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
@@ -811,58 +848,58 @@ def convolution(inputs,
   `stride` values != 1 are not supported.
 
   Args:
-    inputs: a Tensor of rank N+2 of shape
+    inputs: A Tensor of rank N+2 of shape
       `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
       not start with "NC" (default), or
       `[batch_size, in_channels] + input_spatial_shape` if data_format starts
       with "NC".
-    num_outputs: integer, the number of output filters.
-    kernel_size: a sequence of N positive integers specifying the spatial
+    num_outputs: Integer, the number of output filters.
+    kernel_size: A sequence of N positive integers specifying the spatial
       dimensions of of the filters.  Can be a single integer to specify the same
       value for all spatial dimensions.
-    stride: a sequence of N positive integers specifying the stride at which to
+    stride: A sequence of N positive integers specifying the stride at which to
       compute output.  Can be a single integer to specify the same value for all
       spatial dimensions.  Specifying any `stride` value != 1 is incompatible
       with specifying any `rate` value != 1.
-    padding: one of `"VALID"` or `"SAME"`.
+    padding: One of `"VALID"` or `"SAME"`.
     data_format: A string or None.  Specifies whether the channel dimension of
       the `input` and output is the last dimension (default, or if `data_format`
       does not start with "NC"), or the second dimension (if `data_format`
       starts with "NC").  For N=1, the valid values are "NWC" (default) and
-      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
-      N=3, currently the only valid value is "NDHWC".
-    rate: a sequence of N positive integers specifying the dilation rate to use
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
+      For N=3, the valid values are "NDHWC" (default) and "NCDHW".
+    rate: A sequence of N positive integers specifying the dilation rate to use
       for a'trous convolution.  Can be a single integer to specify the same
       value for all spatial dimensions.  Specifying any `rate` value != 1 is
       incompatible with specifying any `stride` value != 1.
-    activation_fn: activation function, set to None to skip it and maintain
-      a linear activation.
-    normalizer_fn: normalization function to use instead of `biases`. If
+    activation_fn: Activation function. The default value is a ReLU function.
+      Explicitly set it to None to skip it and maintain a linear activation.
+    normalizer_fn: Normalization function to use instead of `biases`. If
       `normalizer_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
       default set to None for no normalizer function
-    normalizer_params: normalization function parameters.
+    normalizer_params: Normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
     biases_initializer: An initializer for the biases. If None skip biases.
     biases_regularizer: Optional regularizer for the biases.
-    reuse: whether or not the layer and its variables should be reused. To be
+    reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
-    variables_collections: optional list of collections for all the variables or
+    variables_collections: Optional list of collections for all the variables or
       a dictionary containing a different list of collection per variable.
-    outputs_collections: collection to add the outputs.
+    outputs_collections: Collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     scope: Optional scope for `variable_scope`.
 
   Returns:
-    a tensor representing the output of the operation.
+    A tensor representing the output of the operation.
 
   Raises:
-    ValueError: if `data_format` is invalid.
-    ValueError: both 'rate' and `stride` are not uniformly 1.
+    ValueError: If `data_format` is invalid.
+    ValueError: Both 'rate' and `stride` are not uniformly 1.
   """
-  if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC']:
+  if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC', 'NCDHW']:
     raise ValueError('Invalid data_format: %r' % (data_format,))
 
   layer_variable_getter = _build_variable_getter(
@@ -955,29 +992,29 @@ def convolution2d_in_plane(
                                             kernel_size=[1, 2])
 
   Args:
-    inputs: a 4-D tensor with dimensions [batch_size, height, width, channels].
-    kernel_size: a list of length 2 holding the [kernel_height, kernel_width] of
+    inputs: A 4-D tensor with dimensions [batch_size, height, width, channels].
+    kernel_size: A list of length 2 holding the [kernel_height, kernel_width] of
       of the pooling. Can be an int if both values are the same.
-    stride: a list of length 2 `[stride_height, stride_width]`.
+    stride: A list of length 2 `[stride_height, stride_width]`.
       Can be an int if both strides are the same. Note that presently
       both strides must have the same value.
-    padding: the padding type to use, either 'SAME' or 'VALID'.
-    activation_fn: activation function, set to None to skip it and maintain
-      a linear activation.
-    normalizer_fn: normalization function to use instead of `biases`. If
+    padding: The padding type to use, either 'SAME' or 'VALID'.
+    activation_fn: Activation function. The default value is a ReLU function.
+      Explicitly set it to None to skip it and maintain a linear activation.
+    normalizer_fn: Normalization function to use instead of `biases`. If
       `normalizer_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
       default set to None for no normalizer function
-    normalizer_params: normalization function parameters.
+    normalizer_params: Normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
     biases_initializer: An initializer for the biases. If None skip biases.
     biases_regularizer: Optional regularizer for the biases.
-    reuse: whether or not the layer and its variables should be reused. To be
+    reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
-    variables_collections: optional list of collections for all the variables or
+    variables_collections: Optional list of collections for all the variables or
       a dictionary containing a different list of collection per variable.
-    outputs_collections: collection to add the outputs.
+    outputs_collections: Collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     scope: Optional scope for `variable_scope`.
@@ -1056,40 +1093,40 @@ def convolution2d_transpose(
     inputs: A 4-D `Tensor` of type `float` and shape
       `[batch, height, width, in_channels]` for `NHWC` data format or
       `[batch, in_channels, height, width]` for `NCHW` data format.
-    num_outputs: integer, the number of output filters.
-    kernel_size: a list of length 2 holding the [kernel_height, kernel_width] of
+    num_outputs: Integer, the number of output filters.
+    kernel_size: A list of length 2 holding the [kernel_height, kernel_width] of
       of the filters. Can be an int if both values are the same.
-    stride: a list of length 2: [stride_height, stride_width].
+    stride: A list of length 2: [stride_height, stride_width].
       Can be an int if both strides are the same.  Note that presently
       both strides must have the same value.
-    padding: one of 'VALID' or 'SAME'.
+    padding: One of 'VALID' or 'SAME'.
     data_format: A string. `NHWC` (default) and `NCHW` are supported.
-    activation_fn: activation function, set to None to skip it and maintain
-      a linear activation.
-    normalizer_fn: normalization function to use instead of `biases`. If
+    activation_fn: Activation function. The default value is a ReLU function.
+      Explicitly set it to None to skip it and maintain a linear activation.
+    normalizer_fn: Normalization function to use instead of `biases`. If
       `normalizer_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
       default set to None for no normalizer function
-    normalizer_params: normalization function parameters.
+    normalizer_params: Normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
     biases_initializer: An initializer for the biases. If None skip biases.
     biases_regularizer: Optional regularizer for the biases.
-    reuse: whether or not the layer and its variables should be reused. To be
+    reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
-    variables_collections: optional list of collections for all the variables or
+    variables_collections: Optional list of collections for all the variables or
       a dictionary containing a different list of collection per variable.
-    outputs_collections: collection to add the outputs.
-    trainable: whether or not the variables should be trainable or not.
+    outputs_collections: Collection to add the outputs.
+    trainable: Whether or not the variables should be trainable or not.
     scope: Optional scope for variable_scope.
 
   Returns:
-    a tensor representing the output of the operation.
+    A tensor representing the output of the operation.
 
   Raises:
-    ValueError: if 'kernel_size' is not a list of length 2.
-    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
-    ValueError: if `C` dimension of `inputs` is None.
+    ValueError: If 'kernel_size' is not a list of length 2.
+    ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: If `C` dimension of `inputs` is None.
   """
   layer_variable_getter = _build_variable_getter(
       {'bias': 'biases', 'kernel': 'weights'})
@@ -1153,7 +1190,7 @@ def dropout(inputs,
   sum is unchanged.
 
   Args:
-    inputs: the tensor to pass to the nn.dropout op.
+    inputs: The tensor to pass to the nn.dropout op.
     keep_prob: A scalar `Tensor` with the same type as x. The probability
       that each element is kept.
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
@@ -1161,11 +1198,11 @@ def dropout(inputs,
     is_training: A bool `Tensor` indicating whether or not the model
       is in training mode. If so, dropout is applied and values scaled.
       Otherwise, inputs is returned.
-    outputs_collections: collection to add the outputs.
+    outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
 
   Returns:
-    a tensor representing the output of the operation.
+    A tensor representing the output of the operation.
   """
   with variable_scope.variable_scope(
       scope, 'Dropout', [inputs], custom_getter=_model_variable_getter) as sc:
@@ -1188,14 +1225,14 @@ def flatten(inputs,
     Assumes that the first dimension represents the batch.
 
   Args:
-    inputs: a tensor of size [batch_size, ...].
-    outputs_collections: collection to add the outputs.
+    inputs: A tensor of size [batch_size, ...].
+    outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
 
   Returns:
-    a flattened tensor with shape [batch_size, k].
+    A flattened tensor with shape [batch_size, k].
   Raises:
-    ValueError: if inputs rank is less than 2.
+    ValueError: If inputs rank is unknown or less than 2.
   """
   with ops.name_scope(scope, 'Flatten', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
@@ -1219,7 +1256,7 @@ def flatten(inputs,
     batch_dim, spatial_dims = input_shape[0], input_shape[1:]
     if all(spatial_dims):
       outputs.set_shape([batch_dim,
-                        functools.reduce(lambda x, y: x * y, spatial_dims)])
+                         functools.reduce(lambda x, y: x * y, spatial_dims)])
     else:
       outputs.set_shape([batch_dim, None])
 
@@ -1228,6 +1265,13 @@ def flatten(inputs,
 
 def _sparse_inner_flatten(inputs, new_rank):
   """Helper function for `inner_flatten`."""
+  inputs_rank = inputs.dense_shape.get_shape().as_list()[0]
+  if inputs_rank < new_rank:
+    raise ValueError(
+        'Inputs has rank less than new_rank. {} must have rank at least'
+        ' {}. Received rank {}, shape {}'.format(inputs, new_rank, inputs_rank,
+                                                 inputs.get_shape()))
+
   outer_dimensions = inputs.dense_shape[:new_rank - 1]
   inner_dimensions = inputs.dense_shape[new_rank - 1:]
   new_shape = array_ops.concat((outer_dimensions,
@@ -1277,10 +1321,10 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
   rank of `inputs`.
 
   Args:
-    inputs: a `Tensor` or `SparseTensor`.
-    new_rank: the desired rank of the returned `Tensor` or `SparseTensor`.
-    output_collections: collection to which the outputs will be added.
-    scope: optional scope for `name_scope`.
+    inputs: A `Tensor` or `SparseTensor`.
+    new_rank: The desired rank of the returned `Tensor` or `SparseTensor`.
+    output_collections: Collection to which the outputs will be added.
+    scope: Optional scope for `name_scope`.
   Returns:
     A `Tensor` or `SparseTensor` conataining the same values as `inputs`, but
     with innermost dimensions flattened to obtain rank `new_rank`.
@@ -1300,7 +1344,8 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
 def _model_variable_getter(getter, name, shape=None, dtype=None,
                            initializer=None, regularizer=None, trainable=True,
                            collections=None, caching_device=None,
-                           partitioner=None, rename=None, **_):
+                           partitioner=None, rename=None, use_resource=None,
+                           **_):
   """Getter that uses model_variable for compatibility with core layers."""
   short_name = name.split('/')[-1]
   if rename and short_name in rename:
@@ -1311,16 +1356,13 @@ def _model_variable_getter(getter, name, shape=None, dtype=None,
       name, shape=shape, dtype=dtype, initializer=initializer,
       regularizer=regularizer, collections=collections, trainable=trainable,
       caching_device=caching_device, partitioner=partitioner,
-      custom_getter=getter)
+      custom_getter=getter, use_resource=use_resource)
 
 
 def _build_variable_getter(rename=None):
   """Build a model variable getter that respects scope getter and renames."""
-  # Respect current getter, if one is set.
-  current_custom_getter = variable_scope.get_variable_scope().custom_getter
+  # VariableScope will nest the getters
   def layer_variable_getter(getter, *args, **kwargs):
-    if current_custom_getter is not None:
-      getter = functools.partial(current_custom_getter, getter)
     kwargs['rename'] = rename
     return _model_variable_getter(getter, *args, **kwargs)
   return layer_variable_getter
@@ -1371,22 +1413,22 @@ def fully_connected(inputs,
     inputs: A tensor of at least rank 2 and static value for the last dimension;
       i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
     num_outputs: Integer or long, the number of output units in the layer.
-    activation_fn: activation function, set to None to skip it and maintain
-      a linear activation.
-    normalizer_fn: normalization function to use instead of `biases`. If
+    activation_fn: Activation function. The default value is a ReLU function.
+      Explicitly set it to None to skip it and maintain a linear activation.
+    normalizer_fn: Normalization function to use instead of `biases`. If
       `normalizer_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
       default set to None for no normalizer function
-    normalizer_params: normalization function parameters.
+    normalizer_params: Normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
     biases_initializer: An initializer for the biases. If None skip biases.
     biases_regularizer: Optional regularizer for the biases.
-    reuse: whether or not the layer and its variables should be reused. To be
+    reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: Optional list of collections for all the variables or
       a dictionary containing a different list of collections per variable.
-    outputs_collections: collection to add the outputs.
+    outputs_collections: Collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     scope: Optional scope for variable_scope.
@@ -1395,7 +1437,7 @@ def fully_connected(inputs,
      The tensor variable representing the result of the series of operations.
 
   Raises:
-    ValueError: if x has rank less than 2 or if its last dimension is not set.
+    ValueError: If x has rank less than 2 or if its last dimension is not set.
   """
   if not isinstance(num_outputs, six.integer_types):
     raise ValueError('num_outputs should be int or long, got %s.', num_outputs)
@@ -1460,19 +1502,19 @@ def layer_norm(inputs,
   Can be used as a normalizer function for conv2d and fully_connected.
 
   Args:
-    inputs: a tensor with 2 or more dimensions. The normalization
+    inputs: A tensor with 2 or more dimensions. The normalization
             occurs over all but the first dimension.
     center: If True, add offset of `beta` to normalized tensor. If False, `beta`
       is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
-    activation_fn: activation function, default set to None to skip it and
+    activation_fn: Activation function, default set to None to skip it and
       maintain a linear activation.
-    reuse: whether or not the layer and its variables should be reused. To be
+    reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
-    variables_collections: optional collections for the variables.
-    outputs_collections: collections to add the outputs.
+    variables_collections: Optional collections for the variables.
+    outputs_collections: Collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     scope: Optional scope for `variable_scope`.
@@ -1481,7 +1523,7 @@ def layer_norm(inputs,
     A `Tensor` representing the output of the operation.
 
   Raises:
-    ValueError: if rank or last dimension of `inputs` is undefined.
+    ValueError: If rank or last dimension of `inputs` is undefined.
   """
   with variable_scope.variable_scope(scope, 'LayerNorm', [inputs],
                                      reuse=reuse) as sc:
@@ -1563,7 +1605,7 @@ def max_pool2d(inputs,
     A `Tensor` representing the results of the pooling operation.
 
   Raises:
-    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
     ValueError: If 'kernel_size' is not a 2-D list
   """
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
@@ -1609,8 +1651,8 @@ def pool(inputs,
       the `input` and output is the last dimension (default, or if `data_format`
       does not start with "NC"), or the second dimension (if `data_format`
       starts with "NC").  For N=1, the valid values are "NWC" (default) and
-      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".  For
-      N=3, currently the only valid value is "NDHWC".
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
+      For N=3, the valid values are "NDHWC" (default) and "NCDHW".
     dilation_rate: Optional.  Dilation rate.  Sequence of N ints >= 1.  Defaults
       to [1]*N.  Can also be a single integer to specify the same value for all
       spatial dimensions.  If any value of dilation_rate is > 1, then all values
@@ -1625,7 +1667,7 @@ def pool(inputs,
     A `Tensor` representing the results of the pooling operation.
 
   Raises:
-    ValueError: if arguments are invalid.
+    ValueError: If arguments are invalid.
 
   """
   # pylint: enable=line-too-long
@@ -1662,14 +1704,14 @@ def one_hot_encoding(labels,
 
   Args:
     labels: [batch_size] target labels.
-    num_classes: total number of classes.
+    num_classes: Total number of classes.
     on_value: A scalar defining the on-value.
     off_value: A scalar defining the off-value.
-    outputs_collections: collection to add the outputs.
+    outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
 
   Returns:
-    one hot encoding of the labels.
+    One-hot encoding of the labels.
   """
   with ops.name_scope(scope, 'OneHotEncoding', [labels, num_classes]) as sc:
     labels = ops.convert_to_tensor(labels)
@@ -1715,9 +1757,9 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
     **kwargs: Extra kwargs for the layer.
 
   Returns:
-    a tensor result of applying the layer, repetitions times.
+    A tensor result of applying the layer, repetitions times.
   Raises:
-    ValueError: if the op is unknown or wrong.
+    ValueError: If the op is unknown or wrong.
   """
   scope = kwargs.pop('scope', None)
   with variable_scope.variable_scope(scope, 'Repeat', [inputs]):
@@ -1734,6 +1776,48 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
       kwargs['scope'] = scope + '_' + str(i+1)
       outputs = layer(outputs, *args, **kwargs)
     return outputs
+
+
+def _scale_gradient_shape(op):
+  """Shape helper function for scale_gradient function below."""
+  return [op.inputs[0].shape]
+
+
+def _scale_gradient_grad(op, grad):
+  """Python gradient helper function for scale_gradient function below."""
+  return [grad * op.inputs[1], None]
+
+
+@function.Defun(python_grad_func=_scale_gradient_grad,
+                shape_func=_scale_gradient_shape)
+def scale_gradient(inputs, gradient_multiplier):
+  """Identity operation, but with the gradient multiplied by a tensor.
+
+  The TensorFlow gradient system will compute the gradient with respect to
+  `inputs` as the product of the gradient with respect to the `output`
+  multiplied by a specified `gradient_multiplier` tensor.  If
+  `gradient_multiplier` is equal to 1, then this results in the true gradient.
+  Otherwise, it results in a scaled gradient.
+
+  This can be useful for adjusting the relative learning rate of different
+  parameter tensors when performing gradient descent, and because this rescaling
+  can be inserted at arbitrary locations within a graph, is often more
+  convenient to apply than simply rescaling the final computed gradients.
+
+  Args:
+    inputs: Tensor to be output.
+    gradient_multiplier: Tensor by which to multiply the gradient with respect
+      to `output` to compute the gradient with respect to `inputs`.  Its shape
+      must be broadcastable to the shape of `inputs`.
+
+  Returns:
+    output Tensor, equal to `inputs`.
+  """
+  # gradient_multiplier is implicitly saved by decorator, and only used for
+  # gradient computation.
+  del gradient_multiplier
+
+  return inputs
 
 
 @add_arg_scope
@@ -1768,37 +1852,37 @@ def separable_convolution2d(
   to produce the end result.
 
   Args:
-    inputs: a tensor of size [batch_size, height, width, channels].
-    num_outputs: the number of pointwise convolution output filters. If is
+    inputs: A tensor of size [batch_size, height, width, channels].
+    num_outputs: The number of pointwise convolution output filters. If is
       None, then we skip the pointwise convolution stage.
-    kernel_size: a list of length 2: [kernel_height, kernel_width] of
+    kernel_size: A list of length 2: [kernel_height, kernel_width] of
       of the filters. Can be an int if both values are the same.
-    depth_multiplier: the number of depthwise convolution output channels for
+    depth_multiplier: The number of depthwise convolution output channels for
       each input channel. The total number of depthwise convolution output
       channels will be equal to `num_filters_in * depth_multiplier`.
-    stride: a list of length 2: [stride_height, stride_width], specifying the
+    stride: A list of length 2: [stride_height, stride_width], specifying the
       depthwise convolution stride. Can be an int if both strides are the same.
-    padding: one of 'VALID' or 'SAME'.
-    rate: a list of length 2: [rate_height, rate_width], specifying the dilation
+    padding: One of 'VALID' or 'SAME'.
+    rate: A list of length 2: [rate_height, rate_width], specifying the dilation
       rates for a'trous convolution. Can be an int if both rates are the same.
       If any value is larger than one, then both stride values need to be one.
-    activation_fn: activation function, set to None to skip it and maintain
-      a linear activation.
-    normalizer_fn: normalization function to use instead of `biases`. If
+    activation_fn: Activation function. The default value is a ReLU function.
+      Explicitly set it to None to skip it and maintain a linear activation.
+    normalizer_fn: Normalization function to use instead of `biases`. If
       `normalizer_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
       default set to None for no normalizer function
-    normalizer_params: normalization function parameters.
+    normalizer_params: Normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
     biases_initializer: An initializer for the biases. If None skip biases.
     biases_regularizer: Optional regularizer for the biases.
-    reuse: whether or not the layer and its variables should be reused. To be
+    reuse: Whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
-    variables_collections: optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
-    outputs_collections: collection to add the outputs.
-    trainable: whether or not the variables should be trainable or not.
+    variables_collections: Optional list of collections for all the variables or
+      a dictionary containing a different list of collection per variable.
+    outputs_collections: Collection to add the outputs.
+    trainable: Whether or not the variables should be trainable or not.
     scope: Optional scope for variable_scope.
 
   Returns:
@@ -1889,6 +1973,7 @@ def separable_convolution2d(
                                             dtype=dtype,
                                             initializer=biases_initializer,
                                             regularizer=biases_regularizer,
+                                            trainable=trainable,
                                             collections=biases_collections)
           outputs = nn.bias_add(outputs, biases)
 
@@ -1910,7 +1995,7 @@ def softmax(logits, scope=None):
     scope: Optional scope for variable_scope.
 
   Returns:
-    a `Tensor` with same shape and type as logits.
+    A `Tensor` with same shape and type as logits.
   """
   # TODO(jrru): Add axis argument which defaults to last dimension.
   with variable_scope.variable_scope(scope, 'softmax', [logits]):
@@ -1950,10 +2035,10 @@ def stack(inputs, layer, stack_args, **kwargs):
     **kwargs: Extra kwargs for the layer.
 
   Returns:
-    a `Tensor` result of applying the stacked layers.
+    A `Tensor` result of applying the stacked layers.
 
   Raises:
-    ValueError: if the op is unknown or wrong.
+    ValueError: If the op is unknown or wrong.
   """
   scope = kwargs.pop('scope', None)
   if not isinstance(stack_args, (list, tuple)):
@@ -2069,7 +2154,7 @@ def legacy_fully_connected(x,
   Args:
     x: The input `Tensor`.
     num_output_units: The size of the output.
-    activation_fn: activation function, default set to None to skip it and
+    activation_fn: Activation function, default set to None to skip it and
       maintain a linear activation.
     weight_init: An optional weight initialization, defaults to
       `xavier_initializer`.
@@ -2093,7 +2178,7 @@ def legacy_fully_connected(x,
     The output of the fully connected layer.
 
   Raises:
-    ValueError: if x has rank less than 2 or if its last dimension is not set.
+    ValueError: If x has rank less than 2 or if its last dimension is not set.
   """
   with variable_scope.variable_scope(name, 'fully_connected', [x]):
     x = ops.convert_to_tensor(x)

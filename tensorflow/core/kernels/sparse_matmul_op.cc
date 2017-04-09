@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #ifdef TENSORFLOW_USE_LIBXSMM
 #include "include/libxsmm_intrinsics_x86.h"
+#include "include/libxsmm_malloc.h"
 #include "include/libxsmm_spmdm.h"
 #endif
 
@@ -896,6 +897,8 @@ class LibxsmmSparseMatMul {
       } else {
         std::unique_ptr<TensorInfoCacheEntry> e{
             new TensorInfoCacheEntry{M, K, N, max_threads, {}, nullptr}};
+        // setup scoped allocator, which uses cpu_allocator() for this scope
+        const libxsmm_tf_allocator<libxsmm_scratch_allocator> tf_allocator;
         libxsmm_spmdm_init(M, N, K, max_threads, &e->handle, &e->output_csr);
         return e;
       }
@@ -1481,7 +1484,7 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
       if (work_item >= total_num_creation_blocks) break;
       wrapper_libxsmm_spmdm_createSparseSlice_generic_thread(
           empty_type_wrapper<TL>{}, &entry->handle,
-          (transpose_left ? 'Y' : 'N'), left_data, entry->output_csr, work_item,
+          (transpose_left ? 'T' : 'N'), left_data, entry->output_csr, work_item,
           i, num_threads);
     }
   });
@@ -1503,8 +1506,8 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
       const TL beta(0.0);   // Stored in a variable so we can get a pointer
       wrapper_libxsmm_spmdm_compute_generic_thread(
           empty_type_wrapper<TL>{}, &entry->handle,
-          (transpose_left ? 'Y' : 'N'), 'N', &alpha, entry->output_csr,
-          right_data, (transpose_output ? 'Y' : 'N'), &beta, output_data,
+          (transpose_left ? 'T' : 'N'), 'N', &alpha, entry->output_csr,
+          right_data, (transpose_output ? 'T' : 'N'), &beta, output_data,
           work_item, i, num_threads);
     }
   });

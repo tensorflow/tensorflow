@@ -84,10 +84,14 @@
 #                      support for Google Cloud Platform (GCP), which is
 #                      enabled by default.
 #   TF_BUILD_OPTIONS:
-#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2)
+#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2_FMA | MAVX_DBG |
+#                      MAVX2_FMA_DBG)
 #                     Use the specified configurations when building.
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
+#   TF_SKIP_CONTRIB_TESTS:
+#                     If set to any non-empty or non-0 value, will skipp running
+#                     contrib tests.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -117,8 +121,7 @@ DOCKER_MAIN_CMD="${CI_BUILD_DIR}/ci_build.sh"
 NO_DOCKER_MAIN_CMD="${CI_BUILD_DIR}/builds/configured"
 
 # Additional option flags to apply when Docker is unavailable (e.g., on Mac)
-NO_DOCKER_OPT_FLAG="--linkopt=-headerpad_max_install_names "\
-"--genrule_strategy=standalone"
+NO_DOCKER_OPT_FLAG="--genrule_strategy=standalone"
 
 DO_DOCKER=1
 
@@ -145,6 +148,10 @@ if [[ -z $TF_BUILD_ENABLE_XLA ]] || [ $TF_BUILD_ENABLE_XLA == 0 ]; then
 else
   BAZEL_TARGET="//tensorflow/compiler/..."
   EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_BUILD_ENABLE_XLA=1"
+fi
+
+if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
+  BAZEL_TARGET="$BAZEL_TARGET -//tensorflow/contrib/..."
 fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
@@ -305,11 +312,14 @@ else
     MAVX)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx"
       ;;
-    MAVXDBG)
+    MAVX_DBG)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx"
       ;;
-    MAVX2)
-      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2"
+    MAVX2_FMA)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2 --copt=-mfma"
+      ;;
+    MAVX2_FMA_DBG)
+      OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx2 --copt=-mfma"
       ;;
   esac
 fi
@@ -377,12 +387,7 @@ if [[ ${TF_BUILD_IS_PIP} == "pip" ]] ||
     exit 0
   fi
 
-  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_AGRS}"
-
-  # Add flag for mavx/mavx2
-  if [[ ! -z "${TF_BUILD_MAVX}" ]]; then
-    PIP_MAIN_CMD="${PIP_MAIN_CMD} --${TF_BUILD_MAVX}"
-  fi
+  PIP_MAIN_CMD="${MAIN_CMD} ${PIP_CMD} ${CTYPE} ${EXTRA_ARGS} ${OPT_FLAG}"
 
   # Add flag for integration tests
   if [[ ! -z "${TF_BUILD_INTEGRATION_TESTS}" ]] &&
@@ -424,7 +429,8 @@ if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
   :
 elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" || \
         ${TF_BUILD_PYTHON_VERSION} == "python3.4" || \
-        ${TF_BUILD_PYTHON_VERSION} == "python3.5" ]]; then
+        ${TF_BUILD_PYTHON_VERSION} == "python3.5" || \
+        ${TF_BUILD_PYTHON_VERSION} == "python3.6" ]]; then
   # Supply proper environment variable to select Python 3
   if [[ "${DO_DOCKER}" == "1" ]]; then
     EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=${TF_BUILD_PYTHON_VERSION}"

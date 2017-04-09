@@ -52,8 +52,8 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
   ```python
   # Create a 2 x 2 linear operator composed of two 2 x 2 operators.
-  operator_1 = LinearOperatorMatrix([[1., 2.], [3., 4.]])
-  operator_2 = LinearOperatorMatrix([[1., 0.], [0., 1.]])
+  operator_1 = LinearOperatorFullMatrix([[1., 2.], [3., 4.]])
+  operator_2 = LinearOperatorFullMatrix([[1., 0.], [0., 1.]])
   operator = LinearOperatorComposition([operator_1, operator_2])
 
   operator.to_dense()
@@ -72,11 +72,11 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
   # Create a [2, 3] batch of 4 x 5 linear operators.
   matrix_45 = tf.random_normal(shape=[2, 3, 4, 5])
-  operator_45 = LinearOperatorMatrix(matrix)
+  operator_45 = LinearOperatorFullMatrix(matrix)
 
   # Create a [2, 3] batch of 5 x 6 linear operators.
   matrix_56 = tf.random_normal(shape=[2, 3, 5, 6])
-  operator_56 = LinearOperatorMatrix(matrix_56)
+  operator_56 = LinearOperatorFullMatrix(matrix_56)
 
   # Compose to create a [2, 3] batch of 4 x 6 operators.
   opeartor_46 = LinearOperatorComposition([operator_45, operator_56])
@@ -113,7 +113,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
                is_self_adjoint=None,
                is_positive_definite=None,
                name=None):
-    """Initialize a `LinearOperatorComposition`.
+    r"""Initialize a `LinearOperatorComposition`.
 
     `LinearOperatorComposition` is initialized with a list of operators
     `[op_1,...,op_J]`.  For the `apply` method to be well defined, the
@@ -122,14 +122,15 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
     Args:
       operators:  Iterable of `LinearOperator` objects, each with
-        the same `dtype` and composible shape.
+        the same `dtype` and composable shape.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
       is_positive_definite:  Expect that this operator is positive definite,
-        meaning the real part of all eigenvalues is positive.  We do not require
-        the operator to be self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       name: A name for this `LinearOperator`.  Default is the individual
         operators names joined with `_o_`.

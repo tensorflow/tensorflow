@@ -67,10 +67,18 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           selected-runs="{{_selectedRuns}}"
           >
           <div class="extend-first-section">
-            <paper-checkbox
+            <div class="line-item">
+              <paper-checkbox
               id="download-option"
               checked="{{_showDownloadLinks}}"
-              >Data download links</paper-checkbox>
+              >Show data download links</paper-checkbox>
+            </div>
+              <div class="line-item">
+                <paper-checkbox
+                id="outliersCheckbox"
+                checked="{{_ignoreYOutliers}}"
+                >Ignore outliers in chart scaling</paper-checkbox>
+              </div>
             <div id="tooltip-sorting">
               <div id="tooltip-sorting-label">Tooltip sorting method:</div>
               <paper-dropdown-menu
@@ -113,6 +121,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           color-scale="[[_colorScale]]"
           data-type="[[dataType]]"
           data-provider="[[dataProvider]]"
+          data-not-found="[[dataNotFound]]"
           run2tag="[[run2tag]]"
           selected-runs="[[_selectedRuns]]"
           show-download-links="[[_showDownloadLinks]]"
@@ -125,6 +134,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
               smoothing-enabled="[[_smoothingEnabled]]"
               smoothing-weight="[[_smoothingWeight]]"
               tooltip-sorting-method="[[_tooltipSortingMethod]]"
+              ignore-y-outliers="[[_ignoreYOutliers]]"
               ></vz-line-chart>
             <paper-icon-button
               class="log-button"
@@ -171,6 +181,10 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         --paper-input-container-focus-color: var(--tb-orange-strong);
         width: 105px;
       }
+      .line-item {
+        display: block;
+        padding-top: 5px;
+      }
     </style>
 
   </template>
@@ -197,7 +211,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           type: Boolean,
           notify: true,
           value: TF.URIStorage.getBooleanInitializer('_showDownloadLinks',
-              false),
+              false, true),
           observer: '_showDownloadLinksObserver'
         },
         _smoothingWeight: {
@@ -209,6 +223,11 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         _smoothingEnabled: {
           type: Boolean,
           computed: '_computeSmoothingEnabled(_smoothingWeight)'
+        },
+        _ignoreYOutliers: {
+          type: Boolean,
+          value: TF.URIStorage.getBooleanInitializer('_ignoreYOutliers', true, true),
+          observer: '_ignoreYOutliersObserver',
         },
         _xType: {
           type: String,
@@ -224,9 +243,11 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         return this.router.scalars;
       },
       _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
-          '_showDownloadLinks', false),
+          '_showDownloadLinks', /*default=*/ false, /*useLocalStorage=*/ true),
       _smoothingWeightObserver: TF.URIStorage.getNumberObserver(
           '_smoothingWeight', 0.6),
+      _ignoreYOutliersObserver: TF.URIStorage.getBooleanObserver(
+          '_ignoreYOutliers', /*default=*/ true, /*useLocalStorage=*/true),
       _computeSmoothingEnabled: function(_smoothingWeight) {
         return _smoothingWeight > 0;
       },

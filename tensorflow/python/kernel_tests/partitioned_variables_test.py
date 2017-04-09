@@ -46,6 +46,18 @@ class PartitionerCreatorsTest(test.TestCase):
         self.assertEqual(len(v0_list), 5)
         self.assertAllEqual(v0_part, (5, 1))
 
+  def testResourceFixedSizePartitioner(self):
+    with self.test_session():
+      partitioner = partitioned_variables.fixed_size_partitioner(5, axis=0)
+      with variable_scope.variable_scope(
+          "root", partitioner=partitioner, use_resource=True):
+        v0 = variable_scope.get_variable(
+            "v0", dtype=dtypes.float32, shape=(10, 10))
+        v0_list = v0._get_variable_list()
+        v0_part = v0._get_partitions()
+        self.assertEqual(len(v0_list), 5)
+        self.assertAllEqual(v0_part, (5, 1))
+
   def _testVariableAxisSizePartitioner(self,
                                        name,
                                        axis,
@@ -320,10 +332,10 @@ class PartitionedVariablesTestCase(test.TestCase):
       self.assertEqual([dtypes.int32] * 2, [v.dtype.base_dtype for v in vs])
       self._TestSaveSpec(vs, ["2 4 0,2:0,2", "2 4 0,2:2,2"])
 
-  def testName(self):
+  def _testNameHelper(self, use_resource=False):
     with self.test_session():
       rnd_par = constant_op.constant([[1, 2, 3, 4], [5, 6, 7, 8]])
-      with variable_scope.variable_scope("hi"):
+      with variable_scope.variable_scope("hi", use_resource=use_resource):
         vs1 = partitioned_variables.create_partitioned_variables([2, 4], [1, 2],
                                                                  rnd_par)
         vs2 = partitioned_variables.create_partitioned_variables([2, 4], [1, 2],
@@ -340,10 +352,12 @@ class PartitionedVariablesTestCase(test.TestCase):
     # Test same variable.
     with self.test_session():
       rnd_par = constant_op.constant([[1, 2, 3, 4], [5, 6, 7, 8]])
-      with variable_scope.variable_scope("hola") as vs:
+      with variable_scope.variable_scope(
+          "hola", use_resource=use_resource) as vs:
         vs1 = partitioned_variables.create_partitioned_variables(
             [2, 4], [1, 2], rnd_par, dtype=dtypes.int32)
-      with variable_scope.variable_scope(vs, reuse=True):
+      with variable_scope.variable_scope(
+          vs, reuse=True, use_resource=use_resource):
         vs2 = partitioned_variables.create_partitioned_variables(
             [2, 4], [1, 2], rnd_par, dtype=dtypes.int32)
       variables.global_variables_initializer().run()
@@ -373,6 +387,12 @@ class PartitionedVariablesTestCase(test.TestCase):
       self.assertEqual(var1_name + "/part_1:0", vs1[1].name)
       self.assertEqual(var2_name + "/part_0:0", vs2[0].name)
       self.assertEqual(var2_name + "/part_1:0", vs2[1].name)
+
+  def testName(self):
+    self._testNameHelper(use_resource=False)
+
+  def testResourceName(self):
+    self._testNameHelper(use_resource=True)
 
   def testRandomInitValue(self):
     with self.test_session():

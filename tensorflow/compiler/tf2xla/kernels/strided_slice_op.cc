@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -109,7 +109,7 @@ class StridedSliceOp : public XlaOpKernel {
   DataType index_type_;
 };
 
-REGISTER_XLA_OP("StridedSlice", StridedSliceOp);
+REGISTER_XLA_OP(Name("StridedSlice"), StridedSliceOp);
 
 class StridedSliceGradOp : public XlaOpKernel {
  public:
@@ -217,7 +217,7 @@ class StridedSliceGradOp : public XlaOpKernel {
   DataType index_type_;
 };
 
-REGISTER_XLA_OP("StridedSliceGrad", StridedSliceGradOp);
+REGISTER_XLA_OP(Name("StridedSliceGrad"), StridedSliceGradOp);
 
 }  // namespace
 }  // namespace tensorflow

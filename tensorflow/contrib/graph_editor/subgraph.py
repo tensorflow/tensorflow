@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import copy
 
+import six
 from six import iteritems
 from six import StringIO
 
@@ -33,6 +34,19 @@ __all__ = [
     "make_view",
     "make_view_from_scope",
 ]
+
+
+def _finalize_index(index_or_t, ts):
+  """Returns index as is or return index of tensor in `ts`."""
+  if isinstance(index_or_t, six.integer_types):
+    return index_or_t
+  else:
+    return ts.index(index_or_t)
+
+
+def _finalize_indices(list_of_index_or_t, ts):
+  """Returns index in `indices` as is or replace with tensor's index."""
+  return [_finalize_index(index_or_t, ts) for index_or_t in list_of_index_or_t]
 
 
 def _check_within_range(mapping, n, repetition):
@@ -281,12 +295,14 @@ class SubGraphView(object):
 
   def _remap_inputs(self, new_input_indices):
     """Remap the inputs of the subgraph in-place."""
+    new_input_indices = _finalize_indices(new_input_indices, self._input_ts)
     _check_within_range(
         new_input_indices, len(self._input_ts), repetition=False)
     self._input_ts = [self._input_ts[i] for i in new_input_indices]
 
   def _remap_outputs(self, new_output_indices):
     """Remap the outputs of the subgraph in-place."""
+    new_output_indices = _finalize_indices(new_output_indices, self._output_ts)
     _check_within_range(
         new_output_indices, len(self._output_ts), repetition=True)
     self._output_ts = [self._output_ts[i] for i in new_output_indices]
@@ -354,9 +370,11 @@ class SubGraphView(object):
     affected.
 
     Args:
-      new_input_indices: an iterable of integers representing a mapping between
-        the old inputs and the new ones. This mapping can be under-complete and
-        must be without repetitions.
+      new_input_indices: an iterable of integers or tf.Tensors
+        representing a mapping between the old inputs and the new ones.
+        Integers must be positive and smaller than the number of old inputs.
+        tf.Tensors must belong to the old list of inputs.
+        This mapping can be under-complete and must be without repetitions.
     Returns:
       A new modified instance of the original subgraph view with remapped
         inputs.
@@ -375,9 +393,11 @@ class SubGraphView(object):
     affected.
 
     Args:
-      new_output_indices: an iterable of integers representing a mapping between
-        the old outputs and the new ones. This mapping can be under-complete and
-        can have repetitions.
+      new_output_indices: an iterable of integers or tf.Tensors
+        representing a mapping between the old outputs and the new ones.
+        Integers must be positive and smaller than the number of old outputs.
+        tf.Tensors must belong to the old list of outputs.
+        This mapping can be under-complete and can have repetitions.
     Returns:
       A new modified instance of the original subgraph view with remapped
         outputs.
@@ -393,12 +413,16 @@ class SubGraphView(object):
     affected.
 
     Args:
-      new_input_indices: an iterable of integers representing a mapping between
-        the old inputs and the new ones. This mapping can be under-complete and
-        must be without repetitions.
-      new_output_indices: an iterable of integers representing a mapping between
-        the old outputs and the new ones. This mapping can be under-complete and
-        can have repetitions.
+      new_input_indices: an iterable of integers or tf.Tensors
+        representing a mapping between the old inputs and the new ones.
+        Integers must be positive and smaller than the number of old inputs.
+        tf.Tensors must belong to the old list of inputs.
+        This mapping can be under-complete and must be without repetitions.
+      new_output_indices: an iterable of integers or tf.Tensors
+        representing a mapping between the old outputs and the new ones.
+        Integers must be positive and smaller than the number of old outputs.
+        tf.Tensors must belong to the old list of outputs.
+        This mapping can be under-complete and can have repetitions.
     Returns:
       A new modified instance of the original subgraph view with remapped
         inputs and outputs.

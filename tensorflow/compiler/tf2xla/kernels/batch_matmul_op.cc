@@ -18,8 +18,8 @@ limitations under the License.
 // dimension.
 // TODO(dominikg,phawkins): Use a real batched matmul instead of unrolling.
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 namespace tensorflow {
 namespace {
@@ -135,7 +135,7 @@ class BatchMatMulOp : public XlaOpKernel {
   bool adj_y_;
 };
 
-REGISTER_XLA_OP("BatchMatMul", BatchMatMulOp);
+REGISTER_XLA_OP(Name("BatchMatMul"), BatchMatMulOp);
 
 }  // namespace
 }  // namespace tensorflow

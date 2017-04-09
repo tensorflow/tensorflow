@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "data",
     deps = [
@@ -15,6 +17,15 @@ py_library(
         ":parallel_reader",
         ":prefetch_queue",
         ":tfexample_decoder",
+    ],
+)
+
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "data_pip",
+    deps = [
+        ":data",
+        ":test_utils",
     ],
 )
 

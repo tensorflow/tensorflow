@@ -57,7 +57,10 @@ REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
   REGISTER_KERNEL_BUILDER(                                             \
       Name("Const").Device(DEVICE_SYCL).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
-TF_CALL_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
+REGISTER_SYCL_KERNEL(bool);
+REGISTER_SYCL_KERNEL(int64);
 #undef REGISTER_SYCL_KERNEL
 #endif
 
@@ -111,6 +114,17 @@ REGISTER_KERNEL_BUILDER(Name("Const")
                             .TypeConstraint<int32>("dtype"),
                         HostConstantOp);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Const")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("dtype"),
+                        HostConstantOp);
+#endif  // TENSORFLOW_USE_SYCL
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -186,6 +200,7 @@ REGISTER_KERNEL(CPU, quint8);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL(SYCL, float)
+REGISTER_KERNEL(SYCL, double)
 REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -228,7 +243,8 @@ class ZerosLikeOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &out));
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            {0}, 0, input.shape(), &out));
     functor::SetZeroFunctor<Device, T> f;
     f(ctx->eigen_device<Device>(), out->flat<T>());
   }
@@ -245,6 +261,7 @@ TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL(float, SYCL);
+REGISTER_KERNEL(bool, SYCL);
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -269,30 +286,75 @@ REGISTER_KERNEL_BUILDER(Name("ZerosLike")
 
 #undef REGISTER_KERNEL
 
-class PlaceholderOp : public OpKernel {
+template <typename Device, typename T>
+class OnesLikeOp : public OpKernel {
  public:
-  explicit PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
-  }
+  explicit OnesLikeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    if (expected_shape_.dims() > 0) {
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument(
-                      "You must feed a value for placeholder tensor '", name(),
-                      "' with dtype ", DataTypeString(output_type(0)),
-                      " and shape ", expected_shape_.DebugString()));
-    } else {
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument(
-                      "You must feed a value for placeholder tensor '", name(),
-                      "' with dtype ", DataTypeString(output_type(0))));
-    }
+    const Tensor& input = ctx->input(0);
+    Tensor* out = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            {0}, 0, input.shape(), &out));
+    functor::SetOneFunctor<Device, T> f;
+    f(ctx->eigen_device<Device>(), out->flat<T>());
   }
-
- private:
-  TensorShape expected_shape_;
 };
+
+#define REGISTER_KERNEL(type, dev)                                     \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("OnesLike").Device(DEVICE_##dev).TypeConstraint<type>("T"), \
+      OnesLikeOp<dev##Device, type>)
+
+#define REGISTER_CPU(type) REGISTER_KERNEL(type, CPU)
+TF_CALL_POD_TYPES(REGISTER_CPU);
+#undef REGISTER_CPU
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL(float, SYCL);
+REGISTER_KERNEL(bool, SYCL);
+REGISTER_KERNEL_BUILDER(Name("OnesLike")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("y"),
+                        OnesLikeOp<CPUDevice, int32>);
+#endif  // TENSORFLOW_USE_SYCL
+
+#if GOOGLE_CUDA
+REGISTER_KERNEL(bool, GPU);
+REGISTER_KERNEL(Eigen::half, GPU);
+REGISTER_KERNEL(float, GPU);
+REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL(complex64, GPU);
+REGISTER_KERNEL(complex128, GPU);
+REGISTER_KERNEL(int64, GPU);
+REGISTER_KERNEL_BUILDER(Name("OnesLike")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("y"),
+                        OnesLikeOp<CPUDevice, int32>);
+#endif  // GOOGLE_CUDA
+
+#undef REGISTER_KERNEL
+
+PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
+}
+
+void PlaceholderOp::Compute(OpKernelContext* ctx) {
+  if (expected_shape_.dims() > 0) {
+    OP_REQUIRES(ctx, false,
+                errors::InvalidArgument(
+                    "You must feed a value for placeholder tensor '", name(),
+                    "' with dtype ", DataTypeString(output_type(0)),
+                    " and shape ", expected_shape_.DebugString()));
+  } else {
+    OP_REQUIRES(ctx, false,
+                errors::InvalidArgument(
+                    "You must feed a value for placeholder tensor '", name(),
+                    "' with dtype ", DataTypeString(output_type(0))));
+  }
+}
 
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_CPU),
@@ -309,5 +371,5 @@ REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_GPU),
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_SYCL), PlaceholderOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_SYCL),
                         PlaceholderOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

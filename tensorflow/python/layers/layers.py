@@ -16,32 +16,20 @@
 # pylint: disable=line-too-long
 """This library provides a set of high-level neural networks layers.
 
-## Core layers
-
 @@dense
 @@dropout
-
-## Convolutional layers
-
 @@conv1d
 @@conv2d
 @@conv3d
 @@separable_conv2d
 @@conv2d_transpose
-
-## Pooling layers
-
 @@average_pooling1d
 @@max_pooling1d
 @@average_pooling2d
 @@max_pooling2d
 @@average_pooling3d
 @@max_pooling3d
-
-## Normalization layers
-
 @@batch_normalization
-
 """
 
 from __future__ import absolute_import

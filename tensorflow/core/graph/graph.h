@@ -40,6 +40,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <vector>
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
@@ -272,8 +273,20 @@ class Graph {
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
   //
-  // The graph can hold ops found in registry.
+  // The graph can hold ops found in registry. `registry`s lifetime must be at
+  // least that of the constructed graph's.
   explicit Graph(const OpRegistryInterface* registry);
+
+  // Constructs a graph with a single SOURCE (always id kSourceId) and a
+  // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
+  //
+  // The graph can hold ops found in `flib_def`. Unlike the constructor taking
+  // an OpRegistryInterface, this constructor copies the function definitions in
+  // `flib_def` so its lifetime may be shorter than that of the graph's. The
+  // OpRegistryInterface backing `flib_def` must still have the lifetime of the
+  // graph though.
+  explicit Graph(const FunctionLibraryDefinition& flib_def);
+
   ~Graph();
 
   static const int kControlSlot;
@@ -310,6 +323,12 @@ class Graph {
   // Removes edge from the graph.
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
+
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib);
 
   // The number of live nodes in the graph.
   //
@@ -368,7 +387,8 @@ class Graph {
   Node* source_node() const { return FindNodeId(kSourceId); }
   Node* sink_node() const { return FindNodeId(kSinkId); }
 
-  const OpRegistryInterface* op_registry() const { return ops_; }
+  const OpRegistryInterface* op_registry() const { return &ops_; }
+  const FunctionLibraryDefinition& flib_def() const { return ops_; }
 
   // TODO(josh11b): uint64 hash() const;
 
@@ -380,8 +400,8 @@ class Graph {
   Node* AllocateNode(Node::Properties* props, const Node* cost_node);
   void ReleaseNode(Node* node);
 
-  // Registry of all known ops.  Not owned.
-  const OpRegistryInterface* const ops_;
+  // Registry of all known ops, including functions.
+  FunctionLibraryDefinition ops_;
 
   // GraphDef versions
   VersionDef versions_;
@@ -419,6 +439,8 @@ class Graph {
 
 // Helper routines
 
+inline bool IsSource(const Node* node) { return node->IsSource(); }
+inline bool IsSink(const Node* node) { return node->IsSink(); }
 inline bool IsSwitch(const Node* node) { return node->IsSwitch(); }
 inline bool IsMerge(const Node* node) { return node->IsMerge(); }
 inline bool IsEnter(const Node* node) { return node->IsEnter(); }

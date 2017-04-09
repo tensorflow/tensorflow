@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -43,12 +44,15 @@ class DenseTest(test.TestCase):
     self.assertEqual(dense.bias_regularizer, None)
     self.assertEqual(dense.activity_regularizer, None)
     self.assertEqual(dense.use_bias, True)
-    self.assertEqual(dense.name, 'my_dense')
+    with self.assertRaisesRegexp(ValueError, 'not been used yet'):
+      _ = dense.name
 
     # Test auto-naming
     dense = core_layers.Dense(2, activation=nn_ops.relu)
+    dense.apply(np.random.randn(0, 2))
     self.assertEqual(dense.name, 'dense')
     dense = core_layers.Dense(2, activation=nn_ops.relu)
+    dense.apply(np.random.randn(0, 2))
     self.assertEqual(dense.name, 'dense_1')
 
   def testCall(self):
@@ -260,14 +264,36 @@ class DenseTest(test.TestCase):
       var = variables.trainable_variables()[4]
       self.assertEqual(var.name, 'test2/dense/kernel:0')
 
+  def testComputeOutputShape(self):
+    dense = core_layers.Dense(2, activation=nn_ops.relu, name='dense1')
+    ts = tensor_shape.TensorShape
+    # pylint: disable=protected-access
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts(None))
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts([]))
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts([1]))
+    self.assertEqual(
+        [None, 2],
+        dense._compute_output_shape((None, 3)).as_list())
+    self.assertEqual(
+        [None, 2],
+        dense._compute_output_shape(ts([None, 3])).as_list())
+    self.assertEqual(
+        [None, 4, 2],
+        dense._compute_output_shape(ts([None, 4, 3])).as_list())
+    # pylint: enable=protected-access
+
 
 class DropoutTest(test.TestCase):
 
   def testDropoutProperties(self):
     dp = core_layers.Dropout(0.5)
     self.assertEqual(dp.rate, 0.5)
-    self.assertEqual(dp.name, 'dropout')
     self.assertEqual(dp.noise_shape, None)
+    dp.apply(np.ones(()))
+    self.assertEqual(dp.name, 'dropout')
 
   def testBooleanLearningPhase(self):
     with self.test_session() as sess:

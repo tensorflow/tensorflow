@@ -268,6 +268,7 @@ Status RewriteGraphForExecution(
   // A separate index mapping name to Node*, for use by FeedInputs,
   // FetchOutputs, and PruneForTargets
   NameIndex name_index;
+  name_index.reserve(g->num_nodes());
   for (Node* n : g->nodes()) {
     name_index[n->name()] = n;
   }

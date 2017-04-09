@@ -141,7 +141,8 @@ port::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
   }
 
   StreamExecutor* naked_executor = executor.ValueOrDie().get();
-  executor_cache_.Insert(config, executor.ConsumeValueOrDie());
+  SE_RETURN_IF_ERROR(
+      executor_cache_.Insert(config, executor.ConsumeValueOrDie()));
   return naked_executor;
 }
 

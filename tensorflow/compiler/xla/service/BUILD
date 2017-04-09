@@ -107,8 +107,10 @@ cc_library(
 
 cc_library(
     name = "versioned_computation_handle",
+    srcs = ["versioned_computation_handle.cc"],
     hdrs = ["versioned_computation_handle.h"],
     deps = [
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
@@ -123,6 +125,38 @@ cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "call_graph",
+    srcs = ["call_graph.cc"],
+    hdrs = ["call_graph.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "call_graph_test",
+    srcs = ["call_graph_test.cc"],
+    deps = [
+        ":call_graph",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -144,6 +178,22 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "user_computation_test",
+    srcs = ["user_computation_test.cc"],
+    deps = [
+        ":user_computation",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -170,6 +220,7 @@ cc_library(
         ":compiler",
         ":device_memory_allocator",
         ":platform_util",
+        ":pool",
         ":transfer_manager",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -254,6 +305,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/legacy_flags:service_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
@@ -301,13 +353,17 @@ cc_library(
 cc_library(
     name = "executable",
     srcs = ["executable.cc"],
-    hdrs = ["executable.h"],
+    hdrs = [
+        "executable.h",
+        "service_executable_run_options.h",
+    ],
     deps = [
         ":computation_layout",
         ":device_memory_allocator",
         ":hlo",
         ":hlo_execution_profile",
         ":hlo_module_config",
+        ":pool",
         ":session_proto",
         ":shaped_buffer",
         ":versioned_computation_handle",
@@ -318,6 +374,7 @@ cc_library(
         "//tensorflow/compiler/xla/legacy_flags:service_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor",
     ],
 )
 
@@ -378,6 +435,7 @@ cc_library(
     hdrs = ["execution_tracker.h"],
     deps = [
         ":backend",
+        ":pool",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -436,6 +494,36 @@ cc_library(
 )
 
 cc_library(
+    name = "liveness_util",
+    srcs = ["liveness_util.cc"],
+    hdrs = ["liveness_util.h"],
+    deps = [
+        ":hlo",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "liveness_util_test",
+    srcs = ["liveness_util_test.cc"],
+    deps = [
+        ":hlo",
+        ":liveness_util",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "buffer_liveness",
     srcs = [
         "buffer_liveness.cc",
@@ -445,6 +533,8 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":hlo_ordering",
+        ":liveness_util",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -482,6 +572,7 @@ cc_library(
     ],
     deps = [
         ":buffer_liveness",
+        ":heap_simulator",
         ":hlo",
         ":logical_buffer",
         ":tuple_points_to_analysis",
@@ -493,6 +584,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/legacy_flags:buffer_assignment_flags",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -502,8 +594,10 @@ cc_test(
     deps = [
         ":buffer_assignment",
         ":computation_tracker",
+        ":copy_insertion",
         ":cpu_plugin",
         ":hlo",
+        ":hlo_ordering",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
@@ -511,6 +605,82 @@ cc_test(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "heap_simulator",
+    srcs = [
+        "heap_simulator.cc",
+    ],
+    hdrs = [
+        "heap_simulator.h",
+    ],
+    deps = [
+        ":hlo",
+        ":liveness_util",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "heap_simulator_test",
+    srcs = ["heap_simulator_test.cc"],
+    deps = [
+        ":heap_simulator",
+        ":hlo",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "hlo_ordering",
+    srcs = [
+        "hlo_ordering.cc",
+    ],
+    hdrs = [
+        "hlo_ordering.h",
+    ],
+    deps = [
+        ":heap_simulator",
+        ":hlo",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "hlo_ordering_test",
+    srcs = ["hlo_ordering_test.cc"],
+    deps = [
+        ":cpu_plugin",
+        ":hlo",
+        ":hlo_ordering",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test_main",
     ],
 )
@@ -533,7 +703,6 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_pass",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
@@ -576,6 +745,7 @@ cc_test(
         ":algebraic_simplifier",
         ":cpu_plugin",
         ":hlo",
+        ":hlo_pass",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test_helpers",
@@ -594,6 +764,7 @@ cc_library(
     hdrs = ["reshape_mover.h"],
     deps = [
         ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
     ],
@@ -758,6 +929,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_cost_analysis",
+        "//tensorflow/compiler/xla:metric_table_report",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
@@ -854,6 +1026,7 @@ cc_test(
     srcs = ["tuple_points_to_analysis_test.cc"],
     deps = [
         ":hlo",
+        ":instruction_fusion",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -962,6 +1135,60 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_verifier",
+    srcs = ["hlo_verifier.cc"],
+    hdrs = ["hlo_verifier.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "hlo_rematerialization",
+    srcs = ["hlo_rematerialization.cc"],
+    hdrs = ["hlo_rematerialization.h"],
+    deps = [
+        ":buffer_liveness",
+        ":call_graph",
+        ":hlo",
+        ":hlo_cost_analysis",
+        ":hlo_dce",
+        ":hlo_ordering",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "hlo_rematerialization_test",
+    srcs = ["hlo_rematerialization_test.cc"],
+    deps = [
+        ":cpu_plugin",
+        ":hlo",
+        ":hlo_ordering",
+        ":hlo_rematerialization",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_test(
     name = "hlo_dce_test",
     srcs = ["hlo_dce_test.cc"],
@@ -1006,7 +1233,10 @@ cc_test(
 
 cc_library(
     name = "hlo_pass",
-    hdrs = ["hlo_pass.h"],
+    hdrs = [
+        "hlo_pass_fix.h",
+        "hlo_pass_interface.h",
+    ],
     deps = [
         ":hlo",
         "//tensorflow/compiler/xla:status_macros",
@@ -1074,6 +1304,22 @@ cc_test(
 )
 
 cc_library(
+    name = "hlo_constant_folding",
+    srcs = ["hlo_constant_folding.cc"],
+    hdrs = ["hlo_constant_folding.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "device_memory_allocator",
     srcs = ["device_memory_allocator.cc"],
     hdrs = ["device_memory_allocator.h"],
@@ -1119,6 +1365,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/core:lib",
     ],
 )
@@ -1170,6 +1417,7 @@ cc_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/legacy_flags:hlo_graph_dumper_flags",
         "//tensorflow/core:lib",
     ],
@@ -1201,6 +1449,25 @@ cc_test(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "pool",
+    hdrs = ["pool.h"],
+    deps = [
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "pool_test",
+    srcs = ["pool_test.cc"],
+    deps = [
+        ":pool",
+        "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/core:test_main",
     ],
 )

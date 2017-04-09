@@ -56,15 +56,19 @@ class Array4D {
  public:
   // Creates a 4D array, unitialized values.
   Array4D(int64 planes, int64 depth, int64 height, int64 width)
-      : planes_(planes), depth_(depth), height_(height), width_(width) {
-    values_.resize(planes * depth * height * width);
-  }
+      : planes_(planes),
+        depth_(depth),
+        height_(height),
+        width_(width),
+        values_(planes * depth * height * width) {}
 
   // Creates a 4D array, initalized to value.
   Array4D(int64 planes, int64 depth, int64 height, int64 width, T value)
-      : Array4D(planes, depth, height, width) {
-    Fill(value);
-  }
+      : planes_(planes),
+        depth_(depth),
+        height_(height),
+        width_(width),
+        values_(planes * depth * height * width, value) {}
 
   // Creates a 4D array, filled with values.
   //

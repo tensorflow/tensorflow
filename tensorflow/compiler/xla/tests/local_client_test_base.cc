@@ -181,40 +181,63 @@ LocalClientTestBase::ShapedBufferToScopedShapedBuffer(
   return scoped_buffer;
 }
 
-LocalExecuteOptions LocalClientTestBase::DefaultLocalExecuteOptions() const {
-  return LocalExecuteOptions().set_allocator(
-      GetOrCreateAllocator(local_client_->platform()));
+ExecutableBuildOptions LocalClientTestBase::DefaultExecutableBuildOptions()
+    const {
+  return ExecutableBuildOptions();
 }
 
-std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
+ExecutableRunOptions LocalClientTestBase::DefaultExecutableRunOptions() const {
+  ExecutableRunOptions run_options;
+  run_options.set_inter_op_thread_pool(
+      local_client_->backend().inter_op_thread_pool());
+  run_options.set_intra_op_thread_pool(
+      local_client_->backend().eigen_intra_op_thread_pool_device());
+  run_options.set_allocator(GetOrCreateAllocator(local_client_->platform()));
+  return run_options;
+}
+
+std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocallyOrDie(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
-  return ExecuteLocally(computation, arguments, DefaultLocalExecuteOptions());
+  return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
+                        DefaultExecutableRunOptions())
+      .ConsumeValueOrDie();
 }
 
-std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
+std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocallyOrDie(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const LocalExecuteOptions& options) {
-  return ShapedBufferToScopedShapedBuffer(
-      local_client_->ExecuteLocally(computation, arguments, options)
-          .ConsumeValueOrDie(),
-      options.allocator());
+    const ExecutableBuildOptions& build_options,
+    const ExecutableRunOptions& run_options) {
+  return ExecuteLocally(computation, arguments, build_options, run_options)
+      .ConsumeValueOrDie();
 }
 
-void LocalClientTestBase::ExecuteLocally(
+StatusOr<std::unique_ptr<ScopedShapedBuffer>>
+LocalClientTestBase::ExecuteLocally(
     const Computation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    ShapedBuffer* result) {
-  ExecuteLocally(computation, arguments, DefaultLocalExecuteOptions(), result);
+    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+  return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
+                        DefaultExecutableRunOptions());
 }
 
-void LocalClientTestBase::ExecuteLocally(
+StatusOr<std::unique_ptr<ScopedShapedBuffer>>
+LocalClientTestBase::ExecuteLocally(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const LocalExecuteOptions& options, ShapedBuffer* result) {
-  ASSERT_IS_OK(
-      local_client_->ExecuteLocally(computation, arguments, options, result));
+    const ExecutableBuildOptions& build_options,
+    const ExecutableRunOptions& run_options) {
+  std::vector<const Shape*> argument_layouts(arguments.size());
+  for (int i = 0; i < arguments.size(); ++i) {
+    argument_layouts[i] = &arguments[i]->shape();
+  }
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<LocalExecutable> executable,
+      local_client_->Compile(computation, argument_layouts, build_options));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> buffer,
+                      executable->Run(arguments, run_options));
+  return ShapedBufferToScopedShapedBuffer(std::move(buffer),
+                                          run_options.allocator());
 }
 
 }  // namespace xla

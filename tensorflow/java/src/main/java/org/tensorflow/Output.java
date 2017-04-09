@@ -39,6 +39,16 @@ public final class Output {
     return index;
   }
 
+  /** Returns the (possibly partially known) shape of the tensor referred to by this Output. */
+  public Shape shape() {
+    return new Shape(operation.shape(index));
+  }
+
+  /** Returns the DataType of the tensor referred to by this Output. */
+  public DataType dataType() {
+    return operation.dtype(index);
+  }
+
   private final Operation operation;
   private final int index;
 }

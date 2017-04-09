@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.python.ops.special_math_ops."""
+"""Tests for tensorflow.python.ops.linalg_ops."""
 
 from __future__ import absolute_import
 from __future__ import division

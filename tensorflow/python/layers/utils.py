@@ -46,8 +46,7 @@ def convert_data_format(data_format, ndim):
     elif ndim == 4:
       return 'NCHW'
     elif ndim == 5:
-      raise ValueError('Data format "channels_first" not supported for '
-                       'inputs with rank 5.')
+      return 'NCDHW'
     else:
       raise ValueError('Input rank not supported:', ndim)
   else:

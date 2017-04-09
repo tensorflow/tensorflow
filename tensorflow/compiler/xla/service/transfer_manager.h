@@ -64,6 +64,12 @@ class TransferManager {
       perftools::gputools::StreamExecutor* executor,
       const Literal& literal) = 0;
 
+  // Transfers the given literal from the Outfeed interface of the device,
+  // using the given executor.
+  virtual Status TransferLiteralFromOutfeed(
+      perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
+      Literal* literal) = 0;
+
   // Resets the devices associated with this transfer manager.
   virtual Status ResetDevices(
       tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
@@ -92,6 +98,13 @@ class TransferManager {
   // architecture. This will be used to allocate an appropriately sized memory
   // region for a host-to-device transfer.
   virtual int64 GetByteSizeRequirement(const Shape& shape) = 0;
+
+  // Returns whether tuple elements are distinct buffers (in which case each of
+  // the elements of a tuple should be deallocated, in addition to the tuple's
+  // buffer itself).
+  //
+  // TODO(b/36256956) Ideally tuple elements could always be distinct buffers.
+  virtual bool TupleElementsAreDistinctBuffers() const { return true; }
 
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/reduction_ops.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
@@ -35,7 +35,7 @@ class SumOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Sum", SumOp);
+REGISTER_XLA_OP(Name("Sum"), SumOp);
 
 class ProdOp : public XlaReductionOp {
  public:
@@ -53,7 +53,7 @@ class ProdOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Prod", ProdOp);
+REGISTER_XLA_OP(Name("Prod"), ProdOp);
 
 class MinOp : public XlaReductionOp {
  public:
@@ -73,7 +73,7 @@ class MinOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Min", MinOp);
+REGISTER_XLA_OP(Name("Min"), MinOp);
 
 class MaxOp : public XlaReductionOp {
  public:
@@ -93,7 +93,7 @@ class MaxOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Max", MaxOp);
+REGISTER_XLA_OP(Name("Max"), MaxOp);
 
 class MeanOp : public XlaReductionOp {
  public:
@@ -105,17 +105,17 @@ class MeanOp : public XlaReductionOp {
     builder->Add(scalar_lhs, scalar_rhs);
   }
 
-  bool BuildFinalizer(xla::ComputationBuilder* builder,
-                      const xla::ComputationDataHandle& scalar_argument,
-                      int64 num_elements_reduced) override {
+  xla::ComputationDataHandle BuildFinalizer(
+      xla::ComputationBuilder* builder,
+      const xla::ComputationDataHandle& reduce_output,
+      int64 num_elements_reduced) override {
     auto divisor = XlaHelpers::IntegerLiteral(builder, input_type(0),
                                               num_elements_reduced);
-    builder->Div(scalar_argument, divisor);
-    return true;
+    return builder->Div(reduce_output, divisor);
   }
 };
 
-REGISTER_XLA_OP("Mean", MeanOp);
+REGISTER_XLA_OP(Name("Mean"), MeanOp);
 
 class AllOp : public XlaReductionOp {
  public:
@@ -133,7 +133,7 @@ class AllOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("All", AllOp);
+REGISTER_XLA_OP(Name("All"), AllOp);
 
 class AnyOp : public XlaReductionOp {
  public:
@@ -151,7 +151,7 @@ class AnyOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Any", AnyOp);
+REGISTER_XLA_OP(Name("Any"), AnyOp);
 
 }  // namespace
 }  // namespace tensorflow

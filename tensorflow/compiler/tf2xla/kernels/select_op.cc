@@ -16,9 +16,9 @@ limitations under the License.
 #include <numeric>
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
@@ -40,12 +40,19 @@ class SelectOp : public XlaOpKernel {
             "'then' and 'else' must have the same size.  but received: ",
             then_shape.DebugString(), " vs. ", else_shape.DebugString()));
 
+    xla::ComputationBuilder* builder = ctx->builder();
+
+    auto cond_handle = ctx->Input(0);
+    auto then_handle = ctx->Input(1);
+    auto else_handle = ctx->Input(2);
+
     bool broadcasting = !cond_shape.IsSameSize(then_shape);
-    if (broadcasting) {
-      OP_REQUIRES(
-          ctx, TensorShapeUtils::IsVector(cond_shape),
-          errors::InvalidArgument("'cond' must be a vector, but saw shape: ",
-                                  cond_shape.DebugString()));
+    bool cond_is_scalar = TensorShapeUtils::IsScalar(cond_shape);
+    if (broadcasting && !cond_is_scalar) {
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(cond_shape),
+                  errors::InvalidArgument(
+                      "'cond' must be a scalar or a vector, but saw shape: ",
+                      cond_shape.DebugString()));
       OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(then_shape),
                   errors::InvalidArgument(
                       "'then' must be at least a vector, but saw shape: ",
@@ -55,15 +62,7 @@ class SelectOp : public XlaOpKernel {
                                           "match size of 'cond', but saw: ",
                                           then_shape.dim_size(0), " vs. ",
                                           cond_shape.num_elements()));
-    }
 
-    xla::ComputationBuilder* builder = ctx->builder();
-
-    auto cond_handle = ctx->Input(0);
-    auto then_handle = ctx->Input(1);
-    auto else_handle = ctx->Input(2);
-
-    if (broadcasting) {
       // TODO(phawkins): broadcasting on the right seems pretty awkward in
       // XLA. It seems we have to broadcast on the left and then Reshape
       // to get the dimensions in the right order.
@@ -84,7 +83,7 @@ class SelectOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
 };
 
-REGISTER_XLA_OP("Select", SelectOp);
+REGISTER_XLA_OP(Name("Select"), SelectOp);
 
 }  // namespace
 }  // namespace tensorflow

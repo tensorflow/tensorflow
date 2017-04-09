@@ -241,6 +241,13 @@ class SumReductionTest(test.TestCase):
         c_unknown_indices, unknown_indices, keep_dims=True)
     self.assertEqual(2, s_unknown_indices_keep.get_shape().ndims)
 
+  def testWrongShapeForReductionIndices(self):
+    reduction_axes = [[1], [2]]
+    c_unknown = array_ops.placeholder(dtypes.float32)
+    with self.assertRaisesWithPredicateMatch(ValueError,
+                                             ".*must be at most rank 1.*"):
+      math_ops.reduce_sum(c_unknown, reduction_axes)
+
   # Int64??
 
   def _compareGradient(self, shape, sum_shape, reduction_axes):

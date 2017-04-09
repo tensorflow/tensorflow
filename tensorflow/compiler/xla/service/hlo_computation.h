@@ -111,7 +111,7 @@ class HloComputation {
   // Returns the parameter instruction for the given parameter number.
   HloInstruction* parameter_instruction(int64 param_no) const {
     CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, param_instructions_.size());
+    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()));
     return param_instructions_[param_no];
   }
 
@@ -120,6 +120,7 @@ class HloComputation {
   }
 
   const string& name() const { return name_; }
+  void set_name(const string& name) { name_ = name; }
 
   // Return a string representation of the computation.
   string ToString() const;
@@ -127,17 +128,6 @@ class HloComputation {
   const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
     return instructions_;
   }
-
-  // Add a control dependency between the two instructions in this computation
-  // so that the 'predecessor' is visited before the 'successor' during the DFS
-  // traversal of the computation. Returns an error status if either of the
-  // given instructions does not belong to the current computation.
-  //
-  // This is used to enforce an additional ordering requirement that is not
-  // captured by normal data dependencies, such as ordering among Send or Recv
-  // operations to avoid deadlock.
-  Status AddControlDependency(HloInstruction* predecessor,
-                              HloInstruction* successor);
 
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
@@ -205,6 +195,7 @@ class HloComputation {
   // Set/get the module containing this computation.
   void set_parent(HloModule* module) { parent_ = module; }
   const HloModule* parent() const { return parent_; }
+  HloModule* parent() { return parent_; }
 
   // Visit every node in the computation in DFS post-order with the given
   // visitor. This is similar to calling HloInstruction::Accept on the root of
@@ -213,6 +204,18 @@ class HloComputation {
   // the visitor's FinishVisit method is called once upon completion (with the
   // root instruction as the argument).
   Status Accept(DfsHloVisitor* visitor) const;
+
+  // Same as Accept() above, but the order of operand and control predecessor
+  // visitation is determined by the given operand order; if compare(A, B) ==
+  // true, A is visited before B.
+  Status AcceptWithOperandOrder(
+      DfsHloVisitor* visitor,
+      const HloInstruction::CompareFunction& operand_order) const;
+
+  // Visit every node in the computation in the given order. 'order' must
+  // be a topological sort of all instructions in the computation.
+  Status AcceptOrdered(DfsHloVisitor* visitor,
+                       const std::vector<const HloInstruction*>& order) const;
 
   // Same as Accept() above, but the visitor is given as a function.
   Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
@@ -233,10 +236,13 @@ class HloComputation {
   HloInstruction* AddInstructionInternal(
       std::unique_ptr<HloInstruction> instruction);
 
-  // Remove an instruction from the computation if found. The instruction must
-  // have no users. Instruction is deallocated with this call.
-  // Return whether instruction was found and removed.
-  StatusOr<bool> RemoveInstructionIfFound(HloInstruction* instruction);
+  // Helper for setting the parent of instructions that are added to this
+  // computation.
+  //
+  // Because we clone HLO instructions without knowing what computation they're
+  // destined to be added to, this is required to appropriate set the parent on
+  // fused instruction sequences.
+  void Reparent(HloInstruction* instruction);
 
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
   //
@@ -249,7 +255,10 @@ class HloComputation {
   // of the given instruction. The given instruction must be tuple-shaped.
   StatusOr<HloInstruction*> DeepCopyTuple(HloInstruction* instruction);
 
-  const string name_;
+  // Internal helper to collect unreachable roots.
+  std::vector<HloInstruction*> CollectUnreachableRoots() const;
+
+  string name_;
   HloInstruction* root_instruction_;
 
   // Module containing this computation.

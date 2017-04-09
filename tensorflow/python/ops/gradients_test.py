@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import warnings
 
 import numpy as np
@@ -44,6 +45,7 @@ from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
@@ -311,6 +313,42 @@ class GradientsTest(test_util.TensorFlowTestCase):
       grad, = gradients.gradients(target, v)
       self.assertIsNone(grad)
 
+  def testVariableReadValueGradient(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(var.read_value(), var)
+      self.assertIsNotNone(gradient)
+
+  def testVariableAsGraphElementGradient(self):
+    with ops.Graph().as_default() as graph:
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(graph.as_graph_element(var), var)
+      self.assertIsNotNone(gradient)
+
+  def testVariableRefGradient(self):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0)
+      var = variables.Variable(init)
+      gradient = gradients.gradients(var._ref(), var)
+      self.assertIsNotNone(gradient)
+
+  def testDependentYs(self):
+    with self.test_session():
+      x = constant_op.constant(3.0)
+      y = math_ops.square(x)
+      y1 = math_ops.square(y)
+      y2 = math_ops.square(y1)
+      g = gradients.gradients([y, y2], x)
+      self.assertAllClose(17502.0, g[0].eval())
+      g = gradients.gradients(y + y2, x)
+      self.assertAllClose(17502.0, g[0].eval())
+      z = array_ops.identity(y)
+      z2 = array_ops.identity(y2)
+      g = gradients.gradients([z, z2], x)
+      self.assertAllClose(17502.0, g[0].eval())
+
 
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
@@ -417,7 +455,7 @@ class PreventGradientTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       inp = constant(1.0, shape=[100, 32], name="in")
       out = array_ops.prevent_gradient(inp)
-      with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+      with self.assertRaisesRegexp(LookupError, "explicitly disabled"):
         _ = gradients.gradients(out, inp)
 
 
@@ -537,13 +575,16 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       self.assertAllClose(np_val, c_dense.eval())
 
   def testWarnings(self):
-    # Smaller than the threshold: no warning.
-    c_sparse = ops.IndexedSlices(
-        array_ops.placeholder(dtypes.float32),
-        array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
-    with warnings.catch_warnings(record=True) as w:
-      math_ops.multiply(c_sparse, 1.0)
-    self.assertEqual(0, len(w))
+    # TODO(gunan) Reenable after this issue is fixed:
+    # https://github.com/google/protobuf/issues/2812
+    if sys.version_info < (3, 6):
+      # Smaller than the threshold: no warning.
+      c_sparse = ops.IndexedSlices(
+          array_ops.placeholder(dtypes.float32),
+          array_ops.placeholder(dtypes.int32), constant([4, 4, 4, 4]))
+      with warnings.catch_warnings(record=True) as w:
+        math_ops.multiply(c_sparse, 1.0)
+      self.assertEqual(0, len(w))
 
     # Greater than or equal to the threshold: warning.
     c_sparse = ops.IndexedSlices(

@@ -88,22 +88,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "special_math_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/special_math_test.py"],
-    additional_deps = [
-        ":bayesflow_py",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:variables",
-    ],
-)
-
-cuda_py_test(
     name = "stochastic_graph_test",
     size = "small",
     srcs = ["python/kernel_tests/stochastic_graph_test.py"],

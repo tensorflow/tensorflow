@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -229,7 +229,8 @@ class DepthwiseConv2dNativeOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeOp);
 };
 
-REGISTER_XLA_OP("DepthwiseConv2dNative", DepthwiseConv2dNativeOp);
+REGISTER_XLA_OP(Name("DepthwiseConv2dNative").TypeConstraint("T", kFloatTypes),
+                DepthwiseConv2dNativeOp);
 
 }  // namespace
 }  // namespace tensorflow

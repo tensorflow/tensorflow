@@ -124,6 +124,55 @@ class AssertEqualTest(test.TestCase):
       out.eval()
 
 
+class AssertNoneEqualTest(test.TestCase):
+
+  def test_doesnt_raise_when_not_equal(self):
+    with self.test_session():
+      small = constant_op.constant([1, 2], name="small")
+      big = constant_op.constant([10, 20], name="small")
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(big, small)]):
+        out = array_ops.identity(small)
+      out.eval()
+
+  def test_raises_when_equal(self):
+    with self.test_session():
+      small = constant_op.constant([3, 1], name="small")
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(small, small)]):
+        out = array_ops.identity(small)
+      with self.assertRaisesOpError("x != y did not hold"):
+        out.eval()
+
+  def test_doesnt_raise_when_not_equal_and_broadcastable_shapes(self):
+    with self.test_session():
+      small = constant_op.constant([1, 2], name="small")
+      big = constant_op.constant([3], name="big")
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(small, big)]):
+        out = array_ops.identity(small)
+      out.eval()
+
+  def test_raises_when_not_equal_but_non_broadcastable_shapes(self):
+    with self.test_session():
+      small = constant_op.constant([1, 1, 1], name="small")
+      big = constant_op.constant([10, 10], name="big")
+      with self.assertRaisesRegexp(ValueError, "must be"):
+        with ops.control_dependencies(
+            [check_ops.assert_none_equal(small, big)]):
+          out = array_ops.identity(small)
+        out.eval()
+
+  def test_doesnt_raise_when_both_empty(self):
+    with self.test_session():
+      larry = constant_op.constant([])
+      curly = constant_op.constant([])
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(larry, curly)]):
+        out = array_ops.identity(larry)
+      out.eval()
+
+
 class AssertLessTest(test.TestCase):
 
   def test_raises_when_equal(self):
@@ -891,6 +940,70 @@ class IsNonDecreasingTest(test.TestCase):
   def test_empty_tensor_is_non_decreasing(self):
     with self.test_session():
       self.assertTrue(check_ops.is_non_decreasing([]).eval())
+
+
+class FloatDTypeTest(test.TestCase):
+
+  def test_assert_same_float_dtype(self):
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype(None, None))
+    self.assertIs(dtypes.float32, check_ops.assert_same_float_dtype([], None))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype([], dtypes.float32))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype(None, dtypes.float32))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype([None, None], None))
+    self.assertIs(
+        dtypes.float32,
+        check_ops.assert_same_float_dtype([None, None], dtypes.float32))
+
+    const_float = constant_op.constant(3.0, dtype=dtypes.float32)
+    self.assertIs(
+        dtypes.float32,
+        check_ops.assert_same_float_dtype([const_float], dtypes.float32))
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [const_float], dtypes.int32)
+
+    sparse_float = sparse_tensor.SparseTensor(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype([sparse_float],
+                                                    dtypes.float32))
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [sparse_float], dtypes.int32)
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [const_float, None, sparse_float], dtypes.float64)
+
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype(
+                      [const_float, sparse_float]))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype(
+                      [const_float, sparse_float], dtypes.float32))
+
+    const_int = constant_op.constant(3, dtype=dtypes.int32)
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [sparse_float, const_int])
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [sparse_float, const_int], dtypes.int32)
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [sparse_float, const_int], dtypes.float32)
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [const_int])
+
+
+class AssertScalarTest(test.TestCase):
+
+  def test_assert_scalar(self):
+    check_ops.assert_scalar(constant_op.constant(3))
+    check_ops.assert_scalar(constant_op.constant("foo"))
+    check_ops.assert_scalar(3)
+    check_ops.assert_scalar("foo")
+    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+      check_ops.assert_scalar(constant_op.constant([3, 4]))
 
 
 if __name__ == "__main__":

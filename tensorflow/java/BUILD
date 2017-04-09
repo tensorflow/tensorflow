@@ -38,7 +38,7 @@ java_test(
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -50,7 +50,20 @@ java_test(
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "SavedModelBundleTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/SavedModelBundleTest.java"],
+    data = ["//tensorflow/cc/saved_model:saved_model_half_plus_two"],
+    test_class = "org.tensorflow.SavedModelBundleTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
     ],
 )
 
@@ -62,7 +75,19 @@ java_test(
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "ShapeTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/ShapeTest.java"],
+    test_class = "org.tensorflow.ShapeTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
     ],
 )
 
@@ -73,7 +98,7 @@ java_test(
     test_class = "org.tensorflow.TensorFlowTest",
     deps = [
         ":tensorflow",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -85,7 +110,7 @@ java_test(
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -95,6 +120,7 @@ filegroup(
         "//tensorflow:darwin": [":libtensorflow_jni.dylib"],
         "//conditions:default": [":libtensorflow_jni.so"],
     }),
+    visibility = ["//visibility:public"],
 )
 
 LINKER_VERSION_SCRIPT = ":config/version_script.lds"
@@ -107,6 +133,7 @@ cc_binary(
     # symbols from the library. This reduces the size of the library
     # considerably (~50% as of January 2017).
     linkopts = select({
+        "//tensorflow:debug": [],  # Disable all custom linker options in debug mode
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by LINKER_EXPORTED_SYMBOLS
             LINKER_EXPORTED_SYMBOLS,

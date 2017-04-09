@@ -136,6 +136,12 @@ class Env {
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
   Status FileExists(const string& fname);
 
+  /// Returns true if all the listed files exist, false otherwise.
+  /// if status is not null, populate the vector with a detailed status
+  /// for each file.
+  bool FilesExist(const std::vector<string>& files,
+                  std::vector<Status>* status);
+
   /// \brief Stores in *result the names of the children of the specified
   /// directory. The names are relative to "dir".
   ///
@@ -394,8 +400,9 @@ namespace register_file_system {
 template <typename Factory>
 struct Register {
   Register(Env* env, const string& scheme) {
-    env->RegisterFileSystem(scheme,
-                            []() -> FileSystem* { return new Factory; });
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+    env->RegisterFileSystem(scheme, []() -> FileSystem* { return new Factory; })
+        .IgnoreError();
   }
 };
 

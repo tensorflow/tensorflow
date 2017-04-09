@@ -27,7 +27,15 @@ from tensorflow.python.training import training_ops
 class MomentumOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Momentum algorithm.
 
-  @@__init__
+  Computes (if `use_nesterov = False`):
+    accumulation = momentum * accumulation + gradient
+    variable -= learning_rate * accumulation
+
+  Note that in the dense version of this algorithm, `accumulation` is updated
+  and applied regardless of a gradient's value, whereas the sparse version (when
+  the gradient is an `IndexedSlices`, typically because of `tf.gather` or an
+  embedding) only updates variable slices and corresponding `accumulation` terms
+  when that part of the variable was used in the forward pass.
   """
 
   def __init__(self, learning_rate, momentum,
@@ -70,6 +78,16 @@ class MomentumOptimizer(optimizer.Optimizer):
         use_locking=self._use_locking,
         use_nesterov=self._use_nesterov).op
 
+  def _resource_apply_dense(self, grad, var):
+    mom = self.get_slot(var, "momentum")
+    return training_ops.resource_apply_momentum(
+        var.handle, mom.handle,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
+        grad,
+        math_ops.cast(self._momentum_tensor, grad.dtype.base_dtype),
+        use_locking=self._use_locking,
+        use_nesterov=self._use_nesterov)
+
   def _apply_sparse(self, grad, var):
     mom = self.get_slot(var, "momentum")
     return training_ops.sparse_apply_momentum(
@@ -79,3 +97,13 @@ class MomentumOptimizer(optimizer.Optimizer):
         math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
         use_locking=self._use_locking,
         use_nesterov=self._use_nesterov).op
+
+  def _resource_apply_sparse(self, grad, var, indices):
+    mom = self.get_slot(var, "momentum")
+    return training_ops.resource_sparse_apply_momentum(
+        var.handle, mom.handle,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype),
+        grad, indices,
+        math_ops.cast(self._momentum_tensor, grad.dtype),
+        use_locking=self._use_locking,
+        use_nesterov=self._use_nesterov)

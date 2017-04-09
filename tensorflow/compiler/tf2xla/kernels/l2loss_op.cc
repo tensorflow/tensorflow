@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -47,7 +47,7 @@ class L2LossOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("L2Loss", L2LossOp);
+REGISTER_XLA_OP(Name("L2Loss"), L2LossOp);
 
 }  // namespace
 }  // namespace tensorflow

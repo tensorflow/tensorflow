@@ -49,7 +49,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
   (only if `use_bias` is `True`).
 
   Note: if the input to the layer has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `w`.
+  flattened prior to the initial matrix multiply by `kernel`.
 
   Arguments:
     units: Integer or Long, dimensionality of the output space.
@@ -62,7 +62,7 @@ class Dense(base._Layer):  # pylint: disable=protected-access
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such cases.
     reuse: Boolean, whether to reuse the weights of a previous layer
@@ -132,28 +132,31 @@ class Dense(base._Layer):  # pylint: disable=protected-access
       self.bias = None
 
   def call(self, inputs):
+    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
     shape = inputs.get_shape().as_list()
-    input_dim = shape[-1]
     output_shape = shape[:-1] + [self.units]
     if len(output_shape) > 2:
-      # Reshape the input to 2D.
-      output_shape_tensors = array_ops.unstack(array_ops.shape(inputs))
-      output_shape_tensors[-1] = self.units
-      output_shape_tensor = array_ops.stack(output_shape_tensors)
-      inputs = array_ops.reshape(inputs, [-1, input_dim])
-
-    outputs = standard_ops.matmul(inputs, self.kernel)
+      # Broadcasting is required for the inputs.
+      outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
+                                                             [0]])
+      # Reshape the output back to the original ndim of the input.
+      outputs.set_shape(output_shape)
+    else:
+      outputs = standard_ops.matmul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
-
-    if len(output_shape) > 2:
-      # Reshape the output back to the original ndim of the input.
-      outputs = array_ops.reshape(outputs, output_shape_tensor)
-      outputs.set_shape(output_shape)
-
     if self.activation is not None:
       return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape)
+    input_shape = input_shape.with_rank_at_least(2)
+    if input_shape[-1].value is None:
+      raise ValueError(
+          'The innermost dimension of input_shape must be defined, but saw: %s'
+          % input_shape)
+    return input_shape[:-1].concatenate(self.units)
 
 
 def dense(
@@ -178,7 +181,7 @@ def dense(
   (only if `use_bias` is `True`).
 
   Note: if the `inputs` tensor has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `w`.
+  flattened prior to the initial matrix multiply by `kernel`.
 
   Arguments:
     inputs: Tensor input.
@@ -192,7 +195,7 @@ def dense(
     bias_regularizer: Regularizer function for the bias.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
@@ -225,7 +228,7 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
   sum is unchanged at training time and inference time.
 
   Arguments:
-    rate: The dropout rate, between 0 and 1. E.g. "rate=0.1" would drop out
+    rate: The dropout rate, between 0 and 1. E.g. `rate=0.1` would drop out
       10% of input units.
     noise_shape: 1D tensor of type `int32` representing the shape of the
       binary dropout mask that will be multiplied with the input.
@@ -234,7 +237,7 @@ class Dropout(base._Layer):  # pylint: disable=protected-access
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}.
       for behavior.
     name: The name of the layer (string).
   """
@@ -283,7 +286,7 @@ def dropout(inputs,
       to be the same for all timesteps, you can use
       `noise_shape=[batch_size, 1, features]`.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      @{tf.set_random_seed}
       for behavior.
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode

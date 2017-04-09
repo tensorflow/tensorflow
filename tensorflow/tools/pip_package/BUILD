@@ -3,8 +3,13 @@
 
 package(default_visibility = ["//visibility:private"])
 
-load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_license_deps")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_not_windows",
+    "transitive_hdrs",
+)
+load("//third_party/mkl:build_defs.bzl", "if_mkl")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
@@ -38,6 +43,18 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+py_test(
+    name = "pip_smoke_test",
+    srcs = ["pip_smoke_test.py"],
+    data = [
+        "//tensorflow:all_opensource_files",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+)
+
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
@@ -49,24 +66,21 @@ py_binary(
         "README",
         "setup.py",
         ":included_headers",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/ndlstm:all_files",
-        "//tensorflow/contrib/nn:all_files",
-        "//tensorflow/contrib/session_bundle:all_files",
-        "//tensorflow/contrib/slim:all_files",
-        "//tensorflow/contrib/slim/python/slim/data:all_files",
-        "//tensorflow/contrib/slim/python/slim/nets:all_files",
-        "//tensorflow/contrib/specs:all_files",
-        "//tensorflow/contrib/tensor_forest:all_files",
-        "//tensorflow/contrib/tensor_forest/hybrid:all_files",
+        "//tensorflow/contrib/nn:nn_py",
+        "//tensorflow/contrib/session_bundle:session_bundle_pip",
+        "//tensorflow/contrib/slim/python/slim/data:data_pip",
         "//tensorflow/python:util_example_parser_configuration",
-        "//tensorflow/python/debug:all_files",
-        "//tensorflow/python/saved_model:all_files",
-        "//tensorflow/python/tools:all_files",
-        # The following target has an issue when archiving them into the python
-        # zip, exclude them for now.
-        # "//tensorflow/tensorboard",
-        # This package does not build. Exclude it in windows for now.
+        "//tensorflow/python/debug:debug_pip",
+        "//tensorflow/python/saved_model",
+        "//tensorflow/python/tools:tools_pip",
+        "//tensorflow/tensorboard",
+        # These targets don't build on Windows yet. Exclude them for now.
+        # "//tensorflow/contrib/ndlstm",
+        # "//tensorflow/contrib/slim",
+        # "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
+        # "//tensorflow/contrib/specs",
+        # "//tensorflow/contrib/tensor_forest:init_py",
+        # "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
         # "//tensorflow/examples/tutorials/mnist:package",
     ],
     srcs_version = "PY2AND3",
@@ -95,9 +109,15 @@ filegroup(
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
+        "@org_html5lib//:LICENSE",
+        "@org_mozilla_bleach//:LICENSE",
         "@org_pocoo_werkzeug//:LICENSE",
+        "@org_pythonhosted_markdown//:LICENSE.md",
+        "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
-    ] + tf_additional_license_deps(),
+    ] + if_not_windows([
+        "@nccl_archive//:LICENSE.txt",
+    ]) + tf_additional_license_deps(),
 )
 
 sh_binary(
@@ -113,22 +133,24 @@ sh_binary(
             ":included_headers",
             ":simple_console",
             "//tensorflow:tensorflow_py",
-            "//tensorflow/contrib/labeled_tensor:all_files",
-            "//tensorflow/contrib/ndlstm:all_files",
-            "//tensorflow/contrib/nn:all_files",
-            "//tensorflow/contrib/session_bundle:all_files",
-            "//tensorflow/contrib/slim:all_files",
-            "//tensorflow/contrib/slim/python/slim/data:all_files",
-            "//tensorflow/contrib/slim/python/slim/nets:all_files",
-            "//tensorflow/contrib/specs:all_files",
-            "//tensorflow/contrib/tensor_forest:all_files",
-            "//tensorflow/contrib/tensor_forest/hybrid:all_files",
+            "//tensorflow/contrib/graph_editor:graph_editor_pip",
+            "//tensorflow/contrib/keras:keras",
+            "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
+            "//tensorflow/contrib/ndlstm:ndlstm",
+            "//tensorflow/contrib/nn:nn_py",
+            "//tensorflow/contrib/session_bundle:session_bundle_pip",
+            "//tensorflow/contrib/slim:slim",
+            "//tensorflow/contrib/slim/python/slim/data:data_pip",
+            "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
+            "//tensorflow/contrib/specs:specs",
+            "//tensorflow/contrib/tensor_forest:init_py",
+            "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
             "//tensorflow/examples/tutorials/mnist:package",
             "//tensorflow/python:util_example_parser_configuration",
-            "//tensorflow/python/debug:all_files",
-            "//tensorflow/python/saved_model:all_files",
-            "//tensorflow/python/tools:all_files",
+            "//tensorflow/python/debug:debug_pip",
+            "//tensorflow/python/saved_model:saved_model",
+            "//tensorflow/python/tools:tools_pip",
             "//tensorflow/tensorboard",
         ],
-    }),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )

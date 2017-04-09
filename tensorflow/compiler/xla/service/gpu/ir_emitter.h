@@ -85,6 +85,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                            HloInstruction* rhs, const Window& window) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
+  Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleSort(HloInstruction* sort, HloInstruction* operand) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleRecv(HloInstruction* recv) override;
@@ -126,12 +127,11 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {
     return bindings_.GetBasePointer(inst);
   }
-  // A convenient helper for calling BufferAssignment::GetAllocationIndex.
-  BufferAllocation::Index GetAllocationIndex(const HloInstruction& hlo) const {
+  // A convenient helper for calling BufferAssignment::GetUniqueTopLevelSlice.
+  BufferAllocation::Slice GetAllocationSlice(const HloInstruction& hlo) const {
     return ir_emitter_context_->buffer_assignment()
-        .GetUniqueTopLevelAllocation(&hlo)
-        .ConsumeValueOrDie()
-        ->index();
+        .GetUniqueTopLevelSlice(&hlo)
+        .ConsumeValueOrDie();
   }
 
   // Emit a singlethreaded or multithreaded loop that computes every element in

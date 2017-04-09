@@ -155,8 +155,9 @@ class LinearOperator(object):
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `dtype` is real, this is equivalent to being symmetric.
       is_positive_definite:  Expect that this operator is positive definite,
-        meaning the real part of all eigenvalues is positive.  We do not require
-        the operator to be self-adjoint to be positive-definite.  See:
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
         https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
@@ -461,8 +462,9 @@ class LinearOperator(object):
   def assert_positive_definite(self, name="assert_positive_definite"):
     """Returns an `Op` that asserts this operator is positive definite.
 
-    Here, positive definite means the real part of all eigenvalues is positive.
-    We do not require the operator to be self-adjoint.
+    Here, positive definite means that the quadratic form `x^H A x` has positive
+    real part for all nonzero `x`.  Note that we do not require the operator to
+    be self-adjoint to be positive definite.
 
     Args:
       name:  A name to give this `Op`.
@@ -631,6 +633,38 @@ class LinearOperator(object):
     """Return a dense (batch) matrix representing this operator."""
     with self._name_scope(name):
       return self._to_dense()
+
+  def _diag_part(self):
+    """Generic and often inefficient implementation.  Override often."""
+    return array_ops.matrix_diag_part(self.to_dense())
+
+  def diag_part(self, name="diag_part"):
+    """Efficiently get the [batch] diagonal part of this operator.
+
+    If this operator has shape `[B1,...,Bb, M, N]`, this returns a
+    `Tensor` `diagonal`, of shape `[B1,...,Bb, min(M, N)]`, where
+    `diagonal[b1,...,bb, i] = self.to_dense()[b1,...,bb, i, i]`.
+
+    ```
+    my_operator = LinearOperatorDiag([1., 2.])
+
+    # Efficiently get the diagonal
+    my_operator.diag_part()
+    ==> [1., 2.]
+
+    # Equivalent, but inefficient method
+    tf.matrix_diag_part(my_operator.to_dense())
+    ==> [1., 2.]
+    ```
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      diag_part:  A `Tensor` of same `dtype` as self.
+    """
+    with self._name_scope(name):
+      return self._diag_part()
 
   def _add_to_tensor(self, x):
     # Override if a more efficient implementation is available.

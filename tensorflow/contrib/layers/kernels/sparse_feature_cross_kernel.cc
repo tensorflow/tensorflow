@@ -399,7 +399,7 @@ class SparseFeatureCrossOp : public OpKernel {
               indices_list_in[i].shape().DebugString(), " at position ", i));
       OP_REQUIRES(
           context, indices_list_in[i].shape().dim_size(1) == 2,
-          errors::InvalidArgument("Expected D2 of index to be 2 got",
+          errors::InvalidArgument("Expected D2 of index to be 2 got ",
                                   indices_list_in[i].shape().dim_size(1),
                                   " at position ", i));
     }

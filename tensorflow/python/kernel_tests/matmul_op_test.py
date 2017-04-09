@@ -18,405 +18,117 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import operator
 import numpy as np
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import test
+from tensorflow.python.platform import test as test_lib
 
 
-class MatMulTest(test.TestCase):
+def _AddTest(test, op_name, testcase_name, fn):
+  test_name = "_".join(["test", op_name, testcase_name])
+  if hasattr(test, test_name):
+    raise RuntimeError("Test %s defined more than once" % test_name)
+  setattr(test, test_name, fn)
 
-  def assertAllCloseAccordingToType(self, a, b, rtol=1e-6, atol=1e-6):
-    """Like test_util.assertAllCloseToType, but with looser fp16 limits.
 
-    With matrix multiplication, many values are summed, compounding
-    accuracy issues. Thus, we set fp16 tolerance to 1e-2 instead of 1e-6.
-    (This primarily affects the CPU versions, which accumulate in fp16;
-    the CUDA versions currently use fp32 math internally.)
+def _GetTransposedMatrices(x, x_name, kwargs):
+  if kwargs["transpose_" + x_name] is True:
+    return x.T
+  elif kwargs["adjoint_" + x_name] is True:
+    return np.conj(x.T)
+  else:
+    return x
 
-    Args:
-      a: a numpy ndarray or anything can be converted to one.
-      b: a numpy ndarray or anything can be converted to one.
-      rtol: relative tolerance
-      atol: absolute tolerance
-    """
-    a = self._GetNdArray(a)
-    b = self._GetNdArray(b)
-    if a.dtype == np.float16 or b.dtype == np.float16:
-      rtol = max(rtol, 1e-2)
-      atol = max(atol, 1e-2)
 
-    self.assertAllClose(a, b, rtol=rtol, atol=atol)
+class MatMulTest(test_lib.TestCase):
+  pass  # Filled in below
 
-  def _testCpuMatmul(self, x, y, transpose_x=False, transpose_y=False):
-    x_mat = np.matrix(x).T if transpose_x else np.matrix(x)
-    y_mat = np.matrix(y).T if transpose_y else np.matrix(y)
-    np_ans = x_mat * y_mat
-    with self.test_session(use_gpu=False):
-      tf_ans = math_ops.matmul(x, y, transpose_x, transpose_y).eval()
-    self.assertAllCloseAccordingToType(np_ans, tf_ans)
-    self.assertAllEqual(np_ans.shape, tf_ans.shape)
 
-  def _testGpuMatmul(self, x, y, transpose_x=False, transpose_y=False):
-    x_mat = np.matrix(x).T if transpose_x else np.matrix(x)
-    y_mat = np.matrix(y).T if transpose_y else np.matrix(y)
-    np_ans = x_mat * y_mat
+def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
+
+  def Test(self):
+    np_val = np.matrix(a_np_) * np.matrix(b_np_)
+
+    use_gpu = True
+    if a_np_.dtype is np.float16 and (
+        not test_util.CudaSupportsHalfMatMulAndConv()):
+      use_gpu = False
+      print("Built without fp16 matmul support for Cuda, running test on CPU.")
+
+    # Transpose and possibly conjugate a_np_ and b_np_ according to the
+    # attributes such that tf.matmul(effective_a_np, effective_b_np, **kwargs)
+    # results in a valid matrix multiplication and produces the same result as
+    # np.matrix(a_np_) * np.matrix(b_np_)
+    effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
+    effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
+    with self.test_session(use_gpu=use_gpu) as sess:
+      if use_static_shape_:
+        a = constant_op.constant(effective_a_np)
+        b = constant_op.constant(effective_b_np)
+        res = math_ops.matmul(a, b, **kwargs_)
+        tf_val = res.eval()
+      else:
+        a = array_ops.placeholder(a_np_.dtype)
+        b = array_ops.placeholder(b_np_.dtype)
+        res = math_ops.matmul(a, b, **kwargs_)
+        tf_val = sess.run(res, feed_dict={a: effective_a_np, b: effective_b_np})
+
+    self.assertAllCloseAccordingToType(
+        tf_val,
+        np_val,
+        float_rtol=2e-5,
+        float_atol=2e-5,
+        half_rtol=0.2,
+        half_atol=0.2)
+
+  return Test
+
+
+class MatMulGradientTest(test_lib.TestCase):
+  pass  # Will be filled in below.
+
+
+def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
+
+  def Test(self):
+    if not use_static_shape_ or a_np_.dtype in (np.int32, np.float16):
+      self.skipTest("Skipping infeasible gradient test.")
+
+    # Transpose and possibly conjugate a_np_ and b_np_ according to the
+    # attributes such that tf.matmul(effective_a_np, effective_b_np, **kwargs)
+    # results in a valid matrix multiplication and produces the same result as
+    # np.matrix(a_np_) * np.matrix(b_np_)
+    effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
+    effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
+
+    epsilon = np.finfo(a_np_.dtype).eps
+    delta = epsilon**(1.0 / 3.0)
+    tol = 20 * delta
     with self.test_session(use_gpu=True):
-      tf_ans = math_ops.matmul(x, y, transpose_x, transpose_y).eval()
-    self.assertAllCloseAccordingToType(np_ans, tf_ans)
-    self.assertAllEqual(np_ans.shape, tf_ans.shape)
+      a = constant_op.constant(effective_a_np)
+      b = constant_op.constant(effective_b_np)
+      res = math_ops.matmul(a, b, **kwargs_)
+      for x, x_init in [a, effective_a_np], [b, effective_b_np]:
+        theoretical, numerical = gradient_checker.compute_gradient(
+            x,
+            x_init.shape,
+            res, [a_np_.shape[0], b_np_.shape[1]],
+            x_init_value=x_init,
+            delta=delta)
+        self.assertAllClose(theoretical, numerical, rtol=tol, atol=tol)
 
-  def _randMatrix(self, rows, cols, dtype):
-    if dtype in (np.complex64, np.complex128):
-      if dtype == np.complex64:
-        float_dtype = np.float32
-      else:
-        float_dtype = np.float64
-      real = self._randMatrix(rows, cols, float_dtype)
-      imag = self._randMatrix(rows, cols, float_dtype)
-      return real + 1j * imag
-    else:
-      return np.random.uniform(
-          low=1.0, high=100.0, size=rows * cols).reshape(
-              [rows, cols]).astype(dtype)
-
-  # Basic test:
-  #   [ [1],
-  #     [2],
-  #     [3],   *  [1, 2]
-  #     [4] ]
-  def testFloatBasic(self):
-    x = np.arange(1., 5.).reshape([4, 1]).astype(np.float32)
-    y = np.arange(1., 3.).reshape([1, 2]).astype(np.float32)
-    self._testCpuMatmul(x, y)
-    self._testGpuMatmul(x, y)
-
-  def testDoubleBasic(self):
-    x = np.arange(1., 5.).reshape([4, 1]).astype(np.float64)
-    y = np.arange(1., 3.).reshape([1, 2]).astype(np.float64)
-    self._testCpuMatmul(x, y)
-    self._testGpuMatmul(x, y)
-
-  def testHalfBasic(self):
-    x = np.arange(1., 5.).reshape([4, 1]).astype(np.float16)
-    y = np.arange(1., 3.).reshape([1, 2]).astype(np.float16)
-    self._testCpuMatmul(x, y)
-    if test_util.CudaSupportsHalfMatMulAndConv():
-      self._testGpuMatmul(x, y)
-    else:
-      print("Built without fp16 matmul support, skipping GPU test.")
-
-  def testInt32Basic(self):
-    x = np.arange(1., 5.).reshape([4, 1]).astype(np.int32)
-    y = np.arange(1., 3.).reshape([1, 2]).astype(np.int32)
-    self._testCpuMatmul(x, y)
-
-  def testComplex64Basic(self):
-    x = np.arange(1., 5.).reshape([4, 1]).astype(np.complex64)
-    y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex64)
-    self._testCpuMatmul(x, y)
-    self._testGpuMatmul(x, y)
-
-  def testComplex128Basic(self):
-    x = np.arange(1., 5.).reshape([4, 1]).astype(np.complex128)
-    y = np.arange(1., 3.).reshape([1, 2]).astype(np.complex128)
-    self._testCpuMatmul(x, y)
-    self._testGpuMatmul(x, y)
-
-  # Vector optimized tests
-  #   x            *  y
-  #   [1, 2, 3, 4] *  [[1, 2, 3, 4],
-  #                    [5, 6, 7, 8]]
-  #
-  # and y^T * x^T
-  def _vectorTest(self, dtype, gpu):
-    x = np.arange(1., 5.).reshape([1, 4]).astype(np.float32)
-    y = np.arange(1., 9.).reshape([4, 2]).astype(np.float32)
-    x_t = x.transpose()
-    y_t = y.transpose()
-    if gpu:
-      self._testGpuMatmul(x, y)
-      self._testGpuMatmul(x_t, y, transpose_x=True)
-      self._testGpuMatmul(x, y_t, transpose_y=True)
-      self._testGpuMatmul(y_t, x_t)
-      self._testGpuMatmul(y, x_t, transpose_x=True)
-      self._testGpuMatmul(y_t, x, transpose_y=True)
-    else:
-      self._testCpuMatmul(x, y)
-      self._testCpuMatmul(x_t, y, transpose_x=True)
-      self._testCpuMatmul(x, y_t, transpose_y=True)
-      self._testCpuMatmul(y_t, x_t)
-      self._testCpuMatmul(y, x_t, transpose_x=True)
-      self._testCpuMatmul(y_t, x, transpose_y=True)
-
-  def testFloatVector(self):
-    self._vectorTest(np.float32, gpu=False)
-    self._vectorTest(np.float32, gpu=True)
-
-  def testDoubleVector(self):
-    self._vectorTest(np.float64, gpu=False)
-    self._vectorTest(np.float64, gpu=True)
-
-  def testHalfVector(self):
-    self._vectorTest(np.float16, gpu=False)
-    if test_util.CudaSupportsHalfMatMulAndConv():
-      self._vectorTest(np.float16, gpu=True)
-    else:
-      print("Built without fp16 matmul support, skipping GPU test.")
-
-  def testInt32Vector(self):
-    self._vectorTest(np.int32, gpu=False)
-    self._vectorTest(np.int32, gpu=True)
-
-  def testComplex64Vector(self):
-    self._vectorTest(np.complex64, gpu=False)
-    self._vectorTest(np.complex64, gpu=True)
-
-  def testComplex128Vector(self):
-    self._vectorTest(np.complex128, gpu=False)
-    self._vectorTest(np.complex128, gpu=True)
-
-  # Tests testing random sized matrices.
-  def testFloatRandom(self):
-    for _ in range(10):
-      n, k, m = np.random.randint(1, 100, size=3)
-      x = self._randMatrix(n, k, np.float32)
-      y = self._randMatrix(k, m, np.float32)
-      self._testCpuMatmul(x, y)
-      self._testGpuMatmul(x, y)
-
-  def testDoubleRandom(self):
-    for _ in range(10):
-      n, k, m = np.random.randint(1, 100, size=3)
-      x = self._randMatrix(n, k, np.float64)
-      y = self._randMatrix(k, m, np.float64)
-      self._testCpuMatmul(x, y)
-      self._testGpuMatmul(x, y)
-
-  def testHalfRandom(self):
-    for _ in range(10):
-      n, k, m = np.random.randint(1, 10, size=3)  # Smaller range than float.
-      x = self._randMatrix(n, k, np.float16)
-      y = self._randMatrix(k, m, np.float16)
-      self._testCpuMatmul(x, y)
-      if test_util.CudaSupportsHalfMatMulAndConv():
-        self._testGpuMatmul(x, y)
-      else:
-        print("Built without fp16 matmul support, skipping GPU test.")
-
-  def testInt32Random(self):
-    for _ in range(10):
-      n, k, m = np.random.randint(1, 100, size=3)
-      x = self._randMatrix(n, k, np.int32)
-      y = self._randMatrix(k, m, np.int32)
-      self._testCpuMatmul(x, y)
-
-  def testComplex64Random(self):
-    for _ in range(10):
-      n, k, m = np.random.randint(1, 10, size=3)  # Smaller range than float
-      x = self._randMatrix(n, k, np.complex64)
-      y = self._randMatrix(k, m, np.complex64)
-      self._testCpuMatmul(x, y)
-      self._testGpuMatmul(x, y)
-
-  def testComplex128Random(self):
-    for _ in range(10):
-      n, k, m = np.random.randint(1, 10, size=3)  # Smaller range than float
-      x = self._randMatrix(n, k, np.complex128)
-      y = self._randMatrix(k, m, np.complex128)
-      self._testCpuMatmul(x, y)
-      self._testGpuMatmul(x, y)
-
-  # Test the cases that transpose the matrices before multiplying.
-  # NOTE(keveman): The cases where only one of the inputs is
-  # transposed are covered by tf.matmul's gradient function.
-  def testFloatRandomTransposeBoth(self):
-    for _ in range(10):
-      n, k, m = np.random.randint(1, 100, size=3)
-      x = self._randMatrix(k, n, np.float32)
-      y = self._randMatrix(m, k, np.float32)
-      self._testCpuMatmul(x, y, True, True)
-      self._testGpuMatmul(x, y, True, True)
-
-  def testDoubleRandomTransposeBoth(self):
-    for _ in range(10):
-      n, k, m = np.random.randint(1, 100, size=3)
-      x = self._randMatrix(k, n, np.float64)
-      y = self._randMatrix(m, k, np.float64)
-      self._testCpuMatmul(x, y, True, True)
-      self._testGpuMatmul(x, y, True, True)
-
-  def testHalfRandomTransposeBoth(self):
-    for _ in range(10):
-      n, k, m = np.random.randint(1, 10, size=3)  # Smaller range than float.
-      x = self._randMatrix(k, n, np.float16)
-      y = self._randMatrix(m, k, np.float16)
-      self._testCpuMatmul(x, y, True, True)
-      if test_util.CudaSupportsHalfMatMulAndConv():
-        self._testGpuMatmul(x, y, True, True)
-      else:
-        print("Built without fp16 matmul support, skipping GPU test.")
-
-  def testMatMul_OutEmpty_A(self):
-    n, k, m = 0, 8, 3
-    x = self._randMatrix(n, k, np.float32)
-    y = self._randMatrix(k, m, np.float32)
-    self._testCpuMatmul(x, y)
-    self._testGpuMatmul(x, y)
-
-  def testMatMul_OutEmpty_B(self):
-    n, k, m = 3, 8, 0
-    x = self._randMatrix(n, k, np.float32)
-    y = self._randMatrix(k, m, np.float32)
-    self._testCpuMatmul(x, y)
-    self._testGpuMatmul(x, y)
-
-  def testMatMul_Inputs_Empty(self):
-    n, k, m = 3, 0, 4
-    x = self._randMatrix(n, k, np.float32)
-    y = self._randMatrix(k, m, np.float32)
-    self._testCpuMatmul(x, y)
-    self._testGpuMatmul(x, y)
-
-  def testShapeErrors(self):
-    a = array_ops.placeholder(dtypes.float32, [32, 37])
-    b = array_ops.placeholder(dtypes.float32, [36, 2])
-    c = array_ops.placeholder(dtypes.float32, [37])
-    with self.assertRaisesRegexp(ValueError,
-                                 "Dimensions must be equal, but are 37 and 36"):
-      math_ops.matmul(a, b)
-    with self.assertRaisesRegexp(ValueError, "must be rank 2"):
-      math_ops.matmul(a, c)
-
-  def testShapeInference(self):
-    """Tests common_shapes.call_cpp_shape_fn."""
-    a = constant_op.constant([2] * 6, shape=[3, 2])
-    b = constant_op.constant([2] * 2, shape=[2, 1])
-    mm = math_ops.matmul(a, b)
-    self.assertEqual([3, 1], mm.get_shape())
-
-    # Transpose arguments are respected.
-    a = constant_op.constant([2] * 6, shape=[2, 3])
-    b = constant_op.constant([2] * 2, shape=[1, 2])
-    mm = math_ops.matmul(a, b, transpose_a=True, transpose_b=True)
-    self.assertEqual([3, 1], mm.get_shape())
-
-    # Unknown dims come through in output.
-    a = array_ops.placeholder(np.float32)
-    b = array_ops.placeholder(np.float32)
-    mm = math_ops.matmul(a, b)
-    self.assertEqual(tensor_shape.TensorShape(None), mm.get_shape())
-
-    a = constant_op.constant([1] * 6, shape=[2, 3])
-    b = constant_op.constant([2] * 2, shape=[1, 2])
-    with self.assertRaisesRegexp(ValueError, ".*must be equal.*"):
-      math_ops.matmul(a, b, transpose_a=False, transpose_b=True)
+  return Test
 
 
-# TODO(zhifengc): Figures out how to test matmul gradients on GPU.
-class MatMulGradientTest(test.TestCase):
-
-  def testGradientInput0(self):
-    with self.test_session(use_gpu=False):
-      x = constant_op.constant(
-          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-          shape=[3, 2],
-          dtype=dtypes.float64,
-          name="x")
-      y = constant_op.constant(
-          [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-          shape=[2, 4],
-          dtype=dtypes.float64,
-          name="y")
-      m = math_ops.matmul(x, y, name="matmul")
-      err = gradient_checker.compute_gradient_error(x, [3, 2], m, [3, 4])
-    print("matmul input0 gradient err = ", err)
-    self.assertLess(err, 1e-10)
-
-  def testGradientInput1(self):
-    with self.test_session(use_gpu=False):
-      x = constant_op.constant(
-          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-          shape=[3, 2],
-          dtype=dtypes.float64,
-          name="x")
-      y = constant_op.constant(
-          [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-          shape=[2, 4],
-          dtype=dtypes.float64,
-          name="y")
-      m = math_ops.matmul(x, y, name="matmul")
-      err = gradient_checker.compute_gradient_error(y, [2, 4], m, [3, 4])
-    print("matmul input1 gradient err = ", err)
-    self.assertLess(err, 1e-10)
-
-  def _VerifyInput0(self, transpose_a, transpose_b):
-    shape_x = [3, 2]
-    shape_y = [2, 4]
-    if transpose_a:
-      shape_x = list(reversed(shape_x))
-    if transpose_b:
-      shape_y = list(reversed(shape_y))
-    with self.test_session(use_gpu=False):
-      x = constant_op.constant(
-          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-          shape=shape_x,
-          dtype=dtypes.float64,
-          name="x")
-      y = constant_op.constant(
-          [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-          shape=shape_y,
-          dtype=dtypes.float64,
-          name="y")
-      m = math_ops.matmul(x, y, transpose_a, transpose_b, name="matmul")
-      err = gradient_checker.compute_gradient_error(x, shape_x, m, [3, 4])
-    print("matmul input0 gradient err = ", err)
-    self.assertLess(err, 1e-10)
-
-  def testGradientInput0WithTranspose(self):
-    self._VerifyInput0(transpose_a=True, transpose_b=False)
-    self._VerifyInput0(transpose_a=False, transpose_b=True)
-    self._VerifyInput0(transpose_a=True, transpose_b=True)
-
-  def _VerifyInput1(self, transpose_a, transpose_b):
-    shape_x = [3, 2]
-    shape_y = [2, 4]
-    if transpose_a:
-      shape_x = list(reversed(shape_x))
-    if transpose_b:
-      shape_y = list(reversed(shape_y))
-    with self.test_session(use_gpu=False):
-      x = constant_op.constant(
-          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-          shape=shape_x,
-          dtype=dtypes.float64,
-          name="x")
-      y = constant_op.constant(
-          [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7],
-          shape=shape_y,
-          dtype=dtypes.float64,
-          name="y")
-      m = math_ops.matmul(x, y, transpose_a, transpose_b, name="matmul")
-      err = gradient_checker.compute_gradient_error(y, shape_y, m, [3, 4])
-    print("matmul input1 gradient err = ", err)
-    self.assertLess(err, 1e-10)
-
-  def testGradientInput1WithTranspose(self):
-    self._VerifyInput1(transpose_a=True, transpose_b=False)
-    self._VerifyInput1(transpose_a=False, transpose_b=True)
-    self._VerifyInput1(transpose_a=True, transpose_b=True)
-
-
-class MatMulStatsTest(test.TestCase):
+class MatMulStatsTest(test_lib.TestCase):
 
   def testSimpleStatistics(self):
     g = ops.Graph()
@@ -441,5 +153,105 @@ class MatMulStatsTest(test.TestCase):
           self.assertEqual(7200, flops)
 
 
+try:
+  # @ operator supported since python 3.5.
+  infix_matmul = operator.matmul
+except AttributeError:
+
+  # For earlier versions of python, emulate regular behavior.
+  # Useful to build and test for 3.5+ on earlier versions.
+  def infix_matmul(x, y):  # pylint: disable=invalid-name
+    try:
+      r = type(x).__matmul__(x, y)
+    except AttributeError:
+      r = NotImplemented
+    if r is NotImplemented and type(x) is not type(y):
+      try:
+        r = type(y).__rmatmul__(y, x)
+      except AttributeError:
+        r = NotImplemented
+    if r is NotImplemented:
+      raise TypeError("unsupported operand type(s) for @: '{}' and '{}'"
+                      .format(type(x).__name__, type(y).__name__))
+    return r
+
+
+class MatMulInfixOperatorTest(test_lib.TestCase):
+
+  def testMismatchedShape(self):
+    with self.assertRaisesWithPredicateMatch(ValueError,
+                                             lambda e: "Shape must" in str(e)):
+      infix_matmul(
+          ops.convert_to_tensor([10.0, 20.0, 30.0]),
+          ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+
+  def testMismatchedDimensions(self):
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, lambda e: "Dimensions must" in str(e)):
+      infix_matmul(
+          ops.convert_to_tensor([[10.0, 20.0, 30.0]]),
+          ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
+
+  def testInfixMatmulIsTfMatmul(self):
+    a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
+    b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
+    c = infix_matmul(a, b)
+    self.assertEqual(c.op.type, "MatMul")
+
+  def testInfixMatmulDoesDotProduct(self):
+    a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
+    b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
+    c = infix_matmul(a, b)
+    d = math_ops.matmul(a, b)
+    with self.test_session():
+      self.assertAllEqual(c.eval(), d.eval())
+
+
 if __name__ == "__main__":
-  test.main()
+  sizes = [1, 3, 5]
+  trans_options = [[False, False], [True, False], [False, True]]
+  for use_static_shape in [False, True]:
+    for dtype in (np.int32, np.float16, np.float32, np.float64, np.complex64,
+                  np.complex128):
+      if not use_static_shape and dtype == np.int32:
+        # TODO(rmlarsen): Re-enable this test when we have fixed the underlying
+        # bug in Windows (b/35935459).
+        continue
+      for m in sizes:
+        for n in sizes:
+          for k in sizes:
+            # Construct compatible random matrices a_np of size [m, k] and b_np
+            # of size [k, n].
+            a_np = np.random.normal(-5, 5, m * k).astype(dtype).reshape([m, k])
+            if dtype in (np.complex64, np.complex128):
+              a_np.imag = np.random.normal(-5, 5,
+                                           m * k).astype(dtype).reshape([m, k])
+            b_np = np.random.normal(-5, 5, k * n).astype(dtype).reshape([k, n])
+            if dtype in (np.complex64, np.complex128):
+              b_np.imag = np.random.normal(-5, 5,
+                                           k * n).astype(dtype).reshape([k, n])
+            for adjoint_a, transpose_a in trans_options:
+              for adjoint_b, transpose_b in trans_options:
+                name = "%s_%s_%s_%s_%s_%s_%s_%s_%s" % (
+                    use_static_shape, dtype.__name__, m, n, k, adjoint_a,
+                    transpose_a, adjoint_b, transpose_b)
+                _AddTest(MatMulTest, "MatMulTest", name,
+                         _GetMatMulTest(
+                             a_np,
+                             b_np,
+                             use_static_shape,
+                             adjoint_a=adjoint_a,
+                             transpose_a=transpose_a,
+                             adjoint_b=adjoint_b,
+                             transpose_b=transpose_b))
+                _AddTest(MatMulGradientTest, "MatMulGradientTest", name,
+                         _GetMatMulGradientTest(
+                             a_np,
+                             b_np,
+                             use_static_shape,
+                             adjoint_a=adjoint_a,
+                             transpose_a=transpose_a,
+                             adjoint_b=adjoint_b,
+                             transpose_b=transpose_b))
+
+  test_lib.main()

@@ -127,7 +127,7 @@ class Supervisor(object):
 
   * Specifying `'local'` requests a session that uses the RPC-based
     "Master interface" to run TensorFlow programs. See
-    [`tf.train.Server.create_local_server()`](#Server.create_local_server) for
+    @{tf.train.Server.create_local_server} for
     details.
 
   * Specifying `'grpc://hostname:port'` requests a session that uses
@@ -190,19 +190,6 @@ class Supervisor(object):
   initialization needs, see how to specify a `local_init_op` when creating the
   supervisor.  You can also use the `SessionManager` directly to create a
   session and check if it could be initialized automatically.
-
-  @@__init__
-  @@managed_session
-  @@prepare_or_wait_for_session
-  @@start_standard_services
-  @@start_queue_runners
-  @@summary_computed
-
-  @@stop
-  @@request_stop
-  @@should_stop
-  @@stop_on_exception
-  @@wait_for_stop
   """
 
   # Value to pass for the 'ready_op', 'init_op', 'summary_op', 'saver',
@@ -254,7 +241,7 @@ class Supervisor(object):
         on a chief supervisor for inits and restore.
       init_op: `Operation`.  Used by chief supervisors to initialize the model
         when it can not be recovered.  Defaults to an `Operation` that
-        initializes all variables.  If `None`, no initialization is done
+        initializes all global variables.  If `None`, no initialization is done
         automatically unless you pass a value for `init_fn`, see below.
       init_feed_dict: A dictionary that maps `Tensor` objects to feed values.
         This feed dictionary will be used when `init_op` is evaluated.
@@ -719,12 +706,14 @@ class Supervisor(object):
           init_feed_dict=self._init_feed_dict, init_fn=self._init_fn)
       self._write_graph()
       if start_standard_services:
+        logging.info("Starting standard services.")
         self.start_standard_services(sess)
     else:
       sess = self._session_manager.wait_for_session(master,
                                                     config=config,
                                                     max_wait_secs=max_wait_secs)
     if start_standard_services:
+      logging.info("Starting queue runners.")
       self.start_queue_runners(sess)
     return sess
 
@@ -1005,6 +994,7 @@ class SVSummaryThread(coordinator.LooperThread):
       summary_strs = self._sess.run(self._sv.summary_op)
       global_step = None
     if self._sv.summary_writer:
+      logging.info("Recording summary at step %d.", global_step)
       self._sv.summary_writer.add_summary(summary_strs, global_step)
 
 
@@ -1040,7 +1030,7 @@ class SVStepCounterThread(coordinator.LooperThread):
     elapsed_time = current_time - self._last_time
     self._last_time = current_time
     # Reports the number of steps done per second
-    steps_per_sec = added_steps / elapsed_time
+    steps_per_sec = added_steps / elapsed_time if elapsed_time != 0. else float("inf")
     summary = Summary(value=[Summary.Value(tag=self._summary_tag,
                                            simple_value=steps_per_sec)])
     if self._sv.summary_writer:
@@ -1064,6 +1054,7 @@ class SVTimerCheckpointThread(coordinator.LooperThread):
     self._sess = sess
 
   def run_loop(self):
+    logging.info("Saving checkpoint to path %s", self._sv.save_path)
     self._sv.saver.save(self._sess, self._sv.save_path,
                         global_step=self._sv.global_step)
     if self._sv.summary_writer and self._sv.global_step is not None:

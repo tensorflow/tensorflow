@@ -20,7 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DEVICE_OPTIONS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DEVICE_OPTIONS_H_
 
-#include <unordered_map>
+#include <map>
 
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -78,7 +78,7 @@ struct DeviceOptions {
 
   // Platform-specific device options. Expressed as key-value pairs to avoid
   // DeviceOptions subclass proliferation.
-  std::unordered_map<string, string> non_portable_tags;
+  std::map<string, string> non_portable_tags;
 
  private:
   unsigned flags_;

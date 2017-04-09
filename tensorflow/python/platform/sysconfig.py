@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## System configuration.
+"""System configuration library.
 
 @@get_include
 @@get_lib

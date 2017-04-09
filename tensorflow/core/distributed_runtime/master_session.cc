@@ -383,7 +383,6 @@ Status MasterSession::ReffedClientGraph::DoBuildPartitions(
 
   // Partition the graph.
   Status s;
-  std::unordered_map<string, GraphDef> graph_partitions;
   return Partition(popts, &client_graph_->graph, out_partitions);
 }
 
@@ -439,19 +438,6 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     partitions_[i].graph_handle = c->resp.graph_handle();
   }
   return s;
-}
-
-static bool CopyIfNeeded(TensorProto* in, TensorProto* out) {
-  if (in->tensor_content().empty()) {
-    // If the tensor is not encoded in tensor_content or contains 0
-    // elements, we can return it to the client directly.
-    out->Swap(in);
-  } else {
-    Tensor t(in->dtype());
-    if (!t.FromProto(cpu_allocator(), *in)) return false;
-    t.AsProtoTensorContent(out);
-  }
-  return true;
 }
 
 // Helper class to manage "num" parallel RunGraph calls.
@@ -566,7 +552,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     // We keep these as separate paths for now, to ensure we aren't
     // inadvertently slowing down the normal run path.
     if (is_partial_) {
-      for (int i = 0; i < req.num_feeds(); ++i) {
+      for (int i = 0; static_cast<size_t>(i) < req.num_feeds(); ++i) {
         const string& name = req.feed_name(i);
         auto iter = part.feed_key.find(name);
         if (iter == part.feed_key.end()) {
@@ -578,7 +564,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
         if (feeds_iter == feeds.end()) {
           return errors::InvalidArgument("No feed is provided for feed=", name,
                                          ", key=", key);
-        } else if (feeds_iter->second != i) {
+        } else if (feeds_iter->second != static_cast<size_t>(i)) {
           return errors::Internal("Cannot find feed named \"", name,
                                   " in request.");
         }
@@ -586,7 +572,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       }
       // TODO(suharshs): Make a map from feed to fetch_key to make this faster.
       // For now, we just iterate through partitions to find the matching key.
-      for (int i = 0; i < req.num_fetches(); ++i) {
+      for (int i = 0; static_cast<size_t>(i) < req.num_fetches(); ++i) {
         const string& req_fetch = req.fetch_name(i);
         for (const auto& key_fetch : part.key_fetch) {
           if (key_fetch.second == req_fetch) {
@@ -981,24 +967,24 @@ string BuildGraphOptionsString(const BuildGraphOptions& opts) {
   return buf;
 }
 
-MasterSession::MasterSession(const SessionOptions& opt, const MasterEnv* env,
-                             std::vector<Device*>* remote_devs,
-                             StatsPublisherFactory stats_publisher_factory)
+MasterSession::MasterSession(
+    const SessionOptions& opt, const MasterEnv* env,
+    std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
+    StatsPublisherFactory stats_publisher_factory)
     : session_opts_(opt),
       env_(env),
       handle_(strings::FpToString(random::New64())),
+      remote_devs_(std::move(remote_devs)),
       stats_publisher_factory_(std::move(stats_publisher_factory)),
       graph_version_(0),
       run_graphs_(5),
-      partial_run_graphs_(5),
-      cancellation_manager_(new CancellationManager) {
+      partial_run_graphs_(5) {
   UpdateLastAccessTime();
 
-  swap(remote_devs_, *remote_devs);
   VLOG(1) << "Session " << handle_ << " #local " << env->local_devices.size()
-          << " #remote " << remote_devs_.size();
-  for (Device* d : remote_devs_) {
-    devices_.AddDevice(d);
+          << " #remote " << remote_devs_->size();
+  for (auto&& d : *remote_devs_) {
+    devices_.AddDevice(d.get());
   }
   int num_local_devices = 0;
   for (Device* d : env->local_devices) {
@@ -1015,10 +1001,8 @@ MasterSession::MasterSession(const SessionOptions& opt, const MasterEnv* env,
 }
 
 MasterSession::~MasterSession() {
-  delete cancellation_manager_;
   for (const auto& iter : run_graphs_) iter.second->Unref();
   for (const auto& iter : partial_run_graphs_) iter.second->Unref();
-  for (Device* dev : remote_devs_) delete dev;
 }
 
 void MasterSession::UpdateLastAccessTime() {
@@ -1318,7 +1302,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
 
   Status s = run_state->rcg->RunPartitions(
       env_, run_state->step_id, run_state->count, execution_state_.get(),
-      &run_state->pss, opts, req, resp, cancellation_manager_,
+      &run_state->pss, opts, req, resp, &cancellation_manager_,
       is_last_partial_run);
 
   // Delete the run state if there is an error or all fetches are done.
@@ -1387,39 +1371,65 @@ Status MasterSession::DoRunWithLocalExecution(
     pss.collect_rpcs = ph->should_collect_rpcs();
   }
 
-  TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,
-                                        execution_state_.get(), &pss, opts, req,
-                                        resp, cancellation_manager_, false));
+  Status s =
+      rcg->RunPartitions(env_, step_id, count, execution_state_.get(), &pss,
+                         opts, req, resp, &cancellation_manager_, false);
+  if (s.ok()) {
+    pss.end_micros = Env::Default()->NowMicros();
 
-  pss.end_micros = Env::Default()->NowMicros();
-
-  // Schedule post-processing and cleanup to be done asynchronously.
+    // Schedule post-processing and cleanup to be done asynchronously.
+    rcg->ProcessStats(step_id, &pss, execution_state_.get(), ph.get(),
+                      req.options(), resp->mutable_metadata());
+  } else if (errors::IsCancelled(s)) {
+    mutex_lock l(mu_);
+    if (closed_) {
+      if (garbage_collected_) {
+        s = errors::Cancelled(
+            "Step was cancelled because the session was garbage collected due "
+            "to inactivity.");
+      } else {
+        s = errors::Cancelled(
+            "Step was cancelled by an explicit call to `Session::Close()`.");
+      }
+    }
+  }
   rcg->Ref();
-  rcg->ProcessStats(step_id, &pss, execution_state_.get(), ph.get(),
-                    req.options(), resp->mutable_metadata());
   rcg->CleanupPartitionsAsync(step_id, [rcg](const Status& s) {
     if (!s.ok()) {
       LOG(ERROR) << "Cleanup partition error: " << s;
     }
     rcg->Unref();
   });
-  return Status::OK();
+  return s;
 }
 
 Status MasterSession::Close() {
-  cancellation_manager_->StartCancel();
+  {
+    mutex_lock l(mu_);
+    closed_ = true;  // All subsequent calls to Run() or Extend() will fail.
+  }
+  cancellation_manager_.StartCancel();
   std::vector<ReffedClientGraph*> to_unref;
   {
     mutex_lock l(mu_);
     while (num_running_ != 0) {
       num_running_is_zero_.wait(l);
     }
-    closed_ = true;  // All subsequent calls to Run() or Extend() will fail.
     ClearRunsTable(&to_unref, &run_graphs_);
     ClearRunsTable(&to_unref, &partial_run_graphs_);
   }
   for (ReffedClientGraph* rcg : to_unref) rcg->Unref();
   return Status::OK();
+}
+
+void MasterSession::GarbageCollect() {
+  {
+    mutex_lock l(mu_);
+    closed_ = true;
+    garbage_collected_ = true;
+  }
+  cancellation_manager_.StartCancel();
+  Unref();
 }
 
 MasterSession::RunState::RunState(const std::vector<string>& input_names,

@@ -30,6 +30,11 @@ public final class Graph implements AutoCloseable {
     nativeHandle = allocate();
   }
 
+  /** Create a Graph from an existing handle (takes ownership). */
+  Graph(long nativeHandle) {
+    this.nativeHandle = nativeHandle;
+  }
+
   /**
    * Release resources associated with the Graph.
    *

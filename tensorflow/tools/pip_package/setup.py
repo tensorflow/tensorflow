@@ -29,13 +29,16 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '0.12.1'
+_VERSION = '1.1.0-rc1'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
-    'protobuf >= 3.1.0',
+    'protobuf >= 3.2.0',
     'werkzeug >= 0.11.10',
+    'html5lib == 0.9999999',  # identical to 1.0b8
+    'markdown == 2.2.0',
+    'bleach == 1.5.0',
 ]
 
 project_name = 'tensorflow'
@@ -151,11 +154,12 @@ def find_files(pattern, root):
 
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
+matches += ['../' + x for x in find_files('*', '_solib_k8') if '.py' not in x]
 
 if os.name == 'nt':
-  EXTENSION_NAME = 'python/_pywrap_tensorflow.pyd'
+  EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
 else:
-  EXTENSION_NAME = 'python/_pywrap_tensorflow.so'
+  EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'tensorflow/stream_executor')) +
@@ -183,13 +187,14 @@ setup(
     # Add in any packaged data.
     include_package_data=True,
     package_data={
-        'tensorflow': [EXTENSION_NAME,
-                       'tensorboard/dist/bazel-html-imports.html',
-                       'tensorboard/dist/index.html',
-                       'tensorboard/dist/tf-tensorboard.html',
-                       'tensorboard/lib/css/global.css',
-                       'tensorboard/TAG',
-                     ] + matches,
+        'tensorflow': [
+            EXTENSION_NAME,
+            'tensorboard/dist/bazel-html-imports.html',
+            'tensorboard/dist/index.html',
+            'tensorboard/dist/tf-tensorboard.html',
+            'tensorboard/lib/css/global.css',
+            'tensorboard/TAG',
+        ] + matches,
     },
     zip_safe=False,
     distclass=BinaryDistribution,
@@ -208,7 +213,6 @@ setup(
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Software Development :: Libraries',
-        ],
+    ],
     license='Apache 2.0',
-    keywords='tensorflow tensor machine learning',
-    )
+    keywords='tensorflow tensor machine learning',)

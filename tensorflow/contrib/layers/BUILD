@@ -11,6 +11,8 @@ package(default_visibility = [
 ])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -74,7 +76,7 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-py_library(
+tf_custom_op_py_library(
     name = "layers_py",
     srcs = [
         "__init__.py",
@@ -94,9 +96,15 @@ py_library(
         "python/ops/sparse_feature_cross_op.py",
         "python/ops/sparse_ops.py",
     ],
-    data = [
+    dso = [
         ":python/ops/_bucketization_op.so",
         ":python/ops/_sparse_feature_cross_op.so",
+    ],
+    kernels = [
+        ":bucketization_op_kernel",
+        ":sparse_feature_cross_op_kernel",
+        ":bucketization_op_op_lib",
+        ":sparse_feature_cross_op_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -110,6 +118,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:common_shapes",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",
@@ -123,9 +132,11 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:standard_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",

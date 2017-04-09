@@ -91,18 +91,6 @@ cc_library(
 )
 
 cc_library(
-    name = "llvm_backend_flags",
-    srcs = ["llvm_backend_flags.cc"],
-    hdrs = ["llvm_backend_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "@llvm//:core",
-    ],
-)
-
-cc_library(
     name = "compiler_functor_flags",
     srcs = ["compiler_functor_flags.cc"],
     hdrs = ["compiler_functor_flags.h"],

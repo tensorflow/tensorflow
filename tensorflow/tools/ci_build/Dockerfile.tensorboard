@@ -6,7 +6,6 @@ MAINTAINER Jan Prach <jendap@google.com>
 COPY install/*.sh /install/
 RUN /install/install_bootstrap_deb_packages.sh
 RUN add-apt-repository -y ppa:openjdk-r/ppa && \
-    add-apt-repository -y ppa:mc3man/trusty-media && \
     add-apt-repository -y ppa:george-edison55/cmake-3.x
 RUN /install/install_deb_packages.sh
 RUN /install/install_tensorboard_packages.sh

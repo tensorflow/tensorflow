@@ -27,10 +27,10 @@ import json
 import numbers
 import os
 import shutil
+import socket
 import tempfile
 import threading
 
-import numpy as np
 from six import BytesIO
 from six.moves import http_client
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -38,25 +38,51 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from werkzeug import serving
 from google.protobuf import text_format
 
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.core.util import event_pb2
-from tensorflow.python.client import session
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer as writer_lib
-from tensorflow.python.training import saver as saver_lib
+from tensorflow.tensorboard import tensorboard
 from tensorflow.tensorboard.backend import application
-from tensorflow.tensorboard.plugins.projector import plugin as projector_plugin
+from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
+
+
+class FakePlugin(base_plugin.TBPlugin):
+  """A plugin with no functionality."""
+
+  def __init__(self, plugin_name, is_active_value):
+    """Constructs a fake plugin.
+
+    Args:
+      plugin_name: The name of this plugin.
+      is_active_value: Whether the plugin is active.
+    """
+    self.plugin_name = plugin_name
+    self._is_active_value = is_active_value
+
+  def get_plugin_apps(self, multiplexer, logdir):
+    """Returns a mapping from routes to handlers offered by this plugin.
+
+    Args:
+      multiplexer: The event multiplexer.
+      logdir: The path to the directory containing logs.
+
+    Returns:
+      An empty dict. This plugin offers no routes.
+    """
+    return {}
+
+  def is_active(self):
+    """Returns whether this plugin is active.
+
+    Returns:
+      A boolean. Whether this plugin is active.
+    """
+    return self._is_active_value
 
 
 class TensorboardServerTest(test.TestCase):
@@ -67,11 +93,22 @@ class TensorboardServerTest(test.TestCase):
 
   def setUp(self):
     self.temp_dir = self._GenerateTestData()
-    plugins = {'projector': projector_plugin.ProjectorPlugin()}
+    multiplexer = event_multiplexer.EventMultiplexer(
+        size_guidance=application.DEFAULT_SIZE_GUIDANCE,
+        purge_orphaned_data=True)
+    plugins = [
+        FakePlugin(plugin_name='foo', is_active_value=True),
+        FakePlugin(plugin_name='bar', is_active_value=False)
+    ]
     app = application.TensorBoardWSGIApp(
-        self.temp_dir, plugins, reload_interval=0)
-    self._server = serving.BaseWSGIServer('localhost', 0, app)
-    # 0 to pick an unused port.
+        self.temp_dir, plugins, multiplexer, reload_interval=0)
+    try:
+      self._server = serving.BaseWSGIServer('localhost', 0, app)
+      # 0 to pick an unused port.
+    except IOError:
+      # BaseWSGIServer has a preference for IPv4. If that didn't work, try again
+      # with an explicit IPv6 address.
+      self._server = serving.BaseWSGIServer('::1', 0, app)
     self._server_thread = threading.Thread(target=self._server.serve_forever)
     self._server_thread.daemon = True
     self._server_thread.start()
@@ -124,6 +161,12 @@ class TensorboardServerTest(test.TestCase):
     parsed_object = self._getJson('/data/logdir')
     self.assertEqual(parsed_object, {'logdir': self.temp_dir})
 
+  def testPluginsListing(self):
+    """Test the format of the data/plugins_listing endpoint."""
+    parsed_object = self._getJson('/data/plugins_listing')
+    # Plugin foo is active. Plugin bar is not.
+    self.assertEqual(parsed_object, {'foo': True, 'bar': False})
+
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
     run_json = self._getJson('/data/runs')
@@ -144,7 +187,8 @@ class TensorboardServerTest(test.TestCase):
                 # if only_use_meta_graph, the graph is from the metagraph
                 'graph': True,
                 'meta_graph': self._only_use_meta_graph,
-                'run_metadata': ['test run']
+                'run_metadata': ['test run'],
+                'tensors': [],
             }
         })
 
@@ -232,33 +276,6 @@ class TensorboardServerTest(test.TestCase):
     self.assertEqual(list(graph.node[1].attr.keys()), ['_very_large_attrs'])
     self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
                      [b'very_large_attr'])
-
-  def testProjectorRunsWithEmbeddings(self):
-    """Test the format of /runs endpoint of the projector plugin."""
-    run_json = self._getJson('/data/plugin/projector/runs')
-    self.assertEqual(run_json, ['run1'])
-
-  def testProjectorInfo(self):
-    """Test the format of /info endpoint of the projector plugin."""
-    info_json = self._getJson('/data/plugin/projector/info?run=run1')
-    self.assertItemsEqual(info_json['embeddings'], [{
-        'tensorShape': [1, 2],
-        'tensorName': 'var1'
-    }, {
-        'tensorShape': [10, 10],
-        'tensorName': 'var2'
-    }, {
-        'tensorShape': [100, 100],
-        'tensorName': 'var3'
-    }])
-
-  def testProjectorTensor(self):
-    """Test the format of /tensor endpoint of the projector plugin."""
-    url = '/data/plugin/projector/tensor?run=run1&name=var1'
-    tensor_bytes = self._get(url).read()
-    tensor = np.reshape(np.fromstring(tensor_bytes, dtype='float32'), [1, 2])
-    expected_tensor = np.array([[6, 6]], dtype='float32')
-    self.assertTrue(np.array_equal(tensor, expected_tensor))
 
   def testAcceptGzip_compressesResponse(self):
     response = self._get('/data/graph?run=run1&limit_attr_size=1024'
@@ -393,33 +410,7 @@ class TensorboardServerTest(test.TestCase):
     writer.flush()
     writer.close()
 
-    # We assume that the projector is a registered plugin.
-    self._GenerateProjectorTestData(run1_path)
-
     return temp_dir
-
-  def _GenerateProjectorTestData(self, run_path):
-    # Write a projector config file in run1.
-    config_path = os.path.join(run_path, 'projector_config.pbtxt')
-    config = ProjectorConfig()
-    embedding = config.embeddings.add()
-    # Add an embedding by its canonical tensor name.
-    embedding.tensor_name = 'var1:0'
-    config_pbtxt = text_format.MessageToString(config)
-    with gfile.GFile(config_path, 'w') as f:
-      f.write(config_pbtxt)
-
-    # Write a checkpoint with some dummy variables.
-    with ops.Graph().as_default():
-      sess = session.Session()
-      checkpoint_path = os.path.join(run_path, 'model')
-      variable_scope.get_variable(
-          'var1', [1, 2], initializer=init_ops.constant_initializer(6.0))
-      variable_scope.get_variable('var2', [10, 10])
-      variable_scope.get_variable('var3', [100, 100])
-      sess.run(variables.global_variables_initializer())
-      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
-      saver.save(sess, checkpoint_path)
 
 
 class TensorboardServerUsingMetagraphOnlyTest(TensorboardServerTest):
@@ -483,8 +474,75 @@ class ParseEventFilesSpecTest(test.TestCase):
 class TensorBoardAssetsTest(test.TestCase):
 
   def testTagFound(self):
-    tag = resource_loader.load_resource('tensorboard/TAG')
+    tag = application.get_tensorboard_tag()
     self.assertTrue(tag)
+    app = application.standard_tensorboard_wsgi('', True, 60)
+    self.assertEqual(app.tag, tag)
+
+
+class TensorboardSimpleServerConstructionTest(test.TestCase):
+  """Tests that the default HTTP server is constructed without error.
+
+  Mostly useful for IPv4/IPv6 testing. This test should run with only IPv4, only
+  IPv6, and both IPv4 and IPv6 enabled.
+  """
+
+  class _StubApplication(object):
+    tag = ''
+
+  def testMakeServerBlankHost(self):
+    # Test that we can bind to all interfaces without throwing an error
+    server, url = tensorboard.make_simple_server(
+        self._StubApplication(),
+        host='',
+        port=0)  # Grab any available port
+    self.assertTrue(server)
+    self.assertTrue(url)
+
+  def testSpecifiedHost(self):
+    one_passed = False
+    try:
+      _, url = tensorboard.make_simple_server(
+          self._StubApplication(),
+          host='127.0.0.1',
+          port=0)
+      self.assertStartsWith(actual=url, expected_start='http://127.0.0.1:')
+      one_passed = True
+    except socket.error:
+      # IPv4 is not supported
+      pass
+    try:
+      _, url = tensorboard.make_simple_server(
+          self._StubApplication(),
+          host='::1',
+          port=0)
+      self.assertStartsWith(actual=url, expected_start='http://[::1]:')
+      one_passed = True
+    except socket.error:
+      # IPv6 is not supported
+      pass
+    self.assertTrue(one_passed)  # We expect either IPv4 or IPv6 to be supported
+
+
+class TensorBoardApplcationConstructionTest(test.TestCase):
+
+  def testExceptions(self):
+    logdir = '/fake/foo'
+    multiplexer = event_multiplexer.EventMultiplexer()
+
+    # Fails if there is an unnamed plugin
+    with self.assertRaises(ValueError):
+      # This plugin lacks a name.
+      plugins = [FakePlugin(plugin_name=None, is_active_value=True)]
+      application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
+
+    # Fails if there are two plugins with same name
+    with self.assertRaises(ValueError):
+      plugins = [
+          FakePlugin(plugin_name='foo', is_active_value=True),
+          FakePlugin(plugin_name='foo', is_active_value=True),
+      ]
+      application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
 
 
 if __name__ == '__main__':

@@ -45,9 +45,10 @@ class MasterSession : public core::RefCounted {
   // operations on these devices.
   //
   // The caller takes ownership of all remote devices.
-  MasterSession(const SessionOptions& options, const MasterEnv* env,
-                std::vector<Device*>* remote_devs,
-                StatsPublisherFactory stats_publisher_factory);
+  MasterSession(
+      const SessionOptions& options, const MasterEnv* env,
+      std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
+      StatsPublisherFactory stats_publisher_factory);
 
   // Initialize the MasterSession for "def".  Must be called before Extend(),
   // Run(), or Close().
@@ -88,6 +89,12 @@ class MasterSession : public core::RefCounted {
   // Close() may block the caller thread for a long time.
   Status Close();
 
+  // Close this session and release a reference on "*this".
+  //
+  // Note that, unlike Close(), this method does not block on the
+  // completion of all work.
+  void GarbageCollect();
+
  private:
   SessionOptions session_opts_;
 
@@ -97,8 +104,7 @@ class MasterSession : public core::RefCounted {
   // The opaque session handle.
   const string handle_;
 
-  // Owned.
-  std::vector<Device*> remote_devs_;
+  std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs_;
 
   // The device set used by this session.
   DeviceSet devices_;
@@ -158,6 +164,7 @@ class MasterSession : public core::RefCounted {
   int32 num_running_ GUARDED_BY(mu_) = 0;
 
   bool closed_ GUARDED_BY(mu_) = false;
+  bool garbage_collected_ GUARDED_BY(mu_) = false;
 
   std::unordered_map<uint64, int64> subgraph_execution_counts_ GUARDED_BY(mu_);
 
@@ -166,7 +173,7 @@ class MasterSession : public core::RefCounted {
   int64 next_node_id_ GUARDED_BY(mu_) = 0;
 
   // Used to cancel running steps on Close().
-  CancellationManager* cancellation_manager_;
+  CancellationManager cancellation_manager_;
 
   // Private dtor. The client must call Close().
   virtual ~MasterSession();

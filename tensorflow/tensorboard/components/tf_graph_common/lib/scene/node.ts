@@ -591,7 +591,8 @@ function position(nodeGroup, d: render.RenderNodeInfo) {
 };
 
 /** Enum specifying the options to color nodes by */
-export enum ColorBy { STRUCTURE, DEVICE, COMPUTE_TIME, MEMORY };
+export enum ColorBy {STRUCTURE, DEVICE, XLA_CLUSTER, COMPUTE_TIME, MEMORY}
+;
 
 /**
  * Returns the fill color for the node given its state and the 'color by'
@@ -648,6 +649,9 @@ export function getFillForNode(templateIndex, colorBy,
         });
       }
       return isExpanded ? colorParams.EXPANDED_COLOR : `url(#${escapedId})`;
+    case ColorBy.XLA_CLUSTER:
+      return isExpanded ? colorParams.EXPANDED_COLOR :
+                          renderInfo.xlaClusterColor || colorParams.UNKNOWN;
     case ColorBy.COMPUTE_TIME:
       return isExpanded ?
         colorParams.EXPANDED_COLOR : renderInfo.computeTimeColor ||
@@ -1039,7 +1043,7 @@ function _markParentsOfNodes(visibleNodes: {[nodeName: string]: Node}) {
 /**
  * Find the parent of the passed in op node which is expanded. This is done
  * by going through all parents until the parent's parent is expanded, thus
- * finding the the first unexpanded parent which is rendered on the screen.
+ * finding the first unexpanded parent which is rendered on the screen.
  * @param renderGraphInfo The graph info object used to gain access to the
  * render info of the parents.
  * @param currentNode The node whose parent is to be found.

@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_pass.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -30,10 +30,12 @@ namespace xla {
 // constant or parameter instructions will be copied.
 // Copy insertion is necessary because constant and parameter arrays have
 // different lifetimes than computation results.
-class CopyInsertion : public HloPass {
+class CopyInsertion : public HloPassInterface {
  public:
-  CopyInsertion() : HloPass("copy-insertion") {}
+  explicit CopyInsertion(bool copy_param_and_const = true)
+      : copy_param_and_const_(copy_param_and_const) {}
   ~CopyInsertion() override {}
+  tensorflow::StringPiece name() const override { return "copy-insertion"; }
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
@@ -43,6 +45,10 @@ class CopyInsertion : public HloPass {
   // Returns a copy of `hlo`. Looks in inserted_copies_ first to avoid making
   // duplicate copies.
   StatusOr<HloInstruction*> FindOrInsertCopy(HloInstruction* hlo);
+
+  // Determines whether to insert copies if the root instruction is, or
+  // points-to, any constant or parameter instruction.
+  const bool copy_param_and_const_;
 
   // A map containing all copies inserted during the copy insertion pass. The
   // key is the copied instruction and the value is the copy.

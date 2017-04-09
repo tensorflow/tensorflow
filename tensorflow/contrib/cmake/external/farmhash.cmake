@@ -19,7 +19,7 @@ if(WIN32)
       URL_HASH ${farmhash_HASH}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
       BUILD_IN_SOURCE 1
-      PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/patches/farmhash/CMakeLists.txt ${farmhash_BUILD}
+      PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/farmhash/CMakeLists.txt ${farmhash_BUILD}
       INSTALL_DIR ${farmhash_INSTALL}
       CMAKE_CACHE_ARGS
           -DCMAKE_BUILD_TYPE:STRING=Release
@@ -53,5 +53,5 @@ add_custom_target(farmhash_copy_headers_to_destination
 
 foreach(header_file ${farmhash_HEADERS})
     add_custom_command(TARGET farmhash_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${farmhash_INCLUDE_DIR}/)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${header_file} ${farmhash_INCLUDE_DIR}/)
 endforeach()

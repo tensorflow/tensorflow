@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -139,8 +140,8 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
 
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   for (const char* op_name : {
-           "CheckNumerics", "Identity", "QuantizeAndDequantize", "RefIdentity",
-           "StopGradient", "ZerosLike",
+           "CheckNumerics", "Identity", "RefIdentity", "QuantizeAndDequantize",
+           "StopGradient", "ZerosLike", "OnesLike",
        }) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?", "in0");
@@ -161,9 +162,9 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   // Check that handle dtypes are preserved.
   const OpRegistrationData* op_reg_data;
   TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
-  shape_inference::InferenceContext c(&op.node_def, op_reg_data->op_def,
-                                      {TensorShapeProto()}, {}, {}, {},
-                                      {DT_BOOL});
+  shape_inference::InferenceContext c(TF_GRAPH_DEF_VERSION, &op.node_def,
+                                      op_reg_data->op_def, {TensorShapeProto()},
+                                      {}, {}, {}, {DT_BOOL});
   TF_ASSERT_OK(c.construction_status());
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
@@ -558,7 +559,7 @@ TEST(ArrayOpsTest, Concat_ShapeFn) {
   set_n(4);
   INFER_OK(op, "?;?;?;[1,2,3,4];[4,3,2,1]", "[?,?,?,?]");
   INFER_OK(op, "?;?;?;?;?", "?");  // output rank unknown
-  INFER_ERROR("Can't concatenate scalars (use tf.pack instead)", op,
+  INFER_ERROR("Can't concatenate scalars (use tf.stack instead)", op,
               "?;?;?;[];[]");
   INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;?;?;[1,2];[1,2,3]");
 
@@ -631,7 +632,7 @@ TEST(ArrayOpsTest, ConcatV2_ShapeFn) {
   set_n(4);
   INFER_OK(op, "?;?;[1,2,3,4];[4,3,2,1];?", "[?,?,?,?]");
   INFER_OK(op, "?;?;?;?;?", "?");  // output rank unknown
-  INFER_ERROR("Can't concatenate scalars (use tf.pack instead)", op,
+  INFER_ERROR("Can't concatenate scalars (use tf.stack instead)", op,
               "?;?;[];[];?");
   INFER_ERROR("Shape must be rank 2 but is rank 3", op, "?;?;[1,2];[1,2,3];?");
 
@@ -1175,6 +1176,17 @@ TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
       op, "[1,7,7,2]");
 }
 
+TEST(ArrayOpsTest, QuantizeAndDequantizeV2_ShapeFn) {
+  ShapeInferenceTestOp op("QuantizeAndDequantizeV2");
+  INFER_OK(op, "?;?;?", "in0");
+  INFER_OK(op, "[];?;?", "in0");
+  INFER_OK(op, "[1,2,?,4,5];?;?", "in0");
+
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[1];[]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[];[1]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[1];[1]");
+}
+
 TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   ShapeInferenceTestOp op("SpaceToBatch");
   op.input_tensors.resize(2);
@@ -1612,6 +1624,18 @@ TEST(ArrayOpsTest, QuantizedConcat_ShapeFn) {
   INFER_ERROR("Dimension 1 in both shapes must be equal, but are 5 and 3", op,
               "[];[100,2,5];[10,?,3];?;?;?;?");
   // Note that other cases of concat are covered in the Concat tests.
+}
+
+TEST(StateOpsTest, _ParallelConcatStart_ShapeFn) {
+  ShapeInferenceTestOp op("_ParallelConcatStart");
+  TensorShape shape({1, 2, 3});
+  TensorShapeProto shape_proto;
+  shape.AsProto(&shape_proto);
+  TF_ASSERT_OK(NodeDefBuilder("test", "_ParallelConcatStart")
+                   .Attr("shape", shape_proto)
+                   .Attr("dtype", DT_FLOAT)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "", "[1,2,3]");
 }
 
 }  // end namespace tensorflow

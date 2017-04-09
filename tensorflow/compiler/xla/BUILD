@@ -6,6 +6,7 @@ package_group(
     name = "friends",
     packages = [
         "//tensorflow/compiler/...",
+        "//tensorflow/contrib/xla_tf_graph/...",
     ],
 )
 
@@ -264,6 +265,18 @@ cc_test(
 )
 
 cc_library(
+    name = "metric_table_report",
+    srcs = ["metric_table_report.cc"],
+    hdrs = ["metric_table_report.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":util",
+        ":xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "device_util",
     hdrs = ["device_util.h"],
     visibility = ["//visibility:public"],
@@ -344,25 +357,6 @@ cc_library(
     srcs = ["executable_run_options.cc"],
     hdrs = ["executable_run_options.h"],
     visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "differential_set",
-    hdrs = ["differential_set.h"],
-    visibility = [":internal"],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_test(
-    name = "differential_set_test",
-    srcs = ["differential_set_test.cc"],
-    deps = [
-        ":differential_set",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
 )
 
 cc_library(

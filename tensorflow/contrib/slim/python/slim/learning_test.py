@@ -40,8 +40,8 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import saver as saver_lib
-
 
 class ClipGradientNormsTest(test.TestCase):
 
@@ -187,6 +187,31 @@ class MultiplyGradientsTest(test.TestCase):
     with self.test_session() as sess:
       actual_gradient = sess.run(grad_to_var[0].values)
     np_testing.assert_almost_equal(actual_gradient, self._multiplied_grad_vec,
+                                   5)
+
+  def testTensorMultiplierOfGradient(self):
+    gradient = constant_op.constant(self._grad_vec, dtype=dtypes.float32)
+    variable = variables_lib.Variable(array_ops.zeros_like(gradient))
+    multiplier_flag = variables_lib.Variable(True)
+    tensor_multiplier = array_ops.where(multiplier_flag,
+                                        self._multiplier,
+                                        1.0)
+    grad_to_var = (gradient, variable)
+    gradient_multipliers = {variable: tensor_multiplier}
+
+    [grad_to_var] = learning.multiply_gradients([grad_to_var],
+                                                gradient_multipliers)
+
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      gradient_true_flag = sess.run(grad_to_var[0])
+      sess.run(multiplier_flag.assign(False))
+      gradient_false_flag = sess.run(grad_to_var[0])
+    np_testing.assert_almost_equal(gradient_true_flag,
+                                   self._multiplied_grad_vec,
+                                   5)
+    np_testing.assert_almost_equal(gradient_false_flag,
+                                   self._grad_vec,
                                    5)
 
 
@@ -891,22 +916,22 @@ class TrainTest(test.TestCase):
   def testTrainWithEpochLimit(self):
     logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
                           'tmp_logs')
-    with tf.Graph().as_default():
-      tf.set_random_seed(0)
-      tf_inputs = tf.constant(self._inputs, dtype=tf.float32)
-      tf_labels = tf.constant(self._labels, dtype=tf.float32)
-      tf_inputs_limited = tf.train.limit_epochs(tf_inputs, num_epochs=300)
-      tf_labels_limited = tf.train.limit_epochs(tf_labels, num_epochs=300)
+    with ops.Graph().as_default():
+      random_seed.set_random_seed(0)
+      tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
+      tf_labels = constant_op.constant(self._labels, dtype=dtypes.float32)
+      tf_inputs_limited = input_lib.limit_epochs(tf_inputs, num_epochs=300)
+      tf_labels_limited = input_lib.limit_epochs(tf_labels, num_epochs=300)
 
       tf_predictions = LogisticClassifier(tf_inputs_limited)
-      slim.losses.log_loss(tf_predictions, tf_labels_limited)
-      total_loss = slim.losses.get_total_loss()
+      loss_ops.log_loss(tf_predictions, tf_labels_limited)
+      total_loss = loss_ops.get_total_loss()
 
-      optimizer = tf.train.GradientDescentOptimizer(learning_rate=1.0)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
 
-      train_op = slim.learning.create_train_op(total_loss, optimizer)
+      train_op = learning.create_train_op(total_loss, optimizer)
 
-      loss = slim.learning.train(train_op, logdir, log_every_n_steps=10)
+      loss = learning.train(train_op, logdir, log_every_n_steps=10)
     self.assertIsNotNone(loss)
     self.assertLess(loss, .015)
     self.assertTrue(os.path.isfile('{}/model.ckpt-300.index'.format(logdir)))

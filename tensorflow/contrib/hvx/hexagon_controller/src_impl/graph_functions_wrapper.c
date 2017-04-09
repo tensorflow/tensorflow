@@ -39,8 +39,8 @@ static float s_output_values[300 * 300 * 3 * 4];
 extern void init_graph(uint32_t id);
 extern void init_graph_v1(uint32_t id);
 extern uint8_t inception_dummy_int_data_299x299[];
-extern uint8_t inception_sample_int_data_224x224[];
-extern float inception_dummy_float_data_299x299_299x299[];
+extern uint8_t inception_dummy_int_data_224x224[];
+extern float inception_dummy_float_data_299x299[];
 
 enum InceptionVersion {
   INCEPTION_V1,
@@ -167,6 +167,7 @@ bool hexagon_controller_ConstructGraph(uint32_t nn_id) {
   int err;
   if ((err = hexagon_nn_prepare(nn_id)) != 0) {
     TFMLOGE("Prepare failed! returned 0x%x\n", err);
+    hexagon_controller_PrintLog(nn_id);
     return false;
   } else {
     TFMLOGD("Prepare success!\n");
@@ -282,10 +283,10 @@ void hexagon_controller_DumpPerf(uint32_t nn_id) {
   unsigned long long int total_cycles = 0;
   unsigned long long int cum_cycles = 0;
   unsigned long long int counter = 0;
-  int n_nodes;
+  unsigned int n_nodes;
   int i;
   TFMLOGD("Perf dump follows:");
-  if (hexagon_nn_get_perfinfo(nn_id, info, MAX_NODES,&n_nodes) != 0) {
+  if (hexagon_nn_get_perfinfo(nn_id, info, MAX_NODES, &n_nodes) != 0) {
     TFMLOGE("perf info failure");
     return;
   }
@@ -321,7 +322,7 @@ void hexagon_controller_DumpNodeName(uint32_t nn_id) {
   unsigned long long int total_cycles = 0;
   unsigned long long int cum_cycles = 0;
   unsigned long long int counter = 0;
-  int node_count;
+  unsigned int node_count;
   int i;
   TFMLOGD("Perf dump follows:");
   if (hexagon_nn_get_perfinfo(id, info, MAX_NODES, &node_count) != 0) {

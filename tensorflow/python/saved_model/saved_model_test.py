@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
@@ -38,6 +39,7 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import main_op
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import saver_test_utils
 from tensorflow.python.util import compat
 
 SAVED_MODEL_PATH = ("cc/saved_model/testdata/half_plus_two/00000123")
@@ -82,6 +84,31 @@ class SavedModelTest(test.TestCase):
     self.assertEqual(expected_asset_file_name, asset.filename)
     self.assertEqual(expected_asset_tensor_name, asset.tensor_info.name)
 
+  def _validate_inputs_tensor_info(self, builder, tensor_info):
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      foo_signature = signature_def_utils.build_signature_def({
+          "foo_inputs": tensor_info
+      }, dict(), "foo")
+      self.assertRaises(
+          AssertionError,
+          builder.add_meta_graph_and_variables,
+          sess, ["foo"],
+          signature_def_map={"foo_key": foo_signature})
+
+  def _validate_outputs_tensor_info(self, builder, tensor_info):
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      foo_signature = signature_def_utils.build_signature_def(
+          dict(), {"foo_outputs": tensor_info}, "foo")
+      self.assertRaises(
+          AssertionError,
+          builder.add_meta_graph_and_variables,
+          sess, ["foo"],
+          signature_def_map={"foo_key": foo_signature})
+
   def testMaybeSavedModelDir(self):
     base_path = test.test_src_dir_path("/python/saved_model")
     self.assertFalse(loader.maybe_saved_model_directory(base_path))
@@ -89,6 +116,40 @@ class SavedModelTest(test.TestCase):
     self.assertTrue(loader.maybe_saved_model_directory(base_path))
     base_path = "complete_garbage"
     self.assertFalse(loader.maybe_saved_model_directory(base_path))
+
+  def testBadSavedModelFileFormat(self):
+    export_dir = os.path.join(test.get_temp_dir(),
+                              "test_bad_saved_model_file_format")
+    # Attempt to load a SavedModel from an export directory that does not exist.
+    with self.test_session(graph=ops.Graph()) as sess:
+      with self.assertRaisesRegexp(IOError,
+                                   "SavedModel file does not exist at: %s" %
+                                   export_dir):
+        loader.load(sess, ["foo"], export_dir)
+
+    os.makedirs(export_dir)
+    # Write an invalid binary proto to saved_model.pb.
+    path_to_pb = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
+    with open(path_to_pb, "w") as f:
+      f.write("invalid content")
+    with self.test_session(graph=ops.Graph()) as sess:
+      with self.assertRaisesRegexp(IOError, "Cannot parse file.*%s" %
+                                   constants.SAVED_MODEL_FILENAME_PB):
+        loader.load(sess, ["foo"], export_dir)
+
+    # Cleanup the directory and start again.
+    file_io.delete_recursively(export_dir)
+
+    os.makedirs(export_dir)
+    # Write an invalid text proto to saved_model.pbtxt
+    path_to_pbtxt = os.path.join(export_dir,
+                                 constants.SAVED_MODEL_FILENAME_PBTXT)
+    with open(path_to_pbtxt, "w") as f:
+      f.write("invalid content")
+    with self.test_session(graph=ops.Graph()) as sess:
+      with self.assertRaisesRegexp(IOError, "Cannot parse file.*%s" %
+                                   constants.SAVED_MODEL_FILENAME_PBTXT):
+        loader.load(sess, ["foo"], export_dir)
 
   def testSequence(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_sequence")
@@ -219,6 +280,41 @@ class SavedModelTest(test.TestCase):
     with self.test_session(graph=ops.Graph()) as sess:
       self.assertRaises(errors.NotFoundError, loader.load, sess, ["baz"],
                         export_dir)
+
+  def testGraphWithoutVariables(self):
+    export_dir = os.path.join(test.get_temp_dir(), "test_graph_has_variables")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Graph with no variables.
+    with self.test_session(graph=ops.Graph()) as sess:
+      constant_5_name = constant_op.constant(5.0).name
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Second graph with no variables
+    with self.test_session(graph=ops.Graph()) as sess:
+      constant_6_name = constant_op.constant(6.0).name
+      builder.add_meta_graph(["bar"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    # Restore the graph with tag "foo".
+    with self.test_session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      # Read the constant a from the graph.
+      a = ops.get_default_graph().get_tensor_by_name(constant_5_name)
+      b = constant_op.constant(6.0)
+      c = a * b
+      self.assertEqual(30.0, sess.run(c))
+
+    # Restore the graph with tag "bar".
+    with self.test_session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["bar"], export_dir)
+      # Read the constant a from the graph.
+      a = ops.get_default_graph().get_tensor_by_name(constant_6_name)
+      b = constant_op.constant(5.0)
+      c = a * b
+      self.assertEqual(30.0, sess.run(c))
 
   def testNoOverwrite(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_no_overwrite")
@@ -384,6 +480,25 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(len(bar_signature), 2)
       self.assertEqual("bar", bar_signature["bar_key"].method_name)
       self.assertEqual("foo_new", bar_signature["foo_key"].method_name)
+
+  def testSignatureDefValidation(self):
+    export_dir = os.path.join(test.get_temp_dir(),
+                              "test_signature_def_validation")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    tensor_without_name = meta_graph_pb2.TensorInfo()
+    tensor_without_name.dtype = types_pb2.DT_FLOAT
+    self._validate_inputs_tensor_info(builder, tensor_without_name)
+    self._validate_outputs_tensor_info(builder, tensor_without_name)
+
+    tensor_without_dtype = meta_graph_pb2.TensorInfo()
+    tensor_without_dtype.name = "x"
+    self._validate_inputs_tensor_info(builder, tensor_without_dtype)
+    self._validate_outputs_tensor_info(builder, tensor_without_dtype)
+
+    tensor_empty = meta_graph_pb2.TensorInfo()
+    self._validate_inputs_tensor_info(builder, tensor_empty)
+    self._validate_outputs_tensor_info(builder, tensor_empty)
 
   def testAssets(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_assets")
@@ -619,6 +734,35 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(2, ops.get_collection("v")[1].eval())
       ops.get_collection("init_op")[0].run()
       self.assertEqual(3, ops.get_collection("v")[2].eval())
+
+  def testCustomSaveable(self):
+    export_dir = os.path.join(test.get_temp_dir(), "custom_saveable")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with session.Session(
+        graph=ops.Graph(),
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      # CheckpointedOp is a key-value table that can be saved across sessions.
+      # The table register itself in SAVEABLE_OBJECTS collection.
+      v1 = saver_test_utils.CheckpointedOp(name="v1")
+      variables.global_variables_initializer().run()
+      v1.insert("k1", 3.0).run()
+      # Once the table is restored, we can access it through this reference.
+      ops.add_to_collection("table_ref", v1.table_ref)
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with session.Session(
+        graph=ops.Graph(),
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      # Instantiate a wrapper object from the checkpointed reference.
+      v1 = saver_test_utils.CheckpointedOp(
+          name="v1", table_ref=ops.get_collection("table_ref")[0])
+      self.assertEqual(b"k1", v1.keys().eval())
+      self.assertEqual(3.0, v1.values().eval())
 
   def testClearDevices(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_clear_devices")
