@@ -135,9 +135,10 @@ cc_library(
     name = "rdma",
     srcs = ["rdma.cc"],
     hdrs = ["rdma.h"],
-    linkopts = [
-        "-libverbs",
-    ],
+    linkopts = select({
+        "//tensorflow:with_verbs_support": ["-libverbs"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":verbs_util",
         "//tensorflow/core:core_cpu_internal",
