@@ -14,7 +14,7 @@
 # ==============================================================================
 """A simple MNIST classifier which displays summaries in TensorBoard.
 
- This is an unimpressive MNIST model, but it is a good example of using
+This is an unimpressive MNIST model, but it is a good example of using
 tf.name_scope to make a graph legible in the TensorBoard graph explorer, and of
 naming summary tags so that they are grouped meaningfully in TensorBoard.
 
@@ -78,7 +78,7 @@ def train():
   def nn_layer(input_tensor, input_dim, output_dim, layer_name, act=tf.nn.relu):
     """Reusable code for making a simple neural net layer.
 
-    It does a matrix multiply, bias add, and then uses relu to nonlinearize.
+    It does a matrix multiply, bias add, and then uses ReLU to nonlinearize.
     It also sets up name scoping so that the resultant graph is easy to read,
     and adds a number of summary ops.
     """
