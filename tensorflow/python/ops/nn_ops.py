@@ -805,7 +805,7 @@ def pool(input,  # pylint: disable=redefined-builtin
         filter_shape=window_shape)
 
 
-def atrous_conv2d(value, filters, rate, padding, strides=None, name=None):
+def atrous_conv2d(value, filters, rate, padding, name=None):
   """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
   This function is a simpler wrapper around the more general
@@ -908,8 +908,7 @@ def atrous_conv2d(value, filters, rate, padding, strides=None, name=None):
       the `height` and `width` dimensions. Equivalently, the rate by which we
       upsample the filter values by inserting zeros across the `height` and
       `width` dimensions. In the literature, the same parameter is sometimes
-      called `input stride` or `dilation`. Alternatively it could be 3 element
-      sequence denoting dilation rate in each dimension.
+      called `input stride` or `dilation`.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
     name: Optional name for the returned tensor.
 
