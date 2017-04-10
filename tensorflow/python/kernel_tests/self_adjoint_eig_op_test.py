@@ -78,7 +78,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
         low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(dtype_)
     a += a.T
     a = np.tile(a, batch_shape + (1, 1))
-    if dtype_ == np.float32:
+    if dtype_ == np.float32 or dtype_ == np.complex64:
       atol = 1e-4
     else:
       atol = 1e-12
@@ -150,13 +150,14 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_):
 
 
 if __name__ == '__main__':
-  for dtype in np.float32, np.float64:
+  for dtype in np.float32, np.float64, np.complex64, np.complex128:
     for size in 1, 2, 5, 10:
       for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):
         shape = batch_dims + (size, size)
         name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
         setattr(SelfAdjointEigTest, 'testSelfAdjointEig_' + name,
                 _GetSelfAdjointEigTest(dtype, shape))
-        setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
-                _GetSelfAdjointEigGradTest(dtype, shape))
+        if dtype in [np.float32, np.float64]:
+          setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
+                  _GetSelfAdjointEigGradTest(dtype, shape))
   test.main()
