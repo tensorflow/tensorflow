@@ -308,10 +308,12 @@ filegroup(
         "//tensorflow/tensorboard/components/vz_sorting/test:all_files",
         "//tensorflow/tensorboard/lib:all_files",
         "//tensorflow/tensorboard/plugins:all_files",
-        "//tensorflow/tensorboard/plugins/debugger:all_files",
         "//tensorflow/tensorboard/plugins/projector:all_files",
         "//tensorflow/tensorboard/plugins/text:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
+        "//tensorflow/tools/api/golden:all_files",
+        "//tensorflow/tools/api/lib:all_files",
+        "//tensorflow/tools/api/tests:all_files",
         "//tensorflow/tools/common:all_files",
         "//tensorflow/tools/compatibility:all_files",
         "//tensorflow/tools/dist_test/server:all_files",
@@ -344,6 +346,11 @@ filegroup(
             "//third_party/mkl:intel_binary_blob",
         ],
     ),
+)
+
+filegroup(
+    name = "docs_src",
+    data = glob(["docs_src/**/*.md"]),
 )
 
 # -------------------------------------------

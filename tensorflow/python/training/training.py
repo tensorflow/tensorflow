@@ -68,6 +68,7 @@ See the @{$python/train} guide.
 @@LoggingTensorHook
 @@StopAtStepHook
 @@CheckpointSaverHook
+@@CheckpointSaverListener
 @@NewCheckpointReader
 @@StepCounterHook
 @@NanLossDuringTrainingError
@@ -128,6 +129,7 @@ from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
 from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook
+from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverListener
 from tensorflow.python.training.basic_session_run_hooks import StepCounterHook
 from tensorflow.python.training.basic_session_run_hooks import NanLossDuringTrainingError
 from tensorflow.python.training.basic_session_run_hooks import NanTensorHook

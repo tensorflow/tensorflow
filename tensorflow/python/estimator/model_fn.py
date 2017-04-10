@@ -51,6 +51,7 @@ class ModeKeys(object):
 class MetricKeys(object):
   """Metric key strings."""
   LOSS = 'loss'
+  AVERAGE_LOSS = 'average_loss'
 
 
 class EstimatorSpec(

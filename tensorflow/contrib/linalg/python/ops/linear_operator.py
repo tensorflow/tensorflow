@@ -30,7 +30,6 @@ __all__ = ["LinearOperator"]
 
 
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
-# TODO(langmore) Add adjoint_x arg to apply, solve.
 class LinearOperator(object):
   """Base class defining a [batch of] linear operator[s].
 
@@ -490,16 +489,18 @@ class LinearOperator(object):
           "Expected argument to have dtype %s.  Found: %s in tensor %s"
           % (self.dtype, arg.dtype, arg))
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
     raise NotImplementedError("_apply is not implemented.")
 
-  def apply(self, x, adjoint=False, name="apply"):
+  def apply(self, x, adjoint=False, adjoint_arg=False, name="apply"):
     """Transform `x` with left multiplication:  `x --> Ax`.
 
     Args:
       x: `Tensor` with compatible shape and same `dtype` as `self`.
         See class docstring for definition of compatibility.
-      adjoint: Python `bool`.  If `True`, left multiply by the adjoint.
+      adjoint: Python `bool`.  If `True`, left multiply by the adjoint: `A^H x`.
+      adjoint_arg:  Python `bool`.  If `True`, compute `A x^H` where `x^H` is
+        the hermitian transpose (transposition and complex conjugation).
       name:  A name for this `Op.
 
     Returns:
@@ -508,11 +509,12 @@ class LinearOperator(object):
     with self._name_scope(name, values=[x]):
       x = ops.convert_to_tensor(x, name="x")
       self._check_input_dtype(x)
-      if adjoint:
-        self.shape[-2].assert_is_compatible_with(x.get_shape()[-2])
-      else:
-        self.shape[-1].assert_is_compatible_with(x.get_shape()[-2])
-      return self._apply(x, adjoint=adjoint)
+
+      self_dim = -2 if adjoint else -1
+      arg_dim = -1 if adjoint_arg else -2
+      self.shape[self_dim].assert_is_compatible_with(x.get_shape()[arg_dim])
+
+      return self._apply(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
   def _determinant(self):
     raise NotImplementedError("_det is not implemented.")
@@ -558,13 +560,13 @@ class LinearOperator(object):
     with self._name_scope(name):
       return self._log_abs_determinant()
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     # Since this is an exact solve method for all rhs, this will only be
     # available for non-singular (batch) operators, in particular the operator
     # must be square.
     raise NotImplementedError("_solve is not implemented.")
 
-  def solve(self, rhs, adjoint=False, name="solve"):
+  def solve(self, rhs, adjoint=False, adjoint_arg=False, name="solve"):
     """Solve `R` (batch) systems of equations exactly: `A X = rhs`.
 
     Examples:
@@ -588,7 +590,9 @@ class LinearOperator(object):
       rhs: `Tensor` with same `dtype` as this operator and compatible shape.
         See class docstring for definition of compatibility.
       adjoint: Python `bool`.  If `True`, solve the system involving the adjoint
-        of this `LinearOperator`.
+        of this `LinearOperator`:  `A^H X = rhs`.
+      adjoint_arg:  Python `bool`.  If `True`, solve `A X = rhs^H` where `rhs^H`
+        is the hermitian transpose (transposition and complex conjugation).
       name:  A name scope to use for ops added by this method.
 
     Returns:
@@ -608,11 +612,12 @@ class LinearOperator(object):
     with self._name_scope(name, values=[rhs]):
       rhs = ops.convert_to_tensor(rhs, name="rhs")
       self._check_input_dtype(rhs)
-      if adjoint:
-        self.shape[-1].assert_is_compatible_with(rhs.get_shape()[-2])
-      else:
-        self.shape[-2].assert_is_compatible_with(rhs.get_shape()[-2])
-      return self._solve(rhs, adjoint=adjoint)
+
+      self_dim = -1 if adjoint else -2
+      arg_dim = -1 if adjoint_arg else -2
+      self.shape[self_dim].assert_is_compatible_with(rhs.get_shape()[arg_dim])
+
+      return self._solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
   def _to_dense(self):
     """Generic and often inefficient implementation.  Override often."""

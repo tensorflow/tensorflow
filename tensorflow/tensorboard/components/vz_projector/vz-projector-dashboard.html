@@ -16,6 +16,7 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-dashboard-common/tf-no-data-warning.html">
 <link rel="import" href="vz-projector.html">
 
@@ -37,18 +38,33 @@ limitations under the License.
 </template>
 <script>
 (function() {
-Polymer({
+TF.Dashboard.VzProjectorDashboard = Polymer({
   is: 'vz-projector-dashboard',
+  factoryImpl: function(routePrefix) {
+    this.routePrefix = routePrefix;
+  },
   properties: {
     dataNotFound: Boolean,
     routePrefix: String
   },
-  ready() {
-    var self = this;
-    d3.json(this.routePrefix + '/runs', function(err, runs) {
-      self.dataNotFound = (runs.length === 0);
+  behaviors: [
+    TF.Dashboard.DashboardBehavior("embeddings"),
+  ],
+  observers: [
+    "_routePrefixSet(routePrefix)",
+  ],
+  reload: function() {
+    // Do not reload the embedding projector. Reloading could take a long time.
+  },
+  _routePrefixSet: function(routePrefix) {
+    if (routePrefix === undefined) {
+      // The route prefix has not been set yet.
+      return;
+    }
+    d3.json(routePrefix + '/runs', (err, runs) => {
+      this.set('dataNotFound', runs.length === 0);
     });
-  }
+  },
 });
 })();
 </script>

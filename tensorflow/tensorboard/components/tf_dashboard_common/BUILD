@@ -41,6 +41,7 @@ tensorboard_typescript_genrule(
     name = "ts",
     srcs = [
         "categorizer.ts",
+        "dashboard-behavior.ts",
         "reload-behavior.ts",
     ],
     typings = [
@@ -89,6 +90,7 @@ tensorboard_ts_library(
     name = "legacy_ts",
     srcs = [
         "categorizer.ts",
+        "dashboard-behavior.ts",
         "reload-behavior.ts",
     ],
     deps = [

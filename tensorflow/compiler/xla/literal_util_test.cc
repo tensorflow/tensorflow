@@ -21,13 +21,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 
 class LiteralUtilTest : public ::testing::Test {
  protected:
@@ -159,9 +161,7 @@ TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
   // clang-format on
 
   auto literal = LiteralUtil::CreateR3FromArray3D(array_3d);
-  EXPECT_MATCH(testing::PBToVec<tensorflow::protobuf_int64>(
-                   literal->shape().dimensions()),
-               testing::VectorMatcher<tensorflow::protobuf_int64>({2, 3, 2}));
+  EXPECT_THAT(literal->shape().dimensions(), ElementsAre(2, 3, 2));
   string result = LiteralUtil::ToString(*literal);
   const string expected = R"(f32[2,3,2] {
 { { 1, 2 },
@@ -182,9 +182,7 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
     {2001, 2002},
   }, /*projection_p=*/1, /*projection_z=*/2);
   // clang-format on
-  EXPECT_MATCH(
-      testing::PBToVec(literal->shape().dimensions()),
-      testing::VectorMatcher<tensorflow::protobuf_int64>({1, 2, 3, 2}));
+  EXPECT_THAT(literal->shape().dimensions(), ElementsAre(1, 2, 3, 2));
   string result = LiteralUtil::ToString(*literal);
   const string expected = R"(f32[1,2,3,2] {
   {  // i0=0
@@ -204,10 +202,8 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
-  EXPECT_MATCH(
-      testing::PBToVec<tensorflow::protobuf_int64>(
-          literal_r4_2x2x3x3_dim0major_->shape().dimensions()),
-      testing::VectorMatcher<tensorflow::protobuf_int64>({2, 2, 3, 3}));
+  EXPECT_THAT(literal_r4_2x2x3x3_dim0major_->shape().dimensions(),
+              ElementsAre(2, 2, 3, 3));
   string result = LiteralUtil::ToString(*literal_r4_2x2x3x3_dim0major_);
   const string expected = R"(f32[2,2,3,3] {
   {  // i0=0
@@ -516,27 +512,23 @@ TEST_F(LiteralUtilTest, TestR2LinearLayout) {
   auto mat_dim0minor = LiteralUtil::CreateR2WithLayout<int>(
       {{1, 2, 3}, {4, 5, 6}}, layout_r2_dim0minor_);
   EXPECT_EQ(mat_dim0minor->s32s_size(), 6);
-  EXPECT_MATCH(testing::PBToVec<int32>(mat_dim0minor->s32s()),
-               testing::VectorMatcher<int32>({1, 4, 2, 5, 3, 6}));
+  EXPECT_THAT(mat_dim0minor->s32s(), ElementsAre(1, 4, 2, 5, 3, 6));
 
   // Test expected memory layout when using Relayout to row major.
   auto relaid_mat_to_dim0major =
       LiteralUtil::Relayout(*mat_dim0minor, layout_r2_dim0major_);
-  EXPECT_MATCH(testing::PBToVec<int32>(relaid_mat_to_dim0major->s32s()),
-               testing::VectorMatcher<int32>({1, 2, 3, 4, 5, 6}));
+  EXPECT_THAT(relaid_mat_to_dim0major->s32s(), ElementsAre(1, 2, 3, 4, 5, 6));
 
   // Test expected memory layout of R2 created with dim0-major (row-major).
   auto mat_dim0major = LiteralUtil::CreateR2WithLayout<int>(
       {{1, 2, 3}, {4, 5, 6}}, layout_r2_dim0major_);
   EXPECT_EQ(mat_dim0major->s32s_size(), 6);
-  EXPECT_MATCH(testing::PBToVec<int32>(mat_dim0major->s32s()),
-               testing::VectorMatcher<int32>({1, 2, 3, 4, 5, 6}));
+  EXPECT_THAT(mat_dim0major->s32s(), ElementsAre(1, 2, 3, 4, 5, 6));
 
   // Test expected memory layout when using Relayout to column major.
   auto relaid_mat_to_dim0minor =
       LiteralUtil::Relayout(*mat_dim0major, layout_r2_dim0minor_);
-  EXPECT_MATCH(testing::PBToVec<int32>(relaid_mat_to_dim0minor->s32s()),
-               testing::VectorMatcher<int32>({1, 4, 2, 5, 3, 6}));
+  EXPECT_THAT(relaid_mat_to_dim0minor->s32s(), ElementsAre(1, 4, 2, 5, 3, 6));
 }
 
 TEST_F(LiteralUtilTest, TestR3LinearLayout) {
@@ -558,28 +550,28 @@ TEST_F(LiteralUtilTest, TestR3LinearLayout) {
 
   EXPECT_EQ(lit_dim0minor->s32s_size(), 12);
   std::vector<int> expected_dim0minor{1, 7, 4, 10, 2, 8, 5, 11, 3, 9, 6, 12};
-  EXPECT_MATCH(testing::PBToVec<int32>(lit_dim0minor->s32s()),
-               testing::VectorMatcher<int32>(expected_dim0minor));
+  EXPECT_THAT(lit_dim0minor->s32s(),
+              testing::ElementsAreArray(expected_dim0minor));
 
   // Test expected memory layout when using Relayout to row major.
   auto relaid_lit_to_dim0major =
       LiteralUtil::Relayout(*lit_dim0minor, layout_r3_dim0major_);
   std::vector<int> expected_dim0major{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-  EXPECT_MATCH(testing::PBToVec<int32>(relaid_lit_to_dim0major->s32s()),
-               testing::VectorMatcher<int32>(expected_dim0major));
+  EXPECT_THAT(relaid_lit_to_dim0major->s32s(),
+              testing::ElementsAreArray(expected_dim0major));
 
   // Test expected memory layout of R3 created with dim0-major (row-major).
   auto lit_dim0major = LiteralUtil::CreateR3FromArray3DWithLayout<int>(
       arr3d, layout_r3_dim0major_);
   EXPECT_EQ(lit_dim0major->s32s_size(), 12);
-  EXPECT_MATCH(testing::PBToVec<int32>(lit_dim0major->s32s()),
-               testing::VectorMatcher<int32>(expected_dim0major));
+  EXPECT_THAT(lit_dim0major->s32s(),
+              testing::ElementsAreArray(expected_dim0major));
 
   // Test expected memory layout when using Relayout to column major.
   auto relaid_lit_to_dim0minor =
       LiteralUtil::Relayout(*lit_dim0major, layout_r3_dim0minor_);
-  EXPECT_MATCH(testing::PBToVec<int32>(relaid_lit_to_dim0minor->s32s()),
-               testing::VectorMatcher<int32>(expected_dim0minor));
+  EXPECT_THAT(relaid_lit_to_dim0minor->s32s(),
+              testing::ElementsAreArray(expected_dim0minor));
 }
 
 TEST_F(LiteralUtilTest, SliceR0S32) {

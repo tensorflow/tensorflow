@@ -19,6 +19,7 @@ filegroup(
     srcs = [
         "devices.cc",
         "devices.h",
+        "grappler_item.cc",
         "grappler_item.h",
         "utils.cc",
         "utils.h",
