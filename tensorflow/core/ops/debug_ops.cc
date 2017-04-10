@@ -63,6 +63,7 @@ REGISTER_OP("DebugIdentity")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
     .Attr("debug_urls: list(string) = []")
+    .Attr("gated_grpc: bool = false")
     .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Debug Identity Op.
@@ -73,7 +74,13 @@ input: Input tensor, non-Reference type.
 output: Output tensor that equals the input tensor.
 tensor_name: Name of the input tensor.
 debug_urls: List of URLs to debug targets, e.g.,
-            file:///foo/tfdbg_dump, grpc:://localhost:11011
+  file:///foo/tfdbg_dump, grpc:://localhost:11011
+gated_grpc: Whether this op will be gated. If any of the debug_urls of this
+  debug node is of the grpc:// scheme, when the value of this attribute is set
+  to True, the data will not actually be sent via the grpc stream unless this
+  debug op has been enabled at the debug_url. If all of the debug_urls of this
+  debug node are of the grpc:// scheme and the debug op is enabled at none of
+  them, the output will be an empty Tensor.
 )doc");
 
 REGISTER_OP("DebugNanCount")
@@ -82,6 +89,7 @@ REGISTER_OP("DebugNanCount")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
     .Attr("debug_urls: list(string) = []")
+    .Attr("gated_grpc: bool = false")
     .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Debug NaN Value Counter Op
@@ -92,7 +100,13 @@ input: Input tensor, non-Reference type.
 output: An integer output tensor that is the number of NaNs in the input.
 tensor_name: Name of the input tensor.
 debug_urls: List of URLs to debug targets, e.g.,
-            file:///foo/tfdbg_dump, grpc:://localhost:11011
+  file:///foo/tfdbg_dump, grpc:://localhost:11011.
+gated_grpc: Whether this op will be gated. If any of the debug_urls of this
+  debug node is of the grpc:// scheme, when the value of this attribute is set
+  to True, the data will not actually be sent via the grpc stream unless this
+  debug op has been enabled at the debug_url. If all of the debug_urls of this
+  debug node are of the grpc:// scheme and the debug op is enabled at none of
+  them, the output will be an empty Tensor.
 )doc");
 
 REGISTER_OP("DebugNumericSummary")
@@ -104,6 +118,7 @@ REGISTER_OP("DebugNumericSummary")
     .Attr("lower_bound: float = -inf")
     .Attr("upper_bound: float = inf")
     .Attr("mute_if_healthy: bool = false")
+    .Attr("gated_grpc: bool = false")
     .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Debug Numeric Summary Op.
@@ -144,6 +159,12 @@ upper_bound: (float) The upper bound >= which values will be included in the
 mute_if_healthy: (bool) Do not send data to the debug URLs unless at least one
   of elements [2], [3] and [7] (i.e., the nan count and the generalized -inf and
   inf counts) is non-zero.
+gated_grpc: Whether this op will be gated. If any of the debug_urls of this
+  debug node is of the grpc:// scheme, when the value of this attribute is set
+  to True, the data will not actually be sent via the grpc stream unless this
+  debug op has been enabled at the debug_url. If all of the debug_urls of this
+  debug node are of the grpc:// scheme and the debug op is enabled at none of
+  them, the output will be an empty Tensor.
 
 )doc");
 
