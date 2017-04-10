@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<android.support.constraint.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="org.tensorflow.demo.MainActivity">
+
+    <LinearLayout
+        android:layout_width="395dp"
+        android:layout_height="587dp"
+        android:orientation="vertical"
+        tools:layout_editor_absoluteX="8dp"
+        tools:layout_editor_absoluteY="8dp">
+
+        <Button
+            android:id="@+id/classify_button"
+            style="@style/Widget.AppCompat.Button"
+            android:textSize="24dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:onClick="classify"
+            android:text="@string/classify" />
+
+        <Button
+            android:id="@+id/history_button"
+            style="@style/Widget.AppCompat.Button"
+            android:textSize="24dp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:onClick="classifyHistory"
+            android:text="@string/previous_classifications" />
+    </LinearLayout>
+</android.support.constraint.ConstraintLayout>

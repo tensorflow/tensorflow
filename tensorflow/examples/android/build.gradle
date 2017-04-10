@@ -6,7 +6,7 @@
 // automates the process of calling out to it and copying the compiled
 // libraries back into the appropriate directory.
 
-def bazel_location = '/usr/local/bin/bazel'
+def bazel_location = '/usr/bin/bazel'
 def cpuType = 'armeabi-v7a'
 def nativeDir = 'libs/' + cpuType
 
@@ -19,7 +19,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.2.0'
+        classpath 'com.android.tools.build:gradle:2.3.0'
     }
 }
 
@@ -27,7 +27,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 24
-    buildToolsVersion "24.0.1"
+    buildToolsVersion '25.0.0'
 
     lintOptions {
         abortOnError false
@@ -90,4 +90,5 @@ afterEvaluate {
 
 dependencies {
     compile 'com.android.support:design:25.2.0'
+    compile 'com.android.support.constraint:constraint-layout:1.0.2'
 }
