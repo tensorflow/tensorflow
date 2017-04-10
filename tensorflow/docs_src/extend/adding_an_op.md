@@ -182,10 +182,10 @@ g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC -O2
 On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
 building the `.so` file.
 
->   Note on gcc version 5: gcc5 uses the new C++
->   [ABI](https://gcc.gnu.org/gcc-5/changes.html#libstdcxx). The binary pip
->   packages available on the TensorFlow website are built with gcc4 that uses
->   the older ABI. If you compile your op library with gcc5, add
+>   Note on `gcc` version `>=5`: gcc uses the new C++
+>   [ABI](https://gcc.gnu.org/gcc-5/changes.html#libstdcxx) since version `5`. The binary pip
+>   packages available on the TensorFlow website are built with `gcc4` that uses
+>   the older ABI. If you compile your op library with `gcc>=5`, add
 >   `-D_GLIBCXX_USE_CXX11_ABI=0` to the command line to make the library
 >   compatible with the older abi.
 >   Furthermore if you are using TensorFlow package created from source remember to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
