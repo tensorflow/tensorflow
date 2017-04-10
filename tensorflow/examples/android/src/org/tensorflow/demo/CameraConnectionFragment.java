@@ -47,6 +47,7 @@ import android.support.design.widget.FloatingActionButton;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
@@ -167,6 +168,7 @@ public class CameraConnectionFragment extends Fragment {
           cameraDevice = cd;
           createCameraPreviewSession();
           configureCameraFloatingActionButton();
+            configureTouchFocus();
         }
 
         @Override
@@ -487,6 +489,8 @@ public class CameraConnectionFragment extends Fragment {
             final TotalCaptureResult result)
         {
           createCameraPreviewSession();
+          //this is where to swtich screen if need to later.
+          //change the comment out the above call and switch screen
         }
       };
 
@@ -554,7 +558,8 @@ public class CameraConnectionFragment extends Fragment {
       // Auto focus should be continuous for camera preview.
       previewRequestBuilder.set(
               CaptureRequest.CONTROL_AF_MODE,
-              CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+              CaptureRequest.CONTROL_AF_MODE_OFF);
+              //CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
       // Flash is automatically enabled when necessary.
       previewRequestBuilder.set(
               CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
@@ -572,6 +577,14 @@ public class CameraConnectionFragment extends Fragment {
     }
   }
 
+    /**
+     * This implements the manual touch focus
+     */
+    private boolean focusInOnTouch()
+    {
+        showToast("Manual Focus in development");
+        return false;
+    }
   /**
    * This creates a new capture session to actually take the photo and analyze it.
    */
@@ -639,11 +652,24 @@ public class CameraConnectionFragment extends Fragment {
   {
     FloatingActionButton myFab = (FloatingActionButton) parentView.findViewById(R.id.cameraFloatingActionButton);
     myFab.setOnClickListener(new View.OnClickListener() {
+      @Override
       public void onClick(View v) {
         takePhoto();
       }
+
     });
+
   }
+    private void configureTouchFocus()
+    {
+        textureView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent motionEvent)
+            {
+                return focusInOnTouch();
+            }
+        });
+    }
 
   /**
    * Configures the necessary {@link android.graphics.Matrix} transformation to `mTextureView`.

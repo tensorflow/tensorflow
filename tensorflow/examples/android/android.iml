@@ -9,7 +9,6 @@
     <facet type="android" name="Android">
       <configuration>
         <option name="SELECTED_BUILD_VARIANT" value="debug" />
-        <option name="SELECTED_TEST_ARTIFACT" value="_android_test_" />
         <option name="ASSEMBLE_TASK_NAME" value="assembleDebug" />
         <option name="COMPILE_JAVA_TASK_NAME" value="compileDebugSources" />
         <afterSyncTasks>
@@ -32,12 +31,14 @@
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/source/aidl/debug" isTestSource="false" generated="true" />
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/source/buildConfig/debug" isTestSource="false" generated="true" />
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/source/rs/debug" isTestSource="false" generated="true" />
+      <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/source/apt/debug" isTestSource="false" generated="true" />
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/res/rs/debug" type="java-resource" />
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/res/resValues/debug" type="java-resource" />
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/source/r/androidTest/debug" isTestSource="true" generated="true" />
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/source/aidl/androidTest/debug" isTestSource="true" generated="true" />
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/source/buildConfig/androidTest/debug" isTestSource="true" generated="true" />
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/source/rs/androidTest/debug" isTestSource="true" generated="true" />
+      <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/source/apt/androidTest/debug" isTestSource="true" generated="true" />
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/res/rs/androidTest/debug" type="java-test-resource" />
       <sourceFolder url="file://$MODULE_DIR$/gradleBuild/generated/res/resValues/androidTest/debug" type="java-test-resource" />
       <sourceFolder url="file://$MODULE_DIR$/build-types/debug/res" type="java-resource" />
@@ -45,7 +46,6 @@
       <sourceFolder url="file://$MODULE_DIR$/build-types/debug/assets" type="java-resource" />
       <sourceFolder url="file://$MODULE_DIR$/build-types/debug/aidl" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/build-types/debug/java" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/build-types/debug/jni" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/build-types/debug/rs" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/build-types/debug/shaders" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/testDebug/res" type="java-test-resource" />
@@ -53,21 +53,19 @@
       <sourceFolder url="file://$MODULE_DIR$/src/testDebug/assets" type="java-test-resource" />
       <sourceFolder url="file://$MODULE_DIR$/src/testDebug/aidl" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/src/testDebug/java" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/src/testDebug/jni" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/src/testDebug/rs" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/src/testDebug/shaders" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/res" type="java-resource" />
       <sourceFolder url="file://$MODULE_DIR$/src" type="java-resource" />
       <sourceFolder url="file://$MODULE_DIR$/assets" type="java-resource" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/src/main/jni" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/src/main/java" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/main/shaders" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/androidTest/res" type="java-test-resource" />
       <sourceFolder url="file://$MODULE_DIR$/src/androidTest/resources" type="java-test-resource" />
       <sourceFolder url="file://$MODULE_DIR$/src/androidTest/assets" type="java-test-resource" />
       <sourceFolder url="file://$MODULE_DIR$/src/androidTest/aidl" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/src/androidTest/java" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/src/androidTest/jni" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/src/androidTest/rs" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/src/androidTest/shaders" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/src/test/res" type="java-test-resource" />
@@ -75,29 +73,65 @@
       <sourceFolder url="file://$MODULE_DIR$/src/test/assets" type="java-test-resource" />
       <sourceFolder url="file://$MODULE_DIR$/src/test/aidl" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/src/test/java" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/src/test/jni" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/src/test/rs" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/src/test/shaders" isTestSource="true" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/android-profile" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/assets" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/blame" />
-      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/bundles" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/builds" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/classes" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/dependency-cache" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/dex-cache" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/animated-vector-drawable/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/appcompat-v7/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/design/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/recyclerview-v7/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-compat/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-core-ui/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-core-utils/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-fragment/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-media-compat/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-v4/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-vector-drawable/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/transition/25.2.0/jars" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/incremental" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/incremental-classes" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/incremental-runtime-classes" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/incremental-safeguard" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/incremental-verifier" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/instant-run-resources" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/instant-run-support" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/jniLibs" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/manifests" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/pre-dexed" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/reload-dex" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/res" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/restart-dex" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/rs" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/shaders" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/split-apk" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/symbols" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/transforms" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/outputs" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/tmp" />
     </content>
+    <content url="file://$MODULE_DIR$/../../java/src/main/java">
+      <sourceFolder url="file://$MODULE_DIR$/../../java/src/main/java" isTestSource="false" />
+    </content>
     <orderEntry type="jdk" jdkName="Android API 24 Platform" jdkType="Android SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="library" exported="" name="design-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="transition-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="support-v4-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="support-compat-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="support-media-compat-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="support-core-ui-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="appcompat-v7-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="recyclerview-v7-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="support-annotations-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="support-vector-drawable-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="support-core-utils-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="support-fragment-25.2.0" level="project" />
+    <orderEntry type="library" exported="" name="animated-vector-drawable-25.2.0" level="project" />
   </component>
 </module>
