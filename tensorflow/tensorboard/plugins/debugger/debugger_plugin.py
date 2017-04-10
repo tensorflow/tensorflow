@@ -34,7 +34,7 @@ from tensorflow.tensorboard.backend.event_processing import event_file_loader
 from tensorflow.tensorboard.plugins import base_plugin
 
 # The prefix of routes provided by this plugin.
-PLUGIN_PREFIX_ROUTE = 'debugger'
+_PLUGIN_PREFIX_ROUTE = 'debugger'
 
 # HTTP routes.
 _HEALTH_PILLS_ROUTE = '/health_pills'
@@ -63,6 +63,8 @@ class DebuggerPlugin(base_plugin.TBPlugin):
   values.
   """
 
+  plugin_name = _PLUGIN_PREFIX_ROUTE
+
   def get_plugin_apps(self, multiplexer, logdir):
     """Obtains a mapping between routes and handlers. Stores the logdir.
 
@@ -79,6 +81,21 @@ class DebuggerPlugin(base_plugin.TBPlugin):
     return {
         _HEALTH_PILLS_ROUTE: self._serve_health_pills_handler,
     }
+
+  def is_active(self):
+    """Determines whether this plugin is active.
+
+    This plugin is active if any health pills information is present for any
+    run. This method must be called only after get_plugin_apps has been called.
+
+    Returns:
+      A boolean. Whether this plugin is active.
+    """
+    for run_name in self._event_multiplexer.Runs():
+      if self._event_multiplexer.GetOpsWithHealthPills(run_name):
+        return True
+
+    return False
 
   @wrappers.Request.application
   def _serve_health_pills_handler(self, request):

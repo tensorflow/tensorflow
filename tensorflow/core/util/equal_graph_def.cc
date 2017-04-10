@@ -28,13 +28,18 @@ bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
                    string* diff, const EqualGraphDefOptions& options) {
   // Intentionally do not check that versions match so that this routine can
   // be used for less brittle golden file tests.
+  return EqualRepeatedNodeDef(actual.node(), expected.node(), diff, options);
+}
 
+bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
+                          const protobuf::RepeatedPtrField<NodeDef>& expected,
+                          string* diff, const EqualGraphDefOptions& options) {
   std::unordered_map<string, const NodeDef*> actual_index;
-  for (const NodeDef& node : actual.node()) {
+  for (const NodeDef& node : actual) {
     actual_index[node.name()] = &node;
   }
 
-  for (const NodeDef& expected_node : expected.node()) {
+  for (const NodeDef& expected_node : expected) {
     auto actual_iter = actual_index.find(expected_node.name());
     if (actual_iter == actual_index.end()) {
       if (diff != nullptr) {
@@ -53,10 +58,9 @@ bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
 
   if (!actual_index.empty()) {
     if (diff != nullptr) {
-      *diff = strings::StrCat("Found unexpected node '",
-                              SummarizeNodeDef(*actual_index.begin()->second),
-                              "' not in expected graph:\n",
-                              SummarizeGraphDef(expected));
+      *diff =
+          strings::StrCat("Found unexpected node '",
+                          SummarizeNodeDef(*actual_index.begin()->second), "'");
     }
     return false;
   }

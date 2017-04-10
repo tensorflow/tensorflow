@@ -230,6 +230,10 @@ string DebugString(const GraphDef& instantiated_func_def);
 // its supporting functions defined in its library).
 string DebugStringWhole(const GraphDef& gdef);
 
+// Returns true if f1 == f2. Compares all fields, including descriptions. Order
+// of NodeDefs doesn't matter.
+bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
+
 // Returns a canonicalized string for the instantiation of the
 // function of the given "name" and attributes "attrs".
 //
@@ -302,6 +306,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Adds the functions and gradients in 'other' to this function library.
   Status AddLibrary(const FunctionLibraryDefinition& other);
+
+  // Adds the functions and gradients in 'lib_def' to this function library.
+  Status AddLibrary(const FunctionDefLibrary& lib_def);
 
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,

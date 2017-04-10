@@ -47,7 +47,7 @@ Status InputBuffer::ReadLine(string* result) {
   Status s;
   do {
     size_t buf_remain = limit_ - pos_;
-    char* newline = (char*)memchr(pos_, '\n', buf_remain);
+    char* newline = static_cast<char*>(memchr(pos_, '\n', buf_remain));
     if (newline != nullptr) {
       size_t result_len = newline - pos_;
       result->append(pos_, result_len);

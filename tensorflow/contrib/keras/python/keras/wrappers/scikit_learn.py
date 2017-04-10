@@ -194,6 +194,36 @@ class KerasClassifier(BaseWrapper):
   """Implementation of the scikit-learn classifier API for Keras.
   """
 
+  def fit(self, x, y, **kwargs):
+    """Constructs a new model with `build_fn` & fit the model to `(x, y)`.
+
+    Arguments:
+        x : array-like, shape `(n_samples, n_features)`
+            Training samples where n_samples in the number of samples
+            and n_features is the number of features.
+        y : array-like, shape `(n_samples,)` or `(n_samples, n_outputs)`
+            True labels for X.
+        **kwargs: dictionary arguments
+            Legal arguments are the arguments of `Sequential.fit`
+
+    Returns:
+        history : object
+            details about the training history at each epoch.
+
+    Raises:
+        ValueError: In case of invalid shape for `y` argument.
+    """
+    y = np.array(y)
+    if len(y.shape) == 2 and y.shape[1] > 1:
+      self.classes_ = np.arange(y.shape[1])
+    elif (len(y.shape) == 2 and y.shape[1] == 1) or len(y.shape) == 1:
+      self.classes_ = np.unique(y)
+      y = np.searchsorted(self.classes_, y)
+    else:
+      raise ValueError('Invalid shape for y: ' + str(y.shape))
+    self.n_classes_ = len(self.classes_)
+    return super(KerasClassifier, self).fit(x, y, **kwargs)
+
   def predict(self, x, **kwargs):
     """Returns the class predictions for the given test data.
 
@@ -210,7 +240,8 @@ class KerasClassifier(BaseWrapper):
             Class predictions.
     """
     kwargs = self.filter_sk_params(Sequential.predict_classes, kwargs)
-    return self.model.predict_classes(x, **kwargs)
+    classes = self.model.predict_classes(x, **kwargs)
+    return self.classes_[classes]
 
   def predict_proba(self, x, **kwargs):
     """Returns class probability estimates for the given test data.
@@ -261,6 +292,7 @@ class KerasClassifier(BaseWrapper):
             compute accuracy. You should pass `metrics=["accuracy"]` to
             the `.compile()` method of the model.
     """
+    y = np.searchsorted(self.classes_, y)
     kwargs = self.filter_sk_params(Sequential.evaluate, kwargs)
 
     loss_name = self.model.loss

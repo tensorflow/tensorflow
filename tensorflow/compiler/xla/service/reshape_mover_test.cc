@@ -202,5 +202,56 @@ TEST_F(ReshapeMoverTest, ScalarReshapeNotMovedAcrossSelect) {
   EXPECT_EQ(select, computation->root_instruction());
 }
 
+// Tree looks like this:
+//
+// add1
+// |
+// +- reshape2 - param2
+// |
+// +- reshape3 - add0
+//               |
+//               + reshape0 - param0
+//               |
+//               + reshape1 - param1
+//
+// We expect reshape{0,1} AND reshape{2,3} to be lifted.
+TEST_F(ReshapeMoverTest, MultiplePasses) {
+  auto shape1 = ShapeUtil::MakeShape(F32, {1, 8, 1, 7});
+  auto shape2 = ShapeUtil::MakeShape(F32, {8, 7, 1});
+  auto shape3 = ShapeUtil::MakeShape(F32, {8, 7});
+  HloComputation::Builder builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape1, "param0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape1, "param1"));
+  auto param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, shape2, "param2"));
+  auto reshape0 =
+      builder.AddInstruction(HloInstruction::CreateReshape(shape2, param0));
+  auto reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(shape2, param1));
+  auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape2, HloOpcode::kAdd, reshape0, reshape1));
+  auto reshape2 =
+      builder.AddInstruction(HloInstruction::CreateReshape(shape3, param2));
+  auto reshape3 =
+      builder.AddInstruction(HloInstruction::CreateReshape(shape3, add0));
+  auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape3, HloOpcode::kAdd, reshape2, reshape3));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(add1, computation->root_instruction());
+  EXPECT_TRUE(ReshapeMover().Run(module.get()).ValueOrDie());
+  EXPECT_EQ(HloOpcode::kReshape, computation->root_instruction()->opcode());
+  EXPECT_EQ(HloOpcode::kAdd,
+            computation->root_instruction()->operand(0)->opcode());
+  const auto& add_params =
+      computation->root_instruction()->operand(0)->operands();
+  EXPECT_EQ(2, add_params.size());
+  EXPECT_EQ(HloOpcode::kParameter, add_params[0]->opcode());
+  EXPECT_EQ(HloOpcode::kReshape, add_params[1]->opcode());
+}
+
 }  // namespace
 }  // namespace xla

@@ -171,11 +171,12 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits, probs=probs, validate_args=validate_args)
       super(RelaxedBernoulli, self).__init__(
-          distribution=logistic.Logistic(self._logits / self._temperature,
-                                         1. / self._temperature,
-                                         validate_args=validate_args,
-                                         allow_nan_stats=allow_nan_stats,
-                                         name=name + "/Logistic"),
+          distribution=logistic.Logistic(
+              self._logits / self._temperature,
+              1. / self._temperature,
+              validate_args=validate_args,
+              allow_nan_stats=allow_nan_stats,
+              name=name + "/Logistic"),
           bijector=sigmoid_lib.Sigmoid(validate_args=validate_args),
           validate_args=validate_args,
           name=name)

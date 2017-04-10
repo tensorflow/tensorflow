@@ -26,6 +26,7 @@ import six
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.framework import get_graph_from_inputs
 from tensorflow.contrib.learn.python.learn.estimators import constants
+from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.python.estimator import model_fn as core_model_fn_lib
 from tensorflow.python.estimator.export import export_output as core_export_lib
@@ -52,12 +53,17 @@ class ModeKeys(object):
   EVAL = 'eval'
   INFER = 'infer'
 
+  @classmethod
+  def validate(cls, key):
+    if key not in (cls.TRAIN, cls.EVAL, cls.INFER):
+      raise ValueError('Invalid mode %s.' % key)
+
 
 class ModelFnOps(
     collections.namedtuple('ModelFnOps', [
         'predictions', 'loss', 'train_op', 'eval_metric_ops',
         'output_alternatives', 'training_chief_hooks', 'training_hooks',
-        'scaffold'
+        'scaffold', 'mode'
     ])):
   """Ops returned from a model_fn."""
 
@@ -118,6 +124,8 @@ class ModelFnOps(
     Raises:
       ValueError: If validation fails.
     """
+    ModeKeys.validate(mode)
+
     # Assert all ops are from the same graph.
     get_graph_from_inputs((predictions, loss, train_op))
 
@@ -182,14 +190,13 @@ class ModelFnOps(
         output_alternatives=output_alternatives,
         training_chief_hooks=training_chief_hooks,
         training_hooks=training_hooks,
-        scaffold=scaffold)
+        scaffold=scaffold,
+        mode=mode)
 
-  def estimator_spec(self, mode, default_serving_output_alternative_key=None):
+  def estimator_spec(self, default_serving_output_alternative_key=None):
     """Creates an equivalent `EstimatorSpec`.
 
     Args:
-      mode: One of `ModeKeys`. Specifies if this training, evaluation or
-        prediction.
       default_serving_output_alternative_key: Required for multiple heads. If
         you have multiple entries in `output_alternatives` dict (comparable to
         multiple heads), `EstimatorSpec` requires a default head that will be
@@ -255,12 +262,20 @@ class ModelFnOps(
       export_outputs_dict = {key: _export_output(*val) for key, val in
                              output_alternatives.items()}
 
+    def _get_eval_metric_ops():
+      """Returns self.eval_metric_ops without loss metric."""
+      result = {}
+      for key, value in six.iteritems(self.eval_metric_ops):
+        if key != metric_key.MetricKey.LOSS:
+          result[key] = value
+      return result
+
     return core_model_fn_lib.EstimatorSpec(
-        mode=mode,
+        mode=self.mode,
         predictions=self.predictions,
         loss=self.loss,
         train_op=self.train_op,
-        eval_metric_ops=self.eval_metric_ops,
+        eval_metric_ops=_get_eval_metric_ops(),
         export_outputs=export_outputs_dict,
         training_chief_hooks=self.training_chief_hooks,
         training_hooks=self.training_hooks,

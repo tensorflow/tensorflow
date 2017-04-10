@@ -359,8 +359,9 @@ def _read_keyed_batch_examples_helper(file_pattern,
   # Check input parameters are given and reasonable.
   if (not queue_capacity) or (queue_capacity <= 0):
     raise ValueError('Invalid queue_capacity %s.' % queue_capacity)
-  if (batch_size is None) or ((not isinstance(batch_size, ops.Tensor)) and
-                              (batch_size <= 0 or batch_size > queue_capacity)):
+  if (batch_size is None) or (
+      (not isinstance(batch_size, ops.Tensor)) and
+      (batch_size <= 0 or batch_size >= queue_capacity)):
     raise ValueError('Invalid batch_size %s, with queue_capacity %s.' %
                      (batch_size, queue_capacity))
   if (read_batch_size is None) or (

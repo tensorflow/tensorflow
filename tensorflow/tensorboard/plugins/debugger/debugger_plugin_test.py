@@ -96,7 +96,7 @@ class DebuggerPluginTest(test.TestCase):
     })
     self.plugin = debugger_plugin.DebuggerPlugin()
     wsgi_app = application.TensorBoardWSGIApp(
-        self.log_dir, {'debugger': self.plugin},
+        self.log_dir, [self.plugin],
         self.multiplexer,
         reload_interval=0)
     self.server = werkzeug_test.Client(wsgi_app, wrappers.BaseResponse)
@@ -145,6 +145,19 @@ class DebuggerPluginTest(test.TestCase):
     apps = self.plugin.get_plugin_apps(self.multiplexer, self.log_dir)
     self.assertIn('/health_pills', apps)
     self.assertIsInstance(apps['/health_pills'], collections.Callable)
+
+  def testHealthPillsPluginIsActive(self):
+    self.plugin.get_plugin_apps(self.multiplexer, self.log_dir)
+
+    # The multiplexer has sampled health pills.
+    self.assertTrue(self.plugin.is_active())
+
+  def testHealthPillsPluginIsInactive(self):
+    self.plugin.get_plugin_apps(
+        event_multiplexer.EventMultiplexer({}), self.log_dir)
+
+    # The multiplexer lacks sampled health pills.
+    self.assertFalse(self.plugin.is_active())
 
   def testRequestHealthPillsForRunFoo(self):
     """Tests that the plugin produces health pills for a specified run."""

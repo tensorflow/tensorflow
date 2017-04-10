@@ -45,6 +45,14 @@ tf_cuda_library(
     }),
 )
 
+exports_files(
+    [
+        "version_script.lds",
+        "exported_symbols.lds",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 tf_cuda_library(
     name = "tf_status_helper",
     srcs = ["tf_status_helper.cc"],

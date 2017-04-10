@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -43,6 +44,14 @@ bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
 // diff != nullptr, *diff is set to an explanation of the difference.
 bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff,
                   const EqualGraphDefOptions& options = {});
+
+// Determines if actual and expected are equal, ignoring ordering. If they're
+// different and diff != nullptr, *diff is set to an explanation of the
+// difference.
+bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
+                          const protobuf::RepeatedPtrField<NodeDef>& expected,
+                          string* diff,
+                          const EqualGraphDefOptions& options = {});
 
 #define TF_EXPECT_GRAPH_EQ(expected, actual)                  \
   do {                                                        \

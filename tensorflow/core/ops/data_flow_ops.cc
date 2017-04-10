@@ -120,7 +120,7 @@ REGISTER_OP("DynamicStitch")
       TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
 
       ShapeHandle extra_shape = c->UnknownShape();
-      for (int i = 0; i < num_partitions; ++i) {
+      for (int64 i = 0; i < num_partitions; ++i) {
         ShapeHandle indices_shape = c->input(i);
         ShapeHandle data_shape = c->input(i + num_partitions);
         if (!c->RankKnown(indices_shape)) {

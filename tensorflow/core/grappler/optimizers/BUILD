@@ -17,11 +17,46 @@ filegroup(
     srcs = glob(
         [
             "*_optimizer.*",
+            "constant_folding.*",
             "model_pruner.*",
             "graph_rewriter.*",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+cc_library(
+    name = "auto_parallel",
+    srcs = ["auto_parallel.cc"],
+    hdrs = [
+        "auto_parallel.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+    ],
+)
+
+cc_test(
+    name = "auto_parallel_test",
+    srcs = ["auto_parallel_test.cc"],
+    deps = [
+        ":auto_parallel",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
 )
 
 cc_library(
@@ -118,6 +153,37 @@ cc_test(
 )
 
 cc_library(
+    name = "memory_optimizer",
+    srcs = ["memory_optimizer.cc"],
+    hdrs = [
+        "memory_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        ":graph_rewriter",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+cc_test(
+    name = "memory_optimizer_test",
+    srcs = ["memory_optimizer_test.cc"],
+    deps = [
+        ":memory_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
+)
+
+cc_library(
     name = "layout_optimizer",
     srcs = ["layout_optimizer.cc"],
     hdrs = [
@@ -144,8 +210,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":constant_folding",
         ":graph_optimizer",
         ":layout_optimizer",
+        ":memory_optimizer",
         ":model_pruner",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

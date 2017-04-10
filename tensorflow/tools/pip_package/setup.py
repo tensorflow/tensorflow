@@ -29,14 +29,14 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.1.0-rc0'
+_VERSION = '1.1.0-rc1'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
     'protobuf >= 3.2.0',
     'werkzeug >= 0.11.10',
-    'html5lib == 1.0b8',
+    'html5lib == 0.9999999',  # identical to 1.0b8
     'markdown == 2.2.0',
     'bleach == 1.5.0',
 ]
@@ -167,15 +167,12 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*', 'third_party/eigen3')) +
            list(find_files('*', 'external/eigen_archive')))
 
-tf_long_description = (
-    'Note: TensorFlow manylinux1 wheels do not conform to the '
-    'specification in PEP531.')
 
 setup(
     name=project_name,
     version=_VERSION.replace('-', ''),
     description='TensorFlow helps the tensors flow',
-    long_description=tf_long_description,
+    long_description='',
     url='http://tensorflow.org/',
     author='Google Inc.',
     author_email='opensource@google.com',
