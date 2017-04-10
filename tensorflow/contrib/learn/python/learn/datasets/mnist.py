@@ -118,10 +118,7 @@ class DataSet(object):
     """
     seed1, seed2 = random_seed.get_seed(seed)
     # If op level seed is not set, use whatever graph level seed is returned
-    if seed == None:
-        numpy.random.seed(seed1)
-    else:
-        numpy.random.seed(seed2)
+    numpy.random.seed(seed1 if seed is None else seed2)
     dtype = dtypes.as_dtype(dtype).base_dtype
     if dtype not in (dtypes.uint8, dtypes.float32):
       raise TypeError('Invalid image dtype %r, expected uint8 or float32' %
