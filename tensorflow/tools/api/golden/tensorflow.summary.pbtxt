@@ -1,0 +1,67 @@
+path: "tensorflow.summary"
+tf_module {
+  member {
+    name: "Event"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "FileWriter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FileWriterCache"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionLog"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "Summary"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "SummaryDescription"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "TaggedRunMetadata"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member_method {
+    name: "audio"
+    argspec: "args=[\'name\', \'tensor\', \'sample_rate\', \'max_outputs\', \'collections\'], varargs=None, keywords=None, defaults=[\'3\', \'None\'], "
+  }
+  member_method {
+    name: "get_summary_description"
+    argspec: "args=[\'node_def\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "histogram"
+    argspec: "args=[\'name\', \'values\', \'collections\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "image"
+    argspec: "args=[\'name\', \'tensor\', \'max_outputs\', \'collections\'], varargs=None, keywords=None, defaults=[\'3\', \'None\'], "
+  }
+  member_method {
+    name: "merge"
+    argspec: "args=[\'inputs\', \'collections\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "merge_all"
+    argspec: "args=[\'key\'], varargs=None, keywords=None, defaults=[\'summaries\'], "
+  }
+  member_method {
+    name: "scalar"
+    argspec: "args=[\'name\', \'tensor\', \'collections\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_summary"
+    argspec: "args=[\'name\', \'tensor\', \'summary_description\', \'collections\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "text"
+    argspec: "args=[\'name\', \'tensor\', \'collections\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

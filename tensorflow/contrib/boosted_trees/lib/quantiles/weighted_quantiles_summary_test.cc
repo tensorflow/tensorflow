@@ -91,9 +91,10 @@ TEST_F(WeightedQuantilesSummaryTest, BuildFromBuffer) {
 }
 
 TEST_F(WeightedQuantilesSummaryTest, CompressSeparately) {
+  const auto entry_list = buffer1_->GenerateEntryList();
   for (int new_size = 9; new_size >= 2; --new_size) {
     Summary summary;
-    summary.BuildFromBufferEntries(buffer1_->GenerateEntryList());
+    summary.BuildFromBufferEntries(entry_list);
     summary.Compress(new_size);
 
     // Expect a max approximation error of 1 / n
@@ -161,10 +162,12 @@ TEST_F(WeightedQuantilesSummaryTest, CompressRandomized) {
 
 TEST_F(WeightedQuantilesSummaryTest, MergeSymmetry) {
   // Create two separate summaries and merge.
+  const auto list_1 = buffer1_->GenerateEntryList();
+  const auto list_2 = buffer2_->GenerateEntryList();
   Summary summary1;
-  summary1.BuildFromBufferEntries(buffer1_->GenerateEntryList());
+  summary1.BuildFromBufferEntries(list_1);
   Summary summary2;
-  summary2.BuildFromBufferEntries(buffer2_->GenerateEntryList());
+  summary2.BuildFromBufferEntries(list_2);
 
   // Merge summary 2 into 1 and verify.
   summary1.Merge(summary2);
@@ -178,7 +181,7 @@ TEST_F(WeightedQuantilesSummaryTest, MergeSymmetry) {
   EXPECT_EQ(summary1.Size(), 14);  // 14 unique values.
 
   // Merge summary 1 into 2 and verify same result.
-  summary1.BuildFromBufferEntries(buffer1_->GenerateEntryList());
+  summary1.BuildFromBufferEntries(list_1);
   summary2.Merge(summary1);
   EXPECT_EQ(summary2.ApproximationError(), 0.0);
   EXPECT_EQ(summary2.MinValue(),

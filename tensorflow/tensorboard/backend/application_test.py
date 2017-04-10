@@ -54,15 +54,18 @@ from tensorflow.tensorboard.plugins import base_plugin
 class FakePlugin(base_plugin.TBPlugin):
   """A plugin with no functionality."""
 
-  def __init__(self, plugin_name, is_active_value):
+  def __init__(self, plugin_name, is_active_value, routes_mapping):
     """Constructs a fake plugin.
 
     Args:
       plugin_name: The name of this plugin.
       is_active_value: Whether the plugin is active.
+      routes_mapping: A dictionary mapping from route (string URL path) to the
+        method called when a user issues a request to that route.
     """
     self.plugin_name = plugin_name
     self._is_active_value = is_active_value
+    self._routes_mapping = routes_mapping
 
   def get_plugin_apps(self, multiplexer, logdir):
     """Returns a mapping from routes to handlers offered by this plugin.
@@ -72,9 +75,9 @@ class FakePlugin(base_plugin.TBPlugin):
       logdir: The path to the directory containing logs.
 
     Returns:
-      An empty dict. This plugin offers no routes.
+      A dictionary mapping from routes to handlers offered by this plugin.
     """
-    return {}
+    return self._routes_mapping
 
   def is_active(self):
     """Returns whether this plugin is active.
@@ -97,8 +100,8 @@ class TensorboardServerTest(test.TestCase):
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
     plugins = [
-        FakePlugin(plugin_name='foo', is_active_value=True),
-        FakePlugin(plugin_name='bar', is_active_value=False)
+        FakePlugin(plugin_name='foo', is_active_value=True, routes_mapping={}),
+        FakePlugin(plugin_name='bar', is_active_value=False, routes_mapping={})
     ]
     app = application.TensorBoardWSGIApp(
         self.temp_dir, plugins, multiplexer, reload_interval=0)
@@ -476,8 +479,39 @@ class TensorBoardAssetsTest(test.TestCase):
   def testTagFound(self):
     tag = application.get_tensorboard_tag()
     self.assertTrue(tag)
-    app = application.standard_tensorboard_wsgi('', True, 60)
+    app = application.standard_tensorboard_wsgi('', True, 60, [])
     self.assertEqual(app.tag, tag)
+
+
+class TensorBoardPluginsTest(test.TestCase):
+
+  def testPluginsAdded(self):
+
+    def foo_handler():
+      pass
+
+    def bar_handler():
+      pass
+
+    plugins = [
+        FakePlugin(
+            plugin_name='foo',
+            is_active_value=True,
+            routes_mapping={'/foo_route': foo_handler}),
+        FakePlugin(
+            plugin_name='bar',
+            is_active_value=True,
+            routes_mapping={'/bar_route': bar_handler}),
+    ]
+
+    # The application should have added routes for both plugins.
+    app = application.standard_tensorboard_wsgi('', True, 60, plugins)
+
+    # The routes are prefixed with /data/plugin/[plugin name].
+    self.assertDictContainsSubset({
+        '/data/plugin/foo/foo_route': foo_handler,
+        '/data/plugin/bar/bar_route': bar_handler,
+    }, app.data_applications)
 
 
 class TensorboardSimpleServerConstructionTest(test.TestCase):
@@ -533,14 +567,18 @@ class TensorBoardApplcationConstructionTest(test.TestCase):
     # Fails if there is an unnamed plugin
     with self.assertRaises(ValueError):
       # This plugin lacks a name.
-      plugins = [FakePlugin(plugin_name=None, is_active_value=True)]
+      plugins = [
+          FakePlugin(plugin_name=None, is_active_value=True, routes_mapping={})
+      ]
       application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
 
     # Fails if there are two plugins with same name
     with self.assertRaises(ValueError):
       plugins = [
-          FakePlugin(plugin_name='foo', is_active_value=True),
-          FakePlugin(plugin_name='foo', is_active_value=True),
+          FakePlugin(
+              plugin_name='foo', is_active_value=True, routes_mapping={}),
+          FakePlugin(
+              plugin_name='foo', is_active_value=True, routes_mapping={}),
       ]
       application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
 

@@ -95,7 +95,7 @@ def parse_numpy_printoption(kv_str):
         "Setting '%s' from the command line is not supported." % k)
   try:
     v = (v_type(v_str) if v_type is not bool
-         else flags.BooleanParser().Parse(v_str))
+         else flags.BooleanParser().parse(v_str))
   except ValueError as e:
     raise argparse.ArgumentTypeError(e.message)
   np.set_printoptions(**{k: v})

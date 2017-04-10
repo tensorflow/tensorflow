@@ -355,6 +355,24 @@ TEST_F(QuantizationUtilsTest, AvoidBias) {
     const int back_to_int = FloatToQuantized<quint8>(as_float, 0.0f, 2.0f);
     EXPECT_EQ(i, back_to_int);
   }
+
+  // All perfectly representable floats should survive quantization, even
+  // if we pick a range where min is not itself perfectly representable.
+  const float min = -0.1375f;
+  const float max = 1.1385f;
+  const float step_size = (max - min) / 255.0f;
+  const float tolerance = step_size / 1000.0f;
+  // This is the smallest perfectly representable float in the range.
+  float first_float = ceil(min / step_size) * step_size;
+  // TODO(ahentz): The current version always incur a small error, which we
+  // need to account for. We should fix QuantizedToFloat<> to remove this bias.
+  const float expected_error = first_float - min;
+  ASSERT_GT(expected_error, tolerance);
+  for (float f = first_float; f <= max; f += step_size) {
+    const int as_int = FloatToQuantized<quint8>(f, min, max);
+    const float back_to_float = QuantizedToFloat<quint8>(as_int, min, max);
+    EXPECT_NEAR(f, back_to_float + expected_error, tolerance);
+  }
 }
 
 TEST_F(QuantizationUtilsTest, RequantizeInNewRange) {

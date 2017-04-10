@@ -113,7 +113,7 @@ class MockCursesUI(curses_ui.CursesUI):
   def _screen_create_command_window(self):
     pass
 
-  def _screen_create_command_textbox(self, existing_command):
+  def _screen_create_command_textbox(self, existing_command=None):
     """Override to insert observer of existing commands.
 
     Used in testing of history navigation and tab completion.
@@ -1645,6 +1645,25 @@ class ScrollBarTest(test_util.TensorFlowTestCase):
     self.assertEqual(curses_ui._SCROLL_DOWN_A_LINE,
                      scroll_bar.get_click_command(7))
     self.assertIsNone(scroll_bar.get_click_command(8))
+
+  def testClickCommandsAreCorrectForScrollBarNotAtZeroMinY(self):
+    scroll_bar = curses_ui.ScrollBar(0, 5, 1, 12, 10, 20)
+    self.assertIsNone(scroll_bar.get_click_command(0))
+    self.assertIsNone(scroll_bar.get_click_command(4))
+    self.assertEqual(curses_ui._SCROLL_UP_A_LINE,
+                     scroll_bar.get_click_command(5))
+    self.assertEqual(curses_ui._SCROLL_UP,
+                     scroll_bar.get_click_command(6))
+    self.assertEqual(curses_ui._SCROLL_UP,
+                     scroll_bar.get_click_command(7))
+    self.assertIsNone(scroll_bar.get_click_command(8))
+    self.assertEqual(curses_ui._SCROLL_DOWN,
+                     scroll_bar.get_click_command(10))
+    self.assertEqual(curses_ui._SCROLL_DOWN,
+                     scroll_bar.get_click_command(11))
+    self.assertEqual(curses_ui._SCROLL_DOWN_A_LINE,
+                     scroll_bar.get_click_command(12))
+    self.assertIsNone(scroll_bar.get_click_command(13))
 
 
 if __name__ == "__main__":
