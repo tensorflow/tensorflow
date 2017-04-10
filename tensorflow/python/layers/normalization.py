@@ -238,10 +238,14 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       # For example, after a single update, the moving average would be
       # (1-decay) * value. and the weight will be 1-decay, with their ratio
       # giving value.
+      # Make sure the weight is not updated until before r and d computation.
+      value = array_ops.identity(value)
+      with ops.control_dependencies([value]):
+        weight_value = array_ops.constant(1., dtype=weight.dtype)
       new_var = moving_averages.assign_moving_average(
           var, value, decay, zero_debias=False)
       new_weight = moving_averages.assign_moving_average(
-          weight, 1., decay, zero_debias=False)
+          weight, weight_value, decay, zero_debias=False)
       return new_var / new_weight
 
     with ops.colocate_with(self.moving_mean):
