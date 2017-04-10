@@ -1555,6 +1555,7 @@ py_library(
         ":rnn",
         ":sparse_ops",
         ":util",
+        ":variables",
     ],
 )
 
@@ -2204,6 +2205,9 @@ cuda_py_test(
         ":nn",
         ":nn_grad",
         ":nn_ops",
+        ":partitioned_variables",
+        ":variable_scope",
+        ":variables",
         "//third_party/py/numpy",
     ],
 )
