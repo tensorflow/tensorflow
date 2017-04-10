@@ -97,6 +97,19 @@ class NextIterationOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(NextIterationOp);
 };
 
+// Cond ops should be optimized out.
+class CondOp : public OpKernel {
+ public:
+  explicit CondOp(OpKernelConstruction* context) : OpKernel(context) {};
+  void Compute(OpKernelContext* context) override {
+    OP_REQUIRES_OK(context, errors::Internal("Cond should be optimized out"));
+  };
+  bool IsExpensive() override { return false; }
+  ~CondOp() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(CondOp);
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_CONTROL_FLOW_OPS_H_

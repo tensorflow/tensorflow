@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-const int Graph::kControlSlot = -1;
+const int Graph::kControlSlot;
 
 // Node
 
@@ -101,6 +101,7 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandleV2", "");
   SET_CLASS(NC_GET_SESSION_TENSOR, ts, "GetSessionTensor", "");
   SET_CLASS(NC_DELETE_SESSION_TENSOR, ts, "DeleteSessionTensor", "");
+  SET_CLASS(NC_COND, ts, "Cond", "");
   if (class_ == NC_UNINITIALIZED) {
     class_ = NC_OTHER;  // Catch all
   }

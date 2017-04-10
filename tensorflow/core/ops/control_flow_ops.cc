@@ -338,4 +338,16 @@ Returns nothing but an exception.
 error_msg: A string which is the message associated with the exception.
 )doc");
 
+// --------------------------------------------------------------------------
+REGISTER_OP("Cond")
+    .Input("pred: bool")
+    .Input("data_true: T")
+    .Input("data_false: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Forward data_true to output if pred is true, else forward data_false to output.
+)doc");
+
 }  // namespace tensorflow

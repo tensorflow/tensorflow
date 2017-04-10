@@ -623,4 +623,12 @@ class AbortOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("Abort").Device(DEVICE_CPU), AbortOp);
 
+// Cond op
+REGISTER_KERNEL_BUILDER(Name("Cond").Device(DEVICE_CPU), CondOp);
+REGISTER_KERNEL_BUILDER(Name("Cond").Device(DEVICE_GPU), CondOp);
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Cond").Device(DEVICE_SYCL), CondOp);
+#endif
+
 }  // namespace tensorflow

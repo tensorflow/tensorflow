@@ -140,6 +140,8 @@ class Node {
   }
   bool IsHostSend() const { return class_ == NC_HOST_SEND; }
   bool IsHostRecv() const { return class_ == NC_HOST_RECV; }
+  bool IsCond() const { return class_ == NC_COND; }
+  bool IsOther() const { return class_ == NC_OTHER; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
@@ -217,6 +219,7 @@ class Node {
     NC_GET_SESSION_HANDLE,
     NC_GET_SESSION_TENSOR,
     NC_DELETE_SESSION_TENSOR,
+    NC_COND,
     NC_OTHER  // Not a special kind of node
   };
 
@@ -289,7 +292,7 @@ class Graph {
 
   ~Graph();
 
-  static const int kControlSlot;
+  static const int kControlSlot = -1;
 
   // The GraphDef version range of this graph (see graph.proto).
   const VersionDef& versions() const { return versions_; }
@@ -446,6 +449,7 @@ inline bool IsSend(const Node* node) { return node->IsSend(); }
 inline bool IsRecv(const Node* node) { return node->IsRecv(); }
 inline bool IsHostSend(const Node* node) { return node->IsHostSend(); }
 inline bool IsHostRecv(const Node* node) { return node->IsHostRecv(); }
+inline bool IsCond(const Node* node) { return node->IsCond(); }
 
 // True for Nodes that mediate the transfer of values between processes.
 inline bool IsTransferNode(const Node* n) { return IsSend(n) || IsRecv(n); }
