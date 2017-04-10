@@ -1510,6 +1510,7 @@ def placeholder(dtype, shape=None, name=None):
     evaluated directly.
   """
   shape = tensor_shape.as_shape(shape)
+  # Check if shape's dimentions are defined at all
   if shape.is_partially_defined():
     dim_list = shape.as_list()
   else:
