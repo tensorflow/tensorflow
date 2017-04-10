@@ -221,7 +221,7 @@ def string_input_producer(string_tensor,
       string_tensor = array_ops.identity(string_tensor)
     return input_producer(
         input_tensor=string_tensor,
-        element_shape=[],
+        element_shape=None,
         num_epochs=num_epochs,
         shuffle=shuffle,
         seed=seed,
