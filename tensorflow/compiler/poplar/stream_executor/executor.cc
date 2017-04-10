@@ -104,7 +104,6 @@ port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
                                              uint64 size) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(pop_dst->opaque());
   memcpy(tc->data, host_src, size);
-  tc->on_device = false;
   return port::Status::OK();
 }
 
@@ -113,9 +112,11 @@ port::Status PoplarExecutor::SynchronousMemcpy(void *host_dst,
                                              uint64 size) {
   const TensorControl* tc =
           reinterpret_cast<const TensorControl*>(pop_src.opaque());
-  if (tc->on_device) {
+  {
     std::lock_guard <std::mutex> g(mutex_);
-    TF_RETURN_IF_ERROR(MoveDeviceToHost(const_cast<TensorControl*>(tc)));
+    if (tc->on_device) {
+      TF_RETURN_IF_ERROR(MoveDeviceToHost(const_cast<TensorControl*>(tc)));
+    }
   }
   memcpy(host_dst, tc->data, size);
   return port::Status::OK();
@@ -233,12 +234,15 @@ PoplarExecutor::ExecuteEngine(Stream *stream,
   {
     std::lock_guard <std::mutex> g(mutex_);
 
-    // Pull output data back from device if:
+    // Pull previous execution output back from device if:
     // a) the engine is changing
-    // b) it isn't currently in the right place for the new input
+    // b) output buffer isn't an input to the current execution
+    // c) output buffer isn't currently in the right place for the new input
     for (const auto& tc : allocations_) {
       if (tc->on_device == true && tc->output_handle != -1) {
         if (engine_changed) {
+          TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+        } else if (tc->input_handle == -1) {
           TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
         } else if ((void*)tc != args[tc->input_handle].opaque()) {
           TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
