@@ -851,7 +851,7 @@ def embedding_attention_seq2seq(encoder_inputs,
     dtype = scope.dtype
     # Encoder.
     if encoder_cell is None:
-        encoder_cell = copy.deepcopy(cell)
+      encoder_cell = copy.deepcopy(cell)
     encoder_cell = core_rnn_cell.EmbeddingWrapper(
         encoder_cell,
         embedding_classes=num_encoder_symbols,
