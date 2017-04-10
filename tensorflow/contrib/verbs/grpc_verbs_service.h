@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_GRPC_VERBS_SERVICE_H_
 #define THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_GRPC_VERBS_SERVICE_H_
 
+#ifdef TENSORFLOW_USE_VERBS
+
 #include "tensorflow/contrib/verbs/rdma_mgr.h"
 #include "tensorflow/contrib/verbs/grpc_verbs_service_impl.h"
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
@@ -66,4 +68,5 @@ void SetNewVerbsService(GrpcVerbsService** handle, const WorkerEnv* worker_env,
 
 }  // namespace tensorflow
 
+#endif  // TENSORFLOW_USE_VERBS
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_GRPC_VERBS_SERVICE_H_
