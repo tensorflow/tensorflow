@@ -367,6 +367,7 @@ of one of the following guides:
 
   * @{$install_linux#CommonInstallationProblems$Installing TensorFlow on Linux}
   * @{$install_mac#CommonInstallationProblems$Installing TensorFlow on Mac OS}
+  * @{$install_windows#CommonInstallationProblems$Installing TensorFlow on Windows}
 
 Beyond the errors documented in those two guides, the following table
 notes additional errors specific to building TensorFlow.  Note that we
