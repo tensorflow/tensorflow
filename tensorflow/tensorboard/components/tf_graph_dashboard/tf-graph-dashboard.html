@@ -104,9 +104,14 @@ out-hierarchy-params="{{_hierarchyParams}}"
 
 <script>
 (function() {
-Polymer({
+TF.Dashboard.TfGraphDashboard = Polymer({
   is: 'tf-graph-dashboard',
+  factoryImpl: function(backend, debuggerDataEnabled) {
+    this.backend = backend;
+    this.debuggerDataEnabled = debuggerDataEnabled;
+  },
   behaviors: [
+    TF.Dashboard.DashboardBehavior("graphs"),
     TF.Dashboard.ReloadBehavior("tf-graph-dashboard"),
     TF.Backend.Behavior,
   ],
