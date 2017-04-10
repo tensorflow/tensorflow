@@ -84,10 +84,13 @@ limitations under the License.
 //     Some earlier graph def versions allowed this.
 // 21. Dropped FunctionDef.Node support, switched to node_def introduced
 //     in version 12. (11jan2017)
+// 22. Placeholder now can specify and enforce scalar and partial
+//     shapes, particularly when restoring a graph from GraphDef
+//     produced at version 22 or later.  (04/10/2016)
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 21
+#define TF_GRAPH_DEF_VERSION 22
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

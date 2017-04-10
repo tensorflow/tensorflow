@@ -2738,7 +2738,7 @@ output: The folded tensor.
 REGISTER_OP("Placeholder")
     .Output("output: dtype")
     .Attr("dtype: type")
-    .Attr("shape: shape = {}")
+    .Attr("shape: shape = { unknown_rank: true }")
     .SetShapeFn([](InferenceContext* c) {
       PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
@@ -2746,7 +2746,7 @@ REGISTER_OP("Placeholder")
       // Placeholder has legacy behavior where we cannot tell the difference
       // between a scalar shape attribute and 'unknown shape'.  So if the shape
       // is a scalar, we return an unknown shape.
-      if (shape.dims() <= 0) {
+      if (c->graph_def_version() <= 21 && shape.dims() <= 0) {
         return shape_inference::UnknownShape(c);
       }
 
