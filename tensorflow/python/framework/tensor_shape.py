@@ -749,14 +749,17 @@ class TensorShape(object):
       raise ValueError("Shape %s is not fully defined" % self)
 
   def is_partially_defined(self):
-    """ Returns True iff self's dimensions are defined """
+    """ Returns True iff self's dimensions are defined. 
+        Each dimension can be defined as None.
+    """
     return self._dims is not None
 
   def assert_is_partially_defined(self):
-    """Raises an exception if `self`'s dimensions are not defined.
+    """Raises an exception if `self`'s dimensions are not defined. 
+    Does not raise exception if values of dimentions are defined as None.
 
     Raises:
-      ValueError: If `self` does not have a known value for every dimension.
+      ValueError: If `self` 'self's dimensions are not defined.
     """
     if not self.is_partially_defined(self):
       raise ValueError("Shape %s is not partially defined" % self)
