@@ -48,7 +48,8 @@ class PublicAPIVisitor(object):
           'pywrap_tensorflow',  # TODO(drpng): This can be removed once sealed.
           'user_ops',  # TODO(drpng): This can be removed once sealed.
           'python',
-          'tools'
+          'tools',
+          'tensorboard',
       ],
 
       # Some implementations have this internal module that we shouldn't expose.

@@ -329,8 +329,9 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     zeros = array_ops.zeros(shape=special_shape, dtype=self.dtype)
     return x + zeros
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
     # Note that adjoint has no effect since this matrix is self-adjoint.
+    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     if self._assert_proper_shapes:
       aps = linear_operator_util.assert_compatible_matrix_dimensions(
           self, x)
@@ -343,8 +344,8 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
   def _log_abs_determinant(self):
     return array_ops.zeros(shape=self.batch_shape_tensor(), dtype=self.dtype)
 
-  def _solve(self, rhs, adjoint=False):
-    return self._apply(rhs)
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    return self._apply(rhs, adjoint_arg=adjoint_arg)
 
   def _diag_part(self):
     return self._ones_diag()
@@ -616,7 +617,8 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         imag_multiplier,
         message="LinearOperator was not self-adjoint")
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
+    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     if adjoint:
       matrix = self._multiplier_matrix_conj
     else:
@@ -634,7 +636,8 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     return self._num_rows_cast_to_real_dtype * math_ops.log(
         self._abs_multiplier)
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
     if adjoint:
       matrix = self._multiplier_matrix_conj
     else:

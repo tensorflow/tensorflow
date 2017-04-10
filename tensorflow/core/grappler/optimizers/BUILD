@@ -17,6 +17,7 @@ filegroup(
     srcs = glob(
         [
             "*_optimizer.*",
+            "auto_parallel.*",
             "constant_folding.*",
             "model_pruner.*",
             "graph_rewriter.*",
@@ -210,6 +211,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":auto_parallel",
         ":constant_folding",
         ":graph_optimizer",
         ":layout_optimizer",

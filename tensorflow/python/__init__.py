@@ -132,6 +132,7 @@ from tensorflow.python.ops import tensor_array_ops
 # documentation, or remove.
 _allowed_symbols = [
     'AttrValue',
+    'AutoParallelOptions',
     'ConfigProto',
     'DeviceSpec',
     'Event',

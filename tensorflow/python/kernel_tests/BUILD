@@ -942,6 +942,19 @@ tf_py_test(
 )
 
 cuda_py_test(
+    name = "aggregate_ops_test",
+    size = "small",
+    srcs = ["aggregate_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
+cuda_py_test(
     name = "argmax_op_test",
     size = "small",
     srcs = ["argmax_op_test.py"],

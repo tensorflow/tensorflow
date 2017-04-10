@@ -488,7 +488,7 @@ REGISTER_OP("SplitV")
       ShapeHandle output_shape;
       const Tensor* size_splits = c->input_tensor(1);
       if (rank == InferenceContext::kUnknownRank) {
-        // If the rank of input tensor is unknown, then return unkown shapes.
+        // If the rank of input tensor is unknown, then return unknown shapes.
         output_shape = c->UnknownShape();
         for (int i = 0; i < num_outputs; ++i) {
           c->set_output(i, output_shape);
@@ -497,7 +497,7 @@ REGISTER_OP("SplitV")
         // Throw error if input is a scalar.
         return errors::InvalidArgument("Can't split scalars");
       } else if (size_splits == nullptr || !c->ValueKnown(split_dimension)) {
-        // If split dimension or tensor containing the split sizes is unkown,
+        // If split dimension or tensor containing the split sizes is unknown,
         // then return unknown shapes of same rank as input.
         output_shape = c->UnknownShapeOfRank(rank);
         for (int i = 0; i < num_outputs; ++i) {
@@ -1328,8 +1328,8 @@ this operation will permute `params` accordingly.
 
 `validate_indices`: DEPRECATED. If this operation is assigned to CPU, values in
 `indices` are always validated to be within range. If assigned to GPU,
-out-of-bound indices result in unspecified behavior (currently the result is
-`0`, but this may become an error in the future).
+out-of-bound indices result in safe but unspecified behavior, which may include
+raising an error.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/Gather.png" alt>
