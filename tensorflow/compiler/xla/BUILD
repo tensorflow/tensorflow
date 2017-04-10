@@ -45,6 +45,17 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "test",
+    testonly = 1,
+    hdrs = ["test.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "types",
     hdrs = ["types.h"],
     visibility = [":friends"],
@@ -256,10 +267,9 @@ cc_test(
         ":array4d",
         ":literal_util",
         ":shape_util",
-        ":test_helpers",
+        ":test",
         ":types",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
