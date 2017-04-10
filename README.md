@@ -17,7 +17,7 @@ Note that `--recurse-submodules` is necessary to prevent some issues with protob
 Bazel is the primary build system for TensorFlow. To build with Bazel,
 it and the Android NDK and SDK must be installed on your system.
 
-Get the recommended Bazel version listed in [os_setup.html](https://www.tensorflow.org/versions/master/get_started/os_setup.html#source)
+Get the recommended Bazel version listed in [Bazel's site.](https://bazel.build/versions/master/docs/install-ubuntu.html)
 
 **3.) Download [Android Studio](https://developer.android.com/studio/index.html).** 
 - Build tools API >= 23 is required to build the ELeaf Android Application.
