@@ -300,7 +300,6 @@ filegroup(
         "//tensorflow/tensorboard/components/vz_sorting/test:all_files",
         "//tensorflow/tensorboard/lib:all_files",
         "//tensorflow/tensorboard/plugins:all_files",
-        "//tensorflow/tensorboard/plugins/debugger:all_files",
         "//tensorflow/tensorboard/plugins/projector:all_files",
         "//tensorflow/tensorboard/plugins/text:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
