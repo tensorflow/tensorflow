@@ -61,6 +61,16 @@
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/main/java" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/main/shaders" isTestSource="false" />
+<<<<<<< Updated upstream
+=======
+      <sourceFolder url="file://$MODULE_DIR$/src/androidTest/res" type="java-test-resource" />
+      <sourceFolder url="file://$MODULE_DIR$/src/androidTest/resources" type="java-test-resource" />
+      <sourceFolder url="file://$MODULE_DIR$/src/androidTest/assets" type="java-test-resource" />
+      <sourceFolder url="file://$MODULE_DIR$/src/androidTest/aidl" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/src/androidTest/java" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/src/androidTest/rs" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/src/androidTest/shaders" isTestSource="true" />
+>>>>>>> Stashed changes
       <sourceFolder url="file://$MODULE_DIR$/src/test/res" type="java-test-resource" />
       <sourceFolder url="file://$MODULE_DIR$/src/test/resources" type="java-test-resource" />
       <sourceFolder url="file://$MODULE_DIR$/src/test/assets" type="java-test-resource" />
@@ -78,16 +88,37 @@
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/android-profile" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/assets" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/blame" />
+<<<<<<< Updated upstream
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/builds" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/classes" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/dex-cache" />
+=======
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/classes" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/dependency-cache" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/dex-cache" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/animated-vector-drawable/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/appcompat-v7/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/design/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/recyclerview-v7/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-compat/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-core-ui/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-core-utils/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-fragment/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-media-compat/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-v4/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-vector-drawable/25.2.0/jars" />
+      <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/transition/25.2.0/jars" />
+>>>>>>> Stashed changes
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/incremental" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/incremental-classes" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/incremental-runtime-classes" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/incremental-safeguard" />
+<<<<<<< Updated upstream
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/incremental-verifier" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/instant-run-resources" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/instant-run-support" />
+=======
+>>>>>>> Stashed changes
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/jniLibs" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/manifests" />
       <excludeFolder url="file://$MODULE_DIR$/gradleBuild/intermediates/reload-dex" />
@@ -106,8 +137,11 @@
     </content>
     <orderEntry type="jdk" jdkName="Android API 24 Platform" jdkType="Android SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
+<<<<<<< Updated upstream
     <orderEntry type="library" exported="" name="constraint-layout-solver-1.0.2" level="project" />
     <orderEntry type="library" exported="" name="constraint-layout-1.0.2" level="project" />
+=======
+>>>>>>> Stashed changes
     <orderEntry type="library" exported="" name="design-25.2.0" level="project" />
     <orderEntry type="library" exported="" name="transition-25.2.0" level="project" />
     <orderEntry type="library" exported="" name="support-v4-25.2.0" level="project" />
