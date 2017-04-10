@@ -284,6 +284,13 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateScalarBytes(
   return reinterpret_cast<jlong>(t);
 }
 
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_clone(JNIEnv* env,
+                                                         jclass clazz,
+                                                         jlong handle) {
+  TF_Tensor* t = TF_CloneTensor(reinterpret_cast<TF_Tensor*>(handle));
+  return reinterpret_cast<jlong>(t);
+}
+
 JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_delete(JNIEnv* env,
                                                          jclass clazz,
                                                          jlong handle) {

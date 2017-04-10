@@ -221,6 +221,20 @@ public final class Tensor implements AutoCloseable {
   }
 
   /**
+   * Create a copy of the Tensor using the same underlying resources.
+   *
+   * <p>The returned Tensor remains usable after {@code close} is called on the original Tensor.
+   */
+  @Override
+  protected Tensor clone() {
+    Tensor t = new Tensor();
+    t.dtype = dtype;
+    t.shapeCopy = Arrays.copyOf(shapeCopy, shapeCopy.length);
+    t.nativeHandle = clone(nativeHandle);
+    return t;
+  }
+
+  /**
    * Release resources associated with the Tensor.
    *
    * <p><b>WARNING:</b>If not invoked, memory will be leaked.
@@ -596,6 +610,8 @@ public final class Tensor implements AutoCloseable {
   private static native long allocate(int dtype, long[] shape, long byteSize);
 
   private static native long allocateScalarBytes(byte[] value);
+
+  private static native long clone(long handle);
 
   private static native void delete(long handle);
 

@@ -220,6 +220,9 @@ extern TF_Tensor* TF_NewTensor(TF_DataType, const int64_t* dims, int num_dims,
 extern TF_Tensor* TF_AllocateTensor(TF_DataType, const int64_t* dims,
                                     int num_dims, size_t len);
 
+// Clone a tensor.
+TF_Tensor* TF_CloneTensor(TF_Tensor* t);
+
 // Destroy a tensor.
 extern void TF_DeleteTensor(TF_Tensor*);
 

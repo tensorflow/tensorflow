@@ -220,6 +220,11 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
   return new TF_Tensor{dtype, TensorShape(dimvec), buf};
 }
 
+TF_Tensor* TF_CloneTensor(TF_Tensor* t) {
+  t->buffer->Ref();
+  return new TF_Tensor{t->dtype, TensorShape(t->shape), t->buffer};
+}
+
 void TF_DeleteTensor(TF_Tensor* t) {
   t->buffer->Unref();
   delete t;
