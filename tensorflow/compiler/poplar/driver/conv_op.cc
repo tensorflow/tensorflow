@@ -49,6 +49,15 @@ CreateConv2D(poplar::Graph &graph,
             port::StrCat("Invalid window dimension count on ", inst->name()));
   }
 
+  if (window.dimensions(0).window_dilation() != 1 ||
+      window.dimensions(1).window_dilation() != 1 ||
+      window.dimensions(0).base_dilation() != 1 ||
+      window.dimensions(1).base_dilation() != 1) {
+    return port::Status(
+            port::error::FAILED_PRECONDITION,
+            port::StrCat("Dilated convolution not supported on ", inst->name()));
+  }
+
   // Allocate the output tensor
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
@@ -137,6 +146,7 @@ CreateConv2D(poplar::Graph &graph,
                               biases,
                               out,
                               dtype,
+                              false,
                               false);
 
   return prog;
