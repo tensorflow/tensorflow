@@ -106,5 +106,30 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       self.assertAllClose(np.array([1.9, 2.9], dtype=np.float32), vb, rtol=1e-4)
 
+  def testMultipleUpdate(self):
+    with tf.device("/device:XLA_IPU:0"):
+      with tf.Session() as sess:
+        with tf.variable_scope("vs", use_resource=True):
+          z = tf.get_variable("z", shape=[], dtype=tf.float32,
+                              initializer=tf.constant_initializer(0))
+
+        updater = tf.assign_add(z, 1.0)
+
+        sess.run(tf.global_variables_initializer())
+
+        sess.run(updater)
+        sess.run(updater)
+        sess.run(updater)
+        sess.run(updater)
+        sess.run(updater)
+        sess.run(updater)
+        sess.run(updater)
+        sess.run(updater)
+        sess.run(updater)
+        sess.run(updater)
+
+        r = sess.run(z)
+        self.assertAllClose(r, 10.0)
+
 if __name__ == "__main__":
     googletest.main()
