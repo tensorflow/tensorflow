@@ -702,7 +702,8 @@ void HloInstruction::CheckFusionInstruction() const {
 }
 
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands) {
   // Explicitly call the factory for the instruction type. This is more robust
   // in the face of code changes than copying fields explicitly. This also
   // properly sets the user fields of the operands.
@@ -721,8 +722,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSign:
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
-      CHECK_EQ(operands.size(), 1);
-      return CreateUnary(shape, opcode_, operands[0]);
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateUnary(shape, opcode_, new_operands[0]);
     // Binary ops.
     case HloOpcode::kAdd:
     case HloOpcode::kDivide:
@@ -741,90 +742,93 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kRemainder:
     case HloOpcode::kLogicalAnd:
     case HloOpcode::kLogicalOr:
-      CHECK_EQ(operands.size(), 2);
-      return CreateBinary(shape, opcode_, operands[0], operands[1]);
+      CHECK_EQ(new_operands.size(), 2);
+      return CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
     // Ternary ops.
     case HloOpcode::kClamp:
     case HloOpcode::kSelect:
-      CHECK_EQ(operands.size(), 3);
-      return CreateTernary(shape, opcode_, operands[0], operands[1],
-                           operands[2]);
+      CHECK_EQ(new_operands.size(), 3);
+      return CreateTernary(shape, opcode_, new_operands[0], new_operands[1],
+                           new_operands[2]);
     // Other supported ops.
     case HloOpcode::kBroadcast:
-      CHECK_EQ(operands.size(), 1);
-      return CreateBroadcast(shape, operands[0], dimensions_);
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateBroadcast(shape, new_operands[0], dimensions_);
     case HloOpcode::kCall:
-      return CreateCall(shape, operands, to_apply());
+      return CreateCall(shape, new_operands, to_apply());
     case HloOpcode::kCustomCall:
-      return CreateCustomCall(shape, operands, custom_call_target_);
+      return CreateCustomCall(shape, new_operands, custom_call_target_);
     case HloOpcode::kConcatenate:
-      return CreateConcatenate(shape, operands, dimensions(0));
+      return CreateConcatenate(shape, new_operands, dimensions(0));
     case HloOpcode::kConvert:
-      CHECK_EQ(operands.size(), 1);
-      return CreateConvert(shape, operands[0]);
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateConvert(shape, new_operands[0]);
     case HloOpcode::kConvolution:
-      CHECK_EQ(operands.size(), 2);
-      return CreateConvolve(shape, operands[0], operands[1], *window_,
+      CHECK_EQ(new_operands.size(), 2);
+      return CreateConvolve(shape, new_operands[0], new_operands[1], *window_,
                             *convolution_dimension_numbers_);
     case HloOpcode::kCrossReplicaSum:
-      CHECK_EQ(operands.size(), 1);
-      return CreateCrossReplicaSum(shape, operands[0]);
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateCrossReplicaSum(shape, new_operands[0]);
     case HloOpcode::kGetTupleElement:
-      CHECK_EQ(operands.size(), 1);
-      return CreateGetTupleElement(shape, operands[0], tuple_index());
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateGetTupleElement(shape, new_operands[0], tuple_index());
     case HloOpcode::kMap:
-      return CreateMap(shape, operands, to_apply());
+      return CreateMap(shape, new_operands, to_apply());
     case HloOpcode::kPad:
-      CHECK_EQ(operands.size(), 2);
-      return CreatePad(shape, operands[0], operands[1], *padding_config_);
+      CHECK_EQ(new_operands.size(), 2);
+      return CreatePad(shape, new_operands[0], new_operands[1],
+                       *padding_config_);
     case HloOpcode::kReduce:
-      CHECK_EQ(operands.size(), 2);
-      return CreateReduce(shape, operands[0], operands[1], dimensions_,
+      CHECK_EQ(new_operands.size(), 2);
+      return CreateReduce(shape, new_operands[0], new_operands[1], dimensions_,
                           to_apply());
     case HloOpcode::kReduceWindow:
-      CHECK_EQ(operands.size(), 2);
-      return CreateReduceWindow(shape, operands[0], operands[1], *window_,
-                                to_apply());
+      CHECK_EQ(new_operands.size(), 2);
+      return CreateReduceWindow(shape, new_operands[0], new_operands[1],
+                                *window_, to_apply());
     case HloOpcode::kSelectAndScatter:
-      CHECK_EQ(operands.size(), 3);
-      return CreateSelectAndScatter(shape, operands[0], select(), *window_,
-                                    operands[1], operands[2], scatter());
+      CHECK_EQ(new_operands.size(), 3);
+      return CreateSelectAndScatter(shape, new_operands[0], select(), *window_,
+                                    new_operands[1], new_operands[2],
+                                    scatter());
     case HloOpcode::kRecv:
-      CHECK_EQ(operands.size(), 0);
+      CHECK_EQ(new_operands.size(), 0);
       return CreateRecv(shape, channel_id_);
     case HloOpcode::kReverse:
-      CHECK_EQ(operands.size(), 1);
-      return CreateReverse(shape, operands[0], dimensions_);
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateReverse(shape, new_operands[0], dimensions_);
     case HloOpcode::kRng:
-      return CreateRng(shape, distribution_, operands);
+      return CreateRng(shape, distribution_, new_operands);
     case HloOpcode::kReshape:
-      CHECK_EQ(operands.size(), 1);
-      return CreateReshape(shape, operands[0]);
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateReshape(shape, new_operands[0]);
     case HloOpcode::kSend:
-      CHECK_EQ(operands.size(), 1);
-      return CreateSend(operands[0], channel_id_);
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateSend(new_operands[0], channel_id_);
     case HloOpcode::kSlice:
-      CHECK_EQ(operands.size(), 1);
-      return CreateSlice(shape, operands[0], slice_starts_, slice_limits_);
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_);
     case HloOpcode::kDynamicSlice:
-      return CreateDynamicSlice(shape, operands[0], operands[1],
+      return CreateDynamicSlice(shape, new_operands[0], new_operands[1],
                                 dynamic_slice_sizes_);
     case HloOpcode::kDynamicUpdateSlice:
-      CHECK_EQ(operands.size(), 3);
-      return CreateDynamicUpdateSlice(shape, operands[0], operands[1],
-                                      operands[2]);
+      CHECK_EQ(new_operands.size(), 3);
+      return CreateDynamicUpdateSlice(shape, new_operands[0], new_operands[1],
+                                      new_operands[2]);
     case HloOpcode::kTranspose:
-      CHECK_EQ(operands.size(), 1);
-      return CreateTranspose(shape, operands[0], dimensions_);
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateTranspose(shape, new_operands[0], dimensions_);
     case HloOpcode::kTuple:
-      return CreateTuple(operands_);
+      return CreateTuple(new_operands);
     case HloOpcode::kWhile:
-      CHECK_EQ(operands.size(), 1);
-      return CreateWhile(shape, while_condition(), while_body(), operands[0]);
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateWhile(shape, while_condition(), while_body(),
+                         new_operands[0]);
     case HloOpcode::kConstant:
       return CreateConstant(LiteralUtil::CloneToUnique(*literal_));
     case HloOpcode::kFusion:
-      return CloneFusionWithNewOperands(shape, operands);
+      return CloneFusionWithNewOperands(shape, new_operands);
     case HloOpcode::kParameter:
       return CreateParameter(parameter_number_, shape, parameter_name_);
     // Unsupported ops for cloning.
