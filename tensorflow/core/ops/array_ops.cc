@@ -2770,11 +2770,9 @@ shape: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
   shape is unconstrained.
 )doc");
 
-// This version fixes an issue with the original version of Placeholder
-// where the empty shape attribute "[]" was used to denote
-// an unknown shape.  This meant that scalars (added later) could
-// not be represented natively.  This new version fixes that
-// limitation.
+// Placeholder was modified in a backwards compatible way to do what
+// PlaceholderV2 did, so we have deprecated V2 (no one was really
+// using it).
 REGISTER_OP("PlaceholderV2")
     .Output("output: dtype")
     .Attr("dtype: type")
@@ -2787,6 +2785,7 @@ REGISTER_OP("PlaceholderV2")
       c->set_output(0, output);
       return Status::OK();
     })
+    .Deprecated(23, "Placeholder now behaves the same as PlaceholderV2.")
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.
 
