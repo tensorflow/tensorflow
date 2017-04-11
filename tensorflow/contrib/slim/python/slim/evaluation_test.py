@@ -41,6 +41,8 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import input
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training import session_run_hook
+
 
 FLAGS = flags.FLAGS
 
@@ -100,6 +102,22 @@ class EvaluationTest(test.TestCase):
       init_op.run()
       saver.save(sess, os.path.join(chkpt_dir, 'chkpt'))
 
+    class Object(object):
+
+      def __init__(self):
+        self.hook_was_run = False
+
+    obj = Object()
+
+    # Create a custom session run hook.
+    class CustomHook(session_run_hook.SessionRunHook):
+
+      def __init__(self, obj):
+        self.obj = obj
+
+      def end(self, session):
+        self.obj.hook_was_run = True
+
     # Now, run the evaluation loop:
     accuracy_value = evaluation.evaluation_loop(
         '',
@@ -107,8 +125,12 @@ class EvaluationTest(test.TestCase):
         logdir,
         eval_op=update_op,
         final_op=value_op,
+        hooks=[CustomHook(obj)],
         max_number_of_evaluations=1)
     self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
+
+    # Validate that custom hook ran.
+    self.assertTrue(obj.hook_was_run)
 
   def _create_names_to_metrics(self, predictions, labels):
     accuracy0, update_op0 = metric_ops.streaming_accuracy(predictions, labels)
