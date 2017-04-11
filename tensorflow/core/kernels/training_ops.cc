@@ -271,12 +271,11 @@ struct ApplyRadamNonCuda {
                   typename TTypes<T>::ConstFlat grad) {
     const T alpha = lr() * Eigen::numext::sqrt(T(1) - beta2_power()) /
                     (T(1) - beta1_power());
-    //const T l_warmer = gamma(); //* (T(1)-T(0.5)*beta2_power());
+    var.device(d) -= (((T(1) - gamma()) * m + gamma() * grad) * alpha)
+                     / (v.sqrt() + epsilon());
     m.device(d) += (grad - m) * (T(1) - beta1());
     v.device(d) += (grad.square() - v) * (T(1) - beta2());
-//    var.device(d) -= (m * alpha) / (v.sqrt() + epsilon());
-    var.device(d) -= ( ( (T(1) - gamma()) * m + gamma() * grad) * alpha )
-                     / (v.sqrt() + epsilon());
+
   }
 };
 
@@ -297,15 +296,14 @@ struct ApplyNadamNonCuda {
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad) {
-    const T alpha = Eigen::numext::sqrt(T(1) - beta2_power()) /
-                    (T(1) - beta1_power());
-    const T alpha2= Eigen::numext::sqrt(T(1) - beta2_power()*beta2()) /
-                    (T(1) - beta1_power()*beta1());
-    const T nes = alpha2 / alpha;
+    const T alpha1 = Eigen::numext::sqrt(T(1) - beta2_power()) /
+                     (T(1) - beta1_power());
+    const T alpha2 = Eigen::numext::sqrt(T(1) - beta2_power()*beta2()) /
+                     (T(1) - beta1_power()*beta1());
+    const T nes = alpha2 / alpha1;
+    var.device(d) -= (m * lr() * alpha) / (v.sqrt() + epsilon());
     m.device(d) += (grad - m * nes) * (T(1) - beta1());
     v.device(d) += (grad.square() - v) * (T(1) - beta2());
-    var.device(d) -= (m * lr() * alpha) / (v.sqrt() + epsilon());
-
   }
 };
 
@@ -2413,9 +2411,9 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
-
 TF_CALL_float(REGISTER_SYCL_KERNELS);
 TF_CALL_double(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
 #endif
 
 #if GOOGLE_CUDA
@@ -2965,15 +2963,6 @@ REGISTER_KERNELS(double, int64);
 
 #undef REGISTER_KERNELS
 
-
-
-
-
-
-
-
-
-
 template <typename Device, typename T>
 class ApplyRadamOp : public OpKernel {
  public:
@@ -3082,8 +3071,8 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
-
 TF_CALL_float(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
 #endif
 
 #if GOOGLE_CUDA
@@ -3115,16 +3104,6 @@ REGISTER_KERNELS(GPU, double);
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
-
-
-
-
-
-
-
-
-
-
 
 template <typename Device, typename T>
 class ApplyNadamOp : public OpKernel {
@@ -3228,8 +3207,8 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
-
 TF_CALL_float(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
 #endif
 
 #if GOOGLE_CUDA
@@ -3260,8 +3239,5 @@ REGISTER_KERNELS(GPU, double);
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
-
-
-
 
 }  // namespace tensorflow
