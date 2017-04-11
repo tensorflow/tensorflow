@@ -41,6 +41,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -1972,6 +1973,23 @@ cc_library(
     ],
 )
 
+tf_kernel_library(
+    name = "cuda_solvers",
+    srcs = ["cuda_solvers.cc"],
+    hdrs = ["cuda_solvers.h"],
+    # @local_config_cuda//cuda:cusolver, //third_party/eigen3:blas,
+    # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
+    # and f2c helper functions in global namespace. Tell the compiler to
+    # allow multiple definitions when linking this.
+    linkopts = ["-Wl,-zmuldefs"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@local_config_cuda//cuda:cusolver",
+    ],
+)
+
 LINALG_DEPS = [
     ":linalg_ops_common",
     "//third_party/eigen3",
@@ -1983,7 +2001,10 @@ LINALG_DEPS = [
 tf_kernel_library(
     name = "cholesky_op",
     prefix = "cholesky_op",
-    deps = LINALG_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+        ":matrix_band_part_op",
+    ]) + LINALG_DEPS,
 )
 
 tf_kernel_library(
