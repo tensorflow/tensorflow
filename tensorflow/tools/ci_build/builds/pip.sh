@@ -191,6 +191,8 @@ elif [[ $(uname) == "Darwin" ]]; then
     PY_TAGS="py2-none"
   elif [[ ${PY_MAJOR_MINOR_VER} == "3.5" ]]; then
     PY_TAGS="py3-none"
+  elif [[ ${PY_MAJOR_MINOR_VER} == "3.6" ]]; then
+    PY_TAGS="py3-none"
   fi
   PLATFORM_TAG="any"
 fi
