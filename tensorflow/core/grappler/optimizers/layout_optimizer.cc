@@ -508,7 +508,7 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     AttrValue attr_tensor;
     Tensor tensor(DT_INT32, TensorShape({4}));
     std::vector<int> shape = {1, num_channels, 1, 1};
-    for (int i = 0; static_cast<size_t>(i) < shape.size(); i++) {
+    for (int i = 0; i < static_cast<int>(shape.size()); i++) {
       tensor.flat<int>()(i) = shape[i];
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());

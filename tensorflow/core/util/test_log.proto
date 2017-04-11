@@ -183,4 +183,7 @@ message TestResults {
     ANDROID_BENCHMARK = 3;
   }
   BenchmarkType benchmark_type = 10;
+
+  // Used for differentiating between continuous and debug builds.
+  string run_mode = 11;
 };

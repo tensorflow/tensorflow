@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -30,6 +31,9 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::testing::UnorderedElementsAreArray;
+using ::testing::UnorderedElementsAre;
 
 class TuplePointsToAnalysisTest : public HloTestBase {
  protected:
@@ -70,7 +74,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
       const std::vector<const LogicalBuffer*>& points_to_set,
       tensorflow::gtl::ArraySlice<const LogicalBuffer*> buffers) {
     std::vector<const LogicalBuffer*> vec(buffers.begin(), buffers.end());
-    EXPECT_MATCH(points_to_set, testing::UnorderedElementsAre(vec));
+    EXPECT_THAT(points_to_set, UnorderedElementsAreArray(vec));
   }
 
   // Checks that the given points-to set contains exactly (unordered) the
@@ -107,19 +111,13 @@ class TuplePointsToAnalysisTest : public HloTestBase {
     for (auto& pair : expected) {
       expected_aliases.push_back(BufferAlias(*buffer, pair.first, pair.second));
     }
-    EXPECT_MATCH(points_to_analysis_->GetBufferAliases(*buffer),
-                 testing::UnorderedElementsAre(expected_aliases));
+    EXPECT_THAT(points_to_analysis_->GetBufferAliases(*buffer),
+                UnorderedElementsAreArray(expected_aliases));
   }
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 };
-
-// Expect the given std::set<HloInstruction*> as A contains exactly the given
-// HloInstruction*s as __VA_ARGS__.
-#define EXPECT_ISET(A, ...)                           \
-  EXPECT_MATCH(testing::SetToVec<HloInstruction*>(A), \
-               testing::UnorderedMatcher<HloInstruction*>(__VA_ARGS__))
 
 TEST_F(TuplePointsToAnalysisTest, SimpleTuple) {
   auto builder = HloComputation::Builder(TestName());
@@ -146,8 +144,8 @@ TEST_F(TuplePointsToAnalysisTest, SimpleTuple) {
 
   EXPECT_EQ(3, points_to_analysis_->GetPointsToSet(tuple).size());
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(tuple).IsAmbiguous());
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
-              tuple);
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
+              UnorderedElementsAre(tuple));
 
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(tuple).CreateFlattenedSet(),
@@ -205,9 +203,9 @@ TEST_F(TuplePointsToAnalysisTest, NestedTuple) {
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(inner_tuple).element({}),
       {inner_tuple});
-  EXPECT_ISET(
+  EXPECT_THAT(
       points_to_analysis_->GetPointsToSet(inner_tuple).tuple_sources({}),
-      inner_tuple);
+      UnorderedElementsAre(inner_tuple));
 
   EXPECT_EQ(5, points_to_analysis_->GetPointsToSet(tuple).size());
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(tuple).IsAmbiguous());
@@ -215,10 +213,10 @@ TEST_F(TuplePointsToAnalysisTest, NestedTuple) {
       points_to_analysis_->GetPointsToSet(tuple).CreateFlattenedSet(),
       {constant1, constant2, constant3, inner_tuple, tuple});
 
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
-              tuple);
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({0}),
-              inner_tuple);
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
+              UnorderedElementsAre(tuple));
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({0}),
+              UnorderedElementsAre(inner_tuple));
   EXPECT_TRUE(
       points_to_analysis_->GetPointsToSet(tuple).tuple_sources({1}).empty());
 
@@ -262,7 +260,8 @@ TEST_F(TuplePointsToAnalysisTest, GetTupleElement) {
                            {constant1, constant2, inner_tuple});
   ExpectHasTopLevelBuffers(points_to_set.element({}), {inner_tuple});
 
-  EXPECT_ISET(points_to_set.tuple_sources({}), inner_tuple);
+  EXPECT_THAT(points_to_set.tuple_sources({}),
+              UnorderedElementsAre(inner_tuple));
 }
 
 TEST_F(TuplePointsToAnalysisTest, DuplicatedElement) {
@@ -460,8 +459,10 @@ TEST_F(TuplePointsToAnalysisTest, NestedTupleSelect) {
   ExpectHasTopLevelBuffers(points_to_set.element({0, 1}), {constant2});
 
   // Verify tuple sources.
-  EXPECT_ISET(points_to_set.tuple_sources({}), tuple1, tuple2);
-  EXPECT_ISET(points_to_set.tuple_sources({0}), inner_tuple1, inner_tuple2);
+  EXPECT_THAT(points_to_set.tuple_sources({}),
+              UnorderedElementsAre(tuple1, tuple2));
+  EXPECT_THAT(points_to_set.tuple_sources({0}),
+              UnorderedElementsAre(inner_tuple1, inner_tuple2));
   EXPECT_EQ(0, points_to_set.tuple_sources({0, 0}).size());
   EXPECT_EQ(0, points_to_set.tuple_sources({0, 1}).size());
 }
@@ -489,8 +490,8 @@ TEST_F(TuplePointsToAnalysisTest, TupleWithBitcast) {
 
   EXPECT_EQ(3, points_to_analysis_->GetPointsToSet(tuple).size());
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(tuple).IsAmbiguous());
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
-              tuple);
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
+              UnorderedElementsAre(tuple));
 
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(tuple).CreateFlattenedSet(),

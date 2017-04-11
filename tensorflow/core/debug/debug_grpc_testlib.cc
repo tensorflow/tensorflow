@@ -49,57 +49,71 @@ namespace test {
       return ::grpc::Status::CANCELLED;
     }
 
-    string dump_path;
-    DebugFileIO::DumpTensorToDir(node_name, output_slot, debug_op, tensor,
-                                 event.wall_time(), dump_root, &dump_path)
-        .IgnoreError();
+    node_names.push_back(node_name);
+    output_slots.push_back(output_slot);
+    debug_ops.push_back(debug_op);
+    debug_tensors.push_back(tensor);
+  }
+
+  {
+    mutex_lock l(changes_mu_);
+    for (size_t i = 0; i < changes_to_enable_.size(); ++i) {
+      EventReply event_reply;
+      EventReply::DebugOpStateChange* change =
+          event_reply.add_debug_op_state_changes();
+      change->set_change(changes_to_enable_[i]
+                             ? EventReply::DebugOpStateChange::ENABLE
+                             : EventReply::DebugOpStateChange::DISABLE);
+      change->set_node_name(changes_node_names_[i]);
+      change->set_output_slot(changes_output_slots_[i]);
+      change->set_debug_op(changes_debug_ops_[i]);
+      stream->Write(event_reply);
+    }
+    changes_to_enable_.clear();
+    changes_node_names_.clear();
+    changes_output_slots_.clear();
+    changes_debug_ops_.clear();
   }
 
   return ::grpc::Status::OK;
 }
 
-GrpcTestServerClientPair::GrpcTestServerClientPair(const int server_port)
-    : server_port(server_port) {
-  const int kTensorSize = 2;
-  prep_tensor_.reset(
-      new Tensor(DT_FLOAT, TensorShape({kTensorSize, kTensorSize})));
-  for (int i = 0; i < kTensorSize * kTensorSize; ++i) {
-    prep_tensor_->flat<float>()(i) = static_cast<float>(i);
-  }
-
-  // Obtain server's gRPC url.
-  test_server_url = strings::StrCat("grpc://localhost:", server_port);
-
-  // Obtain dump directory for the stream server.
-  string tmp_dir = port::Tracing::LogDir();
-  dump_root =
-      io::JoinPath(tmp_dir, strings::StrCat("tfdbg_dump_port", server_port, "_",
-                                            Env::Default()->NowMicros()));
+void TestEventListenerImpl::ClearReceivedDebugData() {
+  node_names.clear();
+  output_slots.clear();
+  debug_ops.clear();
+  debug_tensors.clear();
 }
 
-bool GrpcTestServerClientPair::PollTillFirstRequestSucceeds() {
-  const std::vector<string> urls({test_server_url});
-  int n_attempts = 0;
-  bool success = false;
+void TestEventListenerImpl::RequestDebugOpStateChangeAtNextStream(
+    bool to_enable, const string& node_name, const int32 output_slot,
+    const string& debug_op) {
+  mutex_lock l(changes_mu_);
 
-  // Try a number of times to send the Event proto to the server, as it may
-  // take the server a few seconds to start up and become responsive.
-  while (n_attempts++ < kMaxAttempts) {
-    const uint64 wall_time = Env::Default()->NowMicros();
+  changes_to_enable_.push_back(to_enable);
+  changes_node_names_.push_back(node_name);
+  changes_output_slots_.push_back(output_slot);
+  changes_debug_ops_.push_back(debug_op);
+}
 
-    Status publish_s = DebugIO::PublishDebugTensor(
-        "prep_node:0", "DebugIdentity", *prep_tensor_, wall_time, urls);
-    Status close_s = DebugIO::CloseDebugURL(test_server_url);
+void TestEventListenerImpl::RunServer(const int server_port) {
+  ::grpc::ServerBuilder builder;
+  builder.AddListeningPort(strings::StrCat("localhost:", server_port),
+                           ::grpc::InsecureServerCredentials());
+  builder.RegisterService(this);
+  std::unique_ptr<::grpc::Server> server = builder.BuildAndStart();
 
-    if (publish_s.ok() && close_s.ok()) {
-      success = true;
-      break;
-    } else {
-      Env::Default()->SleepForMicroseconds(kSleepDurationMicros);
-    }
+  while (!stop_requested_.load()) {
+    Env::Default()->SleepForMicroseconds(200 * 1000);
   }
+  server->Shutdown();
+  stopped_.store(true);
+}
 
-  return success;
+void TestEventListenerImpl::StopServer() {
+  stop_requested_.store(true);
+  while (!stopped_.load()) {
+  }
 }
 
 }  // namespace test

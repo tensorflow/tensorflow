@@ -16,6 +16,7 @@
 
 Note: All the losses are added to the `GraphKeys.LOSSES` collection by default.
 
+@@Reduction
 @@absolute_difference
 @@compute_weighted_loss
 @@cosine_distance
