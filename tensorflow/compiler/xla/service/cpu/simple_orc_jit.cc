@@ -142,7 +142,10 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
       data_layout_(target_machine_->createDataLayout()),
       compile_layer_(object_layer_,
                      CompilerFunctor(target_machine_.get(), &disassembler_,
-                                     opt_level, GetAvailableIntrinsics())) {}
+                                     opt_level, GetAvailableIntrinsics())) {
+  VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
+          << " features: " << target_machine_->getTargetFeatureString().str();
+}
 
 SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
