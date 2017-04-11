@@ -81,18 +81,6 @@ def boston_input_fn(num_epochs=None):
   return features, labels
 
 
-def boston_input_fn_with_queue(num_epochs=None):
-  features, labels = boston_input_fn(num_epochs=num_epochs)
-
-  # Create a minimal queue runner.
-  fake_queue = data_flow_ops.FIFOQueue(30, dtypes.int32)
-  queue_runner = queue_runner_impl.QueueRunner(fake_queue,
-                                               [constant_op.constant(0)])
-  queue_runner_impl.add_queue_runner(queue_runner)
-
-  return features, labels
-
-
 def iris_input_fn():
   iris = base.load_iris()
   features = array_ops.reshape(
