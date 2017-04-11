@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <deque>
+#include "tensorflow/core/graph/execution_condition.h"
+
 #include <vector>
 #include <unordered_set>
 #include <string>
-
-#include "tensorflow/core/graph/cond_rewrite.h"
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 
@@ -41,27 +40,29 @@ struct NodeInfo {
   bool satisfied = false;
 };
 
-struct NodeAndPort {
-  Node* node;
-  int port;
-};
+Status InsertIdentities(Graph* g, Node* n) {
+  const string& name = n->name();
+  const string& device = n->def().device();
 
-Status InsertIdentities(Graph* g, Node* cond) {
-  const string& name = cond->name();
-  const string& device = cond->def().device();
+  std::vector<const Edge*> data_edges;
+  data_edges.reserve(n->in_edges().size());
+  for (const Edge* e : n->in_edges()) {
+    if (!e->IsControlEdge()) {
+      data_edges.push_back(e);
+    }
+  }
 
-  for (int i = 0; i < 3; i++) {
-    const Edge* e;
-    TF_RETURN_IF_ERROR(cond->input_edge(i, &e));
-
-    Node* n;
+  for (const Edge* e : data_edges) {
+    Node* id_node;
     TF_RETURN_IF_ERROR(
       NodeBuilder(g->NewName(strings::StrCat(name, "/Identity")), "Identity")
         .Input(e->src(), e->src_output())
         .Device(device)
-        .Finalize(g, &n));
+        .Finalize(g, &id_node));
+
+    int port = e->dst_input();
     g->RemoveEdge(e);
-    g->AddEdge(n, 0, cond, i);
+    g->AddEdge(id_node, 0, n, port);
   }
 
   return Status::OK();
@@ -69,7 +70,7 @@ Status InsertIdentities(Graph* g, Node* cond) {
 
 Status MergeConditions(std::vector<NodeInfo>& node_info,
                        Graph* g, Node* n, Node** merged) {
-  LOG(INFO) << "MergeConditions " << n->name();
+  //LOG(INFO) << "MergeConditions " << n->name();
 
   auto ret = [=, &node_info](Node* m) {
     *merged = m;
@@ -111,18 +112,18 @@ Status MergeConditions(std::vector<NodeInfo>& node_info,
       .Input(inputs)
       .Device(n->def().device())
       .Finalize(g, merged));
+  (*merged)->set_assigned_device_name(n->assigned_device_name());
 
   return ret(*merged);
 }
 
-Status CreateBranchConditions(Graph* g, Node* cond,
-                              Node** condition_true,
-                              Node** condition_false) {
-  const string& device = cond->def().device();
-  const string& name = cond->name();
+Status CreateConditions(Graph* g, Node* n, std::vector<Node*>& conditions) {
+  DCHECK(n->IsMux());
 
-  const Edge* e;
-  TF_RETURN_IF_ERROR(cond->input_edge(0, &e));
+  int N = n->num_inputs() - 1;
+  const string& device = n->def().device();
+  const string& assigned_device = n->assigned_device_name();
+  const string& name = n->name();
 
   Node* const_node;
   TF_RETURN_IF_ERROR(
@@ -131,36 +132,47 @@ Status CreateBranchConditions(Graph* g, Node* cond,
       .Attr("dtype", DT_FLOAT)
       .Device(device)
       .Finalize(g, &const_node));
+  const_node->set_assigned_device_name(assigned_device);
 
-  Node* switch_node;
+  Node* demux_node;
+  const Edge* e;
+  TF_RETURN_IF_ERROR(n->input_edge(0, &e));
   TF_RETURN_IF_ERROR(
-    NodeBuilder(g->NewName(strings::StrCat(name, "/Switch")), "Switch")
-      .Input(const_node, 0)
+    NodeBuilder(g->NewName(strings::StrCat(name, "/Demux")), "Demux")
       .Input(e->src(), e->src_output())
+      .Input(const_node, 0)
+      .Attr("N", N)
       .Device(device)
-      .Finalize(g, &switch_node));
+      .Finalize(g, &demux_node));
+  demux_node->set_assigned_device_name(assigned_device);
 
-  TF_RETURN_IF_ERROR(
-    NodeBuilder(g->NewName(strings::StrCat(name, "/Identity")), "Identity")
-      .Input(switch_node, 0)
-      .Device(device)
-      .Finalize(g, condition_false));
-
-  TF_RETURN_IF_ERROR(
-    NodeBuilder(g->NewName(strings::StrCat(name, "/Identity")), "Identity")
-      .Input(switch_node, 1)
-      .Device(device)
-      .Finalize(g, condition_true));
+  conditions.clear();
+  conditions.reserve(N);
+  for (int i = 0; i < N; i++) {
+    Node* condition_node;
+    TF_RETURN_IF_ERROR(
+      NodeBuilder(g->NewName(strings::StrCat(name, "/Identity")), "Identity")
+        .Input(demux_node, i)
+        .Device(device)
+        .Finalize(g, &condition_node));
+    condition_node->set_assigned_device_name(assigned_device);
+    conditions.push_back(condition_node);
+  }
 
   return Status::OK();
 }
 
-Status ReplaceCondWithMerge(Graph* g, Node* cond) {
+Status ReplaceWithMerge(Graph* g, Node* n) {
+  DCHECK(n->IsMux());
+
   std::vector<NodeBuilder::NodeOut> data_inputs;
+  data_inputs.reserve(n->num_inputs());
   std::vector<Node*> control_inputs;
-  for (const Edge* e : cond->in_edges()) {
+  control_inputs.reserve(n->in_edges().size());
+  for (const Edge* e : n->in_edges()) {
     switch (e->dst_input()) {
       case Graph::kControlSlot:
+        DCHECK(e->src()->IsIdentity());
         control_inputs.push_back(e->src());
         break;
       case 0:
@@ -170,9 +182,15 @@ Status ReplaceCondWithMerge(Graph* g, Node* cond) {
     }
   }
 
+
+  struct NodeAndPort {
+    Node* node;
+    int port;
+  };
+
   std::vector<NodeAndPort> data_outputs;
   std::vector<Node*> control_outputs;
-  for (const Edge* e : cond->out_edges()) {
+  for (const Edge* e : n->out_edges()) {
     if (e->IsControlEdge()) {
       control_outputs.push_back(e->dst());
     } else {
@@ -182,13 +200,14 @@ Status ReplaceCondWithMerge(Graph* g, Node* cond) {
 
   Node* merge_node;
   TF_RETURN_IF_ERROR(
-    NodeBuilder(g->NewName(strings::StrCat(cond->name(), "/Merge")), "Merge")
+    NodeBuilder(g->NewName(strings::StrCat(n->name(), "/Merge")), "Merge")
       .Input(data_inputs)
       .ControlInputs(control_inputs)
-      .Device(cond->def().device())
+      .Device(n->def().device())
       .Finalize(g, &merge_node));
+  merge_node->set_assigned_device_name(n->assigned_device_name());
 
-  g->RemoveNode(cond);
+  g->RemoveNode(n);
 
   for (NodeAndPort node_and_port : data_outputs) {
     g->AddEdge(merge_node, 0, node_and_port.node, node_and_port.port);
@@ -199,6 +218,7 @@ Status ReplaceCondWithMerge(Graph* g, Node* cond) {
 
   return Status::OK();
 }
+
 /*
 string DumpGraph(Graph* g) {
   GraphDef gd;
@@ -277,18 +297,21 @@ template<typename T> string DumpNodes(T nodes) {
   return ret;
 }
 */
+
 } // namespace
 
-Status DoCondRewrite(Graph* g,
-                     const std::unordered_set<Node*>& target_nodes) {
+Status AddExecutionConditions(
+    Graph* g, const std::unordered_set<Node*>& target_nodes) {
+
   /*
   LOG(INFO) << "CondRewrite";
   LOG(INFO) << DumpGraph(g);
   LOG(INFO) << "target_nodes";
   LOG(INFO) << DumpNodes(target_nodes);
   */
+
   std::vector<Node*> iter_order;
-  std::vector<Node*> cond_nodes;
+  std::vector<Node*> mux_nodes;
   {
     iter_order.reserve(g->num_nodes());
 
@@ -310,8 +333,8 @@ Status DoCondRewrite(Graph* g,
 
     for (int i = 0; i < iter_order.size(); i++) {
       Node* n = iter_order[i];
-      if (n->IsCond()) {
-        cond_nodes.push_back(n);
+      if (n->IsMux()) {
+        mux_nodes.push_back(n);
       }
       for (Node* m : n->in_nodes()) {
         pending_counts[m->id()]--;
@@ -326,37 +349,41 @@ Status DoCondRewrite(Graph* g,
     }
     iter_order.pop_back();
   }
+
   /*
   LOG(INFO) << "iter_order" << iter_order.size();
   LOG(INFO) << "\n" << DumpNodes(iter_order);
   */
-  for (Node* n : cond_nodes) {
+
+  for (Node* n : mux_nodes) {
     TF_RETURN_IF_ERROR(InsertIdentities(g, n));
   }
+
   /*
   LOG(INFO) << "InsertIdentities";
   LOG(INFO) << "\n" << DumpGraph(g);
   */
+
   std::vector<NodeInfo> node_info(g->num_node_ids());
 
+  std::vector<Node*> conditions;
   for (Node* n : iter_order) {
     Node* c = nullptr;
     if (!target_nodes.count(n)) {
       TF_RETURN_IF_ERROR(MergeConditions(node_info, g, n, &c));
     }
 
-    if (n->IsCond()) {
-      Node* conditions[3] = {c};
-      TF_RETURN_IF_ERROR(
-        CreateBranchConditions(g, n, &conditions[1], &conditions[2]));
+    if (n->IsMux()) {
+      TF_RETURN_IF_ERROR(CreateConditions(g, n, conditions));
 
-      for (int i = 0; i < 3; i++) {
-        const Node* input_node;
-        TF_RETURN_IF_ERROR(n->input_node(i, &input_node));
-        node_info[input_node->id()].condition = conditions[i];
+      for (const Edge* e : n->in_edges()) {
+        int port = e->dst_input();
+        if (port == 0 || port == Graph::kControlSlot) continue;
+        node_info[e->src()->id()].condition = conditions[port-1];
       }
     }
   }
+
   /*
   {
     string s;
@@ -373,9 +400,9 @@ Status DoCondRewrite(Graph* g,
   LOG(INFO) << "CreateBranchCondtions";
   LOG(INFO) << "\n" << DumpGraph(g);
   */
+
   for (Node* n : g->nodes()) {
     int id = n->id();
-
     if (id >= node_info.size()) continue;
 
     Node* c = node_info[id].condition;
@@ -383,11 +410,14 @@ Status DoCondRewrite(Graph* g,
       g->AddControlEdge(c, n);
     }
   }
+
   /*
   LOG(INFO) << "AddControlEdge";
   LOG(INFO) << "\n" << DumpGraph(g);
   */
-  for (Node* n : cond_nodes) {
+
+  for (Node* n : mux_nodes) {
+
     /*
     LOG(INFO) << n->name();
     {
@@ -400,15 +430,16 @@ Status DoCondRewrite(Graph* g,
       LOG(INFO) << s;
     }
     */
-    TF_RETURN_IF_ERROR(ReplaceCondWithMerge(g, n));
+
+    TF_RETURN_IF_ERROR(ReplaceWithMerge(g, n));
   }
 
   //LOG(INFO) << "CondRewrite done.";
   return Status::OK();
 }
 
-Status DoCondRewrite(Graph* g,
-                     const std::unordered_set<const Node*>& target_nodes) {
+Status AddExecutionConditions(
+    Graph* g, const std::unordered_set<const Node*>& target_nodes) {
   std::unordered_set<Node*> mutable_target_nodes;
   mutable_target_nodes.reserve(target_nodes.size());
 
@@ -416,7 +447,7 @@ Status DoCondRewrite(Graph* g,
     mutable_target_nodes.insert(g->FindNodeId(n->id()));
   }
 
-  return DoCondRewrite(g, mutable_target_nodes);
+  return AddExecutionConditions(g, mutable_target_nodes);
 }
 
 }  // namespace tensorflow

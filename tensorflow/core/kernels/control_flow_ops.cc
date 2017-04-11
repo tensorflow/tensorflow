@@ -623,12 +623,41 @@ class AbortOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("Abort").Device(DEVICE_CPU), AbortOp);
 
-// Cond op
-REGISTER_KERNEL_BUILDER(Name("Cond").Device(DEVICE_CPU), CondOp);
-REGISTER_KERNEL_BUILDER(Name("Cond").Device(DEVICE_GPU), CondOp);
+// Demux op
+DemuxOp::DemuxOp(OpKernelConstruction* context) : OpKernel(context) {
+  OP_REQUIRES_OK(context, context->GetAttr("N", &num_outputs_));
+}
+
+void DemuxOp::Compute(OpKernelContext* context) {
+  const Tensor& index_tensor = context->input(0);
+  OP_REQUIRES(context, TensorShapeUtils::IsScalar(index_tensor.shape()),
+              errors::InvalidArgument("Index must be a scalar, "
+                                      "but it has shape ",
+                                      index_tensor.shape().DebugString()));
+
+  int32 index = index_tensor.scalar<int32>()();
+
+  OP_REQUIRES(context, index >= 0 && index < num_outputs_,
+              errors::InvalidArgument("Index must be in the range [0, ",
+                                      num_outputs_, ") but got ", index));
+  context->set_output(index, context->input(1));
+}
+
+REGISTER_KERNEL_BUILDER(Name("Demux").Device(DEVICE_CPU), DemuxOp);
+REGISTER_KERNEL_BUILDER(Name("Demux").Device(DEVICE_GPU).HostMemory("index"),
+                        DemuxOp);
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("Cond").Device(DEVICE_SYCL), CondOp);
+REGISTER_KERNEL_BUILDER(Name("Demux").Device(DEVICE_SYCL).HostMemory("index"),
+                        DemuxOp);
+#endif
+
+// Mux op
+REGISTER_KERNEL_BUILDER(Name("Mux").Device(DEVICE_CPU), MuxOp);
+REGISTER_KERNEL_BUILDER(Name("Mux").Device(DEVICE_GPU), MuxOp);
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Mux").Device(DEVICE_SYCL), MuxOp);
 #endif
 
 }  // namespace tensorflow

@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/graph/cond_rewrite.h"
+#include "tensorflow/core/graph/execution_condition.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -176,7 +176,7 @@ static Status PruneForTargets(Graph* g, const subgraph::NameIndex& name_index,
   // Reconnect nodes with no outgoing edges to the sink node
   FixupSourceAndSinkEdges(g);
 
-  return DoCondRewrite(g, targets);
+  return AddExecutionConditions(g, targets);
 }
 
 }  // namespace

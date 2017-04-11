@@ -339,15 +339,27 @@ error_msg: A string which is the message associated with the exception.
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("Cond")
-    .Input("pred: bool")
-    .Input("data_true: T")
-    .Input("data_false: T")
-    .Output("output: T")
+REGISTER_OP("Demux")
+    .Input("index: int32")
+    .Input("input: T")
+    .Output("outputs: N * T")
     .Attr("T: type")
+    .Attr("N: int >= 1")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
-Forward data_true to output if pred is true, else forward data_false to output.
+Forward input to output at index.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("Mux")
+    .Input("index: int32")
+    .Input("inputs: N * T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("N: int >= 1")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Forward input at index to output.
 )doc");
 
 }  // namespace tensorflow

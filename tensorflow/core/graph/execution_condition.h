@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_COND_REWRITE_H_
-#define TENSORFLOW_GRAPH_COND_REWRITE_H_
+#ifndef TENSORFLOW_GRAPH_EXECUTION_CONDITION_H_
+#define TENSORFLOW_GRAPH_EXECUTION_CONDITION_H_
 
 #include <unordered_set>
 
@@ -23,11 +23,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status DoCondRewrite(Graph* g, const std::unordered_set<Node*>& target_nodes);
+Status AddExecutionConditions(
+    Graph* g, const std::unordered_set<Node*>& target_nodes);
 
-Status DoCondRewrite(Graph* g,
-                     const std::unordered_set<const Node*>& target_nodes);
+Status AddExecutionConditions(
+    Graph* g, const std::unordered_set<const Node*>& target_nodes);
 
 } // namespace tensorflow
 
-#endif // TENSORFLOW_GRAPH_COND_REWRITE_H_
+#endif // TENSORFLOW_GRAPH_EXECUTION_CONDITION_H_

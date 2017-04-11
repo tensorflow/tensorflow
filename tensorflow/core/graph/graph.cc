@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <vector>
+#include <initializer_list>
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -73,39 +74,39 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   const string& ts = this->type_string();
   class_ = NC_UNINITIALIZED;
 
-#define SET_CLASS(enum_val, ts, str1, str2)        \
-  do {                                             \
-    if ((((ts) == (str1)) || ((ts) == (str2)))) {  \
-      /* Cannot be member of more than one class*/ \
-      CHECK(class_ == NC_UNINITIALIZED);           \
-      class_ = (enum_val);                         \
-    }                                              \
-  } while (0)
+  auto SetClass = [&] (NodeClass nc,
+                       std::initializer_list<const char*> types) {
+    for (const char* t : types) {
+      if (ts == t) {
+        CHECK(class_ == NC_UNINITIALIZED);
+        class_ = nc;
+        return;
+      }
+    }
+  };
 
-  SET_CLASS(NC_SWITCH, ts, "Switch", "RefSwitch");
-  SET_CLASS(NC_MERGE, ts, "Merge", "RefMerge");
-  SET_CLASS(NC_ENTER, ts, "Enter", "RefEnter");
-  SET_CLASS(NC_EXIT, ts, "Exit", "RefExit");
-  SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "RefNextIteration");
-  SET_CLASS(NC_LOOP_COND, ts, "LoopCond", "");
-  SET_CLASS(NC_CONTROL_TRIGGER, ts, "ControlTrigger", "");
-  SET_CLASS(NC_SEND, ts, "_Send", "");
-  SET_CLASS(NC_HOST_SEND, ts, "_HostSend", "");
-  SET_CLASS(NC_RECV, ts, "_Recv", "");
-  SET_CLASS(NC_HOST_RECV, ts, "_HostRecv", "");
-  SET_CLASS(NC_CONSTANT, ts, "Const", "HostConst");
-  SET_CLASS(NC_VARIABLE, ts, "Variable", "");
-  SET_CLASS(NC_VARIABLE, ts, "VariableV2", "");
-  SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
-  SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandle", "");
-  SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandleV2", "");
-  SET_CLASS(NC_GET_SESSION_TENSOR, ts, "GetSessionTensor", "");
-  SET_CLASS(NC_DELETE_SESSION_TENSOR, ts, "DeleteSessionTensor", "");
-  SET_CLASS(NC_COND, ts, "Cond", "");
+  SetClass(NC_SWITCH, {"Switch", "RefSwitch", "Demux"});
+  SetClass(NC_MERGE, {"Merge", "RefMerge"});
+  SetClass(NC_ENTER, {"Enter", "RefEnter"});
+  SetClass(NC_EXIT, {"Exit", "RefExit"});
+  SetClass(NC_NEXT_ITERATION, {"NextIteration", "RefNextIteration"});
+  SetClass(NC_LOOP_COND, {"LoopCond"});
+  SetClass(NC_CONTROL_TRIGGER, {"ControlTrigger"});
+  SetClass(NC_SEND, {"_Send"});
+  SetClass(NC_HOST_SEND, {"_HostSend"});
+  SetClass(NC_RECV, {"_Recv"});
+  SetClass(NC_HOST_RECV, {"_HostRecv"});
+  SetClass(NC_CONSTANT, {"Const", "HostConst"});
+  SetClass(NC_VARIABLE, {"Variable", "VariableV2"});
+  SetClass(NC_IDENTITY, {"Identity", "RefIdentity"});
+  SetClass(NC_GET_SESSION_HANDLE, {"GetSessionHandle"});
+  SetClass(NC_GET_SESSION_HANDLE, {"GetSessionHandleV2"});
+  SetClass(NC_GET_SESSION_TENSOR, {"GetSessionTensor"});
+  SetClass(NC_DELETE_SESSION_TENSOR, {"DeleteSessionTensor"});
+  SetClass(NC_MUX, {"Mux"});
   if (class_ == NC_UNINITIALIZED) {
     class_ = NC_OTHER;  // Catch all
   }
-#undef SET_CLASS
 }
 
 void Node::Clear() {

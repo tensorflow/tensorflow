@@ -4139,30 +4139,6 @@ op {
   summary: "Concatenates tensors along one dimension."
 }
 op {
-  name: "Cond"
-  input_arg {
-    name: "pred"
-    type: DT_BOOL
-  }
-  input_arg {
-    name: "data_true"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "data_false"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-  }
-  summary: "Conditional branch."
-}
-op {
   name: "ConditionalAccumulator"
   output_arg {
     name: "handle"

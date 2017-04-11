@@ -42,6 +42,8 @@ Merge
 RefMerge
 Exit
 RefExit
+Mux
+Demux
 
 # ctc_ops
 CTCLoss

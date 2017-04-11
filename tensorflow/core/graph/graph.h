@@ -140,7 +140,7 @@ class Node {
   }
   bool IsHostSend() const { return class_ == NC_HOST_SEND; }
   bool IsHostRecv() const { return class_ == NC_HOST_RECV; }
-  bool IsCond() const { return class_ == NC_COND; }
+  bool IsMux() const { return class_ == NC_MUX; }
   bool IsOther() const { return class_ == NC_OTHER; }
 
   template <typename T>
@@ -219,7 +219,7 @@ class Node {
     NC_GET_SESSION_HANDLE,
     NC_GET_SESSION_TENSOR,
     NC_DELETE_SESSION_TENSOR,
-    NC_COND,
+    NC_MUX,
     NC_OTHER  // Not a special kind of node
   };
 
@@ -449,7 +449,7 @@ inline bool IsSend(const Node* node) { return node->IsSend(); }
 inline bool IsRecv(const Node* node) { return node->IsRecv(); }
 inline bool IsHostSend(const Node* node) { return node->IsHostSend(); }
 inline bool IsHostRecv(const Node* node) { return node->IsHostRecv(); }
-inline bool IsCond(const Node* node) { return node->IsCond(); }
+inline bool IsMux(const Node* node) { return node->IsMux(); }
 
 // True for Nodes that mediate the transfer of values between processes.
 inline bool IsTransferNode(const Node* n) { return IsSend(n) || IsRecv(n); }
