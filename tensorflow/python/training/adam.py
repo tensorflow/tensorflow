@@ -206,7 +206,7 @@ class NadamOptimizer(AdamOptimizer):
   correction term is both theoretically known to reduce regret bounds as well as
   improve performance and stability in practice.
 
-  [Dozat 2015]  “Incorporating Nesterov momentum into Adam,”
+  [Dozat 2015]  "Incorporating Nesterov momentum into Adam",
   Stanford University, CS 229 Machine Learning, Tech. Rep.,
   2015. http://cs229.stanford.edu/proj2015/054_report.pdf
 
@@ -308,7 +308,7 @@ class RadamOptimizer(AdamOptimizer):
 
   Details of Radam extension - https://github.com/tdozat/Optimization
 
-  [Dozat 2015]  “Incorporating Nesterov momentum into Adam,”
+  [Dozat 2015]  "Incorporating Nesterov momentum into Adam",
   Stanford University, CS 229 Machine Learning, Tech. Rep.,
   2015. http://cs229.stanford.edu/proj2015/054_report.pdf
 
