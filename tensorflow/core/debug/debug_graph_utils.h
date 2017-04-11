@@ -52,7 +52,7 @@ class DebuggerState : public DebuggerStateInterface {
                               const int64 executor_step_count,
                               const std::vector<string>& input_names,
                               const std::vector<string>& output_names,
-                              const std::vector<string>& target_names);
+                              const std::vector<string>& target_names) override;
 
  private:
   std::unordered_set<string> debug_urls_;

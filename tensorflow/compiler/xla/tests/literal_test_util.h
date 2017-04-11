@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -57,7 +58,7 @@ class LiteralTestUtil {
   // Asserts that the expected and actual literals are (bitwise) equal for all
   // elements in the literal. Also, asserts that the rank, dimensions sizes, and
   // primitive type are equal.
-  static testing::AssertionResult Equal(
+  static ::testing::AssertionResult Equal(
       const Literal& expected, const Literal& actual) TF_MUST_USE_RESULT;
 
   // Expects that expected and actual are Equal.
@@ -101,7 +102,7 @@ class LiteralTestUtil {
   // Asserts that the expected and actual literals are within the given error
   // bound for all elements. Also, asserts that the rank, dimensions sizes, and
   // bounds are equivalent. Only supported for floating point values.
-  static testing::AssertionResult Near(
+  static ::testing::AssertionResult Near(
       const Literal& expected, const Literal& actual,
       const ErrorSpec& error) TF_MUST_USE_RESULT;
 
@@ -147,7 +148,7 @@ class LiteralTestUtil {
   // tuples are within the given error bound. Tuples are matched recursively.
   // If the elements of the tuple are not floating-point types, the error spec
   // is ignored and exact equality is checked.
-  static testing::AssertionResult NearTuple(
+  static ::testing::AssertionResult NearTuple(
       const Literal& expected, const Literal& actual,
       const ErrorSpec& error) TF_MUST_USE_RESULT;
 

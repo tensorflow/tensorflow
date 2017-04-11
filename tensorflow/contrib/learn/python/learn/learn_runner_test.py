@@ -35,15 +35,16 @@ patch = test.mock.patch
 
 class TestExperiment(experiment.Experiment):
 
-  def __init__(self, default=None, config=None):
+  def __init__(self, default=None, config=None, model_dir=None):
     self.default = default
     self.config = config
 
     class Estimator(evaluable.Evaluable, trainable.Trainable):
       config = self.config
 
+      @property
       def model_dir(self):
-        raise NotImplementedError
+        return model_dir
 
       def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
               monitors=None, max_steps=None):

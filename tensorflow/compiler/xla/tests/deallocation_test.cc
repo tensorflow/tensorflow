@@ -21,14 +21,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
+
+using ::testing::HasSubstr;
 
 class DeallocationTest : public ClientLibraryTestBase {
  protected:
@@ -59,8 +61,8 @@ TEST_F(DeallocationTest, DeallocateScalar) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_MATCH(transfer_status.status().error_message(),
-               testing::HasSubstr("was previously deallocated"));
+  ASSERT_THAT(transfer_status.status().error_message(),
+              HasSubstr("was previously deallocated"));
 }
 
 TEST_F(DeallocationTest, DeallocateVector) {
@@ -72,8 +74,8 @@ TEST_F(DeallocationTest, DeallocateVector) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_MATCH(transfer_status.status().error_message(),
-               testing::HasSubstr("was previously deallocated"));
+  ASSERT_THAT(transfer_status.status().error_message(),
+              HasSubstr("was previously deallocated"));
 }
 
 TEST_F(DeallocationTest, DeallocateEmptyVector) {
@@ -85,8 +87,8 @@ TEST_F(DeallocationTest, DeallocateEmptyVector) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_MATCH(transfer_status.status().error_message(),
-               testing::HasSubstr("was previously deallocated"));
+  ASSERT_THAT(transfer_status.status().error_message(),
+              HasSubstr("was previously deallocated"));
 }
 
 XLA_TEST_F(DeallocationTest, DeallocateTuple) {
@@ -99,8 +101,8 @@ XLA_TEST_F(DeallocationTest, DeallocateTuple) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_MATCH(transfer_status.status().error_message(),
-               testing::HasSubstr("was previously deallocated"));
+  ASSERT_THAT(transfer_status.status().error_message(),
+              HasSubstr("was previously deallocated"));
 }
 
 XLA_TEST_F(DeallocationTest, DeallocateTupleWithRepeatedElements) {
@@ -114,8 +116,8 @@ XLA_TEST_F(DeallocationTest, DeallocateTupleWithRepeatedElements) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_MATCH(transfer_status.status().error_message(),
-               testing::HasSubstr("was previously deallocated"));
+  ASSERT_THAT(transfer_status.status().error_message(),
+              HasSubstr("was previously deallocated"));
 }
 
 XLA_TEST_F(DeallocationTest, DeallocateNestedTuple) {
@@ -130,8 +132,8 @@ XLA_TEST_F(DeallocationTest, DeallocateNestedTuple) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_MATCH(transfer_status.status().error_message(),
-               testing::HasSubstr("was previously deallocated"));
+  ASSERT_THAT(transfer_status.status().error_message(),
+              HasSubstr("was previously deallocated"));
 }
 
 }  // namespace

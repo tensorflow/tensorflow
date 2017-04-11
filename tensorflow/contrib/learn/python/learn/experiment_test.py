@@ -565,6 +565,31 @@ class ExperimentTest(test.TestCase):
       self.assertEqual([noop_hook], est.eval_hooks)
       self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
 
+  def test_min_eval_frequency_defaults(self):
+    def dummy_model_fn(features, labels):  # pylint: disable=unused-argument
+      pass
+
+    # The default value when model_dir is on GCS is 1000
+    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
+    ex = experiment.Experiment(
+        estimator, train_input_fn=None, eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 1000)
+
+    # The default value when model_dir is not on GCS is 1
+    estimator = core_estimator.Estimator(dummy_model_fn, '/tmp/dummy')
+    ex = experiment.Experiment(
+        estimator, train_input_fn=None, eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 1)
+
+    # Make sure default not used when explicitly set
+    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
+    ex = experiment.Experiment(
+        estimator,
+        min_eval_frequency=123,
+        train_input_fn=None,
+        eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 123)
+
   def test_continuous_train_and_eval(self):
     for est in self._estimators_for_tests(eval_dict={'global_step': 100}):
       eval_metrics = 'eval_metrics' if not isinstance(
