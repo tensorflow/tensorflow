@@ -274,7 +274,7 @@ Status SimpleGraphExecutionState::InitBaseGraph(
     }
   }
 
-  std::unique_ptr<Graph> new_graph(new Graph(flib_def_.get()));
+  std::unique_ptr<Graph> new_graph(new Graph(OpRegistry::Global()));
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, *graph_def, new_graph.get()));
   for (const Node* n : new_graph->nodes()) {
