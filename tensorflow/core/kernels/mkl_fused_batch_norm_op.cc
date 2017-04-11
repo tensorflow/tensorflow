@@ -328,7 +328,7 @@ class MklFusedBatchNormOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("MklFusedBatchNorm")                       \
                               .Device(DEVICE_CPU)                         \
                               .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                              .Label(mkl_op_registry::kMklOpLabel),       \
                           MklFusedBatchNormOp<CPUDevice, T>);
 TF_CALL_float(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
@@ -679,7 +679,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("MklFusedBatchNormGrad")                   \
                               .Device(DEVICE_CPU)                         \
                               .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                              .Label(mkl_op_registry::kMklOpLabel),       \
                           MklFusedBatchNormGradOp<CPUDevice, T>);
 TF_CALL_float(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU

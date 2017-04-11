@@ -255,7 +255,7 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("MklConv2DWithBiasBackpropBias")           \
                               .Device(DEVICE_CPU)                         \
                               .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                              .Label(mkl_op_registry::kMklOpLabel),       \
                           MklConv2DCustomBackpropBiasOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_CPU_KERNELS);

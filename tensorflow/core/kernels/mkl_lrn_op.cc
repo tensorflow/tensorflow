@@ -760,12 +760,12 @@ class MklLRNGradOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("MklLRN")                                  \
                               .Device(DEVICE_CPU)                         \
                               .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                              .Label(mkl_op_registry::kMklOpLabel),       \
                           MklLRNOp<T>);                                   \
   REGISTER_KERNEL_BUILDER(Name("MklLRNGrad")                              \
                               .Device(DEVICE_CPU)                         \
                               .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                              .Label(mkl_op_registry::kMklOpLabel),       \
                           MklLRNGradOp<T>);
 
 TF_CALL_float(REGISTER_MKL_LRN_CPU);

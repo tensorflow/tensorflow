@@ -412,7 +412,7 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("MklConv2DBackpropFilter")                 \
                               .Device(DEVICE_CPU)                         \
                               .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                              .Label(mkl_op_registry::kMklOpLabel),       \
                           MklConv2DCustomBackpropFilterOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
