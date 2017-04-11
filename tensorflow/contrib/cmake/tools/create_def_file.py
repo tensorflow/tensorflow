@@ -47,8 +47,16 @@ DUMPBIN = "dumpbin.exe"
 EXCLUDE_RE = re.compile(r"deleting destructor|::internal::")
 
 # Include if matched before exclude
-INCLUDEPRE_RE = re.compile(r"tensorflow::internal::LogMessage|"
-                           r"tensorflow::internal::CheckOpMessageBuilder")
+INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
+                           r"tensorflow::internal::LogMessage|"
+                           r"tensorflow::internal::LogString|"
+                           r"tensorflow::internal::CheckOpMessageBuilder|"
+                           r"tensorflow::internal::PickUnusedPortOrDie|"
+                           r"tensorflow::internal::ValidateDevice|"
+                           r"tensorflow::ops::internal::Enter|"
+                           r"tensorflow::strings::internal::AppendPieces|"
+                           r"tensorflow::strings::internal::CatPieces|"
+                           r"tensorflow::io::internal::JoinPathImpl")
 
 # Include if matched after exclude
 INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
@@ -56,12 +64,27 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"functor::|"
                         r"perftools::gputools")
 
-
+# We want to identify data members explicitly in the DEF file, so that no one
+# can implicitly link against the DLL if they use one of the variables exported
+# from the DLL and the header they use does not decorate the symbol with
+# __declspec(dllimport). It is easier to detect what a data symbol does 
+# NOT look like, so doing it with the below regex.
+DATA_EXCLUDE_RE = re.compile(r"[)(]|"
+                             r"vftable|"
+                             r"vbtable|"
+                             r"vcall|"
+                             r"RTTI|"
+                             r"protobuf::internal::ExplicitlyConstructed")
+      
 def get_args():
   """Parse command line."""
+  filename_list = lambda x: x.split(";")
   parser = argparse.ArgumentParser()
-  parser.add_argument("--input", help="input library", required=True)
+  parser.add_argument("--input", type=filename_list,
+                      help="paths to input libraries separated by semicolons",
+                      required=True)
   parser.add_argument("--output", help="output deffile", required=True)
+  parser.add_argument("--target", help="name of the target", required=True)
   args = parser.parse_args()
   return args
 
@@ -70,25 +93,26 @@ def main():
   """main."""
   args = get_args()
 
-  # Pipe dumpbin to extract all linkable symbols from a lib.
+  # Pipe dumpbin to extract all linkable symbols from libs.
   # Good symbols are collected in candidates and also written to
   # a temp file.
   candidates = []
   tmpfile = tempfile.NamedTemporaryFile(mode="w", delete=False)
-  proc = subprocess.Popen([DUMPBIN, "/nologo", "/linkermember:1", args.input],
-                          stdout=subprocess.PIPE)
-  for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):
-    cols = line.split()
-    if len(cols) < 2:
-      continue
-    sym = cols[1]
-    tmpfile.file.write(sym + "\n")
-    candidates.append(sym)
+  for lib_path in args.input:
+    proc = subprocess.Popen([DUMPBIN, "/nologo", "/linkermember:1", lib_path],
+                            stdout=subprocess.PIPE)
+    for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):
+      cols = line.split()
+      if len(cols) < 2:
+        continue
+      sym = cols[1]
+      tmpfile.file.write(sym + "\n")
+      candidates.append(sym)
+    exit_code = proc.wait()
+    if exit_code != 0:
+      print("{} failed, exit={}".format(DUMPBIN, exit_code))
+      return exit_code
   tmpfile.file.close()
-  exit_code = proc.wait()
-  if exit_code != 0:
-    print("{} failed, exit={}".format(DUMPBIN, exit_code))
-    return exit_code
 
   # Run the symbols through undname to get their undecorated name
   # so we can filter on something readable.
@@ -96,9 +120,8 @@ def main():
     # track dupes
     taken = set()
 
-    # Header for the def file. Since the tensorflow.dll is actually called
-    # _pywrap_tensorflow.pyd in the python wheel, hint that in the def file.
-    def_fp.write("LIBRARY _pywrap_tensorflow_internal.pyd\n")
+    # Header for the def file.
+    def_fp.write("LIBRARY " + args.target + "\n")
     def_fp.write("EXPORTS\n")
     def_fp.write("\t ??1OpDef@tensorflow@@UEAA@XZ\n")
 
@@ -118,8 +141,17 @@ def main():
           continue
         if not INCLUDE_RE.search(line):
           continue
-
-      def_fp.write("\t" + decorated + "\n")
+          
+      if "deleting destructor" in line:
+        # Some of the symbols convered by INCLUDEPRE_RE export deleting
+        # destructor symbols, which is a bad idea.
+        # So we filter out such symbols here.
+        continue
+          
+      if DATA_EXCLUDE_RE.search(line):
+        def_fp.write("\t" + decorated + "\n")
+      else:
+        def_fp.write("\t" + decorated + " DATA\n")      
       taken.add(decorated)
   exit_code = proc.wait()
   if exit_code != 0:
