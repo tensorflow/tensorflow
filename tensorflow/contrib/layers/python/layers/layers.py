@@ -1068,6 +1068,7 @@ def convolution2d_transpose(
     inputs,
     num_outputs,
     kernel_size,
+    output_shape=None,
     stride=1,
     padding='SAME',
     data_format=DATA_FORMAT_NHWC,
@@ -1144,6 +1145,7 @@ def convolution2d_transpose(
     layer = convolutional_layers.Convolution2DTranspose(
         filters=num_outputs,
         kernel_size=kernel_size,
+        output_shape=output_shape,
         strides=stride,
         padding=padding,
         data_format=df,
