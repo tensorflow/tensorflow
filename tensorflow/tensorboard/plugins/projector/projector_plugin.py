@@ -272,9 +272,10 @@ def _assets_dir_to_logdir(assets_dir):
 def _latest_checkpoints_changed(configs, run_path_pairs):
   """Returns true if the latest checkpoint has changed in any of the runs."""
   for run_name, assets_dir in run_path_pairs:
+    logdir = _assets_dir_to_logdir(assets_dir)
     if run_name not in configs:
       config = projector_config_pb2.ProjectorConfig()
-      config_fpath = os.path.join(assets_dir, PROJECTOR_FILENAME)
+      config_fpath = os.path.join(log_dir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
         file_content = file_io.read_file_to_string(config_fpath)
         text_format.Merge(file_content, config)
@@ -282,7 +283,6 @@ def _latest_checkpoints_changed(configs, run_path_pairs):
       config = configs[run_name]
 
     # See if you can find a checkpoint file in the logdir.
-    logdir = _assets_dir_to_logdir(assets_dir)
     ckpt_path = _find_latest_checkpoint(logdir)
     if not ckpt_path:
       continue
@@ -430,8 +430,9 @@ class ProjectorPlugin(TBPlugin):
     configs = {}
     config_fpaths = {}
     for run_name, assets_dir in run_path_pairs:
+      logdir = _assets_dir_to_logdir(assets_dir)
       config = projector_config_pb2.ProjectorConfig()
-      config_fpath = os.path.join(assets_dir, PROJECTOR_FILENAME)
+      config_fpath = os.path.join(log_dir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
         file_content = file_io.read_file_to_string(config_fpath)
         text_format.Merge(file_content, config)
@@ -443,7 +444,6 @@ class ProjectorPlugin(TBPlugin):
 
       if not config.model_checkpoint_path:
         # See if you can find a checkpoint file in the logdir.
-        logdir = _assets_dir_to_logdir(assets_dir)
         ckpt_path = _find_latest_checkpoint(logdir)
         if not ckpt_path and not has_tensor_files:
           continue
