@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -85,7 +85,7 @@ void MovingAverage::AddValue(double v) {
 
 static char hex_char[] = "0123456789abcdef";
 
-string PrintMemory(const char* ptr, int n) {
+string PrintMemory(const char* ptr, size_t n) {
   string ret;
   ret.resize(n * 3);
   for (int i = 0; i < n; ++i) {

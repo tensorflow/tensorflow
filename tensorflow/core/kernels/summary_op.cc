@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,35 +40,35 @@ class SummaryScalarOp : public OpKernel {
     const Tensor& tags = c->input(0);
     const Tensor& values = c->input(1);
 
-    OP_REQUIRES(c, tags.IsSameSize(values) ||
-                       (TensorShapeUtils::IsLegacyScalar(tags.shape()) &&
-                        TensorShapeUtils::IsLegacyScalar(values.shape())),
-                errors::InvalidArgument("tags and values not the same shape: ",
-                                        tags.shape().ShortDebugString(), " != ",
-                                        values.shape().ShortDebugString()));
+    OP_REQUIRES(
+        c, tags.IsSameSize(values) ||
+               (IsLegacyScalar(tags.shape()) && IsLegacyScalar(values.shape())),
+        errors::InvalidArgument("tags and values not the same shape: ",
+                                tags.shape().DebugString(), " != ",
+                                values.shape().DebugString(), SingleTag(tags)));
     auto Ttags = tags.flat<string>();
     auto Tvalues = values.flat<T>();
     Summary s;
     for (int i = 0; i < Ttags.size(); i++) {
       Summary::Value* v = s.add_value();
       v->set_tag(Ttags(i));
-      v->set_simple_value(Tvalues(i));
+      v->set_simple_value(float(Tvalues(i)));
     }
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
     CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
   }
-};
 
-REGISTER_KERNEL_BUILDER(Name("ScalarSummary")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        SummaryScalarOp<float>);
-REGISTER_KERNEL_BUILDER(Name("ScalarSummary")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        SummaryScalarOp<double>);
+  // If there's only one tag, include it in the error message
+  static string SingleTag(const Tensor& tags) {
+    if (tags.NumElements() == 1) {
+      return strings::StrCat(" (tag '", tags.flat<string>()(0), "')");
+    } else {
+      return "";
+    }
+  }
+};
 
 template <typename T>
 class SummaryHistoOp : public OpKernel {
@@ -81,18 +81,22 @@ class SummaryHistoOp : public OpKernel {
     const Tensor& tags = c->input(0);
     const Tensor& values = c->input(1);
     const auto flat = values.flat<T>();
-    OP_REQUIRES(c, TensorShapeUtils::IsLegacyScalar(tags.shape()),
+    OP_REQUIRES(c, IsLegacyScalar(tags.shape()),
                 errors::InvalidArgument("tags must be scalar"));
     // Build histogram of values in "values" tensor
     histogram::Histogram histo;
     for (int64 i = 0; i < flat.size(); i++) {
-      T v = flat(i);
-      if (!std::isfinite(v)) {
+      const double double_val = static_cast<double>(flat(i));
+      if (Eigen::numext::isnan(double_val)) {
         c->SetStatus(
-            errors::OutOfRange("Nan in summary histogram for: ", name()));
+            errors::InvalidArgument("Nan in summary histogram for: ", name()));
+        break;
+      } else if (Eigen::numext::isinf(double_val)) {
+        c->SetStatus(errors::InvalidArgument(
+            "Infinity in summary histogram for: ", name()));
         break;
       }
-      histo.Add(v);
+      histo.Add(double_val);
     }
 
     Summary s;
@@ -108,6 +112,9 @@ class SummaryHistoOp : public OpKernel {
 
 #define REGISTER(T)                                                       \
   REGISTER_KERNEL_BUILDER(                                                \
+      Name("ScalarSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"),    \
+      SummaryScalarOp<T>);                                                \
+  REGISTER_KERNEL_BUILDER(                                                \
       Name("HistogramSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SummaryHistoOp<T>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER)
@@ -116,7 +123,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER)
 struct HistogramResource : public ResourceBase {
   histogram::ThreadSafeHistogram histogram;
 
-  string DebugString() override { return "A historam summary. Stats ..."; }
+  string DebugString() override { return "A histogram summary. Stats ..."; }
 };
 
 class SummaryMergeOp : public OpKernel {
@@ -139,10 +146,12 @@ class SummaryMergeOp : public OpKernel {
         }
 
         for (int v = 0; v < summary_in.value_size(); v++) {
-          if (!tags.insert(summary_in.value(v).tag()).second) {
-            c->SetStatus(errors::InvalidArgument(
-                strings::StrCat("Duplicate tag ", summary_in.value(v).tag(),
-                                " found in summary inputs")));
+          const string& tag = summary_in.value(v).tag();
+          // The tag is unused by the TensorSummary op, so no need to check
+          // for duplicates.
+          if ((tag != "") && !tags.insert(tag).second) {
+            c->SetStatus(errors::InvalidArgument(strings::StrCat(
+                "Duplicate tag ", tag, " found in summary inputs")));
             return;
           }
           *s.add_value() = summary_in.value(v);

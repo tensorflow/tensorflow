@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace strings {
@@ -77,29 +78,67 @@ char* FloatToBuffer(float i, char* buffer);
 string FpToString(Fprint fp);
 
 // Attempt to parse a fingerprint in the form encoded by FpToString.  If
-// successsful, stores the fingerprint in *fp and returns true.  Otherwise,
+// successful, stores the fingerprint in *fp and returns true.  Otherwise,
 // returns false.
 bool StringToFp(const string& s, Fprint* fp);
+
+// Convert a 64-bit fingerprint value to an ASCII representation that
+// is terminated by a '\0'.
+// Buf must point to an array of at least kFastToBufferSize characters
+StringPiece Uint64ToHexString(uint64 v, char* buf);
+
+// Attempt to parse a uint64 in the form encoded by FastUint64ToHexString.  If
+// successful, stores the value in *v and returns true.  Otherwise,
+// returns false.
+bool HexStringToUint64(const StringPiece& s, uint64* v);
 
 // Convert strings to 32bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strto32(const char* str, int32* value);
+bool safe_strto32(StringPiece str, int32* value);
+
+// Convert strings to unsigned 32bit integer values.
+// Leading and trailing spaces are allowed.
+// Return false with overflow or invalid input.
+bool safe_strtou32(StringPiece str, uint32* value);
 
 // Convert strings to 64bit integer values.
 // Leading and trailing spaces are allowed.
 // Return false with overflow or invalid input.
-bool safe_strto64(const char* str, int64* value);
+bool safe_strto64(StringPiece str, int64* value);
+
+// Convert strings to unsigned 64bit integer values.
+// Leading and trailing spaces are allowed.
+// Return false with overflow or invalid input.
+bool safe_strtou64(StringPiece str, uint64* value);
 
 // Convert strings to floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
 bool safe_strtof(const char* str, float* value);
 
+// Convert strings to double precision floating point values.
+// Leading and trailing spaces are allowed.
+// Values may be rounded on over- and underflow.
+bool safe_strtod(const char* str, double* value);
+
+// Converts from an int64 to a human readable string representing the
+// same number, using decimal powers.  e.g. 1200000 -> "1.20M".
+string HumanReadableNum(int64 value);
+
 // Converts from an int64 representing a number of bytes to a
 // human readable string representing the same number.
 // e.g. 12345678 -> "11.77MiB".
 string HumanReadableNumBytes(int64 num_bytes);
+
+// Converts a time interval as double to a human readable
+// string. For example:
+//   0.001       -> "1 ms"
+//   10.0        -> "10 s"
+//   933120.0    -> "10.8 days"
+//   39420000.0  -> "1.25 years"
+//   -10         -> "-10 s"
+string HumanReadableElapsedTime(double seconds);
 
 }  // namespace strings
 }  // namespace tensorflow

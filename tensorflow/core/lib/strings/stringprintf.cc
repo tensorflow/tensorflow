@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ limitations under the License.
 #include <errno.h>
 #include <stdarg.h>  // For va_list and related operations
 #include <stdio.h>   // MSVC requires this for _vsnprintf
-#include <vector>
 
 namespace tensorflow {
 namespace strings {

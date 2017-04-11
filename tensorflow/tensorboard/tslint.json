@@ -8,10 +8,9 @@
     "jsdoc-format": true,
     "label-position": true,
     "label-undefined": true,
-    "max-line-length": [true, 140],
+    "max-line-length": [true, 80],
     "member-ordering": [false, "variables-before-functions"],
     "no-arg": true,
-    "no-bitwise": true,
     "no-consecutive-blank-lines": true,
     "no-console": [true,
         "log",
@@ -33,7 +32,7 @@
     "no-unreachable": true,
     "no-unused-expression": true,
     "no-unused-variable": false,
-    "no-use-before-declare": true,
+    "no-use-before-declare": false,
     "one-line": [true,
         "check-catch",
         "check-else",
@@ -41,10 +40,10 @@
         "check-whitespace"
     ],
     "quotemark": [true,
-        "double"
+        "single"
     ],
     "radix": true,
-    "semicolon": true,
+    "semicolon": [true, "always"],
     "triple-equals": [true,
         "allow-null-check"
     ],
@@ -59,7 +58,6 @@
         "check-branch",
         "check-decl",
         "check-operator",
-        "check-separator",
         "check-type"
     ]
   }

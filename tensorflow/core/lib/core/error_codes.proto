@@ -1,7 +1,10 @@
 syntax = "proto3";
 
 package tensorflow.error;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
+option java_outer_classname = "ErrorCodesProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
 
 // The canonical error codes for TensorFlow APIs.
 //
@@ -96,7 +99,7 @@ enum Code {
   // ABORTED, and UNAVAILABLE.
   ABORTED = 10;
 
-  // Operation was attempted past the valid range.  E.g., seeking or
+  // Operation tried to iterate past the valid input range.  E.g., seeking or
   // reading past end of file.
   //
   // Unlike INVALID_ARGUMENT, this error indicates a problem that may

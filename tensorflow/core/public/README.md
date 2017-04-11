@@ -21,7 +21,7 @@ Then:
 ```python
 import tensorflow as tf
 
-with tf.Session("local"):
+with tf.Session():
   input1 = tf.constant(1.0, shape=[1, 1], name="input1")
   input2 = tf.constant(2.0, shape=[1, 1], name="input2")
   output = tf.matmul(input1, input2)
@@ -51,7 +51,7 @@ using the C++ Session API:
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
 int main(int argc, char** argv) {
   // Construct your graph.

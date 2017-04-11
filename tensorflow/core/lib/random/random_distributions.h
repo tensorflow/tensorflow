@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,15 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 #define TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
+#define _USE_MATH_DEFINES
+#include <cmath>
 #include <math.h>
+#undef _USE_MATH_DEFINES
+
 #include <string.h>
 #include <algorithm>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/random/philox_random.h"
 
 namespace tensorflow {
 namespace random {
 
+// Helper function to convert a 16-bit integer to a half between [0..1).
+PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x);
 // Helper function to convert a 32-bit integer to a float between [0..1).
 PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x);
 // Helper function to convert two 32-bit integers to a double between [0..1).
@@ -34,10 +41,10 @@ PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1);
 // underlying random integer generator.
 // Arguments:
 //   Generator: a generator type that returns a number of uint32 upon each
-//              each invocation. It needs to define kResultElementCount for the
-//              sample count for each invocation, and ResultType for actual
-//              returned sample type.
-//   RealType: the data type of the real numberes that will be returned by the
+//              invocation. It needs to define kResultElementCount for the
+//              sample count for each invocation, and ResultType for the
+//              actual returned sample type.
+//   RealType: the data type of the real numbers that will be returned by the
 //             distribution. This could be either float or double for now.
 // This class is meant to be implemented through specialization. The default
 // is not defined by design.
@@ -45,10 +52,36 @@ template <class Generator, typename RealType>
 class UniformDistribution;
 
 template <class Generator>
+class UniformDistribution<Generator, Eigen::half> {
+ public:
+  // The number of elements that will be returned.
+  static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
+  // Indicate that this distribution may take variable number of samples
+  // during the runtime.
+  static const bool kVariableSamplesPerOutput = false;
+  typedef Array<Eigen::half, kResultElementCount> ResultType;
+  typedef Eigen::half ResultElementType;
+
+  PHILOX_DEVICE_INLINE
+  ResultType operator()(Generator* gen) {
+    typename Generator::ResultType sample = (*gen)();
+    ResultType result;
+    for (int i = 0; i < kResultElementCount; ++i) {
+      result[i] = Uint16ToHalf(sample[i]);  // Truncate the upper 16 bits.
+    }
+    return result;
+  }
+};
+
+template <class Generator>
 class UniformDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -71,6 +104,8 @@ class UniformDistribution<Generator, double> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -93,6 +128,8 @@ class UniformDistribution<Generator, int32> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -125,6 +162,8 @@ class UniformDistribution<Generator, int64> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -192,7 +231,7 @@ class SingleSampleAdapter {
 //              each invocation. It needs to define kResultElementCount for the
 //              sample count for each invocation, and ResultType for actual
 //              returned sample type.
-//   RealType: the data type of the real numberes that will be returned by the
+//   RealType: the data type of the real numbers that will be returned by the
 //             distribution. This could be either float or double for now.
 // This class is meant to be implemented through specialization. The default
 // is not defined by design.
@@ -206,11 +245,43 @@ PHILOX_DEVICE_INLINE
 void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
                      double* d1);
 
+// Exactly like the float version, except that we convert to half afterwards;
+// since we don't have half-precision sin/cos even on GPUs, there's nothing to
+// gain from working in half internally.
+template <class Generator>
+class NormalDistribution<Generator, Eigen::half> {
+ public:
+  // The number of elements that will be returned.
+  static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 70;
+  // Indicate that this distribution may take variable number of samples
+  // during the runtime.
+  static const bool kVariableSamplesPerOutput = false;
+  typedef Array<Eigen::half, kResultElementCount> ResultType;
+  typedef Eigen::half ResultElementType;
+
+  PHILOX_DEVICE_INLINE
+  ResultType operator()(Generator* gen) {
+    typename Generator::ResultType sample = (*gen)();
+    ResultType result;
+    for (int i = 0; i < kResultElementCount; i += 2) {
+      float f[2];
+      BoxMullerFloat(sample[i], sample[i + 1], &f[0], &f[1]);
+      result[i] = Eigen::half(f[0]);
+      result[i + 1] = Eigen::half(f[1]);
+    }
+    return result;
+  }
+};
+
 template <class Generator>
 class NormalDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -233,6 +304,8 @@ class NormalDistribution<Generator, double> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -259,12 +332,57 @@ class NormalDistribution<Generator, double> {
 //              each invocation. It needs to define kResultElementCount for the
 //              sample count for each invocation, and ResultType for actual
 //              returned sample type.
-//   RealType: the data type of the real numberes that will be returned by the
+//   RealType: the data type of the real numbers that will be returned by the
 //             distribution. This could be either float or double for now.
 // This class is meant to be implemented through specialization. The default
 // is not defined by design.
 template <class SingleSampleGenerator, typename RealType>
 class TruncatedNormalDistribution;
+
+// Exactly like the float version, except that we convert to half afterwards;
+// since we don't have half-precision sin/cos even on GPUs, there's nothing to
+// gain from working in half internally.
+template <class SingleSampleGenerator>
+class TruncatedNormalDistribution<SingleSampleGenerator, Eigen::half> {
+ public:
+  // The number of elements that will be returned.
+  static const int kResultElementCount =
+      SingleSampleGenerator::kNativeElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 90;
+  // Indicate that this distribution may take variable number of samples
+  // during the runtime.
+  static const bool kVariableSamplesPerOutput = true;
+  // The threshold where the normal distribution is truncated.
+  const float kTruncateValue = 2.0f;
+
+  typedef Array<Eigen::half, kResultElementCount> ResultType;
+  typedef Eigen::half ResultElementType;
+
+  PHILOX_DEVICE_INLINE
+  ResultType operator()(SingleSampleGenerator* gen) {
+    ResultType results;
+    int index = 0;
+    while (true) {
+      // Repeatedly take samples from the normal distribution, until we have
+      // the desired number of elements that fall within the pre-defined cutoff
+      // threshold.
+      const uint32 x0 = (*gen)();
+      const uint32 x1 = (*gen)();
+      float f[2];
+      BoxMullerFloat(x0, x1, &f[0], &f[1]);
+
+      for (int i = 0; i < 2; ++i) {
+        if (fabs(f[i]) < kTruncateValue) {
+          results[index++] = Eigen::half(f[i]);
+          if (index >= kResultElementCount) {
+            return results;
+          }
+        }
+      }
+    }
+  }
+};
 
 // Partial specialization for float.
 template <class SingleSampleGenerator>
@@ -273,6 +391,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, float> {
   // The number of elements that will be returned.
   static const int kResultElementCount =
       SingleSampleGenerator::kNativeElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = true;
@@ -316,6 +436,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
       (SingleSampleGenerator::kNativeElementCount > 1)
           ? SingleSampleGenerator::kNativeElementCount / 2
           : 1;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = true;
@@ -362,7 +484,7 @@ void BoxMullerFloat(uint32 x0, uint32 x1, float* f0, float* f1) {
   }
   const float v1 = 2.0f * M_PI * Uint32ToFloat(x1);
   const float u2 = sqrt(-2.0f * log(u1));
-#if defined(__linux)
+#if defined(__linux__)
   sincosf(v1, f0, f1);
 #else
   *f0 = sinf(v1);
@@ -388,7 +510,7 @@ void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
   }
   const double v1 = 2 * M_PI * Uint64ToDouble(x2, x3);
   const double u2 = sqrt(-2.0 * log(u1));
-#if defined(__linux)
+#if defined(__linux__)
   sincos(v1, d0, d1);
 #else
   *d0 = sin(v1);
@@ -396,6 +518,23 @@ void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
 #endif
   *d0 *= u2;
   *d1 *= u2;
+}
+
+// Helper function to convert an 16-bit integer to a half between [0..1).
+PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x) {
+  // IEEE754 halfs are formatted as follows (MSB first):
+  //    sign(1) exponent(5) mantissa(10)
+  // Conceptually construct the following:
+  //    sign == 0
+  //    exponent == 15  -- an excess 15 representation of a zero exponent
+  //    mantissa == 10 random bits
+  const uint16 man = x & 0x3ffu;  // 10 bit mantissa
+  const uint16 exp = static_cast<uint16>(15);
+  const uint16 val = (exp << 10) | man;
+
+  Eigen::half result;
+  result.x = val;
+  return result - Eigen::half(1.0);
 }
 
 // Helper function to convert an 32-bit integer to a float between [0..1).

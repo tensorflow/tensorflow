@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/kernel_def.pb_text.h"
 
 namespace tensorflow {
 
@@ -54,7 +55,7 @@ KernelDefBuilder& KernelDefBuilder::HostMemory(const char* arg_name) {
 KernelDefBuilder& KernelDefBuilder::Label(const char* label) {
   CHECK_EQ(kernel_def_->label(), "")
       << "Trying to set a kernel's label a second time: '" << label
-      << "' in: " << kernel_def_->ShortDebugString();
+      << "' in: " << ProtoShortDebugString(*kernel_def_);
   kernel_def_->set_label(label);
   return *this;
 }

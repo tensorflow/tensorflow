@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ struct L2Loss {
                   typename TTypes<T>::Scalar output) {
     // We flatten the input tensor and reduce on dimension 0, producing
     // a single number which is Mul(Sum(x^2), 0.5).
-    output.device(d) = input.square().sum() * static_cast<T>(0.5);
+    output.device(d) = (input.square() * static_cast<T>(0.5)).sum();
   }
 };
 

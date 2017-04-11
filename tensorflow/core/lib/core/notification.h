@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,42 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_UTIL_NOTIFICATION_H_
 #define TENSORFLOW_UTIL_NOTIFICATION_H_
 
-#include <assert.h>
-
-#include "tensorflow/core/platform/port.h"
-
-namespace tensorflow {
-
-class Notification {
- public:
-  Notification() : notified_(false) {}
-  ~Notification() {}
-
-  void Notify() {
-    mutex_lock l(mu_);
-    assert(!notified_);
-    notified_ = true;
-    cv_.notify_all();
-  }
-
-  bool HasBeenNotified() {
-    mutex_lock l(mu_);
-    return notified_;
-  }
-
-  void WaitForNotification() {
-    mutex_lock l(mu_);
-    while (!notified_) {
-      cv_.wait(l);
-    }
-  }
-
- private:
-  mutex mu_;
-  condition_variable cv_;
-  bool notified_;
-};
-
-}  // namespace tensorflow
+// Notification implementation is platform-dependent, to support
+// alternative synchronization primitives.
+#include "tensorflow/core/platform/notification.h"
 
 #endif  // TENSORFLOW_UTIL_NOTIFICATION_H_

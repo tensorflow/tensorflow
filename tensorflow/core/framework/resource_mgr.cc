@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,46 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/demangle.h"
 
 namespace tensorflow {
+
+namespace internal {
+
+Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p) {
+  if (ctx->device()->attributes().name() != p.device()) {
+    return errors::InvalidArgument(
+        "Trying to access resource located in device ", p.device(),
+        " from device ", ctx->device()->attributes().name());
+  }
+  return Status::OK();
+}
+
+}  // end namespace internal
+
+Status ResourceMgr::InsertDebugTypeName(uint64 hash_code,
+                                        const string& type_name) {
+  auto iter = debug_type_names_.emplace(hash_code, type_name);
+  if (iter.first->second != type_name) {
+    return errors::AlreadyExists("Duplicate hash code found for type ",
+                                 type_name);
+  }
+  return Status::OK();
+}
+
+const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
+  auto type_name_iter = debug_type_names_.find(hash_code);
+  if (type_name_iter == debug_type_names_.end()) {
+    return "<unknown>";
+  } else {
+    return type_name_iter->second.c_str();
+  }
+}
 
 ResourceMgr::ResourceMgr() : default_container_("localhost") {}
 
@@ -41,7 +75,37 @@ void ResourceMgr::Clear() {
   containers_.clear();
 }
 
-Status ResourceMgr::DoCreate(const string& container, ResourceMgrTypeIndex type,
+string ResourceMgr::DebugString() const {
+  mutex_lock l(mu_);
+  struct Line {
+    const string* container;
+    const string type;
+    const string* resource;
+    const string detail;
+  };
+  std::vector<Line> lines;
+  for (const auto& p : containers_) {
+    const string& container = p.first;
+    for (const auto& q : *p.second) {
+      const Key& key = q.first;
+      const char* type = DebugTypeName(key.first);
+      const string& resource = key.second;
+      Line l{&container, port::Demangle(type), &resource,
+             q.second->DebugString()};
+      lines.push_back(l);
+    }
+  }
+  std::vector<string> text;
+  for (const Line& line : lines) {
+    text.push_back(strings::Printf(
+        "%-20s | %-40s | %-40s | %-s", line.container->c_str(),
+        line.type.c_str(), line.resource->c_str(), line.detail.c_str()));
+  }
+  std::sort(text.begin(), text.end());
+  return str_util::Join(text, "\n");
+}
+
+Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
                              const string& name, ResourceBase* resource) {
   {
     mutex_lock l(mu_);
@@ -49,7 +113,8 @@ Status ResourceMgr::DoCreate(const string& container, ResourceMgrTypeIndex type,
     if (*b == nullptr) {
       *b = new Container;
     }
-    if ((*b)->insert({{type, name}, resource}).second) {
+    if ((*b)->insert({{type.hash_code(), name}, resource}).second) {
+      TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
       return Status::OK();
     }
   }
@@ -58,7 +123,7 @@ Status ResourceMgr::DoCreate(const string& container, ResourceMgrTypeIndex type,
                                type.name());
 }
 
-Status ResourceMgr::DoLookup(const string& container, ResourceMgrTypeIndex type,
+Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                              const string& name,
                              ResourceBase** resource) const {
   mutex_lock l(mu_);
@@ -66,7 +131,7 @@ Status ResourceMgr::DoLookup(const string& container, ResourceMgrTypeIndex type,
   if (b == nullptr) {
     return errors::NotFound("Container ", container, " does not exist.");
   }
-  auto r = gtl::FindPtrOrNull(*b, {type, name});
+  auto r = gtl::FindPtrOrNull(*b, {type.hash_code(), name});
   if (r == nullptr) {
     return errors::NotFound("Resource ", container, "/", name, "/", type.name(),
                             " does not exist.");
@@ -76,8 +141,9 @@ Status ResourceMgr::DoLookup(const string& container, ResourceMgrTypeIndex type,
   return Status::OK();
 }
 
-Status ResourceMgr::DoDelete(const string& container, ResourceMgrTypeIndex type,
-                             const string& name) {
+Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
+                             const string& resource_name,
+                             const string& type_name) {
   ResourceBase* base = nullptr;
   {
     mutex_lock l(mu_);
@@ -85,10 +151,10 @@ Status ResourceMgr::DoDelete(const string& container, ResourceMgrTypeIndex type,
     if (b == nullptr) {
       return errors::NotFound("Container ", container, " does not exist.");
     }
-    auto iter = b->find({type, name});
+    auto iter = b->find({type_hash_code, resource_name});
     if (iter == b->end()) {
-      return errors::NotFound("Resource ", container, "/", name, "/",
-                              type.name(), " does not exist.");
+      return errors::NotFound("Resource ", container, "/", resource_name, "/",
+                              type_name, " does not exist.");
     }
     base = iter->second;
     b->erase(iter);
@@ -98,13 +164,24 @@ Status ResourceMgr::DoDelete(const string& container, ResourceMgrTypeIndex type,
   return Status::OK();
 }
 
+Status ResourceMgr::DoDelete(const string& container, TypeIndex type,
+                             const string& resource_name) {
+  return DoDelete(container, type.hash_code(), resource_name, type.name());
+}
+
+Status ResourceMgr::Delete(const ResourceHandle& handle) {
+  return DoDelete(handle.container(), handle.hash_code(), handle.name(),
+                  "<unknown>");
+}
+
 Status ResourceMgr::Cleanup(const string& container) {
   Container* b = nullptr;
   {
     mutex_lock l(mu_);
     auto iter = containers_.find(container);
     if (iter == containers_.end()) {
-      return errors::NotFound("Container ", container, " does not exist.");
+      // Nothing to cleanup, it's OK.
+      return Status::OK();
     }
     b = iter->second;
     containers_.erase(iter);
@@ -117,15 +194,22 @@ Status ResourceMgr::Cleanup(const string& container) {
   return Status::OK();
 }
 
+static bool IsValidContainerName(StringPiece s) {
+  using ::tensorflow::strings::Scanner;
+  return Scanner(s)
+      .One(Scanner::LETTER_DIGIT_DOT)
+      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH)
+      .Eos()
+      .GetResult();
+}
+
 Status ContainerInfo::Init(ResourceMgr* rmgr, const NodeDef& ndef,
                            bool use_node_name_as_default) {
   CHECK(rmgr);
   rmgr_ = rmgr;
   string attr_container;
   TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "container", &attr_container));
-  static RE2 container_re("[A-Za-z0-9.][A-Za-z0-9_.\\-/]*");
-  if (!attr_container.empty() &&
-      !RE2::FullMatch(attr_container, container_re)) {
+  if (!attr_container.empty() && !IsValidContainerName(attr_container)) {
     return errors::InvalidArgument("container contains invalid characters: ",
                                    attr_container);
   }
@@ -156,6 +240,15 @@ string ContainerInfo::DebugString() const {
   return strings::StrCat("[", container(), ",", name(), ",",
                          resource_is_private_to_kernel() ? "private" : "public",
                          "]");
+}
+
+ResourceHandle HandleFromInput(OpKernelContext* ctx, int input) {
+  return ctx->input(input).flat<ResourceHandle>()(0);
+}
+
+Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
+  TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
+  return ctx->resource_manager()->Delete(p);
 }
 
 }  //  end namespace tensorflow

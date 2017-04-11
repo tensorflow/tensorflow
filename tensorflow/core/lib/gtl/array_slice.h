@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -137,7 +137,7 @@ class ArraySlice {
 
   template <int N>
   ArraySlice(const InlinedVector<value_type, N>& v)  // NOLINT(runtime/explicit)
-      : impl_(v.array(), v.size()) {}
+      : impl_(v.data(), v.size()) {}
 
   // The constructor for any class supplying 'data() const' that returns either
   // const T* or a less const-qualified version of it, and 'some_integral_type
@@ -247,7 +247,7 @@ class MutableArraySlice {
   template <int N>
   MutableArraySlice(
       InlinedVector<value_type, N>* v)  // NOLINT(runtime/explicit)
-      : impl_(v->mutable_array(), v->size()) {}
+      : impl_(v->data(), v->size()) {}
 
   // The constructor for any class supplying 'T* data()' or 'T* mutable_data()'
   // (the former is called if both exist), and 'some_integral_type size()

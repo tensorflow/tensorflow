@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,9 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -26,16 +25,17 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
 namespace {
 
-static void BM_Unique(int iters, int dim) {
+const int kMaxStrLen = 40;
+
+static void BM_Unique_INT32(int iters, int dim) {
   testing::StopTiming();
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
 
   Tensor input(DT_INT32, TensorShape({dim}));
@@ -53,7 +53,52 @@ static void BM_Unique(int iters, int dim) {
   test::Benchmark("cpu", g).Run(iters);
 }
 
-BENCHMARK(BM_Unique)
+TensorProto GetRandomStringsTensorProto(int dim, int max_str_len) {
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_STRING);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(dim);
+  tensor_proto.mutable_tensor_shape()->set_unknown_rank(false);
+  for (int i = 0; i < dim; ++i) {
+    const int len = std::rand() % max_str_len + 1;
+    string rand_str;
+    rand_str.resize(len);
+    for (int j = 0; j < len; ++j) {
+      rand_str[j] = static_cast<char>(j % 256);
+    }
+    tensor_proto.add_string_val(rand_str);
+  }
+  return tensor_proto;
+}
+
+static void BM_Unique_STRING(int iters, int dim) {
+  testing::StopTiming();
+  Graph* g = new Graph(OpRegistry::Global());
+
+  Tensor input(DT_STRING, TensorShape({dim}));
+  CHECK(input.FromProto(GetRandomStringsTensorProto(dim, kMaxStrLen)));
+
+  Node* node;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Unique")
+                  .Input(test::graph::Constant(g, input))
+                  .Attr("T", DT_STRING)
+                  .Finalize(g, &node));
+
+  testing::BytesProcessed(static_cast<int64>(iters) * dim * sizeof(string));
+  testing::UseRealTime();
+  testing::StartTiming();
+  test::Benchmark("cpu", g).Run(iters);
+}
+
+BENCHMARK(BM_Unique_INT32)
+    ->Arg(32)
+    ->Arg(256)
+    ->Arg(1024)
+    ->Arg(4 * 1024)
+    ->Arg(16 * 1024)
+    ->Arg(64 * 1024)
+    ->Arg(256 * 1024);
+
+BENCHMARK(BM_Unique_STRING)
     ->Arg(32)
     ->Arg(256)
     ->Arg(1024)

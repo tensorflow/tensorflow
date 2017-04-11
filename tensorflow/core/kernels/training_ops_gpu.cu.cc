@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/training_ops.h"
+#include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 
@@ -28,12 +28,12 @@ namespace functor {
 template <typename T>
 struct ApplyGradientDescent<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
-                  typename TTypes<T>::ConstScalar alpha,
-                  typename TTypes<T>::ConstFlat delta) {
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad) {
     Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
-    bcast[0] = delta.dimension(0);
+    bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
-    var.device(d) -= alpha.reshape(single).broadcast(bcast) * delta;
+    var.device(d) -= lr.reshape(single).broadcast(bcast) * grad;
   }
 };
 
@@ -52,17 +52,50 @@ struct ApplyAdagrad<GPUDevice, T> {
 };
 
 template <typename T>
+struct ApplyAdadelta<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat accum_update,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+
+    accum.device(d) = accum * rho.reshape(single).broadcast(bcast) +
+                      grad.square() * (grad.constant(T(1)) -
+                                       rho.reshape(single).broadcast(bcast));
+    const auto update =
+        (accum_update + epsilon.reshape(single).broadcast(bcast)).sqrt() *
+        (accum + epsilon.reshape(single).broadcast(bcast)).rsqrt() * grad;
+    accum_update.device(d) =
+        accum_update * rho.reshape(single).broadcast(bcast) +
+        update.square() *
+            (grad.constant(T(1)) - rho.reshape(single).broadcast(bcast));
+    var.device(d) -= update * lr.reshape(single).broadcast(bcast);
+  }
+};
+
+template <typename T>
 struct ApplyMomentum<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
-                  typename TTypes<T>::ConstScalar momentum) {
+                  typename TTypes<T>::ConstScalar momentum, bool use_nesterov) {
     Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
     accum.device(d) = accum * momentum.reshape(single).broadcast(bcast) + grad;
-    var.device(d) -= lr.reshape(single).broadcast(bcast) * accum;
+    if (use_nesterov) {
+      var.device(d) -= grad * lr.reshape(single).broadcast(bcast) +
+                       accum * momentum.reshape(single).broadcast(bcast) *
+                           lr.reshape(single).broadcast(bcast);
+    } else {
+      var.device(d) -= lr.reshape(single).broadcast(bcast) * accum;
+    }
   }
 };
 
@@ -121,22 +154,60 @@ struct ApplyRMSProp<GPUDevice, T> {
   }
 };
 
+template <typename T>
+struct ApplyCenteredRMSProp<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat mg, typename TTypes<T>::Flat ms,
+                  typename TTypes<T>::Flat mom,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar momentum,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    const auto one = static_cast<T>(1.0);
+    const auto one_minus_rho =
+        (rho.constant(one) - rho).reshape(single).broadcast(bcast);
+    ms.device(d) = ms + one_minus_rho * (grad.square() - ms);
+    mg.device(d) = mg + one_minus_rho * (grad - mg);
+    auto denom = (ms - mg.square()) + epsilon.reshape(single).broadcast(bcast);
+    mom.device(d) = mom * momentum.reshape(single).broadcast(bcast) +
+                    lr.reshape(single).broadcast(bcast) * grad / denom.sqrt();
+    var.device(d) -= mom;
+  }
+};
+
 }  // namespace functor
 
+template struct functor::ApplyGradientDescent<GPUDevice, Eigen::half>;
 template struct functor::ApplyGradientDescent<GPUDevice, float>;
 template struct functor::ApplyGradientDescent<GPUDevice, double>;
 
+template struct functor::ApplyAdagrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagrad<GPUDevice, float>;
 template struct functor::ApplyAdagrad<GPUDevice, double>;
 
+template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
+template struct functor::ApplyAdadelta<GPUDevice, float>;
+template struct functor::ApplyAdadelta<GPUDevice, double>;
+
+template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;
 template struct functor::ApplyMomentum<GPUDevice, double>;
 
+template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;
 template struct functor::ApplyAdam<GPUDevice, double>;
 
+template struct functor::ApplyRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyRMSProp<GPUDevice, float>;
 template struct functor::ApplyRMSProp<GPUDevice, double>;
+
+template struct functor::ApplyCenteredRMSProp<GPUDevice, Eigen::half>;
+template struct functor::ApplyCenteredRMSProp<GPUDevice, float>;
+template struct functor::ApplyCenteredRMSProp<GPUDevice, double>;
 }  // end namespace tensorflow
 
 #endif  // GOOGLE_CUDA

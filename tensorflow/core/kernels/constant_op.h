@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
@@ -33,6 +34,29 @@ class ConstantOp : public OpKernel {
  private:
   Tensor tensor_;
   TF_DISALLOW_COPY_AND_ASSIGN(ConstantOp);
+};
+
+// HostConstantOp differs from ConstantOp in that its output is always
+// in host memory.
+class HostConstantOp : public OpKernel {
+ public:
+  explicit HostConstantOp(OpKernelConstruction* ctx);
+  void Compute(OpKernelContext* ctx) override;
+  bool IsExpensive() override { return false; }
+  ~HostConstantOp() override {}
+
+ private:
+  Tensor tensor_;
+  TF_DISALLOW_COPY_AND_ASSIGN(HostConstantOp);
+};
+
+class PlaceholderOp : public OpKernel {
+ public:
+  explicit PlaceholderOp(OpKernelConstruction* ctx);
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  TensorShape expected_shape_;
 };
 
 }  // namespace tensorflow

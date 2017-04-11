@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,21 +15,40 @@ limitations under the License.
 
 #include "tensorflow/core/util/use_cudnn.h"
 
-#include <stdlib.h>
-
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
 bool CanUseCudnn() {
-  const char* tf_use_cudnn = getenv("TF_USE_CUDNN");
-  if (tf_use_cudnn != nullptr) {
-    string tf_use_cudnn_str = tf_use_cudnn;
-    if (tf_use_cudnn_str == "0") {
-      return false;
-    }
+  bool value;
+  Status status = ReadBoolFromEnvVar("TF_USE_CUDNN", true, &value);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
   }
-  return true;
+  return value;
 }
 
+bool CudnnUseAutotune() {
+  bool value;
+  Status status = ReadBoolFromEnvVar("TF_CUDNN_USE_AUTOTUNE", true, &value);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
+  }
+  return value;
+}
+
+namespace internal {
+
+bool AvgPoolUseCudnn() {
+  bool value;
+  Status status = ReadBoolFromEnvVar("TF_AVGPOOL_USE_CUDNN", false, &value);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
+  }
+  return value;
+}
+
+}  // namespace internal
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,17 +27,20 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class PadOp : public OpKernel {
@@ -49,7 +52,7 @@ class PadOp : public OpKernel {
     const Tensor& in1 = context->input(1);
     const int dims = in0.dims();
     static const int kMinDims = 0;
-    static const int kMaxDims = 5;
+    static const int kMaxDims = 6;
     OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
                 errors::Unimplemented("inputs rank not in [", kMinDims, ",",
                                       kMaxDims, "]: ", dims));
@@ -59,7 +62,8 @@ class PadOp : public OpKernel {
         errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
                                 in1.shape().DebugString()));
     const int fixed_dims =
-        (kAllowLegacyScalars && dims == 0 && in1.dim_size(0) == 1) ? 1 : dims;
+        (allow_legacy_scalars() && dims == 0 && in1.dim_size(0) == 1) ? 1
+                                                                      : dims;
     OP_REQUIRES(
         context, fixed_dims == in1.dim_size(0),
         errors::InvalidArgument(
@@ -71,14 +75,24 @@ class PadOp : public OpKernel {
     TTypes<int32>::ConstMatrix paddings = in1.matrix<int32>();
     for (int d = 0; d < fixed_dims; ++d) {
       const int32 before_d = paddings(d, 0);  // Pad before existing elements.
-      const int32 after_d = paddings(d, 1);   // Pad after exisitng elements.
+      const int32 after_d = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before_d >= 0 && after_d >= 0,
                   errors::InvalidArgument("Paddings must be non-negative: ",
                                           before_d, " ", after_d));
-      const int size_d =
-          (kAllowLegacyScalars && d == in0.dims()) ? 1 : in0.dim_size(d);
+      const int64 size_d =
+          (allow_legacy_scalars() && d == in0.dims()) ? 1 : in0.dim_size(d);
       output_shape.AddDim(before_d + size_d + after_d);
     }
+
+    // If there is no padding to be done, forward the input to output.
+    if (output_shape.num_elements() == in0.NumElements()) {
+      // When num_elements == 0, shape may have changed.
+      Tensor out;
+      CHECK(out.CopyFrom(in0, output_shape));
+      context->set_output(0, out);
+      return;
+    }
+
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
@@ -89,7 +103,7 @@ class PadOp : public OpKernel {
         break;
       case 1:
         // TODO(irving): Once Pad doesn't need a scalar special case,
-        // change flat to tensor.  That is, once !kAllowLegacyScalars.
+        // change flat to tensor.  That is, once !allow_legacy_scalars().
         Operate<1>(context, in0.flat<T>(), paddings, output);
         break;
       case 2:
@@ -104,9 +118,12 @@ class PadOp : public OpKernel {
       case 5:
         Operate<5>(context, in0.tensor<T, 5>(), paddings, output);
         break;
+      case 6:
+        Operate<6>(context, in0.tensor<T, 6>(), paddings, output);
+        break;
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Only ranks up to 5 supported: ",
+                    errors::InvalidArgument("Only ranks up to 6 supported: ",
                                             in0.shape().DebugString()));
     }
   }
@@ -135,7 +152,7 @@ class PadOp : public OpKernel {
                               .HostMemory("paddings"),   \
                           PadOp<CPUDevice, type>)
 
-TF_CALL_ALL_TYPES(REGISTER_KERNEL);
+TF_CALL_POD_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
@@ -155,21 +172,22 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 2);    \
   DECLARE_GPU_SPEC(T, 3);    \
   DECLARE_GPU_SPEC(T, 4);    \
-  DECLARE_GPU_SPEC(T, 5);
+  DECLARE_GPU_SPEC(T, 5);    \
+  DECLARE_GPU_SPEC(T, 6);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_GPU_KERNEL(T)                         \
-  REGISTER_KERNEL_BUILDER(Name("Pad")                  \
-                              .Device(DEVICE_GPU)      \
-                              .TypeConstraint<T>("T")  \
-                              .HostMemory("paddings"), \
+#define REGISTER_GPU_KERNEL(T)                                    \
+  REGISTER_KERNEL_BUILDER(Name("Pad")                             \
+                              .Device(DEVICE_GPU)                 \
+                              .TypeConstraint<T>("T")             \
+                              .TypeConstraint<int32>("Tpaddings") \
+                              .HostMemory("paddings"),            \
                           PadOp<GPUDevice, T>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
-#endif  // GOOGLE_CUDA
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -177,9 +195,37 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 REGISTER_KERNEL_BUILDER(Name("Pad")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tpaddings")
                             .HostMemory("input")
                             .HostMemory("paddings")
                             .HostMemory("output"),
                         PadOp<CPUDevice, int32>);
+#endif
+
+#ifdef TENSORFLOW_USE_SYCL
+// Registration of the GPU implementations.
+#define REGISTER_SYCL_KERNEL(T)                                   \
+  REGISTER_KERNEL_BUILDER(Name("Pad")                             \
+                              .Device(DEVICE_SYCL)                \
+                              .TypeConstraint<T>("T")             \
+                              .TypeConstraint<int32>("Tpaddings") \
+                              .HostMemory("paddings"),            \
+                          PadOp<SYCLDevice, T>)
+
+REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Pad")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32>);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

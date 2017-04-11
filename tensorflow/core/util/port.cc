@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/util/port.h"
 
+#if GOOGLE_CUDA
+#include "cuda/include/cuda.h"
+#endif
+
 namespace tensorflow {
 
 bool IsGoogleCudaEnabled() {
 #if GOOGLE_CUDA
   return true;
+#else
+  return false;
+#endif
+}
+
+bool CudaSupportsHalfMatMulAndConv() {
+#if GOOGLE_CUDA
+  // NOTE: We check compile-time and not runtime, since the check for
+  // whether we include the fp16 kernels or not is compile-time.
+  return CUDA_VERSION >= 7050;
 #else
   return false;
 #endif

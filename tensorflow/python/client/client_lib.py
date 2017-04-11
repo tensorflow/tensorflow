@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,21 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=wildcard-import,unused-import,g-bad-import-order,line-too-long
-"""This library contains classes for launching graphs and executing operations.
+"""Support for launching graphs and executing operations.
 
-The [basic usage](../../get_started/index.md#basic-usage) guide has
-examples of how a graph is launched in a [`tf.Session`](#Session).
-
-## Session management
+See the @{$python/client} guide.
 
 @@Session
 @@InteractiveSession
-
 @@get_default_session
-
-## Error classes
-
 @@OpError
 @@CancelledError
 @@UnknownError
@@ -45,12 +37,16 @@ examples of how a graph is launched in a [`tf.Session`](#Session).
 @@InternalError
 @@UnavailableError
 @@DataLossError
+@@exception_type_from_error_code
+@@error_code_from_exception_type
+@@raise_exception_on_not_ok_status
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=unused-import
 from tensorflow.python.client.session import InteractiveSession
 from tensorflow.python.client.session import Session
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,11 +31,11 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_attributes.pb_text.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -44,8 +44,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -84,13 +85,38 @@ class Device : public DeviceBase {
   // Asynchronous kernel's compute.
   virtual void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                             AsyncOpKernel::DoneCallback done) {
-    op_kernel->ComputeAsync(context, done);
+    op_kernel->ComputeAsync(context, std::move(done));
+  }
+
+  // Takes ownership of the references in tensors. If necessary, a
+  // device may override this method to keep a reference to the
+  // accessed tensors until the async computation has completed.
+  virtual void ConsumeListOfAccessedTensors(
+      DeviceContext* context, const TensorReferenceVector& tensors) {
+    for (const auto& ref : tensors) {
+      ref.Unref();
+    }
   }
 
   // Blocks until all operations queued on the device at the time of
   // the call have completed.  Returns any error pending on the device
   // at completion.
   virtual Status Sync() = 0;
+
+  // Optionally modify the device's GraphDef before execution.
+  //
+  // This method should be considered experimental and is supplied to enable
+  // prototyping of TensorFlow device implementations that need to modify
+  // the GraphDef before execution.
+  //
+  // 'library' provides access to the function library which is shared
+  // between all device partitions.
+  // 'graph' supplies the partition of the graph assigned to this
+  // device.
+  virtual Status MaybeRewriteGraph(const FunctionDefLibrary& /*library*/,
+                                   std::unique_ptr<Graph>* /*graph*/) {
+    return Status::OK();
+  }
 
   // Fill in the context map for the graph. Default behavior is to do
   // nothing.
@@ -110,19 +136,18 @@ class Device : public DeviceBase {
   ResourceMgr* resource_manager() { return rmgr_; }
 
   // Summarizes the status of this Device, for debugging.
-  string DebugString() const { return device_attributes_.DebugString(); }
+  string DebugString() const { return ProtoDebugString(device_attributes_); }
 
   // Assembles the parameter components into a complete DeviceAttributes value.
   static DeviceAttributes BuildDeviceAttributes(
       const string& name, DeviceType device, Bytes memory_limit,
-      BusAdjacency bus_adjacency, const string& physical_device_desc);
+      const DeviceLocality& locality, const string& physical_device_desc);
 
-  static DeviceAttributes BuildDeviceAttributes(const string& name,
-                                                DeviceType device,
-                                                Bytes memory_limit,
-                                                BusAdjacency bus_adjacency) {
+  static DeviceAttributes BuildDeviceAttributes(
+      const string& name, DeviceType device, Bytes memory_limit,
+      const DeviceLocality& locality) {
     // Pass in an empty string as physical device name.
-    return BuildDeviceAttributes(name, device, memory_limit, bus_adjacency, "");
+    return BuildDeviceAttributes(name, device, memory_limit, locality, "");
   }
 
  private:

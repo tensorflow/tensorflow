@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,12 +18,11 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -42,20 +41,27 @@ class ReaderInterface;
 // so see ../ops/io_ops.cc for detailed descriptions.
 //
 // All descendants of this class must be thread-safe.
-//
-// See the design document here:
-// https://docs.google.com/document/d/1UAgZOoeehYr20TdzW2CoZ30V-aqQphU4SwKXsW7eJv4/edit#
-
-// TODO(josh11b): Switch this to Async.
 class ReaderInterface : public ResourceBase {
  public:
   // Read a single record into *key / *value.  May get more work from
   // *queue if the current work is complete.  Sets the status on
-  // *context with an OutOfRange Status if the the current work is
+  // *context with an OutOfRange Status if the current work is
   // complete and the queue is done (closed and empty).
   // This method may block.
   virtual void Read(QueueInterface* queue, string* key, string* value,
                     OpKernelContext* context) = 0;
+
+  // Read up to num_records records into keys / values. May get more work from
+  // *queue if the current work is complete.  Sets the status on
+  // *context with an OutOfRange Status if the current work is
+  // complete and the queue is done (closed and empty).
+  // This method may block.
+  // The std::vector keys/value pointers are assumed to point to empty
+  // structures (that have most likely been reserve(num_records)).
+  // Returns how many records were actually read.
+  virtual int64 ReadUpTo(const int64 num_records, QueueInterface* queue,
+                         std::vector<string>* keys, std::vector<string>* value,
+                         OpKernelContext* context) = 0;
 
   // Restore this reader to its newly-constructed state.
   virtual Status Reset() = 0;

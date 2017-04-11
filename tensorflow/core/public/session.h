@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -79,6 +80,9 @@ namespace tensorflow {
 /// after all other calls to Run() have returned.
 class Session {
  public:
+  Session();
+  virtual ~Session();
+
   /// \brief Create the graph to be used for the session.
   ///
   /// Returns an error if this session has already been created with a
@@ -108,11 +112,63 @@ class Session {
   /// REQUIRES: The name of each Tensor of the input or output must
   /// match a "Tensor endpoint" in the `GraphDef` passed to `Create()`.
   ///
+  /// REQUIRES: At least one of `output_tensor_names` and
+  /// `target_node_names` must be non-empty.
+  ///
   /// REQUIRES: outputs is not nullptr if `output_tensor_names` is non-empty.
   virtual Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
                      const std::vector<string>& output_tensor_names,
                      const std::vector<string>& target_node_names,
                      std::vector<Tensor>* outputs) = 0;
+
+  /// \brief Implementations which support `RunOptions`.
+  //
+  /// NOTE: This API is still experimental and may change.
+  virtual Status Create(const RunOptions& run_options, const GraphDef& graph) {
+    return errors::Unimplemented(
+        "Create(const RunOptions& run_options, const GraphDef& graph) is not "
+        "supported for this session.");
+  }
+  virtual Status Extend(const RunOptions& run_options, const GraphDef& graph) {
+    return errors::Unimplemented(
+        "Extend(const RunOptions& run_options, const GraphDef& graph) is not "
+        "supported for this session.");
+  }
+  virtual Status Close(const RunOptions& run_options) {
+    return errors::Unimplemented(
+        "Close(const RunOptions& run_options) is not supported for this "
+        "session.");
+  }
+
+  /// \brief Like `Run`, but allows users to pass in a `RunOptions` proto and
+  /// to retrieve non-Tensor metadata output via a `RunMetadata` proto for this
+  /// step.  `run_metadata` may be nullptr, in which case any metadata output is
+  /// discarded.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status Run(const RunOptions& run_options,
+                     const std::vector<std::pair<string, Tensor> >& inputs,
+                     const std::vector<string>& output_tensor_names,
+                     const std::vector<string>& target_node_names,
+                     std::vector<Tensor>* outputs, RunMetadata* run_metadata);
+
+  /// \brief Sets up a graph for partial execution. All future feeds and
+  /// fetches are specified by `input_names` and `output_names`. Returns
+  /// `handle` that can be used to perform a sequence of partial feeds and
+  /// fetches.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status PRunSetup(const std::vector<string>& input_names,
+                           const std::vector<string>& output_names,
+                           const std::vector<string>& target_nodes,
+                           string* handle);
+
+  /// \brief Continues the pending execution specified by `handle` with the
+  /// provided input tensors and fills `outputs` for the endpoints specified
+  /// in `output_names`.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status PRun(const string& handle,
+                      const std::vector<std::pair<string, Tensor> >& inputs,
+                      const std::vector<string>& output_names,
+                      std::vector<Tensor>* outputs);
 
   /// \brief Closes this session.
   ///
@@ -120,15 +176,7 @@ class Session {
   /// on the TensorFlow runtime (specified during session creation by
   /// the `SessionOptions::target` field).
   virtual Status Close() = 0;
-
-  virtual ~Session() {}
 };
-
-/// \brief Create a new session with the given options.
-///
-/// If a new `Session` object could not be created, this function will
-/// return nullptr.
-Session* NewSession(const SessionOptions& options);
 
 /// \brief Create a new session with the given options.
 ///
@@ -137,6 +185,43 @@ Session* NewSession(const SessionOptions& options);
 /// `*out_session`, and this function will return `OK()`. Otherwise, this
 /// function will return an error status.
 Status NewSession(const SessionOptions& options, Session** out_session);
+
+/// \brief Resets resource containers associated with a target.
+///
+/// Reset() allows misbehaving or slow sessions to be aborted and closed, and
+/// causes their resources eventually to be released.  Reset() does not wait
+/// for the computations in old sessions to cease; it merely starts the
+/// process of tearing them down.  However, if a new session is started after
+/// a Reset(), the new session is isolated from changes that old sessions
+/// (started prior to the Reset()) may continue to make to resources, provided
+/// all those resources are in containers listed in "containers".
+///
+/// Old sessions may continue to have side-effects on resources not in
+/// containers listed in "containers", and thus may affect future
+/// sessions' results in ways that are hard to predict.  Thus, if well-defined
+/// behaviour is desired, it is recommended that all containers be listed in
+/// "containers".
+///
+/// `containers` is a vector of string representation of resource container
+/// names. When a resource container is reset, the resources held by the
+/// container will be released. In particular, all Variables in the container
+/// will become undefined.  If the "containers" vector is empty, the default
+/// container is assumed.  If the "containers" vector is non-empty, the
+/// default container should be listed explicitly.
+///
+/// If Reset succeeds, this function will return `OK()`. Otherwise, this
+/// function will return an error status.
+Status Reset(const SessionOptions& options,
+             const std::vector<string>& containers);
+
+/// \brief Create a new session with the given options.
+///
+/// If a new `Session` object could not be created, this function will
+/// return nullptr.
+///
+/// *Strongly prefer* the version of NewSession that returns Status,
+/// which contains more helpful error information.
+Session* NewSession(const SessionOptions& options);
 
 }  // end namespace tensorflow
 

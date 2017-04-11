@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_UTIL_SPARSE_GROUP_ITERATOR_H_
 #define TENSORFLOW_UTIL_SPARSE_GROUP_ITERATOR_H_
 
+#include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace sparse {
@@ -104,6 +105,7 @@ class GroupIterable {
 
     void UpdateEndOfGroup();
     bool operator!=(const IteratorStep& rhs) const;
+    bool operator==(const IteratorStep& rhs) const;
     IteratorStep& operator++();    // prefix ++
     IteratorStep operator++(int);  // postfix ++
     Group operator*() const { return Group(iter_, loc_, next_loc_); }

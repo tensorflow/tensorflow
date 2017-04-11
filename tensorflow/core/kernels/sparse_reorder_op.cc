@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,15 +16,16 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <numeric>
 #include <unordered_map>
 #include <utility>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -38,19 +39,19 @@ class SparseReorderOp : public OpKernel {
     const Tensor& input_ind = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_ind.shape()),
                 errors::InvalidArgument(
-                    "Input indices should be a matrix but received shape",
+                    "Input indices should be a matrix but received shape ",
                     input_ind.shape().DebugString()));
 
     const Tensor& input_val = context->input(1);
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_val.shape()),
                 errors::InvalidArgument(
-                    "Input values should be a vector but received shape",
+                    "Input values should be a vector but received shape ",
                     input_val.shape().DebugString()));
 
     const Tensor& input_shape_in = context->input(2);
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape_in.shape()),
                 errors::InvalidArgument(
-                    "Input shape should be a vector but received shape",
+                    "Input shape should be a vector but received shape ",
                     input_shape_in.shape().DebugString()));
 
     const TensorShape input_shape(input_shape_in.vec<int64>());
@@ -61,7 +62,7 @@ class SparseReorderOp : public OpKernel {
     // Check if the sparse tensor is already ordered correctly
     sparse::SparseTensor input_sp(input_ind, input_val, input_shape, std_order);
 
-    if (input_sp.IndicesValid()) {
+    if (input_sp.IndicesValid().ok()) {
       context->set_output(0, input_sp.indices());
       context->set_output(1, input_sp.values());
     } else {

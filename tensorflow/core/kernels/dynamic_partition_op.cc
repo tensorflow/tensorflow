@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,13 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/public/tensor.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
@@ -42,21 +44,21 @@ class DynamicPartitionOp_Shared : public OpKernel {
                                   OpOutputList* Tout) {
     OP_REQUIRES_OK(c, c->input("data", data));
     OP_REQUIRES_OK(c, c->input("partitions", partitions));
-    OP_REQUIRES(c, TensorShapeUtils::StartsWith((*data)->shape(),
-                                                (*partitions)->shape()),
-                errors::InvalidArgument(
-                    "data.shape must start with partitions.shape, ",
-                    "got data.shape = ", (*data)->shape().ShortDebugString(),
-                    ", partitions.shape = ",
-                    (*partitions)->shape().ShortDebugString()));
+    OP_REQUIRES(
+        c,
+        TensorShapeUtils::StartsWith((*data)->shape(), (*partitions)->shape()),
+        errors::InvalidArgument(
+            "data.shape must start with partitions.shape, ",
+            "got data.shape = ", (*data)->shape().DebugString(),
+            ", partitions.shape = ", (*partitions)->shape().DebugString()));
 
     // Count how many occurrences of each partition id we have in partitions
     gtl::InlinedVector<int, 32> partition_count(num_partitions_);
     auto e_partitions = (*partitions)->flat<int32>();
     const int64 N = e_partitions.dimension(0);
     for (int64 i = 0; i < N; i++) {
-      const int32 p = e_partitions(i);
-      OP_REQUIRES(c, p >= 0 && p < num_partitions_,
+      const int32 p = internal::SubtleMustCopy(e_partitions(i));
+      OP_REQUIRES(c, FastBoundsCheck(p, num_partitions_),
                   errors::InvalidArgument(
                       "partitions", SliceDebugString((*partitions)->shape(), i),
                       " = ", p, " is not in [0, ", num_partitions_, ")"));
@@ -106,8 +108,16 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
         out_vec.push_back(outputs[p]->vec<T>());
       }
       for (int64 i = 0; i < N; i++) {
-        const int32 p = e_partitions(i);
-        out_vec[p](output_index[p]) = data_flat(i);
+        const int32 p = internal::SubtleMustCopy(e_partitions(i));
+        OP_REQUIRES(
+            c, FastBoundsCheck(p, num_partitions_),
+            errors::InvalidArgument("indices[", i, "] is out of range"));
+        auto oi = output_index[p];
+        OP_REQUIRES(c, FastBoundsCheck(oi, out_vec[p].size()),
+                    errors::InvalidArgument(
+                        "out_vec[", p, "] size: ", out_vec[p].size(),
+                        " is not LTE output_index[", p, "] : ", oi));
+        out_vec[p](oi) = data_flat(i);
         output_index[p]++;
       }
     } else {
@@ -123,9 +133,18 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
       const auto data_flat = data->shaped<T, 2>({N, slice_size});
       Eigen::DSizes<Eigen::DenseIndex, 2> sizes(1, slice_size);
       for (int64 i = 0; i < N; i++) {
-        const int32 p = e_partitions(i);
         // outputs[p][output_index[p]++] = data[i]
-        Eigen::DSizes<Eigen::DenseIndex, 2> out_indices(output_index[p], 0);
+        const int32 p = internal::SubtleMustCopy(e_partitions(i));
+        OP_REQUIRES(
+            c, FastBoundsCheck(p, num_partitions_),
+            errors::InvalidArgument("indices[", i,
+                                    "] has been asynchronously overwitten and "
+                                    "is no longer in range!"));
+        auto oi = output_index[p];
+        OP_REQUIRES(c, FastBoundsCheck(oi, out_flat[p].dimension(0)),
+                    errors::InvalidArgument("Size of output_index: ", oi,
+                                            " is no longer in range."));
+        Eigen::DSizes<Eigen::DenseIndex, 2> out_indices(oi, 0);
         Eigen::DSizes<Eigen::DenseIndex, 2> data_indices(i, 0);
         out_flat[p].slice(out_indices, sizes) =
             data_flat.slice(data_indices, sizes);

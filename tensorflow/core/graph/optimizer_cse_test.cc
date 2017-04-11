@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/graph/optimizer_cse.h"
 
-#include <gtest/gtest.h>
+#include <vector>
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/testlib.h"
@@ -26,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 namespace {
@@ -44,7 +45,7 @@ static void InitGraph(const string& s, Graph* graph) {
 
 class OptimizerCSETest : public ::testing::Test {
  public:
-  OptimizerCSETest() : graph_(OpRegistry::Global()) { RequireDefaultOps(); }
+  OptimizerCSETest() : graph_(OpRegistry::Global()) {}
 
   void InitGraph(const string& s) {
     ::tensorflow::InitGraph(s, &graph_);
@@ -325,7 +326,7 @@ TEST_F(OptimizerCSETest, Constant_Dedup) {
 
   // A graph contains a bunch of constants.
   Graph g(OpRegistry::Global());
-  for (auto val : {a, b, c, d, d, c, b, a}) {
+  for (const auto& val : {a, b, c, d, d, c, b, a}) {
     test::graph::Constant(&g, val);  // Node name is n/_0, n/_1, ...
   }
   GraphDef gdef;
@@ -336,7 +337,7 @@ TEST_F(OptimizerCSETest, Constant_Dedup) {
             "n/_0(Const);n/_1(Const);n/_2(Const);n/_3(Const);"
             "n/_4(Const);n/_5(Const);n/_6(Const);n/_7(Const)|");
   // In theory, there are 2^4 possible correct output of CSE.  In this
-  // test, it happens happens to eliminate the first 4 nodes.
+  // test, it happens to eliminate the first 4 nodes.
   EXPECT_EQ(DoCSE(), "n/_4(Const);n/_5(Const);n/_6(Const);n/_7(Const)|");
 }
 

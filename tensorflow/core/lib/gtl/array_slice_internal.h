@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -159,7 +160,7 @@ class ArraySliceImplBase {
   typedef size_t size_type;
   typedef ptrdiff_t difference_type;
 
-  static const size_type npos = -1;
+  static const size_type npos = static_cast<size_type>(-1);
 
   ArraySliceImplBase(pointer array, size_type length)
       : ptr_(array), length_(length) {}

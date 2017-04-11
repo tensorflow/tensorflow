@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,13 +16,14 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 
 #include <memory>
-#include <gtest/gtest.h>
+#include <vector>
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -31,7 +32,9 @@ class NodeDefBuilderTest : public ::testing::Test {
  protected:
   // Specify an OpDef via an OpDefBuilder.
   void Op(const OpDefBuilder& op_def_builder) {
-    EXPECT_OK(op_def_builder.Finalize(&op_def_));
+    OpRegistrationData op_reg_data;
+    TF_EXPECT_OK(op_def_builder.Finalize(&op_reg_data));
+    op_def_ = op_reg_data.op_def;
   }
 
   // Resets builder_ with a new NodeDefBuilder using the Op from the last call
@@ -49,7 +52,7 @@ class NodeDefBuilderTest : public ::testing::Test {
                      DataTypeSlice expected_out_types, StringPiece proto) {
     NodeDef node_def;
     Status status = builder.Finalize(&node_def);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (!status.ok()) return;
     NodeDef expected;
     protobuf::TextFormat::ParseFromString(strings::StrCat("name: 'n' ", proto),
@@ -59,7 +62,7 @@ class NodeDefBuilderTest : public ::testing::Test {
     DataTypeVector in_types, out_types;
     status =
         InOutTypesForNode(node_def, builder.op_def(), &in_types, &out_types);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
     if (!status.ok()) return;
     EXPECT_EQ(DataTypeSliceString(expected_in_types),
               DataTypeVectorString(in_types));
@@ -67,7 +70,7 @@ class NodeDefBuilderTest : public ::testing::Test {
               DataTypeVectorString(out_types));
 
     status = ValidateNodeDef(node_def, op_def_);
-    EXPECT_OK(status);
+    TF_EXPECT_OK(status);
   }
 
   // Calls Finalize() and verifies it returns an error.
@@ -152,7 +155,8 @@ TEST_F(NodeDefBuilderTest, Simple) {
 
   {  // Finalize() twice.
     NodeDefBuilder& builder = Builder();
-    builder.Input(FakeInput()).Finalize(nullptr);  // First call to Finalize()
+    // First call to Finalize()
+    TF_EXPECT_OK(builder.Input(FakeInput()).Finalize(nullptr));
     // ExpectSuccess() also calls Finalize().
     ExpectSuccess(builder, {DT_INT32}, {DT_FLOAT}, R"proto(
         op: "Simple" input: "a" )proto");

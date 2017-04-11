@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/parsing_ops.cc.
+#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -29,6 +30,8 @@ class DecodeCSVOp : public OpKernel {
     string delim;
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("OUT_TYPE", &out_type_));
+    OP_REQUIRES(ctx, out_type_.size() < std::numeric_limits<int>::max(),
+                errors::InvalidArgument("Out type too large"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("field_delim", &delim));
 
     OP_REQUIRES(ctx, delim.size() == 1,
@@ -52,17 +55,17 @@ class DecodeCSVOp : public OpKernel {
     }
 
     auto records_t = records->flat<string>();
-    int records_size = records_t.size();
+    int64 records_size = records_t.size();
 
     OpOutputList output;
     OP_REQUIRES_OK(ctx, ctx->output_list("output", &output));
 
-    for (size_t i = 0; i < out_type_.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(out_type_.size()); ++i) {
       Tensor* out = nullptr;
-      output.allocate(i, records->shape(), &out);
+      OP_REQUIRES_OK(ctx, output.allocate(i, records->shape(), &out));
     }
 
-    for (int i = 0; i < records_size; ++i) {
+    for (int64 i = 0; i < records_size; ++i) {
       const StringPiece record(records_t(i));
       std::vector<string> fields;
       ExtractFields(ctx, record, &fields);
@@ -72,7 +75,7 @@ class DecodeCSVOp : public OpKernel {
                                           " in record ", i));
 
       // Check each field in the record
-      for (size_t f = 0; f < out_type_.size(); ++f) {
+      for (int f = 0; f < static_cast<int>(out_type_.size()); ++f) {
         const DataType& dtype = out_type_[f];
         switch (dtype) {
           case DT_INT32: {
@@ -87,7 +90,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<int32>()(i) = record_defaults[f].flat<int32>()(0);
             } else {
               int32 value;
-              OP_REQUIRES(ctx, strings::safe_strto32(fields[f].c_str(), &value),
+              OP_REQUIRES(ctx, strings::safe_strto32(fields[f], &value),
                           errors::InvalidArgument("Field ", f, " in record ", i,
                                                   " is not a valid int32: ",
                                                   fields[f]));
@@ -107,7 +110,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<int64>()(i) = record_defaults[f].flat<int64>()(0);
             } else {
               int64 value;
-              OP_REQUIRES(ctx, strings::safe_strto64(fields[f].c_str(), &value),
+              OP_REQUIRES(ctx, strings::safe_strto64(fields[f], &value),
                           errors::InvalidArgument("Field ", f, " in record ", i,
                                                   " is not a valid int64: ",
                                                   fields[f]));
@@ -164,7 +167,7 @@ class DecodeCSVOp : public OpKernel {
 
   void ExtractFields(OpKernelContext* ctx, StringPiece input,
                      std::vector<string>* result) {
-    int current_idx = 0;
+    int64 current_idx = 0;
     if (!input.empty()) {
       while (static_cast<size_t>(current_idx) < input.size()) {
         if (input[current_idx] == '\n' || input[current_idx] == '\r') {
@@ -213,9 +216,10 @@ class DecodeCSVOp : public OpKernel {
           }
 
           OP_REQUIRES(
-              ctx, input[current_idx] == '"' &&
-                       (static_cast<size_t>(current_idx) == input.size() - 1 ||
-                        input[current_idx + 1] == delim_),
+              ctx, (static_cast<size_t>(current_idx) < input.size() &&
+                    input[current_idx] == '"' &&
+                    (static_cast<size_t>(current_idx) == input.size() - 1 ||
+                     input[current_idx + 1] == delim_)),
               errors::InvalidArgument("Quoted field has to end with quote "
                                       "followed by delim or end"));
 

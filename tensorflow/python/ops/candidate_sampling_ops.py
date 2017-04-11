@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,15 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Wrappers for primitive Neural Net (NN) Operations."""
+"""Wrappers for candidate sampling operations."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_candidate_sampling_ops
 from tensorflow.python.ops import math_ops
@@ -32,14 +30,14 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
   """Samples a set of classes using a uniform base distribution.
 
   This operation randomly samples a tensor of sampled classes
-  (`sampled_candidates`) from the range of integers `[0, range_max]`.
+  (`sampled_candidates`) from the range of integers `[0, range_max)`.
 
   The elements of `sampled_candidates` are drawn without replacement
   (if `unique=True`) or with replacement (if `unique=False`) from
   the base distribution.
 
   The base distribution for this operation is the uniform distribution
-  over the range of integers `[0, range_max]`.
+  over the range of integers `[0, range_max)`.
 
   In addition, this operation returns tensors `true_expected_count`
   and `sampled_expected_count` representing the number of times each
@@ -83,7 +81,7 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
   """Samples a set of classes using a log-uniform (Zipfian) base distribution.
 
   This operation randomly samples a tensor of sampled classes
-  (`sampled_candidates`) from the range of integers `[0, range_max]`.
+  (`sampled_candidates`) from the range of integers `[0, range_max)`.
 
   The elements of `sampled_candidates` are drawn without replacement
   (if `unique=True`) or with replacement (if `unique=False`) from
@@ -141,7 +139,7 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
   """Samples a set of classes from a distribution learned during training.
 
   This operation randomly samples a tensor of sampled classes
-  (`sampled_candidates`) from the range of integers `[0, range_max]`.
+  (`sampled_candidates`) from the range of integers `[0, range_max)`.
 
   The elements of `sampled_candidates` are drawn without replacement
   (if `unique=True`) or with replacement (if `unique=False`) from
@@ -149,7 +147,7 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
 
   The base distribution for this operation is constructed on the fly
   during training.  It is a unigram distribution over the target
-  classes seen so far during training.  Every integer in `[0, range_max]`
+  classes seen so far during training.  Every integer in `[0, range_max)`
   begins with a weight of 1, and is incremented by 1 each time it is
   seen as a target class.  The base distribution is not saved to checkpoints,
   so it is reset when the model is reloaded.
@@ -192,14 +190,23 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
       seed2=seed2, name=name)
 
 
-def fixed_unigram_candidate_sampler(true_classes, num_true, num_sampled, unique,
-                                    range_max, vocab_file='', distortion=1.0,
-                                    num_reserved_ids=0, num_shards=1, shard=0,
-                                    unigrams=[], seed=None, name=None):
+def fixed_unigram_candidate_sampler(true_classes,
+                                    num_true,
+                                    num_sampled,
+                                    unique,
+                                    range_max,
+                                    vocab_file='',
+                                    distortion=1.0,
+                                    num_reserved_ids=0,
+                                    num_shards=1,
+                                    shard=0,
+                                    unigrams=(),
+                                    seed=None,
+                                    name=None):
   """Samples a set of classes using the provided (fixed) base distribution.
 
   This operation randomly samples a tensor of sampled classes
-  (`sampled_candidates`) from the range of integers `[0, range_max]`.
+  (`sampled_candidates`) from the range of integers `[0, range_max)`.
 
   The elements of `sampled_candidates` are drawn without replacement
   (if `unique=True`) or with replacement (if `unique=False`) from
@@ -355,30 +362,3 @@ def compute_accidental_hits(true_classes, sampled_candidates, num_true,
   return gen_candidate_sampling_ops._compute_accidental_hits(
       true_classes, sampled_candidates, num_true, seed=seed1, seed2=seed2,
       name=name)
-
-
-@ops.RegisterShape("AllCandidateSampler")
-@ops.RegisterShape("FixedUnigramCandidateSampler")
-@ops.RegisterShape("LearnedUnigramCandidateSampler")
-@ops.RegisterShape("LogUniformCandidateSampler")
-@ops.RegisterShape("ThreadUnsafeUnigramCandidateSampler")
-@ops.RegisterShape("UniformCandidateSampler")
-def _CandidateSamplerShape(op):
-  true_classes_shape = op.inputs[0].get_shape().with_rank(2)
-  batch_size = true_classes_shape[0]
-  num_sampled = op.get_attr("num_sampled")
-  num_true = op.get_attr("num_true")
-  return [tensor_shape.vector(num_sampled),
-          tensor_shape.matrix(batch_size, num_true),
-          tensor_shape.vector(num_sampled)]
-
-
-@ops.RegisterShape("ComputeAccidentalHits")
-def _ComputeAccidentalHitsShape(op):
-  num_true = op.get_attr("num_true")
-  # Validate that the input shape matches the attrs, even though it
-  # does not influence the shape of the output.
-  true_candidates_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.matrix(None, num_true))
-  output_shape = tensor_shape.vector(None)
-  return [output_shape] * 3

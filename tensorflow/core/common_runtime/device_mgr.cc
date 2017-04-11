@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 
+#include <vector>
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -23,19 +24,30 @@ limitations under the License.
 
 namespace tensorflow {
 
-DeviceMgr::DeviceMgr(const std::vector<Device*>& devices) {
+DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
+    : name_backing_store_(128) {
   for (Device* d : devices) {
     devices_.push_back(d);
 
     // Register under both the full name and the local name.
-    device_map_[d->name()] = d;
-    device_map_[DeviceNameUtils::LocalName(d->name())] = d;
+    string full_name = d->name();
+    device_map_[CopyToBackingStore(full_name)] = d;
+
+    string lname = DeviceNameUtils::LocalName(d->name());
+    device_map_[CopyToBackingStore(lname)] = d;
     device_type_counts_[d->device_type()]++;
   }
 }
 
 DeviceMgr::~DeviceMgr() {
   for (auto p : devices_) delete p;
+}
+
+StringPiece DeviceMgr::CopyToBackingStore(StringPiece s) {
+  size_t n = s.size();
+  char* space = name_backing_store_.Alloc(n);
+  memcpy(space, s.data(), n);
+  return StringPiece(space, n);
 }
 
 void DeviceMgr::ListDeviceAttributes(
@@ -69,7 +81,7 @@ string DeviceMgr::DeviceMappingString() const {
   return out;
 }
 
-Status DeviceMgr::LookupDevice(const string& name, Device** device) const {
+Status DeviceMgr::LookupDevice(StringPiece name, Device** device) const {
   Status s;
   auto iter = device_map_.find(name);
   if (iter == device_map_.end()) {

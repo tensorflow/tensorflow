@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,31 +19,72 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 REGISTER_KERNEL_BUILDER(Name("Variable").Device(DEVICE_CPU), VariableOp);
+REGISTER_KERNEL_BUILDER(Name("VariableV2").Device(DEVICE_CPU), VariableOp);
 REGISTER_KERNEL_BUILDER(Name("TemporaryVariable").Device(DEVICE_CPU),
                         TemporaryVariableOp);
 REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable").Device(DEVICE_CPU),
                         DestroyTemporaryVariableOp);
+REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized").Device(DEVICE_CPU),
+                        IsVariableInitializedOp);
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(TYPE)                                      \
+  REGISTER_KERNEL_BUILDER(                                              \
+                          Name("Variable")                              \
+                          .Device(DEVICE_SYCL)                          \
+                          .TypeConstraint<TYPE>("dtype"),               \
+                          VariableOp);                                  \
+  REGISTER_KERNEL_BUILDER(Name("VariableV2")                            \
+                          .Device(DEVICE_SYCL)                          \
+                          .TypeConstraint<TYPE>("dtype"),               \
+                          VariableOp);                                  \
+  REGISTER_KERNEL_BUILDER(Name("TemporaryVariable")                     \
+                          .Device(DEVICE_SYCL)                          \
+                          .TypeConstraint<TYPE>("dtype"),               \
+                          TemporaryVariableOp);                         \
+  REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable")              \
+                          .Device(DEVICE_SYCL)                          \
+                          .TypeConstraint<TYPE>("T"),                   \
+                          DestroyTemporaryVariableOp);                  \
+  REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized")                 \
+                          .Device(DEVICE_SYCL)                          \
+                          .TypeConstraint<TYPE>("dtype")                \
+                          .HostMemory("is_initialized"),                \
+                          IsVariableInitializedOp);
+
+REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
+#undef REGISTER_SYCL_KERNEL
+#endif // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 // Only register 'Variable' on GPU for the subset of types also supported by
 // 'Assign' (see dense_update_ops.cc.)
-#define REGISTER_GPU_KERNELS(type)                                       \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("Variable").Device(DEVICE_GPU).TypeConstraint<type>("dtype"), \
-      VariableOp);                                                       \
-  REGISTER_KERNEL_BUILDER(Name("TemporaryVariable")                      \
-                              .Device(DEVICE_GPU)                        \
-                              .TypeConstraint<type>("dtype"),            \
-                          TemporaryVariableOp);                          \
-  REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable")               \
-                              .Device(DEVICE_GPU)                        \
-                              .TypeConstraint<type>("T"),                \
-                          DestroyTemporaryVariableOp);
+#define REGISTER_GPU_KERNELS(type)                                         \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("Variable").Device(DEVICE_GPU).TypeConstraint<type>("dtype"),   \
+      VariableOp);                                                         \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("VariableV2").Device(DEVICE_GPU).TypeConstraint<type>("dtype"), \
+      VariableOp);                                                         \
+  REGISTER_KERNEL_BUILDER(Name("TemporaryVariable")                        \
+                              .Device(DEVICE_GPU)                          \
+                              .TypeConstraint<type>("dtype"),              \
+                          TemporaryVariableOp);                            \
+  REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable")                 \
+                              .Device(DEVICE_GPU)                          \
+                              .TypeConstraint<type>("T"),                  \
+                          DestroyTemporaryVariableOp);                     \
+  REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized")                    \
+                              .Device(DEVICE_GPU)                          \
+                              .TypeConstraint<type>("dtype")               \
+                              .HostMemory("is_initialized"),               \
+                          IsVariableInitializedOp);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 
@@ -43,8 +43,6 @@ namespace tensorflow {
 // see if we should use an alternative implementation.
 
 namespace {
-
-typedef std::unordered_map<StringPiece, Node*, StringPiece::Hasher> NameIndex;
 
 // Rewrite graph by replacing the output tensors specified in
 // "fed_outputs" with special feed nodes for each specified output
@@ -57,7 +55,7 @@ typedef std::unordered_map<StringPiece, Node*, StringPiece::Hasher> NameIndex;
 // state).
 static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
                          const gtl::ArraySlice<string>& fed_outputs,
-                         NameIndex* name_index) {
+                         subgraph::NameIndex* name_index) {
   for (const string& t : fed_outputs) {
     TensorId id(ParseTensorName(t));
 
@@ -86,6 +84,20 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
             .Finalize(g, &recv_node));
     recv_node->set_assigned_device_name(device_info.name());
 
+    // Copy the _output_shapes from the original node to the feed node,
+    // if any.
+    std::vector<PartialTensorShape> output_shapes;
+    if (GetNodeAttr(n->def(), "_output_shapes", &output_shapes).ok()) {
+      if (n->num_outputs() != output_shapes.size()) {
+        return errors::InvalidArgument(
+            "FeedInputs: ", t,
+            ": size of _output_shapes attribute does not "
+            "match the number of node outputs");
+      }
+      std::vector<PartialTensorShape> feed_shapes = {output_shapes[id.second]};
+      recv_node->AddAttr("_output_shapes", feed_shapes);
+    }
+
     // Update name_index
     (*name_index)[recv_node->name()] = recv_node;
     g->AddControlEdge(g->source_node(), recv_node);
@@ -98,7 +110,8 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
       if (e->src_output() == id.second) {
         to_remove.emplace_back(e);
       } else if (e->src_output() == Graph::kControlSlot &&
-                 n->def().op() == "Placeholder") {
+                 (n->def().op() == "Placeholder" ||
+                  n->def().op() == "PlaceholderV2")) {
         // When feeding a Placeholder node, any outgoing control edges
         // will be replaced with a control edge from the replacement
         // recv_node.
@@ -121,18 +134,57 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
   return Status::OK();
 }
 
-// Augment "*g" by adding special "fetch" nodes that connect to the
-// tensor outputs specified in "fetch_outputs" to retrieve the output
-// of the tensors.  The new nodes added are set up to execute on
-// "client_device_name", and are returned in "*fetch_nodes".
-//
-// Return true on success.  On error, return false and sets *error to
-// an appropriate error message (and *g is left in an indeterminate
-// state).
-static Status FetchOutputs(Graph* g, const DeviceAttributes& device_info,
-                           const gtl::ArraySlice<string>& fetch_outputs,
-                           NameIndex* name_index,
-                           std::vector<Node*>* fetch_nodes) {
+static bool AddNodeToTargets(const string& node_or_tensor_name,
+                             const subgraph::NameIndex& name_index,
+                             std::unordered_set<const Node*>* targets) {
+  TensorId id = ParseTensorName(node_or_tensor_name);
+  auto iter = name_index.find(id.first);
+  if (iter == name_index.end()) {
+    return false;
+  }
+  const Node* n = iter->second;
+  if (n->name() != node_or_tensor_name) {
+    return false;
+  }
+
+  targets->insert(n);
+  return true;
+}
+
+static Status PruneForTargets(Graph* g, const subgraph::NameIndex& name_index,
+                              const std::vector<Node*>& fetch_nodes,
+                              const gtl::ArraySlice<string>& target_nodes) {
+  string not_found;
+  std::unordered_set<const Node*> targets;
+  for (Node* n : fetch_nodes) {
+    if (!AddNodeToTargets(n->name(), name_index, &targets)) {
+      strings::StrAppend(&not_found, n->name(), " ");
+    }
+  }
+  for (const string& s : target_nodes) {
+    if (!AddNodeToTargets(s, name_index, &targets)) {
+      strings::StrAppend(&not_found, s, " ");
+    }
+  }
+  if (!not_found.empty()) {
+    return errors::NotFound("PruneForTargets: Some target nodes not found: ",
+                            not_found);
+  }
+  PruneForReverseReachability(g, targets);
+
+  // Reconnect nodes with no outgoing edges to the sink node
+  FixupSourceAndSinkEdges(g);
+
+  return Status::OK();
+}
+
+}  // namespace
+
+namespace subgraph {
+
+Status FetchOutputs(Graph* g, const DeviceAttributes& device_info,
+                    const gtl::ArraySlice<string>& fetch_outputs,
+                    NameIndex* name_index, std::vector<Node*>* fetch_nodes) {
   fetch_nodes->clear();
   for (const string& t : fetch_outputs) {
     // Parse t into node_name and output_index.
@@ -148,7 +200,15 @@ static Status FetchOutputs(Graph* g, const DeviceAttributes& device_info,
     VLOG(2) << "Found fetch node for " << t;
 
     // Validate output_index
-    if (id.second >= n->num_outputs()) {
+    if (n->num_outputs() == 0) {
+      return errors::InvalidArgument(
+          "Tried to fetch data for '", t,
+          "', which produces no output.  To run to a node but not fetch any "
+          "data, pass '",
+          t,
+          "' as an argument to the 'target_node_names' argument of the "
+          "Session::Run API.");
+    } else if (id.second >= n->num_outputs()) {
       return errors::InvalidArgument("FetchOutputs ", t,
                                      ": output index too large, must be < ",
                                      n->num_outputs());
@@ -180,57 +240,25 @@ static Status FetchOutputs(Graph* g, const DeviceAttributes& device_info,
   return Status::OK();
 }
 
-static bool AddNodeToTargets(const string& node_or_tensor_name,
-                             const NameIndex& name_index,
-                             std::unordered_set<const Node*>* targets) {
-  TensorId id = ParseTensorName(node_or_tensor_name);
-  auto iter = name_index.find(id.first);
-  if (iter == name_index.end()) {
-    return false;
-  }
-  const Node* n = iter->second;
-  if (n->name() != node_or_tensor_name) {
-    return false;
-  }
-
-  targets->insert(n);
-  return true;
-}
-
-static Status PruneForTargets(Graph* g, const NameIndex& name_index,
-                              const std::vector<Node*>& fetch_nodes,
-                              const gtl::ArraySlice<string>& target_nodes) {
-  string not_found;
-  std::unordered_set<const Node*> targets;
-  for (Node* n : fetch_nodes) {
-    if (!AddNodeToTargets(n->name(), name_index, &targets)) {
-      strings::StrAppend(&not_found, n->name(), " ");
-    }
-  }
-  for (const string& s : target_nodes) {
-    if (!AddNodeToTargets(s, name_index, &targets)) {
-      strings::StrAppend(&not_found, s, " ");
-    }
-  }
-  if (!not_found.empty()) {
-    return errors::NotFound("PruneForTargets: Some target nodes not found: ",
-                            not_found);
-  }
-  PruneForReverseReachability(g, targets);
-
-  return Status::OK();
-}
-
-}  // namespace
-
-namespace subgraph {
-
 Status RewriteGraphForExecution(
     Graph* g, const gtl::ArraySlice<string>& fed_outputs,
     const gtl::ArraySlice<string>& fetch_outputs,
     const gtl::ArraySlice<string>& target_node_names,
     const DeviceAttributes& device_info) {
-  std::unordered_set<string> endpoints(fed_outputs.begin(), fed_outputs.end());
+  if (fetch_outputs.empty() && target_node_names.empty()) {
+    return errors::InvalidArgument(
+        "Must specify at least one target to fetch or execute.");
+  }
+
+  std::unordered_set<string> endpoints;
+  for (const string& endpoint_name : fed_outputs) {
+    auto result = endpoints.insert(endpoint_name);
+    if (!result.second) {
+      return errors::InvalidArgument("Endpoint \"", endpoint_name,
+                                     "\" fed more than once.");
+    }
+  }
+
   for (const auto& fetch : fetch_outputs) {
     if (endpoints.count(fetch) > 0) {
       return errors::InvalidArgument(fetch, " is both fed and fetched.");
@@ -240,6 +268,7 @@ Status RewriteGraphForExecution(
   // A separate index mapping name to Node*, for use by FeedInputs,
   // FetchOutputs, and PruneForTargets
   NameIndex name_index;
+  name_index.reserve(g->num_nodes());
   for (Node* n : g->nodes()) {
     name_index[n->name()] = n;
   }

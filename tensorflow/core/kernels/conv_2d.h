@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_CONV_2D_H_
 #define TENSORFLOW_KERNELS_CONV_2D_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
+#include "tensorflow/core/kernels/eigen_spatial_convolutions.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 namespace functor {
@@ -51,18 +53,36 @@ struct InflatePadAndShuffle {
 
 template <typename Device, typename Input, typename Filter, typename Output>
 void SpatialConvolutionFunc(const Device& d, Output output, Input input,
-                            Filter filter, int stride,
+                            Filter filter, int row_stride, int col_stride,
                             const Eigen::PaddingType& padding) {
-  output.device(d) = Eigen::SpatialConvolution(input, filter, stride, padding);
+  // Need to swap row/col when calling Eigen.
+  output.device(d) =
+      Eigen::SpatialConvolution(input, filter, col_stride, row_stride, padding);
 }
 
 template <typename Device, typename T>
 struct SpatialConvolution {
   void operator()(const Device& d, typename TTypes<T, 4>::Tensor output,
                   typename TTypes<T, 4>::ConstTensor input,
-                  typename TTypes<T, 4>::ConstTensor filter, int stride,
+                  typename TTypes<T, 4>::ConstTensor filter, int row_stride,
+                  int col_stride, const Eigen::PaddingType& padding) {
+    SpatialConvolutionFunc(d, output, input, filter, row_stride, col_stride,
+                           padding);
+  }
+};
+
+template <typename Device>
+struct SpatialConvolution<Device, Eigen::half> {
+  void operator()(const Device& d,
+                  typename TTypes<Eigen::half, 4>::Tensor output,
+                  typename TTypes<Eigen::half, 4>::ConstTensor input,
+                  typename TTypes<Eigen::half, 4>::ConstTensor filter,
+                  int row_stride, int col_stride,
                   const Eigen::PaddingType& padding) {
-    SpatialConvolutionFunc(d, output, input, filter, stride, padding);
+    output.device(d) =
+        Eigen::SpatialConvolution(input.cast<float>(), filter.cast<float>(),
+                                  col_stride, row_stride, padding)
+            .cast<Eigen::half>();
   }
 };
 
@@ -71,9 +91,12 @@ struct SpatialConvolutionBackwardInput {
   void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
                   typename TTypes<T, 4>::ConstTensor kernel,
                   typename TTypes<T, 4>::ConstTensor output_backward,
-                  int input_rows, int input_cols, int stride) {
+                  int input_rows, int input_cols, int row_stride,
+                  int col_stride) {
+    // Need to swap row/col when calling Eigen.
     input_backward.device(d) = Eigen::SpatialConvolutionBackwardInput(
-        kernel, output_backward, input_rows, input_cols, stride);
+        kernel, output_backward, input_cols, input_rows, col_stride,
+        row_stride);
   }
 };
 
@@ -83,9 +106,12 @@ struct SpatialConvolutionBackwardKernel {
                   typename TTypes<T, 4>::Tensor kernel_backward,
                   typename TTypes<T, 4>::ConstTensor input,
                   typename TTypes<T, 4>::ConstTensor output_backward,
-                  int kernel_rows, int kernel_cols, int stride) {
+                  int kernel_rows, int kernel_cols, int row_stride,
+                  int col_stride) {
+    // Need to swap row/col when calling Eigen.
     kernel_backward.device(d) = Eigen::SpatialConvolutionBackwardKernel(
-        input, output_backward, kernel_rows, kernel_cols, stride);
+        input, output_backward, kernel_cols, kernel_rows, col_stride,
+        row_stride);
   }
 };
 
@@ -105,23 +131,31 @@ struct MatMulConvFunctor {
   }
 };
 
-template <typename Device, typename T, typename IndexType>
+// Shuffles a filter tensor from:
+//   [<spatial_dims>, in, out]
+// to:
+//   [out, in, <spatial_dims>]
+template <typename Device, typename T, typename IndexType, int NDIMS>
 struct TransformFilter {
   void operator()(const Device& d,
-                  typename TTypes<T, 4, IndexType>::ConstTensor in,
-                  typename TTypes<T, 4, IndexType>::Tensor out) {
-    // We want a 3, 2, 0, 1 shuffle. We can merge dimensions 0 and 1 together
-    // to help speedup the shuffle operation.
+                  typename TTypes<T, NDIMS, IndexType>::ConstTensor in,
+                  typename TTypes<T, NDIMS, IndexType>::Tensor out) {
+    // We want a 3, 2, 0, 1 shuffle. Merge the spatial dimensions together
+    // to speed up the shuffle operation.
     Eigen::DSizes<IndexType, 3> merged_dims;
-    merged_dims[0] = in.dimension(0) * in.dimension(1);
-    merged_dims[1] = in.dimension(2);
-    merged_dims[2] = in.dimension(3);
+    merged_dims[0] = in.dimension(0);  // spatial dimensions
+    for (int i = 1; i < NDIMS - 2; ++i) {
+      merged_dims[0] *= in.dimension(i);
+    }
+    merged_dims[1] = in.dimension(NDIMS - 2);  // input filters
+    merged_dims[2] = in.dimension(NDIMS - 1);  // output filters
 
-    Eigen::DSizes<IndexType, 4> expanded_dims;
-    expanded_dims[0] = in.dimension(3);
-    expanded_dims[1] = in.dimension(2);
-    expanded_dims[2] = in.dimension(0);
-    expanded_dims[3] = in.dimension(1);
+    Eigen::DSizes<IndexType, NDIMS> expanded_dims;
+    expanded_dims[0] = in.dimension(NDIMS - 1);  // output filters
+    expanded_dims[1] = in.dimension(NDIMS - 2);  // input filters
+    for (int i = 0; i < NDIMS; ++i) {            // spatial dimensions
+      expanded_dims[i + 2] = in.dimension(i);
+    }
 
     out.device(d) = in.reshape(merged_dims)
                         .shuffle(Eigen::DSizes<IndexType, 3>(2, 1, 0))
@@ -183,41 +217,79 @@ struct TransformDepth {
   }
 };
 
-template <typename Device, typename T, typename IndexType>
+template <typename Device, typename T, typename IndexType, int NDIMS>
 struct PadInput {
   void operator()(const Device& d,
-                  typename TTypes<T, 4, IndexType>::ConstTensor in,
-                  int padding_rows_left, int padding_rows_right,
-                  int padding_cols_left, int padding_cols_right,
-                  typename TTypes<T, 4, IndexType>::Tensor out) {
-    Eigen::array<std::pair<IndexType, IndexType>, 4> padding;
-    padding[0] = std::make_pair(0, 0);
-    padding[1] = std::make_pair(padding_rows_left, padding_rows_right);
-    padding[2] = std::make_pair(padding_cols_left, padding_cols_right);
-    padding[3] = std::make_pair(0, 0);
+                  typename TTypes<T, NDIMS, IndexType>::ConstTensor in,
+                  const std::array<int, NDIMS - 2>& padding_left,
+                  const std::array<int, NDIMS - 2>& padding_right,
+                  typename TTypes<T, NDIMS, IndexType>::Tensor out,
+                  TensorFormat format) {
+    Eigen::array<std::pair<IndexType, IndexType>, NDIMS> padding;
+    padding[GetTensorDimIndex<NDIMS - 2>(format, 'N')] = std::make_pair(0, 0);
+    for (int i = 0; i < NDIMS - 2; ++i) {
+      padding[GetTensorDimIndex<NDIMS - 2>(format, '0' + i)] =
+          std::make_pair(padding_left[i], padding_right[i]);
+    }
+    padding[GetTensorDimIndex<NDIMS - 2>(format, 'C')] = std::make_pair(0, 0);
     out.device(d) = in.pad(padding);
   }
 };
 
-template <typename Device, typename T>
+// Converts a tensor from:
+//   [batch, <spatial>, filters]
+// to:
+//   [batch, filters, <spatial>]
+template <typename Device, typename T, int NDIMS>
 struct NHWCToNCHW {
-  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor in,
-                  typename TTypes<T, 4>::Tensor out);
+  void operator()(const Device& d, typename TTypes<T, NDIMS>::ConstTensor in,
+                  typename TTypes<T, NDIMS>::Tensor out);
 };
 
-template <typename Device, typename T>
+// Converts a tensor from:
+//   [batch, filters, <spatial>]
+// to:
+//   [batch, <spatial>, filters]
+template <typename Device, typename T, int NDIMS>
 struct NCHWToNHWC {
-  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor in,
-                  typename TTypes<T, 4>::Tensor out);
+  void operator()(const Device& d, typename TTypes<T, NDIMS>::ConstTensor in,
+                  typename TTypes<T, NDIMS>::Tensor out);
 };
 
+// Converts a tensor from:
+//   [dim0, dim1, dim2]
+// to:
+//   [dim0, dim2, dim1]
 template <typename Device, typename T>
+struct SwapDimension1And2InTensor3 {
+  void operator()(const Device& d, const T* in,
+                  const gtl::ArraySlice<int64>& input_dims, T* out);
+};
+
+// Converts a tensor from:
+//   [dim0, dim1, dim2]
+// to:
+//   [dim2, dim1, dim0]
+template <typename Device, typename T>
+struct SwapDimension0And2InTensor3 {
+  void operator()(const Device& d, const T* in,
+                  const gtl::ArraySlice<int64>& input_dims, T* out);
+};
+
+// Reverses the effect of TransformFilter above.
+template <typename Device, typename T, int NDIMS>
 struct ReverseTransformFilter {
-  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor in,
-                  typename TTypes<T, 4>::Tensor out);
+  void operator()(const Device& d, typename TTypes<T, NDIMS>::ConstTensor in,
+                  typename TTypes<T, NDIMS>::Tensor out);
 };
 
 }  // namespace functor
+
+template <class T>
+class ConvAlgorithmMap;
+
+template <>
+class ConvAlgorithmMap<Eigen::ThreadPoolDevice> {};
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_CONV_2D_H_

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,11 @@ class SummaryImageOp : public OpKernel {
   typedef Eigen::Tensor<uint8, 2, Eigen::RowMajor> Uint8Image;
 
   explicit SummaryImageOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("max_images", &max_images_));
+    int64 max_images_tmp;
+    OP_REQUIRES_OK(context, context->GetAttr("max_images", &max_images_tmp));
+    OP_REQUIRES(context, max_images_tmp < (1LL << 31),
+                errors::InvalidArgument("max_images must be < 2^31"));
+    max_images_ = static_cast<int32>(max_images_tmp);
     const TensorProto* proto;
     OP_REQUIRES_OK(context, context->GetAttr("bad_color", &proto));
     OP_REQUIRES_OK(context, context->device()->MakeTensorFromProto(
@@ -42,14 +46,14 @@ class SummaryImageOp : public OpKernel {
     OP_REQUIRES(
         context, TensorShapeUtils::IsVector(bad_color_.shape()),
         errors::InvalidArgument("bad_color must be a vector, got shape ",
-                                bad_color_.shape().ShortDebugString()));
+                                bad_color_.shape().DebugString()));
   }
 
   void Compute(OpKernelContext* c) override {
     const Tensor& tags = c->input(0);
     const Tensor& tensor = c->input(1);
-    OP_REQUIRES(c, TensorShapeUtils::IsLegacyScalar(tags.shape()),
-                errors::InvalidArgument("Tags must have be a scalar"));
+    OP_REQUIRES(c, IsLegacyScalar(tags.shape()),
+                errors::InvalidArgument("Tags must be a scalar"));
     OP_REQUIRES(c, tensor.dims() == 4 &&
                        (tensor.dim_size(3) == 1 || tensor.dim_size(3) == 3 ||
                         tensor.dim_size(3) == 4),
@@ -58,11 +62,19 @@ class SummaryImageOp : public OpKernel {
                     tensor.shape().DebugString()));
     const string& base_tag = tags.scalar<string>()();
 
-    const int batch_size = tensor.dim_size(0);
-    const int h = tensor.dim_size(1);
-    const int w = tensor.dim_size(2);
+    OP_REQUIRES(c, tensor.dim_size(0) < (1LL << 31) &&
+                       tensor.dim_size(1) < (1LL << 31) &&
+                       tensor.dim_size(2) < (1LL << 31) &&
+                       (tensor.dim_size(1) * tensor.dim_size(2)) < (1LL << 29),
+                errors::InvalidArgument("Tensor too large for summary ",
+                                        tensor.shape().DebugString()));
+
+    // The casts and h * w cannot overflow because of the limits above.
+    const int batch_size = static_cast<int>(tensor.dim_size(0));
+    const int h = static_cast<int>(tensor.dim_size(1));
+    const int w = static_cast<int>(tensor.dim_size(2));
     const int hw = h * w;  // Compact these two dims for simplicity
-    const int depth = tensor.dim_size(3);
+    const int depth = static_cast<int>(tensor.dim_size(3));
 
     Summary s;
     if (tensor.dtype() == DT_UINT8) {
@@ -72,33 +84,46 @@ class SummaryImageOp : public OpKernel {
         return typename TTypes<uint8>::ConstMatrix(
             &values(i, 0, 0), Eigen::DSizes<Eigen::DenseIndex, 2>(hw, depth));
       };
-      AddImages(base_tag, batch_size, w, h, depth, ith_image, &s);
+      OP_REQUIRES_OK(
+          c, AddImages(base_tag, batch_size, w, h, depth, ith_image, &s));
+    } else if (tensor.dtype() == DT_HALF) {
+      NormalizeAndAddImages<Eigen::half>(c, tensor, h, w, hw, depth, batch_size,
+                                         base_tag, &s);
     } else {  // tensor.dtype() == DT_FLOAT
-      // For float images, nans and infs are replaced with bad_color.
-      OP_REQUIRES(c, bad_color_.dim_size(0) >= depth,
-                  errors::InvalidArgument(
-                      "expected depth <= bad_color.size, got depth = ", depth,
-                      ", bad_color.size = ", bad_color_.dim_size(0)));
-      auto bad_color_full = bad_color_.vec<uint8>();
-      typename TTypes<uint8>::ConstVec bad_color(bad_color_full.data(), depth);
-
-      // Float images must be scaled and translated.
-      Uint8Image image(hw, depth);
-      auto ith_image = [&tensor, &image, bad_color, batch_size, hw,
-                        depth](int i) {
-        auto tensor_eigen = tensor.shaped<float, 3>({batch_size, hw, depth});
-        typename TTypes<float>::ConstMatrix values(
-            &tensor_eigen(i, 0, 0),
-            Eigen::DSizes<Eigen::DenseIndex, 2>(hw, depth));
-        NormalizeFloatImage(hw, depth, values, bad_color, &image);
-        return image;
-      };
-      AddImages(base_tag, batch_size, w, h, depth, ith_image, &s);
+      NormalizeAndAddImages<float>(c, tensor, h, w, hw, depth, batch_size,
+                                   base_tag, &s);
     }
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
     CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+  }
+
+  template <class T>
+  void NormalizeAndAddImages(OpKernelContext* c, const Tensor& tensor, int h,
+                             int w, int hw, int depth, int batch_size,
+                             const string& base_tag, Summary* s) {
+    // For float and half images, nans and infs are replaced with bad_color.
+    OP_REQUIRES(c, bad_color_.dim_size(0) >= depth,
+                errors::InvalidArgument(
+                    "expected depth <= bad_color.size, got depth = ", depth,
+                    ", bad_color.size = ", bad_color_.dim_size(0)));
+    auto bad_color_full = bad_color_.vec<uint8>();
+    typename TTypes<uint8>::ConstVec bad_color(bad_color_full.data(), depth);
+
+    // Float images must be scaled and translated.
+    Uint8Image image(hw, depth);
+    auto ith_image = [&tensor, &image, bad_color, batch_size, hw,
+                      depth](int i) {
+      auto tensor_eigen = tensor.template shaped<T, 3>({batch_size, hw, depth});
+      typename TTypes<T>::ConstMatrix values(
+          &tensor_eigen(i, 0, 0),
+          Eigen::DSizes<Eigen::DenseIndex, 2>(hw, depth));
+      NormalizeFloatImage<T>(hw, depth, values, bad_color, &image);
+      return image;
+    };
+    OP_REQUIRES_OK(c,
+                   AddImages(base_tag, batch_size, w, h, depth, ith_image, s));
   }
 
   // Add the sequence of images specified by ith_image to the summary.
@@ -141,15 +166,16 @@ class SummaryImageOp : public OpKernel {
     return Status::OK();
   }
 
+  template <class T>
   static void NormalizeFloatImage(int hw, int depth,
-                                  typename TTypes<float>::ConstMatrix values,
+                                  typename TTypes<T>::ConstMatrix values,
                                   typename TTypes<uint8>::ConstVec bad_color,
                                   Uint8Image* image) {
     if (!image->size()) return;  // Nothing to do for empty images
 
     // Rescale the image to uint8 range.
     //
-    // We are trying to generate an RGB image from a float tensor.  We do
+    // We are trying to generate an RGB image from a float/half tensor.  We do
     // not have any info about the expected range of values in the tensor
     // but the generated image needs to have all RGB values within [0, 255].
     //
@@ -167,14 +193,14 @@ class SummaryImageOp : public OpKernel {
     for (int i = 0; i < hw; i++) {
       bool finite = true;
       for (int j = 0; j < depth; j++) {
-        if (!std::isfinite(values(i, j))) {
+        if (!Eigen::numext::isfinite(values(i, j))) {
           finite = false;
           break;
         }
       }
       if (finite) {
         for (int j = 0; j < depth; j++) {
-          float value = values(i, j);
+          float value(values(i, j));
           image_min = std::min(image_min, value);
           image_max = std::max(image_max, value);
         }
@@ -183,27 +209,28 @@ class SummaryImageOp : public OpKernel {
 
     // Pick an affine transform into uint8
     const float kZeroThreshold = 1e-6;
-    float scale, offset;
+    T scale, offset;
     if (image_min < 0) {
       float max_val = std::max(std::abs(image_min), std::abs(image_max));
-      scale = max_val < kZeroThreshold ? 0.0f : 127.0f / max_val;
-      offset = 128.0f;
+      scale = T(max_val < kZeroThreshold ? 0.0f : 127.0f / max_val);
+      offset = T(128.0f);
     } else {
-      scale = image_max < kZeroThreshold ? 0.0f : 255.0f / image_max;
-      offset = 0.0f;
+      scale = T(image_max < kZeroThreshold ? 0.0f : 255.0f / image_max);
+      offset = T(0.0f);
     }
 
     // Transform image, turning nonfinite values to bad_color
     for (int i = 0; i < hw; i++) {
       bool finite = true;
       for (int j = 0; j < depth; j++) {
-        if (!std::isfinite(values(i, j))) {
+        if (!Eigen::numext::isfinite(values(i, j))) {
           finite = false;
           break;
         }
       }
       if (finite) {
-        image->chip<0>(i) = (values.chip<0>(i) * scale + offset).cast<uint8>();
+        image->chip<0>(i) = (values.template chip<0>(i) * scale + offset)
+                                .template cast<uint8>();
       } else {
         image->chip<0>(i) = bad_color;
       }
@@ -211,7 +238,7 @@ class SummaryImageOp : public OpKernel {
   }
 
  private:
-  int64 max_images_;
+  int32 max_images_;
   Tensor bad_color_;
 };
 

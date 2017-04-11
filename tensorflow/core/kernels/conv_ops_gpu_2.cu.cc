@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,13 +20,16 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 template struct functor::InflatePadAndShuffle<GPUDevice, float, 4, int>;
 template struct functor::InflatePadAndShuffle<GPUDevice, float, 4,
+                                              Eigen::DenseIndex>;
+template struct functor::InflatePadAndShuffle<GPUDevice, Eigen::half, 4, int>;
+template struct functor::InflatePadAndShuffle<GPUDevice, Eigen::half, 4,
                                               Eigen::DenseIndex>;
 }  // namespace tensorflow
 

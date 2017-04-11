@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,12 +18,12 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -48,13 +48,30 @@ class DecodeJpegOp : public OpKernel {
                                     &flags_.try_recover_truncated_jpeg));
     OP_REQUIRES_OK(context, context->GetAttr("acceptable_fraction",
                                              &flags_.min_acceptable_fraction));
+
+    string dct_method;
+    OP_REQUIRES_OK(context, context->GetAttr("dct_method", &dct_method));
+    OP_REQUIRES(
+        context, (dct_method.empty() || dct_method == "INTEGER_FAST" ||
+                  dct_method == "INTEGER_ACCURATE"),
+        errors::InvalidArgument("dct_method must be one of "
+                                "{'', 'INTEGER_FAST', 'INTEGER_ACCURATE'}"));
+    if (dct_method == "INTEGER_FAST") {
+      flags_.dct_method = JDCT_IFAST;
+    } else if (dct_method == "INTEGER_ACCURATE") {
+      flags_.dct_method = JDCT_ISLOW;
+    } else {
+      // The TensorFlow-chosen default is IFAST, sacrificing decoding
+      // image quality for speed.
+      flags_.dct_method = JDCT_IFAST;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& contents = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents.shape()),
                 errors::InvalidArgument("contents must be scalar, got shape ",
-                                        contents.shape().ShortDebugString()));
+                                        contents.shape().DebugString()));
     const StringPiece input = contents.scalar<string>()();
     OP_REQUIRES(context, input.size() <= std::numeric_limits<int>::max(),
                 errors::InvalidArgument("JPEG contents are too large for int: ",
@@ -65,7 +82,7 @@ class DecodeJpegOp : public OpKernel {
     OP_REQUIRES(
         context,
         jpeg::Uncompress(
-            input.data(), input.size(), flags_, NULL,
+            input.data(), input.size(), flags_, nullptr /* nwarn */,
             [=, &output](int width, int height, int channels) -> uint8* {
               Status status(context->allocate_output(
                   0, TensorShape({height, width, channels}), &output));

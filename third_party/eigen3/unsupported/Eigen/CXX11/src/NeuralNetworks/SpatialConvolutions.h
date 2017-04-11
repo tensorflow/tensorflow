@@ -19,41 +19,43 @@ namespace internal {
 // TODO: Consolidate this part of the code with the image patch extraction code
 // since they are both very similar.
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols, typename ArgType, typename Device,
-          typename Scalar, typename Index,
+          typename Scalar_, typename Index,
           typename nocontract_t, typename contract_t,
           int Side, size_t packet_size,
           bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
-class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment>
+class TensorContractionInputMapper<Scalar_, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment>
 {
  public:
-  typedef TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> Self;
-  typedef Self SubMapper;
-  typedef Self VectorMapper;
-  typedef Self LinearMapper;
+  typedef TensorContractionInputMapper<Scalar_, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> Self;
+  typedef TensorContractionSubMapper<Scalar_, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> SubMapper;
+  typedef SubMapper VectorMapper;
+  typedef SubMapper LinearMapper;
+  typedef Scalar_ Scalar;
   typedef typename packet_traits<Scalar>::type Packet;
 
   TensorContractionInputMapper(const TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>& tensor,
                                const nocontract_t&, const nocontract_t&,
-                               const contract_t&, const contract_t&,
-                               const Index depth_offset = 0, const Index col_offset = 0)
-      : m_depth_offset(depth_offset), m_col_offset(col_offset), m_impl(tensor.impl().impl())
+                               const contract_t&, const contract_t&)
+      : m_impl(tensor.impl().impl())
   {
+    Index patch_rows;
+    Index patch_depth;
     if (internal::traits<ArgType>::Layout == ColMajor) {
-      m_patch_depth = tensor.impl().dimensions()[0];
-      m_patch_rows = tensor.impl().dimensions()[1];
+      patch_depth = tensor.impl().dimensions()[0];
+      patch_rows = tensor.impl().dimensions()[1];
       m_patch_cols = tensor.impl().dimensions()[2];
       m_num_patches = tensor.impl().dimensions()[3];
     } else {
       static const int NumDims = tensor.impl().dimensions().size();
-      m_patch_depth = tensor.impl().dimensions()[NumDims - 1];
-      m_patch_rows = tensor.impl().dimensions()[NumDims - 2];
+      patch_depth = tensor.impl().dimensions()[NumDims - 1];
+      patch_rows = tensor.impl().dimensions()[NumDims - 2];
       m_patch_cols = tensor.impl().dimensions()[NumDims - 3];
       m_num_patches = tensor.impl().dimensions()[NumDims - 4];
     }
     m_patch_row_inflate_strides = tensor.impl().rowInflateStride();
     m_patch_col_inflate_strides = tensor.impl().colInflateStride();
 
-    m_colStride = m_patch_rows;
+    m_colStride = patch_rows;
 
     m_outputRows = tensor.impl().outputRows();
     m_row_strides = tensor.impl().userRowStride();
@@ -71,9 +73,9 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
       m_inputCols = tensor.impl().impl().dimensions()[NumDims - 3];
     }
 
-    m_rowInputStride = m_patch_depth;
-    m_colInputStride = m_patch_depth * m_inputRows;
-    m_patchInputStride = m_patch_depth * m_inputRows * m_inputCols;
+    m_rowInputStride = patch_depth;
+    m_colInputStride = patch_depth * m_inputRows;
+    m_patchInputStride = patch_depth * m_inputRows * m_inputCols;
 
     m_rowPaddingTop = tensor.impl().rowPaddingTop();
     m_colPaddingLeft = tensor.impl().colPaddingLeft();
@@ -83,16 +85,11 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
     m_fastNumPatches = internal::TensorIntDivisor<Index>(m_num_patches);
     m_fastColStride = internal::TensorIntDivisor<Index>(m_colStride);
     m_fastOutputRows = internal::TensorIntDivisor<Index>(m_outputRows);
-    m_fastDimZero = internal::TensorIntDivisor<Index>(m_patch_depth);
-
-    computeBaseIndices(m_col_offset, m_rowIndex, m_colIndex, m_otherIndex);
+    m_fastDimZero = internal::TensorIntDivisor<Index>(patch_depth);
   }
 
-  TensorContractionInputMapper(const TensorContractionInputMapper& base_mapper,
-                               const Index depth_offset,
-                               const Index col_offset) : m_depth_offset(depth_offset), m_col_offset(col_offset), m_impl(base_mapper.m_impl) {
-    m_patch_depth = base_mapper.m_patch_depth;
-    m_patch_rows = base_mapper.m_patch_rows;
+  TensorContractionInputMapper(const TensorContractionInputMapper& base_mapper) :
+      m_impl(base_mapper.m_impl) {
     m_patch_cols = base_mapper.m_patch_cols;
     m_num_patches = base_mapper.m_num_patches;
     m_patch_row_inflate_strides = base_mapper.m_patch_row_inflate_strides;
@@ -123,8 +120,6 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
     m_fastColStride = base_mapper.m_fastColStride;
     m_fastOutputRows = base_mapper.m_fastOutputRows;
     m_fastDimZero = base_mapper.m_fastDimZero;
-
-    computeBaseIndices(m_col_offset, m_rowIndex, m_colIndex, m_otherIndex);
   }
 
  // If true, turns off some optimizations for loading packets since the image
@@ -137,24 +132,25 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
 
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE SubMapper getSubMapper(Index i, Index j) const {
-    return SubMapper(*this, m_depth_offset + i, m_col_offset + j);
+    return SubMapper(*this, i, j);
   }
 
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE LinearMapper getLinearMapper(Index i, Index j) const {
-    return LinearMapper(*this, m_depth_offset + i, m_col_offset + j);
+    return LinearMapper(*this, i, j);
   }
 
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Scalar operator()(Index row) const {
-    return loadCoeff(row + m_depth_offset, m_rowIndex, m_colIndex, m_otherIndex);
+    Index rowIndex, colIndex, otherIndex;
+    computeBaseIndices(0, rowIndex, colIndex, otherIndex);
+    return loadCoeff(row, rowIndex, colIndex, otherIndex);
   }
 
   // Load the coefficient at the patchIndex location instead of the usual m_rowIndex,
   // m_colIndex, m_otherIndex. This is currently only used by the gpu code.  EIGEN_DEVICE_FUNC
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE Scalar operator()(Index row, Index patchIndex) const {
-    checkZeroOffsets();
     Index rowIndex, colIndex, otherIndex;
     computeBaseIndices(patchIndex, rowIndex, colIndex, otherIndex);
     return loadCoeff(row, rowIndex, colIndex, otherIndex);
@@ -162,14 +158,15 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
 
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Packet loadPacket(Index row) const {
-    return loadPacket(row + m_depth_offset, m_rowIndex, m_colIndex, m_otherIndex);
+    Index rowIndex, colIndex, otherIndex;
+    computeBaseIndices(0, rowIndex, colIndex, otherIndex);
+    return loadPacket(row, rowIndex, colIndex, otherIndex);
   }
 
   // Load the packet at the patchIndex location instead of the usual m_rowIndex,
   // m_colIndex, m_otherIndex. This is currently only used by the gpu code.
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Packet loadPacket(Index row, Index patchIndex) const {
-    checkZeroOffsets();
     Index rowIndex, colIndex, otherIndex;
     computeBaseIndices(patchIndex, rowIndex, colIndex, otherIndex);
     return loadPacket(row, rowIndex, colIndex, otherIndex);
@@ -179,53 +176,21 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
   EIGEN_ALWAYS_INLINE const TensorEvaluator<ArgType, Device>& impl() const { return m_impl; }
 
   EIGEN_DEVICE_FUNC
-  EIGEN_ALWAYS_INLINE Index patchDepth() const { return m_patch_depth; }
+  EIGEN_ALWAYS_INLINE Index patchDepth() const { return m_rowInputStride; }
   EIGEN_DEVICE_FUNC
-  EIGEN_ALWAYS_INLINE Index patchRows() const { return m_patch_rows; }
+  EIGEN_ALWAYS_INLINE Index patchRows() const { return m_colStride; }
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Index patchCols() const { return m_patch_cols; }
 
-  EIGEN_DEVICE_FUNC
-  EIGEN_ALWAYS_INLINE bool padRow(const Index row) const {
-    const Index r = m_rowIndex + row;
-    return r < 0 | r >= m_inputRows;
-  }
-  EIGEN_DEVICE_FUNC
-  EIGEN_ALWAYS_INLINE bool padCol(const Index col) const {
-    const Index c = m_colIndex + col;
-    return c < 0 | c >= m_inputCols;
-  }
-  EIGEN_DEVICE_FUNC
-  EIGEN_ALWAYS_INLINE Index baseIndex(const Index row, const Index col) const {
-    const Index r = m_rowIndex + row;
-    const Index c = m_colIndex + col;
-    return r * m_rowInputStride + c * m_colInputStride + m_otherIndex;
-  }
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Packet packetNoPadding(const Index depth, const Index baseIndex) const {
     const Index inputIndex = depth + baseIndex;
     return m_impl.template packet<Unaligned>(inputIndex);
   }
 
-  EIGEN_DEVICE_FUNC
-  EIGEN_ALWAYS_INLINE Index rowOffset() const {
-    const Index patchOffset = m_depth_offset / m_fastDimZero;
-    const Index colOffset = patchOffset / m_fastColStride;
-    return patchOffset-colOffset*m_colStride;
-  }
-  EIGEN_DEVICE_FUNC
-  EIGEN_ALWAYS_INLINE Index colOffset() const {
-    const Index patchOffset = m_depth_offset / m_fastDimZero;
-    const Index colOffset = patchOffset / m_fastColStride;
-    return colOffset;
-  }
-  EIGEN_DEVICE_FUNC
-  EIGEN_ALWAYS_INLINE Index depthOffset() const {
-    const Index patchOffset = m_depth_offset % m_patch_depth;
-    return patchOffset;
-  }
-
  private:
+  friend class TensorContractionSubMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment>;
+
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE Scalar loadCoeff(Index patchId, Index rowIndex, Index colIndex, Index otherIndex) const {
     // Find the offset of the element wrt the location of the first element.
@@ -241,8 +206,27 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
         (inputCol != origInputCol * m_patch_col_inflate_strides) | (inputRow != origInputRow * m_patch_row_inflate_strides)) {
       return Scalar(0);
     }
-    const Index depth = patchId - patchOffset * m_patch_depth;
+    const Index depth = patchId - patchOffset * patchDepth();
     const Index inputIndex = depth + origInputRow * m_rowInputStride + origInputCol * m_colInputStride + otherIndex;
+    return m_impl.coeff(inputIndex);
+  }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_STRONG_INLINE Scalar loadCoeffStandard(Index patchId, Index rowIndex, Index colIndex, Index otherIndex) const {
+    eigen_assert(!nonStandardPatches());
+
+    // Find the offset of the element wrt the location of the first element.
+    const Index patchOffset = patchId / m_fastDimZero;
+
+    const Index colOffset = patchOffset / m_fastColStride;
+    const Index inputCol = colIndex + colOffset;
+    const Index rowOffset = patchOffset - colOffset * m_colStride;
+    const Index inputRow = rowIndex + rowOffset;
+    if (inputCol < 0 || inputCol >= m_inputCols || inputRow < 0 || inputRow >= m_inputRows) {
+      return Scalar(0);
+    }
+    const Index depth = patchId - patchOffset * patchDepth();
+    const Index inputIndex = depth + inputRow * m_rowInputStride + inputCol * m_colInputStride + otherIndex;
     return m_impl.coeff(inputIndex);
   }
 
@@ -250,29 +234,24 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
   EIGEN_ALWAYS_INLINE Packet loadPacket(Index patchId, Index rowIndex, Index colIndex, Index otherIndex) const {
     const Index packetSize = internal::unpacket_traits<Packet>::size;
     EIGEN_STATIC_ASSERT(packetSize > 1, YOU_MADE_A_PROGRAMMING_MISTAKE)
-    eigen_assert(patchId < m_patch_depth*m_patch_rows*m_patch_cols);
+    eigen_assert(patchId < patchDepth()*patchRows()*m_patch_cols);
 
     if (nonStandardPatches()) {
       return packetWithPossibleZero(patchId, rowIndex, colIndex, otherIndex);
     }
+    return loadPacketStandard(patchId, rowIndex, colIndex, otherIndex);
+  }
 
-    if ((m_patch_depth % packetSize) == 0) {
-      // Find the offset of the element wrt the location of the first element.
-      const Index patchOffset = patchId / m_fastDimZero;
-      eigen_assert((patchId + packetSize - 1)  / m_fastDimZero == patchOffset);
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Packet loadPacketStandard(Index patchId, Index rowIndex, Index colIndex, Index otherIndex) const {
+    const Index packetSize = internal::unpacket_traits<Packet>::size;
+    EIGEN_STATIC_ASSERT(packetSize > 1, YOU_MADE_A_PROGRAMMING_MISTAKE)
+    eigen_assert(patchId < patchDepth()*patchRows()*m_patch_cols);
 
-      const Index colOffset = patchOffset / m_fastColStride;
-      const Index inputCol = colIndex + colOffset;
-      const Index rowOffset = patchOffset - colOffset*m_colStride;
-      const Index inputRow = rowIndex + rowOffset;
-      if (inputCol < 0 | inputRow < 0 | inputCol >= m_inputCols | inputRow >= m_inputRows) {
-        // all zeros
-        return internal::pset1<Packet>(Scalar(0));
-      }
-      // no padding
-      const Index depth = patchId - patchOffset * m_patch_depth;
-      const Index inputIndex = depth + inputRow * m_rowInputStride + inputCol * m_colInputStride + otherIndex;
-      return m_impl.template packet<Unaligned>(inputIndex);
+    eigen_assert(!nonStandardPatches());
+
+    if ((patchDepth() % packetSize) == 0) {
+      return loadPacketFast(patchId, rowIndex, colIndex, otherIndex);
     }
     else {
       const Index patchOffsets[2] = {patchId / m_fastDimZero, (patchId + packetSize - 1) / m_fastDimZero};
@@ -297,13 +276,39 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
 
         if (inputRows[0] >= 0 & inputRows[1] < m_inputRows) {
           // no padding
-          const Index depth = patchId - patchOffsets[0] * m_patch_depth;
+          const Index depth = patchId - patchOffsets[0] * patchDepth();
           const Index inputIndex = depth + inputRows[0] * m_rowInputStride + inputCols[0] * m_colInputStride + otherIndex;
           return m_impl.template packet<Unaligned>(inputIndex);
         }
       }
     }
     return packetWithPossibleZero(patchId, rowIndex, colIndex, otherIndex);
+  }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Packet loadPacketFast(Index patchId, Index rowIndex, Index colIndex, Index otherIndex) const {
+    const Index packetSize = internal::unpacket_traits<Packet>::size;
+    EIGEN_STATIC_ASSERT(packetSize > 1, YOU_MADE_A_PROGRAMMING_MISTAKE)
+    eigen_assert(patchId < patchDepth()*patchRows()*m_patch_cols);
+
+    eigen_assert(!nonStandardPatches());
+    eigen_assert((patchDepth() % packetSize) == 0);
+    // Find the offset of the element wrt the location of the first element.
+    const Index patchOffset = patchId / m_fastDimZero;
+    eigen_assert((patchId + packetSize - 1)  / m_fastDimZero == patchOffset);
+
+    const Index colOffset = patchOffset / m_fastColStride;
+    const Index inputCol = colIndex + colOffset;
+    const Index rowOffset = patchOffset - colOffset*m_colStride;
+    const Index inputRow = rowIndex + rowOffset;
+    if (inputCol < 0 | inputRow < 0 | inputCol >= m_inputCols | inputRow >= m_inputRows) {
+      // all zeros
+      return internal::pset1<Packet>(Scalar(0));
+    }
+    // no padding
+    const Index depth = patchId - patchOffset * patchDepth();
+    const Index inputIndex = depth + inputRow * m_rowInputStride + inputCol * m_colInputStride + otherIndex;
+    return m_impl.template packet<Unaligned>(inputIndex);
   }
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Packet packetWithPossibleZero(Index patchId, Index rowIndex, Index colIndex, Index otherIndex) const
@@ -328,19 +333,6 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
     rowIndex = rowIndex * m_row_strides - m_rowPaddingTop;
   }
 
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE void checkZeroOffsets() const {
-    eigen_assert(m_col_offset == 0);
-    eigen_assert(m_depth_offset == 0);
-    eigen_assert(m_rowIndex == 0);
-    eigen_assert(m_colIndex == 0);
-    eigen_assert(m_otherIndex == 0);
-  }
-
-  Index m_depth_offset;  // First row in the input matrix
-  Index m_col_offset;    // First col in the input matrix
-
-  Index m_patch_depth;   // patch depth, which is equal to the input depth
-  Index m_patch_rows;    // number of rows in the patch
   Index m_patch_cols;    // number of colums in the patch
   Index m_num_patches;   // number of patches to extract.
   Index m_patch_row_inflate_strides;  // the strides for row inflation in the image patch
@@ -375,11 +367,131 @@ class TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const Te
   internal::TensorIntDivisor<Index> m_fastOutputRows;
   internal::TensorIntDivisor<Index> m_fastDimZero;
 
+  const TensorEvaluator<ArgType, Device> m_impl;
+};
+
+
+template <typename NewDimension, DenseIndex Rows, DenseIndex Cols, typename ArgType, typename Device,
+          typename Scalar_, typename Index,
+          typename nocontract_t, typename contract_t,
+          int Side, size_t packet_size,
+          bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
+class TensorContractionSubMapper<Scalar_, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment>
+{
+ public:
+  typedef Scalar_ Scalar;
+  typedef typename packet_traits<Scalar>::type Packet;
+  typedef typename packet_traits<Scalar>::half HalfPacket;
+
+  typedef TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> ParentMapper;
+  typedef TensorContractionSubMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> Self;
+  typedef Self LinearMapper;
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorContractionSubMapper(const ParentMapper& base_mapper, Index vert_offset, Index horiz_offset)
+      : m_base_mapper(base_mapper), m_depth_offset(vert_offset), m_col_offset(horiz_offset) {
+    m_base_mapper.computeBaseIndices(m_col_offset, m_rowIndex, m_colIndex, m_otherIndex);
+  }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorContractionSubMapper(const Self& base_mapper, Index vert_offset, Index horiz_offset)
+      : m_base_mapper(base_mapper.m_base_mapper), m_depth_offset(vert_offset+base_mapper.m_depth_offset), m_col_offset(horiz_offset+base_mapper.m_col_offset) {
+    m_base_mapper.computeBaseIndices(m_col_offset, m_rowIndex, m_colIndex, m_otherIndex);
+  }
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Scalar operator()(Index i) const {
+    return m_base_mapper.loadCoeff(i + m_depth_offset, m_rowIndex, m_colIndex, m_otherIndex);
+  }
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Scalar operator()(Index i, Index j) const {
+    return m_base_mapper(i + m_depth_offset, j + m_col_offset);
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Packet loadPacket(Index i) const {
+   return m_base_mapper.loadPacket(i + m_depth_offset, m_rowIndex, m_colIndex, m_otherIndex);
+  }
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Packet loadPacket(Index i, Index j) const {
+    return m_base_mapper.template loadPacket(i + m_depth_offset, j + m_col_offset);
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Scalar loadCoeffStandard(Index i) const {
+    return m_base_mapper.loadCoeffStandard(i + m_depth_offset, m_rowIndex, m_colIndex, m_otherIndex);
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Packet loadPacketFast(Index i) const {
+   return m_base_mapper.loadPacketFast(i + m_depth_offset, m_rowIndex, m_colIndex, m_otherIndex);
+  }
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Packet loadPacketStandard(Index i) const {
+   return m_base_mapper.loadPacketStandard(i + m_depth_offset, m_rowIndex, m_colIndex, m_otherIndex);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC bool aligned(Index) const {
+    return false;
+  }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE bool nonStandardPatches() const {
+    return m_base_mapper.nonStandardPatches();
+  }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Index patchDepth() const { return m_base_mapper.m_rowInputStride; }
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Index patchRows() const { return m_base_mapper.m_colStride; }
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Index patchCols() const { return m_base_mapper.m_patch_cols; }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Packet packetNoPadding(const Index depth, const Index baseIndex) const {
+    const Index inputIndex = depth + baseIndex;
+    return m_base_mapper.m_impl.template packet<Unaligned>(inputIndex);
+  }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE bool padRow(const Index row) const {
+    const Index r = m_rowIndex + row;
+    return r < 0 | r >= m_base_mapper.m_inputRows;
+  }
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE bool padCol(const Index col) const {
+    const Index c = m_colIndex + col;
+    return c < 0 | c >= m_base_mapper.m_inputCols;
+    }
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Index baseIndex(const Index row, const Index col) const {
+    const Index r = m_rowIndex + row;
+    const Index c = m_colIndex + col;
+    return r * m_base_mapper.m_rowInputStride + c * m_base_mapper.m_colInputStride + m_otherIndex;
+  }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Index rowOffset() const {
+    const Index patchOffset = m_depth_offset / m_base_mapper.m_fastDimZero;
+    const Index colOffset = patchOffset / m_base_mapper.m_fastColStride;
+    return patchOffset-colOffset*m_base_mapper.m_colStride;
+    }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Index colOffset() const {
+    const Index patchOffset = m_depth_offset / m_base_mapper.m_fastDimZero;
+    const Index colOffset = patchOffset / m_base_mapper.m_fastColStride;
+    return colOffset;
+    }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_ALWAYS_INLINE Index depthOffset() const {
+    const Index patchOffset = m_depth_offset % m_base_mapper.patchDepth();
+    return patchOffset;
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE LinearMapper getLinearMapper(Index i, Index j) const {
+    return LinearMapper(m_base_mapper, i + m_depth_offset, j + m_col_offset);
+ }
+
+ private:
+  const ParentMapper& m_base_mapper;  // that was a reference before
+  Index m_depth_offset;  // First row in the input matrix
+  Index m_col_offset;    // First col in the input matrix
+
   Index m_rowIndex;        // precomputed row index corresponding to the col offset
   Index m_colIndex;        // precomputed col index corresponding to the col offset
   Index m_otherIndex;      // precomputed other index corresponding to the col offset
 
-  const TensorEvaluator<ArgType, Device> m_impl;
 };
 
 
@@ -388,9 +500,10 @@ template <typename NewDimension, DenseIndex Rows, DenseIndex Cols, typename ArgT
           typename nocontract_t, typename contract_t,
           int Side, size_t packet_size,
           bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment, int nr>
-struct gemm_pack_rhs<Scalar, Index, TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment>, nr, ColMajor, false, false> {
+struct gemm_pack_rhs<Scalar, Index, TensorContractionSubMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment>, nr, ColMajor, false, false> {
 
-  typedef TensorContractionInputMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> DataMapper;
+  typedef TensorContractionSubMapper<Scalar, Index, Side, TensorEvaluator<const TensorReshapingOp<NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >, Device>, nocontract_t, contract_t, packet_size, inner_dim_contiguous, inner_dim_reordered, Alignment> SubMapper;
+  typedef SubMapper DataMapper;
 
   static inline Index ceil_div(Index a, Index b) {
     return (a + b - 1) / b;
@@ -406,16 +519,17 @@ struct gemm_pack_rhs<Scalar, Index, TensorContractionInputMapper<Scalar, Index, 
 
     const Index packet_cols4 = (cols/4) * 4;
     const Index peeled_k = (depth/packet_size) * packet_size;
+    const bool non_standard_patches = rhs.nonStandardPatches();
 
     for(Index j2=0; j2<packet_cols4; j2+=4)
     {
-      const LinearMapper dm0 = rhs.getLinearMapper(0, j2 + 0);
-      const LinearMapper dm1 = rhs.getLinearMapper(0, j2 + 1);
-      const LinearMapper dm2 = rhs.getLinearMapper(0, j2 + 2);
-      const LinearMapper dm3 = rhs.getLinearMapper(0, j2 + 3);
+      const SubMapper dm0 = rhs.getLinearMapper(0, j2 + 0);
+      const SubMapper dm1 = rhs.getLinearMapper(0, j2 + 1);
+      const SubMapper dm2 = rhs.getLinearMapper(0, j2 + 2);
+      const SubMapper dm3 = rhs.getLinearMapper(0, j2 + 3);
 
       Index k=0;
-      if((packet_size%4)==0 && !rhs.nonStandardPatches())
+      if((packet_size%4)==0 && !non_standard_patches)
       {
         const Index patch_depth = rhs.patchDepth();
         if ((patch_depth % packet_size) == 0) {
@@ -452,10 +566,10 @@ struct gemm_pack_rhs<Scalar, Index, TensorContractionInputMapper<Scalar, Index, 
               for (Index d = startDepth; d < max_depth; d += packet_size) {
                 eigen_assert(k < peeled_k);
                 PacketBlock<Packet, 4> kernel;
-                kernel.packet[0] = pad0 ? pset1<Packet>(0) : dm0.packetNoPadding(d, idx0);
-                kernel.packet[1] = pad1 ? pset1<Packet>(0) : dm1.packetNoPadding(d, idx1);
-                kernel.packet[2] = pad2 ? pset1<Packet>(0) : dm2.packetNoPadding(d, idx2);
-                kernel.packet[3] = pad3 ? pset1<Packet>(0) : dm3.packetNoPadding(d, idx3);
+                kernel.packet[0] = pad0 ? pset1<Packet>(0) : rhs.packetNoPadding(d, idx0);
+                kernel.packet[1] = pad1 ? pset1<Packet>(0) : rhs.packetNoPadding(d, idx1);
+                kernel.packet[2] = pad2 ? pset1<Packet>(0) : rhs.packetNoPadding(d, idx2);
+                kernel.packet[3] = pad3 ? pset1<Packet>(0) : rhs.packetNoPadding(d, idx3);
                 ptranspose(kernel);
                 pstoreu(block+0*packet_size, kernel.packet[0]);
                 pstoreu(block+1*packet_size, kernel.packet[1]);
@@ -466,36 +580,63 @@ struct gemm_pack_rhs<Scalar, Index, TensorContractionInputMapper<Scalar, Index, 
               }
             }
           }
-        }
 
-        for(; k<peeled_k; k+=packet_size) {
-          PacketBlock<Packet, 4> kernel;
-          kernel.packet[0] = dm0.loadPacket(k);
-          kernel.packet[1] = dm1.loadPacket(k);
-          kernel.packet[2] = dm2.loadPacket(k);
-          kernel.packet[3] = dm3.loadPacket(k);
-          ptranspose(kernel);
-          pstoreu(block+0*packet_size, kernel.packet[0]);
-          pstoreu(block+1*packet_size, kernel.packet[1]);
-          pstoreu(block+2*packet_size, kernel.packet[2]);
-          pstoreu(block+3*packet_size, kernel.packet[3]);
-          block+=4*packet_size;
+          for(; k<peeled_k; k+=packet_size) {
+            PacketBlock<Packet, 4> kernel;
+            kernel.packet[0] = dm0.loadPacketFast(k);
+            kernel.packet[1] = dm1.loadPacketFast(k);
+            kernel.packet[2] = dm2.loadPacketFast(k);
+            kernel.packet[3] = dm3.loadPacketFast(k);
+            ptranspose(kernel);
+            pstoreu(block+0*packet_size, kernel.packet[0]);
+            pstoreu(block+1*packet_size, kernel.packet[1]);
+            pstoreu(block+2*packet_size, kernel.packet[2]);
+            pstoreu(block+3*packet_size, kernel.packet[3]);
+            block+=4*packet_size;
+          }
+        }
+        else {
+          for(; k<peeled_k; k+=packet_size) {
+            PacketBlock<Packet, 4> kernel;
+            kernel.packet[0] = dm0.loadPacketStandard(k);
+            kernel.packet[1] = dm1.loadPacketStandard(k);
+            kernel.packet[2] = dm2.loadPacketStandard(k);
+            kernel.packet[3] = dm3.loadPacketStandard(k);
+            ptranspose(kernel);
+            pstoreu(block+0*packet_size, kernel.packet[0]);
+            pstoreu(block+1*packet_size, kernel.packet[1]);
+            pstoreu(block+2*packet_size, kernel.packet[2]);
+            pstoreu(block+3*packet_size, kernel.packet[3]);
+            block+=4*packet_size;
+          }
         }
       }
-      for(; k<depth; k++)
-      {
-        block[0] = dm0(k);
-        block[1] = dm1(k);
-        block[2] = dm2(k);
-        block[3] = dm3(k);
-        block += 4;
+      if (!rhs.nonStandardPatches()) {
+        for(; k<depth; k++)
+        {
+          block[0] = dm0.loadCoeffStandard(k);
+          block[1] = dm1.loadCoeffStandard(k);
+          block[2] = dm2.loadCoeffStandard(k);
+          block[3] = dm3.loadCoeffStandard(k);
+          block += 4;
+        }
+      }
+      else {
+        for(; k<depth; k++)
+        {
+          block[0] = dm0(k);
+          block[1] = dm1(k);
+          block[2] = dm2(k);
+          block[3] = dm3(k);
+          block += 4;
+        }
       }
     }
 
     // copy the remaining columns one at a time (nr==1)
     for(Index j2=packet_cols4; j2<cols; ++j2)
     {
-      const LinearMapper dm0 = rhs.getLinearMapper(0, j2);
+      const SubMapper dm0 = rhs.getLinearMapper(0, j2);
       for(Index k=0; k<depth; k++)
       {
         *block = dm0(k);

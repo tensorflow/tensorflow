@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ struct Softsign {
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
     activations.device(d) =
-        features / (features.abs() + features.constant(1.0f));
+        features / (features.abs() + features.constant(T(1)));
   }
 };
 
@@ -50,7 +50,7 @@ struct SoftsignGrad {
                   typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor backprops) {
     backprops.device(d) =
-        gradients / (features.abs() + features.constant(1.0f)).square();
+        gradients / (features.abs() + features.constant(T(1))).square();
   }
 };
 

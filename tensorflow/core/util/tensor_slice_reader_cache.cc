@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -52,20 +52,21 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     TensorSliceReader::OpenTableFunction open_function, int preferred_shard) {
   mutex_lock l(mu_);
 
-#ifdef ANDROID
-  // On Android, we have RTTI disabled so we will hard-code func_ptr to be zero,
-  // since we cannot figure out the target type for open_function.
-  // TODO(jiayq): find a more elegant way to possibly enable cache again.
-  TensorSliceReaderCache::OpenFuncType* func_ptr = nullptr;
-#else  // ANDROID
+#if defined(__GXX_RTTI) ||  defined(_CPPRTTI)
   // Get the function pointer from the open_function value.
   TensorSliceReaderCache::OpenFuncType* func_ptr =
       open_function.target<TensorSliceReaderCache::OpenFuncType>();
-#endif
+#else   // __GXX_RTTI
+  // When RTTI is disabled, we will hard-code func_ptr to be zero,
+  // since we cannot figure out the target type for open_function.
+  // TODO(jiayq): find a more elegant way to possibly enable cache again.
+  TensorSliceReaderCache::OpenFuncType* func_ptr = nullptr;
+#endif  // _GXX_RTTI
 
   if (!func_ptr) {
     // We could not get the pointer, no caching is possible.
-    LOG(WARNING) << "Caching disabled because the open function is a lambda.";
+    LOG(WARNING) << "Caching disabled because the open function is a lambda or "
+                    "RTTI is not enabled in this build.";
     return nullptr;
   }
 
@@ -87,11 +88,11 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     mu_.lock();
     if (tmp_reader->status().ok()) {
       reader = tmp_reader;
-      readers_[filepattern] = make_pair(*func_ptr, reader);
+      readers_[filepattern] = std::make_pair(*func_ptr, reader);
     } else {
       delete tmp_reader;
     }
-    CHECK_EQ(1, still_opening_.erase(filepattern));
+    CHECK_EQ(size_t{1}, still_opening_.erase(filepattern));
     VLOG(1) << "Cached TensorSliceReader for " << filepattern << ": " << reader;
   } else {
     auto cached_val = readers_[filepattern];

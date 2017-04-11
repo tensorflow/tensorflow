@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,11 +18,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace sparse {
@@ -64,18 +67,86 @@ TEST(SparseTensorTest, DimComparatorSorts) {
 
   // new order should be: {0, 4, 3, 2, 1}
   std::vector<int64> order{0, 1, 2};
-  DimComparator sorter(map, order, NDIM);
+  TensorShape shape;
+  for (int i = 0; i < NDIM; ++i) shape.AddDim(N);
+  DimComparator sorter(map, order, shape);
   std::sort(sorting.begin(), sorting.end(), sorter);
+  EXPECT_EQ(sorting, std::vector<int64>({0, 4, 3, 2, 1}));
 
+  FixedDimComparator<3> sorter_fixed(map, order, shape);
+  std::sort(sorting.begin(), sorting.end(), sorter_fixed);
   EXPECT_EQ(sorting, std::vector<int64>({0, 4, 3, 2, 1}));
 
   // new order should be: {0, 3, 2, 1, 4}
   std::vector<int64> order1{2, 0, 1};
-  DimComparator sorter1(map, order1, NDIM);
+  DimComparator sorter1(map, order1, shape);
   for (std::size_t n = 0; n < N; ++n) sorting[n] = n;
   std::sort(sorting.begin(), sorting.end(), sorter1);
-
   EXPECT_EQ(sorting, std::vector<int64>({0, 3, 2, 1, 4}));
+
+  FixedDimComparator<3> sorter1_fixed(map, order1, shape);
+  for (std::size_t n = 0; n < N; ++n) sorting[n] = n;
+  std::sort(sorting.begin(), sorting.end(), sorter1_fixed);
+  EXPECT_EQ(sorting, std::vector<int64>({0, 3, 2, 1, 4}));
+}
+
+TEST(SparseTensorTest, SparseTensorInvalidIndicesType) {
+  int N = 5;
+  const int NDIM = 3;
+  Tensor ix(DT_INT32, TensorShape({N, NDIM}));
+  Tensor vals(DT_STRING, TensorShape({N}));
+
+  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2}),
+               "indices must be type int64");
+}
+
+TEST(SparseTensorTest, SparseTensorInvalidIndicesShape) {
+  int N = 5;
+  const int NDIM = 3;
+  Tensor ix(DT_INT64, TensorShape({N, NDIM, 1}));
+  Tensor vals(DT_STRING, TensorShape({N}));
+
+  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2}),
+               "indices must be a matrix");
+}
+
+TEST(SparseTensorTest, SparseTensorInvalidValues) {
+  int N = 5;
+  const int NDIM = 3;
+  Tensor ix(DT_INT64, TensorShape({N, NDIM}));
+  Tensor vals(DT_STRING, TensorShape({N, 1}));
+
+  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2}),
+               "vals must be a vec");
+}
+
+TEST(SparseTensorTest, SparseTensorInvalidN) {
+  int N = 5;
+  const int NDIM = 3;
+  Tensor ix(DT_INT64, TensorShape({N, NDIM}));
+  Tensor vals(DT_STRING, TensorShape({N - 1}));
+
+  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10, 10}), {0, 1, 2}),
+               "indices and values rows .* must match");
+}
+
+TEST(SparseTensorTest, SparseTensorInvalidOrder) {
+  int N = 5;
+  const int NDIM = 3;
+  Tensor ix(DT_INT64, TensorShape({N, NDIM}));
+  Tensor vals(DT_STRING, TensorShape({N}));
+
+  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10, 10}), {0, 1}),
+               "Order length must be SparseTensor rank");
+}
+TEST(SparseTensorTest, SparseTensorInvalidShape) {
+  int N = 5;
+  const int NDIM = 3;
+  Tensor ix(DT_INT64, TensorShape({N, NDIM}));
+  Tensor vals(DT_STRING, TensorShape({N}));
+
+  EXPECT_DEATH(SparseTensor(ix, vals, TensorShape({10, 10}), {0, 1, 2}),
+               "Shape rank must be SparseTensor rank");
 }
 
 TEST(SparseTensorTest, SparseTensorConstruction) {
@@ -100,12 +171,15 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   TensorShape shape({10, 10, 10});
   std::vector<int64> order{0, 1, 2};
   SparseTensor st(ix, vals, shape, order);
-  EXPECT_FALSE(st.IndicesValid());  // Out of order
+  Status st_indices_valid = st.IndicesValid();
+  EXPECT_FALSE(st_indices_valid.ok());
+  EXPECT_EQ("indices[2] = [2,0,0] is out of order",
+            st_indices_valid.error_message());
 
   // Regardless of how order is updated; so long as there are no
   // duplicates, the resulting indices are valid.
   st.Reorder<string>({2, 0, 1});
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(vals_t(0), "hi0");
   EXPECT_EQ(vals_t(1), "hi3");
   EXPECT_EQ(vals_t(2), "hi2");
@@ -115,7 +189,7 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   ix_t = ix_c;
   vals_t = vals_c;
   st.Reorder<string>({0, 1, 2});
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(vals_t(0), "hi0");
   EXPECT_EQ(vals_t(1), "hi4");
   EXPECT_EQ(vals_t(2), "hi3");
@@ -125,7 +199,7 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   ix_t = ix_c;
   vals_t = vals_c;
   st.Reorder<string>({2, 1, 0});
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
 }
 
 TEST(SparseTensorTest, EmptySparseTensorAllowed) {
@@ -138,12 +212,12 @@ TEST(SparseTensorTest, EmptySparseTensorAllowed) {
   TensorShape shape({10, 10, 10});
   std::vector<int64> order{0, 1, 2};
   SparseTensor st(ix, vals, shape, order);
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(st.order(), order);
 
   std::vector<int64> new_order{1, 0, 2};
   st.Reorder<string>(new_order);
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
   EXPECT_EQ(st.order(), new_order);
 }
 
@@ -162,13 +236,13 @@ TEST(SparseTensorTest, SortingWorksCorrectly) {
     ix_t = ix_t.random(Eigen::internal::UniformRandomGenerator<int64>(n + 1));
     ix_t = ix_t.abs() % 1000;
     st.Reorder<string>({0, 1, 2, 3});
-    EXPECT_TRUE(st.IndicesValid());
+    TF_EXPECT_OK(st.IndicesValid());
     st.Reorder<string>({3, 2, 1, 0});
-    EXPECT_TRUE(st.IndicesValid());
+    TF_EXPECT_OK(st.IndicesValid());
     st.Reorder<string>({1, 0, 2, 3});
-    EXPECT_TRUE(st.IndicesValid());
+    TF_EXPECT_OK(st.IndicesValid());
     st.Reorder<string>({3, 0, 2, 1});
-    EXPECT_TRUE(st.IndicesValid());
+    TF_EXPECT_OK(st.IndicesValid());
   }
 }
 
@@ -196,17 +270,23 @@ TEST(SparseTensorTest, ValidateIndicesFindsInvalid) {
   SparseTensor st(ix, vals, shape, order);
 
   st.Reorder<string>(order);
-  EXPECT_FALSE(st.IndicesValid());  // two indices are identical
+  Status st_indices_valid = st.IndicesValid();
+  EXPECT_FALSE(st_indices_valid.ok());
+  EXPECT_EQ("indices[1] = [0,0,0] is repeated",
+            st_indices_valid.error_message());
 
   ix_orig(1, 2) = 1;
   ix_t = ix_orig;
   st.Reorder<string>(order);
-  EXPECT_TRUE(st.IndicesValid());  // second index now (0, 0, 1)
+  TF_EXPECT_OK(st.IndicesValid());  // second index now (0, 0, 1)
 
   ix_orig(0, 2) = 1;
   ix_t = ix_orig;
   st.Reorder<string>(order);
-  EXPECT_FALSE(st.IndicesValid());  // first index now (0, 0, 1)
+  st_indices_valid = st.IndicesValid();
+  EXPECT_FALSE(st_indices_valid.ok());  // first index now (0, 0, 1)
+  EXPECT_EQ("indices[1] = [0,0,1] is repeated",
+            st_indices_valid.error_message());
 }
 
 TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
@@ -224,25 +304,32 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
   std::vector<int64> order{0, 1, 2};
 
   SparseTensor st(ix, vals, shape, order);
-  EXPECT_FALSE(st.IndicesValid());
+  EXPECT_FALSE(st.IndicesValid().ok());
 
   st.Reorder<string>(order);
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
 
   ix_t(0, 0) = 11;
   ix.matrix<int64>() = ix_t;
   st.Reorder<string>(order);
-  EXPECT_FALSE(st.IndicesValid());
+  Status st_indices_valid = st.IndicesValid();
+  EXPECT_FALSE(st_indices_valid.ok());
+  // Error message references index 4 because of the call to Reorder.
+  EXPECT_EQ("[11,0,0] is out of bounds: need 0 <= index < [10,10,10]",
+            st_indices_valid.error_message().substr(13));
 
   ix_t(0, 0) = -1;
   ix.matrix<int64>() = ix_t;
   st.Reorder<string>(order);
-  EXPECT_FALSE(st.IndicesValid());
+  st_indices_valid = st.IndicesValid();
+  EXPECT_FALSE(st_indices_valid.ok());
+  EXPECT_EQ("[-1,0,0] is out of bounds: need 0 <= index < [10,10,10]",
+            st_indices_valid.error_message().substr(13));
 
   ix_t(0, 0) = 0;
   ix.matrix<int64>() = ix_t;
   st.Reorder<string>(order);
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
 }
 
 TEST(SparseTensorTest, SparseTensorToDenseTensor) {
@@ -436,16 +523,16 @@ TEST(SparseTensorTest, Concat) {
   std::vector<int64> order{0, 1, 2};
 
   SparseTensor st(ix, vals, shape, order);
-  EXPECT_FALSE(st.IndicesValid());
+  EXPECT_FALSE(st.IndicesValid().ok());
   st.Reorder<string>(order);
-  EXPECT_TRUE(st.IndicesValid());
+  TF_EXPECT_OK(st.IndicesValid());
 
   SparseTensor concatted = SparseTensor::Concat<string>({st, st, st, st});
   EXPECT_EQ(concatted.order(), st.order());
   TensorShape expected_shape({40, 10, 10});
   EXPECT_EQ(concatted.shape(), expected_shape);
   EXPECT_EQ(concatted.num_entries(), 4 * N);
-  EXPECT_TRUE(concatted.IndicesValid());
+  TF_EXPECT_OK(concatted.IndicesValid());
 
   auto conc_ix_t = concatted.indices().matrix<int64>();
   auto conc_vals_t = concatted.values().vec<string>();
@@ -523,6 +610,117 @@ TEST(SparseTensorTest, Split) {
   EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 0), 1);
   EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 1), 0);
 }
+
+TEST(SparseTensorTest, Dim0SparseTensorToDenseTensor) {
+  Tensor ix(DT_INT64, TensorShape({1, 0}));
+  Tensor vals(DT_INT32, TensorShape({1}));
+  vals.scalar<int32>()() = 5;
+
+  TensorShape shape({});
+  SparseTensor st(ix, vals, shape);
+
+  Tensor dense(DT_INT32, TensorShape({}));
+  st.ToDense<int32>(&dense);
+
+  EXPECT_EQ(dense.scalar<int32>()(), 5);
+}
+
+static void BM_SparseReorderFloat(int iters, int N32, int NDIM32) {
+  random::PhiloxRandom philox(301, 17);
+  random::SimplePhilox rnd(&philox);
+  const int64 NDIM = static_cast<int64>(NDIM32);
+  const int64 N = static_cast<int64>(N32);
+  Tensor ix(DT_INT64, TensorShape({N, NDIM}));
+  Tensor vals(DT_FLOAT, TensorShape({N}));
+  TensorShape shape;
+  std::vector<int64> order;
+  for (int d = 0; d < NDIM32; ++d) {
+    shape.AddDim(1000);
+    order.push_back(d);
+  }
+  std::vector<int64> reorder;
+  reorder.push_back(1);
+  reorder.push_back(0);
+  for (int d = 2; d < NDIM32; ++d) {
+    reorder.push_back(d);
+  }
+  auto ix_t = ix.matrix<int64>();
+  testing::UseRealTime();
+
+  while (--iters) {
+    testing::StopTiming();
+    for (int64 i = 0; i < N; ++i) {
+      for (int d = 0; d < NDIM32; ++d) {
+        ix_t(i, d) = rnd.Rand64() % 1000;
+      }
+    }
+    SparseTensor st(ix, vals, shape, order);
+
+    testing::StartTiming();
+    st.Reorder<float>(reorder);
+  }
+}
+
+static void BM_SparseReorderString(int iters, int N32, int NDIM32) {
+  random::PhiloxRandom philox(301, 17);
+  random::SimplePhilox rnd(&philox);
+  const int64 NDIM = static_cast<int64>(NDIM32);
+  const int64 N = static_cast<int64>(N32);
+  Tensor ix(DT_INT64, TensorShape({N, NDIM}));
+  Tensor vals(DT_STRING, TensorShape({N}));
+  TensorShape shape;
+  std::vector<int64> order;
+  auto ix_t = ix.matrix<int64>();
+  auto vals_t = vals.vec<string>();
+  for (int i = 0; i < N32; ++i) {
+    int len = rnd.Rand32() % 1000;
+    vals_t(i).resize(len);
+  }
+  for (int d = 0; d < NDIM32; ++d) {
+    shape.AddDim(1000);
+    order.push_back(d);
+  }
+  std::vector<int64> reorder;
+  reorder.push_back(1);
+  reorder.push_back(0);
+  for (int d = 2; d < NDIM32; ++d) {
+    reorder.push_back(d);
+  }
+  testing::UseRealTime();
+
+  while (--iters) {
+    testing::StopTiming();
+    for (int64 i = 0; i < N; ++i) {
+      for (int d = 0; d < NDIM32; ++d) {
+        ix_t(i, d) = rnd.Rand64() % 1000;
+      }
+    }
+    SparseTensor st(ix, vals, shape, order);
+
+    testing::StartTiming();
+    st.Reorder<string>(reorder);
+  }
+}
+
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(10, 2);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(100, 2);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(1000, 2);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(10000, 2);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(100000, 2);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(10, 3);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(100, 3);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(1000, 3);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(10000, 3);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(100000, 3);
+
+BENCHMARK(BM_SparseReorderString)->ArgPair(10, 2);
+BENCHMARK(BM_SparseReorderString)->ArgPair(100, 2);
+BENCHMARK(BM_SparseReorderString)->ArgPair(1000, 2);
+BENCHMARK(BM_SparseReorderString)->ArgPair(10000, 2);
+BENCHMARK(BM_SparseReorderString)->ArgPair(10, 3);
+BENCHMARK(BM_SparseReorderString)->ArgPair(100, 3);
+BENCHMARK(BM_SparseReorderString)->ArgPair(1000, 3);
+BENCHMARK(BM_SparseReorderString)->ArgPair(10000, 3);
 
 }  // namespace
 }  // namespace sparse

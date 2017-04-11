@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+#include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
-#include "tensorflow/core/kernels/reader_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
@@ -40,17 +40,17 @@ class FixedLengthRecordReader : public ReaderBase {
 
   // On success:
   // * input_buffer_ != nullptr,
-  // * input_buffer_->Tell() == footer_bytes_
-  // * file_pos_limit_ == file size - header_bytes_
+  // * input_buffer_->Tell() == header_bytes_
+  // * file_pos_limit_ == file size - footer_bytes_
   Status OnWorkStartedLocked() override {
     record_number_ = 0;
     uint64 file_size = 0;
     TF_RETURN_IF_ERROR(env_->GetFileSize(current_work(), &file_size));
     file_pos_limit_ = file_size - footer_bytes_;
 
-    RandomAccessFile* file = nullptr;
-    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file));
-    input_buffer_.reset(new io::InputBuffer(file, kBufferSize));
+    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file_));
+
+    input_buffer_.reset(new io::InputBuffer(file_.get(), kBufferSize));
     TF_RETURN_IF_ERROR(input_buffer_->SkipNBytes(header_bytes_));
     return Status::OK();
   }
@@ -90,6 +90,7 @@ class FixedLengthRecordReader : public ReaderBase {
   Env* const env_;
   int64 file_pos_limit_;
   int64 record_number_;
+  std::unique_ptr<RandomAccessFile> file_;  // must outlive input_buffer_
   std::unique_ptr<io::InputBuffer> input_buffer_;
 };
 
@@ -119,6 +120,8 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordReader").Device(DEVICE_CPU),
+                        FixedLengthRecordReaderOp);
+REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordReaderV2").Device(DEVICE_CPU),
                         FixedLengthRecordReaderOp);
 
 }  // namespace tensorflow

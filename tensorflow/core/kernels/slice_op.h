@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,21 @@ struct Slice {
                   typename TTypes<T, NDIMS>::ConstTensor input,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& slice_indices,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& slice_sizes) {
-    output.device(d) = input.slice(slice_indices, slice_sizes);
+    bool use_64bit = (input.size() > Eigen::NumTraits<int>::highest());
+    if (!use_64bit &&
+        Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
+      Eigen::DSizes<int, NDIMS> indices;
+      for (int i = 0; i < NDIMS; ++i) {
+        indices[i] = slice_indices[i];
+      }
+      Eigen::DSizes<int, NDIMS> sizes;
+      for (int i = 0; i < NDIMS; ++i) {
+        sizes[i] = slice_sizes[i];
+      }
+      To32Bit(output).device(d) = To32Bit(input).slice(indices, sizes);
+    } else {
+      output.device(d) = input.slice(slice_indices, slice_sizes);
+    }
   }
 };
 

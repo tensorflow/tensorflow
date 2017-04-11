@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,12 @@ limitations under the License.
 #define TENSORFLOW_UTIL_BCAST_H_
 
 #include <algorithm>
-#include <vector>
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
-#include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
 
 // BCast is a helper for broadcasting binary tensor operation.
@@ -67,13 +68,21 @@ namespace tensorflow {
 // TODO(zhifengc): Adds support for n-ary (n >= 2).
 class BCast {
  public:
-  // A vector of int32 representing the shape of tensor. The 0-th
+  // A vector of int64 representing the shape of tensor. The 0-th
   // element is the outer-most dimension and the last element is the
   // inner-most dimension. Note that we do not use TensorShape since
   // it's more convenient to manipulate Vec directly for this module.
-  typedef std::vector<int64> Vec;
+  typedef gtl::InlinedVector<int64, 4> Vec;
 
-  BCast(const Vec& x, const Vec& y);
+  // Constructs all helper shapes, following the aforementioned rules.
+  //
+  // If "fewer_dims_optimization" is set to true (the default), the
+  // implementation tries to reduce intermediate dimensions needed to be more
+  // efficient.  This is transparent to the caller.
+  //
+  // If false, all intermediate shapes (except for grad_{x,y}_reduce_idx()) have
+  // the same number of dimensions as the larger of the two inputs.
+  BCast(const Vec& x, const Vec& y, const bool fewer_dims_optimization = true);
   ~BCast() {}
 
   // Returns true iff two operands are compatible according to the
@@ -92,6 +101,19 @@ class BCast {
   const Vec& grad_x_reduce_idx() const { return grad_x_reduce_idx_; }
   const Vec& grad_y_reduce_idx() const { return grad_y_reduce_idx_; }
 
+  // Static helpers.
+  static Vec FromShape(const TensorShape& shape);
+  static TensorShape ToShape(const BCast::Vec& vec);
+
+  template <int NDIMS>
+  static Eigen::array<Eigen::DenseIndex, NDIMS> ToIndexArray(
+      const BCast::Vec& vec) {
+    CHECK_EQ(vec.size(), NDIMS);
+    Eigen::array<Eigen::DenseIndex, NDIMS> ret;
+    for (int i = 0; i < NDIMS; ++i) ret[i] = vec[i];
+    return ret;
+  }
+
  private:
   bool valid_ = true;
   Vec x_reshape_;
@@ -104,7 +126,6 @@ class BCast {
   Vec grad_y_reduce_idx_;
 
   static void Reverse(Vec* shape);
-  static bool HasZero(const Vec& shape);
 
   TF_DISALLOW_COPY_AND_ASSIGN(BCast);
 };

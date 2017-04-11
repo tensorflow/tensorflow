@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +17,14 @@ limitations under the License.
 
 #include <stddef.h>  // for NULL
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/env.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
@@ -56,13 +57,11 @@ bool EventsWriter::Init() {
       static_cast<long long>(time_in_seconds), port::Hostname().c_str());
   port::AdjustFilenameForLogging(&filename_);
 
-  WritableFile* file;
-  Status s = env_->NewWritableFile(filename_, &file);
+  Status s = env_->NewWritableFile(filename_, &recordio_file_);
   if (!s.ok()) {
     LOG(ERROR) << "Could not open events file: " << filename_ << ": " << s;
     return false;
   }
-  recordio_file_.reset(file);
   recordio_writer_.reset(new io::RecordWriter(recordio_file_.get()));
   if (recordio_writer_.get() == NULL) {
     LOG(ERROR) << "Could not create record writer";
@@ -98,9 +97,11 @@ void EventsWriter::WriteSerializedEvent(StringPiece event_str) {
     }
   }
   num_outstanding_events_++;
-  recordio_writer_->WriteRecord(event_str);
+  recordio_writer_->WriteRecord(event_str).IgnoreError();
 }
 
+// NOTE(touts); This is NOT the function called by the Python code.
+// Python calls WriteSerializedEvent(), see events_writer.i.
 void EventsWriter::WriteEvent(const Event& event) {
   string record;
   event.AppendToString(&record);
@@ -110,11 +111,18 @@ void EventsWriter::WriteEvent(const Event& event) {
 bool EventsWriter::Flush() {
   if (num_outstanding_events_ == 0) return true;
   CHECK(recordio_file_.get() != NULL) << "Unexpected NULL file";
+
+  if (!recordio_writer_->Flush().ok()) {
+    LOG(ERROR) << "Failed to flush " << num_outstanding_events_ << " events to "
+               << filename_;
+    return false;
+  }
+
   // The FileHasDisappeared() condition is necessary because
   // recordio_writer_->Sync() can return true even if the underlying
   // file has been deleted.  EventWriter.FileDeletionBeforeWriting
   // demonstrates this and will fail if the FileHasDisappeared()
-  // conditon is removed.
+  // condition is removed.
   // Also, we deliberately attempt to Sync() before checking for a
   // disappearing file, in case for some file system File::Exists() is
   // false after File::Open() but before File::Sync().
@@ -146,7 +154,7 @@ bool EventsWriter::Close() {
 }
 
 bool EventsWriter::FileHasDisappeared() {
-  if (env_->FileExists(filename_)) {
+  if (env_->FileExists(filename_).ok()) {
     return false;
   } else {
     // This can happen even with non-null recordio_writer_ if some other

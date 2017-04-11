@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_set.h"
 
+#include <vector>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -34,15 +35,24 @@ Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag,
   TensorShape result_shape;
   TF_RETURN_IF_ERROR(slice.SliceTensorShape(shape_, &result_shape));
   string str = slice.DebugString();
-  // We check if there is any intersection between this slice and any of the
-  // registered slices.
-  for (const auto x : slices_) {
-    if (slice.Overlaps(x.second.slice)) {
-      return errors::Internal("Overlapping slices: existing slice = ", x.first,
-                              ", new slice = ", str);
+
+  if (slices_.empty()) {
+    slices_hull_ = slice;
+  } else {
+    // We check if there is any intersection between this slice and any of the
+    // registered slices.
+    if (slices_hull_.Overlaps(slice)) {
+      for (const auto& x : slices_) {
+        if (slice.Overlaps(x.second.slice)) {
+          return errors::Internal("Overlapping slices: existing slice = ",
+                                  x.first, ", new slice = ", str);
+        }
+      }
     }
+    // No overlap: we can now insert the slice
+    slices_hull_.UpdateToCover(slice);
   }
-  // No overlap: we can now insert the slice
+
   TensorSliceSet::SliceInfo info = {slice, tag, data,
                                     result_shape.num_elements()};
   slices_.insert(std::make_pair(str, info));
@@ -61,8 +71,8 @@ bool TensorSliceSet::Query(const TensorSlice& slice, float* data) const {
     }
     return true;
   } else {
-    // We didn't find any exact match but there is still a posibility that
-    // mutliple existing slices can be patched together to output the slice.
+    // We didn't find any exact match but there is still a possibility that
+    // multiple existing slices can be patched together to output the slice.
     // We figure this out by computing the intersection of each of the existing
     // slices with the query slice, and check if the union of all these
     // intersections cover the entire slice. We rely on the fact that the
@@ -79,7 +89,7 @@ bool TensorSliceSet::Query(const TensorSlice& slice, float* data) const {
     int64 overlap_size = 0;
     TensorSlice intersection;
     TensorShape inter_shape;
-    for (const auto x : slices_) {
+    for (const auto& x : slices_) {
       if (slice.Intersect(x.second.slice, &intersection)) {
         s = intersection.SliceTensorShape(shape_, &inter_shape);
         if (!s.ok()) {
@@ -93,7 +103,7 @@ bool TensorSliceSet::Query(const TensorSlice& slice, float* data) const {
       // We have it!
       // Now we need to copy the data to "data"
       if (data) {
-        for (const auto x : slices_) {
+        for (const auto& x : slices_) {
           CopyDataFromTensorSliceToTensorSlice(shape_, x.second.slice, slice,
                                                x.second.data, data);
         }
@@ -118,7 +128,7 @@ bool TensorSliceSet::QueryMeta(
     results->emplace_back(std::make_pair(info->slice, info->tag));
     return true;
   } else {
-    // We didn't find any exact match but there is still a posibility that
+    // We didn't find any exact match but there is still a possibility that
     // multiple existing slices can be patched together to output the slice.
     // We figure this out by computing the intersection of each of the existing
     // slices with the query slice, and check if the union of all these
@@ -136,7 +146,7 @@ bool TensorSliceSet::QueryMeta(
     int64 overlap_size = 0;
     TensorSlice intersection;
     TensorShape inter_shape;
-    for (const auto x : slices_) {
+    for (const auto& x : slices_) {
       if (slice.Intersect(x.second.slice, &intersection)) {
         s = intersection.SliceTensorShape(shape_, &inter_shape);
         if (!s.ok()) {
@@ -156,6 +166,35 @@ bool TensorSliceSet::QueryMeta(
       return false;
     }
   }
+}
+
+Status RegisterTensorSlice(
+    const string& name, const TensorShape& shape, DataType type,
+    const string& tag, const TensorSlice& slice,
+    std::unordered_map<string, TensorSliceSet*>* tensor_slices) {
+  DCHECK_NE(tensor_slices, nullptr);
+  TensorSliceSet* tss = gtl::FindPtrOrNull(*tensor_slices, name);
+  // Create a tensor slice set if needed
+  if (!tss) {
+    tss = new TensorSliceSet(shape, type);
+    tensor_slices->insert(std::make_pair(name, tss));
+  } else {
+    // Check if the shapes match
+    const TensorShape& tss_shape(tss->shape());
+    if (!shape.IsSameSize(tss_shape)) {
+      return errors::Internal("Incompatible tensor shapes detected for tensor ",
+                              name, ": existing = ", tss_shape.DebugString(),
+                              ", new = ", shape.DebugString());
+    }
+    if (type != tss->type()) {
+      return errors::Internal("Incompatible tensor types detected for tensor ",
+                              name, ": existing = ",
+                              DataTypeString(tss->type()), ", new = ",
+                              DataTypeString(type));
+    }
+  }
+  // Register the tensor slices without the actual data.
+  return tss->Register(slice, tag, nullptr);
 }
 
 }  // namespace checkpoint

@@ -1,54 +1,60 @@
 # Description:
 # TensorBoard, a dashboard for investigating TensorFlow
 
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
+)
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
+
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
-    name = "tensorboard_frontend",
+    name = "frontend",
     srcs = [
+        "TAG",
+        "dist/bazel-html-imports.html",
         "dist/index.html",
         "dist/tf-tensorboard.html",
-        "//tensorflow/tensorboard/bower:bower",
-        "TAG",
-    ] + glob(["lib/**/*"]),
-)
-
-py_library(
-    name = "tensorboard_handler",
-    srcs = ["tensorboard_handler.py"],
-    deps = [
-        ":float_wrapper",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow/tensorboard/bower",
+        "//tensorflow/tensorboard/lib:all_files",
     ],
-    srcs_version = "PY2AND3",
-)
-
-py_library(
-    name = "float_wrapper",
-    srcs = ["float_wrapper.py"],
-    srcs_version = "PY2AND3",
-)
-
-py_test(
-    name = "float_wrapper_test",
-    size = "small",
-    srcs = ["float_wrapper_test.py"],
-    deps = [
-        ":float_wrapper",
-        "//tensorflow/python:platform_test",
-    ],
-    srcs_version = "PY2AND3",
 )
 
 py_binary(
     name = "tensorboard",
-    srcs = ["tensorboard.py"],
-    data = [":tensorboard_frontend"],
-    deps = [
-        ":tensorboard_handler",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+    srcs = [
+        "__main__.py",
+        "tensorboard.py",
     ],
+    data = [":frontend"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/tensorboard/backend:application",
+        "//tensorflow/tensorboard/backend/event_processing:event_file_inspector",
+        "//tensorflow/tensorboard/plugins/projector:projector_plugin",
+        "//tensorflow/tensorboard/plugins/text:text_plugin",
+        "@org_pocoo_werkzeug//:werkzeug",
+    ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+            "**/node_modules/**",
+            "**/typings/**",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )

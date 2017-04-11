@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,13 +19,29 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
+
+
+@ops.RegisterGradient("DynamicPartition")
+def _DynamicPartitionGrads(op, *grads):
+  """Gradients for DynamicPartition."""
+  data = op.inputs[0]
+  indices = op.inputs[1]
+  num_partitions = op.get_attr("num_partitions")
+
+  prefix_shape = array_ops.shape(indices)
+  original_indices = array_ops.reshape(
+      math_ops.range(math_ops.reduce_prod(prefix_shape)), prefix_shape)
+  partitioned_indices = data_flow_ops.dynamic_partition(
+      original_indices, indices, num_partitions)
+  reconstructed = data_flow_ops.dynamic_stitch(partitioned_indices, grads)
+  reconstructed = array_ops.reshape(reconstructed, array_ops.shape(data))
+  return [reconstructed, None]
 
 
 @ops.RegisterGradient("DynamicStitch")
@@ -47,15 +63,21 @@ def _DynamicStitchGrads(op, grad):
   return indices_grad + values_grad
 
 
-ops.NoGradient("Queue")
-ops.NoGradient("QueueEnqueue")
-ops.NoGradient("QueueEnqueueMany")
-ops.NoGradient("QueueDequeue")
-ops.NoGradient("QueueDequeueMany")
-ops.NoGradient("QueueClose")
-ops.NoGradient("QueueSize")
+ops.NotDifferentiable("Queue")
+ops.NotDifferentiable("QueueEnqueue")
+ops.NotDifferentiable("QueueEnqueueMany")
+ops.NotDifferentiable("QueueDequeue")
+ops.NotDifferentiable("QueueDequeueMany")
+ops.NotDifferentiable("QueueDequeueUpTo")
+ops.NotDifferentiable("QueueClose")
+ops.NotDifferentiable("QueueSize")
 
-ops.NoGradient("Stack")
-ops.NoGradient("StackPush")
-ops.NoGradient("StackPop")
-ops.NoGradient("StackClose")
+ops.NotDifferentiable("Stack")
+ops.NotDifferentiable("StackPush")
+ops.NotDifferentiable("StackPop")
+ops.NotDifferentiable("StackClose")
+
+ops.NotDifferentiable("GetSessionHandle")
+ops.NotDifferentiable("GetSessionHandleV2")
+ops.NotDifferentiable("GetSessionTensor")
+ops.NotDifferentiable("DeleteSessionTensor")

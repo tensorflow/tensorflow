@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/cancellation.h"
 
-#include <vector>
-
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -28,7 +26,7 @@ CancellationManager::CancellationManager()
     : is_cancelling_(false), is_cancelled_(0), next_cancellation_token_(0) {}
 
 void CancellationManager::StartCancel() {
-  std::unordered_map<CancellationToken, CancelCallback> callbacks_to_run;
+  gtl::FlatMap<CancellationToken, CancelCallback> callbacks_to_run;
   {
     mutex_lock l(mu_);
     if (is_cancelled_.load(std::memory_order_relaxed) || is_cancelling_) {

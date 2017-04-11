@@ -2,7 +2,15 @@
   "compilerOptions": {
     "noImplicitAny": false,
     "noEmitOnError": true,
-    "compileOnSave": false,
-    "target": "ES5"
-  }
+    "target": "ES5",
+    "module": "commonjs"
+  },
+  "compileOnSave": false,
+  "exclude": [
+    "node_modules",
+    "typings/main.d.ts",
+    "typings/main",
+    "lib",
+    "components/**/deps.d.ts"
+  ]
 }

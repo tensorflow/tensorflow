@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,16 +17,23 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <numeric>
+
 #include "tensorflow/core/kernels/aggregate_ops.h"
+#include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
-
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class AddNOp : public OpKernel {
@@ -37,20 +44,39 @@ class AddNOp : public OpKernel {
     if (!ctx->ValidateInputsAreSameShape(this)) return;
 
     const Tensor& input0 = ctx->input(0);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
-    auto To = output->flat<T>();
-
     const int num = ctx->num_inputs();
+
     if (num == 1) {
-      *output = input0;
+      ctx->set_output(0, input0);
       return;
     }
 
-#define I(IDX) ctx->input(IDX).flat<T>()
+    // Try to forward and accumulate the result in one of the input buffers.
+    int reused_input = -1;
+    gtl::InlinedVector<int, 8> input_indices(num);
+    std::iota(input_indices.begin(), input_indices.end(), 0);
+    Tensor* output = nullptr;
+    for (int input_idx = 0; input_idx < num; ++input_idx) {
+      if (ctx->forward_input_to_output_with_shape(input_idx, 0, input0.shape(),
+                                                  &output)) {
+        reused_input = input_idx;
+        break;
+      }
+    }
+    if (reused_input == -1) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
+    } else if (reused_input > 0) {
+      // Move the forwarded buffer to the front so we don't double count
+      // anything if there are more than 8 inputs.
+      input_indices[0] = reused_input;
+      input_indices[reused_input] = 0;
+    }
+    auto To = output->flat<T>();
 
-#if defined(__ANDROID__)
-    // On Android, we only support additions of two arguments, so we
+#define I(IDX) ctx->input(input_indices[IDX]).flat<T>()
+
+#if defined(__ANDROID_TYPES_SLIM__)
+    // On Android by default,we only support additions of two arguments, so we
     // can reduce the number of template instantiations.
     OP_REQUIRES(ctx, num == 2,
                 errors::InvalidArgument("Only additions of two arguments "
@@ -118,121 +144,11 @@ class AddNOp : public OpKernel {
       functor8p(ctx->template eigen_device<Device>(), To, I(r), I(r + 1),
                 I(r + 2), I(r + 3), I(r + 4), I(r + 5), I(r + 6), I(r + 7));
     }
-#endif  // defined(__ANDROID__)
+#endif  // defined(__ANDROID_TYPES_SLIM__)
 
 #undef I
   }
 };
-
-// Partial specializations for a CPUDevice, that uses the Eigen implementation
-// from AddNEigenImpl.
-namespace functor {
-template <typename T>
-struct Add2Functor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstFlat in1,
-                  typename TTypes<T>::ConstFlat in2) {
-    Add2EigenImpl<CPUDevice, T>::Compute(d, out, in1, in2);
-  }
-};
-template <typename T>
-struct Add3Functor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstFlat in1,
-                  typename TTypes<T>::ConstFlat in2,
-                  typename TTypes<T>::ConstFlat in3) {
-    Add3EigenImpl<CPUDevice, T>::Compute(d, out, in1, in2, in3);
-  }
-};
-template <typename T>
-struct Add4Functor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstFlat in1,
-                  typename TTypes<T>::ConstFlat in2,
-                  typename TTypes<T>::ConstFlat in3,
-                  typename TTypes<T>::ConstFlat in4) {
-    Add4EigenImpl<CPUDevice, T>::Compute(d, out, in1, in2, in3, in4);
-  }
-};
-template <typename T>
-struct Add5Functor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstFlat in1,
-                  typename TTypes<T>::ConstFlat in2,
-                  typename TTypes<T>::ConstFlat in3,
-                  typename TTypes<T>::ConstFlat in4,
-                  typename TTypes<T>::ConstFlat in5) {
-    Add5EigenImpl<CPUDevice, T>::Compute(d, out, in1, in2, in3, in4, in5);
-  }
-};
-template <typename T>
-struct Add6Functor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstFlat in1,
-                  typename TTypes<T>::ConstFlat in2,
-                  typename TTypes<T>::ConstFlat in3,
-                  typename TTypes<T>::ConstFlat in4,
-                  typename TTypes<T>::ConstFlat in5,
-                  typename TTypes<T>::ConstFlat in6) {
-    Add6EigenImpl<CPUDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6);
-  }
-};
-template <typename T>
-struct Add7Functor<CPUDevice, T> {
-  void operator()(const CPUDevice& d, typename TTypes<T>::Flat out,
-                  typename TTypes<T>::ConstFlat in1,
-                  typename TTypes<T>::ConstFlat in2,
-                  typename TTypes<T>::ConstFlat in3,
-                  typename TTypes<T>::ConstFlat in4,
-                  typename TTypes<T>::ConstFlat in5,
-                  typename TTypes<T>::ConstFlat in6,
-                  typename TTypes<T>::ConstFlat in7) {
-    Add7EigenImpl<CPUDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
-                                         in7);
-  }
-};
-
-template <typename T>
-struct Add8Functor<CPUDevice, T> {
-  void operator()(
-      const CPUDevice& d, typename TTypes<T>::Flat out,
-      typename TTypes<T>::ConstFlat in1, typename TTypes<T>::ConstFlat in2,
-      typename TTypes<T>::ConstFlat in3, typename TTypes<T>::ConstFlat in4,
-      typename TTypes<T>::ConstFlat in5, typename TTypes<T>::ConstFlat in6,
-      typename TTypes<T>::ConstFlat in7, typename TTypes<T>::ConstFlat in8) {
-    Add8EigenImpl<CPUDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
-                                         in7, in8);
-  }
-};
-
-template <typename T>
-struct Add8pFunctor<CPUDevice, T> {
-  void operator()(
-      const CPUDevice& d, typename TTypes<T>::Flat out,
-      typename TTypes<T>::ConstFlat in1, typename TTypes<T>::ConstFlat in2,
-      typename TTypes<T>::ConstFlat in3, typename TTypes<T>::ConstFlat in4,
-      typename TTypes<T>::ConstFlat in5, typename TTypes<T>::ConstFlat in6,
-      typename TTypes<T>::ConstFlat in7, typename TTypes<T>::ConstFlat in8) {
-    Add8pEigenImpl<CPUDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
-                                          in7, in8);
-  }
-};
-
-template <typename T>
-struct Add9Functor<CPUDevice, T> {
-  void operator()(
-      const CPUDevice& d, typename TTypes<T>::Flat out,
-      typename TTypes<T>::ConstFlat in1, typename TTypes<T>::ConstFlat in2,
-      typename TTypes<T>::ConstFlat in3, typename TTypes<T>::ConstFlat in4,
-      typename TTypes<T>::ConstFlat in5, typename TTypes<T>::ConstFlat in6,
-      typename TTypes<T>::ConstFlat in7, typename TTypes<T>::ConstFlat in8,
-      typename TTypes<T>::ConstFlat in9) {
-    Add9EigenImpl<CPUDevice, T>::Compute(d, out, in1, in2, in3, in4, in5, in6,
-                                         in7, in8, in9);
-  }
-};
-
-}  // namespace functor
 
 #define REGISTER_ADDN(type, dev)                                   \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -245,8 +161,37 @@ TF_CALL_NUMBER_TYPES(REGISTER_ADDN_CPU);
 #undef REGISTER_ADDN_CPU
 
 #if GOOGLE_CUDA
-REGISTER_ADDN(float, GPU);
+#define REGISTER_ADDN_GPU(type) REGISTER_ADDN(type, GPU)
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_ADDN_GPU);
+TF_CALL_complex64(REGISTER_ADDN_GPU);
+TF_CALL_complex128(REGISTER_ADDN_GPU);
+#undef REGISTER_ADDN_GPU
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("AddN")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("inputs")
+                            .HostMemory("sum"),
+                        AddNOp<CPUDevice, int32>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_ADDN(float, SYCL);
+REGISTER_ADDN(double, SYCL);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("AddN")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("inputs")
+                            .HostMemory("sum"),
+                        AddNOp<CPUDevice, int32>);
+#endif // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_ADDN
 

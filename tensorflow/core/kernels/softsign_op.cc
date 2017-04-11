@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/numeric_op.h"
+#include "tensorflow/core/kernels/softsign_op.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/softsign_op.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
@@ -48,6 +48,9 @@ class SoftsignGradOp
  public:
   using BinaryElementWiseOp<T, SoftsignGradOp<Device, T>>::BinaryElementWiseOp;
 
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
   // INPUTS:
   //   g (gradients): backpropagated gradients
   //   a (inputs): inputs that were passed to SoftsignOp()
@@ -56,13 +59,21 @@ class SoftsignGradOp
   template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    OP_REQUIRES(context, a.IsSameSize(g),
-                errors::InvalidArgument("g and a must be the same size"));
-    functor::SoftsignGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
+    OperateNoTemplate(context, g, a, output);
   }
 };
+
+template <typename Device, typename T>
+void SoftsignGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                                  const Tensor& g,
+                                                  const Tensor& a,
+                                                  Tensor* output) {
+  OP_REQUIRES(context, a.IsSameSize(g),
+              errors::InvalidArgument("g and a must be the same size"));
+  functor::SoftsignGrad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
 
 #define REGISTER_KERNELS(type)                                           \
   REGISTER_KERNEL_BUILDER(                                               \

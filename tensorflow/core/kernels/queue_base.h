@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,21 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_
+#define TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_
 
 #include <deque>
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/queue_interface.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+namespace barrier {
+class Barrier;
+}  // namespace barrier
 
 // Functionality common to asynchronous QueueInterface implementations.
 class QueueBase : public QueueInterface {
@@ -63,6 +69,19 @@ class QueueBase : public QueueInterface {
 
   int32 capacity() const { return capacity_; }
 
+  bool closed() {
+    mutex_lock lock(mu_);
+    return closed_;
+  }
+
+  // Copies the index^th slice (in the first dimension) of parent into element.
+  static Status CopySliceToElement(const Tensor& parent, Tensor* element,
+                                   int64 index);
+
+  // Copies element into the index^th slice (in the first dimension) of parent.
+  static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
+                                   int64 index);
+
  protected:
   enum Action { kEnqueue, kDequeue };
   enum RunResult { kNoProgress, kProgress, kComplete };
@@ -96,15 +115,8 @@ class QueueBase : public QueueInterface {
     return shape;
   }
 
-  // Copies the index^th slice (in the first dimension) of parent into element.
-  static Status CopySliceToElement(const Tensor& parent, Tensor* element,
-                                   int index);
-
-  // Copies element into the index^th slice (in the first dimension) of parent.
-  static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
-                                   int index);
-
-  void Cancel(Action action, CancellationToken token);
+  void Cancel(Action action, CancellationManager* cancellation_manager,
+              CancellationToken token);
 
   // Helper for cancelling all pending Enqueue(Many) operations when
   // Close is called with cancel_pending_enqueues.
@@ -117,7 +129,7 @@ class QueueBase : public QueueInterface {
   // of the *_attempts_ queues.
   void FlushUnlocked();
 
-  ~QueueBase() override {}
+  ~QueueBase() override;
 
   // Helpers for implementing MatchesNodeDef().
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
@@ -131,7 +143,7 @@ class QueueBase : public QueueInterface {
   const DataTypeVector component_dtypes_;
   const std::vector<TensorShape> component_shapes_;
   const string name_;
-  mutex mu_;
+  mutable mutex mu_;
   bool closed_ GUARDED_BY(mu_);
 
   struct Attempt;
@@ -140,17 +152,21 @@ class QueueBase : public QueueInterface {
     int32 elements_requested;
     DoneCallback done_callback;  // must be run outside mu_
     OpKernelContext* context;
+    CancellationManager* cancellation_manager;  // not owned
     CancellationToken cancellation_token;
     RunCallback run_callback;  // must be run while holding mu_
     bool is_cancelled;
     Tuple tuple;
+    // tuples is used by some implementations allowing dynamic shapes.
+    std::vector<Tuple> tuples;
 
     Attempt(int32 elements_requested, DoneCallback done_callback,
-            OpKernelContext* context, CancellationToken cancellation_token,
-            RunCallback run_callback)
+            OpKernelContext* context, CancellationManager* cancellation_manager,
+            CancellationToken cancellation_token, RunCallback run_callback)
         : elements_requested(elements_requested),
           done_callback(done_callback),
           context(context),
+          cancellation_manager(cancellation_manager),
           cancellation_token(cancellation_token),
           run_callback(run_callback),
           is_cancelled(false) {}
@@ -163,4 +179,4 @@ class QueueBase : public QueueInterface {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_QUEUE_BASE_H_

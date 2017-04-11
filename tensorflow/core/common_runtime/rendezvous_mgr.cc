@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,68 +17,36 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#if !defined(__ANDROID__) && (defined(PLATFORM_GOOGLE) || GOOGLE_CUDA)
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#endif
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-namespace {
-
-void CopyTensorBetweenDevices(const string& id, DeviceContext* send_dev_context,
-                              DeviceContext* recv_dev_context, Device* src,
-                              Device* dst,
-                              const AllocatorAttributes src_alloc_attr,
-                              const AllocatorAttributes dst_alloc_attr,
-                              const Tensor* input, Tensor* output,
-                              std::function<void(const Status&)> done) {
-  if (src->attributes().device_type() != dst->attributes().device_type()) {
-    done(errors::Unimplemented(
-        "Copy between device types not yet implemented: src=", src->name(),
-        " dst=", dst->name()));
-  } else if (src->attributes().device_type() != "CPU") {
-    done(errors::Unimplemented(
-        "Copy between non-CPU devices not yet implemented"));
-  }
-  *output = *input;
-  done(Status::OK());
-}
-
-#if !defined(__ANDROID__) && (defined(PLATFORM_GOOGLE) || GOOGLE_CUDA)
-constexpr auto CopyTensorBetweenDevicesFunc = &GPUUtil::CopyViaDMA;
-#else
-constexpr auto CopyTensorBetweenDevicesFunc = &CopyTensorBetweenDevices;
-#endif
-
-}  // end namespace
 
 IntraProcessRendezvous::IntraProcessRendezvous(const DeviceMgr* device_mgr)
     : device_mgr_(device_mgr), local_(NewLocalRendezvous()) {}
 
 IntraProcessRendezvous::~IntraProcessRendezvous() { local_->Unref(); }
 
-Status IntraProcessRendezvous::Send(const string& key,
+Status IntraProcessRendezvous::Send(const ParsedKey& parsed,
                                     const Rendezvous::Args& args,
                                     const Tensor& val, const bool is_dead) {
-  VLOG(1) << "IntraProcessRendezvous Send " << this << " " << key;
+  VLOG(1) << "IntraProcessRendezvous Send " << this << " " << parsed.FullKey();
   {
     mutex_lock l(mu_);
     if (!status_.ok()) return status_;
   }
-  Rendezvous::ParsedKey parsed;
-  TF_RETURN_IF_ERROR(Rendezvous::ParseKey(key, &parsed));
 
   // Buffers "val" and "device_context" in local_.
-  return local_->Send(key, args, val, is_dead);
+  return local_->Send(parsed, args, val, is_dead);
 }
 
 Status IntraProcessRendezvous::ParseKey(const string& key, bool is_src,
@@ -135,42 +103,38 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   Tensor copy(out_allocator, in.dtype(), in.shape());
   *out = copy;
 
-  CopyTensorBetweenDevicesFunc(parsed.edge_name, send_args.device_context,
-                               recv_args.device_context, src_device, dst_device,
-                               send_args.alloc_attrs, recv_args.alloc_attrs,
-                               &in, out, done);
+  CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
+                     recv_args.device_context, src_device, dst_device,
+                     send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
+                     done);
 }
 
-void IntraProcessRendezvous::RecvAsync(const string& key,
+void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
                                        const Rendezvous::Args& recv_args,
                                        DoneCallback done) {
-  VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << key;
-
-  Rendezvous::ParsedKey parsed;
-  Status s = ParseKey(key, false /*!is_src*/, &parsed);
-  if (!s.ok()) {
-    done(s, Args(), recv_args, Tensor(), false);
-    return;
-  }
+  VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << parsed.FullKey();
 
   // Recv the tensor from local_.
-  local_->RecvAsync(key, recv_args, [this, parsed, done](
-                                        const Status& status,
-                                        const Rendezvous::Args& send_args,
-                                        const Rendezvous::Args& recv_args,
-                                        const Tensor& in, bool is_dead) {
-    Status s = status;
-    Tensor* out = new Tensor;
+  local_->RecvAsync(parsed, recv_args, [this, parsed, done](
+                                           const Status& status,
+                                           const Rendezvous::Args& send_args,
+                                           const Rendezvous::Args& recv_args,
+                                           const Tensor& in, bool is_dead) {
+    // If "in" is an uninitialized tensor, do copy-construction to preserve
+    // the uninitialized state, along with data type and shape info, which
+    // is useful for debugger purposes.
+    Tensor* out = in.IsInitialized() ? new Tensor : new Tensor(in);
+
     StatusCallback final_callback = [done, send_args, recv_args, out,
                                      is_dead](const Status& s) {
       done(s, send_args, recv_args, *out, is_dead);
       delete out;
     };
 
-    if (s.ok()) {
+    if (status.ok() && in.IsInitialized()) {
       SameWorkerRecvDone(parsed, send_args, recv_args, in, out, final_callback);
     } else {
-      final_callback(s);
+      final_callback(status);
     }
   });
 }

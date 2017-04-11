@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,10 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 namespace tensorflow {
-REGISTER3(UnaryOp, CPU, "Sigmoid", functor::sigmoid, float, double, complex64);
+REGISTER5(UnaryOp, CPU, "Sigmoid", functor::sigmoid, float, Eigen::half, double,
+          complex64, complex128);
 #if GOOGLE_CUDA
-REGISTER2(UnaryOp, GPU, "Sigmoid", functor::sigmoid, float, double);
+REGISTER3(UnaryOp, GPU, "Sigmoid", functor::sigmoid, float, Eigen::half,
+          double);
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER(UnaryOp, SYCL, "Sigmoid", functor::sigmoid, float);
+#endif // TENSORFLOW_USE_SYCL
+
+REGISTER5(SimpleBinaryOp, CPU, "SigmoidGrad", functor::sigmoid_grad, float,
+          Eigen::half, double, complex64, complex128);
+#if GOOGLE_CUDA
+REGISTER3(SimpleBinaryOp, GPU, "SigmoidGrad", functor::sigmoid_grad, float,
+          Eigen::half, double);
+#endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER(SimpleBinaryOp, SYCL, "SigmoidGrad", functor::sigmoid_grad, float);
+#endif // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow

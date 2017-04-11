@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,11 +18,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/session_state.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
@@ -37,7 +39,7 @@ class StepStatsCollector;
 //   Rendezvous* rendezvous = NewNaiveRendezvous();
 //   TF_CHECK_OK(rendezvous->Send("input", some_input_tensor));
 //   TF_CHECK_OK(executor->Run({ExecutorOpts, rendezvous, nullptr}));
-//   TF_CHECK_OK(rendezvous->Recv("input", &output_tensor));
+//   TF_CHECK_OK(rendezvous->Recv("output", &output_tensor));
 //   ... ...
 //
 // Multiple threads can call Executor::Run concurrently.
@@ -53,6 +55,11 @@ class Executor {
   // ensure objects passed in Args (rendezvous, stats_collector, etc.)
   // are alive at least until done is invoked. All pointers to the
   // argument objects can be nullptr.
+  //
+  // "step_id" is a process-wide unique identifier for the step being
+  // run. Executors on different devices may receive the same step_id
+  // in the case that a step runs Ops on more than one device. The
+  // step_id is used for tracking resource usage of a given step.
   //
   // RunAsync() uses the given "rendezvous", if not null, as the
   // mechanism to communicate inputs and outputs of the underlying
@@ -74,14 +81,28 @@ class Executor {
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
   struct Args {
+    int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
     StepStatsCollector* stats_collector = nullptr;
     FunctionCallFrame* call_frame = nullptr;
     CancellationManager* cancellation_manager = nullptr;
+    SessionState* session_state = nullptr;
+    TensorStore* tensor_store = nullptr;
+    ScopedStepContainer* step_container = nullptr;
+
+    // If true, calls Sync() on the device.
+    bool sync_on_finish = false;
 
     typedef std::function<void()> Closure;
     typedef std::function<void(Closure)> Runner;
     Runner runner = nullptr;
+
+    // A callback that is invoked each time a node has finished executing.
+    typedef std::function<Status(const string& node_name, const int output_slot,
+                                 const Tensor* tensor, const bool is_ref,
+                                 OpKernelContext* ctx)>
+        NodeOutputsCallback;
+    NodeOutputsCallback node_outputs_cb = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
@@ -111,16 +132,15 @@ struct LocalExecutorParams {
   Device* device;
 
   // The library runtime support.
-  FunctionLibraryRuntime* function_library;
-
-  // True iff the computation contains control flow nodes.
-  bool has_control_flow;
+  FunctionLibraryRuntime* function_library = nullptr;
 
   // create_kernel returns an instance of op kernel based on NodeDef.
   // delete_kernel is called for every kernel used by the executor
   // when the executor is deleted.
   std::function<Status(const NodeDef&, OpKernel**)> create_kernel;
   std::function<void(OpKernel*)> delete_kernel;
+
+  Executor::Args::NodeOutputsCallback node_outputs_cb;
 };
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
                                       const Graph* graph, Executor** executor);
@@ -142,7 +162,7 @@ class ExecutorBarrier {
   //
   // 'done' is called after the last executor completes, and
   // ExecutorBarrier is deleted.
-  ExecutorBarrier(int num, Rendezvous* r, StatusCallback done)
+  ExecutorBarrier(size_t num, Rendezvous* r, StatusCallback done)
       : rendez_(r), done_cb_(done), pending_(num) {}
 
   ~ExecutorBarrier() {}
@@ -163,6 +183,7 @@ class ExecutorBarrier {
 
   void WhenDone(const Status& s) {
     bool error = false;
+    Rendezvous* error_rendez = nullptr;
     StatusCallback done = nullptr;
     Status status;
     {
@@ -172,6 +193,8 @@ class ExecutorBarrier {
       // object by this thread only.
       if (status_.ok() && !s.ok()) {
         error = true;
+        error_rendez = rendez_;
+        error_rendez->Ref();
         status_ = s;
       }
 
@@ -182,10 +205,13 @@ class ExecutorBarrier {
         done = done_cb_;
         done_cb_ = nullptr;
       }
+
       status = status_;
     }
+
     if (error) {
-      rendez_->StartAbort(status);
+      error_rendez->StartAbort(status);
+      error_rendez->Unref();
     }
     if (done != nullptr) {
       delete this;

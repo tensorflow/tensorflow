@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for division with division imported from __future__.
 
 This file should be exactly the same as division_past_test.py except
@@ -23,28 +22,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.platform import test
 
 
-class DivisionTestCase(tf.test.TestCase):
+class DivisionTestCase(test.TestCase):
 
   def testDivision(self):
     """Test all the different ways to divide."""
     values = [1, 2, 7, 11]
-    functions = (lambda x: x), tf.constant
+    functions = (lambda x: x), constant_op.constant
     # TODO(irving): Test int8, int16 once we support casts for those.
     dtypes = np.int32, np.int64, np.float32, np.float64
 
     def check(x, y):
-      if isinstance(x, tf.Tensor):
+      if isinstance(x, ops.Tensor):
         x = x.eval()
-      if isinstance(y, tf.Tensor):
+      if isinstance(y, ops.Tensor):
         y = y.eval()
       self.assertEqual(x.dtype, y.dtype)
       self.assertEqual(x, y)
+
     with self.test_session():
       for dtype in dtypes:
         for x in map(dtype, values):
@@ -62,4 +63,4 @@ class DivisionTestCase(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

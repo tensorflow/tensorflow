@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_UTIL_UTIL_H_
 #define TENSORFLOW_UTIL_UTIL_H_
 
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -49,7 +49,7 @@ class MovingAverage {
 
 // Returns a string printing bytes in ptr[0..n).  The output looks
 // like "00 01 ef cd cd ef".
-string PrintMemory(const char* ptr, int n);
+string PrintMemory(const char* ptr, size_t n);
 
 // Given a flattened index into a tensor, computes a string s so that
 // StrAppend("tensor", s) is a Python indexing expression.  E.g.,

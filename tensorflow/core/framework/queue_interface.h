@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -54,8 +54,13 @@ class QueueInterface : public ResourceBase {
   virtual void TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) = 0;
 
   // Same as above, but the stashed function object will attempt to dequeue
-  // num_elements items.
+  // num_elements items.  If allow_small_batch is true, and the Queue is
+  // closed but at least 1 element is available, there is no blocking
+  // and between 1 and num_elements items are immediately returned.
+  // If the queue does not support the allow_small_batch flag will
+  // return an Unimplemented error.
   virtual void TryDequeueMany(int num_elements, OpKernelContext* ctx,
+                              bool allow_small_batch,
                               CallbackWithTuple callback) = 0;
 
   // Signals that no more elements will be enqueued, and optionally
@@ -81,7 +86,9 @@ class QueueInterface : public ResourceBase {
 
   virtual const DataTypeVector& component_dtypes() const = 0;
 
-  string DebugString() override { return "A queue"; }
+  string DebugString() override {
+    return strings::StrCat("A Queue of size: ", size());
+  }
 
  protected:
   virtual ~QueueInterface() {}

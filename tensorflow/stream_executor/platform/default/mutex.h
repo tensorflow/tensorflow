@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,6 +35,9 @@ limitations under the License.
 namespace perftools {
 namespace gputools {
 
+#undef mutex_lock
+#undef shared_lock
+
 enum ConditionResult { kCond_Timeout, kCond_MaybeNotified };
 
 #ifdef STREAM_EXECUTOR_USE_SHARED_MUTEX
@@ -45,21 +48,36 @@ typedef std::mutex BaseMutex;
 
 // A class that wraps around the std::mutex implementation, only adding an
 // additional LinkerInitialized constructor interface.
-class mutex : public BaseMutex {
+class LOCKABLE mutex : public BaseMutex {
  public:
   mutex() {}
   // The default implementation of std::mutex is safe to use after the linker
   // initializations
   explicit mutex(LinkerInitialized x) {}
+
+  void lock() ACQUIRE() { BaseMutex::lock(); }
+  void unlock() RELEASE() { BaseMutex::unlock(); }
 };
 
-typedef std::unique_lock<BaseMutex> mutex_lock;
+class SCOPED_LOCKABLE mutex_lock : public std::unique_lock<BaseMutex> {
+ public:
+  mutex_lock(class mutex& m) ACQUIRE(m) : std::unique_lock<BaseMutex>(m) {}
+  ~mutex_lock() RELEASE() {}
+};
+
+// Catch bug where variable name is omitted, e.g. mutex_lock (mu);
+#define mutex_lock(x) static_assert(0, "mutex_lock_decl_missing_var_name");
 
 #ifdef STREAM_EXECUTOR_USE_SHARED_MUTEX
+// TODO(vrv): Annotate these with ACQUIRE_SHARED after implementing
+// as classes.
 typedef std::shared_lock<BaseMutex> shared_lock;
 #else
-typedef std::unique_lock<BaseMutex> shared_lock;
+typedef mutex_lock shared_lock;
 #endif
+
+// Catch bug where variable name is omitted, e.g. shared_lock (mu);
+#define shared_lock(x) static_assert(0, "shared_lock_decl_missing_var_name");
 
 using std::condition_variable;
 

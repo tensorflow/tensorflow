@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+class TensorTestHelper {
+ public:
+  // This is an operation that can be done by VariableOp.
+  static void set_shape(Tensor* t, const TensorShape& s) { t->set_shape(s); }
+};
+
+// To make TestCopies do the right thing.
+inline bool operator==(const ResourceHandle& a, const ResourceHandle& b) {
+  return a.device() == b.device() && a.container() == b.container() &&
+         a.name() == b.name() && a.hash_code() == b.hash_code() &&
+         a.maybe_type_name() == b.maybe_type_name();
+}
 
 TEST(TensorTest, Default) {
   Tensor t;
@@ -36,6 +48,7 @@ TEST(TensorTest, DataType_Traits) {
   EXPECT_TRUE(std::is_trivial<double>::value);
   EXPECT_TRUE(std::is_trivial<int32>::value);
   EXPECT_TRUE(std::is_trivial<uint8>::value);
+  EXPECT_TRUE(std::is_trivial<uint16>::value);
   EXPECT_TRUE(std::is_trivial<int16>::value);
   EXPECT_TRUE(std::is_trivial<int8>::value);
   EXPECT_TRUE(std::is_trivial<int64>::value);
@@ -46,12 +59,17 @@ TEST(TensorTest, DataType_Traits) {
 
   // Unfortunately. std::complex::complex() initializes (0, 0).
   EXPECT_FALSE(std::is_trivial<complex64>::value);
-  EXPECT_FALSE(std::is_trivial<std::complex<double>>::value);
+  EXPECT_FALSE(std::is_trivial<complex128>::value);
   EXPECT_TRUE(std::is_trivial<float[2]>::value);
-  struct MyComplex {
+  EXPECT_TRUE(std::is_trivial<double[2]>::value);
+  struct MyComplex64 {
     float re, im;
   };
-  EXPECT_TRUE(std::is_trivial<MyComplex>::value);
+  EXPECT_TRUE(std::is_trivial<MyComplex64>::value);
+  struct MyComplex128 {
+    double re, im;
+  };
+  EXPECT_TRUE(std::is_trivial<MyComplex128>::value);
 }
 
 template <typename T>
@@ -101,6 +119,24 @@ void TestCopies(const Tensor& t) {
     Tensor t2 = test::AsTensor(values, t.shape());
     test::ExpectTensorEqual<T>(t, t2);
   }
+  {
+    LOG(INFO) << "Move constructor";
+    Tensor t2 = t;
+    Tensor t3(std::move(t2));
+    test::ExpectTensorEqual<T>(t, t3);
+    EXPECT_TRUE(t3.IsInitialized());
+    EXPECT_FALSE(t2.IsInitialized());
+  }
+  {
+    LOG(INFO) << "Move assignment";
+    Tensor t2 = t;
+    Tensor t3 = std::move(t2);
+    Tensor* t4 = &t3;
+    *t4 = std::move(t3);
+    test::ExpectTensorEqual<T>(t, t3);
+    EXPECT_TRUE(t3.IsInitialized());
+    EXPECT_FALSE(t2.IsInitialized());
+  }
 }
 
 TEST(Tensor_Float, Simple) {
@@ -112,6 +148,25 @@ TEST(Tensor_Float, Simple) {
     }
   }
   TestCopies<float>(t);
+}
+
+TEST(Tensor_ResourceHandle, Simple) {
+  Tensor t(DT_RESOURCE, TensorShape({}));
+  ResourceHandle tmp;
+  tmp.set_name("a");
+  t.flat<ResourceHandle>()(0) = tmp;
+  TestCopies<ResourceHandle>(t);
+}
+
+TEST(Tensor_UInt16, Simple) {
+  Tensor t(DT_UINT16, TensorShape({2, 2}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
+  for (int64 a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64 b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<uint16>()(a, b) = uint16(a * b);
+    }
+  }
+  TestCopies<uint16>(t);
 }
 
 TEST(Tensor_QInt8, Simple) {
@@ -207,9 +262,101 @@ TEST(Tensor_Float, Reshape) {
     EXPECT_EQ(flat_inner_dims(0, 0), 0.01f);
     EXPECT_EQ(flat_inner_dims(23, 4), 0.02f);
   }
+  {
+    auto flat_outer_dims = t.flat_outer_dims<float>();
+    EXPECT_EQ(2, flat_outer_dims.dimension(0));
+    EXPECT_EQ(60, flat_outer_dims.dimension(1));
+    EXPECT_EQ(flat_outer_dims(0, 0), 0.01f);
+    EXPECT_EQ(flat_outer_dims(1, 59), 0.02f);
+  }
+  {
+    auto flat_inner_dims = t.flat_inner_dims<float, 3>();
+    EXPECT_EQ(6, flat_inner_dims.dimension(0));
+    EXPECT_EQ(4, flat_inner_dims.dimension(1));
+    EXPECT_EQ(5, flat_inner_dims.dimension(2));
+    EXPECT_EQ(flat_inner_dims(0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_dims(5, 3, 4), 0.02f);
+  }
+  {
+    auto flat_outer_dims = t.flat_outer_dims<float, 3>();
+    EXPECT_EQ(2, flat_outer_dims.dimension(0));
+    EXPECT_EQ(3, flat_outer_dims.dimension(1));
+    EXPECT_EQ(20, flat_outer_dims.dimension(2));
+    EXPECT_EQ(flat_outer_dims(0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_outer_dims(1, 2, 19), 0.02f);
+  }
+  {
+    auto flat_inner_dims = t.flat_inner_dims<float, 5>();
+    EXPECT_EQ(1, flat_inner_dims.dimension(0));
+    EXPECT_EQ(2, flat_inner_dims.dimension(1));
+    EXPECT_EQ(3, flat_inner_dims.dimension(2));
+    EXPECT_EQ(4, flat_inner_dims.dimension(3));
+    EXPECT_EQ(5, flat_inner_dims.dimension(4));
+    EXPECT_EQ(flat_inner_dims(0, 0, 0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_dims(0, 1, 2, 3, 4), 0.02f);
+  }
+  {
+    auto flat_outer_dims = t.flat_outer_dims<float, 5>();
+    EXPECT_EQ(2, flat_outer_dims.dimension(0));
+    EXPECT_EQ(3, flat_outer_dims.dimension(1));
+    EXPECT_EQ(4, flat_outer_dims.dimension(2));
+    EXPECT_EQ(5, flat_outer_dims.dimension(3));
+    EXPECT_EQ(1, flat_outer_dims.dimension(4));
+    EXPECT_EQ(flat_outer_dims(0, 0, 0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_outer_dims(1, 2, 3, 4, 0), 0.02f);
+  }
+
+  Tensor zero_t(DT_FLOAT, TensorShape({3, 0, 2, 0, 5}));
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+  }
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float, 3>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+    EXPECT_EQ(0, flat_outer_dims.dimension(2));
+  }
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float, 5>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+    EXPECT_EQ(2, flat_outer_dims.dimension(2));
+    EXPECT_EQ(0, flat_outer_dims.dimension(3));
+    EXPECT_EQ(5, flat_outer_dims.dimension(4));
+  }
+  {
+    auto flat_inner_dims = zero_t.flat_inner_dims<float>();
+    EXPECT_EQ(0, flat_inner_dims.dimension(0));
+    EXPECT_EQ(5, flat_inner_dims.dimension(1));
+  }
+  {
+    auto flat_inner_dims = zero_t.flat_inner_dims<float, 3>();
+    EXPECT_EQ(0, flat_inner_dims.dimension(0));
+    EXPECT_EQ(0, flat_inner_dims.dimension(1));
+    EXPECT_EQ(5, flat_inner_dims.dimension(2));
+  }
+  {
+    auto flat_inner_dims = zero_t.flat_inner_dims<float, 5>();
+    EXPECT_EQ(3, flat_inner_dims.dimension(0));
+    EXPECT_EQ(0, flat_inner_dims.dimension(1));
+    EXPECT_EQ(2, flat_inner_dims.dimension(2));
+    EXPECT_EQ(0, flat_inner_dims.dimension(3));
+    EXPECT_EQ(5, flat_inner_dims.dimension(4));
+  }
 }
 
 TEST(Tensor_Scalar, Basics) {
+  {
+    Tensor t(DT_BOOL, TensorShape({}));
+    EXPECT_EQ(1, t.NumElements());
+    auto Tt = t.scalar<bool>();
+    EXPECT_EQ(1, Tt.size());
+    EXPECT_EQ(0, Tt.rank());
+    t.scalar<bool>()() = true;
+    EXPECT_TRUE(Tt());
+  }
   {
     Tensor t(DT_FLOAT, TensorShape({}));
     EXPECT_EQ(1, t.NumElements());
@@ -344,6 +491,14 @@ TEST(Tensor_Int32, SimpleWithHelper) {
   test::ExpectTensorEqual<int32>(t2, t3);
 }
 
+TEST(Tensor_UInt16, SimpleWithHelper) {
+  Tensor t1 = test::AsTensor<uint16>({0, 1, 2, 3, 4, 5}, {2, 3});
+  Tensor t2(t1.dtype(), t1.shape());
+  t2.flat<uint16>() = t1.flat<uint16>() * uint16(2);
+  Tensor t3 = test::AsTensor<uint16>({0, 2, 4, 6, 8, 10}, t1.shape());
+  test::ExpectTensorEqual<uint16>(t2, t3);
+}
+
 TEST(Tensor_QInt8, SimpleWithHelper) {
   Tensor t1 = test::AsTensor<qint8>({0, 1, 2, 3, 4, 5}, {2, 3});
   Tensor t2(t1.dtype(), t1.shape());
@@ -400,13 +555,19 @@ TEST(Tensor_Bool, SimpleWithHelper) {
   test::ExpectTensorEqual<bool>(t1, t2);
 }
 
-TEST(Tensor_Complex, Simple) {
+TEST(Tensor_Complex, Simple64) {
   Tensor t(DT_COMPLEX64, {4, 5, 3, 7});
   t.flat<complex64>().setRandom();
   TestCopies<complex64>(t);
 }
 
-TEST(Tensor_Complex, SimpleWithHelper) {
+TEST(Tensor_Complex, Simple128) {
+  Tensor t(DT_COMPLEX128, {4, 5, 3, 7});
+  t.flat<complex128>().setRandom();
+  TestCopies<complex128>(t);
+}
+
+TEST(Tensor_Complex, SimpleWithHelper64) {
   {
     Tensor t1 = test::AsTensor<complex64>({0,
                                            {1, 1},
@@ -424,7 +585,7 @@ TEST(Tensor_Complex, SimpleWithHelper) {
     test::ExpectTensorEqual<complex64>(t2, t3);
   }
 
-  // Does some numeric operations for complex numbers.
+  // Does some numeric operations for complex64 numbers.
   {
     const float PI = std::acos(-1);
     const complex64 rotate_45 = std::polar(1.0f, PI / 4);
@@ -455,10 +616,120 @@ TEST(Tensor_Complex, SimpleWithHelper) {
   }
 }
 
+TEST(Tensor_Complex, SimpleWithHelper128) {
+  {
+    Tensor t1 = test::AsTensor<complex128>({0,
+                                            {1, 1},
+                                            complex128(2),
+                                            complex128(3, 3),
+                                            complex128(0, 4),
+                                            complex128(2, 5)},
+                                           {2, 3});
+    Tensor t2(t1.dtype(), t1.shape());
+    t2.flat<complex128>() = t1.flat<complex128>() * complex128(0, 2);
+    Tensor t3 = test::AsTensor<complex128>(
+        {0, {-2, 2}, {0, 4}, {-6, 6}, {-8, 0}, {-10, 4}},
+        // shape
+        {2, 3});
+    test::ExpectTensorEqual<complex128>(t2, t3);
+  }
+
+  // Does some numeric operations for complex128 numbers.
+  {
+    const double PI = std::acos(-1);
+    const complex128 rotate_45 = std::polar(1.0, PI / 4);
+
+    // x contains all the 8-th root of unity.
+    Tensor x(DT_COMPLEX128, TensorShape({8}));
+    for (int i = 0; i < 8; ++i) {
+      x.vec<complex128>()(i) = std::pow(rotate_45, i);
+    }
+
+    // Shift the roots by 45 degree.
+    Tensor y(DT_COMPLEX128, TensorShape({8}));
+    y.vec<complex128>() = x.vec<complex128>() * rotate_45;
+    Tensor y_expected(DT_COMPLEX128, TensorShape({8}));
+    for (int i = 0; i < 8; ++i) {
+      y_expected.vec<complex128>()(i) = std::pow(rotate_45, i + 1);
+    }
+    test::ExpectTensorNear<complex128>(y, y_expected, 1e-5);
+
+    // Raise roots to the power of 8.
+    Tensor z(DT_COMPLEX128, TensorShape({8}));
+    z.vec<complex128>() = x.vec<complex128>().pow(8);
+    Tensor z_expected(DT_COMPLEX128, TensorShape({8}));
+    for (int i = 0; i < 8; ++i) {
+      z_expected.vec<complex128>()(i) = 1;
+    }
+    test::ExpectTensorNear<complex128>(z, z_expected, 1e-5);
+  }
+}
+
+namespace {
+
+// An allocator that always returns nullptr, for testing
+// failures to allocate.
+class DummyCPUAllocator : public Allocator {
+ public:
+  DummyCPUAllocator() {}
+  string Name() override { return "cpu"; }
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return nullptr;
+  }
+  void DeallocateRaw(void* ptr) override { return; }
+};
+
+}  // namespace
+
+TEST(Tensor, FailureToAllocate) {
+  TensorShape shape({1});
+  DummyCPUAllocator allocator;
+  {
+    Tensor a(&allocator, DT_FLOAT, shape);
+    ASSERT_FALSE(a.IsInitialized());
+  }
+
+  // Float
+  {
+    Tensor t(DT_FLOAT, TensorShape({1}));
+    t.vec<float>()(0) = 1.0;
+    TensorProto proto;
+    t.AsProtoField(&proto);
+
+    // FromProto should fail nicely.
+    Tensor a(&allocator, DT_FLOAT, TensorShape({1}));
+    ASSERT_FALSE(a.FromProto(&allocator, proto));
+  }
+
+  // String
+  {
+    Tensor t(DT_STRING, TensorShape({1}));
+    t.vec<string>()(0) = "foo";
+    TensorProto proto;
+    t.AsProtoField(&proto);
+
+    // FromProto should fail nicely.
+    Tensor a(&allocator, DT_STRING, TensorShape({1}));
+    ASSERT_FALSE(a.FromProto(&allocator, proto));
+  }
+
+  // Half
+  {
+    Tensor t(DT_HALF, TensorShape({1}));
+    t.vec<Eigen::half>()(0) = Eigen::half(1.0);
+    TensorProto proto;
+    t.AsProtoField(&proto);
+
+    // FromProto should fail nicely.
+    Tensor a(&allocator, DT_HALF, TensorShape({1}));
+    ASSERT_FALSE(a.FromProto(&allocator, proto));
+  }
+}
+
 // On the alignment.
 //
 // As of 2015/8, tensorflow::Tensor allocates its buffer with 32-byte
-// alignment. Tensor::tensor/flat/vec/matrix methods requires the the
+// alignment. Tensor::tensor/flat/vec/matrix methods requires the
 // buffer satisfies Eigen::Aligned (e.g., 16-bytes aligned usually,
 // and 32-bytes for AVX). Tensor::Slice requires the caller to ensure
 // its result is aligned if the caller intends to use those methods.
@@ -527,11 +798,75 @@ TEST(Tensor, Slice_Basic) {
 
     // Take an unaligned slice.
     Tensor y = x.Slice(1, 13);
+#if EIGEN_MAX_ALIGN_BYTES > 0
+    EXPECT_FALSE(y.IsAligned());
+#endif
     y.unaligned_flat<float>().setConstant(1.0);
     for (int64 i = 0; i < y.NumElements(); ++i) {
       EXPECT_EQ(1.0, y.unaligned_flat<float>()(i));
     }
   }
+}
+
+namespace {
+template <typename T>
+Tensor MkTensor(DataType dt, TensorShape shape, std::vector<T> init_values) {
+  Tensor x(dt, shape);
+  const int limit = x.NumElements();
+  int vi = 0;
+  for (int i = 0; i < limit; ++i) {
+    x.flat<T>()(i) = init_values[vi++];
+    if (vi >= init_values.size()) vi = 0;
+  }
+  return x;
+}
+}  // namespace
+
+TEST(SummarizeValue, Uninitialized) {
+  Tensor x(DT_INT32);
+  TensorTestHelper::set_shape(&x, TensorShape({4, 4}));
+  EXPECT_EQ(
+      strings::StrCat("uninitialized Tensor of 16 elements of type ", DT_INT32),
+      x.SummarizeValue(16));
+}
+
+TEST(SummarizeValue, INT32) {
+  Tensor x = MkTensor<int>(DT_INT32, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
+  x = MkTensor<int>(DT_INT32, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[1 2][3 4]", x.SummarizeValue(16));
+  x = MkTensor<int>(DT_INT32, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[[1]][[2]]][[[3]][[4]]]", x.SummarizeValue(16));
+  EXPECT_EQ("[[[1]][[2]]][[[3]]]...", x.SummarizeValue(3));
+  x = MkTensor<int>(DT_INT32, TensorShape({0}), {});
+  EXPECT_EQ("", x.SummarizeValue(16));
+}
+
+TEST(SummarizeValue, FLOAT) {
+  Tensor x = MkTensor<float>(DT_FLOAT, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[1 2][3 4]", x.SummarizeValue(16));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[[1]][[2]]][[[3]][[4]]]", x.SummarizeValue(16));
+  EXPECT_EQ("[[[1]][[2]]][[[3]]]...", x.SummarizeValue(3));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({0}), {});
+  EXPECT_EQ("", x.SummarizeValue(16));
+}
+
+TEST(SummarizeValue, BOOL) {
+  Tensor x = MkTensor<bool>(DT_BOOL, TensorShape({5}), {false, true, true});
+  EXPECT_EQ("0 1 1 0 1", x.SummarizeValue(16));
+  EXPECT_EQ("0 1 1...", x.SummarizeValue(3));
+}
+
+TEST(SummarizeValue, STRING) {
+  Tensor x = MkTensor<string>(DT_STRING, TensorShape({5}),
+                              {"one", "two", "three", "four", "five"});
+  EXPECT_EQ("one two three four five", x.SummarizeValue(16));
+  x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
+                       {"one", "two", "three", "four", "five"});
+  EXPECT_EQ("one two three four five one...", x.SummarizeValue(6));
 }
 
 static void BM_CreateAndDestroy(int iters) {
@@ -562,5 +897,37 @@ TEST(Tensor, EmptyTensorData) {
   Tensor empty;
   EXPECT_EQ(empty.tensor_data().size(), 0);
 }
+
+// Benchmark create and destroy a tensor, with an allocated buffer.
+static void BM_CreateAndDestroyWithBuf(int iters) {
+  TensorShape shape({10, 20});
+  Allocator* allocator = cpu_allocator();
+  while (--iters) {
+    Tensor a(allocator, DT_FLOAT, shape);
+  }
+}
+BENCHMARK(BM_CreateAndDestroyWithBuf);
+
+// Benchmark create+copy a tensor, with an allocated buffer.
+static void BM_CreateAndCopyCtrWithBuf(int iters) {
+  TensorShape shape({10, 20});
+  Allocator* allocator = cpu_allocator();
+  while (--iters) {
+    Tensor a(allocator, DT_FLOAT, shape);
+    Tensor b(a);
+  }
+}
+BENCHMARK(BM_CreateAndCopyCtrWithBuf);
+
+// Benchmark create+move a tensor, with an allocated buffer.
+static void BM_CreateAndMoveCtrWithBuf(int iters) {
+  TensorShape shape({10, 20});
+  Allocator* allocator = cpu_allocator();
+  while (--iters) {
+    Tensor a(allocator, DT_FLOAT, shape);
+    Tensor b(std::move(a));
+  }
+}
+BENCHMARK(BM_CreateAndMoveCtrWithBuf);
 
 }  // namespace tensorflow

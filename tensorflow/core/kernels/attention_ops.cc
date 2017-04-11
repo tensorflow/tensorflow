@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// See docs in ../ops/attention_ops.cc.
+// See docs in ../ops/image_ops.cc.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/platform/port.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/NeuralNetworks"
+#include <vector>
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/eigen_attention.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -40,13 +41,13 @@ class ExtractGlimpseOp : public OpKernel {
   // depth).
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    const TensorShape input_shape = input.shape();
+    const TensorShape& input_shape = input.shape();
     const int32 num_dims = input_shape.dims();
     OP_REQUIRES(
         context, num_dims == 4,
         errors::InvalidArgument(
             "input must be 4-dimensional (batch_size, height, width, depth)",
-            input_shape.ShortDebugString()));
+            input_shape.DebugString()));
 
     const int64 batch_size = input_shape.dim_size(0);
 
@@ -55,7 +56,7 @@ class ExtractGlimpseOp : public OpKernel {
                              window_size.shape().dim_size(0) == 2,
                 errors::InvalidArgument(
                     "input must be a vector of size 2 (height, width)",
-                    window_size.shape().ShortDebugString()));
+                    window_size.shape().DebugString()));
 
     const int64 output_height = window_size.tensor<int, 1>()(0);
     const int64 output_width = window_size.tensor<int, 1>()(1);
@@ -66,17 +67,21 @@ class ExtractGlimpseOp : public OpKernel {
     const Tensor& offsets = context->input(2);
     OP_REQUIRES(context, offsets.shape().dims() == 2,
                 errors::InvalidArgument("input must be a matrix",
-                                        offsets.shape().ShortDebugString()));
+                                        offsets.shape().DebugString()));
     OP_REQUIRES(context, offsets.shape().dim_size(0) == batch_size,
                 errors::InvalidArgument("first dimension should be batch",
-                                        offsets.shape().ShortDebugString()));
+                                        offsets.shape().DebugString()));
     OP_REQUIRES(
         context, offsets.shape().dim_size(1) == 2,
         errors::InvalidArgument("second dimension should be of size 2 (y,x)",
-                                offsets.shape().ShortDebugString()));
+                                offsets.shape().DebugString()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+    if (output->NumElements() == 0) {
+      // Nothing else to do.
+      return;
+    }
 
     std::vector<Eigen::IndexPair<float> > offset_vec;
     offset_vec.reserve(batch_size);

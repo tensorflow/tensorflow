@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,15 +19,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-TrackingAllocator::TrackingAllocator(Allocator* allocator)
+TrackingAllocator::TrackingAllocator(Allocator* allocator, bool track_sizes)
     : allocator_(allocator),
       ref_(1),
       allocated_(0),
       high_watermark_(0),
-      total_bytes_(0) {}
+      total_bytes_(0),
+      track_sizes_locally_(track_sizes && !allocator_->TracksAllocationSizes()),
+      next_allocation_id_(0) {}
 
-void* TrackingAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
-  void* ptr = allocator_->AllocateRaw(alignment, num_bytes);
+void* TrackingAllocator::AllocateRaw(
+    size_t alignment, size_t num_bytes,
+    const AllocationAttributes& allocation_attr) {
+  void* ptr = allocator_->AllocateRaw(alignment, num_bytes, allocation_attr);
   // If memory is exhausted AllocateRaw returns nullptr, and we should
   // pass this through to the caller
   if (nullptr == ptr) {
@@ -42,6 +46,20 @@ void* TrackingAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
       total_bytes_ += allocated_bytes;
       ++ref_;
     }
+  } else if (track_sizes_locally_) {
+    // Call the underlying allocator to try to get the allocated size
+    // whenever possible, even when it might be slow. If this fails,
+    // use the requested size as an approximation.
+    size_t allocated_bytes = allocator_->AllocatedSizeSlow(ptr);
+    allocated_bytes = std::max(num_bytes, allocated_bytes);
+    mutex_lock lock(mu_);
+    next_allocation_id_ += 1;
+    Chunk chunk = {num_bytes, allocated_bytes, next_allocation_id_};
+    in_use_.emplace(std::make_pair(ptr, chunk));
+    allocated_ += allocated_bytes;
+    high_watermark_ = std::max(high_watermark_, allocated_);
+    total_bytes_ += allocated_bytes;
+    ++ref_;
   } else {
     mutex_lock lock(mu_);
     total_bytes_ += num_bytes;
@@ -62,6 +80,14 @@ void TrackingAllocator::DeallocateRaw(void* ptr) {
   size_t allocated_bytes = 0;
   if (tracks_allocation_sizes) {
     allocated_bytes = allocator_->AllocatedSize(ptr);
+  } else if (track_sizes_locally_) {
+    mutex_lock lock(mu_);
+    auto itr = in_use_.find(ptr);
+    if (itr != in_use_.end()) {
+      tracks_allocation_sizes = true;
+      allocated_bytes = (*itr).second.allocated_size;
+      in_use_.erase(itr);
+    }
   }
   Allocator* allocator = allocator_;
   {
@@ -79,31 +105,68 @@ void TrackingAllocator::DeallocateRaw(void* ptr) {
 }
 
 bool TrackingAllocator::TracksAllocationSizes() {
-  return allocator_->TracksAllocationSizes();
+  return track_sizes_locally_ || allocator_->TracksAllocationSizes();
 }
 
 size_t TrackingAllocator::RequestedSize(void* ptr) {
-  return allocator_->RequestedSize(ptr);
+  if (track_sizes_locally_) {
+    mutex_lock lock(mu_);
+    auto it = in_use_.find(ptr);
+    if (it != in_use_.end()) {
+      return (*it).second.requested_size;
+    }
+    return 0;
+  } else {
+    return allocator_->RequestedSize(ptr);
+  }
 }
 
 size_t TrackingAllocator::AllocatedSize(void* ptr) {
-  return allocator_->AllocatedSize(ptr);
+  if (track_sizes_locally_) {
+    mutex_lock lock(mu_);
+    auto it = in_use_.find(ptr);
+    if (it != in_use_.end()) {
+      return (*it).second.allocated_size;
+    }
+    return 0;
+  } else {
+    return allocator_->AllocatedSize(ptr);
+  }
 }
 
-std::pair<size_t, size_t> TrackingAllocator::GetSizesAndUnRef() {
+int64 TrackingAllocator::AllocationId(void* ptr) {
+  if (track_sizes_locally_) {
+    mutex_lock lock(mu_);
+    auto it = in_use_.find(ptr);
+    if (it != in_use_.end()) {
+      return (*it).second.allocation_id;
+    }
+    return 0;
+  } else {
+    return allocator_->AllocationId(ptr);
+  }
+}
+
+void TrackingAllocator::GetStats(AllocatorStats* stats) {
+  allocator_->GetStats(stats);
+}
+
+std::tuple<size_t, size_t, size_t> TrackingAllocator::GetSizesAndUnRef() {
   size_t high_watermark;
   size_t total_bytes;
+  size_t still_live_bytes;
   bool should_delete;
   {
     mutex_lock lock(mu_);
     high_watermark = high_watermark_;
     total_bytes = total_bytes_;
+    still_live_bytes = allocated_;
     should_delete = UnRef();
   }
   if (should_delete) {
     delete this;
   }
-  return std::make_pair(total_bytes, high_watermark);
+  return std::make_tuple(total_bytes, high_watermark, still_live_bytes);
 }
 
 bool TrackingAllocator::UnRef() {

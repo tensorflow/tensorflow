@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,12 +18,13 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -79,14 +80,23 @@ class EncodeJpegOp : public OpKernel {
     const Tensor& image = context->input(0);
     OP_REQUIRES(context, image.dims() == 3,
                 errors::InvalidArgument("image must be 3-dimensional",
-                                        image.shape().ShortDebugString()));
+                                        image.shape().DebugString()));
+
+    OP_REQUIRES(context, FastBoundsCheck(image.NumElements(),
+                                         std::numeric_limits<int32>::max()),
+                errors::InvalidArgument(
+                    "Cannot encode images with >= max int32 elements"));
+
+    const int32 dim_size0 = static_cast<int32>(image.dim_size(0));
+    const int32 dim_size1 = static_cast<int32>(image.dim_size(1));
+    const int32 dim_size2 = static_cast<int32>(image.dim_size(2));
 
     // Autodetect format if desired, otherwise make sure format and
     // image channels are consistent.
     int channels;
     jpeg::CompressFlags adjusted_flags = flags_;
     if (flags_.format == 0) {
-      channels = image.dim_size(2);
+      channels = dim_size2;
       if (channels == 1) {
         adjusted_flags.format = jpeg::FORMAT_GRAYSCALE;
       } else if (channels == 3) {
@@ -94,7 +104,7 @@ class EncodeJpegOp : public OpKernel {
       } else {
         OP_REQUIRES(context, false, errors::InvalidArgument(
                                         "image must have 1 or 3 channels, got ",
-                                        image.shape().ShortDebugString()));
+                                        image.shape().DebugString()));
       }
     } else {
       if (flags_.format == jpeg::FORMAT_GRAYSCALE) {
@@ -102,10 +112,10 @@ class EncodeJpegOp : public OpKernel {
       } else {  // RGB
         channels = 3;
       }
-      OP_REQUIRES(context, channels == image.dim_size(2),
+      OP_REQUIRES(context, channels == dim_size2,
                   errors::InvalidArgument("format ", format_, " expects ",
                                           channels, " channels, got ",
-                                          image.shape().ShortDebugString()));
+                                          image.shape().DebugString()));
     }
 
     // Encode image to jpeg string
@@ -113,9 +123,8 @@ class EncodeJpegOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES(context,
-                jpeg::Compress(image.flat<uint8>().data(), image.dim_size(1),
-                               image.dim_size(0), adjusted_flags,
-                               &output->scalar<string>()()),
+                jpeg::Compress(image.flat<uint8>().data(), dim_size1, dim_size0,
+                               adjusted_flags, &output->scalar<string>()()),
                 errors::Internal("JPEG encoding failed"));
   }
 

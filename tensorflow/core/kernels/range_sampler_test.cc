@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,14 +15,13 @@ limitations under the License.
 
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/kernels/range_sampler.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/env.h"
 
 namespace tensorflow {
 namespace {
@@ -67,7 +66,7 @@ class RangeSamplerTest : public ::testing::Test {
     sampler_->Update(a);
   }
   void Update2() {
-    // Add the value n n times.
+    // Add the value n times.
     int64 a[10];
     for (int i = 0; i < 10; i++) {
       a[i] = i;

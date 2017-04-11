@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <string>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -38,14 +38,14 @@ class TensorSlice {
   // -- from just a dimension (in this case it will create a full slice)
   // -- from an array of pairs of integers.
   // -- from a TensorSliceProto protocol buffer
-  // -- from a string format of "start,lenth:start,length..." where each
+  // -- from a string format of "start,length:start,length..." where each
   //    "start,length" pair represents the slice on one dimension. We allow a
   //    special "-" that means "everything for this dimension". One such example
   //    is:  0,10:-:14,1:-:-
   TensorSlice() {}
   explicit TensorSlice(int dim);
   explicit TensorSlice(const TensorSliceProto& proto);
-  explicit TensorSlice(std::initializer_list<std::pair<int, int>> extents);
+  explicit TensorSlice(std::initializer_list<std::pair<int64, int64>> extents);
 
   static Status Parse(const string& str, TensorSlice* output);
   static TensorSlice ParseOrDie(const string& str) {
@@ -62,39 +62,44 @@ class TensorSlice {
   // Accessors
   int dims() const { return starts_.size(); }
 
-  int start(int d) const {
+  int64 start(int d) const {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     return starts_[d];
   }
 
-  int length(int d) const {
+  int64 length(int d) const {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     return lengths_[d];
   }
 
-  int end(int d) const {
+  int64 end(int d) const {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     return start(d) + length(d);
   }
 
-  void set_start(int d, int x) {
+  void set_start(int d, int64 x) {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     DCHECK_GE(x, 0);
     starts_[d] = x;
   }
 
-  void set_length(int d, int x) {
+  void set_length(int d, int64 x) {
     DCHECK_GE(d, 0);
     DCHECK_LT(d, dims());
     lengths_[d] = x;
   }
 
   // If we have a full slice along dimension "d".
-  bool IsFullAt(int d) const { return lengths_[d] < 0; }
+  bool IsFullAt(int d) const {
+    return lengths_[d] == kFullExtent && starts_[d] == 0;
+  }
+
+  // If this is a full slice, i.e. IsFullAt(d) for every d.
+  bool IsFull() const;
 
   // Set the slice to be a full slice of "dim" dimensions
   void SetFullSlice(int dim);
@@ -129,6 +134,10 @@ class TensorSlice {
     return Intersect(other, nullptr);
   }
 
+  // Equals iff "*this" and "other" are logically equivalent.
+  bool operator==(const TensorSlice& other) const;
+  bool operator!=(const TensorSlice& other) const { return !(*this == other); }
+
   // Interaction with TensorShape.
 
   // Slices a shape and stores the result into *result_shape.
@@ -158,6 +167,16 @@ class TensorSlice {
   // otherwise the result is undefined.
   void ComputeRelative(const TensorSlice& sub, TensorSlice* relative) const;
 
+  // Updates the slice in such a way that it fully covers "other" slice.
+  // Note, "other" slice should refer to the same tensor shape.
+  // Example:
+  //   given a slice [2:4, :, 3:] and "other" slice [:, 1:4, 2:4] the
+  //   updated slice would be [:, :, 2:]. Here is why:
+  //   dim 0: "2:4"  U  ":"    ->  ":"
+  //   dim 1: ":"    U  "1-4"  ->  ":"
+  //   dim 2: "3:"   U  "2:4"  ->  "2:"
+  void UpdateToCover(const TensorSlice& other);
+
   // Returns true if the length field was specified in an Extent.
   static bool HasExtentLength(const TensorSliceProto::Extent& extent);
 
@@ -168,12 +187,12 @@ class TensorSlice {
  private:
   // a length value of kFullExtent (-1) means we have a full slice at this
   // dimension. It's defined in tensor_slice.cc.
-  static const int kFullExtent;
+  static const int64 kFullExtent;
 
   // TODO(yangke): switch to Eigen once it supports variable size arrays.
   // A value of
-  gtl::InlinedVector<int, 4> starts_;
-  gtl::InlinedVector<int, 4> lengths_;
+  gtl::InlinedVector<int64, 4> starts_;
+  gtl::InlinedVector<int64, 4> lengths_;
 };
 
 template <int NDIMS>

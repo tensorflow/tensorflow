@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+# This sub Makefile compiles libraries under this directory. This is designed to
+# be used as a sub Makefile with tensorflow/contrib/makefile/Makefile.
+# You can build targets in this file by including this sub makefile like:
+# $ make -f tensorflow/contrib/makefile/Makefile TARGET=<target> \
+# SUB_MAKEFILES=\
+# $(pwd)/tensorflow/contrib/makefile/sub_makefiles/quantization/Makefile.in \
+# (optional: NDK_ROOT=<ndk_root>) contrib_quantization_tests
+# TODO(satok): Support more targets
+
+GTEST_DIR := \
+$(MAKEFILE_DIR)/downloads/googletest/googletest
+
+GTEST_HEADERS = \
+$(wildcard $(GTEST_DIR)/include/gtest/*.h) \
+$(wildcard $(GTEST_DIR)/include/gtest/internal/*.h)
+
+GTEST_SRCS := \
+$(wildcard $(GTEST_DIR)/src/*.cc) \
+$(wildcard $(GTEST_DIR)/src/*.h) \
+$(GTEST_HEADERS)
+
+# CAVEAT: We should disable TENSORFLOW_DISABLE_META while running
+# quantized_matmul on Android because it crashes in
+# MultiThreadGemm in tensorflow/core/kernels/meta_support.cc
+# TODO(satok): Remove once it's fixed
+CXXFLAGS += -DTENSORFLOW_DISABLE_META
+
+GRAPH_TRANSFER_SRCS := \
+tensorflow/cc/framework/scope.cc \
+tensorflow/cc/framework/ops.cc \
+tensorflow/cc/ops/const_op.cc \
+tensorflow/core/kernels/hexagon/graph_transfer_utils.cc \
+tensorflow/core/kernels/hexagon/graph_transferer.cc \
+tensorflow/core/kernels/hexagon/graph_transferer_test.cc \
+tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \
+tensorflow/core/kernels/hexagon/hexagon_ops_definitions.cc \
+tensorflow/core/kernels/remote_fused_graph_execute_op.cc \
+tensorflow/core/ops/remote_fused_graph_ops.cc \
+tensorflow/core/platform/posix/test.cc
+
+QUANTIZATION_TEST_SRCS := \
+$(GRAPH_TRANSFER_SRCS) \
+tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc \
+tensorflow/core/kernels/hexagon/graph_transferer_test.cc \
+tensorflow/contrib/makefile/test/test_main.cc
+
+QUANTIZATION_TEST_OBJS := $(addprefix $(OBJDIR), $(QUANTIZATION_TEST_SRCS:.cc=.o))
+
+QUANTIZATION_TEST_NAME := quantization_tests
+QUANTIZATION_TEST_BIN_PATH := $(BINDIR)$(QUANTIZATION_TEST_NAME)
+
+INCLUDES += \
+-I$(MAKEFILE_DIR)/downloads/gemmlowp \
+-I$(MAKEFILE_DIR)/downloads/googletest/googletest/include
+
+QUANTIZATION_TEST_INCLUDES := $(INCLUDES)
+
+$(OBJDIR)gtest-all.o: $(GTEST_SRCS) $(QUANTIZATION_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(QUANTIZATION_TEST_INCLUDES) -I $(GTEST_DIR) -c \
+	$(GTEST_DIR)/src/gtest-all.cc -o $@
+
+$(LIBDIR)gtest.a: $(OBJDIR)gtest-all.o
+	@mkdir -p $(dir $@)
+	$(AR) $(ARFLAGS) $@ $^
+
+$(QUANTIZATION_TEST_BIN_PATH): $(LIB_PATH) $(LIBDIR)gtest.a $(QUANTIZATION_TEST_OBJS)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(QUANTIZATION_TEST_INCLUDES) \
+		-o $(QUANTIZATION_TEST_BIN_PATH) $(QUANTIZATION_TEST_OBJS) \
+		$(LIBFLAGS) $(LIB_PATH) $(LIBDIR)gtest.a $(LDFLAGS) $(LIBS)
+
+$(QUANTIZATION_TEST_NAME): $(QUANTIZATION_TEST_BIN_PATH)

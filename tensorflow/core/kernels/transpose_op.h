@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,18 +16,61 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_TRANSPOSE_OP_H_
 #define TENSORFLOW_KERNELS_TRANSPOSE_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 
-template <typename Device, typename T>
 class TransposeOp : public OpKernel {
  public:
-  explicit TransposeOp(OpKernelConstruction* context);
-  void Compute(OpKernelContext* context) override;
+  explicit TransposeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
+
+ protected:
+  virtual Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                             gtl::ArraySlice<int32> perm, Tensor* out) = 0;
 };
+
+class TransposeCpuOp : public TransposeOp {
+ public:
+  explicit TransposeCpuOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}
+
+ protected:
+  Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+};
+
+#ifdef INTEL_MKL
+class MklTransposeCpuOp : public TransposeOp {
+ public:
+  explicit MklTransposeCpuOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}
+
+ protected:
+  Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+};
+#endif  // INTEL_MKL
+
+class TransposeGpuOp : public TransposeOp {
+ public:
+  explicit TransposeGpuOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}
+
+ protected:
+  Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+};
+
+#ifdef TENSORFLOW_USE_SYCL
+class TransposeSyclOp : public TransposeOp {
+ public:
+  explicit TransposeSyclOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}
+
+ protected:
+  Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+};
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
 

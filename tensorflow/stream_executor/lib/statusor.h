@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -110,7 +110,7 @@ class StatusOr {
   //
   // NOTE: Not explicit - we want to use StatusOr<T> as a return type
   // so it is convenient and sensible to be able to do 'return T()'
-  // when when the return type is StatusOr<T>.
+  // when the return type is StatusOr<T>.
   //
   // REQUIRES: if T is a plain pointer, value != NULL.
   // In optimized builds, passing a NULL pointer here will have

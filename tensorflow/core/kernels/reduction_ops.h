@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,39 +25,6 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-// When eigen3 has better implementation of AllReducer and AnyReducer,
-// replaces reducers here.
-
-// Reduction using logical_and.
-struct AllReducer {
-  // TODO(zhifengc): Implement PacketAccess when performance matters.
-  static const bool PacketAccess = false;
-  static const bool IsStateful = false;
-
-  EIGEN_DEVICE_FUNC void reduce(const bool t, bool* accum) const {
-    *accum &= t;
-  }
-
-  EIGEN_DEVICE_FUNC bool initialize() const { return true; }
-
-  EIGEN_DEVICE_FUNC bool finalize(const bool accum) const { return accum; }
-};
-
-// Reduction using logical_or.
-struct AnyReducer {
-  // TODO(zhifengc): Implement PacketAccess when performance matters.
-  static const bool PacketAccess = false;
-  static const bool IsStateful = false;
-
-  EIGEN_DEVICE_FUNC void reduce(const bool t, bool* accum) const {
-    *accum |= t;
-  }
-
-  EIGEN_DEVICE_FUNC bool initialize() const { return false; }
-
-  EIGEN_DEVICE_FUNC bool finalize(const bool accum) const { return accum; }
-};
-
 template <typename Device, typename OUT_T, typename IN_T,
           typename ReductionAxes, typename Reducer>
 void ReduceEigenImpl(const Device& d, OUT_T out, IN_T in,
@@ -66,13 +33,46 @@ void ReduceEigenImpl(const Device& d, OUT_T out, IN_T in,
   out.device(d) = in.reduce(reduction_axes, reducer);
 }
 
-template <typename Device>
+// For most reducers, the identity is Reducer::initialize()
+template <typename Reducer>
+struct Identity {
+  static auto identity(const Reducer& reducer)
+      -> decltype(reducer.initialize()) {
+    return reducer.initialize();
+  }
+};
+
+// MeanReducer is a special case, since it doesn't technically have an identity.
+// Thus, ideally we'd return nan.  However, mean is instantiated for integer
+// types as well, so we do the nan override only for floating point types.
+#define FIX_MEAN_IDENTITY(T)                                    \
+  template <>                                                   \
+  struct Identity<Eigen::internal::MeanReducer<T>> {            \
+    static T identity(const Eigen::internal::MeanReducer<T>&) { \
+      return Eigen::NumTraits<T>::quiet_NaN();                  \
+    }                                                           \
+  };
+FIX_MEAN_IDENTITY(Eigen::half)
+FIX_MEAN_IDENTITY(float)
+FIX_MEAN_IDENTITY(double)
+FIX_MEAN_IDENTITY(complex64)
+FIX_MEAN_IDENTITY(complex128)
+#undef FIX_MEAN_IDENTITY
+
+template <typename Device, typename OUT_T, typename Reducer>
+void FillIdentityEigenImpl(const Device& d, OUT_T out, const Reducer& reducer) {
+  out.device(d) = out.constant(Identity<Reducer>::identity(reducer));
+}
+
+template <typename Device, typename Reducer>
 struct ReduceFunctor {
-  template <typename OUT_T, typename IN_T, typename ReductionAxes,
-            typename Reducer>
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
   static void Reduce(const Device& d, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer);
+
+  template <typename OUT_T>
+  static void FillIdentity(const Device& d, OUT_T out, const Reducer& reducer);
 };
 
 }  // namespace functor

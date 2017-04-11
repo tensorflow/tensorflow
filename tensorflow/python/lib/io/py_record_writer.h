@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
+#ifndef TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
+#define TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -33,7 +34,11 @@ class RecordWriter;
 // by multiple threads.
 class PyRecordWriter {
  public:
-  static PyRecordWriter* New(const string& filename);
+  // TODO(vrv): make this take a shared proto to configure
+  // the compression options.
+  static PyRecordWriter* New(const string& filename,
+                             const string& compression_type_string,
+                             TF_Status* out_status);
   ~PyRecordWriter();
 
   bool WriteRecord(tensorflow::StringPiece record);
@@ -50,4 +55,4 @@ class PyRecordWriter {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
+#endif  // TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_

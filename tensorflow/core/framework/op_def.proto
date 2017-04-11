@@ -1,7 +1,10 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
+option java_outer_classname = "OpDefProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
 
 import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/framework/types.proto";
@@ -82,14 +85,17 @@ message OpDef {
     int64 minimum = 6;
 
     // The set of allowed values.  Has type that is the "list" version
-    // of the "type" field above (uses the ..._list, fields of AttrValue).
-    // If type == "type" or "list(type)" above, then the type_list field
-    // of allowed_values has the set of allowed DataTypes.
-    // If type == "string" or "list(string)", then the s_list field has
-    // the set of allowed strings.
+    // of the "type" field above (uses the "list" field of AttrValue).
+    // If type == "type" or "list(type)" above, then the "type" field
+    // of "allowed_values.list" has the set of allowed DataTypes.
+    // If type == "string" or "list(string)", then the "s" field of
+    // "allowed_values.list" has the set of allowed strings.
     AttrValue allowed_values = 7;
   }
   repeated AttrDef attr = 4;
+
+  // Optional deprecation based on GraphDef versions.
+  OpDeprecation deprecation = 8;
 
   // One-line human-readable description of what the Op does.
   string summary = 5;
@@ -134,6 +140,15 @@ message OpDef {
   // field to true, to allow the Op to take an uninitialized Tensor as
   // input.
   bool allows_uninitialized_input = 19;  // for Assign, etc.
+};
+
+// Information about version-dependent deprecation of an op
+message OpDeprecation {
+  // First GraphDef version at which the op is disallowed.
+  int32 version = 1;
+
+  // Explanation of why it was deprecated and what to use instead.
+  string explanation = 2;
 };
 
 // A collection of OpDefs

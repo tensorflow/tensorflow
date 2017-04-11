@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,117 +17,21 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/numeric_op.h"
+#include "tensorflow/core/kernels/relu_op.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/relu_op.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-
-template <typename Device, typename T>
-class ReluOp : public UnaryElementWiseOp<T, ReluOp<Device, T>> {
- public:
-  using UnaryElementWiseOp<T, ReluOp<Device, T>>::UnaryElementWiseOp;
-
-  void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
-    functor::Relu<Device, T> functor;
-    functor(context->eigen_device<Device>(), input.flat<T>(),
-            output->flat<T>());
-  }
-};
-
-template <typename Device, typename T>
-class ReluGradOp : public BinaryElementWiseOp<T, ReluGradOp<Device, T>> {
- public:
-  using BinaryElementWiseOp<T, ReluGradOp<Device, T>>::BinaryElementWiseOp;
-
-  // INPUTS:
-  //   g (gradients): backpropagated gradients
-  //   a (inputs): inputs that were passed to ReluOp()
-  // OUTPUT:
-  //   gradients to backprop
-  template <int NDIMS>
-  void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
-               Tensor* output) {
-    OP_REQUIRES(context, a.IsSameSize(g),
-                errors::InvalidArgument("g and a must be the same size"));
-    functor::ReluGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
-  }
-};
-
-template <typename Device, typename T>
-class Relu6Op : public UnaryElementWiseOp<T, Relu6Op<Device, T>> {
- public:
-  using UnaryElementWiseOp<T, Relu6Op<Device, T>>::UnaryElementWiseOp;
-
-  void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
-    functor::Relu6<Device, T> functor;
-    functor(context->eigen_device<Device>(), input.flat<T>(),
-            output->flat<T>());
-  }
-};
-
-template <typename Device, typename T>
-class Relu6GradOp : public BinaryElementWiseOp<T, Relu6GradOp<Device, T>> {
- public:
-  using BinaryElementWiseOp<T, Relu6GradOp<Device, T>>::BinaryElementWiseOp;
-
-  // INPUTS:
-  //   g (gradients): backpropagated gradients
-  //   a (inputs): inputs that were passed to Relu6Op()
-  // OUTPUT:
-  //   gradients to backprop
-  template <int NDIMS>
-  void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
-               Tensor* output) {
-    OP_REQUIRES(context, a.IsSameSize(g),
-                errors::InvalidArgument("g and a must be the same size"));
-    functor::Relu6Grad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
-  }
-};
-
-template <typename Device, typename T>
-class EluOp : public UnaryElementWiseOp<T, EluOp<Device, T>> {
- public:
-  using UnaryElementWiseOp<T, EluOp<Device, T>>::UnaryElementWiseOp;
-
-  void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
-    functor::Elu<Device, T> functor;
-    functor(context->eigen_device<Device>(), input.flat<T>(),
-            output->flat<T>());
-  }
-};
-
-template <typename Device, typename T>
-class EluGradOp : public BinaryElementWiseOp<T, EluGradOp<Device, T>> {
- public:
-  using BinaryElementWiseOp<T, EluGradOp<Device, T>>::BinaryElementWiseOp;
-
-  // INPUTS:
-  //   g (gradients): backpropagated gradients
-  //   a (outputs): outputs of the EluOp()
-  // OUTPUT:
-  //   gradients to backprop
-  template <int NDIMS>
-  void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
-               Tensor* output) {
-    OP_REQUIRES(context, a.IsSameSize(g),
-                errors::InvalidArgument("g and a must be the same size"));
-    functor::EluGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
-  }
-};
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 #define REGISTER_RELU_KERNELS(type)                                   \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -229,5 +133,31 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+// Registration of the GPU implementations.
+#define REGISTER_SYCL_KERNELS(type)                                    \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Relu").Device(DEVICE_SYCL).TypeConstraint<type>("T"),      \
+      ReluOp<SYCLDevice, type>);                                       \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("ReluGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"),  \
+      ReluGradOp<SYCLDevice, type>);                                   \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Relu6").Device(DEVICE_SYCL).TypeConstraint<type>("T"),     \
+      Relu6Op<SYCLDevice, type>);                                      \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Relu6Grad").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      Relu6GradOp<SYCLDevice, type>);                                  \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Elu").Device(DEVICE_SYCL).TypeConstraint<type>("T"),       \
+      EluOp<SYCLDevice, type>);                                        \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("EluGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
+      EluGradOp<SYCLDevice, type>)
+
+REGISTER_SYCL_KERNELS(float);
+#undef REGISTER_SYCL_KERNELS
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

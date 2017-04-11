@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   bool Launch(Stream *stream, const ThreadDim &thread_dims,
               const BlockDim &block_dims, const KernelBase &k,
-              const std::vector<KernelArg> &args) override;
+              const KernelArgsArrayBase &args) override;
 
   void *Allocate(uint64 size) override;
 
@@ -108,18 +108,21 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   bool SynchronousMemSet(DeviceMemoryBase *location, int value,
                          uint64 size) override;
 
-  bool SynchronousMemcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
-                         uint64 size) override;
+  port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+                                 const void *host_src, uint64 size) override;
 
-  bool SynchronousMemcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
-                         uint64 size) override;
+  port::Status SynchronousMemcpy(void *host_dst,
+                                 const DeviceMemoryBase &gpu_src,
+                                 uint64 size) override;
 
-  bool SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
-                                       const DeviceMemoryBase &gpu_src,
-                                       uint64 size) override;
+  port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
+                                               const DeviceMemoryBase &gpu_src,
+                                               uint64 size) override;
 
   bool MemZero(Stream *stream, DeviceMemoryBase *location,
                uint64 size) override;
+  bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+              uint64 size) override;
   bool Memset32(Stream *stream, DeviceMemoryBase *location, uint32 pattern,
                 uint64 size) override;
 
@@ -184,9 +187,6 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   // will be only partially populated as a result, and an error will be logged.
   bool FillBlockDimLimit(BlockDim *block_dim_limit) const;
 
-  KernelArg DeviceMemoryToKernelArg(
-      const DeviceMemoryBase &gpu_mem) const override;
-
   bool SupportsBlas() const override;
 
   blas::BlasSupport *CreateBlas() override;
@@ -215,7 +215,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   void *CudaContextHack() override;
 
-  CUcontext cuda_context();
+  CudaContext* cuda_context();
 
  private:
   // Attempts to find a more specific version of the file indicated by
@@ -237,12 +237,10 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   bool GetKernelMetadata(CUDAKernel *cuda_kernel,
                          KernelMetadata *kernel_metadata);
 
-  // Determines if the given kernel's occupancy could be improved by only
-  // slightly reducing its register usage. If so, a message is emitted to the
-  // INFO log. The warning threshold is controlled by the flag
-  // register_occupancy_warning_threshold.
-  void OccupancyCheck(const KernelBase &kernel, const ThreadDim &thread_dims,
-                      const BlockDim &block_dims);
+  // Prints to VLOG(2) information about the kernel's occupancy and how it might
+  // be improved.
+  void VlogOccupancyInfo(const KernelBase &kernel, const ThreadDim &thread_dims,
+                         const BlockDim &block_dims);
 
   // Guards the on-disk-module mapping.
   mutex disk_modules_mu_;
@@ -270,7 +268,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   CUdevice device_;
 
   // Handle for session with the library/driver. Immutable post-initialization.
-  CUcontext context_;
+  CudaContext* context_;
 
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.

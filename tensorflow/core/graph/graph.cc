@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 
+#include <vector>
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -25,12 +26,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+const int Graph::kControlSlot = -1;
+
 // Node
 
 string Node::DebugString() const {
-  if (this == nullptr) {
-    return "{nullptr}";
-  }
   string ret = strings::StrCat("{name:'", name(), "' id:", id_);
   if (IsSource()) {
     strings::StrAppend(&ret, " source}");
@@ -83,17 +83,24 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   } while (0)
 
   SET_CLASS(NC_SWITCH, ts, "Switch", "RefSwitch");
-  SET_CLASS(NC_MERGE, ts, "Merge", "");
+  SET_CLASS(NC_MERGE, ts, "Merge", "RefMerge");
   SET_CLASS(NC_ENTER, ts, "Enter", "RefEnter");
-  SET_CLASS(NC_EXIT, ts, "Exit", "");
-  SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "");
+  SET_CLASS(NC_EXIT, ts, "Exit", "RefExit");
+  SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "RefNextIteration");
   SET_CLASS(NC_LOOP_COND, ts, "LoopCond", "");
   SET_CLASS(NC_CONTROL_TRIGGER, ts, "ControlTrigger", "");
-  SET_CLASS(NC_SEND, ts, "_Send", "_HostSend");
-  SET_CLASS(NC_RECV, ts, "_Recv", "_HostRecv");
+  SET_CLASS(NC_SEND, ts, "_Send", "");
+  SET_CLASS(NC_HOST_SEND, ts, "_HostSend", "");
+  SET_CLASS(NC_RECV, ts, "_Recv", "");
+  SET_CLASS(NC_HOST_RECV, ts, "_HostRecv", "");
   SET_CLASS(NC_CONSTANT, ts, "Const", "HostConst");
   SET_CLASS(NC_VARIABLE, ts, "Variable", "");
+  SET_CLASS(NC_VARIABLE, ts, "VariableV2", "");
   SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
+  SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandle", "");
+  SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandleV2", "");
+  SET_CLASS(NC_GET_SESSION_TENSOR, ts, "GetSessionTensor", "");
+  SET_CLASS(NC_DELETE_SESSION_TENSOR, ts, "DeleteSessionTensor", "");
   if (class_ == NC_UNINITIALIZED) {
     class_ = NC_OTHER;  // Catch all
   }
@@ -125,6 +132,84 @@ gtl::iterator_range<NeighborIter> Node::in_nodes() const {
                          NeighborIter(in_edges_.end(), true));
 }
 
+void Node::MaybeCopyOnWrite() {
+  // Properties may be shared between Nodes. Make a copy if so.
+  if (!props_->RefCountIsOne()) {
+    Properties* new_props =
+        new Properties(props_->op_def_, props_->node_def_, props_->input_types_,
+                       props_->output_types_);
+    props_->Unref();
+    props_ = new_props;
+  }
+}
+
+void Node::ClearAttr(const string& name) {
+  MaybeCopyOnWrite();
+  (*props_->node_def_.mutable_attr()).erase(name);
+}
+
+Status Node::input_edge(int idx, const Edge** e) const {
+  if (idx < 0 || idx >= num_inputs()) {
+    return errors::InvalidArgument("Invalid input_edge index: ", idx, ", Node ",
+                                   name(), " only has ", num_inputs(),
+                                   " inputs.");
+  }
+
+  // This does a linear search over the edges.  In the common case,
+  // the number of elements is small enough that this search isn't
+  // expensive.  Should it become a bottleneck, one can make an
+  // optimization where, if the number of edges is small, we use
+  // linear iteration, and if the number of edges is large, we perform
+  // an indexing step during construction that keeps an array of Edges
+  // indexed by pointer.  This would keep the size of each Node small
+  // in the common case but make this function faster when the number
+  // of edges is large.
+  for (const Edge* edge : in_edges()) {
+    if (edge->dst_input() == idx) {
+      *e = edge;
+      return Status::OK();
+    }
+  }
+
+  return errors::NotFound("Could not find input edge ", idx, " for ", name());
+}
+
+// Returns a vector of the non-control input edges to a node, indexed by ID.
+Status Node::input_edges(std::vector<const Edge*>* input_edges) const {
+  input_edges->clear();
+  input_edges->resize(num_inputs(), nullptr);
+
+  for (const Edge* edge : in_edges()) {
+    if (edge->IsControlEdge()) continue;
+    if (edge->dst_input() < 0 || edge->dst_input() >= num_inputs()) {
+      return errors::Internal("Invalid edge input number ", edge->dst_input());
+    }
+    if ((*input_edges)[edge->dst_input()] != nullptr) {
+      return errors::Internal("Duplicate edge input number: ",
+                              edge->dst_input());
+    }
+    (*input_edges)[edge->dst_input()] = edge;
+  }
+
+  for (int i = 0; i < num_inputs(); ++i) {
+    if ((*input_edges)[i] == nullptr) {
+      return errors::InvalidArgument("Missing edge input number: ", i);
+    }
+  }
+  return Status::OK();
+}
+
+Status Node::input_node(int idx, const Node** n) const {
+  const Edge* e;
+  TF_RETURN_IF_ERROR(input_edge(idx, &e));
+  if (e == nullptr) {
+    *n = nullptr;
+  } else {
+    *n = e->src();
+  }
+  return Status::OK();
+}
+
 // Node::Properties
 
 Node::Properties::Properties(const OpDef* op_def, const NodeDef& node_def,
@@ -140,7 +225,10 @@ Node::Properties::~Properties() {}
 // Graph
 
 Graph::Graph(const OpRegistryInterface* ops)
-    : ops_(ops), version_(TF_GRAPH_DEF_VERSION), arena_(8 << 10 /* 8kB */) {
+    : ops_(ops, FunctionDefLibrary()), arena_(8 << 10 /* 8kB */) {
+  versions_.set_producer(TF_GRAPH_DEF_VERSION);
+  versions_.set_min_consumer(TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
+
   // Source and sink have no endpoints, just control edges.
   NodeDef def;
   def.set_name("_SOURCE");
@@ -156,6 +244,12 @@ Graph::Graph(const OpRegistryInterface* ops)
   CHECK_EQ(sink->id(), kSinkId);
 
   AddControlEdge(source, sink);
+}
+
+Graph::Graph(const FunctionLibraryDefinition& flib_def)
+    : Graph(flib_def.default_registry()) {
+  Status s = ops_.AddLibrary(flib_def);
+  CHECK(s.ok()) << s.error_message();
 }
 
 Graph::~Graph() {
@@ -174,8 +268,9 @@ Graph::~Graph() {
 }
 
 Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
-  const OpDef* op_def = ops_->LookUp(node_def.op(), status);
-  if (op_def == nullptr) return nullptr;
+  const OpDef* op_def;
+  status->Update(ops_.LookUpOpDef(node_def.op(), &op_def));
+  if (!status->ok()) return nullptr;
 
   DataTypeVector inputs;
   DataTypeVector outputs;
@@ -249,11 +344,11 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
 void Graph::RemoveEdge(const Edge* e) {
   DCHECK(IsValidNode(e->src_)) << e->src_->DebugString();
   DCHECK(IsValidNode(e->dst_)) << e->dst_->DebugString();
-  CHECK_EQ(e->src_->out_edges_.erase(e), 1);
-  CHECK_EQ(e->dst_->in_edges_.erase(e), 1);
+  CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
+  CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
   CHECK_EQ(e, edges_[e->id_]);
 
-  CHECK_EQ(edge_set_.erase(e), 1);
+  CHECK_EQ(edge_set_.erase(e), size_t{1});
   edges_[e->id_] = nullptr;
 
   Edge* del = const_cast<Edge*>(e);
@@ -263,6 +358,45 @@ void Graph::RemoveEdge(const Edge* e) {
   del->src_output_ = kControlSlot - 1;
   del->dst_input_ = kControlSlot - 1;
   free_edges_.push_back(del);
+}
+
+Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+  for (const FunctionDef& fdef : fdef_lib.function()) {
+    const FunctionDef* preexisting_fdef = ops_.Find(fdef.signature().name());
+    if (preexisting_fdef != nullptr) {
+      if (!FunctionDefsEqual(*preexisting_fdef, fdef)) {
+        return errors::InvalidArgument(
+            "Cannot add function '", fdef.signature().name(),
+            "' because a different function with the same name already "
+            "exists.");
+      }
+      // Ignore duplicate FunctionDefs
+      continue;
+    }
+    // TODO(skyewm): fix test breakages and reenable this check
+    // const OpDef* op_def;
+    // if (ops_.LookUpOpDef(fdef.signature().name(), &op_def).ok()) {
+    //   return errors::InvalidArgument(
+    //       "Cannot add function '", fdef.signature().name(),
+    //       "' because an op with the same name already exists.");
+    // }
+    TF_RETURN_IF_ERROR(ops_.AddFunctionDef(fdef));
+  }
+  for (const GradientDef& grad : fdef_lib.gradient()) {
+    string preexisting_grad_func = ops_.FindGradient(grad.function_name());
+    if (!preexisting_grad_func.empty()) {
+      if (preexisting_grad_func != grad.gradient_func()) {
+        return errors::InvalidArgument(
+            "Cannot assign gradient function '", grad.gradient_func(), "' to '",
+            grad.function_name(), "' because it already has gradient function ",
+            "'", preexisting_grad_func, "'");
+      }
+      // Ignore duplicate GradientDefs
+      continue;
+    }
+    TF_RETURN_IF_ERROR(ops_.AddGradientDef(grad));
+  }
+  return Status::OK();
 }
 
 namespace {
@@ -280,12 +414,18 @@ void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
 }  // namespace
 
 void Graph::ToGraphDef(GraphDef* graph_def) const {
+  ToGraphDefSubRange(graph_def, 0);
+}
+
+void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
-  graph_def->set_version(version());
+  *graph_def->mutable_versions() = versions();
+  *graph_def->mutable_library() = ops_.ToProto();
   std::vector<const Edge*>
       inputs;  // Construct this outside the loop for speed.
-  for (const Node* node : nodes()) {
-    if (!node->IsOp()) continue;
+  for (auto id = from_node_id; id < num_node_ids(); ++id) {
+    const Node* node = FindNodeId(id);
+    if (node == nullptr || !node->IsOp()) continue;
     NodeDef* node_def = graph_def->add_node();
     *node_def = node->def();
 
@@ -303,7 +443,13 @@ void Graph::ToGraphDef(GraphDef* graph_def) const {
       if (edge->IsControlEdge()) {
         inputs.push_back(edge);
       } else {
-        DCHECK(inputs[edge->dst_input()] == nullptr);
+        CHECK(inputs[edge->dst_input()] == nullptr)
+            << "Edge " << edge->src()->DebugString() << ":"
+            << edge->dst()->DebugString() << " with dst_input "
+            << edge->dst_input() << " and had pre-existing input edge "
+            << inputs[edge->dst_input()]->src()->DebugString() << ":"
+            << inputs[edge->dst_input()]->dst()->DebugString();
+
         inputs[edge->dst_input()] = edge;
       }
     }
@@ -350,6 +496,7 @@ Node* Graph::AllocateNode(Node::Properties* props, const Node* cost_node) {
   int cost_id = cost_node ? cost_node->cost_id() : id;
   node->Initialize(id, cost_id, props);
   nodes_.push_back(node);
+  ++num_nodes_;
   return node;
 }
 
@@ -357,6 +504,7 @@ void Graph::ReleaseNode(Node* node) {
   DCHECK(IsValidNode(node)) << node->DebugString();
   nodes_[node->id()] = nullptr;
   free_nodes_.push_back(node);
+  --num_nodes_;
   node->Clear();
 }
 

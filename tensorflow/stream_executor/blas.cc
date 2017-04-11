@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,6 +64,23 @@ string SideString(Side s) {
       return "Right";
     default:
       LOG(FATAL) << "Unknown side " << static_cast<int32>(s);
+  }
+}
+
+string ComputationTypeString(ComputationType ty) {
+  switch (ty) {
+    case ComputationType::kF16:
+      return "f16";
+    case ComputationType::kF32:
+      return "f32";
+    case ComputationType::kF64:
+      return "f64";
+    case ComputationType::kComplexF32:
+      return "complex f32";
+    case ComputationType::kComplexF64:
+      return "complex f64";
+    default:
+      LOG(FATAL) << "Unknown ComputationType " << static_cast<int32>(ty);
   }
 }
 

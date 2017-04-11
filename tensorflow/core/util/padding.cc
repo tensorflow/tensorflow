@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status GetNodeAttr(const NodeDef& node_def, const string& attr_name,
+Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
                    Padding* value) {
   string str_value;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, attr_name, &str_value));

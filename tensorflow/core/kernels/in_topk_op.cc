@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,10 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/op_kernel.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
@@ -55,12 +56,24 @@ class InTopK : public OpKernel {
     const auto size = targets.size();
     const auto num_classes = predictions.dimension(1);
     for (int b = 0; b < size; b++) {
-      T target_prediction = predictions(b, targets(b));
+      auto target = internal::SubtleMustCopy(targets(b));
+      OP_REQUIRES(context, FastBoundsCheck(target, num_classes),
+                  errors::InvalidArgument("targets[", b, "] is out of range"));
+      T target_prediction = predictions(b, target);
+      bool cannot_say = !std::isfinite(target_prediction);
       int more_probable_classes = 0;
-      for (int i = 0; i < num_classes; ++i) {
-        if (predictions(b, i) > target_prediction) ++more_probable_classes;
+      if (!cannot_say) {
+        for (int i = 0; i < num_classes; ++i) {
+          T pred = predictions(b, i);
+          if (!std::isfinite(pred)) {
+            cannot_say = true;
+            break;
+          } else if (pred > target_prediction) {
+            ++more_probable_classes;
+          }
+        }
       }
-      out(b) = more_probable_classes < k_;
+      out(b) = cannot_say ? false : (more_probable_classes < k_);
     }
   }
 
@@ -68,13 +81,11 @@ class InTopK : public OpKernel {
   int k_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("InTopK")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<int32>("T"),
-                        InTopK<float, int32>);
-REGISTER_KERNEL_BUILDER(Name("InTopK")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("T"),
-                        InTopK<float, int64>);
+REGISTER_KERNEL_BUILDER(
+    Name("InTopK").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
+    InTopK<float, int32>);
+REGISTER_KERNEL_BUILDER(
+    Name("InTopK").Device(DEVICE_CPU).TypeConstraint<int64>("T"),
+    InTopK<float, int64>);
 
 }  // namespace tensorflow

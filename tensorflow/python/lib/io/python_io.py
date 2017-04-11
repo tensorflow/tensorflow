@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,36 +13,26 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Data IO (Python Functions)
+"""Python functions for directly manipulating TFRecord-formatted files.
 
-A TFRecords file represents a sequence of (binary) strings.  The format is not
-random access, so it is suitable for streaming large amounts of data but not
-suitable if fast sharding or other non-sequential access is desired.
+See the @{$python/python_io} guide.
 
 @@TFRecordWriter
 @@tf_record_iterator
-
-- - -
-
-### TFRecords Format Details
-
-A TFRecords file contains a sequence of strings with CRC hashes.  Each record
-has the format
-
-    uint64 length
-    uint32 masked_crc32_of_length
-    byte   data[length]
-    uint32 masked_crc32_of_data
-
-and the records are concatenated together to produce the file.  The CRC32s
-are [described here](https://en.wikipedia.org/wiki/Cyclic_redundancy_check),
-and the mask of a CRC is
-
-    masked_crc = ((crc >> 15) | (crc << 17)) + 0xa282ead8ul
+@@TFRecordCompressionType
+@@TFRecordOptions
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
 from tensorflow.python.lib.io.tf_record import *
+# pylint: enable=wildcard-import
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = []
+
+remove_undocumented(__name__, _allowed_symbols)

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,13 +23,15 @@ import traceback
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated
 
 
 __all__ = ["make_template"]
 
 
-def make_template(name_, func_, **kwargs):
+def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
+                  custom_getter_=None, **kwargs):
   """Given an arbitrary function, wrap it so that it does variable sharing.
 
   This wraps `func_` in a Template and partially evaluates it. Templates are
@@ -43,7 +45,7 @@ def make_template(name_, func_, **kwargs):
      that are intended to be locals can be created by specifying
      `tf.Variable(..., trainable=false)`.
   * The function may use variable scopes and other templates internally to
-      create and reuse variables, but it shouldn't use `tf.get_variables` to
+      create and reuse variables, but it shouldn't use `tf.global_variables` to
       capture variables that are defined outside of the scope of the function.
   * Internal scopes and variable names should not depend on any arguments that
       are not supplied to `make_template`. In general you will get a ValueError
@@ -98,29 +100,47 @@ def make_template(name_, func_, **kwargs):
     w2 = scale_by_y2(input2)
   ```
 
-  Note: The full variable scope is captured at the time of the first call.
+  Depending on the value of `create_scope_now_`, the full variable scope may be
+  captured either at the time of first call or at the time of construction. If
+  this option is set to True, then all Tensors created by repeated calls to the
+  template will have an extra trailing _N+1 to their name, as the first time the
+  scope is entered in the Template constructor no Tensors are created.
 
-  Note: `name_` and `func_` have a following underscore to reduce the likelihood
-  of collisions with kwargs.
+  Note: `name_`, `func_` and `create_scope_now_` have a trailing underscore to
+  reduce the likelihood of collisions with kwargs.
 
   Args:
     name_: A name for the scope created by this template. If necessary, the name
       will be made unique by appending `_N` to the name.
     func_: The function to wrap.
+    create_scope_now_: Boolean controlling whether the scope should be created
+      when the template is constructed or when the template is called. Default
+      is False, meaning the scope is created when the template is called.
+    unique_name_: When used, it overrides name_ and is not made unique. If a
+      template of the same scope/unique_name already exists and reuse is false,
+      an error is raised. Defaults to None.
+    custom_getter_: Optional custom getter for variables used in `func_`. See
+      the @{tf.get_variable} `custom_getter` documentation for
+      more information.
     **kwargs: Keyword arguments to apply to `func_`.
 
   Returns:
-    A function that will enter a `variable_scope` before calling `func_`. The
-    first time it is called, it will create a non-reusing scope so that the
-    variables will be unique.  On each subsequent call, it will reuse those
-    variables.
+    A function to encapsulate a set of variables which should be created once
+    and reused. An enclosing scope will created, either where `make_template`
+    is called, or wherever the result is called, depending on the value of
+    `create_scope_now_`. Regardless of the value, the first time the template
+    is called it will enter the scope with no reuse, and call `func_` to create
+    variables, which are guaranteed to be unique. All subsequent calls will
+    re-enter the scope and reuse those variables.
 
   Raises:
     ValueError: if the name is None.
   """
   if kwargs:
     func_ = functools.partial(func_, **kwargs)
-  return Template(name_, func_)
+  return Template(
+      name_, func_, create_scope_now=create_scope_now_,
+      unique_name=unique_name_, custom_getter=custom_getter_)
 
 
 def _skip_common_stack_elements(stacktrace, base_case):
@@ -137,17 +157,34 @@ class Template(object):
   Templates are functions that create variables the first time they are called
   and reuse them thereafter. See `make_template` for full documentation.
 
-  Note: The full variable scope is captured at the time of the first call.
+  Note: By default, the full variable scope is captured at the time of first
+  call. If `create_scope_now_` is passed as True to the constructor, the full
+  scope will be captured there, but no variables will created until the first
+  call.
   """
 
-  def __init__(self, name, func):
+  def __init__(self, name, func, create_scope_now=False, unique_name=None,
+               custom_getter=None):
     """Creates a template for the given function.
 
     Args:
       name: A name for the scope created by this template. The
         name will be made unique by appending `_N` to the it (see how
-        `tf.variable_op_scope` treats the `default_name` for details).
+        `tf.variable_scope` treats the `default_name` for details).
       func: The function to apply each time.
+      create_scope_now: Whether to create the scope at Template construction
+        time, rather than first call. Defaults to false. Creating the scope at
+        construction time may be more convenient if the template is to passed
+        through much lower level code, and you want to be sure of the scope
+        name without knowing exactly where it will be first called. If set to
+        True, the scope will be created in the constructor, and all subsequent
+        times in __call__, leading to a trailing numeral being added to the
+        names of all created Tensors. If set to False, the scope will be created
+        at the first call location.
+      unique_name: When used, it overrides name_ and is not made unique. If a
+        template of the same scope/unique_name already exists and reuse is
+        false, an error is raised. Defaults to None.
+      custom_getter: optional custom getter to pass to variable_scope()
 
     Raises:
       ValueError: if the name is None.
@@ -155,13 +192,25 @@ class Template(object):
     self._func = func
     self._stacktrace = traceback.format_stack()[:-2]
     self._name = name
+    self._unique_name = unique_name
+    self._custom_getter = custom_getter
     if name is None:
       raise ValueError("name cannot be None.")
-    self._var_scope = None
+    if create_scope_now:
+      with variable_scope._pure_variable_scope(  # pylint:disable=protected-access
+          (self._unique_name or
+           variable_scope._get_unique_variable_scope(self._name)),  # pylint:disable=protected-access
+          custom_getter=self._custom_getter) as vs:
+        self._variable_scope = vs
+    else:
+      self._variable_scope = None
+    # This variable keeps track of whether the template has been called yet,
+    # which is not the same as whether the scope has been created.
+    self._variables_created = False
 
   def _call_func(self, args, kwargs, check_for_new_variables):
     try:
-      vars_at_start = len(ops.get_collection(ops.GraphKeys.VARIABLES))
+      vars_at_start = len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
       trainable_at_start = len(
           ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
@@ -180,7 +229,7 @@ class Template(object):
         # Non-trainable tracking variables are a legitimate reason why a new
         # variable would be created, but it is a relatively advanced use-case,
         # so log it.
-        variables = ops.get_collection(ops.GraphKeys.VARIABLES)
+        variables = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
         if vars_at_start != len(variables):
           logging.info("New variables created when calling a template after "
                        "the first time, perhaps you used tf.Variable when you "
@@ -204,12 +253,41 @@ class Template(object):
       raise
 
   def __call__(self, *args, **kwargs):
-    # Capture the name of the variable_scope here because if we capture at
-    # construction, then name_scopes would have a '_N+1' suffix.
-    if self._var_scope:
-      with variable_scope.variable_scope(self._var_scope, reuse=True):
-        return self._call_func(args, kwargs, check_for_new_variables=True)
+    if self._variable_scope:
+      if self._variables_created:
+        # This is not the first visit to __call__, so variables have already
+        # been created, and we want to reuse them.
+        with variable_scope.variable_scope(self._variable_scope, reuse=True):
+          return self._call_func(args, kwargs, check_for_new_variables=True)
+      else:
+        # This is the first visit to __call__, but the scope has already been
+        # created in the constructor. Set _variables_created after the inner
+        # function is successfully called so that subsequent calls take the if
+        # branch above.
+        with variable_scope.variable_scope(self._variable_scope):
+          result = self._call_func(args, kwargs, check_for_new_variables=False)
+          self._variables_created = True
+          return result
     else:
-      with variable_scope.variable_op_scope([], None, self._name) as vs:
-        self._var_scope = vs
-        return self._call_func(args, kwargs, check_for_new_variables=False)
+      # The scope was not created at construction time, so create it here.
+      # Subsequent calls should reuse variables.
+      with variable_scope.variable_scope(
+          self._unique_name, self._name,
+          custom_getter=self._custom_getter) as vs:
+        self._variable_scope = vs
+        result = self._call_func(args, kwargs, check_for_new_variables=False)
+        self._variables_created = True
+        return result
+
+  @property
+  def variable_scope(self):
+    """Returns the variable scope object created by this Template."""
+    return self._variable_scope
+
+  @property
+  @deprecated(
+      "2017-02-21", "The .var_scope property is deprecated. Please change your "
+      "code to use the .variable_scope property")
+  def var_scope(self):
+    """Returns the variable scope object created by this Template."""
+    return self._variable_scope

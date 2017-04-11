@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -28,8 +28,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/prefetch.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/public/tensor.h"
 
 namespace tensorflow {
 namespace {
@@ -39,7 +40,6 @@ namespace {
 template <typename T>
 static void ConcatHelper(int iters, int concat_dimension, int dim2) {
   testing::StopTiming();
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
 
   DataType dt = DataTypeToEnum<T>::v();
@@ -91,7 +91,6 @@ BENCHMARK(BM_ConcatDim1bfloat16)->Arg(1000)->Arg(100000)->Arg(1000000);
 template <typename T>
 static void ConcatManyHelper(int iters, int concat_dimension, int dim2) {
   testing::StopTiming();
-  RequireDefaultOps();
   Graph* g = new Graph(OpRegistry::Global());
 
   DataType dt = DataTypeToEnum<T>::v();
@@ -138,8 +137,8 @@ static void MemcpyAlternativeHelper(int iters, int concat_dimension, int dim2) {
                           ((kDim1 * dim2) + (kDim1 * dim2)) * sizeof(float));
   testing::StartTiming();
   while (--iters > 0) {
-    const int n0 = data1.size();
-    const int n1 = data2.size();
+    const size_t n0 = data1.size();
+    const size_t n1 = data2.size();
     float* result = new float[n0 + n1];
     memcpy(&result[0], &data1[0], n0 * sizeof(float));
     memcpy(&result[n0], &data2[0], n1 * sizeof(float));

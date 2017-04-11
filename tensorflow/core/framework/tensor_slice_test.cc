@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_slice.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -29,9 +29,11 @@ TEST(TensorSliceTest, Basic) {
     // Repeatedly setting FullSlice should work.
     TensorSlice s(3);
     EXPECT_EQ("-:-:-", s.DebugString());
+    EXPECT_TRUE(s.IsFull());
 
     s.SetFullSlice(4);
     EXPECT_EQ("-:-:-:-", s.DebugString());
+    EXPECT_TRUE(s.IsFull());
   }
 }
 
@@ -41,6 +43,7 @@ TEST(TensorSliceTest, Serialization) {
   {
     TensorSlice s({{0, -1}, {0, 10}, {14, 1}, {0, -1}});
     EXPECT_EQ("-:0,10:14,1:-", s.DebugString());
+    EXPECT_TRUE(!s.IsFull());
   }
 
   {
@@ -58,6 +61,7 @@ TEST(TensorSliceTest, Serialization) {
     ASSERT_TRUE(protobuf::TextFormat::ParseFromString(ptxt, &proto));
     TensorSlice s(proto);
     EXPECT_EQ("-:0,10:14,1:-", s.DebugString());
+    EXPECT_TRUE(!s.IsFull());
   }
 
   // Parsing
@@ -71,6 +75,7 @@ TEST(TensorSliceTest, Serialization) {
         "extent { start: 1 length: 3 } "
         "extent { start: 4 length: 5 }",
         proto.ShortDebugString());
+    EXPECT_TRUE(!s.IsFull());
   }
 
   // Failed parsing
@@ -90,6 +95,30 @@ TEST(TensorSliceTest, Serialization) {
         "Invalid argument: "
         "Expected non-negative start and positive length but got "
         "start = -1, length = 3: string = -:-1,3",
+        s.ToString());
+  }
+
+  // int64 parsing
+  {
+    TensorSlice s =
+        TensorSlice::ParseOrDie("9223372036854775807,9223372036854775807");
+    TensorSliceProto proto;
+    s.AsProto(&proto);
+    EXPECT_EQ(
+        "extent { start: 9223372036854775807 length: 9223372036854775807 }",
+        proto.ShortDebugString());
+    EXPECT_TRUE(!s.IsFull());
+  }
+
+  // int64 parsing failure
+  {
+    TensorSlice slice;
+    Status s =
+        TensorSlice::Parse("19223372036854775808,19223372036854775808", &slice);
+    EXPECT_EQ(
+        "Invalid argument: Expected a pair of numbers or '-' but got "
+        "'19223372036854775808,19223372036854775808': string = "
+        "19223372036854775808,19223372036854775808",
         s.ToString());
   }
 }
@@ -156,16 +185,11 @@ TEST(TensorSliceTest, SliceTensorShape) {
     TensorSlice a = TensorSlice::ParseOrDie("1,1:-:4,1:2,6");
     TensorShape x({2, 4, 5, 8});
     TensorShape y;
-    EXPECT_OK(a.SliceTensorShape(x, &y));
-    EXPECT_EQ(
-        "dim { size: 1 } "
-        "dim { size: 4 } "
-        "dim { size: 1 } "
-        "dim { size: 6 }",
-        y.DebugString());
+    TF_EXPECT_OK(a.SliceTensorShape(x, &y));
+    EXPECT_EQ("[1,4,1,6]", y.DebugString());
   }
 
-  // An invalid application -- dimension 2 is out of bound
+  // An invalid application -- dimension 2 is out of bounds
   {
     TensorSlice a = TensorSlice::ParseOrDie("1,1:1,4:-:-");
     TensorShape x({2, 4, 5, 8});
@@ -173,13 +197,9 @@ TEST(TensorSliceTest, SliceTensorShape) {
     EXPECT_EQ(
         "Internal: "
         "Extent in dimension 1 out of bounds: "
-        "shape = dim { size: 2 } "
-        "dim { size: 4 } "
-        "dim { size: 5 } "
-        "dim { size: 8 }, "
-        "slice = 1,1:1,4:-:-",
+        "shape = [2,4,5,8], slice = 1,1:1,4:-:-",
         a.SliceTensorShape(x, &y).ToString());
-    EXPECT_EQ("", y.DebugString());
+    EXPECT_EQ("[]", y.DebugString());
   }
 }
 
@@ -253,8 +273,51 @@ TEST(TensorSliceTest, Deserialization) {
   TensorSlice ts3(proto3);
 
   // Both serializations should be interpreted the same.
-  EXPECT_EQ("0,5:0,10:14,1:-:-", ts2.DebugString());
-  EXPECT_EQ("0,5:0,10:14,1:-:-", ts3.DebugString());
+  EXPECT_EQ("0,5:0,10:14,1:1,-1:-", ts2.DebugString());
+  EXPECT_EQ("0,5:0,10:14,1:1,-1:-", ts3.DebugString());
+}
+
+TEST(TensorSliceTest, UpdateToCover) {
+  // [2:4, :, 3:]
+  TensorSlice s({{2, 2}, {0, -1}, {3, 7}});
+  // [:, 1:4, 2:4]
+  TensorSlice other({{0, -1}, {1, 3}, {2, 2}});
+
+  s.UpdateToCover(other);
+  // [:, :, 2:]
+  EXPECT_EQ("-:-:2,8", s.DebugString());
+}
+
+TEST(TensorSliceTest, IsFull) {
+  TensorSlice slice(3);
+  EXPECT_TRUE(slice.IsFull());
+
+  TensorSlice slice2({{0, -1}});
+  EXPECT_TRUE(slice2.IsFull());
+
+  TensorSlice slice3({{0, -1}, {0, -1}, {14, 1}});
+  EXPECT_TRUE(!slice3.IsFull());
+}
+
+TEST(TensorSliceTest, Equality) {
+  {  // Dims are different.
+    TensorSlice slice1(3);
+    TensorSlice slice2(2);
+    EXPECT_TRUE(slice1 != slice2);
+    EXPECT_TRUE(slice2 != slice1);
+  }
+  {  // Both are 3-dim full slices.
+    TensorSlice slice1(3);
+    TensorSlice slice2({{0, -1}, {0, -1}, {0, -1}});
+    EXPECT_TRUE(slice1 == slice2);
+    EXPECT_TRUE(slice2 == slice1);
+  }
+  {  // Differs in one dimension.
+    TensorSlice slice1(3);
+    TensorSlice slice2({{0, -1}, {0, 1}, {0, -1}});
+    EXPECT_TRUE(slice1 != slice2);
+    EXPECT_TRUE(slice2 != slice1);
+  }
 }
 
 }  // namespace

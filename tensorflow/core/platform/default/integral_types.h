@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,9 @@ limitations under the License.
 
 #ifndef TENSORFLOW_PLATFORM_DEFAULT_INTEGRAL_TYPES_H_
 #define TENSORFLOW_PLATFORM_DEFAULT_INTEGRAL_TYPES_H_
+
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/types.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/types.h
 
 namespace tensorflow {
 

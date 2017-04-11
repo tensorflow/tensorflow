@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/queue_interface.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -32,8 +33,13 @@ class QueueOpKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback callback) final {
     QueueInterface* queue;
-    OP_REQUIRES_OK_ASYNC(ctx, GetResourceFromContext(ctx, "handle", &queue),
-                         callback);
+    if (ctx->input_dtype(0) == DT_RESOURCE) {
+      OP_REQUIRES_OK_ASYNC(
+          ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &queue), callback);
+    } else {
+      OP_REQUIRES_OK_ASYNC(ctx, GetResourceFromContext(ctx, "handle", &queue),
+                           callback);
+    }
     ComputeAsync(ctx, queue, [callback, queue]() {
       queue->Unref();
       callback();
@@ -76,7 +82,12 @@ class EnqueueOp : public QueueAccessOpKernel {
  protected:
   void ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                     DoneCallback callback) override {
-    DataTypeVector expected_inputs = {DT_STRING_REF};
+    DataTypeVector expected_inputs;
+    if (ctx->input_dtype(0) == DT_RESOURCE) {
+      expected_inputs.push_back(DT_RESOURCE);
+    } else {
+      expected_inputs.push_back(DT_STRING_REF);
+    }
     for (DataType dt : queue->component_dtypes()) {
       expected_inputs.push_back(dt);
     }
@@ -92,6 +103,11 @@ class EnqueueOp : public QueueAccessOpKernel {
     }
 
     OP_REQUIRES_OK_ASYNC(ctx, queue->ValidateTuple(tuple), callback);
+    if (ctx->track_allocations()) {
+      // We can get persistent memory size of the queue when it is kept full, no
+      // matter whether it is before or after the enqueue.
+      ctx->record_host_persistent_memory_allocation(queue->MemoryUsed());
+    }
     queue->TryEnqueue(tuple, ctx, callback);
   }
 
@@ -100,6 +116,7 @@ class EnqueueOp : public QueueAccessOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("QueueEnqueue").Device(DEVICE_CPU), EnqueueOp);
+REGISTER_KERNEL_BUILDER(Name("QueueEnqueueV2").Device(DEVICE_CPU), EnqueueOp);
 
 // Defines an EnqueueManyOp, the execution of which slices each
 // component of a tuple of tensors along the 0th dimension, and
@@ -122,7 +139,12 @@ class EnqueueManyOp : public QueueAccessOpKernel {
  protected:
   void ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                     DoneCallback callback) override {
-    DataTypeVector expected_inputs = {DT_STRING_REF};
+    DataTypeVector expected_inputs;
+    if (ctx->input_dtype(0) == DT_RESOURCE) {
+      expected_inputs.push_back(DT_RESOURCE);
+    } else {
+      expected_inputs.push_back(DT_STRING_REF);
+    }
     for (DataType dt : queue->component_dtypes()) {
       expected_inputs.push_back(dt);
     }
@@ -138,6 +160,9 @@ class EnqueueManyOp : public QueueAccessOpKernel {
     }
 
     OP_REQUIRES_OK_ASYNC(ctx, queue->ValidateManyTuple(tuple), callback);
+    if (ctx->track_allocations()) {
+      ctx->record_host_persistent_memory_allocation(queue->MemoryUsed());
+    }
     queue->TryEnqueueMany(tuple, ctx, callback);
   }
 
@@ -148,6 +173,8 @@ class EnqueueManyOp : public QueueAccessOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("QueueEnqueueMany").Device(DEVICE_CPU),
+                        EnqueueManyOp);
+REGISTER_KERNEL_BUILDER(Name("QueueEnqueueManyV2").Device(DEVICE_CPU),
                         EnqueueManyOp);
 
 // Defines a DequeueOp, the execution of which dequeues a tuple of
@@ -165,9 +192,15 @@ class DequeueOp : public QueueAccessOpKernel {
  protected:
   void ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
                     DoneCallback callback) override {
-    OP_REQUIRES_OK_ASYNC(
-        ctx, ctx->MatchSignature({DT_STRING_REF}, queue->component_dtypes()),
-        callback);
+    if (ctx->input_dtype(0) == DT_RESOURCE) {
+      OP_REQUIRES_OK_ASYNC(
+          ctx, ctx->MatchSignature({DT_RESOURCE}, queue->component_dtypes()),
+          callback);
+    } else {
+      OP_REQUIRES_OK_ASYNC(
+          ctx, ctx->MatchSignature({DT_STRING_REF}, queue->component_dtypes()),
+          callback);
+    }
 
     queue->TryDequeue(ctx, [ctx, callback](const QueueInterface::Tuple& tuple) {
       if (!ctx->status().ok()) {
@@ -191,6 +224,7 @@ class DequeueOp : public QueueAccessOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("QueueDequeue").Device(DEVICE_CPU), DequeueOp);
+REGISTER_KERNEL_BUILDER(Name("QueueDequeueV2").Device(DEVICE_CPU), DequeueOp);
 
 // Defines a DequeueManyOp, the execution of which concatenates the
 // requested number of elements from the given Queue along the 0th
@@ -214,18 +248,26 @@ class DequeueManyOp : public QueueAccessOpKernel {
     const Tensor& Tnum_elements = ctx->input(1);
     int32 num_elements = Tnum_elements.flat<int32>()(0);
 
-    OP_REQUIRES_ASYNC(
-        ctx, num_elements >= 0,
-        errors::InvalidArgument("DequeueManyOp must request a positive number "
-                                "of elements"),
-        callback);
+    OP_REQUIRES_ASYNC(ctx, num_elements >= 0,
+                      errors::InvalidArgument("DequeueManyOp requested ",
+                                              num_elements, " < 0 elements"),
+                      callback);
 
-    OP_REQUIRES_OK_ASYNC(ctx, ctx->MatchSignature({DT_STRING_REF, DT_INT32},
-                                                  queue->component_dtypes()),
-                         callback);
+    if (ctx->input_dtype(0) == DT_RESOURCE) {
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           ctx->MatchSignature({DT_RESOURCE, DT_INT32},
+                                               queue->component_dtypes()),
+                           callback);
+    } else {
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           ctx->MatchSignature({DT_STRING_REF, DT_INT32},
+                                               queue->component_dtypes()),
+                           callback);
+    }
 
     queue->TryDequeueMany(
-        num_elements, ctx, [ctx, callback](const QueueInterface::Tuple& tuple) {
+        num_elements, ctx, false /* allow_small_batch */,
+        [ctx, callback](const QueueInterface::Tuple& tuple) {
           if (!ctx->status().ok()) {
             callback();
             return;
@@ -249,6 +291,94 @@ class DequeueManyOp : public QueueAccessOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("QueueDequeueMany").Device(DEVICE_CPU),
                         DequeueManyOp);
+REGISTER_KERNEL_BUILDER(Name("QueueDequeueManyV2").Device(DEVICE_CPU),
+                        DequeueManyOp);
+
+// Defines a DequeueUpToOp, the execution of which concatenates the
+// requested number of elements from the given Queue along the 0th
+// dimension, and emits the result as a single tuple of tensors.
+//
+// The difference between this op and DequeueMany is the handling when
+// the Queue is closed.  While the DequeueMany op will return if there
+// an error when there are less than num_elements elements left in the
+// closed queue, this op will return between 1 and
+// min(num_elements, elements_remaining_in_queue), and will not block.
+// If there are no elements left, then the standard DequeueMany error
+// is returned.
+//
+// This op only works if the underlying Queue implementation accepts
+// the allow_small_batch = true parameter to TryDequeueMany.
+// If it does not, an errors::Unimplemented exception is returned.
+//
+// The op has two inputs:
+// - Input 0: the handle to a queue.
+// - Input 1: the number of elements to dequeue.
+//
+// The op has k outputs, where k is the number of components in the
+// tuples stored in the given Queue, and output i is the ith component
+// of the dequeued tuple.
+//
+// The op has one attribute: allow_small_batch.  If the Queue supports
+// it, setting this to true causes the queue to return smaller
+// (possibly zero length) batches when it is closed, up to however
+// many elements are available when the op executes.  In this case,
+// the Queue does not block when closed.
+class DequeueUpToOp : public QueueAccessOpKernel {
+ public:
+  explicit DequeueUpToOp(OpKernelConstruction* context)
+      : QueueAccessOpKernel(context) {}
+
+ protected:
+  void ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
+                    DoneCallback callback) override {
+    const Tensor& Tnum_elements = ctx->input(1);
+    int32 num_elements = Tnum_elements.flat<int32>()(0);
+
+    OP_REQUIRES_ASYNC(ctx, num_elements >= 0,
+                      errors::InvalidArgument("DequeueUpToOp requested ",
+                                              num_elements, " < 0 elements"),
+                      callback);
+
+    if (ctx->input_dtype(0) == DT_RESOURCE) {
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           ctx->MatchSignature({DT_RESOURCE, DT_INT32},
+                                               queue->component_dtypes()),
+                           callback);
+    } else {
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           ctx->MatchSignature({DT_STRING_REF, DT_INT32},
+                                               queue->component_dtypes()),
+                           callback);
+    }
+
+    queue->TryDequeueMany(
+        num_elements, ctx, true /* allow_small_batch */,
+        [ctx, callback](const QueueInterface::Tuple& tuple) {
+          if (!ctx->status().ok()) {
+            callback();
+            return;
+          }
+          OpOutputList output_components;
+          OP_REQUIRES_OK_ASYNC(
+              ctx, ctx->output_list("components", &output_components),
+              callback);
+          for (int i = 0; i < ctx->num_outputs(); ++i) {
+            output_components.set(i, tuple[i]);
+          }
+          callback();
+        });
+  }
+
+  ~DequeueUpToOp() override {}
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(DequeueUpToOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name("QueueDequeueUpTo").Device(DEVICE_CPU),
+                        DequeueUpToOp);
+REGISTER_KERNEL_BUILDER(Name("QueueDequeueUpToV2").Device(DEVICE_CPU),
+                        DequeueUpToOp);
 
 // Defines a QueueCloseOp, which closes the given Queue. Closing a
 // Queue signals that no more elements will be enqueued in it.
@@ -274,6 +404,7 @@ class QueueCloseOp : public QueueOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("QueueClose").Device(DEVICE_CPU), QueueCloseOp);
+REGISTER_KERNEL_BUILDER(Name("QueueCloseV2").Device(DEVICE_CPU), QueueCloseOp);
 
 // Defines a QueueSizeOp, which computes the number of elements in the
 // given Queue, and emits it as an output tensor.
@@ -300,5 +431,28 @@ class QueueSizeOp : public QueueOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("QueueSize").Device(DEVICE_CPU), QueueSizeOp);
+REGISTER_KERNEL_BUILDER(Name("QueueSizeV2").Device(DEVICE_CPU), QueueSizeOp);
+
+class FakeQueueOp : public OpKernel {
+ public:
+  explicit FakeQueueOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->allocate_persistent(DT_STRING, TensorShape({2}),
+                                                &handle_, nullptr));
+  }
+
+  void Compute(OpKernelContext* context) {
+    ResourceHandle ref = context->input(0).flat<ResourceHandle>()(0);
+    handle_.AccessTensor(context)->flat<string>()(0) = ref.container();
+    handle_.AccessTensor(context)->flat<string>()(1) = ref.name();
+    context->set_output_ref(0, &mu_, handle_.AccessTensor(context));
+  }
+
+ private:
+  mutex mu_;
+  PersistentTensor handle_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("FakeQueue").Device(DEVICE_CPU), FakeQueueOp);
 
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +15,55 @@ limitations under the License.
 
 #include "tensorflow/core/util/device_name_utils.h"
 
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+
+namespace {
+
+bool RoundTripParsedName(const string& original, const string& expected) {
+  DeviceNameUtils::ParsedName p;
+  if (!DeviceNameUtils::ParseFullName(original, &p)) {
+    return false;
+  }
+  string round_tripped = DeviceNameUtils::ParsedNameToString(p);
+  return (round_tripped == expected);
+}
+
+enum NamePart { kJob = 0x01, kReplica = 0x02, kTask = 0x04, kDevice = 0x08 };
+
+bool RoundTripPartialName(int parts_to_test, const std::vector<string>& parts,
+                          bool explicitDevice) {
+  string original, expected;
+  if (parts_to_test & kJob) {
+    strings::StrAppend(&original, "/job:", parts[0]);
+    strings::StrAppend(&expected, "/job:", parts[0]);
+  }
+  if (parts_to_test & kReplica) {
+    strings::StrAppend(&original, "/replica:", parts[1]);
+    strings::StrAppend(&expected, "/replica:", parts[1]);
+  }
+  if (parts_to_test & kTask) {
+    strings::StrAppend(&original, "/task:", parts[2]);
+    strings::StrAppend(&expected, "/task:", parts[2]);
+  }
+  if (parts_to_test & kDevice) {
+    if (explicitDevice) {
+      strings::StrAppend(&original, "/device:", parts[3]);
+      strings::StrAppend(&expected, "/device:", parts[3]);
+    } else {
+      strings::StrAppend(&original, "/", parts[3]);
+      strings::StrAppend(&expected, "/device:", str_util::Uppercase(parts[3]));
+    }
+  }
+  return RoundTripParsedName(original, expected);
+}
+
+}  // namespace
 
 TEST(DeviceNameUtilsTest, Basic) {
   EXPECT_EQ(DeviceNameUtils::FullName("hello", 1, 2, "CPU", 3),
@@ -204,6 +247,30 @@ TEST(DeviceNameUtilsTest, Basic) {
     EXPECT_FALSE(DeviceNameUtils::ParseLocalName("abc", &p));
     EXPECT_FALSE(DeviceNameUtils::ParseLocalName("myspecialdevice", &p));
   }
+
+  // Test that all parts are round-tripped correctly.
+  {
+    for (int i = 0; i < 0x10; ++i) {
+      EXPECT_TRUE(RoundTripPartialName(i, {"foo", "3", "2", "CPU:3"},
+                                       /*explicitDevice=*/false));
+      EXPECT_TRUE(RoundTripPartialName(i, {"foo", "3", "2", "GPU:3"},
+                                       /*explicitDevice=*/false));
+      EXPECT_TRUE(RoundTripPartialName(i, {"foo", "3", "2", "cpu:3"},
+                                       /*explicitDevice=*/false));
+      EXPECT_TRUE(RoundTripPartialName(i, {"foo", "3", "2", "gpu:3"},
+                                       /*explicitDevice=*/false));
+      EXPECT_TRUE(RoundTripPartialName(i, {"foo", "3", "2", "CPU:3"},
+                                       /*explicitDevice=*/true));
+      EXPECT_TRUE(RoundTripPartialName(i, {"foo", "3", "2", "GPU:3"},
+                                       /*explicitDevice=*/true));
+      EXPECT_TRUE(RoundTripPartialName(i, {"foo", "3", "2", "cpu:3"},
+                                       /*explicitDevice=*/true));
+      EXPECT_TRUE(RoundTripPartialName(i, {"foo", "3", "2", "gpu:3"},
+                                       /*explicitDevice=*/true));
+      EXPECT_TRUE(RoundTripPartialName(i, {"foo", "3", "2", "someDevice:3"},
+                                       /*explicitDevice=*/true));
+    }
+  }
 }
 
 static bool IsCSHelper(StringPiece pattern, StringPiece actual) {
@@ -300,11 +367,11 @@ static void MergeDevNamesHelperImpl(const string& name_a, const string& name_b,
                                     const string& expected_merge_name,
                                     bool allow_soft_placement) {
   DeviceNameUtils::ParsedName target_a = Name(name_a);
-  EXPECT_OK(DeviceNameUtils::MergeDevNames(&target_a, Name(name_b),
-                                           allow_soft_placement));
+  TF_EXPECT_OK(DeviceNameUtils::MergeDevNames(&target_a, Name(name_b),
+                                              allow_soft_placement));
   DeviceNameUtils::ParsedName target_b = Name(name_b);
-  EXPECT_OK(DeviceNameUtils::MergeDevNames(&target_b, Name(name_a),
-                                           allow_soft_placement));
+  TF_EXPECT_OK(DeviceNameUtils::MergeDevNames(&target_b, Name(name_a),
+                                              allow_soft_placement));
   EXPECT_EQ(target_a, target_b);
   EXPECT_EQ(target_a, Name(expected_merge_name));
   EXPECT_EQ(target_b, Name(expected_merge_name));

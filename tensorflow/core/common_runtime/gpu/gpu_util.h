@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,13 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_UTIL_H_
 #define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_UTIL_H_
 
-#include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/gpu/dma_helper.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-
-#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
 
@@ -36,27 +34,13 @@ class GPUUtil {
   // "tensor" is GPU-local.  "dev" is the hosting GPU.
   // "device_context" should be the context of the GPU "_Send" op
   // which provides the Tensor.
-  // Sets all necessasry fields of "proto" by transferring value
+  // Sets all necessary fields of "proto" by transferring value
   // bytes from GPU to CPU RAM. "is_dead" indicates that the
   // tensor is dead with an uninit value.
   static void SetProtoFromGPU(const Tensor& tensor, Device* dev,
                               const DeviceContext* device_context,
                               TensorProto* proto, bool is_dead,
                               StatusCallback done);
-
-  // Copies "input" to "output" between devices accessible to the
-  // local process via some DMA-like method.  "edge_name" is the name
-  // of the tensor being copied, for debugging purposes. Depending on
-  // the type of devices and memory in use, the copy may be performed
-  // synchronously or asynchronously.  'done' will be invoked only
-  // after the copy is actually complete.
-  static void CopyViaDMA(const string& edge_name,
-                         DeviceContext* send_dev_context,
-                         DeviceContext* recv_dev_context, Device* src,
-                         Device* dst, const AllocatorAttributes src_alloc_attr,
-                         const AllocatorAttributes dst_alloc_attr,
-                         const Tensor* input, Tensor* output,
-                         StatusCallback done);
 
   // Copies the data in 'gpu_tensor' into 'cpu_tensor'.
   // 'gpu_tensor''s backing memory must be on 'gpu_device' and
@@ -82,7 +66,17 @@ class GPUUtil {
   // (up to a limit).  "device" can be either a CPU or a GPU device.
   static string MemoryDebugString(const Device* device, Tensor* tensor);
 
-  static perftools::gputools::DeviceMemory<float> AsGPUFloat(const Tensor& t);
+  // Map a Tensor as a DeviceMemory object wrapping the given typed
+  // buffer.
+  //
+  // NOTE: will be removed soon, see StreamExecutorUtil::AsDeviceMemory
+  // instead.
+  template <typename T>
+  static perftools::gputools::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
+    T* ptr = reinterpret_cast<T*>(const_cast<void*>(DMAHelper::base(&t)));
+    return perftools::gputools::DeviceMemory<T>(
+        perftools::gputools::DeviceMemoryBase(ptr, t.TotalBytes()));
+  }
 
   // Computes a checksum over the contents of "tensor", which is allocated
   // on "gpu_device".
@@ -98,6 +92,24 @@ class GPUUtil {
                                  const DeviceContext* device_context,
                                  Device* gpu_device, Tensor* gpu_tensor,
                                  StatusCallback done);
+
+  static void DeviceToDeviceCopy(DeviceContext* send_dev_context,
+                                 DeviceContext* recv_dev_context, Device* src,
+                                 Device* dst,
+                                 AllocatorAttributes src_alloc_attr,
+                                 AllocatorAttributes dst_alloc_attr,
+                                 const Tensor* input, Tensor* output,
+                                 StatusCallback done);
+
+  // Deep-copying of GPU tensor on the same device.
+  // 'src_gpu_tensor''s and 'dst_gpu_tensor''s backing memory must be on
+  // 'gpu_device' and 'dst_cpu_tensor' must be allocated to be of the same
+  // size as 'src_gpu_tensor'.
+  static void CopyGPUTensorToSameGPU(Device* gpu_device,
+                                     const DeviceContext* device_context,
+                                     const Tensor* src_gpu_tensor,
+                                     Tensor* dst_gpu_tensor,
+                                     StatusCallback done);
 };
 
 }  // namespace tensorflow

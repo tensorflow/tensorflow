@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,6 +35,9 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
 #define TENSORFLOW_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
 
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/thread_annotations.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/thread_annotations.h
+
 #if defined(__clang__) && (!defined(SWIG))
 #define THREAD_ANNOTATION_ATTRIBUTE__(x) __attribute__((x))
 #else
@@ -69,6 +72,15 @@ limitations under the License.
 
 #define ACQUIRED_BEFORE(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(acquired_before(__VA_ARGS__))
+
+#define ACQUIRE(...) \
+  THREAD_ANNOTATION_ATTRIBUTE__(acquire_capability(__VA_ARGS__))
+
+#define ACQUIRE_SHARED(...) \
+  THREAD_ANNOTATION_ATTRIBUTE__(acquire_shared_capability(__VA_ARGS__))
+
+#define RELEASE(...) \
+  THREAD_ANNOTATION_ATTRIBUTE__(release_capability(__VA_ARGS__))
 
 // Document a function that expects a mutex to be held prior to entry.
 // The mutex is expected to be held both on entry to and exit from the
@@ -144,11 +156,6 @@ limitations under the License.
 // C++ syntax, but which are present for documentation purposes.  These
 // annotations will be ignored by the analysis.
 #define TS_UNCHECKED(x) ""
-
-// Disables warnings for a single read operation.  This can be used to do racy
-// reads of guarded data members, in cases where the race is benign.
-#define TS_UNCHECKED_READ(x) \
-  ::tensorflow::thread_safety_analysis::ts_unchecked_read(x)
 
 namespace tensorflow {
 namespace thread_safety_analysis {

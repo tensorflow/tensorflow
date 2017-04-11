@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER4(BinaryOp, CPU, "Greater", functor::greater, float, double, int32,
-          int64);
+REGISTER8(BinaryOp, CPU, "Greater", functor::greater, float, Eigen::half,
+          double, int32, int64, uint8, int8, int16);
 #if GOOGLE_CUDA
-REGISTER3(BinaryOp, GPU, "Greater", functor::greater, float, double, int64);
-#endif
+REGISTER7(BinaryOp, GPU, "Greater", functor::greater, float, Eigen::half,
+          double, int64, uint8, int8, int16);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -32,5 +32,20 @@ REGISTER_KERNEL_BUILDER(Name("Greater")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::greater<int32>>);
+#endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER(BinaryOp, SYCL, "Greater", functor::greater, float);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Greater")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::greater<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

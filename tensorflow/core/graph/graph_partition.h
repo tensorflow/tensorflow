@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
@@ -39,7 +40,7 @@ struct PartitionOptions {
 
   // A function that returns the incarnation of a device given the
   // device's fullname. If not found, GetIncarnationFunc should return
-  // kIlledgalIncarnation.
+  // kIllegalIncarnation.
   static const uint64 kIllegalIncarnation = 0;
   typedef std::function<uint64(const string&)> GetIncarnationFunc;
   GetIncarnationFunc get_incarnation = nullptr;
@@ -53,7 +54,7 @@ struct PartitionOptions {
   // flow code incremental based on 'node_to_loc'. This makes the
   // communication a broadcast tree, which could be more efficient when
   // the number of participating devices is large.
-  bool control_flow_added;
+  bool control_flow_added = false;
 
   // A function that returns the data type into which the tensor
   // should be cast before sent over the wire.

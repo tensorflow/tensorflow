@@ -1,0 +1,127 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-graph-board/tf-graph-board.html">
+<link rel="import" href="../tf-graph-loader/tf-graph-loader.html">
+<link rel="import" href="../tf-graph/tf-graph-controls.html">
+
+<!--
+Stand alone element of tf-graph for embedding.
+
+The pbtxt format is the stringified version of the graphdef.
+
+    <tf-graph-app pbtxt="[[pbtxt]]"></tf-graph-app>
+
+    import tensorflow as tf
+    life = tf.constant(2, name='life')
+    universe = tf.constant(40, name='universe')
+    everything = tf.constant(0, name='everything')
+    lifeuniverse = tf.add(life, universe)
+    answer = tf.add(lifeuniverse, everything, name='answer')
+    open("graph.pbtxt", "w").write(str(tf.get_default_graph().as_graph_def()))
+
+@demo demo/index.html
+-->
+<dom-module id="tf-graph-app">
+<template>
+<style>
+
+:host /deep/ {
+  font-family: 'Roboto', sans-serif;
+}
+
+.main {
+  position: absolute;
+  right: 0;
+  left: 250px;
+  height: 100%;
+}
+
+.side {
+  position: absolute;
+  left: 0;
+  width: 250px;
+  height: 100%;
+  border: 1px solid black;
+  box-sizing: border-box;
+}
+
+.all {
+  position: relative;
+  width: 100%;
+  height: 100%
+}
+
+.container {
+  height: 650px;
+}
+
+</style>
+<div class="container">
+  <div class="all">
+    <div class="side">
+      <tf-graph-controls
+          color-by-params="[[colorByParams]]"
+          stats="[[stats]]"
+          color-by="{{colorBy}}"
+          render-hierarchy="[[_renderHierarchy]]"
+      ></tf-graph-controls>
+      <tf-graph-loader id="loader"
+          out-graph-hierarchy="{{graphHierarchy}}"
+          out-graph="{{graph}}"
+          out-stats="{{stats}}"
+          progress="{{_progress}}"
+      ></tf-graph-loader>
+    </div>
+    <div class="main">
+      <tf-graph-board id="graphboard"
+          graph-hierarchy="[[graphHierarchy]]"
+          graph="[[graph]]"
+          stats="[[stats]]"
+          progress="[[_progress]]"
+          color-by="[[colorBy]]"
+          color-by-params="{{colorByParams}}"
+          render-hierarchy="{{_renderHierarchy}}"
+      ></tf-graph-board>
+    </div>
+  </div>
+</div>
+</template>
+</dom-module>
+
+<script>
+(function(){
+
+Polymer({
+  is: 'tf-graph-app',
+  properties: {
+    stats: Object,
+    pbtxt: {
+      type: String,
+      observer: '_updateGraph',
+    },
+    _renderHierarchy: Object,
+    _progress: Object
+  },
+  _updateGraph: function() {
+    var blob = new Blob([this.pbtxt]);
+    this.$.loader._parseAndConstructHierarchicalGraph(null, blob);
+  }
+});
+})();
+</script>

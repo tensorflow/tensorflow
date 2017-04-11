@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,26 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/public/tensor.h"
-#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 
 static Graph* BM_AdjustContrast(int batches, int width, int height) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor in(DT_UINT8, TensorShape({batches, width, height, 3}));
-  in.flat<uint8>().setRandom();
+  Tensor in(DT_FLOAT, TensorShape({batches, width, height, 3}));
+  in.flat<float>().setRandom();
   Tensor factor(DT_FLOAT, TensorShape({}));
   factor.flat<float>().setConstant(1.2);
 
   Node* ret;
-  NodeBuilder(g->NewName("n"), "AdjustContrastv2")
-      .Input(test::graph::Constant(g, in))
-      .Input(test::graph::Constant(g, factor))
-      .Finalize(g, &ret);
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "AdjustContrastv2")
+                  .Input(test::graph::Constant(g, in))
+                  .Input(test::graph::Constant(g, factor))
+                  .Finalize(g, &ret));
   return g;
 }
 
@@ -49,8 +49,8 @@ static Graph* BM_AdjustContrast(int batches, int width, int height) {
 // Benchmark results as of cl/109478777
 // (note that the definition has changed to perform no min/max or clamping,
 // so a comparison to cl/106323955 is inherently unfair)
-// The GPU test ran with -c opt --config=gcudacc --copt=-mavx, CPU ran without
-// --config=gcudacc because for some reason that killed throughput measurement.
+// The GPU test ran with -c opt --config=cuda --copt=-mavx, CPU ran without
+// --config=cuda because for some reason that killed throughput measurement.
 // CPU: Intel Haswell with HyperThreading (6 cores) dL1:32KB dL2:256KB dL3:15MB
 // GPU: Tesla K40m
 // BM_AdjustContrast_cpu_1_299_299     179084     340186  2181  751.9M items/s

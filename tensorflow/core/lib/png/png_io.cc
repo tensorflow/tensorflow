@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,17 +17,18 @@ limitations under the License.
 
 #include <string.h>
 #include <sys/types.h>
+#include <zlib.h>
 #include <string>
 #include <utility>
 #include <vector>
-// NOTE(skal): we don't '#include <setjmp.h>' before png/png.h as it otherwise
+// NOTE(skal): we don't '#include <setjmp.h>' before png.h as it otherwise
 // provokes a compile error. We instead let png.h include what is needed.
 
-#include "external/png_archive/libpng-1.2.53/png.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/png/png_io.h"
+#include "tensorflow/core/platform/cpu_info.h"  // endian
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"  // endian
+#include "tensorflow/core/platform/png.h"
 
 namespace tensorflow {
 namespace png {
@@ -46,8 +47,14 @@ namespace {
 
 // Convert from 8 bit components to 16. This works in-place.
 static void Convert8to16(const uint8* p8, int num_comps, int p8_row_bytes,
-                         int width, int height, uint16* p16,
+                         int width, int height_in, uint16* p16,
                          int p16_row_bytes) {
+  // Force height*row_bytes computations to use 64 bits. Height*width is
+  // enforced to < 29 bits in decode_png_op.cc, but height*row_bytes is
+  // height*width*channels*(8bit?1:2) which is therefore only constrained to <
+  // 33 bits.
+  int64 height = static_cast<int64>(height_in);
+
   // Adjust pointers to copy backwards
   width *= num_comps;
   CPTR_INC(uint8, p8, (height - 1) * p8_row_bytes + (width - 1) * sizeof(*p8));
@@ -58,7 +65,7 @@ static void Convert8to16(const uint8* p8, int num_comps, int p8_row_bytes,
   for (; height-- != 0;
        CPTR_INC(uint8, p8, bump8), PTR_INC(uint16, p16, bump16)) {
     for (int w = width; w-- != 0; --p8, --p16) {
-      uint pix = *p8;
+      uint32 pix = *p8;
       pix |= pix << 8;
       *p16 = static_cast<uint16>(pix);
     }
@@ -146,7 +153,10 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
   if (components != NULL) {
     switch (context.color_type) {
       case PNG_COLOR_TYPE_PALETTE:
-        *components = (context.info_ptr->valid & PNG_INFO_tRNS) ? 4 : 3;
+        *components =
+            (png_get_valid(context.png_ptr, context.info_ptr, PNG_INFO_tRNS))
+                ? 4
+                : 3;
         break;
       case PNG_COLOR_TYPE_GRAY:
         *components = 1;
@@ -170,8 +180,11 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
   }
   if (metadata != NULL) {
     metadata->clear();
-    for (int i = 0; i < context.info_ptr->num_text; i++) {
-      const png_text& text = context.info_ptr->text[i];
+    png_textp text_ptr = NULL;
+    int num_text = 0;
+    png_get_text(context.png_ptr, context.info_ptr, &text_ptr, &num_text);
+    for (int i = 0; i < num_text; i++) {
+      const png_text& text = text_ptr[i];
       metadata->push_back(std::make_pair(text.key, text.text));
     }
   }
@@ -222,9 +235,10 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
     return false;
   }
   if (context->channels == 0) {  // Autodetect number of channels
-    context->channels = context->info_ptr->channels;
+    context->channels = png_get_channels(context->png_ptr, context->info_ptr);
   }
-  const bool has_tRNS = (context->info_ptr->valid & PNG_INFO_tRNS) != 0;
+  const bool has_tRNS =
+      (png_get_valid(context->png_ptr, context->info_ptr, PNG_INFO_tRNS)) != 0;
   const bool has_alpha = (context->color_type & PNG_COLOR_MASK_ALPHA) != 0;
   if ((context->channels & 1) == 0) {  // We desire alpha
     if (has_alpha) {                   // There is alpha
@@ -249,11 +263,10 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
 
   png_set_packing(context->png_ptr);
   context->num_passes = png_set_interlace_handling(context->png_ptr);
-  png_read_update_info(context->png_ptr, context->info_ptr);
 
-#ifdef IS_LITTLE_ENDIAN
-  if (desired_channel_bits > 8) png_set_swap(context->png_ptr);
-#endif  // IS_LITTLE_ENDIAN
+  if (desired_channel_bits > 8 && port::kLittleEndian) {
+    png_set_swap(context->png_ptr);
+  }
 
   // convert palette to rgb(a) if needs be.
   if (context->color_type == PNG_COLOR_TYPE_PALETTE)
@@ -263,7 +276,9 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
   const bool want_gray = (context->channels < 3);
   const bool is_gray = !(context->color_type & PNG_COLOR_MASK_COLOR);
   if (is_gray) {  // upconvert gray to 8-bit if needed.
-    if (context->bit_depth < 8) png_set_gray_1_2_4_to_8(context->png_ptr);
+    if (context->bit_depth < 8) {
+      png_set_expand_gray_1_2_4_to_8(context->png_ptr);
+    }
   }
   if (want_gray) {  // output is grayscale
     if (!is_gray)
@@ -272,6 +287,9 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
     if (is_gray)
       png_set_gray_to_rgb(context->png_ptr);  // Enable gray -> RGB conversion
   }
+
+  // Must come last to incorporate all requested transformations.
+  png_read_update_info(context->png_ptr, context->info_ptr);
   return true;
 }
 
@@ -293,7 +311,9 @@ bool CommonFinishDecode(png_bytep data, int row_bytes, DecodeContext* context) {
     }
   }
 
-  context->info_ptr->valid |= PNG_INFO_IDAT;
+  // Marks iDAT as valid.
+  png_set_rows(context->png_ptr, context->info_ptr,
+               png_get_rows(context->png_ptr, context->info_ptr));
   png_read_end(context->png_ptr, context->info_ptr);
 
   // Clean up.
@@ -376,9 +396,7 @@ bool WriteImageToBuffer(
   }
 
   png_write_info(png_ptr, info_ptr);
-#ifdef IS_LITTLE_ENDIAN
-  if (channel_bits > 8) png_set_swap(png_ptr);
-#endif  // IS_LITTLE_ENDIAN
+  if (channel_bits > 8 && port::kLittleEndian) png_set_swap(png_ptr);
 
   png_byte* row = reinterpret_cast<png_byte*>(const_cast<void*>(image));
   for (; height--; row += row_bytes) png_write_row(png_ptr, row);

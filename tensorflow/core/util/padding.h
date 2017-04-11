@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
@@ -44,7 +44,7 @@ enum Padding {
 string GetPaddingAttrString();
 
 // Specialization to parse an attribute directly into a Padding enum.
-Status GetNodeAttr(const NodeDef& node_def, const string& attr_name,
+Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
                    Padding* value);
 
 }  // end namespace tensorflow

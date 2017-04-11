@@ -1,0 +1,3 @@
+path: "tensorflow.sdca"
+tf_module {
+}

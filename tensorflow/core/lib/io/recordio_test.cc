@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/io/record_reader.h"
-#include <gtest/gtest.h>
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/public/env.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace io {
@@ -49,7 +49,7 @@ static string RandomSkewedString(int i, random::SimplePhilox* rnd) {
   return BigString(NumberString(i), rnd->Skewed(17));
 }
 
-class RecordioTest : public testing::Test {
+class RecordioTest : public ::testing::Test {
  private:
   class StringDest : public WritableFile {
    public:
@@ -115,7 +115,7 @@ class RecordioTest : public testing::Test {
 
   void Write(const string& msg) {
     ASSERT_TRUE(!reading_) << "Write() after starting to read";
-    ASSERT_OK(writer_->WriteRecord(StringPiece(msg)));
+    TF_ASSERT_OK(writer_->WriteRecord(StringPiece(msg)));
   }
 
   size_t WrittenBytes() const { return dest_.contents_.size(); }

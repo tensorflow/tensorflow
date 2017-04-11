@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/fake_input.h"
 
+#include <vector>
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/public/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace {
@@ -139,6 +140,7 @@ Status FakeInputImpl::GetN(int* n) const {
 Status FakeInputImpl::GetDataType(DataType* dt) const {
   if (dt_specified_) {
     *dt = dt_;
+    return Status::OK();  // Ignore is_ref field of arg_.
   } else if (arg_->type() != DT_INVALID) {
     *dt = arg_->type();
   } else if (!arg_->type_attr().empty()) {
@@ -148,15 +150,18 @@ Status FakeInputImpl::GetDataType(DataType* dt) const {
       const OpDef::AttrDef* attr = FindAttr(arg_->type_attr(), *op_def_);
       if (attr && attr->has_default_value()) {
         *dt = attr->default_value().type();
-        return Status::OK();
+      } else {
+        return errors::InvalidArgument("Could not infer type for input '",
+                                       arg_->name(), "': ",
+                                       status.error_message());
       }
-      return errors::InvalidArgument("Could not infer type for input '",
-                                     arg_->name(), "': ",
-                                     status.error_message());
     }
   } else {
     return errors::InvalidArgument("No type or type_attr field in arg '",
                                    arg_->name(), "'");
+  }
+  if (arg_->is_ref()) {
+    *dt = MakeRefType(*dt);
   }
   return Status::OK();
 }
@@ -167,7 +172,7 @@ void FakeInputImpl::NSources(int n, DataType dt) const {
   for (int i = 0; i < n; ++i) {
     srcs.emplace_back(in_node_, i, dt);
   }
-  builder_->Input(srcs);
+  builder_->Input(gtl::ArraySlice<NodeDefBuilder::NodeOut>(srcs));
 }
 
 void FakeInputImpl::SourceList(DataTypeSlice dts) const {
@@ -176,7 +181,7 @@ void FakeInputImpl::SourceList(DataTypeSlice dts) const {
   for (size_t i = 0; i < dts.size(); ++i) {
     srcs.emplace_back(in_node_, i, dts[i]);
   }
-  builder_->Input(srcs);
+  builder_->Input(gtl::ArraySlice<NodeDefBuilder::NodeOut>(srcs));
 }
 
 }  // namespace

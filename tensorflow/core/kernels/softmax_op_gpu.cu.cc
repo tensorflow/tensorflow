@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/softmax_op.h"
+#include "tensorflow/core/kernels/softmax_op_functor.h"
 
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -32,14 +32,16 @@ namespace functor {
 template <typename T>
 struct SoftmaxFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::ConstMatrix logits,
-                  typename TTypes<T>::Matrix softmax) {
-    SoftmaxEigenImpl<GPUDevice, T>::Compute(d, logits, softmax);
+                  typename TTypes<T>::Matrix softmax, const bool log) {
+    SoftmaxEigenImpl<GPUDevice, T>::Compute(d, logits, softmax, log);
   }
 };
 }  // end namespace functor
 
 // Instantiate the GPU implementation for float.
+template struct functor::SoftmaxFunctor<GPUDevice, Eigen::half>;
 template struct functor::SoftmaxFunctor<GPUDevice, float>;
+template struct functor::SoftmaxFunctor<GPUDevice, double>;
 
 }  // end namespace tensorflow
 

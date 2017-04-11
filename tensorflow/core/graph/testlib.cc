@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,16 +15,38 @@ limitations under the License.
 
 #include "tensorflow/core/graph/testlib.h"
 
+#include <vector>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/kernels/constant_op.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
+
+// HostConst: forced to generate output on the host.
+// Only used by testlib; no op is registered for this kernel
+// externally (i.e., in array_ops.cc)
+REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), HostConstantOp);
+REGISTER_KERNEL_BUILDER(
+    Name("HostConst").Device(DEVICE_GPU).HostMemory("output"), HostConstantOp);
+
+// Register the HostConst Op
+// Returns a constant tensor on the host.  Useful for writing C++ tests
+// and benchmarks which run on GPU but require arguments pinned to the host.
+// Used by test::graph::HostConstant.
+// value: Attr `value` is the tensor to return.
+REGISTER_OP("HostConst")
+    .Output("output: dtype")
+    .Attr("value: tensor")
+    .Attr("dtype: type");
+
 namespace test {
 namespace graph {
 
@@ -77,9 +99,32 @@ Node* Constant(Graph* g, const Tensor& tensor, const string& name) {
   return ret;
 }
 
+Node* HostConstant(Graph* g, const Tensor& tensor) {
+  return HostConstant(g, tensor, g->NewName("n"));
+}
+
+Node* HostConstant(Graph* g, const Tensor& tensor, const string& name) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(name, "HostConst")
+                  .Attr("dtype", tensor.dtype())
+                  .Attr("value", tensor)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Var(Graph* g, const DataType dtype, const TensorShape& shape) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Variable")
+                  .Attr("dtype", dtype)
+                  .Attr("shape", shape)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Var(Graph* g, const DataType dtype, const TensorShape& shape,
+          const string& name) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(name, "Variable")
                   .Attr("dtype", dtype)
                   .Attr("shape", shape)
                   .Finalize(g, &ret));
@@ -99,7 +144,7 @@ Node* Assign(Graph* g, Node* var, Node* val) {
 Node* Reduce(Graph* g, const string& reduce, Node* data, Node* axes,
              bool keep_dims) {
   Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), reduce)
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), reduce, g->op_registry())
                   .Input(data)
                   .Input(axes)
                   .Attr("keep_dims", keep_dims)
@@ -130,10 +175,21 @@ Node* Matmul(Graph* g, Node* in0, Node* in1, bool transpose_a,
   return ret;
 }
 
+Node* BatchMatmul(Graph* g, Node* in0, Node* in1, bool adj_x, bool adj_y) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BatchMatMul")
+                  .Input(in0)
+                  .Input(in1)
+                  .Attr("adj_x", adj_x)
+                  .Attr("adj_y", adj_y)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* RandomNumberGenerator(const string& op, Graph* g, Node* input,
                             DataType dtype) {
   Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), op)
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), op, g->op_registry())
                   .Input(input)
                   .Attr("dtype", dtype)
                   .Attr("seed", 0)
@@ -149,20 +205,41 @@ Node* RandomGaussian(Graph* g, Node* input, DataType dtype) {
   return RandomNumberGenerator("RandomStandardNormal", g, input, dtype);
 }
 
-Node* RandomParameters(Graph* g, Node* input, DataType dtype) {
-  return RandomNumberGenerator("RandomParameters", g, input, dtype);
+Node* TruncatedNormal(Graph* g, Node* input, DataType dtype) {
+  return RandomNumberGenerator("TruncatedNormal", g, input, dtype);
+}
+
+Node* RandomGamma(Graph* g, Node* shape, Node* alpha) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "RandomGamma")
+                  .Input(shape)
+                  .Input(alpha)
+                  .Attr("seed", 0)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* RandomPoisson(Graph* g, Node* shape, Node* lam) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "RandomPoisson")
+                  .Input(shape)
+                  .Input(lam)
+                  .Attr("seed", 0)
+                  .Finalize(g, &ret));
+  return ret;
 }
 
 Node* Unary(Graph* g, const string& func, Node* input, int index) {
   Node* ret;
-  TF_CHECK_OK(
-      NodeBuilder(g->NewName("n"), func).Input(input, index).Finalize(g, &ret));
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), func, g->op_registry())
+                  .Input(input, index)
+                  .Finalize(g, &ret));
   return ret;
 }
 
 Node* Binary(Graph* g, const string& func, Node* in0, Node* in1) {
   Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), func)
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), func, g->op_registry())
                   .Input(in0)
                   .Input(in1)
                   .Finalize(g, &ret));
@@ -171,7 +248,7 @@ Node* Binary(Graph* g, const string& func, Node* in0, Node* in1) {
 
 Node* Multi(Graph* g, const string& func, gtl::ArraySlice<Node*> ins) {
   Node* ret;
-  auto b = NodeBuilder(g->NewName("n"), func);
+  auto b = NodeBuilder(g->NewName("n"), func, g->op_registry());
   for (Node* n : ins) b = b.Input(n);
   TF_CHECK_OK(b.Finalize(g, &ret));
   return ret;
@@ -186,6 +263,10 @@ Node* Identity(Graph* g, Node* input, int index) {
 }
 
 Node* Add(Graph* g, Node* in0, Node* in1) { return Binary(g, "Add", in0, in1); }
+
+Node* Reverse(Graph* g, Node* tensor, Node* axis) {
+  return Binary(g, "ReverseV2", tensor, axis);
+}
 
 Node* Error(Graph* g, Node* input, const string& errmsg) {
   Node* ret;
@@ -270,6 +351,34 @@ Node* Merge(Graph* g, Node* in0, gtl::ArraySlice<string> remaining_in) {
   return ret;
 }
 
+Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors) {
+  std::vector<NodeBuilder::NodeOut> nodeouts;
+  nodeouts.reserve(tensors.size());
+  for (auto const t : tensors) {
+    nodeouts.emplace_back(t);
+  }
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Concat")
+                  .Input(concat_dim)
+                  .Input(nodeouts)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* ConcatV2(Graph* g, gtl::ArraySlice<Node*> tensors, Node* concat_dim) {
+  std::vector<NodeBuilder::NodeOut> nodeouts;
+  nodeouts.reserve(tensors.size());
+  for (auto const t : tensors) {
+    nodeouts.emplace_back(t);
+  }
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "ConcatV2")
+                  .Input(nodeouts)
+                  .Input(concat_dim)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Next(Graph* g, const string& name, Node* input) {
   Node* ret;
   TF_CHECK_OK(
@@ -303,6 +412,82 @@ Node* Cast(Graph* g, Node* in, DataType dst) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Cast")
                   .Input(in)
                   .Attr("DstT", dst)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BroadcastArgs(Graph* g, Node* s0, Node* s1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastArgs")
+                  .Input(s0)
+                  .Input(s1)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastGradientArgs")
+                  .Input(s0)
+                  .Input(s1)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Gather(Graph* g, Node* in0, Node* in1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Gather")
+                  .Input(in0)
+                  .Input(in1)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* GetSessionTensor(Graph* g, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "GetSessionTensor")
+                  .Input(in, 0)
+                  .Attr("dtype", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Relu(Graph* g, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Relu")
+                  .Input(in, 0)
+                  .Attr("T", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Relu6(Graph* g, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Relu6")
+                  .Input(in, 0)
+                  .Attr("T", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BiasAdd(Graph* g, Node* value, Node* bias) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BiasAdd")
+                  .Input(value)
+                  .Input(bias)
+                  .Attr("T", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Conv2D(Graph* g, Node* in0, Node* in1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Conv2D")
+                  .Input(in0)
+                  .Input(in1)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("strides", {1, 1, 1, 1})
+                  .Attr("padding", "SAME")
                   .Finalize(g, &ret));
   return ret;
 }

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,21 +23,17 @@ limitations under the License.
 #include <atomic>
 #include <map>
 #include <memory>
-#include "tensorflow/stream_executor/stream_executor.h"
-#include "tensorflow/core/common_runtime/gpu/visitable_allocator.h"
+#include <vector>
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-// Interface of an object that does the underlying alloc/free of memory.
-class SubAllocator {
- public:
-  virtual ~SubAllocator() {}
-  virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
-  virtual void Free(void* ptr, size_t num_bytes) = 0;
-};
 
 // Interface of an object that rounds up integers.
 class RoundUpInterface {
@@ -115,6 +111,8 @@ class PoolAllocator : public VisitableAllocator {
     return pool_size_limit_;
   }
 
+  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
+
  private:
   struct PtrRecord {
     void* ptr;
@@ -173,9 +171,9 @@ class BasicCPUAllocator : public SubAllocator {
   ~BasicCPUAllocator() override {}
 
   void* Alloc(size_t alignment, size_t num_bytes) override {
-    return port::aligned_malloc(num_bytes, alignment);
+    return port::AlignedMalloc(num_bytes, alignment);
   }
-  void Free(void* ptr, size_t num_bytes) override { free(ptr); }
+  void Free(void* ptr, size_t num_bytes) override { port::AlignedFree(ptr); }
 };
 
 // Allocator for pinned CPU RAM that is made known to CUDA for the
@@ -194,8 +192,8 @@ class CUDAHostAllocator : public SubAllocator {
     if (num_bytes > 0) {
       ptr = stream_exec_->HostMemoryAllocate(num_bytes);
       if (ptr == nullptr) {
-        LOG(FATAL) << "could not allocate pinned host memory of size: "
-                   << num_bytes;
+        LOG(WARNING) << "could not allocate pinned host memory of size: "
+                     << num_bytes;
       }
     }
     return ptr;

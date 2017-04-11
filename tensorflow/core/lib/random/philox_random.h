@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,10 +22,10 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 // Function qualifiers that need to work on both CPU and GPU.
-#ifdef __CUDA_ARCH__
+#if defined(__CUDACC__)
 // For nvcc.
 #define PHILOX_DEVICE_FUNC __host__ __device__
 #define PHILOX_INLINE __inline__
@@ -51,7 +51,7 @@ class Array {
  public:
   PHILOX_DEVICE_INLINE Array() {
     for (int i = 0; i < ElementCount; ++i) {
-      data_[i] = T();
+      data_[i] = T(0);
     }
   }
 
@@ -101,10 +101,15 @@ class Array {
 // 2. PhiloxRandom is compilable by gcc and nvcc.
 class PhiloxRandom {
  public:
-  typedef Array<uint32, 4> ResultType;
-  typedef uint32 ResultElementType;
+  using ResultType = Array<uint32, 4>;
+  using ResultElementType = uint32;
   // The number of elements that will be returned.
   static const int kResultElementCount = 4;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 10;
+  // The type for the 64-bit key stored in the form of two 32-bit uint
+  // that are used in the diffusion process.
+  using Key = Array<uint32, 2>;
 
   PHILOX_DEVICE_INLINE
   PhiloxRandom() {}
@@ -122,6 +127,9 @@ class PhiloxRandom {
     counter_[2] = static_cast<uint32>(seed_hi);
     counter_[3] = static_cast<uint32>(seed_hi >> 32);
   }
+
+  PHILOX_DEVICE_INLINE
+  PhiloxRandom(ResultType counter, Key key) : counter_(counter), key_(key) {}
 
   // Skip the specified number of samples of 128-bits in the current stream.
   PHILOX_DEVICE_INLINE
@@ -176,10 +184,6 @@ class PhiloxRandom {
   }
 
  private:
-  // The type for the 64-bit key stored in the form of two 32-bit uint
-  // that are used in the diffusion process.
-  typedef Array<uint32, 2> Key;
-
   // We use the same constants as recommended by the original paper.
   static const uint32 kPhiloxW32A = 0x9E3779B9;
   static const uint32 kPhiloxW32B = 0xBB67AE85;
@@ -202,7 +206,7 @@ class PhiloxRandom {
   PHILOX_DEVICE_INLINE
   static void MultiplyHighLow(uint32 a, uint32 b, uint32* result_low,
                               uint32* result_high) {
-#ifndef __GCUDACC__
+#ifndef __CUDA_ARCH__
     const uint64 product = static_cast<uint64>(a) * b;
     *result_low = static_cast<uint32>(product);
     *result_high = static_cast<uint32>(product >> 32);

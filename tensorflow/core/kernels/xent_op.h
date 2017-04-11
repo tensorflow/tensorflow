@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ struct XentEigenImpl {
     // sum(exp(logits - max_logits)) along classes.
     scratch.reshape(batch_only).device(d) = backprop.exp().sum(along_class);
 
-    // NOTE(keveman): Eigen on GPU dispatches to an optimized implementaion
+    // NOTE(keveman): Eigen on GPU dispatches to an optimized implementation
     // for an expression of the form lhs = rhs.sum().
     // lhs = -rhs.sum() doesn't match the above pattern, so folding in the
     // negation before calling sum().

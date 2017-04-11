@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STATIC_THREADLOCAL_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STATIC_THREADLOCAL_H_
 
+#ifdef _MSC_VER
+#define __thread __declspec(thread) 
+#endif
+
 // For POD types in TLS mode, s_obj_VAR is the thread-local variable.
 #define SE_STATIC_THREAD_LOCAL_POD(_Type_, _var_)               \
-  static thread_local _Type_ s_obj_##_var_;                     \
+  static __thread _Type_ s_obj_##_var_;                         \
   namespace {                                                   \
   class ThreadLocal_##_var_ {                                   \
   public:                                                       \

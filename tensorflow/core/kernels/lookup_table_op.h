@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,12 +19,13 @@ limitations under the License.
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -41,15 +42,27 @@ class LookupTableOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_persistent(tensorflow::DT_STRING,
                                                  tensorflow::TensorShape({2}),
                                                  &table_handle_, nullptr));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
   }
 
   // ctx is not owned by this function.
   void Compute(OpKernelContext* ctx) override {
     mutex_lock l(mu_);
     if (!table_handle_set_) {
-      OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def()));
-      auto creator = [this](lookup::LookupInterface** ret) {
-        *ret = new Container();
+      OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def(),
+                                      use_node_name_sharing_));
+      auto creator = [ctx, this](lookup::LookupInterface** ret) {
+        lookup::LookupInterface* container = new Container(ctx, this);
+        if (!ctx->status().ok()) {
+          container->Unref();
+          return ctx->status();
+        }
+        if (ctx->track_allocations()) {
+          ctx->record_device_persistent_memory_allocation(
+              container->MemoryUsed());
+        }
+        *ret = container;
         return Status::OK();
       };
 
@@ -86,6 +99,7 @@ class LookupTableOp : public OpKernel {
   PersistentTensor table_handle_ GUARDED_BY(mu_);
   bool table_handle_set_ GUARDED_BY(mu_);
   ContainerInfo cinfo_;
+  bool use_node_name_sharing_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(LookupTableOp);
 };

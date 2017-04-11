@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,23 +30,22 @@ struct Bias {
   void operator()(const Device& d, typename TTypes<T, Dims>::ConstTensor input,
                   typename TTypes<T>::ConstVec bias,
                   typename TTypes<T, Dims>::Tensor output) {
-    const int bias_size = bias.dimension(0);
-    const int rest_size = input.size() / bias_size;
-
-    Eigen::DSizes<int, 2> rest_by_bias(rest_size, bias_size);
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::DSizes<int, 2> rest_by_one(rest_size, 1);
-    Eigen::DSizes<int, 2> one_by_bias(1, bias_size);
-#else
-    Eigen::IndexList<int, Eigen::type2index<1> > rest_by_one;
-    rest_by_one.set(0, rest_size);
-    Eigen::IndexList<Eigen::type2index<1>, int> one_by_bias;
-    one_by_bias.set(1, bias_size);
-#endif
-
-    output.reshape(rest_by_bias).device(d) =
-        input.reshape(rest_by_bias) +
-        bias.reshape(one_by_bias).broadcast(rest_by_one);
+    if (input.size() >= INT_MAX) {
+      const int64_t bias_size = bias.dimension(0);
+      const int64_t rest_size = input.size() / bias_size;
+      Eigen::DSizes<int64_t, 1> one_d(input.size());
+      Eigen::DSizes<int64_t, 1> bcast(rest_size);
+      output.reshape(one_d).device(d) =
+          input.reshape(one_d) + bias.broadcast(bcast).reshape(one_d);
+    } else {
+      const int bias_size = bias.dimension(0);
+      const int rest_size = input.size() / bias_size;
+      Eigen::DSizes<int, 1> one_d(input.size());
+      Eigen::DSizes<int, 1> bcast(rest_size);
+      To32Bit(output).reshape(one_d).device(d) =
+          To32Bit(input).reshape(one_d) +
+          To32Bit(bias).broadcast(bcast).reshape(one_d);
+    }
   }
 };
 

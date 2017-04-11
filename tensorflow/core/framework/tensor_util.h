@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_TENSOR_UTIL_H_
 #define TENSORFLOW_FRAMEWORK_TENSOR_UTIL_H_
 
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
 
+#include <vector>
 namespace tensorflow {
 namespace tensor {
 
@@ -37,7 +38,8 @@ Tensor DeepCopy(const Tensor& other);
 // REQUIRES: Each member of 'tensors' must point to data stored in CPU memory.
 // REQUIRES: Each member of 'tensors' must be a Tensor of a copy-able type if it
 //           is not appropriately memory-aligned.
-Tensor Concat(const gtl::ArraySlice<Tensor>& tensors);
+Status Concat(const gtl::ArraySlice<Tensor>& tensors,
+              Tensor* result) TF_MUST_USE_RESULT;
 
 // Splits 'tensor' into 'sizes.size()' individual tensors, along the 0th
 // dimension. The ith output tensor has 0th-dimension size 'sizes[i]'.
@@ -49,8 +51,8 @@ Tensor Concat(const gtl::ArraySlice<Tensor>& tensors);
 //           appropriately memory-aligned.
 //
 // Split() and Concat() are inverse operations.
-std::vector<Tensor> Split(const Tensor& tensor,
-                          const gtl::ArraySlice<int64>& sizes);
+Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
+             std::vector<Tensor>* result) TF_MUST_USE_RESULT;
 
 }  // namespace tensor
 }  // namespace tensorflow

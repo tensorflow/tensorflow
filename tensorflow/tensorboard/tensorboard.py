@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Serve TensorFlow summary data to a web frontend.
 
 This is a simple web server to proxy data from the event_loader to the web, and
@@ -22,142 +21,187 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import BaseHTTPServer
-import functools
+import logging as base_logging
 import os
 import socket
-import SocketServer
-
-import tensorflow.python.platform
+import sys
+from werkzeug import serving
 
 from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
-from tensorflow.python.platform import logging
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import status_bar
-from tensorflow.python.summary import event_accumulator
-from tensorflow.python.summary import event_multiplexer
-from tensorflow.tensorboard import tensorboard_handler
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.tensorboard.backend import application
+from tensorflow.tensorboard.backend.event_processing import event_file_inspector as efi
+from tensorflow.tensorboard.plugins.projector import projector_plugin
+from tensorflow.tensorboard.plugins.text import text_plugin
 
-flags.DEFINE_string('logdir', None, """logdir specifies the directory where
+# TensorBoard flags
+
+flags.DEFINE_string('logdir', '', """logdir specifies the directory where
 TensorBoard will look to find TensorFlow event files that it can display.
 TensorBoard will recursively walk the directory structure rooted at logdir,
 looking for .*tfevents.* files.
 
-You may also pass a comma seperated list of log directories, and TensorBoard
+You may also pass a comma separated list of log directories, and TensorBoard
 will watch each directory. You can also assign names to individual log
 directories by putting a colon between the name and the path, as in
 
 tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
 """)
 
-flags.DEFINE_boolean('debug', False, 'Whether to run the app in debug mode. '
-                     'This increases log verbosity to DEBUG.')
-
-
-flags.DEFINE_string('host', '0.0.0.0', 'What host to listen to. Defaults to '
-                    'serving on 0.0.0.0, set to 127.0.0.1 (localhost) to'
+flags.DEFINE_string('host', '', 'What host to listen to. Defaults to '
+                    'serving on all interfaces, set to 127.0.0.1 (localhost) to'
                     'disable remote access (also quiets security warnings).')
 
 flags.DEFINE_integer('port', 6006, 'What port to serve TensorBoard on.')
 
+flags.DEFINE_boolean('purge_orphaned_data', True, 'Whether to purge data that '
+                     'may have been orphaned due to TensorBoard restarts. '
+                     'Disabling purge_orphaned_data can be used to debug data '
+                     'disappearance.')
+
+flags.DEFINE_integer('reload_interval', 5, 'How often the backend should load '
+                     'more data.')
+
+# Inspect Mode flags
+
+flags.DEFINE_boolean('inspect', False, """Use this flag to print out a digest
+of your event files to the command line, when no data is shown on TensorBoard or
+the data shown looks weird.
+
+Example usages:
+tensorboard --inspect --event_file=myevents.out
+tensorboard --inspect --event_file=myevents.out --tag=loss
+tensorboard --inspect --logdir=mylogdir
+tensorboard --inspect --logdir=mylogdir --tag=loss
+
+See tensorflow/python/summary/event_file_inspector.py for more info and
+detailed usage.
+""")
+flags.DEFINE_string(
+    'tag', '',
+    'The particular tag to query for. Only used if --inspect is present')
+flags.DEFINE_string(
+    'event_file', '',
+    'The particular event file to query for. Only used if --inspect is present '
+    'and --logdir is not specified.')
+
 FLAGS = flags.FLAGS
 
-# How many elements to store per tag, by tag type
-TENSORBOARD_SIZE_GUIDANCE = {
-    event_accumulator.COMPRESSED_HISTOGRAMS: 500,
-    event_accumulator.IMAGES: 4,
-    event_accumulator.SCALARS: 1000,
-    event_accumulator.HISTOGRAMS: 1,
-}
 
-
-def ParseEventFilesFlag(flag_value):
-  """Parses the logdir flag into a map from paths to run group names.
-
-  The events files flag format is a comma-separated list of path specifications.
-  A path specification either looks like 'group_name:/path/to/directory' or
-  '/path/to/directory'; in the latter case, the group is unnamed. Group names
-  cannot start with a forward slash: /foo:bar/baz will be interpreted as a
-  spec with no name and path '/foo:bar/baz'.
-
-  Globs are not supported.
+def create_tb_app(plugins):
+  """Read the flags, and create a TensorBoard WSGI application.
 
   Args:
-    flag_value: A comma-separated list of run specifications.
+    plugins: A list of plugins for TensorBoard to initialize.
+
+  Raises:
+    ValueError: if a logdir is not specified.
+
   Returns:
-    A dict mapping directory paths to names like {'/path/to/directory': 'name'}.
-    Groups without an explicit name are named after their path. If flag_value
-    is None, returns an empty dict, which is helpful for testing things that
-    don't require any valid runs.
+    A new TensorBoard WSGI application.
   """
-  files = {}
-  if flag_value is None:
-    return files
-  for specification in flag_value.split(','):
-    # If the spec looks like /foo:bar/baz, then we assume it's a path with a
-    # colon.
-    if ':' in specification and specification[0] != '/':
-      # We split at most once so run_name:/path:with/a/colon will work.
-      run_name, path = specification.split(':', 1)
+  if not FLAGS.logdir:
+    raise ValueError('A logdir must be specified. Run `tensorboard --help` for '
+                     'details and examples.')
+
+  logdir = os.path.expanduser(FLAGS.logdir)
+  return application.standard_tensorboard_wsgi(
+      logdir=logdir,
+      purge_orphaned_data=FLAGS.purge_orphaned_data,
+      reload_interval=FLAGS.reload_interval,
+      plugins=plugins)
+
+
+def make_simple_server(tb_app, host, port):
+  """Create an HTTP server for TensorBoard.
+
+  Args:
+    tb_app: The TensorBoard WSGI application to create a server for.
+    host: Indicates the interfaces to bind to ('::' or '0.0.0.0' for all
+        interfaces, '::1' or '127.0.0.1' for localhost). A blank value ('')
+        indicates protocol-agnostic all interfaces.
+    port: The port to bind to (0 indicates an unused port selected by the
+        operating system).
+  Returns:
+    A tuple of (server, url):
+      server: An HTTP server object configured to host TensorBoard.
+      url: A best guess at a URL where TensorBoard will be accessible once the
+        server has been started.
+  Raises:
+    socket.error: If a server could not be constructed with the host and port
+      specified. Also logs an error message.
+  """
+  # Mute the werkzeug logging.
+  base_logging.getLogger('werkzeug').setLevel(base_logging.WARNING)
+
+  try:
+    if host:
+      # The user gave us an explicit host
+      server = serving.make_server(host, port, tb_app, threaded=True)
+      if ':' in host and not host.startswith('['):
+        # Display IPv6 addresses as [::1]:80 rather than ::1:80
+        final_host = '[{}]'.format(host)
+      else:
+        final_host = host
     else:
-      run_name = None
-      path = specification
-      
-    if not os.path.isabs(path):
-      # Create absolute path out of relative one.
-      path = os.path.join(os.path.realpath('.'), path)
+      # We've promised to bind to all interfaces on this host. However, we're
+      # not sure whether that means IPv4 or IPv6 interfaces.
+      try:
+        # First try passing in a blank host (meaning all interfaces). This,
+        # unfortunately, defaults to IPv4 even if no IPv4 interface is available
+        # (yielding a socket.error).
+        server = serving.make_server(host, port, tb_app, threaded=True)
+      except socket.error:
+        # If a blank host didn't work, we explicitly request IPv6 interfaces.
+        server = serving.make_server('::', port, tb_app, threaded=True)
+      final_host = socket.gethostname()
+    server.daemon_threads = True
+  except socket.error as socket_error:
+    if port == 0:
+      msg = 'TensorBoard unable to find any open port'
+    else:
+      msg = (
+          'TensorBoard attempted to bind to port %d, but it was already in use'
+          % FLAGS.port)
+    logging.error(msg)
+    print(msg)
+    raise socket_error
 
-    files[path] = run_name
-  return files
+  final_port = server.socket.getsockname()[1]
+  tensorboard_url = 'http://%s:%d' % (final_host, final_port)
+  return server, tensorboard_url
 
 
-class ThreadedHTTPServer(SocketServer.ThreadingMixIn,
-                         BaseHTTPServer.HTTPServer):
-  """A threaded HTTP server."""
-  daemon = True
+def run_simple_server(tb_app):
+  """Run a TensorBoard HTTP server, and print some messages to the console."""
+  try:
+    server, url = make_simple_server(tb_app, FLAGS.host, FLAGS.port)
+  except socket.error:
+    # An error message was already logged
+    exit(-1)
+  msg = 'Starting TensorBoard %s at %s' % (tb_app.tag, url)
+  print(msg)
+  logging.info(msg)
+  print('(Press CTRL+C to quit)')
+  sys.stdout.flush()
+
+  server.serve_forever()
 
 
 def main(unused_argv=None):
-  if FLAGS.debug:
-    logging.set_verbosity(logging.DEBUG)
-    logging.info('TensorBoard is in debug mode.')
-
-  if not FLAGS.logdir:
-    logging.error('A logdir must be specified. Run `tensorboard --help` for '
-                  'details and examples.')
-    return -1
-
-  if FLAGS.debug:
-    logging.info('Starting TensorBoard in directory %s', os.getcwd())
-
-  path_to_run = ParseEventFilesFlag(FLAGS.logdir)
-  multiplexer = event_multiplexer.AutoloadingMultiplexer(
-      path_to_run=path_to_run, interval_secs=60,
-      size_guidance=TENSORBOARD_SIZE_GUIDANCE)
-
-  multiplexer.AutoUpdate(interval=30)
-
-  factory = functools.partial(tensorboard_handler.TensorboardHandler,
-                              multiplexer)
-  try:
-    server = ThreadedHTTPServer((FLAGS.host, FLAGS.port), factory)
-  except socket.error:
-    logging.error('Tried to connect to port %d, but that address is in use.',
-                  FLAGS.port)
-    return -2
-  try:
-    tag = resource_loader.load_resource('tensorboard/TAG').strip()
-    logging.info('TensorBoard is tag: %s', tag)
-  except IOError:
-    logging.warning('Unable to read TensorBoard tag')
-    tag = ''
-
-  status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
-  print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
-  print('(You can navigate to http://localhost:%d)' % FLAGS.port)
-  server.serve_forever()
-
+  if FLAGS.inspect:
+    logging.info('Not bringing up TensorBoard, but inspecting event files.')
+    event_file = os.path.expanduser(FLAGS.event_file)
+    efi.inspect(FLAGS.logdir, event_file, FLAGS.tag)
+    return 0
+  else:
+    plugins = [
+        projector_plugin.ProjectorPlugin(),
+        text_plugin.TextPlugin(),
+    ]
+    tb = create_tb_app(plugins)
+    run_simple_server(tb)
 
 if __name__ == '__main__':
   app.run()

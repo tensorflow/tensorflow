@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
 #define TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
 
+#include <functional>
 #include <string>
+#include <vector>
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/types.h"
 
 // Basic string utility routines
 namespace tensorflow {
@@ -38,11 +40,6 @@ string CEscape(const string& src);
 //
 // NOTE: Does not support \u or \U!
 bool CUnescape(StringPiece source, string* dest, string* error);
-
-// If "text" can be successfully parsed as the ASCII representation of
-// an integer, sets "*val" to the value and returns true.  Otherwise,
-// returns false.
-bool NumericParse32(const string& text, int32* val);
 
 // Removes any trailing whitespace from "*s".
 void StripTrailingWhitespace(string* s);
@@ -65,9 +62,18 @@ size_t RemoveWhitespaceContext(StringPiece* text);
 // overflow occurred, returns false.  Otherwise, returns false.
 bool ConsumeLeadingDigits(StringPiece* s, uint64* val);
 
+// Consume a leading token composed of non-whitespace characters only.
+// If *s starts with a non-zero number of non-whitespace characters, store
+// them in *val, advance *s past them, and return true.  Else return false.
+bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val);
+
 // If "*s" starts with "expected", consume it and return true.
 // Otherwise, return false.
 bool ConsumePrefix(StringPiece* s, StringPiece expected);
+
+// If "*s" ends with "expected", remove it and return true.
+// Otherwise, return false.
+bool ConsumeSuffix(StringPiece* s, StringPiece expected);
 
 // Return lower-cased version of s.
 string Lowercase(StringPiece s);
@@ -81,9 +87,13 @@ void TitlecaseString(string* s, StringPiece delimiters);
 
 // Join functionality
 template <typename T>
-string Join(const std::vector<T>& s, const char* sep);
-template <typename T>
-string Join(const gtl::ArraySlice<T>& s, const char* sep);
+string Join(const T& s, const char* sep);
+
+// A variant of Join where for each element of "s", f(&dest_string, elem)
+// is invoked (f is often constructed with a lambda of the form:
+//   [](string* result, ElemType elem)
+template <typename T, typename Formatter>
+string Join(const T& s, const char* sep, Formatter f);
 
 struct AllowEmpty {
   bool operator()(StringPiece sp) const { return true; }
@@ -98,55 +108,71 @@ struct SkipWhitespace {
   }
 };
 
-std::vector<string> Split(StringPiece text, char delim);
+// Split strings using any of the supplied delimiters. For example:
+// Split("a,b.c,d", ".,") would return {"a", "b", "c", "d"}.
+std::vector<string> Split(StringPiece text, StringPiece delims);
+
 template <typename Predicate>
-std::vector<string> Split(StringPiece text, char delim, Predicate p);
+std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p);
 
 // Split "text" at "delim" characters, and parse each component as
 // an integer.  If successful, adds the individual numbers in order
 // to "*result" and returns true.  Otherwise returns false.
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result);
+bool SplitAndParseAsInts(StringPiece text, char delim,
+                         std::vector<int64>* result);
+bool SplitAndParseAsFloats(StringPiece text, char delim,
+                           std::vector<float>* result);
 
 // ------------------------------------------------------------------
 // Implementation details below
-namespace internal {
 template <typename T>
-string JoinHelper(typename gtl::ArraySlice<T>::const_iterator begin,
-                  typename gtl::ArraySlice<T>::const_iterator end,
-                  const char* sep) {
+string Join(const T& s, const char* sep) {
   string result;
   bool first = true;
-  for (typename gtl::ArraySlice<T>::const_iterator it = begin; it != end;
-       ++it) {
-    tensorflow::strings::StrAppend(&result, (first ? "" : sep), *it);
+  for (const auto& x : s) {
+    tensorflow::strings::StrAppend(&result, (first ? "" : sep), x);
     first = false;
   }
   return result;
 }
-}  // namespace internal
 
 template <typename T>
-string Join(const std::vector<T>& s, const char* sep) {
-  return Join<T>(gtl::ArraySlice<T>(s), sep);
+class Formatter {
+ public:
+  Formatter(std::function<void(string*, T)> f) : f_(f) {}
+  void operator()(string* out, const T& t) { f_(out, t); }
+
+ private:
+  std::function<void(string*, T)> f_;
+};
+
+template <typename T, typename Formatter>
+string Join(const T& s, const char* sep, Formatter f) {
+  string result;
+  bool first = true;
+  for (const auto& x : s) {
+    if (!first) {
+      result.append(sep);
+    }
+    f(&result, x);
+    first = false;
+  }
+  return result;
 }
 
-template <typename T>
-string Join(const gtl::ArraySlice<T>& s, const char* sep) {
-  return internal::JoinHelper<T>(s.begin(), s.end(), sep);
-}
-
-inline std::vector<string> Split(StringPiece text, char delim) {
-  return Split(text, delim, AllowEmpty());
+inline std::vector<string> Split(StringPiece text, StringPiece delims) {
+  return Split(text, delims, AllowEmpty());
 }
 
 template <typename Predicate>
-std::vector<string> Split(StringPiece text, char delim, Predicate p) {
+std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p) {
   std::vector<string> result;
-  int token_start = 0;
+  size_t token_start = 0;
   if (!text.empty()) {
-    for (int i = 0; i < text.size() + 1; i++) {
-      if ((i == text.size()) || (text[i] == delim)) {
+    for (size_t i = 0; i < text.size() + 1; i++) {
+      if ((i == text.size()) || (delims.find(text[i]) != StringPiece::npos)) {
         StringPiece token(text.data() + token_start, i - token_start);
         if (p(token)) {
           result.push_back(token.ToString());
@@ -156,6 +182,15 @@ std::vector<string> Split(StringPiece text, char delim, Predicate p) {
     }
   }
   return result;
+}
+
+inline std::vector<string> Split(StringPiece text, char delim) {
+  return Split(text, StringPiece(&delim, 1));
+}
+
+template <typename Predicate>
+std::vector<string> Split(StringPiece text, char delims, Predicate p) {
+  return Split(text, StringPiece(&delims, 1), p);
 }
 
 }  // namespace str_util

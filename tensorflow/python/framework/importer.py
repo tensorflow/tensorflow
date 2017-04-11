@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,14 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import copy
 
-import tensorflow.python.platform
-
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
-from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
 
@@ -60,7 +62,7 @@ def _ArgToTypesNoRef(node_def, arg_def):
 def _SingleArgToTypes(node_def, arg_def):
   types = _ArgToTypesNoRef(node_def, arg_def)
   if arg_def.is_ref:
-    return [dtypes.as_dtype(dt).as_ref.as_datatype_enum for dt in types]
+    return [dtypes.as_dtype(dt)._as_ref.as_datatype_enum for dt in types]  # pylint: disable=protected-access
   return types
 
 
@@ -142,16 +144,24 @@ def _MaybeDevice(device):
     yield
 
 
+def _FindAttrInOpDef(attr_name, op_def):
+  for attr_def in op_def.attr:
+    if attr_name == attr_def.name:
+      return attr_def
+  return None
+
+
 def import_graph_def(graph_def, input_map=None, return_elements=None,
-                     name=None, op_dict=None):
-  """Imports the TensorFlow graph in `graph_def` into the Python `Graph`.
+                     name=None, op_dict=None, producer_op_list=None):
+  """Imports the graph from `graph_def` into the current default `Graph`.
 
   This function provides a way to import a serialized TensorFlow
-  [`GraphDef`](https://tensorflow.googlesource.com/tensorflow/+/master/tensorflow/core/framework/graph.proto)
+  [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
   protocol buffer, and extract individual objects in the `GraphDef` as
-  [`Tensor`](#Tensor) and [`Operation`](#Operation) objects. See
-  [`Graph.as_graph_def()`](#Graph.as_graph_def) for a way to create a
-  `GraphDef` proto.
+  @{tf.Tensor} and @{tf.Operation} objects. Once extracted,
+  these objects are placed into the current default `Graph`. See
+  @{tf.Graph.as_graph_def} for a way to create a `GraphDef`
+  proto.
 
   Args:
     graph_def: A `GraphDef` proto containing operations to be imported into
@@ -163,10 +173,17 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
       `graph_def` that will be returned as `Operation` objects; and/or
       tensor names in `graph_def` that will be returned as `Tensor` objects.
     name: (Optional.) A prefix that will be prepended to the names in
-      `graph_def`. Defaults to `"import"`.
+      `graph_def`. Note that this does not apply to imported function names.
+      Defaults to `"import"`.
     op_dict: (Optional.) A dictionary mapping op type names to `OpDef` protos.
       Must contain an `OpDef` proto for each op type named in `graph_def`.
       If omitted, uses the `OpDef` protos registered in the global registry.
+    producer_op_list: (Optional.) An `OpList` proto with the (possibly stripped)
+      list of `OpDef`s used by the producer of the graph. If provided, attrs
+      for ops in `graph_def` that are not in `op_dict` that have their default
+      value according to `producer_op_list` will be removed. This will allow
+      some more `GraphDef`s produced by later binaries to be accepted by
+      earlier binaries.
 
   Returns:
     A list of `Operation` and/or `Tensor` objects from the imported graph,
@@ -213,28 +230,109 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   if op_dict is None:
     op_dict = op_def_registry.get_registered_ops()
 
-  with ops.op_scope(input_map.values(), name, 'import'):
-    g = ops.get_default_graph()
-    g.graph_def_version = graph_def.version
+  if producer_op_list is None:
+    producer_op_dict = None
+  else:
+    producer_op_dict = {op.name: op for op in producer_op_list.op}
 
-    with ops.name_scope('_inputs'):
-      input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
+  g = ops.get_default_graph()
+
+  # Add any functions defined in `graph_def` to `g`
+  if graph_def.library and graph_def.library.function:
+    # Copy op_dict so we don't clobber the original
+    op_dict = copy.copy(op_dict)
+    # pylint: disable=protected-access
+    # Note that we do not prepend `name` to the function name. The reasoning is
+    # that function names are similar to op definition names, which currently do
+    # not have a scoped name or namespace scheme.
+    functions = function._from_library(graph_def.library)
+    for f in functions:
+      g._add_function(f)
+      op_dict[f.name] = f.definition.signature
+    # pylint: enable=protected-access
+
+  # LINT.IfChange
+  with ops.name_scope(name, 'import', input_map.values()) as scope:
+    # TODO(ashankar): Should this just copy over or should it do some
+    # more nuanced merging? For example, the graph may already have some
+    # marked "bad versions" and we don't want to lose those because of
+    # what's in graph_def.versions? The C++ ImporGraphDef does something
+    # more nuanced.
+    g.graph_def_versions.CopyFrom(graph_def.versions)
+
+    if not all(isinstance(v, ops.Tensor) for v in input_map.values()):
+      if not scope:
+        # The caller must have passed `name=''`.
+        raise ValueError(
+            'tf.import_graph_def() requires a non-empty `name` if `input_map` '
+            'contains non-Tensor values. Try calling tf.convert_to_tensor() on '
+            '`input_map` values before calling tf.import_graph_def().')
+      with ops.name_scope('_inputs'):
+        input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
 
     # NOTE(mrry): We do this in two passes, because there may be a cycle in
     # `graph_def`.
 
     # 1. Add operations without their inputs.
     for node in graph_def.node:
+      # Set any default attr values that aren't present.
+      if node.op not in op_dict:
+        raise ValueError('No op named %s in defined operations.' % node.op)
+      op_def = op_dict[node.op]
+      for attr_def in op_def.attr:
+        key = attr_def.name
+        if attr_def.HasField('default_value'):
+          value = node.attr[key]
+          if value is None or value.WhichOneof('value') is None:
+            node.attr[key].CopyFrom(attr_def.default_value)
+      if producer_op_dict:
+        # Remove any default attr values that aren't in op_def.
+        if node.op in producer_op_dict:
+          producer_op_def = producer_op_dict[node.op]
+          # We make a copy of node.attr to iterate through since we
+          # may modify node.attr inside the loop.
+          for key in list(node.attr):
+            if _FindAttrInOpDef(key, op_def) is None:
+              # No attr_def in consumer, look in producer.
+              attr_def = _FindAttrInOpDef(key, producer_op_def)
+              if (attr_def and attr_def.HasField('default_value') and
+                  node.attr[key] == attr_def.default_value):
+                # Unknown attr had default value in producer, delete it
+                # so it can be understood by consumer.
+                del node.attr[key]
+
       output_types = _OutputTypes(node, op_dict)
-      with _MaybeDevice(node.device):
-        name_to_op[node.name] = g.create_op(
-            node.op, [], output_types, name=node.name, attrs=node.attr,
-            compute_shapes=False)
+      name_to_op[node.name] = g.create_op(
+          node.op, [], output_types, name=node.name, attrs=node.attr,
+          compute_shapes=False, compute_device=False,
+          op_def=op_def)
 
     # 2. Add inputs to the operations.
     for node in graph_def.node:
       op = name_to_op[node.name]
       input_types = _InputTypes(node, op_dict)
+
+      # Rewrite the colocation attributes in the graph, since the
+      # names of new ops may have changed.
+      for key, value in op.node_def.attr.items():
+        if key == '_class':
+          class_values = value.list
+          new_class_values = []
+          for class_value in class_values.s:
+            if class_value.startswith(b'loc:@'):
+              op_to_bind_to = class_value[5:].decode()
+              # Find the op by its original name.
+              if op_to_bind_to not in name_to_op:
+                raise ValueError('Specified colocation to an op that '
+                                 'does not exist during import: %s in %s' % (
+                                     op_to_bind_to, node.name))
+              original_op = name_to_op[op_to_bind_to]
+              new_class_values.append(compat.as_bytes(
+                  'loc:@' + original_op.name))
+            else:
+              new_class_values.append(class_value)
+          value.list.CopyFrom(attr_value_pb2.AttrValue.ListValue(
+              s=new_class_values))
 
       # NOTE(mrry): We cannot use zip here because control inputs do not appear
       # in the list of input_types.
@@ -289,20 +387,72 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             raise ValueError(_InvalidNodeMessage(
                 node, 'Input tensor %r %s' % (input_name, te)))
 
-      # pylint: disable=protected_access
+      # pylint: disable=protected-access
       if op._input_dtypes != input_types:
         raise ValueError(
             _InvalidNodeMessage(
                 node,
                 'Input types mismatch (expected %r but got %r)'
-                % (", ".join(dtypes.as_dtype(x).name for x in input_types),
-                   ", ".join(x.name for x in op._input_dtypes))))
-      # pylint: enable=protected_access
+                % (', '.join(dtypes.as_dtype(x).name for x in input_types),
+                   ', '.join(x.name for x in op._input_dtypes))))
+      # pylint: enable=protected-access
 
-      # Execute shape inference for this op.
-      # NOTE(mrry): If the graph contains a cycle, the full shape information
-      # may not be available for this op's inputs.
-      ops.set_shapes_for_outputs(op)
+      if not g._is_function(op.type):  # pylint: disable=protected-access
+        # Execute shape inference for this op.
+        # NOTE(mrry): If the graph contains a cycle, the full shape information
+        # may not be available for this op's inputs.
+        ops.set_shapes_for_outputs(op)
+      # For nodes with _output_shapes set, set the output shapes.
+      if '_output_shapes' in op.node_def.attr:
+        for i, output in enumerate(op.outputs):
+          dims = op.node_def.attr['_output_shapes'].list.shape[i]
+          output_shape = tensor_shape.TensorShape(
+              None if dims.unknown_rank else
+              [dim.size if dim.size >= 0 else None for dim in dims.dim])
+
+          try:
+            output.set_shape(output_shape)
+          except ValueError as e:
+            # If the output shape is incompatible with what is inferred
+            # by the graph for a very specific whitelist of ops, then we
+            # ignore this output shape.  This can happen if there is a
+            # bug in the shape function for some operation, and the
+            # serialized graph def has the incorrect shape set when
+            # running on a newer binary with the fixed shape function.
+            # This is an escape hatch that allows us to correct shape
+            # functions that are not critical to correct execution but
+            # would cause graphs to fail if imported after correcting.
+            #
+            # This can be removed after 2017/03/08.
+            if op.type in ['RandomShuffleQueue', 'PaddingFIFOQueue',
+                           'FIFOQueue', 'PriorityQueue', 'QueueSize',
+                           'Stack', 'Barrier', 'BarrierReadySize',
+                           'BarrierIncompleteSize', 'HashTable',
+                           'MutableHashTable',
+                           'MutableHashTableOfTensors', 'Mutex',
+                           'CuckooTable', 'IndexTable',
+                           'WholeFileReader', 'TextLineReader',
+                           'FixedLengthRecordReader',
+                           'TFRecordReader', 'IdentityReader',
+                           'RefSwitch', 'RefEnter', 'RefNextIteration',
+                           'RefMerge', 'RefIdentity']:
+              pass
+            elif op.type in [
+                'ConditionalAccumulator', 'SparseConditionalAccumulator',
+                'Table'
+            ]:
+              # This can be removed after 2017/04/24.
+              pass
+            else:
+              raise e
+
+        del op.node_def.attr['_output_shapes']
+
+      # Apply device functions for this op.
+      # NOTE(mrry): We do this after configuring the inputs, because
+      # the result of the device functions may depend on the inputs.
+      with _MaybeDevice(node.device):
+        g._apply_device_functions(op)  # pylint: disable=protected-access
 
     # Treat unused input mappings as an error, because they are likely to be
     # due to a typo.
@@ -332,3 +482,4 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             raise ValueError(
                 'Requested return_element %r not found in graph_def.' % name)
       return ret
+  # LINT.ThenChange(//tensorflow/core/graph/graph_constructor.cc)

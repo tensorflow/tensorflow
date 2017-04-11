@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,38 +21,178 @@ from __future__ import print_function
 
 import contextlib
 import math
+import random
 import re
-import sys
+import tempfile
 import threading
-
-import tensorflow.python.platform
 
 import numpy as np
 import six
 
+from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
-from tensorflow.core.framework import config_pb2
+from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.client import graph_util
+from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 from tensorflow.python.util.protobuf import compare
+
+
+def gpu_device_name():
+  """Returns the name of a GPU device if available or the empty string."""
+  for x in device_lib.list_local_devices():
+    if x.device_type == "GPU" or x.device_type == "SYCL":
+      return x.name
+  return ""
+
+
+def assert_ops_in_graph(expected_ops, graph):
+  """Assert all expected operations are found.
+
+  Args:
+    expected_ops: `dict<string, string>` of op name to op type.
+    graph: Graph to check.
+  Returns:
+    `dict<string, node>` of node name to node.
+
+  Raises:
+    ValueError: If the expected ops are not present in the graph.
+  """
+  actual_ops = {}
+  gd = graph.as_graph_def()
+  for node in gd.node:
+    if node.name in expected_ops:
+      if expected_ops[node.name] != node.op:
+        raise ValueError("Expected op for node %s is different. %s vs %s" %
+                         (node.name, expected_ops[node.name], node.op))
+      actual_ops[node.name] = node
+  if set(expected_ops.keys()) != set(actual_ops.keys()):
+    raise ValueError("Not all expected ops are present. Expected %s, found %s" %
+                     (expected_ops.keys(), actual_ops.keys()))
+  return actual_ops
+
+
+def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
+  """Asserts that two `GraphDef`s are (mostly) the same.
+
+  Compares two `GraphDef` protos for equality, ignoring versions and ordering of
+  nodes, attrs, and control inputs.  Node names are used to match up nodes
+  between the graphs, so the naming of nodes must be consistent.
+
+  Args:
+    actual: The `GraphDef` we have.
+    expected: The `GraphDef` we expected.
+    checkpoint_v2: boolean determining whether to ignore randomized attribute
+        values that appear in V2 checkpoints.
+
+  Raises:
+    AssertionError: If the `GraphDef`s do not match.
+    TypeError: If either argument is not a `GraphDef`.
+  """
+  if not isinstance(actual, graph_pb2.GraphDef):
+    raise TypeError("Expected tf.GraphDef for actual, got %s" %
+                    type(actual).__name__)
+  if not isinstance(expected, graph_pb2.GraphDef):
+    raise TypeError("Expected tf.GraphDef for expected, got %s" %
+                    type(expected).__name__)
+
+  if checkpoint_v2:
+    _strip_checkpoint_v2_randomized(actual)
+    _strip_checkpoint_v2_randomized(expected)
+
+  diff = pywrap_tensorflow.EqualGraphDefWrapper(actual.SerializeToString(),
+                                                expected.SerializeToString())
+  if diff:
+    raise AssertionError(compat.as_str(diff))
+
+
+# Matches attributes named via _SHARDED_SUFFIX in
+# tensorflow/python/training/saver.py
+_SHARDED_SAVE_OP_PATTERN = "_temp_[0-9a-z]{32}/part"
+
+
+def _strip_checkpoint_v2_randomized(graph_def):
+  for node in graph_def.node:
+    delete_keys = []
+    for attr_key in node.attr:
+      attr_tensor_value = node.attr[attr_key].tensor
+      if attr_tensor_value and len(attr_tensor_value.string_val) == 1:
+        attr_tensor_string_value = attr_tensor_value.string_val[0]
+        if (attr_tensor_string_value and
+            re.match(_SHARDED_SAVE_OP_PATTERN, attr_tensor_string_value)):
+          delete_keys.append(attr_key)
+    for attr_key in delete_keys:
+      del node.attr[attr_key]
 
 
 def IsGoogleCudaEnabled():
   return pywrap_tensorflow.IsGoogleCudaEnabled()
 
 
+def CudaSupportsHalfMatMulAndConv():
+  return pywrap_tensorflow.CudaSupportsHalfMatMulAndConv()
+
+
+def NHWCToNCHW(input_tensor):
+  """Converts the input from the NHWC format to NCHW.
+
+  Args:
+    input_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    converted tensor or shape array
+  """
+  # tensor dim -> new axis order
+  new_axes = {
+      4: [0, 3, 1, 2],
+      5: [0, 4, 1, 2, 3]
+  }
+  if isinstance(input_tensor, ops.Tensor):
+    ndims = input_tensor.shape.ndims
+    return array_ops.transpose(input_tensor, new_axes[ndims])
+  else:
+    ndims = len(input_tensor)
+    return [input_tensor[a] for a in new_axes[ndims]]
+
+
+def NCHWToNHWC(input_tensor):
+  """Converts the input from the NCHW format to NHWC.
+
+  Args:
+    input_tensor: a 4- or 5-D tensor, or an array representing shape
+
+  Returns:
+    converted tensor or shape array
+  """
+  # tensor dim -> new axis order
+  new_axes = {
+      4: [0, 2, 3, 1],
+      5: [0, 2, 3, 4, 1]
+  }
+  if isinstance(input_tensor, ops.Tensor):
+    ndims = input_tensor.shape.ndims
+    return array_ops.transpose(input_tensor, new_axes[ndims])
+  else:
+    ndims = len(input_tensor)
+    return [input_tensor[a] for a in new_axes[ndims]]
+
+
 class TensorFlowTestCase(googletest.TestCase):
-  """Root class for tests that need to test tensor flow.
+  """Base class for tests that need to test TensorFlow.
   """
 
-  def __init__(self, methodName="runTest"):
+  def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     self._threads = []
     self._tempdir = None
@@ -60,11 +200,15 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def setUp(self):
     self._ClearCachedSession()
+    random.seed(random_seed.DEFAULT_GRAPH_SEED)
+    np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
     ops.reset_default_graph()
+    ops.get_default_graph().seed = random_seed.DEFAULT_GRAPH_SEED
 
   def tearDown(self):
     for thread in self._threads:
       self.assertFalse(thread.is_alive(), "A checkedThread did not terminate")
+
     self._ClearCachedSession()
 
   def _ClearCachedSession(self):
@@ -73,8 +217,21 @@ class TensorFlowTestCase(googletest.TestCase):
       self._cached_session = None
 
   def get_temp_dir(self):
+    """Returns a unique temporary directory for the test to use.
+
+    If you call this method multiple times during in a test, it will return the
+    same folder. However, accross different runs the directories will be
+    different. This will ensure that across different runs tests will not be
+    able to pollute each others environment.
+    If you need multiple unique directories within a single test, you should
+    use tempfile.mkdtemp as follows:
+      tempfile.mkdtemp(dir=self.get_temp_dir()):
+
+    Returns:
+      string, the path to the unique temporary directory created for this test.
+    """
     if not self._tempdir:
-      self._tempdir = googletest.GetTempDir()
+      self._tempdir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     return self._tempdir
 
   def _AssertProtoEquals(self, a, b):
@@ -98,25 +255,30 @@ class TensorFlowTestCase(googletest.TestCase):
     then compares them using self._AssertProtoEqual().
 
     Args:
-      expected_message_maybe_ascii: proto message in original or ascii form
-      message: the message to validate
+      expected_message_maybe_ascii: proto message in original or ascii form.
+      message: the message to validate.
     """
 
-    if type(expected_message_maybe_ascii) == type(message):
+    if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(expected_message, message)
     elif isinstance(expected_message_maybe_ascii, str):
       expected_message = type(message)()
-      text_format.Merge(expected_message_maybe_ascii, expected_message)
+      text_format.Merge(expected_message_maybe_ascii, expected_message,
+                        descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(expected_message, message)
     else:
-      assert False, ("Can't compare protos of type " +
-                     type(expected_message_maybe_ascii) + " and " +
-                     type(message))
+      assert False, ("Can't compare protos of type %s and %s" %
+                     (type(expected_message_maybe_ascii), type(message)))
 
-  def assertProtoEqualsVersion(self, expected, actual,
-                               version=versions.GRAPH_DEF_VERSION):
-    expected = "version: %d\n%s" % (version, expected)
+  def assertProtoEqualsVersion(
+      self,
+      expected,
+      actual,
+      producer=versions.GRAPH_DEF_VERSION,
+      min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER):
+    expected = "versions { producer: %d min_consumer: %d };\n%s" % (
+        producer, min_consumer, expected)
     self.assertProtoEquals(expected, actual)
 
   def assertStartsWith(self, actual, expected_start, msg=None):
@@ -142,6 +304,13 @@ class TensorFlowTestCase(googletest.TestCase):
     """Returns a TensorFlow Session for use in executing tests.
 
     This method should be used for all functional tests.
+
+    This method behaves different than session.Session: for performance reasons
+    `test_session` will by default (if `graph` is None) reuse the same session
+    across tests. This means you may want to either call the function
+    `reset_default_graph()` before tests, or if creating an explicit new graph,
+    pass it here (simply setting it with `as_default()` won't do it), which will
+    trigger the creation of a new session.
 
     Use the `use_gpu` and `force_gpu` options to control where ops are run. If
     `force_gpu` is True, all ops are pinned to `/gpu:0`. Otherwise, if `use_gpu`
@@ -171,7 +340,18 @@ class TensorFlowTestCase(googletest.TestCase):
       A Session object that should be used as a context manager to surround
       the graph building and execution code in a test case.
     """
+    if self.id().endswith(".test_session"):
+      self.skipTest("Not a test.")
+
     def prepare_config(config):
+      """Returns a config for sessions.
+
+      Args:
+        config: An optional config_pb2.ConfigProto to use to configure the
+          session.
+      Returns:
+        A config_pb2.ConfigProto object.
+      """
       if config is None:
         config = config_pb2.ConfigProto()
         config.allow_soft_placement = not force_gpu
@@ -179,32 +359,46 @@ class TensorFlowTestCase(googletest.TestCase):
       elif force_gpu and config.allow_soft_placement:
         config = config_pb2.ConfigProto().CopyFrom(config)
         config.allow_soft_placement = False
+      # Don't perform optimizations for tests so we don't inadvertently run
+      # gpu ops on cpu
+      config.graph_options.optimizer_options.opt_level = -1
       return config
 
     if graph is None:
       if self._cached_session is None:
-        self._cached_session = session.Session(graph=None,
-                                               config=prepare_config(config))
+        self._cached_session = session.Session(
+            graph=None, config=prepare_config(config))
       sess = self._cached_session
       with sess.graph.as_default(), sess.as_default():
         if force_gpu:
-          with sess.graph.device("/gpu:0"):
+          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # otherwise
+          gpu_name = gpu_device_name()
+          if not gpu_name:
+            gpu_name = "/gpu:0"
+          with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
           yield sess
         else:
-          with sess.graph.device(graph_util.pin_to_cpu):
+          with sess.graph.device("/cpu:0"):
             yield sess
     else:
       with session.Session(graph=graph, config=prepare_config(config)) as sess:
         if force_gpu:
-          with sess.graph.device("/gpu:0"):
+          # Use the name of an actual device if one is detected, or '/gpu:0'
+          # otherwise
+          gpu_name = gpu_device_name()
+          if not gpu_name:
+            gpu_name = "/gpu:0"
+          with sess.graph.device(gpu_name):
             yield sess
         elif use_gpu:
           yield sess
         else:
-          with sess.graph.device(graph_util.pin_to_cpu):
+          with sess.graph.device("/cpu:0"):
             yield sess
+
   # pylint: enable=g-doc-return-or-yield
 
   class _CheckedThread(object):
@@ -235,9 +429,7 @@ class TensorFlowTestCase(googletest.TestCase):
       """Target for the wrapper thread. Sets self._exception on failure."""
       try:
         self._target(*self._args, **self._kwargs)
-# pylint: disable=broad-except
-      except Exception as e:
-        # pylint: enable=broad-except
+      except Exception as e:  # pylint: disable=broad-except
         self._exception = e
 
     def start(self):
@@ -257,8 +449,7 @@ class TensorFlowTestCase(googletest.TestCase):
       """
       self._thread.join()
       if self._exception is not None:
-        self._testcase.fail(
-            "Error in checkedThread: %s" % str(self._exception))
+        self._testcase.fail("Error in checkedThread: %s" % str(self._exception))
 
     def is_alive(self):
       """Returns whether the thread is alive.
@@ -290,20 +481,25 @@ class TensorFlowTestCase(googletest.TestCase):
     ret = TensorFlowTestCase._CheckedThread(self, target, args, kwargs)
     self._threads.append(ret)
     return ret
+
 # pylint: enable=invalid-name
 
-  def assertNear(self, f1, f2, err):
+  def assertNear(self, f1, f2, err, msg=None):
     """Asserts that two floats are near each other.
 
     Checks that |f1 - f2| < err and asserts a test failure
     if not.
 
     Args:
-      f1: a float value.
-      f2: a float value.
-      err: a float value.
+      f1: A float value.
+      f2: A float value.
+      err: A float value.
+      msg: An optional string message to append to the failure message.
     """
-    self.assertTrue(math.fabs(f1 - f2) < err)
+    self.assertTrue(
+        math.fabs(f1 - f2) <= err,
+        "%f != %f +/- %f%s" % (f1, f2, err, " (%s)" % msg
+                               if msg is not None else ""))
 
   def assertArrayNear(self, farray1, farray2, err):
     """Asserts that two float arrays are near each other.
@@ -316,8 +512,9 @@ class TensorFlowTestCase(googletest.TestCase):
       farray2: a list of float values.
       err: a float value.
     """
+    self.assertEqual(len(farray1), len(farray2))
     for f1, f2 in zip(farray1, farray2):
-      self.assertNear(f1, f2, err)
+      self.assertNear(float(f1), float(f2), err)
 
   def _NDArrayNear(self, ndarray1, ndarray2, err):
     return np.linalg.norm(ndarray1 - ndarray2) < err
@@ -343,14 +540,13 @@ class TensorFlowTestCase(googletest.TestCase):
     Args:
       a: a numpy ndarray or anything can be converted to one.
       b: a numpy ndarray or anything can be converted to one.
-      rtol: relative tolerance
-      atol: absolute tolerance
+      rtol: relative tolerance.
+      atol: absolute tolerance.
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(
-        a.shape, b.shape,
-        "Shape mismatch: expected %s, got %s." % (a.shape, b.shape))
+    self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s." %
+                     (a.shape, b.shape))
     if not np.allclose(a, b, rtol=rtol, atol=atol):
       # Prints more details than np.testing.assert_allclose.
       #
@@ -360,7 +556,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # absolute difference atol are added together to compare against
       # the absolute difference between a and b.  Here, we want to
       # print out which elements violate such conditions.
-      cond = np.abs(a - b) > atol + rtol * np.abs(b)
+      cond = np.logical_or(
+          np.abs(a - b) > atol + rtol * np.abs(b), np.isnan(a) != np.isnan(b))
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
@@ -372,7 +569,44 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close rhs = ", y)
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
+      print("dtype = %s, shape = %s" % (a.dtype, a.shape))
       np.testing.assert_allclose(a, b, rtol=rtol, atol=atol)
+
+  def assertAllCloseAccordingToType(self,
+                                    a,
+                                    b,
+                                    rtol=1e-6,
+                                    atol=1e-6,
+                                    float_rtol=1e-6,
+                                    float_atol=1e-6,
+                                    half_rtol=1e-3,
+                                    half_atol=1e-3):
+    """Like assertAllClose, but also suitable for comparing fp16 arrays.
+
+    In particular, the tolerance is reduced to 1e-3 if at least
+    one of the arguments is of type float16.
+
+    Args:
+      a: a numpy ndarray or anything can be converted to one.
+      b: a numpy ndarray or anything can be converted to one.
+      rtol: relative tolerance.
+      atol: absolute tolerance.
+      float_rtol: relative tolerance for float32.
+      float_atol: absolute tolerance for float32.
+      half_rtol: relative tolerance for float16.
+      half_atol: absolute tolerance for float16.
+    """
+    a = self._GetNdArray(a)
+    b = self._GetNdArray(b)
+    if (a.dtype == np.float32 or b.dtype == np.float32 or
+        a.dtype == np.complex64 or b.dtype == np.complex64):
+      rtol = max(rtol, float_rtol)
+      atol = max(atol, float_atol)
+    if a.dtype == np.float16 or b.dtype == np.float16:
+      rtol = max(rtol, half_rtol)
+      atol = max(atol, half_atol)
+
+    self.assertAllClose(a, b, rtol=rtol, atol=atol)
 
   def assertAllEqual(self, a, b):
     """Asserts that two numpy arrays have the same values.
@@ -383,9 +617,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(
-        a.shape, b.shape,
-        "Shape mismatch: expected %s, got %s." % (a.shape, b.shape))
+    self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s." %
+                     (a.shape, b.shape))
     same = (a == b)
 
     if a.dtype == np.float32 or a.dtype == np.float64:
@@ -410,37 +643,42 @@ class TensorFlowTestCase(googletest.TestCase):
                                      expected_err_re_or_predicate):
     """Returns a context manager to enclose code expected to raise an exception.
 
+    If the exception is an OpError, the op stack is also included in the message
+    predicate search.
+
     Args:
       exception_type: The expected type of exception that should be raised.
       expected_err_re_or_predicate: If this is callable, it should be a function
-        of one argument that inspects the passed-in OpError exception and
+        of one argument that inspects the passed-in exception and
         returns True (success) or False (please fail the test). Otherwise, the
         error message is expected to match this regular expression partially.
 
     Returns:
       A context manager to surround code that is expected to raise an
-      errors.OpError exception.
+      exception.
     """
     if callable(expected_err_re_or_predicate):
       predicate = expected_err_re_or_predicate
     else:
+
       def predicate(e):
-        err_str = e.message
-        op = e.op
+        err_str = e.message if isinstance(e, errors.OpError) else str(e)
+        op = e.op if isinstance(e, errors.OpError) else None
         while op is not None:
           err_str += "\nCaused by: " + op.name
-          op = op._original_op
+          op = op._original_op  # pylint: disable=protected-access
         logging.info("Searching within error strings: '%s' within '%s'",
                      expected_err_re_or_predicate, err_str)
         return re.search(expected_err_re_or_predicate, err_str)
+
     try:
       yield
       self.fail(exception_type.__name__ + " not raised")
-# pylint: disable=broad-except
-    except Exception as e:
-      # pylint: enable=broad-except
+    except Exception as e:  # pylint: disable=broad-except
       if not isinstance(e, exception_type) or not predicate(e):
-        raise AssertionError(e)
+        raise AssertionError("Exception of type %s: %s" % (str(type(e)),
+                                                           str(e)))
+
   # pylint: enable=g-doc-return-or-yield
 
   def assertRaisesOpError(self, expected_err_re_or_predicate):
@@ -463,10 +701,26 @@ class TensorFlowTestCase(googletest.TestCase):
       raise TypeError("tf_tensor must be a Tensor")
     self.assertAllEqual(np_array.shape, tf_tensor.get_shape().as_list())
 
+  def assertDeviceEqual(self, device1, device2):
+    """Asserts that the two given devices are the same.
+
+    Args:
+      device1: A string device name or TensorFlow `DeviceSpec` object.
+      device2: A string device name or TensorFlow `DeviceSpec` object.
+    """
+    device1 = pydev.canonical_name(device1)
+    device2 = pydev.canonical_name(device2)
+    self.assertEqual(device1, device2,
+                     "Devices %s and %s are not equal" % (device1, device2))
+
   # Fix Python 3 compatibility issues
   if six.PY3:
+    # pylint: disable=invalid-name
+
     # Silence a deprecation warning
     assertRaisesRegexp = googletest.TestCase.assertRaisesRegex
 
     # assertItemsEqual is assertCountEqual as of 3.2.
     assertItemsEqual = googletest.TestCase.assertCountEqual
+
+    # pylint: enable=invalid-name

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -137,10 +137,6 @@ class PluginRegistry {
   // not implicitly examine the default factory lists.
   bool HasFactory(const PluginFactories& factories, PluginKind plugin_kind,
                   PluginId plugin) const;
-
-  // As this object is a singleton, a global mutex can be used for static and
-  // instance protection.
-  static mutex mu_;
 
   // The singleton itself.
   static PluginRegistry* instance_;

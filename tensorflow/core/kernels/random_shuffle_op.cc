@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,14 @@ limitations under the License.
 
 // See docs in ../ops/random_ops.cc.
 
+#include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
 namespace tensorflow {
@@ -42,6 +43,19 @@ static inline void RandomShuffle(Iter first, Iter last, Random& uniform) {
   for (auto i = first; i != stop; ++i) {
     using std::iter_swap;
     iter_swap(i, i + uniform(last - i));
+  }
+}
+
+template <class IntT, class InT, class OutT, class Random>
+static void IndexedShuffle(const int64 size, const InT& input_mat,
+                           OutT output_mat, Random& uniform) {
+  std::vector<IntT> permutation(size);
+  for (IntT i = 0; i < size; i++) {
+    permutation[i] = i;
+  }
+  RandomShuffle(permutation.begin(), permutation.end(), uniform);
+  for (IntT i = 0; i < size; i++) {
+    output_mat.template chip<0>(i) = input_mat.template chip<0>(permutation[i]);
   }
 }
 
@@ -78,14 +92,10 @@ class RandomShuffleOp : public OpKernel {
                        context->allocate_output(0, input.shape(), &output));
         const auto input_mat = input.flat_outer_dims<T>();
         auto output_mat = output->flat_outer_dims<T>();
-        std::vector<int> permutation(size);
-        for (int i = 0; i < size; i++) {
-          permutation[i] = i;
-        }
-        RandomShuffle(permutation.begin(), permutation.end(), uniform);
-        for (int i = 0; i < size; i++) {
-          output_mat.template chip<0>(i) =
-              input_mat.template chip<0>(permutation[i]);
+        if (size < kint32max) {
+          IndexedShuffle<int32>(size, input_mat, output_mat, uniform);
+        } else {
+          IndexedShuffle<int64>(size, input_mat, output_mat, uniform);
         }
       }
     }

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ limitations under the License.
 #include <stddef.h>
 #include <complex>
 
-#include "third_party/gpus/cuda/include/cuComplex.h"
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "cuda/include/cuComplex.h"
+#include "cuda/include/cuda.h"
 
 namespace perftools {
 namespace gputools {
@@ -44,7 +44,7 @@ const T *CUDAMemory(const DeviceMemory<T> &mem) {
 }
 
 // Converts a (non-const) DeviceMemory pointer reference to its underlying typed
-// pointer in CUDA device device memory.
+// pointer in CUDA device memory.
 template <typename T>
 T *CUDAMemoryMutable(DeviceMemory<T> *mem) {
   return static_cast<T *>(mem->opaque());

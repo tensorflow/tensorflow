@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/port.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace core {
@@ -39,6 +40,10 @@ class Arena {
 
   char* Alloc(const size_t size) {
     return reinterpret_cast<char*>(GetMemory(size, 1));
+  }
+
+  char* AllocAligned(const size_t size, const size_t alignment) {
+    return reinterpret_cast<char*>(GetMemory(size, alignment));
   }
 
   void Reset();
@@ -78,7 +83,7 @@ class Arena {
     size_t size;
   };
 
-  // Allocate new new block of at least block_size, with the specified
+  // Allocate new block of at least block_size, with the specified
   // alignment.
   // The returned AllocatedBlock* is valid until the next call to AllocNewBlock
   // or Reset (i.e. anything that might affect overflow_blocks_).

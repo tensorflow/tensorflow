@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <deque>
 #include <vector>
+
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
@@ -59,6 +61,44 @@ void DFS(const Graph& g, std::function<void(Node*)> enter,
   }
 }
 
+void ReverseDFS(const Graph& g, std::function<void(Node*)> enter,
+                std::function<void(Node*)> leave) {
+  // Stack of work to do.
+  struct Work {
+    Node* node;
+    bool leave;  // Are we entering or leaving n?
+  };
+  std::vector<Work> stack;
+  stack.push_back(Work{g.sink_node(), false});
+
+  std::vector<bool> visited(g.num_node_ids(), false);
+  while (!stack.empty()) {
+    Work w = stack.back();
+    stack.pop_back();
+
+    Node* n = w.node;
+    if (w.leave) {
+      leave(n);
+      continue;
+    }
+
+    if (visited[n->id()]) continue;
+    visited[n->id()] = true;
+    if (enter) enter(n);
+
+    // Arrange to call leave(n) when all done with descendants.
+    if (leave) stack.push_back(Work{n, true});
+
+    // Arrange to work on parents.
+    for (Node* in : n->in_nodes()) {
+      if (!visited[in->id()]) {
+        // Note; we must not mark as visited until we actually process it.
+        stack.push_back(Work{in, false});
+      }
+    }
+  }
+}
+
 void GetPostOrder(const Graph& g, std::vector<Node*>* order) {
   order->clear();
   DFS(g, nullptr, [order](Node* n) { order->push_back(n); });
@@ -69,54 +109,60 @@ void GetReversePostOrder(const Graph& g, std::vector<Node*>* order) {
   std::reverse(order->begin(), order->end());
 }
 
-void PruneForReverseReachability(Graph* g,
-                                 const std::unordered_set<const Node*>& nodes) {
-  std::unordered_set<const Node*> visited;
-
+bool PruneForReverseReachability(Graph* g,
+                                 std::unordered_set<const Node*> visited) {
   // Compute set of nodes that we need to traverse in order to reach
   // the nodes in "nodes" by performing a breadth-first search from those
   // nodes, and accumulating the visited nodes.
   std::deque<const Node*> queue;
-  for (const Node* n : nodes) {
+  for (const Node* n : visited) {
+    VLOG(2) << "Reverse reach init: " << n->name();
     queue.push_back(n);
   }
   while (!queue.empty()) {
     const Node* n = queue.front();
     queue.pop_front();
-    if (visited.insert(n).second) {
-      for (const Node* in : n->in_nodes()) {
+    for (const Node* in : n->in_nodes()) {
+      if (visited.insert(in).second) {
         queue.push_back(in);
+        VLOG(2) << "Reverse reach : " << n->name() << " from " << in->name();
       }
     }
   }
 
   // Make a pass over the graph to remove nodes not in "visited"
   std::vector<Node*> all_nodes;
+  all_nodes.reserve(g->num_nodes());
   for (Node* n : g->nodes()) {
     all_nodes.push_back(n);
   }
 
+  bool any_removed = false;
   for (Node* n : all_nodes) {
     if (visited.count(n) == 0 && !n->IsSource() && !n->IsSink()) {
       g->RemoveNode(n);
+      any_removed = true;
     }
   }
 
-  // Reconnect nodes with no outgoing edges to the sink node
-  FixupSourceAndSinkEdges(g);
+  return any_removed;
 }
 
-void FixupSourceAndSinkEdges(Graph* g) {
+bool FixupSourceAndSinkEdges(Graph* g) {
   // Connect all nodes with no incoming edges to source.
   // Connect all nodes with no outgoing edges to sink.
+  bool changed = false;
   for (Node* n : g->nodes()) {
     if (!n->IsSource() && n->in_edges().empty()) {
       g->AddControlEdge(g->source_node(), n);
+      changed = true;
     }
     if (!n->IsSink() && n->out_edges().empty()) {
       g->AddControlEdge(n, g->sink_node());
+      changed = true;
     }
   }
+  return changed;
 }
 
 }  // namespace tensorflow

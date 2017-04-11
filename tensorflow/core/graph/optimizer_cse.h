@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,9 @@ namespace tensorflow {
 // "consider_fn" is not nullptr, then only nodes for which
 // consider_fn(node) returns true will be considered for combining
 // during the common subexpression elimination.
-extern void OptimizeCSE(Graph* g, std::function<bool(const Node*)> consider_fn);
+//
+// Returns true if and only if 'g' is mutated.
+extern bool OptimizeCSE(Graph* g, std::function<bool(const Node*)> consider_fn);
 
 }  // namespace tensorflow
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,21 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER_KERNEL_BUILDER(Name("Real").Device(DEVICE_CPU),
-                        UnaryOp<CPUDevice, functor::get_real<complex64>>);
+
+#define REGISTER_COMPLEX(D, R, C)                         \
+  REGISTER_KERNEL_BUILDER(Name("Real")                    \
+                              .Device(DEVICE_##D)         \
+                              .TypeConstraint<C>("T")     \
+                              .TypeConstraint<R>("Tout"), \
+                          UnaryOp<D##Device, functor::get_real<C>>);
+
+REGISTER_COMPLEX(CPU, float, complex64);
+REGISTER_COMPLEX(CPU, double, complex128);
+
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("Real").Device(DEVICE_GPU),
-                        UnaryOp<GPUDevice, functor::get_real<complex64>>);
+REGISTER_COMPLEX(GPU, float, complex64);
+REGISTER_COMPLEX(GPU, double, complex128);
 #endif
+
+#undef REGISTER_COMPLEX
 }  // namespace tensorflow

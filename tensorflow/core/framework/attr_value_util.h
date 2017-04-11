@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,13 +17,15 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_ATTR_VALUE_UTIL_H_
 
 #include <string>
+#include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/public/status.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -34,7 +36,7 @@ string SummarizeAttrValue(const AttrValue& attr_value);
 // Generates an error if attr_value doesn't have the indicated attr type.
 Status AttrValueHasType(const AttrValue& attr_value, StringPiece type);
 
-// Converts a text proto value from "text" into the the field of *out
+// Converts a text proto value from "text" into the field of *out
 // indicated by "type" (e.g. from the type field of an AttrDef).
 // Examples:
 // * If type:"int" and text:"-14", then *out is set to "i: -14"
@@ -54,12 +56,15 @@ void SetAttrValue(double value, AttrValue* out);
 void SetAttrValue(bool value, AttrValue* out);
 void SetAttrValue(DataType value, AttrValue* out);
 void SetAttrValue(const TensorShape& value, AttrValue* out);
+void SetAttrValue(const TensorShapeProto& value, AttrValue* out);
+void SetAttrValue(const PartialTensorShape& value, AttrValue* out);
 void SetAttrValue(const Tensor& value, AttrValue* out);
 void SetAttrValue(const TensorProto& value, AttrValue* out);
 void SetAttrValue(const NameAttrList& value, AttrValue* out);
 
 void SetAttrValue(gtl::ArraySlice<string> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<const char*> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<StringPiece> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<int64> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<int32> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<float> value, AttrValue* out);
@@ -69,8 +74,11 @@ void SetAttrValue(const std::vector<bool>& value, AttrValue* out);
 void SetAttrValue(std::initializer_list<bool> value, AttrValue* out);
 void SetAttrValue(DataTypeSlice value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<TensorShape> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<PartialTensorShape> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<Tensor> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<TensorProto> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out);
 
 inline void SetAttrValue(const AttrValue& value, AttrValue* out) {
   *out = value;

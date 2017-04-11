@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
 #define TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
 
-#include <gtest/gtest.h>
+#include <numeric>
+
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace test {
@@ -60,6 +62,19 @@ void FillValues(Tensor* tensor, gtl::ArraySlice<T> vals) {
   }
 }
 
+// Fills in '*tensor' with 'vals', converting the types as needed.
+template <typename T, typename SrcType>
+void FillValues(Tensor* tensor, std::initializer_list<SrcType> vals) {
+  auto flat = tensor->flat<T>();
+  CHECK_EQ(flat.size(), vals.size());
+  if (flat.size() > 0) {
+    size_t i = 0;
+    for (auto itr = vals.begin(); itr != vals.end(); ++itr, ++i) {
+      flat(i) = T(*itr);
+    }
+  }
+}
+
 // Fills in '*tensor' with a sequence of value of val, val+1, val+2, ...
 //   Tensor x(&alloc, DT_FLOAT, TensorShape({2, 2}));
 //   test::FillIota<float>(&x, 1.0);
@@ -84,7 +99,7 @@ template <typename T>
 void ExpectTensorEqual(const Tensor& x, const Tensor& y);
 
 // Expects "x" and "y" are tensors of the same type, same shape, and
-// approxmiate equal values, each within "abs_err".
+// approximate equal values, each within "abs_err".
 template <typename T>
 void ExpectTensorNear(const Tensor& x, const Tensor& y, const T& abs_err);
 
@@ -100,31 +115,38 @@ namespace internal {
 
 template <typename T>
 struct is_floating_point_type {
-  static const bool value = std::is_same<T, float>::value ||
+  static const bool value = std::is_same<T, Eigen::half>::value ||
+                            std::is_same<T, float>::value ||
                             std::is_same<T, double>::value ||
                             std::is_same<T, std::complex<float> >::value ||
                             std::is_same<T, std::complex<double> >::value;
 };
 
 template <typename T>
-static void ExpectEqual(const T& a, const T& b) {
+inline void ExpectEqual(const T& a, const T& b) {
   EXPECT_EQ(a, b);
 }
 
 template <>
-void ExpectEqual<float>(const float& a, const float& b) {
+inline void ExpectEqual<float>(const float& a, const float& b) {
   EXPECT_FLOAT_EQ(a, b);
 }
 
 template <>
-void ExpectEqual<double>(const double& a, const double& b) {
+inline void ExpectEqual<double>(const double& a, const double& b) {
   EXPECT_DOUBLE_EQ(a, b);
 }
 
 template <>
-void ExpectEqual<complex64>(const complex64& a, const complex64& b) {
+inline void ExpectEqual<complex64>(const complex64& a, const complex64& b) {
   EXPECT_FLOAT_EQ(a.real(), b.real()) << a << " vs. " << b;
   EXPECT_FLOAT_EQ(a.imag(), b.imag()) << a << " vs. " << b;
+}
+
+template <>
+inline void ExpectEqual<complex128>(const complex128& a, const complex128& b) {
+  EXPECT_DOUBLE_EQ(a.real(), b.real()) << a << " vs. " << b;
+  EXPECT_DOUBLE_EQ(a.imag(), b.imag()) << a << " vs. " << b;
 }
 
 inline void AssertSameTypeDims(const Tensor& x, const Tensor& y) {
@@ -167,9 +189,10 @@ struct Expector<T, true> {
     }
   }
 
-  static void Near(const T& a, const T& b, const double abs_err) {
+  static void Near(const T& a, const T& b, const double abs_err, int index) {
     if (a != b) {  // Takes care of inf.
-      EXPECT_LE(std::abs(a - b), abs_err) << "a = " << a << " b = " << b;
+      EXPECT_LE(double(Eigen::numext::abs(a - b)), abs_err)
+          << "a = " << a << " b = " << b << " index = " << index;
     }
   }
 
@@ -179,7 +202,7 @@ struct Expector<T, true> {
     auto a = x.flat<T>();
     auto b = y.flat<T>();
     for (int i = 0; i < a.size(); ++i) {
-      Near(a(i), b(i), abs_err);
+      Near(a(i), b(i), abs_err, i);
     }
   }
 };

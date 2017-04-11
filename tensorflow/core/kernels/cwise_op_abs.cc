@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +16,26 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER4(UnaryOp, CPU, "Abs", functor::abs, float, double, int32, int64);
-#if !defined(__ANDROID__)
-REGISTER_KERNEL_BUILDER(Name("ComplexAbs").Device(DEVICE_CPU),
-                        UnaryOp<CPUDevice, functor::abs<complex64>>);
+REGISTER5(UnaryOp, CPU, "Abs", functor::abs, float, Eigen::half, double, int32,
+          int64);
+#if !defined(IS_MOBILE_PLATFORM)
+REGISTER2(UnaryOp, CPU, "ComplexAbs", functor::abs, complex64, complex128);
 #endif
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("Abs")                                 \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("T"),                 \
+                          UnaryOp<SYCLDevice, functor::abs<TYPE>>);
+REGISTER_SYCL_KERNEL(float);
+#undef REGISTER_SYCL_KERNEL
+#endif // TENSORFLOW_USE_SYCL
+
 #if GOOGLE_CUDA
-REGISTER3(UnaryOp, GPU, "Abs", functor::abs, float, double, int64);
-#endif
+REGISTER4(UnaryOp, GPU, "Abs", functor::abs, float, Eigen::half, double, int64);
+REGISTER2(UnaryOp, GPU, "ComplexAbs", functor::abs, complex64, complex128);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -34,5 +46,6 @@ REGISTER_KERNEL_BUILDER(Name("Abs")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::abs<int32>>);
+#endif
 
 }  // namespace tensorflow

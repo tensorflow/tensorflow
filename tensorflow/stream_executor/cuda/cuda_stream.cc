@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,18 +24,20 @@ namespace gputools {
 namespace cuda {
 
 bool CUDAStream::Init() {
-  return CUDADriver::CreateStream(parent_->cuda_context(), &cuda_stream_);
+  if (!CUDADriver::CreateStream(parent_->cuda_context(), &cuda_stream_)) {
+    return false;
+  }
+  return CUDADriver::CreateEvent(parent_->cuda_context(), &completed_event_,
+                                 CUDADriver::EventFlags::kDisableTiming)
+      .ok();
 }
 
 void CUDAStream::Destroy() {
-  {
-    mutex_lock lock{mu_};
-    if (completed_event_ != nullptr) {
-      port::Status status =
-          CUDADriver::DestroyEvent(parent_->cuda_context(), &completed_event_);
-      if (!status.ok()) {
-        LOG(ERROR) << status.error_message();
-      }
+  if (completed_event_ != nullptr) {
+    port::Status status =
+        CUDADriver::DestroyEvent(parent_->cuda_context(), &completed_event_);
+    if (!status.ok()) {
+      LOG(ERROR) << status.error_message();
     }
   }
 
@@ -44,23 +46,6 @@ void CUDAStream::Destroy() {
 
 bool CUDAStream::IsIdle() const {
   return CUDADriver::IsStreamIdle(parent_->cuda_context(), cuda_stream_);
-}
-
-bool CUDAStream::GetOrCreateCompletedEvent(CUevent *completed_event) {
-  mutex_lock lock{mu_};
-  if (completed_event_ != nullptr) {
-    *completed_event = completed_event_;
-    return true;
-  }
-
-  if (!CUDADriver::CreateEvent(parent_->cuda_context(), &completed_event_,
-                               CUDADriver::EventFlags::kDisableTiming)
-           .ok()) {
-    return false;
-  }
-
-  *completed_event = completed_event_;
-  return true;
 }
 
 CUDAStream *AsCUDAStream(Stream *stream) {

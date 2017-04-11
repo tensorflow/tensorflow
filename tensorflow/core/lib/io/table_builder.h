@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,8 +25,8 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_TABLE_BUILDER_H_
 
 #include <stdint.h>
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/table_options.h"
-#include "tensorflow/core/public/status.h"
 
 namespace tensorflow {
 class WritableFile;
@@ -50,9 +50,10 @@ class TableBuilder {
   // REQUIRES: Finish(), Abandon() have not been called
   void Add(const StringPiece& key, const StringPiece& value);
 
-  // Advanced operation: flush any buffered key/value pairs to file.
+  // Advanced operation: writes any buffered key/value pairs to file.
   // Can be used to ensure that two adjacent entries never live in
   // the same data block.  Most clients should not need to use this method.
+  // Does not flush the file itself.
   // REQUIRES: Finish(), Abandon() have not been called
   void Flush();
 

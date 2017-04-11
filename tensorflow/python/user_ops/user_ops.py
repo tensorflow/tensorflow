@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,11 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.python.platform
-from tensorflow.python.ops import gen_user_ops
-from tensorflow.python.ops.gen_user_ops import *
+from tensorflow.python.ops import gen_user_ops as _gen_user_ops
+
+# go/tf-wildcard-import
+from tensorflow.python.ops.gen_user_ops import *  # pylint: disable=wildcard-import
 
 
 def my_fact():
   """Example of overriding the generated code for an Op."""
-  return gen_user_ops._fact()
+  return _gen_user_ops._fact()  # pylint: disable=protected-access

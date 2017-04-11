@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ from __future__ import print_function
 
 import traceback
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
@@ -66,6 +66,14 @@ class Registry(object):
     # so the user function is #2.
     stack = traceback.extract_stack()
     self._registry[name] = {_TYPE_TAG: candidate, _LOCATION_TAG: stack[2]}
+
+  def list(self):
+    """Lists registered items.
+
+    Returns:
+      A list of names of registered objects.
+    """
+    return self._registry.keys()
 
   def lookup(self, name):
     """Looks up "name".

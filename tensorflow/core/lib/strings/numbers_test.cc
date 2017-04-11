@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 
 #include <string>
-#include <gtest/gtest.h>
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace strings {
@@ -39,6 +39,35 @@ TEST(FpToString, Ints) {
   EXPECT_FALSE(StringToFp("", &dummy));
   EXPECT_FALSE(StringToFp("xyz", &dummy));
   EXPECT_FALSE(StringToFp("0000000000000000xyz", &dummy));
+}
+
+TEST(Uint64ToHexString, Ints) {
+  for (int s = 0; s < 64; s++) {
+    for (int delta = -1; delta <= 1; delta++) {
+      uint64 fp = (1ull << s) + delta;
+      char buf[kFastToBufferSize];
+      StringPiece s = Uint64ToHexString(fp, buf);
+      uint64 fp2;
+      EXPECT_TRUE(HexStringToUint64(s, &fp2));
+      EXPECT_EQ(fp, fp2) << s;
+    }
+  }
+  uint64 dummy;
+  EXPECT_FALSE(HexStringToUint64("", &dummy));
+  EXPECT_FALSE(HexStringToUint64("xyz", &dummy));
+  EXPECT_FALSE(HexStringToUint64("0000000000000000xyz", &dummy));
+}
+
+TEST(HumanReadableNum, Basic) {
+  EXPECT_EQ(HumanReadableNum(823), "823");
+  EXPECT_EQ(HumanReadableNum(1024), "1.02k");
+  EXPECT_EQ(HumanReadableNum(4000), "4.00k");
+  EXPECT_EQ(HumanReadableNum(999499), "999.50k");
+  EXPECT_EQ(HumanReadableNum(1000000), "1.00M");
+  EXPECT_EQ(HumanReadableNum(1048575), "1.05M");
+  EXPECT_EQ(HumanReadableNum(1048576), "1.05M");
+  EXPECT_EQ(HumanReadableNum(23956812342), "23.96B");
+  EXPECT_EQ(HumanReadableNum(123456789012345678), "1.23E+17");
 }
 
 TEST(HumanReadableNumBytes, Bytes) {
@@ -68,6 +97,25 @@ TEST(HumanReadableNumBytes, Bytes) {
   EXPECT_EQ("-8E", HumanReadableNumBytes(kint64min));
 }
 
+TEST(HumanReadableElapsedTime, Basic) {
+  EXPECT_EQ(HumanReadableElapsedTime(-10), "-10 s");
+  EXPECT_EQ(HumanReadableElapsedTime(-0.001), "-1 ms");
+  EXPECT_EQ(HumanReadableElapsedTime(-60.0), "-1 min");
+  EXPECT_EQ(HumanReadableElapsedTime(0.00000001), "0.01 us");
+  EXPECT_EQ(HumanReadableElapsedTime(0.0000012), "1.2 us");
+  EXPECT_EQ(HumanReadableElapsedTime(0.0012), "1.2 ms");
+  EXPECT_EQ(HumanReadableElapsedTime(0.12), "120 ms");
+  EXPECT_EQ(HumanReadableElapsedTime(1.12), "1.12 s");
+  EXPECT_EQ(HumanReadableElapsedTime(90.0), "1.5 min");
+  EXPECT_EQ(HumanReadableElapsedTime(600.0), "10 min");
+  EXPECT_EQ(HumanReadableElapsedTime(9000.0), "2.5 h");
+  EXPECT_EQ(HumanReadableElapsedTime(87480.0), "1.01 days");
+  EXPECT_EQ(HumanReadableElapsedTime(7776000.0), "2.96 months");
+  EXPECT_EQ(HumanReadableElapsedTime(78840000.0), "2.5 years");
+  EXPECT_EQ(HumanReadableElapsedTime(382386614.40), "12.1 years");
+  EXPECT_EQ(HumanReadableElapsedTime(DBL_MAX), "5.7e+300 years");
+}
+
 TEST(safe_strto32, Int32s) {
   int32 result;
 
@@ -93,6 +141,46 @@ TEST(safe_strto32, Int32s) {
   // Overflow
   EXPECT_EQ(false, safe_strto32("2147483648", &result));
   EXPECT_EQ(false, safe_strto32("-2147483649", &result));
+
+  // Check that the StringPiece's length is respected.
+  EXPECT_EQ(true, safe_strto32(StringPiece("123", 1), &result));
+  EXPECT_EQ(1, result);
+  EXPECT_EQ(true, safe_strto32(StringPiece(" -123", 4), &result));
+  EXPECT_EQ(-12, result);
+  EXPECT_EQ(false, safe_strto32(StringPiece(nullptr, 0), &result));
+}
+
+TEST(safe_strtou32, UInt32s) {
+  uint32 result;
+
+  EXPECT_TRUE(safe_strtou32("0", &result));
+  EXPECT_EQ(0, result);
+  EXPECT_TRUE(safe_strtou32("1", &result));
+  EXPECT_EQ(1, result);
+  EXPECT_TRUE(safe_strtou32("123", &result));
+  EXPECT_EQ(123, result);
+  EXPECT_TRUE(safe_strtou32("4294967295", &result));
+  EXPECT_EQ(4294967295, result);
+
+  // Invalid argument
+  EXPECT_FALSE(safe_strtou32(" 132as ", &result));
+  EXPECT_FALSE(safe_strtou32(" 132.2 ", &result));
+  EXPECT_FALSE(safe_strtou32(" -", &result));
+  EXPECT_FALSE(safe_strtou32("", &result));
+  EXPECT_FALSE(safe_strtou32("  ", &result));
+  EXPECT_FALSE(safe_strtou32("123 a", &result));
+  EXPECT_FALSE(safe_strtou32("123 456", &result));
+
+  // Overflow
+  EXPECT_FALSE(safe_strtou32("4294967296", &result));
+  EXPECT_FALSE(safe_strtou32("-1", &result));
+
+  // Check that the StringPiece's length is respected.
+  EXPECT_TRUE(safe_strtou32(StringPiece("123", 1), &result));
+  EXPECT_EQ(1, result);
+  EXPECT_TRUE(safe_strtou32(StringPiece(" 123", 3), &result));
+  EXPECT_EQ(12, result);
+  EXPECT_FALSE(safe_strtou32(StringPiece(nullptr, 0), &result));
 }
 
 TEST(safe_strto64, Int64s) {
@@ -122,6 +210,92 @@ TEST(safe_strto64, Int64s) {
   // Overflow
   EXPECT_EQ(false, safe_strto64("9223372036854775808", &result));
   EXPECT_EQ(false, safe_strto64("-9223372036854775809", &result));
+
+  // Check that the StringPiece's length is respected.
+  EXPECT_EQ(true, safe_strto64(StringPiece("123", 1), &result));
+  EXPECT_EQ(1, result);
+  EXPECT_EQ(true, safe_strto64(StringPiece(" -123", 4), &result));
+  EXPECT_EQ(-12, result);
+  EXPECT_EQ(false, safe_strto64(StringPiece(nullptr, 0), &result));
+}
+
+TEST(safe_strtou64, UInt64s) {
+  uint64 result;
+
+  EXPECT_TRUE(safe_strtou64("0", &result));
+  EXPECT_EQ(0, result);
+  EXPECT_TRUE(safe_strtou64("1", &result));
+  EXPECT_EQ(1, result);
+  EXPECT_TRUE(safe_strtou64("123", &result));
+  EXPECT_EQ(123, result);
+  EXPECT_TRUE(safe_strtou64("  345  ", &result));
+  EXPECT_EQ(345, result);
+  EXPECT_TRUE(safe_strtou64("18446744073709551615", &result));
+  EXPECT_EQ(18446744073709551615UL, result);
+
+  // Invalid argument
+  EXPECT_FALSE(safe_strtou64(" 132.2 ", &result));
+  EXPECT_FALSE(safe_strtou64(" 132.2 ", &result));
+  EXPECT_FALSE(safe_strtou64(" -", &result));
+  EXPECT_FALSE(safe_strtou64("", &result));
+  EXPECT_FALSE(safe_strtou64("  ", &result));
+  EXPECT_FALSE(safe_strtou64("123 a", &result));
+  EXPECT_FALSE(safe_strtou64("123 456", &result));
+
+  // Overflow
+  EXPECT_FALSE(safe_strtou64("18446744073709551616", &result));
+  EXPECT_FALSE(safe_strtou64("-1", &result));
+
+  // Check that the StringPiece's length is respected.
+  EXPECT_TRUE(safe_strtou64(StringPiece("123", 1), &result));
+  EXPECT_EQ(1, result);
+  EXPECT_TRUE(safe_strtou64(StringPiece(" 123", 3), &result));
+  EXPECT_EQ(12, result);
+  EXPECT_FALSE(safe_strtou64(StringPiece(nullptr, 0), &result));
+}
+
+TEST(safe_strtof, Float) {
+  float result = 0;
+
+  EXPECT_TRUE(safe_strtof("0.123456", &result));
+  EXPECT_EQ(0.123456f, result);
+  EXPECT_FALSE(safe_strtof("0.12345abc", &result));
+
+  // Overflow to infinity, underflow to 0.
+  EXPECT_TRUE(safe_strtof("1e39", &result));
+  EXPECT_EQ(std::numeric_limits<float>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtof("-1e39", &result));
+  EXPECT_EQ(-std::numeric_limits<float>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtof("1e-50", &result));
+  EXPECT_EQ(0, result);
+
+  EXPECT_TRUE(safe_strtof("0xF", &result));
+  EXPECT_EQ(0xF, result);
+
+  EXPECT_TRUE(safe_strtof("-0x2A", &result));
+  EXPECT_EQ(-42.0f, result);
+
+  EXPECT_FALSE(safe_strtof("-infinity is awesome", &result));
+}
+
+TEST(safe_strtod, Double) {
+  double result = 0;
+
+  EXPECT_TRUE(safe_strtod("0.1234567890123", &result));
+  EXPECT_EQ(0.1234567890123, result);
+  EXPECT_FALSE(safe_strtod("0.1234567890123abc", &result));
+
+  // Overflow to infinity, underflow to 0.
+  EXPECT_TRUE(safe_strtod("1e310", &result));
+  EXPECT_EQ(std::numeric_limits<double>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtod("-1e310", &result));
+  EXPECT_EQ(-std::numeric_limits<double>::infinity(), result);
+
+  EXPECT_TRUE(safe_strtod("1e-325", &result));
+  EXPECT_EQ(0, result);
 }
 
 }  // namespace strings

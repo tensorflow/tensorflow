@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,19 +19,19 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/threadpool_device.h"
 
 namespace tensorflow {
-
-void RequireGPUDevice() {}
 
 class GPUDevice : public BaseGPUDevice {
  public:
   GPUDevice(const SessionOptions& options, const string& name,
-            Bytes memory_limit, BusAdjacency bus_adjacency, int gpu_id,
+            Bytes memory_limit, const DeviceLocality& locality, int gpu_id,
             const string& physical_device_desc, Allocator* gpu_allocator,
             Allocator* cpu_allocator)
-      : BaseGPUDevice(options, name, memory_limit, bus_adjacency, gpu_id,
-                      physical_device_desc, gpu_allocator, cpu_allocator) {}
+      : BaseGPUDevice(options, name, memory_limit, locality, gpu_id,
+                      physical_device_desc, gpu_allocator, cpu_allocator,
+                      false /* sync every op */, 1 /* max_streams */) {}
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     if (attr.on_host()) {
@@ -49,18 +49,62 @@ class GPUDevice : public BaseGPUDevice {
 
 class GPUDeviceFactory : public BaseGPUDeviceFactory {
  private:
-  LocalDevice* CreateGPUDevice(const SessionOptions& options,
-                               const string& name, Bytes memory_limit,
-                               BusAdjacency bus_adjacency, int gpu_id,
-                               const string& physical_device_desc,
-                               Allocator* gpu_allocator,
-                               Allocator* cpu_allocator) override {
-    return new GPUDevice(options, name, memory_limit, bus_adjacency, gpu_id,
+  BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
+                                 const string& name, Bytes memory_limit,
+                                 const DeviceLocality& locality, int gpu_id,
+                                 const string& physical_device_desc,
+                                 Allocator* gpu_allocator,
+                                 Allocator* cpu_allocator) override {
+    return new GPUDevice(options, name, memory_limit, locality, gpu_id,
                          physical_device_desc, gpu_allocator, cpu_allocator);
   }
 };
 
-REGISTER_LOCAL_DEVICE_FACTORY("GPU", GPUDeviceFactory);
+REGISTER_LOCAL_DEVICE_FACTORY("GPU", GPUDeviceFactory, 210);
+
+//------------------------------------------------------------------------------
+// A CPUDevice that optimizes for interaction with GPUs in the
+// process.
+// -----------------------------------------------------------------------------
+class GPUCompatibleCPUDevice : public ThreadPoolDevice {
+ public:
+  GPUCompatibleCPUDevice(const SessionOptions& options, const string& name,
+                         Bytes memory_limit, const DeviceLocality& locality,
+                         Allocator* allocator)
+      : ThreadPoolDevice(options, name, memory_limit, locality, allocator) {}
+  ~GPUCompatibleCPUDevice() override {}
+
+  Allocator* GetAllocator(AllocatorAttributes attr) override {
+    ProcessState* ps = ProcessState::singleton();
+    if (attr.gpu_compatible()) {
+      return ps->GetCUDAHostAllocator(0);
+    } else {
+      // Call the parent's implementation.
+      return ThreadPoolDevice::GetAllocator(attr);
+    }
+  }
+};
+
+// The associated factory.
+class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
+ public:
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<Device*>* devices) override {
+    int n = 1;
+    auto iter = options.config.device_count().find("CPU");
+    if (iter != options.config.device_count().end()) {
+      n = iter->second;
+    }
+    for (int i = 0; i < n; i++) {
+      string name = strings::StrCat(name_prefix, "/cpu:", i);
+      devices->push_back(new GPUCompatibleCPUDevice(
+          options, name, Bytes(256 << 20), DeviceLocality(), cpu_allocator()));
+    }
+
+    return Status::OK();
+  }
+};
+REGISTER_LOCAL_DEVICE_FACTORY("CPU", GPUCompatibleCPUDeviceFactory, 70);
 
 }  // namespace tensorflow
 

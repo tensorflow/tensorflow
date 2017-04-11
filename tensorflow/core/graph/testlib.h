@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// DEPRECATED: Use GraphDefBuilder instead.
+// DEPRECATED: Use the C++ API defined in tensorflow/cc instead.
 
 #ifndef TENSORFLOW_GRAPH_TESTLIB_H_
 #define TENSORFLOW_GRAPH_TESTLIB_H_
@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
-#include "tensorflow/core/platform/port.h"
-#include "tensorflow/core/public/tensor.h"
-#include "tensorflow/core/public/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace test {
@@ -41,8 +41,18 @@ void ToGraphDef(Graph* g, GraphDef* def);
 Node* Constant(Graph* g, const Tensor& tensor);
 Node* Constant(Graph* g, const Tensor& tensor, const string& name);
 
+// Adds a node in "g" producing a constant "tensor" on the host.
+// The given node which, unlike the regular Constant above, always
+// stores its output on the host.  This is necessary for use
+// in GPU tests where the test Op in question runs on the device
+// but requires some arguments to be pinned to the host.
+Node* HostConstant(Graph* g, const Tensor& tensor);
+Node* HostConstant(Graph* g, const Tensor& tensor, const string& name);
+
 // Adds a variable in "g" of the given "shape" and "dtype".
 Node* Var(Graph* g, const DataType dtype, const TensorShape& shape);
+Node* Var(Graph* g, const DataType dtype, const TensorShape& shape,
+          const string& name);
 
 // Adds an assign node in "g" which assigns "val" into "var".
 Node* Assign(Graph* g, Node* var, Node* val);
@@ -67,6 +77,9 @@ Node* Reduce(Graph* g, const string& reduce, Node* data, Node* axes,
 Node* Matmul(Graph* g, Node* in0, Node* in1, bool transpose_a,
              bool transpose_b);
 
+// Adds a Matmul node in g doing in0.contract(in1).
+Node* BatchMatmul(Graph* g, Node* in0, Node* in1, bool adj_x, bool adj_y);
+
 // Adds a Quantize node into g that quantize floats into QUINT8. The range of
 // the input float tensor is assumed to be [-1, 1].
 Node* QuantizeToUINT8(Graph* g, Node* data);
@@ -87,15 +100,26 @@ Node* Multi(Graph* g, const string& func, gtl::ArraySlice<Node*> ins);
 // Adds a binary add node in "g" doing in0 + in1.
 Node* Add(Graph* g, Node* in0, Node* in1);
 
+// Reverses <axis> dimensions of <tensor>>
+Node* Reverse(Graph* g, Node* tensor, Node* axis);
+
 // Generates random unit uniform distribution of the input shape.
 Node* RandomUniform(Graph* g, Node* input, DataType dtype);
 
 // Generates random unit normal distribution of the input shape.
 Node* RandomGaussian(Graph* g, Node* input, DataType dtype);
 
+// Generates random gamma distribution with the given shape and alpha[s].
+// Output dtype determined by alpha.
+Node* RandomGamma(Graph* g, Node* shape, Node* alpha);
+
+// Generates random poisson distribution with the given shape and lam[s].
+// Output dtype determined by lam.
+Node* RandomPoisson(Graph* g, Node* shape, Node* lam);
+
 // Generates random parameters from the truncated standard normal distribution
 // of the nput shape
-Node* RandomParameters(Graph* g, Node* input, DataType dtype);
+Node* TruncatedNormal(Graph* g, Node* input, DataType dtype);
 
 // Adds an error node in "g". The node's computation always
 // generates an error with the given error message "errmsg".
@@ -146,6 +170,40 @@ Node* Select(Graph* g, Node* c, Node* inx, Node* iny);
 
 // Casts "in" into data type "dst".
 Node* Cast(Graph* g, Node* in, DataType dst);
+
+// Perform gather op on params "in0" with indices "in1".
+Node* Gather(Graph* g, Node* in0, Node* in1);
+
+// Computes broadcasted shape from the given input shapes.
+Node* BroadcastArgs(Graph* g, Node* s0, Node* s1);
+
+// Computes the args needed broadcast gradient function.
+Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
+
+// Gets a tensor stored in the session state.
+Node* GetSessionTensor(Graph* g, Node* in);
+
+// Adds a Concat node in "g". The first input is "concat_dim", the
+// dimension to concatenate on, and the tensors to concatenate are
+// given in "tensors".
+Node* Concat(Graph* g, Node* concat_dim, gtl::ArraySlice<Node*> tensors);
+
+// Adds a ConcatV2 node in "g". The last input is "concat_dim", the
+// dimension to concatenate on, and the tensors to concatenate are
+// given in "tensors".
+Node* ConcatV2(Graph* g, gtl::ArraySlice<Node*> tensors, Node* concat_dim);
+
+// Add a Relu node in "g".
+Node* Relu(Graph* g, Node* in);
+
+// Add a Relu6 node in "g".
+Node* Relu6(Graph* g, Node* in);
+
+// Add a BiasAdd node in "g".
+Node* BiasAdd(Graph* g, Node* value, Node* bias);
+
+// Add a Conv2D node in "g".
+Node* Conv2D(Graph* g, Node* in0, Node* in1);
 
 }  // end namespace graph
 }  // end namespace test

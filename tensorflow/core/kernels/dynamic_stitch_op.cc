@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
@@ -51,10 +52,13 @@ class DynamicStitchOp : public OpKernel {
 
     int32 max_index = -1;
     for (const Tensor& indices : indices_inputs) {
-      Eigen::Tensor<int32, 0, Eigen::RowMajor> m =
-          indices.flat<int32>().maximum();
-      max_index = std::max(m(), max_index);
+      if (indices.NumElements() > 0) {
+        Eigen::Tensor<int32, 0, Eigen::RowMajor> m =
+            indices.flat<int32>().maximum();
+        max_index = std::max(m(), max_index);
+      }
     }
+
     const int first_dim_size = max_index + 1;
 
     // Validate that data[i].shape = indices[i].shape + constant
@@ -67,20 +71,19 @@ class DynamicStitchOp : public OpKernel {
       const Tensor& data = data_inputs[input_num];
       OP_REQUIRES(
           c, TensorShapeUtils::StartsWith(data.shape(), indices.shape()),
-          errors::InvalidArgument(
-              "data[", input_num, "].shape = ", data.shape().ShortDebugString(),
-              " does not start with indices[", input_num, "].shape = ",
-              indices.shape().ShortDebugString()));
+          errors::InvalidArgument("data[", input_num, "].shape = ",
+                                  data.shape().DebugString(),
+                                  " does not start with indices[", input_num,
+                                  "].shape = ", indices.shape().DebugString()));
       OP_REQUIRES(
           c, input_num == 0 || SameExtraShape(data0, indices0, data, indices),
           errors::InvalidArgument(
               "Need data[0].shape[", indices0.dims(), ":] = data[", input_num,
               "].shape[", indices.dims(), ":], got data[0].shape = ",
-              data0.shape().ShortDebugString(), ", data[", input_num,
-              "].shape = ", data.shape().ShortDebugString(),
-              ", indices[0].shape = ", indices0.shape().ShortDebugString(),
-              ", indices[", input_num, "].shape = ",
-              indices.shape().ShortDebugString()));
+              data0.shape().DebugString(), ", data[", input_num, "].shape = ",
+              data.shape().DebugString(), ", indices[0].shape = ",
+              indices0.shape().DebugString(), ", indices[", input_num,
+              "].shape = ", indices.shape().DebugString()));
     }
 
     // Allocate result tensor of shape
@@ -110,16 +113,23 @@ class DynamicStitchOp : public OpKernel {
           const T* data_base = &data_flat(0, 0);
           const size_t slice_bytes = slice_size * sizeof(T);
           for (int i = 0; i < indices_vec.size(); i++) {
-            memcpy(merged_base + indices_vec(i) * slice_size,
-                   data_base + i * slice_size, slice_bytes);
+            int32 index = internal::SubtleMustCopy(indices_vec(i));
+            OP_REQUIRES(
+                c, FastBoundsCheck(index, first_dim_size),
+                errors::InvalidArgument("indices[", i, "] is out of range"));
+            memcpy(merged_base + index * slice_size, data_base + i * slice_size,
+                   slice_bytes);
           }
         } else {
           Eigen::DSizes<Eigen::DenseIndex, 2> sizes(1, slice_size);
           for (int i = 0; i < indices_vec.size(); i++) {
             // Copy slice data[i] to merged[indices[i]]
             Eigen::DSizes<Eigen::DenseIndex, 2> data_indices(i, 0);
-            Eigen::DSizes<Eigen::DenseIndex, 2> merged_indices(indices_vec(i),
-                                                               0);
+            int32 index = internal::SubtleMustCopy(indices_vec(i));
+            OP_REQUIRES(
+                c, FastBoundsCheck(index, first_dim_size),
+                errors::InvalidArgument("indices[", i, "] is out of range"));
+            Eigen::DSizes<Eigen::DenseIndex, 2> merged_indices(index, 0);
             merged_flat.slice(merged_indices, sizes) =
                 data_flat.slice(data_indices, sizes);
           }
@@ -152,8 +162,22 @@ class DynamicStitchOp : public OpKernel {
                               .HostMemory("indices"),    \
                           DynamicStitchOp<type>)
 
-TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH);
+TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH);
 #undef REGISTER_DYNAMIC_STITCH
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_DYNAMIC_STITCH_SYCL(type)               \
+  REGISTER_KERNEL_BUILDER(Name("DynamicStitch")          \
+                              .Device(DEVICE_SYCL)       \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("indices")     \
+                              .HostMemory("data")        \
+                              .HostMemory("merged"),     \
+                          DynamicStitchOp<type>)
+
+TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH_SYCL);
+#undef REGISTER_DYNAMIC_STITCH_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 #define REGISTER_DYNAMIC_STITCH_GPU(type)                \
@@ -165,7 +189,7 @@ TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH);
                               .HostMemory("merged"),     \
                           DynamicStitchOp<type>)
 
-TF_CALL_ALL_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
+TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
 #undef REGISTER_DYNAMIC_STITCH_GPU
 
 #endif  // GOOGLE_CUDA

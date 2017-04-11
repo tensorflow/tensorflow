@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_util.h"
 
-#include <gtest/gtest.h>
+#include <vector>
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/public/tensor.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -57,6 +59,14 @@ TEST(TensorUtil, DeepCopy0d) {
   EXPECT_EQ(DT_FLOAT, x.dtype());
   EXPECT_EQ(DT_FLOAT, y.dtype());
   EXPECT_EQ(DT_FLOAT, z.dtype());
+}
+
+TEST(TensorUtil, DeepCopyZeroElements) {
+  Tensor x;
+  Tensor y = tensor::DeepCopy(x);
+  EXPECT_EQ(TensorShape({0}), y.shape());
+  EXPECT_EQ(DT_FLOAT, y.dtype());
+  EXPECT_EQ(0, y.NumElements());
 }
 
 TEST(TensorUtil, DeepCopy) {
@@ -153,7 +163,8 @@ TEST(TensorUtil, Concat) {
     offset += size;
   }
 
-  Tensor concated = tensor::Concat(to_concat);
+  Tensor concated;
+  TF_ASSERT_OK(tensor::Concat(to_concat, &concated));
   ASSERT_EQ(TensorShape({total_size, 2}), concated.shape());
   for (int i = 0; i < total_size; ++i) {
     for (int j = 0; j < 2; ++j) {
@@ -171,7 +182,8 @@ TEST(TensorUtil, Split) {
   }
 
   std::vector<int64> sizes = {1, 4, 5};
-  std::vector<Tensor> splits = tensor::Split(to_split, sizes);
+  std::vector<Tensor> splits;
+  TF_ASSERT_OK(tensor::Split(to_split, sizes, &splits));
   ASSERT_EQ(sizes.size(), splits.size());
 
   int offset = 0;
@@ -196,7 +208,10 @@ TEST(TensorUtil, ConcatSplitStrings) {
     x.flat<string>()(i) = strings::StrCat("foo_", i);
   }
 
-  Tensor x_round_tripped = tensor::Concat(tensor::Split(x, {2, 1, 1}));
+  std::vector<Tensor> split;
+  TF_ASSERT_OK(tensor::Split(x, {2, 1, 1}, &split));
+  Tensor x_round_tripped;
+  TF_ASSERT_OK(tensor::Concat(split, &x_round_tripped));
   ASSERT_EQ(x.shape(), x_round_tripped.shape());
   for (int i = 0; i < 4 * 3; ++i) {
     EXPECT_EQ(x.flat<string>()(i), x_round_tripped.flat<string>()(i));
