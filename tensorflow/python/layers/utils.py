@@ -168,8 +168,7 @@ def constant_value(pred):
 
 
 def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
-  """Return the output dimension of a particular deconvolution layer, given
-  the input dimensions.
+  """Return output dimension of a deconv layer, based on input dimension.
 
   Arguments:
     dim_size: An int representing size of dimension, can be height, width

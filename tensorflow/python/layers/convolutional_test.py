@@ -720,7 +720,7 @@ class Conv3DTransposeTest(test.TestCase):
 
   def testCreateConv3DTransposeWithStrides(self):
     depth, height, width = 4, 6, 8
-    # Test strides tuple
+    # Test strides tuple.
     volumes = random_ops.random_uniform((5, depth, height, width, 32), seed=1)
     layer = conv_layers.Conv3DTranspose(
         4, [3, 3, 3], strides=(2, 2, 2), padding='same')
@@ -728,14 +728,14 @@ class Conv3DTransposeTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(),
                          [5, depth * 2, height * 2, width * 2, 4])
 
-    # Test strides integer
+    # Test strides integer.
     layer = conv_layers.Conv3DTranspose(4, [3, 3, 3], strides=2,
                                         padding='same')
     output = layer.apply(volumes)
     self.assertListEqual(output.get_shape().as_list(),
                          [5, depth * 2, height * 2, width * 2, 4])
 
-    # Test unequal strides
+    # Test unequal strides.
     layer = conv_layers.Conv3DTranspose(
         4, [3, 3, 3], strides=(2, 1, 1), padding='same')
     output = layer.apply(volumes)

@@ -1293,7 +1293,8 @@ def conv3d_transpose(value,
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the @{tf.nn.convolution$comment here}
-    data_format: A string. 'NDHWC' and 'NCDHW' are supported.
+    data_format: A string, either `'NDHWC'` or `'NCDHW`' specifying the layout
+      of the input and output tensors.
     name: Optional name for the returned tensor.
 
   Returns:

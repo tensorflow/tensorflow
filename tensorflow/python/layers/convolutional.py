@@ -1139,8 +1139,7 @@ def conv2d_transpose(inputs,
                      trainable=True,
                      name=None,
                      reuse=None):
-  """Functional interface for transposed 2D convolution layer (sometimes
-  called 2D Deconvolution).
+  """Functional interface for transposed 2D convolution layer.
 
   The need for transposed convolutions generally arises
   from the desire to use a transformation going in the opposite direction
@@ -1165,12 +1164,12 @@ def conv2d_transpose(inputs,
       `channels_last` corresponds to inputs with shape
       `(batch, height, width, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, height, width)`.
-    activation: Activation function. Set it to None to maintain a
+    activation: Activation function. Set it to `None` to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. If `None`, then no
+      bias will be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -1224,12 +1223,12 @@ class Conv3DTranspose(Conv3D):
       `(batch, depth, height, width, channels)` while `channels_first`
       corresponds to inputs with shape
       `(batch, channels, depth, height, width)`.
-    activation: Activation function. Set it to None to maintain a
+    activation: Activation function. Set it to `None` to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. If `None`, then no
+      bias will be applied.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -1271,16 +1270,15 @@ class Conv3DTranspose(Conv3D):
 
   def build(self, input_shape):
     if len(input_shape) != 5:
-      raise ValueError('Inputs should have rank ' +
-                       str(5) +
-                       'Received input shape:', str(input_shape))
+      raise ValueError('Inputs should have rank 5, ' +
+                       'received input shape:', str(input_shape))
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
       channel_axis = -1
     if input_shape[channel_axis] is None:
       raise ValueError('The channel dimension of the inputs '
-                       'should be defined. Found `None`.')
+                       'should be defined, found None: ' + str(input_shape))
     input_dim = input_shape[channel_axis]
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
@@ -1388,8 +1386,7 @@ def conv3d_transpose(inputs,
                      trainable=True,
                      name=None,
                      reuse=None):
-  """Functional interface for transposed 3D convolution layer (sometimes
-  called 3D Deconvolution).
+  """Functional interface for transposed 3D convolution layer.
 
   Arguments:
     inputs: Input tensor.
