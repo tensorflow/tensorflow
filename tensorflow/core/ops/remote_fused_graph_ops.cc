@@ -21,13 +21,11 @@ namespace tensorflow {
 
 // TODO(satok): Implement shape_inference
 REGISTER_OP("RemoteFusedGraphExecute")
-    .Input("values: M * T")
-    .Output("output: N * U")
-    .Attr("M: int >= 0")
-    .Attr("N: int >= 0")
-    .Attr("T: type")
-    .Attr("U: type")
-    .Attr("serialized_graph_transfer_info: string")
+    .Input("inputs: Tinputs")
+    .Output("outputs: Toutputs")
+    .Attr("Tinputs: list(type) >= 0")
+    .Attr("Toutputs: list(type) >= 0")
+    .Attr("serialized_remote_fused_graph_execute_info: string")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Execute a sub graph on a remote processor transferred by GraphTransferer.
