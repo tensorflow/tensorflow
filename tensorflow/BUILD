@@ -277,6 +277,7 @@ filegroup(
         "//tensorflow/examples/tutorials/estimators:all_files",
         "//tensorflow/examples/tutorials/mnist:all_files",
         "//tensorflow/examples/tutorials/word2vec:all_files",
+        "//tensorflow/examples/wav_to_spectrogram:all_files",
         "//tensorflow/go:all_files",
         "//tensorflow/java:all_files",
         "//tensorflow/java/src/main/java/org/tensorflow/examples:all_files",
