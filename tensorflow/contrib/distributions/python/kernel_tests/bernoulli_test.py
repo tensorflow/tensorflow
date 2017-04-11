@@ -148,6 +148,15 @@ class BernoulliTest(test.TestCase):
               p: [0.2, 0.3, 0.4]
           }), [[0.2, 0.7, 0.4]])
 
+  def testPmfInvalid(self):
+    p = [0.1, 0.2, 0.7]
+    with self.test_session():
+      dist = bernoulli.Bernoulli(probs=p, validate_args=True)
+      with self.assertRaisesOpError("must be non-negative."):
+        dist.prob([1, 1, -1]).eval()
+      with self.assertRaisesOpError("is not less than or equal to 1."):
+        dist.prob([2, 0, 1]).eval()
+
   def testPmfWithP(self):
     p = [[0.2, 0.4], [0.3, 0.6]]
     self._testPmf(probs=p)
