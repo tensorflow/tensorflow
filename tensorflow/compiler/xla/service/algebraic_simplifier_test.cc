@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -844,8 +844,8 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4_6x1x1x4) {
                                  non_bitcasting_callback());
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_EQ(HloOpcode::kBroadcast, computation->root_instruction()->opcode());
-  EXPECT_MATCH(computation->root_instruction()->dimensions(),
-               testing::VectorMatcher<int64>({3}));
+  EXPECT_THAT(computation->root_instruction()->dimensions(),
+              ::testing::ElementsAre(3));
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x2x1_6x1x1x1) {
@@ -867,8 +867,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x2x1_6x1x1x1) {
   const std::vector<int64> broadcast_dims =
       computation->root_instruction()->dimensions();
   EXPECT_EQ(1, broadcast_dims.size());
-  EXPECT_TRUE(broadcast_dims[0] == 1 || broadcast_dims[0] == 2 ||
-              broadcast_dims[0] == 3);
+  EXPECT_THAT(broadcast_dims[0], ::testing::AnyOf(1, 2, 3));
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4x2_6x8) {

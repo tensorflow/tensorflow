@@ -22,14 +22,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
+
+using ::testing::ContainsRegex;
 
 class CheckExecutionArityTest : public ClientLibraryTestBase {};
 
@@ -60,15 +62,15 @@ TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
   ASSERT_FALSE(result_one_arg.ok());
   ASSERT_EQ(result_one_arg.status().code(),
             tensorflow::error::INVALID_ARGUMENT);
-  ASSERT_MATCH(result_one_arg.status().error_message(),
-               testing::ContainsRegex("takes 2"));
+  ASSERT_THAT(result_one_arg.status().error_message(),
+              ContainsRegex("takes 2"));
 
   auto result_zero_args = client_->Execute(computation, {});
   ASSERT_FALSE(result_zero_args.ok());
   ASSERT_EQ(result_zero_args.status().code(),
             tensorflow::error::INVALID_ARGUMENT);
-  ASSERT_MATCH(result_zero_args.status().error_message(),
-               testing::ContainsRegex("takes 2"));
+  ASSERT_THAT(result_zero_args.status().error_message(),
+              ContainsRegex("takes 2"));
 }
 
 XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
@@ -99,22 +101,22 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   status = client_->Execute(computation, {f32_4_data.get(), f32_4_data.get()});
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
-  ASSERT_MATCH(status.status().error_message(),
-               testing::ContainsRegex("expects parameter 0"));
+  ASSERT_THAT(status.status().error_message(),
+              ContainsRegex("expects parameter 0"));
 
   // Shape mismatch in parameter 1 (rank)
   status = client_->Execute(computation, {f32_data.get(), f32_data.get()});
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
-  ASSERT_MATCH(status.status().error_message(),
-               testing::ContainsRegex("expects parameter 1"));
+  ASSERT_THAT(status.status().error_message(),
+              ContainsRegex("expects parameter 1"));
 
   // Shape mismatch in parameter 1 (element type)
   status = client_->Execute(computation, {f32_data.get(), u8_4_data.get()});
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
-  ASSERT_MATCH(status.status().error_message(),
-               testing::ContainsRegex("expects parameter 1"));
+  ASSERT_THAT(status.status().error_message(),
+              ContainsRegex("expects parameter 1"));
 }
 
 }  // namespace

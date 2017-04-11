@@ -24,11 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
@@ -220,8 +219,8 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidBinaryAndDegenerateBroadcasting) {
 
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
-  EXPECT_MATCH(result_status.status().error_message(),
-               testing::ContainsRegex("broadcast dimension 0 mismatch"));
+  EXPECT_THAT(result_status.status().error_message(),
+              ::testing::ContainsRegex("broadcast dimension 0 mismatch"));
 }
 
 XLA_TEST_F(BroadcastSimpleTest, InvalidInDimensionBroadcasting) {
@@ -233,9 +232,9 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidInDimensionBroadcasting) {
 
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
-  EXPECT_MATCH(
+  EXPECT_THAT(
       result_status.status().error_message(),
-      testing::ContainsRegex("binary op BINOP_ADD with incompatible shapes"));
+      ::testing::ContainsRegex("binary op BINOP_ADD with incompatible shapes"));
 }
 
 XLA_TEST_F(BroadcastSimpleTest, InvalidDegenerateBroadcasting) {
@@ -247,9 +246,9 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidDegenerateBroadcasting) {
 
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
-  EXPECT_MATCH(
+  EXPECT_THAT(
       result_status.status().error_message(),
-      testing::ContainsRegex("binary op BINOP_ADD with incompatible shapes"));
+      ::testing::ContainsRegex("binary op BINOP_ADD with incompatible shapes"));
 }
 
 }  // namespace

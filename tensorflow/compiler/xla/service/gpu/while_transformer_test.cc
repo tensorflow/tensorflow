@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -174,9 +175,9 @@ TEST_F(WhileTransformerTest, InvalidLoopLimit) {
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
   EXPECT_FALSE(result.ok());
-  EXPECT_MATCH(
+  EXPECT_THAT(
       result.status().error_message(),
-      testing::ContainsRegex("Loop start must be less than loop limit."));
+      ::testing::ContainsRegex("Loop start must be less than loop limit."));
 }
 
 TEST_F(WhileTransformerTest, InvalidLoopIncrement) {
@@ -191,9 +192,9 @@ TEST_F(WhileTransformerTest, InvalidLoopIncrement) {
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
   EXPECT_FALSE(result.ok());
-  EXPECT_MATCH(
+  EXPECT_THAT(
       result.status().error_message(),
-      testing::ContainsRegex("Loop increment must greater than zero."));
+      ::testing::ContainsRegex("Loop increment must greater than zero."));
 }
 
 }  // namespace
