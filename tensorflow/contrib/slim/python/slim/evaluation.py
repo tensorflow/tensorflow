@@ -224,7 +224,8 @@ def evaluation_loop(master,
                     eval_interval_secs=60,
                     max_number_of_evaluations=None,
                     session_config=None,
-                    timeout=None):
+                    timeout=None,
+                    hooks=None):
   """Runs TF-Slim's Evaluation Loop.
 
   Args:
@@ -255,6 +256,8 @@ def evaluation_loop(master,
       configure the `Session`. If left as `None`, the default will be used.
     timeout: The maximum amount of time to wait between checkpoints. If left as
       `None`, then the process will wait indefinitely.
+    hooks: A list of additional SessionRunHook objects to pass during
+      repeated evaluations.
 
   Returns:
     The value of `final_op` or `None` if `final_op` is `None`.
@@ -262,11 +265,15 @@ def evaluation_loop(master,
   if summary_op == _USE_DEFAULT:
     summary_op = summary.merge_all()
 
-  hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
+  all_hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
 
   if summary_op is not None:
-    hooks.append(evaluation.SummaryAtEndHook(
+    all_hooks.append(evaluation.SummaryAtEndHook(
         log_dir=logdir, summary_op=summary_op, feed_dict=summary_op_feed_dict))
+
+  if hooks is not None:
+    # Add custom hooks if provided.
+    all_hooks.extend(hooks)
 
   saver = None
   if variables_to_restore is not None:
@@ -283,7 +290,7 @@ def evaluation_loop(master,
       final_ops=final_op,
       final_ops_feed_dict=final_op_feed_dict,
       eval_interval_secs=eval_interval_secs,
-      hooks=hooks,
+      hooks=all_hooks,
       config=session_config,
       max_number_of_evaluations=max_number_of_evaluations,
       timeout=timeout)

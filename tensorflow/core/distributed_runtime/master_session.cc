@@ -552,7 +552,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     // We keep these as separate paths for now, to ensure we aren't
     // inadvertently slowing down the normal run path.
     if (is_partial_) {
-      for (int i = 0; static_cast<size_t>(i) < req.num_feeds(); ++i) {
+      for (size_t i = 0; i < req.num_feeds(); ++i) {
         const string& name = req.feed_name(i);
         auto iter = part.feed_key.find(name);
         if (iter == part.feed_key.end()) {

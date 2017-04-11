@@ -1,3 +1,9 @@
+# Changes since the last release
+
+## Major Features and Improvements
+* Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
+
+
 # Release 1.1.0
 
 ## Major Features and Improvements

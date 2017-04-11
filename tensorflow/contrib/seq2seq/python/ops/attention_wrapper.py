@@ -356,9 +356,9 @@ class BahdanauAttention(_BaseAttentionMechanism):
 
 
 class AttentionWrapperState(
-    collections.namedtuple(
-        "AttentionWrapperState", (
-            "cell_state", "attention", "time", "attention_history"))):
+    collections.namedtuple("AttentionWrapperState",
+                           ("cell_state", "attention", "time",
+                            "alignment_history"))):
   """`namedtuple` storing the state of a `AttentionWrapper`.
 
   Contains:
@@ -366,7 +366,7 @@ class AttentionWrapperState(
     - `cell_state`: The state of the wrapped `RNNCell`.
     - `attention`: The attention emitted at the previous time step.
     - `time`: int32 scalar containing the current time step.
-    - `attention_history`: (if enabled) a `TensorArray` containing attention
+    - `alignment_history`: (if enabled) a `TensorArray` containing alignment
        matrices from all time steps.  Call `stack()` to convert to a `Tensor`.
   """
 
@@ -420,7 +420,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
                cell,
                attention_mechanism,
                attention_size,
-               attention_history=False,
+               alignment_history=False,
                cell_input_fn=None,
                probability_fn=None,
                output_attention=True,
@@ -432,7 +432,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       attention_mechanism: An instance of `AttentionMechanism`.
       attention_size: Python integer, the depth of the attention (output)
         tensor.
-      attention_history: Python boolean, whether to store attention history
+      alignment_history: Python boolean, whether to store alignment history
         from all time steps in the final output state (currently stored as a
         time major `TensorArray` on which you must call `stack()`).
       cell_input_fn: (optional) A `callable`.  The default is:
@@ -480,7 +480,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     self._cell_input_fn = cell_input_fn
     self._probability_fn = probability_fn
     self._output_attention = output_attention
-    self._attention_history = attention_history
+    self._alignment_history = alignment_history
 
   @property
   def output_size(self):
@@ -495,21 +495,21 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         cell_state=self._cell.state_size,
         time=tensor_shape.TensorShape([]),
         attention=self._attention_size,
-        attention_history=())  # attention_history is sometimes a TensorArray
+        alignment_history=())  # alignment_history is sometimes a TensorArray
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      if self._attention_history:
-        attention_history = tensor_array_ops.TensorArray(
+      if self._alignment_history:
+        alignment_history = tensor_array_ops.TensorArray(
             dtype=dtype, size=0, dynamic_size=True)
       else:
-        attention_history = ()
+        alignment_history = ()
       return AttentionWrapperState(
           cell_state=self._cell.zero_state(batch_size, dtype),
           time=array_ops.zeros([], dtype=dtypes.int32),
-          attention=_zero_state_tensors(
-              self._attention_size, batch_size, dtype),
-          attention_history=attention_history)
+          attention=_zero_state_tensors(self._attention_size, batch_size,
+                                        dtype),
+          alignment_history=alignment_history)
 
   def __call__(self, inputs, state, scope=None):
     """Perform a step of attention-wrapped RNN.
@@ -557,7 +557,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       alignments = self._probability_fn(score)
 
       # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
-      alignments = array_ops.expand_dims(alignments, 1)
+      expanded_alignments = array_ops.expand_dims(alignments, 1)
       # Context is the inner product of alignments and values along the
       # memory time dimension.
       # alignments shape is
@@ -567,22 +567,24 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       # the batched matmul is over memory_time, so the output shape is
       #   [batch_size, 1, attention_mechanism.num_units].
       # we then squeeze out the singleton dim.
-      context = math_ops.matmul(alignments, self._attention_mechanism.values)
+      context = math_ops.matmul(expanded_alignments,
+                                self._attention_mechanism.values)
       context = array_ops.squeeze(context, [1])
 
       attention = self._attention_layer(
           array_ops.concat([cell_output, context], 1))
 
-      if self._attention_history:
-        attention_history = state.attention_history.write(state.time, attention)
+      if self._alignment_history:
+        alignment_history = state.alignment_history.write(
+            state.time, alignments)
       else:
-        attention_history = ()
+        alignment_history = ()
 
       next_state = AttentionWrapperState(
           time=state.time + 1,
           cell_state=next_cell_state,
           attention=attention,
-          attention_history=attention_history)
+          alignment_history=alignment_history)
 
     if self._output_attention:
       return attention, next_state
