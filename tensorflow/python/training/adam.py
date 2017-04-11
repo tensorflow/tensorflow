@@ -173,7 +173,7 @@ class AdamOptimizer(optimizer.Optimizer):
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
     v_scaled_g_values = (grad * grad) * (1 - beta2_t)
-    v_t = state_ops.assign(v, v * beta2_t)
+    v_t = state_ops.assign(v, v * beta2_t, use_locking=self._use_locking)
     with ops.control_dependencies([v_t]):
       v_t = scatter_add(v, indices, v_scaled_g_values)
     v_sqrt = math_ops.sqrt(v_t)

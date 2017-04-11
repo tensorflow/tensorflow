@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -41,9 +42,9 @@ XLA_TEST_F(ConcatTest, Concat_Nothing) {
   auto concatenated = builder.ConcatInDim({}, 0);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(
+  EXPECT_THAT(
       computation_status.status().ToString(),
-      testing::ContainsRegex("Concatenate expects at least one argument"));
+      ::testing::ContainsRegex("Concatenate expects at least one argument"));
 }
 
 // Concatenate with one argument works.
@@ -65,9 +66,9 @@ XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {
   auto concatenated = builder.ConcatInDim({a, b}, 0);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(computation_status.status().ToString(),
-               testing::ContainsRegex(
-                   "dimension to concatenate along out of bounds: 0"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              ::testing::ContainsRegex(
+                  "dimension to concatenate along out of bounds: 0"));
 }
 
 XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L0) {
@@ -404,10 +405,9 @@ XLA_TEST_F(ConcatTest, CannotConcatOpaques) {
   auto concatenated = builder.ConcatInDim({x, y}, 0);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(
-      computation_status.status().ToString(),
-      testing::ContainsRegex(
-          "Expected non-opaque argument for operand of concatenation"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              ::testing::ContainsRegex(
+                  "Expected non-opaque argument for operand of concatenation"));
 }
 
 XLA_TEST_F(ConcatTest, ConcatSeveralBoxedPredicates) {

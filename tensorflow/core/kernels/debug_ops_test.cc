@@ -18,6 +18,7 @@ limitations under the License.
 #include <fstream>
 #include <vector>
 
+#include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
-namespace {
 
 class DebugIdentityOpTest : public OpsTestBase {
  protected:
@@ -230,6 +230,24 @@ class DebugNumericSummaryOpTest : public OpsTestBase {
                     .Finalize(node_def()));
     return InitOp();
   }
+
+  Status InitGated(DataType input_type, const std::vector<string>& debug_urls) {
+    TF_CHECK_OK(NodeDefBuilder("op", "DebugNumericSummary")
+                    .Input(FakeInput(input_type))
+                    .Attr("tensor_name", "FakeTensor:0")
+                    .Attr("gated_grpc", true)
+                    .Attr("debug_urls", debug_urls)
+                    .Finalize(node_def()));
+    return InitOp();
+  }
+
+#if defined(PLATFORM_GOOGLE)
+  void ClearEnabledWatchKeys() { DebugGrpcIO::ClearEnabledWatchKeys(); }
+
+  void CreateEmptyEnabledSet(const string& grpc_debug_url) {
+    DebugGrpcIO::CreateEmptyEnabledSet(grpc_debug_url);
+  }
+#endif
 };
 
 TEST_F(DebugNumericSummaryOpTest, Float_full_house) {
@@ -485,6 +503,35 @@ TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
   test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
 }
 
+#if defined(PLATFORM_GOOGLE)
+TEST_F(DebugNumericSummaryOpTest, DisabledDueToEmptyEnabledSet) {
+  ClearEnabledWatchKeys();
+  CreateEmptyEnabledSet("grpc://server:3333");
+
+  std::vector<string> debug_urls({"grpc://server:3333"});
+  TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));
+  AddInputFromArray<float>(TensorShape({2, 2}), {1.0, 3.0, 3.0, 7.0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected_disabled(allocator(), DT_DOUBLE, TensorShape({0}));
+  test::ExpectTensorNear<double>(expected_disabled, *GetOutput(0), 1e-8);
+}
+
+TEST_F(DebugNumericSummaryOpTest, DisabledDueToNonMatchingWatchKey) {
+  ClearEnabledWatchKeys();
+  DebugGrpcIO::EnableWatchKey("grpc://server:3333",
+                              "FakeTensor:1:DebugNumeriSummary");
+
+  std::vector<string> debug_urls({"grpc://server:3333"});
+  TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));
+  AddInputFromArray<float>(TensorShape({2, 2}), {1.0, 3.0, 3.0, 7.0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected_disabled(allocator(), DT_DOUBLE, TensorShape({0}));
+  test::ExpectTensorNear<double>(expected_disabled, *GetOutput(0), 1e-8);
+}
+#endif
+
 // Tests for DebugNumericSummaryOp
 class DebugNumericSummaryOpCustomLowerBoundTest : public OpsTestBase {
  protected:
@@ -572,5 +619,4 @@ TEST_F(DebugNumericSummaryOpCustomLowerUpperBoundsTest, Int32Success) {
   test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
 }
 
-}  // namespace
 }  // namespace tensorflow

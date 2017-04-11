@@ -659,12 +659,12 @@ the custom binary protobuf pip package, invoke one of the following commands:
   * for Python 2.7:
 
     <pre>$ <b>pip install --upgrade \
-    https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp27-none-linux_x86_64.whl</b></pre>
+    https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.1.0-cp27-none-macosx_10_11_x86_64.whl</b></pre>
 
   * for Python 3.n:
 
     <pre>$ <b>pip3 install --upgrade \
-    https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.1.0-cp35-none-linux_x86_64.whl</b> </pre>
+    https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.1.0-cp35-none-macosx_10_11_x86_64.whl</b></pre>
 
 Installing this protobuf package will overwrite the existing protobuf package.
 Note that the binary pip package already has support for protobufs

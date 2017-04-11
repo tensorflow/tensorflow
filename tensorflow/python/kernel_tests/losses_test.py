@@ -1188,27 +1188,40 @@ class ComputeWeightedLossTest(test.TestCase):
           next_loss += 1.0
     raw_losses.setflags(write=False)
     self._raw_losses = raw_losses
-    self._unweighted_loss = np.mean(self._raw_losses)
 
   def testUnweighted(self):
-    with ops.Graph().as_default():
-      self.assertEqual(0, len(util.get_losses()))
-      raw_losses = self._raw_losses
-      unweighted_losses = (
-          losses.compute_weighted_loss(raw_losses),
-          losses.compute_weighted_loss(raw_losses, weights=np.ones((1, 1, 1))),
-          losses.compute_weighted_loss(raw_losses, weights=np.ones((1, 1, 4))),
-          losses.compute_weighted_loss(raw_losses, weights=np.ones((1, 2, 1))),
-          losses.compute_weighted_loss(raw_losses, weights=np.ones((1, 2, 4))),
-          losses.compute_weighted_loss(raw_losses, weights=np.ones((3, 1, 1))),
-          losses.compute_weighted_loss(raw_losses, weights=np.ones((3, 1, 4))),
-          losses.compute_weighted_loss(raw_losses, weights=np.ones((3, 2, 1))),
-          losses.compute_weighted_loss(raw_losses, weights=np.ones(self._shape))
-      )
-      self.assertEqual(9, len(util.get_losses()))
-      with self.test_session():
-        for unweighted_loss in unweighted_losses:
-          self.assertAllClose(self._unweighted_loss, unweighted_loss.eval())
+    for reduction in losses.Reduction.all():
+      with ops.Graph().as_default() as g:
+        self.assertEqual(0, len(util.get_losses()))
+        raw_losses = self._raw_losses
+        unweighted_losses = (
+            losses.compute_weighted_loss(raw_losses, reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((1, 1, 1)), reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((1, 1, 4)), reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((1, 2, 1)), reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((1, 2, 4)), reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((3, 1, 1)), reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((3, 1, 4)), reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((3, 2, 1)), reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones(self._shape), reduction=reduction)
+        )
+        self.assertEqual(9, len(util.get_losses()))
+        with self.test_session(g):
+          for unweighted_loss in unweighted_losses:
+            if reduction == losses.Reduction.WEIGHTED_SUM:
+              self.assertAllClose(
+                  np.sum(self._raw_losses), unweighted_loss.eval())
+            else:  # losses.Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS
+              self.assertAllClose(
+                  np.mean(self._raw_losses), unweighted_loss.eval())
 
   def testScalarWeight(self):
     with ops.Graph().as_default():
@@ -1281,15 +1294,22 @@ class ComputeWeightedLossTest(test.TestCase):
     self._test_invalid_weights((17.0,),)
 
   def _test_valid_weights(self, weights):
-    with ops.Graph().as_default():
-      self.assertEqual(0, len(util.get_losses()))
-      weighted_loss = losses.compute_weighted_loss(
-          self._raw_losses, weights=weights)
-      self.assertEqual(1, len(util.get_losses()))
-      with self.test_session():
-        self.assertAllClose(
-            np.mean(weights * self._raw_losses),
-            weighted_loss.eval())
+    for reduction in losses.Reduction.all():
+      with ops.Graph().as_default() as g:
+        self.assertEqual(0, len(util.get_losses()))
+        weighted_loss = losses.compute_weighted_loss(
+            self._raw_losses, weights=weights, reduction=reduction)
+        self.assertEqual(1, len(util.get_losses()))
+        with self.test_session(g):
+          weighted_losses = weights * self._raw_losses
+          weighted_sum = np.sum(weighted_losses)
+          if reduction == losses.Reduction.WEIGHTED_SUM:
+            self.assertAllClose(weighted_sum, weighted_loss.eval())
+          else:  # losses.Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS
+            broadcast_weights = weights * np.ones_like(self._raw_losses)
+            self.assertAllClose(
+                weighted_sum / np.count_nonzero(broadcast_weights),
+                weighted_loss.eval())
 
   def test1x1x1Weight(self):
     self._test_valid_weights((((17.0,),),))
@@ -1298,7 +1318,7 @@ class ComputeWeightedLossTest(test.TestCase):
     self._test_valid_weights((((17.0,), (3.0,),),))
 
   def test1x1x4Weight(self):
-    self._test_valid_weights((((17.0, 13.0, 2.0, 5.0),),))
+    self._test_valid_weights((((17.0, 0.0, 2.0, 5.0),),))
 
   def test3x1x1Weight(self):
     self._test_valid_weights((((17.0,),), ((5.0,),), ((2.0,),),))
@@ -1312,22 +1332,22 @@ class ComputeWeightedLossTest(test.TestCase):
 
   def test3x1x4Weight(self):
     self._test_valid_weights((
-        ((17.0, 13.0, 2.0, 5.0),),
+        ((17.0, 0.0, 2.0, 5.0),),
         ((5.0, 31.0, 17.0, 5.0),),
         ((7.0, 3.0, 11.0, 5.0),),
     ))
 
   def test1x2x4Weight(self):
     self._test_valid_weights(((
-        (17.0, 13.0, 2.0, 5.0),
+        (17.0, 0.0, 2.0, 5.0),
         (3.0, 13.0, 11.0, 2.0),
     ),))
 
   def test3x2x4Weight(self):
     self._test_valid_weights((
-        ((17.0, 13.0, 2.0, 5.0), (3.0, 13.0, 11.0, 2.0),),
-        ((5.0, 31.0, 17.0, 5.0), (13.0, 3.0, 1.0, 11.0),),
-        ((7.0, 3.0, 11.0, 5.0), (13.0, 11.0, 1.0, 7.0),),
+        ((17.0, 0.0, 2.0, 5.0), (3.0, 13.0, 11.0, 2.0),),
+        ((5.0, 31.0, 17.0, 5.0), (13.0, 3.0, 0.0, 11.0),),
+        ((0.0, 3.0, 11.0, 5.0), (13.0, 11.0, 1.0, 7.0),),
     ))
 
 

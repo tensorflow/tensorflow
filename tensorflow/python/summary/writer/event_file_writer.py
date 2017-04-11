@@ -38,7 +38,8 @@ class EventFileWriter(object):
   is encoded using the tfrecord format, which is similar to RecordIO.
   """
 
-  def __init__(self, logdir, max_queue=10, flush_secs=120):
+  def __init__(self, logdir, max_queue=10, flush_secs=120,
+               filename_suffix=None):
     """Creates a `EventFileWriter` and an event file to write to.
 
     On construction the summary writer creates a new event file in `logdir`.
@@ -58,6 +59,8 @@ class EventFileWriter(object):
       max_queue: Integer. Size of the queue for pending events and summaries.
       flush_secs: Number. How often, in seconds, to flush the
         pending events and summaries to disk.
+      filename_suffix: A string. Every event file's name is suffixed with
+        `filename_suffix`.
     """
     self._logdir = logdir
     if not gfile.IsDirectory(self._logdir):
@@ -67,6 +70,8 @@ class EventFileWriter(object):
         compat.as_bytes(os.path.join(self._logdir, "events")))
     self._flush_secs = flush_secs
     self._sentinel_event = self._get_sentinel_event()
+    if filename_suffix:
+      self._ev_writer.InitWithSuffix(compat.as_bytes(filename_suffix))
     self._closed = False
     self._worker = _EventLoggerThread(self._event_queue, self._ev_writer,
                                       self._flush_secs, self._sentinel_event)

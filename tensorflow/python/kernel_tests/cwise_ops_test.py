@@ -372,10 +372,10 @@ class UnaryOpTest(test.TestCase):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3,
                                                     2).astype(np.complex64)
     y = x + 0.5  # no zeros
-    self._compareCpu(x, np.abs, math_ops.abs)
-    self._compareCpu(x, np.abs, _ABS)
-    self._compareCpu(x, np.negative, math_ops.negative)
-    self._compareCpu(x, np.negative, _NEG)
+    self._compareBoth(x, np.abs, math_ops.abs)
+    self._compareBoth(x, np.abs, _ABS)
+    self._compareBoth(x, np.negative, math_ops.negative)
+    self._compareBoth(x, np.negative, _NEG)
     self._compareCpu(y, self._inv, math_ops.reciprocal)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
@@ -399,17 +399,17 @@ class UnaryOpTest(test.TestCase):
     def complex_sign(x):
       return x / np.abs(x)
 
-    self._compareCpu(y, complex_sign, math_ops.sign)
+    self._compareBoth(y, complex_sign, math_ops.sign)
     self._compareBothSparse(y, complex_sign, math_ops.sign)
 
   def testComplex128Basic(self):
     x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3,
                                                     2).astype(np.complex128)
     y = x + 0.5  # no zeros
-    self._compareCpu(x, np.abs, math_ops.abs)
-    self._compareCpu(x, np.abs, _ABS)
-    self._compareCpu(x, np.negative, math_ops.negative)
-    self._compareCpu(x, np.negative, _NEG)
+    self._compareBoth(x, np.abs, math_ops.abs)
+    self._compareBoth(x, np.abs, _ABS)
+    self._compareBoth(x, np.negative, math_ops.negative)
+    self._compareBoth(x, np.negative, _NEG)
     self._compareCpu(y, self._inv, math_ops.reciprocal)
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
@@ -433,7 +433,7 @@ class UnaryOpTest(test.TestCase):
     def complex_sign(x):
       return x / np.abs(x)
 
-    self._compareCpu(y, complex_sign, math_ops.sign)
+    self._compareBoth(y, complex_sign, math_ops.sign)
     self._compareBothSparse(y, complex_sign, math_ops.sign)
 
   def testGradGrad(self):
@@ -585,7 +585,8 @@ class BinaryOpTest(test.TestCase):
 
   def _compareBoth(self, x, y, np_func, tf_func, also_compare_variables=False):
     self._compareCpu(x, y, np_func, tf_func, also_compare_variables)
-    if x.dtype in (np.float16, np.float32, np.float64):
+    if x.dtype in (np.float16, np.float32, np.float64, np.complex64,
+                   np.complex128):
       if tf_func not in (_FLOORDIV, math_ops.floordiv, math_ops.igamma,
                          math_ops.igammac, math_ops.zeta, math_ops.polygamma):
         self._compareGradientX(x, y, np_func, tf_func)

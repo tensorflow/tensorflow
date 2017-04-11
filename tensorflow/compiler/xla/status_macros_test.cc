@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 
@@ -40,15 +40,15 @@ Status RetCheckSuccess() {
 TEST(StatusMacros, RetCheckFailing) {
   Status status = RetCheckFail();
   EXPECT_EQ(status.code(), tensorflow::error::INTERNAL);
-  EXPECT_MATCH(status.error_message(),
-               xla::testing::ContainsRegex("RET_CHECK failure.*2 > 3"));
+  EXPECT_THAT(status.error_message(),
+              ::testing::ContainsRegex("RET_CHECK failure.*2 > 3"));
 }
 
 TEST(StatusMacros, RetCheckFailingWithExtraMessage) {
   Status status = RetCheckFailWithExtraMessage();
   EXPECT_EQ(status.code(), tensorflow::error::INTERNAL);
-  EXPECT_MATCH(status.error_message(),
-               xla::testing::ContainsRegex("RET_CHECK.*2 > 3 extra message"));
+  EXPECT_THAT(status.error_message(),
+              ::testing::ContainsRegex("RET_CHECK.*2 > 3 extra message"));
 }
 
 TEST(StatusMacros, RetCheckSucceeding) {

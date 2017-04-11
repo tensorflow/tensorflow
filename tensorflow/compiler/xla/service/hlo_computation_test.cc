@@ -22,12 +22,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::UnorderedElementsAre;
 
 class HloComputationTest : public HloTestBase {
  protected:
@@ -67,8 +71,8 @@ TEST_F(HloComputationTest, GetEmbeddedComputationsOneComputation) {
   auto negate_computation = CreateNegateComputation();
   auto map_computation = CreateMapComputation(negate_computation.get());
   EXPECT_TRUE(negate_computation->MakeEmbeddedComputationsList().empty());
-  EXPECT_EQ(map_computation->MakeEmbeddedComputationsList().front(),
-            negate_computation.get());
+  EXPECT_THAT(map_computation->MakeEmbeddedComputationsList(),
+              ElementsAre(negate_computation.get()));
 }
 
 TEST_F(HloComputationTest, GetEmbeddedComputationsDiamond) {
@@ -93,10 +97,10 @@ TEST_F(HloComputationTest, GetEmbeddedComputationsDiamond) {
   // GetEmbeddedComputations returns a post order of the embedded computations,
   // so the negate computation must come first.
   EXPECT_EQ(negate_computation.get(), *embedded_computations.begin());
-  EXPECT_MATCH(testing::ListToVec<HloComputation*>(embedded_computations),
-               testing::UnorderedMatcher<HloComputation*>(
-                   negate_computation.get(), map1_computation.get(),
-                   map2_computation.get()));
+  EXPECT_THAT(
+      embedded_computations,
+      UnorderedElementsAre(negate_computation.get(), map1_computation.get(),
+                           map2_computation.get()));
 }
 
 TEST_F(HloComputationTest, PostOrderSingleton) {
@@ -106,7 +110,7 @@ TEST_F(HloComputationTest, PostOrderSingleton) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto computation = builder.Build();
 
-  EXPECT_EQ(computation->MakeInstructionPostOrder().front(), constant);
+  EXPECT_THAT(computation->MakeInstructionPostOrder(), ElementsAre(constant));
 }
 
 TEST_F(HloComputationTest, PostOrderSimple) {
@@ -121,10 +125,8 @@ TEST_F(HloComputationTest, PostOrderSimple) {
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, negate1));
   auto computation = builder.Build();
 
-  EXPECT_MATCH(
-      testing::ListToVec<HloInstruction*>(
-          computation->MakeInstructionPostOrder()),
-      testing::OrderedMatcher<HloInstruction*>(constant, negate1, negate2));
+  EXPECT_THAT(computation->MakeInstructionPostOrder(),
+              ElementsAre(constant, negate1, negate2));
 }
 
 TEST_F(HloComputationTest, PostOrderTrace) {
@@ -141,10 +143,8 @@ TEST_F(HloComputationTest, PostOrderTrace) {
   auto computation = builder.Build();
 
   // Trace instructions should be at the end of the sort.
-  EXPECT_MATCH(testing::ListToVec<HloInstruction*>(
-                   computation->MakeInstructionPostOrder()),
-               testing::OrderedMatcher<HloInstruction*>(constant, negate1,
-                                                        negate2, trace));
+  EXPECT_THAT(computation->MakeInstructionPostOrder(),
+              ElementsAre(constant, negate1, negate2, trace));
 }
 
 TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
@@ -161,10 +161,8 @@ TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto computation = builder.Build();
 
-  EXPECT_MATCH(testing::ListToVec<HloInstruction*>(
-                   computation->MakeInstructionPostOrder()),
-               testing::UnorderedMatcher<HloInstruction*>(
-                   constant1, constant2, constant3, constant4));
+  EXPECT_THAT(computation->MakeInstructionPostOrder(),
+              UnorderedElementsAre(constant1, constant2, constant3, constant4));
 }
 
 TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {
@@ -187,9 +185,8 @@ TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {
 
   auto post_order = computation->MakeInstructionPostOrder();
   EXPECT_EQ(6, post_order.size());
-  EXPECT_MATCH(testing::ListToVec<HloInstruction*>(post_order),
-               testing::UnorderedMatcher<HloInstruction*>(
-                   constant1, constant2, constant3, add1, add2, add3));
+  EXPECT_THAT(post_order, UnorderedElementsAre(constant1, constant2, constant3,
+                                               add1, add2, add3));
 }
 
 TEST_F(HloComputationTest, VisitWithMultipleRoots) {
@@ -302,8 +299,8 @@ TEST_F(HloComputationTest, CycleDetection) {
   const auto visitor = [](HloInstruction* instruction) { return Status::OK(); };
   auto visit_status = computation->Accept(visitor);
   ASSERT_FALSE(visit_status.ok());
-  ASSERT_MATCH(visit_status.error_message(),
-               testing::ContainsRegex("cycle is detecte"));
+  ASSERT_THAT(visit_status.error_message(),
+              ::testing::ContainsRegex("cycle is detecte"));
 }
 
 TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {

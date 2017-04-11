@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -1146,12 +1148,12 @@ TEST_F(BufferAssignmentTest, AmbiguousBufferAsOutput) {
   // should include the slices of both of the elements in the parameters.
   auto element_slices = assignment->GetAllSlices(select, /*index=*/{0});
   EXPECT_EQ(2, element_slices.size());
-  EXPECT_MATCH(testing::SetToVec<BufferAllocation::Slice>(element_slices),
-               testing::UnorderedMatcher<BufferAllocation::Slice>(
-                   assignment->GetUniqueSlice(tuple_param0, /*index=*/{0})
-                       .ConsumeValueOrDie(),
-                   assignment->GetUniqueSlice(tuple_param1, /*index=*/{0})
-                       .ConsumeValueOrDie()));
+  EXPECT_THAT(element_slices,
+              ::testing::UnorderedElementsAre(
+                  assignment->GetUniqueSlice(tuple_param0, /*index=*/{0})
+                      .ConsumeValueOrDie(),
+                  assignment->GetUniqueSlice(tuple_param1, /*index=*/{0})
+                      .ConsumeValueOrDie()));
 }
 
 // TODO(b/34669761): Remove this test when buffers are allowed to share
