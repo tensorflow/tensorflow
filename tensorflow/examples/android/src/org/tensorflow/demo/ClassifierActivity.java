@@ -31,6 +31,9 @@ import android.os.Trace;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
+
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Vector;
 import org.tensorflow.demo.OverlayView.DrawCallback;
@@ -67,13 +70,25 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   private static final String INPUT_NAME = "Mul:0";
   private static final String OUTPUT_NAME = "final_result:0";
 
-  private static final String MODEL_FILE = "file:///android_asset/tensorflow_inception_graph.pb";
-  private static final String LABEL_FILE =
-      "file:///android_asset/imagenet_comp_graph_label_strings.txt";
-
   private static final boolean SAVE_PREVIEW_BITMAP = false;
 
   private static final boolean MAINTAIN_ASPECT = true;
+
+  // These variables contain the currently in-use model and label files.
+  private String MODEL_FILE = "";
+  private String LABEL_FILE = "";
+
+  private ArrayList<String> Model_Files = new ArrayList<>(Arrays.asList(
+          "file:///android_asset/model1/stripped_graph.pb",
+          "file:///android_asset/model2/stripped_graph.pb",
+          "file:///android_asset/model3/stripped_graph.pb",
+          "file:///android_asset/model4/stripped_graph.pb"));
+
+  private ArrayList<String> Label_Files = new ArrayList<>(Arrays.asList(
+          "file:///android_asset/model1/retrained_labels.txt",
+          "file:///android_asset/model2/retrained_labels.txt",
+          "file:///android_asset/model3/retrained_labels.txt",
+          "file:///android_asset/model4/retrained_labels.txt"));;
 
   private Classifier classifier;
 
@@ -112,6 +127,29 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   private static final float TEXT_SIZE_DIP = 10;
 
   @Override
+  public void setModelLabelFiles(int index)
+  {
+    MODEL_FILE = Model_Files.get(index);
+    LABEL_FILE = Label_Files.get(index);
+
+    try {
+      classifier =
+              TensorFlowImageClassifier.create(
+                      getAssets(),
+                      MODEL_FILE,
+                      LABEL_FILE,
+                      NUM_CLASSES,
+                      INPUT_SIZE,
+                      IMAGE_MEAN,
+                      IMAGE_STD,
+                      INPUT_NAME,
+                      OUTPUT_NAME);
+    } catch (final Exception e) {
+      throw new RuntimeException("Error initializing TensorFlow!", e);
+    }
+  }
+
+  @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
     final float textSizePx =
         TypedValue.applyDimension(
@@ -119,21 +157,8 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    try {
-      classifier =
-          TensorFlowImageClassifier.create(
-              getAssets(),
-              MODEL_FILE,
-              LABEL_FILE,
-              NUM_CLASSES,
-              INPUT_SIZE,
-              IMAGE_MEAN,
-              IMAGE_STD,
-              INPUT_NAME,
-              OUTPUT_NAME);
-    } catch (final Exception e) {
-      throw new RuntimeException("Error initializing TensorFlow!", e);
-    }
+    // Initialize the model file with the first entry in the Model_Files and Label_Files lists.
+    setModelLabelFiles( 0 );
 
     resultsView = (ResultsView) findViewById(R.id.results);
     previewWidth = size.getWidth();

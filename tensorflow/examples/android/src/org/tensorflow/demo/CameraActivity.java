@@ -159,6 +159,12 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
           public void onPreviewSizeChosen(final Size size, final int rotation) {
             CameraActivity.this.onPreviewSizeChosen(size, rotation);
           }
+
+          @Override
+          public void onModelLabelSelected(int index)
+          {
+              setModelLabelFiles(index);
+          }
         },
         this, getLayoutId(), getDesiredPreviewFrameSize());
 
@@ -215,4 +221,5 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
   protected abstract int getLayoutId();
   protected abstract int getDesiredPreviewFrameSize();
+  public abstract void setModelLabelFiles(int index);
 }
