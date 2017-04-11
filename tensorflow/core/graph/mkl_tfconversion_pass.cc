@@ -85,7 +85,7 @@ class MklToTfConversionPass : public GraphOptimizationPass {
   // @input T Datatype to use for checking input op
   // @return true if op is Mkl supported; false, otherwise.
   inline bool IsMklSupportedOp(const string& op_name, DataType T) const {
-    return mkl_layer_registry::IsMklLayer(op_name, T);
+    return mkl_op_registry::IsMklOp(op_name, T);
   }
 
   // Insert layout conversion node on the edge pointed by 'e' from graph 'g'.
@@ -151,7 +151,7 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   conversion_node->set_assigned_device_name(src->assigned_device_name());
 
   // Set the Mkl layer label for this op.
-  conversion_node->AddAttr("_kernel", mkl_layer_registry::kMklLayerLabel);
+  conversion_node->AddAttr("_kernel", mkl_op_registry::kMklOpLabel);
 
   // Now that we have added edge from src->conversion_node, let's add edge from
   // output of conversion_node to the dest node. Since conversion_node

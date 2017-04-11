@@ -345,7 +345,7 @@ class MklConv2DCustomBackpropInputOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("MklConv2DBackpropInput")                  \
                               .Device(DEVICE_CPU)                         \
                               .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                              .Label(mkl_op_registry::kMklOpLabel),       \
                           MklConv2DCustomBackpropInputOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_KERNELS);

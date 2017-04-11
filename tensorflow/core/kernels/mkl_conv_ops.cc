@@ -441,12 +441,12 @@ class MklConv2DOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("MklConv2D")                               \
                               .Device(DEVICE_CPU)                         \
                               .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                              .Label(mkl_op_registry::kMklOpLabel),       \
                           MklConv2DOp<CPUDevice, T, false>);              \
   REGISTER_KERNEL_BUILDER(Name("MklConv2DWithBias")                       \
                               .Device(DEVICE_CPU)                         \
                               .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                              .Label(mkl_op_registry::kMklOpLabel),       \
                           MklConv2DOp<CPUDevice, T, true>);
 
 TF_CALL_float(REGISTER_MKL_CPU);

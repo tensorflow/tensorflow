@@ -499,7 +499,7 @@ inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
 
 inline void MklSizesToTFSizes(OpKernelContext* context,
                               TensorFormat data_format_,
-                              const MklShape& mkl_shape, TensorShape* tf_shape) {
+                            const MklShape& mkl_shape, TensorShape* tf_shape) {
   size_t tf_dim = mkl_shape.GetDimension();
   const size_t* tf_sizes = mkl_shape.GetSizes();
 
@@ -545,27 +545,27 @@ inline int64 GetMklTensorDim(const MklShape& mkl_shape, char dimension) {
   return mkl_shape.dim_size(index);
 }
 
-namespace mkl_layer_registry {
+namespace mkl_op_registry {
 
-static const char* kMklLayerLabel = "MklLayer";
-static const char* kMklLayerLabelPattern = "label='MklLayer'";
+static const char* kMklOpLabel = "MklOp";
+static const char* kMklOpLabelPattern = "label='MklOp'";
 
 // Check whether opname with type T is registered as MKL-compliant.
 //
 // @input: name of the op
 // @input: T datatype to be used for checking op
-// @return: true if opname is registered as Mkl layer op
-static inline bool IsMklLayer(const std::string& op_name, DataType T) {
+// @return: true if opname is registered as Mkl op
+static inline bool IsMklOp(const std::string& op_name, DataType T) {
   string kernel = KernelsRegisteredForOp(op_name);
   bool result =
-      kernel.find(kMklLayerLabelPattern) != string::npos && (T == DT_FLOAT);
+      kernel.find(kMklOpLabelPattern) != string::npos && (T == DT_FLOAT);
   if (result == true) {
-    VLOG(1) << "mkl_layer_registry::" << op_name << " is " << kMklLayerLabel;
+    VLOG(1) << "mkl_op_registry::" << op_name << " is " << kMklOpLabel;
   }
   return result;
 }
 
-}  // namespace mkl_layer_registry
+}  // namespace mkl_op_registry
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

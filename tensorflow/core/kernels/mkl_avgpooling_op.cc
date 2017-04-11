@@ -415,13 +415,13 @@ class MklAvgPoolingGradOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("MklAvgPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklAvgPoolingOp<CPUDevice, float>);
 
 REGISTER_KERNEL_BUILDER(Name("MklAvgPoolGrad")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklAvgPoolingGradOp<CPUDevice, float>);
 
 }  // namespace tensorflow

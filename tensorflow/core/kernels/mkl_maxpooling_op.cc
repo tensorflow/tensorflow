@@ -493,13 +493,13 @@ class MklMaxPoolingGradOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("MklMaxPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklMaxPoolingOp<CPUDevice, float>);
 
 REGISTER_KERNEL_BUILDER(Name("MklMaxPoolGrad")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklMaxPoolingGradOp<CPUDevice, float>);
 
 }  // namespace tensorflow

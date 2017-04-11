@@ -180,14 +180,13 @@ namespace tensorflow {
 //
 //        Certain backward ops in MKL (MaxPool, LRN and BatchNorm) require
 //        passing of workspace from their corresponding forward ops. Workspace
-//        carries meta-information about actual input tensors to MaxPool and
-//        LRN. This meta-information is used by corresponding backward passes.
-//        TensorFlow does not have a notion of workspace and as a result
-//        does not allow producing additional outputs from these forward ops.
-//        For these ops, we need to add an additional edge between forward
-//        ops and their corresponding backward ops, and this edge carries
-//        workspace tensor value and another edge carries Mkl tensor for
-//        workspace tensor.
+//        tensors provide memory for storing results of intermediate operations
+//        which are helpful in backward propagation. TensorFlow does not have
+//        a notion of workspace and as a result does not allow producing
+//        additional outputs from these forward ops. For these ops, we need
+//        to add an additional edge between forward ops and their corresponding
+//        backward ops, and this edge carries workspace tensor value and
+//        another edge carries Mkl tensor for workspace tensor.
 //
 //        Example:
 //
@@ -340,7 +339,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // Add a rule for merging nodes
     minfo_.push_back(
-        {csinfo_.mkl_conv2d, csinfo_.bias_add, 0, csinfo_.mkl_conv2d_with_bias});
+       {csinfo_.mkl_conv2d, csinfo_.bias_add, 0, csinfo_.mkl_conv2d_with_bias});
 
     // We use maxhop of 10 based on empirical observations. Also, these are
     // maxhops in backward data-flow graph. Since input of forward nodes
@@ -379,35 +378,35 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   /// Structure to specify forward op, backward op, and the slot numbers
   /// in forward and backward op where we will add workspace edge.
   typedef struct {
-    string fwd_op;   // Name of the forward op in the graph
-    string bwd_op;   // Name of the backward op in the graph
-    int fwd_slot;    // Output slot in the forward op node where actual
-                     // output tensor resides
-    int bwd_slot;    // Input slot in the backward op node where actual
-                     // input tensor resides
-    int ws_fwd_slot; // Output slot in the forward op node where workspace
-                     // edge is added
-    int ws_bwd_slot; // Input slot in the backward op node where workspace
-                     // edge is added
+    string fwd_op;    // Name of the forward op in the graph
+    string bwd_op;    // Name of the backward op in the graph
+    int fwd_slot;     // Output slot in the forward op node where actual
+                      // output tensor resides
+    int bwd_slot;     // Input slot in the backward op node where actual
+                      // input tensor resides
+    int ws_fwd_slot;  // Output slot in the forward op node where workspace
+                      // edge is added
+    int ws_bwd_slot;  // Input slot in the backward op node where workspace
+                      // edge is added
   } WorkSpaceInfo;
 
   /// Structure to specify information used in node merge
   typedef struct {
-    string pred;     // Predecessor node string
-    string succ;     // Successor node string
-    int op;          // What operand no the predecessor node corresponds
-                     // to successor node?
-    string new_node; // Name of the node after merge
+    string pred;      // Predecessor node string
+    string succ;      // Successor node string
+    int op;           // What operand no the predecessor node corresponds
+                      // to successor node?
+    string new_node;  // Name of the node after merge
   } MergeInfo;
 
   /// Structure to specify the context information used in node rewrite rule
   typedef struct {
-    string node;    // Name of the node to be rewritten
-    string fwd;     // Node name in forward pass that this node
-                    // corresponds to
-    size_t max_hop; // Maximum number of hops the fwd is located
-                    // from this node. If fwd is farther than max_hop
-                    // then we do not rewrite the node.
+    string node;     // Name of the node to be rewritten
+    string fwd;      // Node name in forward pass that this node
+                     // corresponds to
+    size_t max_hop;  // Maximum number of hops the fwd is located
+                     // from this node. If fwd is farther than max_hop
+                     // then we do not rewrite the node.
   } ContextInfo;
 
   /// Structure to store all constant strings
@@ -560,8 +559,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   //        fwd_node - pointer to node from the forward pass that this node
   //        belongs to. fwd_node cannot be NULL.
   // @return Matching contextinfo in case a match is found; null otherwise.
-  //         Also updates *fwd_node with pointer to forward node that this context
-  //         matches.
+  //         Also updates *fwd_node with pointer to forward node that this
+  //         context matches.
   static const ContextInfo* SearchMatchingContext(const Node* n,
                                                   const Node** fwd_node);
 
@@ -779,9 +778,9 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
                  .Attr("value", proto)
                  .Attr("dtype", dt)
-                 .Device(orig_node->def().device())  // We place this node on same
-                                             // device as device of original
-                                             // node.
+                 .Device(orig_node->def().device())  // We place this node on
+                                             // same device as device of
+                                             // original node.
                  .Finalize(&**g, out));
   (*out)->set_assigned_device_name(orig_node->assigned_device_name());
 }
@@ -851,7 +850,7 @@ void MklLayoutRewritePass::GetNodeProducingMklTensor(std::unique_ptr<Graph>* g,
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
     // If this op has been rewritten, then its name must have been same as
     // Mkl op.
-    CHECK_EQ(mkl_layer_registry::IsMklLayer(n->type_string(), T), true);
+    CHECK_EQ(mkl_op_registry::IsMklOp(n->type_string(), T), true);
     // output slot number for Mkl tensor would be N+slot number of TensorFlow
     // tensor, where N is total number of TensorFlow tensors.
     *mkl_node = n;
@@ -1021,9 +1020,8 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
                   .Attr("value", proto)
                   .Attr("dtype", dt)
-                  .Device(orig_node->def().device())  // We place this node on same
-                  // device as device of original
-                  // node.
+                  .Device(orig_node->def().device())  // We place this node on
+                  // same device as device of original node.
                   .Finalize(&**g, out));
   (*out)->set_assigned_device_name(orig_node->assigned_device_name());
 }
@@ -1040,7 +1038,7 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(std::unique_ptr<Graph>* g,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   for (auto ws : wsinfo_) {
     if (orig_node->type_string() == ws.fwd_op &&
-        mkl_layer_registry::IsMklLayer(GetMklOpName(orig_node->type_string()), T)) {
+        mkl_op_registry::IsMklOp(GetMklOpName(orig_node->type_string()), T)) {
       // If this op is a fwd op, then we need to check if there is an
       // edge from this node's fwd_slot to bwdop's bwd_slot. If there is
       // an edge, then we just add an attribute on this node for setting
@@ -1066,7 +1064,7 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(std::unique_ptr<Graph>* g,
         nb->Attr("workspace_enabled", false);
       }
     } else if (orig_node->type_string() == ws.bwd_op &&
-               mkl_layer_registry::IsMklLayer(
+               mkl_op_registry::IsMklOp(
                    GetMklOpName(orig_node->type_string()), T)) {
       // If this op is a bwd op, then we need to add workspace edge and
       // it's Mkl tensor edge between its corresponding fwd op and this
@@ -1136,7 +1134,8 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(std::unique_ptr<Graph>* g,
 // Op-specific functions to copy attributes from old node to new node
 //////////////////////////////////////////////////////////////////////////
 
-void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node, NodeBuilder* nb) {
+void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
+                                           NodeBuilder* nb) {
   DataType T;
   string data_format;
   string padding;
@@ -1148,7 +1147,8 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node, NodeBuilder* n
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "use_cudnn_on_gpu", &use_cudnn_on_gpu));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "use_cudnn_on_gpu",
+                          &use_cudnn_on_gpu));
 
   // Add attributes to new node.
   nb->Attr("T", T);
@@ -1175,7 +1175,8 @@ void MklLayoutRewritePass::CopyAttrsBiasAddGrad(const Node* orig_node,
   nb->Attr("data_format", data_format);
 }
 
-void MklLayoutRewritePass::CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb) {
+void MklLayoutRewritePass::CopyAttrsLRN(const Node* orig_node,
+                                        NodeBuilder* nb) {
   DataType T;
   int depth_radius;
   float bias;
@@ -1219,7 +1220,8 @@ void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
   nb->Attr("data_format", data_format);
 }
 
-void MklLayoutRewritePass::CopyAttrsRelu(const Node* orig_node, NodeBuilder* nb) {
+void MklLayoutRewritePass::CopyAttrsRelu(const Node* orig_node,
+                                         NodeBuilder* nb) {
   DataType T;
 
   // Get all attributes from old node.
@@ -1229,7 +1231,8 @@ void MklLayoutRewritePass::CopyAttrsRelu(const Node* orig_node, NodeBuilder* nb)
   nb->Attr("T", T);
 }
 
-void MklLayoutRewritePass::CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb) {
+void MklLayoutRewritePass::CopyAttrsSplit(const Node* orig_node,
+                                          NodeBuilder* nb) {
   DataType T;
   string data_format;
   int num_split;
@@ -1245,7 +1248,8 @@ void MklLayoutRewritePass::CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb
   nb->Attr("data_format", data_format);
 }
 
-void MklLayoutRewritePass::CopyAttrsConcat(const Node* orig_node, NodeBuilder* nb) {
+void MklLayoutRewritePass::CopyAttrsConcat(const Node* orig_node,
+                                           NodeBuilder* nb) {
   DataType T;
   int N;
 
@@ -1459,7 +1463,7 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* succ,
     CHECK_NOTNULL(newn);
 
     // Set the Mkl layer label for this op.
-    newn->AddAttr("_kernel", mkl_layer_registry::kMklLayerLabel);
+    newn->AddAttr("_kernel", mkl_op_registry::kMklOpLabel);
 
     // Incoming edges are fixed, we will fix the outgoing edges now.
     for (const Edge* e : succ->out_edges()) {
@@ -1490,7 +1494,8 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* succ,
 //           Helper functions for node rewrite
 //////////////////////////////////////////////////////////////////////////
 
-Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node* orig_node,
+Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
+                                         Node* orig_node,
                                          const RewriteInfo* ri) {
   CHECK_NOTNULL(ri);
   CHECK_NOTNULL(orig_node);
@@ -1512,12 +1517,15 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node* orig_n
       DataType orig_T, ctx_T;
       string orig_data_format, ctx_data_format;
       TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &orig_T));
-      TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &orig_data_format));
+      TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format",
+                              &orig_data_format));
       TF_CHECK_OK(GetNodeAttr(fwd_node->def(), "T", &ctx_T));
-      TF_CHECK_OK(GetNodeAttr(fwd_node->def(), "data_format", &ctx_data_format));
+      TF_CHECK_OK(GetNodeAttr(fwd_node->def(), "data_format",
+                              &ctx_data_format));
 
       if (orig_data_format != ctx_data_format || orig_T != ctx_T ||
-          orig_node->assigned_device_name() != fwd_node->assigned_device_name() ||
+          orig_node->assigned_device_name() !=
+            fwd_node->assigned_device_name() ||
           orig_node->def().device() != fwd_node->def().device()) {
         return Status(
             error::Code::INVALID_ARGUMENT,
@@ -1563,7 +1571,7 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node* orig_n
     ri->copy_attrs(const_cast<const Node*>(orig_node), &nb);
   }
   // Set the Mkl layer label for this op.
-  nb.Attr("_kernel", mkl_layer_registry::kMklLayerLabel);
+  nb.Attr("_kernel", mkl_op_registry::kMklOpLabel);
 
   // Finalize graph and get new node.
   Node* newn = nullptr;
@@ -1601,7 +1609,8 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g, Node* orig_n
 }
 
 const MklLayoutRewritePass::ContextInfo*
-MklLayoutRewritePass::SearchMatchingContext(const Node* n, const Node** fwd_node) {
+MklLayoutRewritePass::SearchMatchingContext(const Node* n,
+                                            const Node** fwd_node) {
   CHECK_NOTNULL(n);
   CHECK_NOTNULL(fwd_node);
   *fwd_node = nullptr;
@@ -1690,7 +1699,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
     return nullptr;
   }
 
-  if (!mkl_layer_registry::IsMklLayer(GetMklOpName(n->type_string()), T)) {
+  if (!mkl_op_registry::IsMklOp(GetMklOpName(n->type_string()), T)) {
     return nullptr;
   }
 
