@@ -161,8 +161,9 @@ struct ApplyRadam<GPUDevice, T> {
                       (beta1_power.constant(one) - beta1_power))
                          .reshape(single)
                          .broadcast(bcast) *
-                     ((gamma.constant(one) - gamma).reshape(single).broadcast(bcast) * m  +  (gamma).reshape(single).broadcast(bcast) * grad)
-                     / (epsilon.reshape(single).broadcast(bcast) + v.sqrt());
+                     ((gamma.constant(one) - gamma).reshape(single).broadcast(bcast) * m +
+                     (gamma).reshape(single).broadcast(bcast) * grad) /
+                     (epsilon.reshape(single).broadcast(bcast) + v.sqrt());
 
   }
 };
