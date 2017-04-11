@@ -11,7 +11,8 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-"""This is an example of using convolutional networks over characters for DBpedia dataset to predict class from description of an entity.
+"""This is an example of using convolutional networks over characters for
+   DBpedia dataset to predict class from description of an entity.
 
 This model is similar to one described in this paper:
    "Character-level Convolutional Networks for Text Classification"
@@ -54,7 +55,7 @@ def char_cnn_model(features, target):
     # Apply Convolution filtering on input sequence.
     conv1 = tf.contrib.layers.convolution2d(
         byte_list, N_FILTERS, FILTER_SHAPE1, padding='VALID')
-    # Add a RELU for non linearity.
+    # Add a ReLU for non linearity.
     conv1 = tf.nn.relu(conv1)
     # Max pooling across output of Convolution+Relu.
     pool1 = tf.nn.max_pool(
