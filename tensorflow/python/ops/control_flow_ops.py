@@ -1416,8 +1416,7 @@ class ControlFlowContext(object):
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
     if self._outer_context:
-      for x in result:
-        self._outer_context.AddName(x.name)
+      nest.map_structure(lambda x: self._outer_context.AddName(x.name), result)
 
   def GetWhileContext(self):
     """Return the while context containing this context."""
