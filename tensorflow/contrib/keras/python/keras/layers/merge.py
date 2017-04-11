@@ -41,6 +41,44 @@ class _Merge(Layer):
   def _merge_function(self, inputs):
     raise NotImplementedError
 
+  def _compute_elemwise_op_output_shape(self, shape1, shape2):
+    """Computes the shape of the resultant of an elementwise operation.
+
+    Arguments:
+        shape1: tuple or None. Shape of the first tensor
+        shape2: tuple or None. Shape of the second tensor
+
+    Returns:
+        expected output shape when an element-wise operation is
+        carried out on 2 tensors with shapes shape1 and shape2.
+        tuple or None.
+
+    Raises:
+        ValueError: if shape1 and shape2 are not compatible for
+            element-wise operations.
+    """
+    if None in [shape1, shape2]:
+      return None
+    elif len(shape1) < len(shape2):
+      return self._compute_elemwise_op_output_shape(shape2, shape1)
+    elif not shape2:
+      return shape1
+    output_shape = list(shape1[:-len(shape2)])
+    for i, j in zip(shape1[-len(shape2):], shape2):
+      if i is None or j is None:
+        output_shape.append(None)
+      elif i == 1:
+        output_shape.append(j)
+      elif j == 1:
+        output_shape.append(i)
+      else:
+        if i != j:
+          raise ValueError('Operands could not be broadcast '
+                           'together with shapes ' + str(shape1) + ' ' +
+                           str(shape2))
+        output_shape.append(i)
+    return tuple(output_shape)
+
   def build(self, input_shape):
     # Used purely for shape validation.
     if not isinstance(input_shape, list):
@@ -49,20 +87,29 @@ class _Merge(Layer):
       raise ValueError('A merge layer should be called '
                        'on a list of at least 2 inputs. '
                        'Got ' + str(len(input_shape)) + ' inputs.')
-    if all([shape is None for shape in input_shape]):
-      return
-    input_shapes = [
-        tuple(tensor_shape.TensorShape(shape).as_list())
-        for shape in input_shape
-    ]
-    # TODO(fchollet): handle shapes with None entries.
-    input_shapes_set = set(input_shapes)
-    if None in input_shapes_set:
-      input_shapes_set.remove(None)
-    if len(input_shapes_set) > 1:
-      raise ValueError('Only tensors of same shape can '
-                       'be merged by layer' + self.name +
-                       ' Got input shapes: %s' % input_shapes)
+    batch_sizes = [s[0] for s in input_shape if s is not None]
+    batch_sizes = set(batch_sizes)
+    batch_sizes -= set([None])
+    if len(batch_sizes) > 1:
+      raise ValueError('Can not merge tensors with different '
+                       'batch sizes. Got tensors with shapes : ' +
+                       str(input_shape))
+    if input_shape[0] is None:
+      output_shape = None
+    else:
+      output_shape = input_shape[0][1:]
+    for i in range(1, len(input_shape)):
+      if input_shape[i] is None:
+        shape = None
+      else:
+        shape = input_shape[i][1:]
+      output_shape = self._compute_elemwise_op_output_shape(output_shape, shape)
+    # If the inputs have different ranks, we have to reshape them
+    # to make them broadcastable.
+    if None not in input_shape and len(set(map(len, input_shape))) == 1:
+      self._reshape_required = False
+    else:
+      self._reshape_required = True
 
   def call(self, inputs):
     return self._merge_function(inputs)

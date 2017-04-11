@@ -100,10 +100,10 @@ def load_data(path='imdb.npz',
         new_labels.append(y)
     xs = new_xs
     labels = new_labels
-  if not xs:
-    raise ValueError('After filtering for sequences shorter than maxlen=' + str(
-        maxlen) + ', no sequence was kept. '
-                     'Increase maxlen.')
+    if not xs:
+      raise ValueError('After filtering for sequences shorter than maxlen=' +
+                       str(maxlen) + ', no sequence was kept. '
+                       'Increase maxlen.')
   if not num_words:
     num_words = max([max(x) for x in xs])
 
