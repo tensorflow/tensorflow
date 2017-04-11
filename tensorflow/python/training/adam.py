@@ -194,13 +194,13 @@ class AdamOptimizer(optimizer.Optimizer):
 
 class NadamOptimizer(AdamOptimizer):
 
-  """Nadam and Radam optimizer extensions both feather Nestov momentum 
-  (or a Nestov-esqe interpolation factor) into vanilla Adam calculations.
+  """Nadam and Radam optimizer extensions both feather Nesterov momentum
+  (or a Nesterov-like interpolation factor) into Adam calculations.
 
   Both algorithms tend to be more stable than Adam with negligiable added 
-  calculation (even though Nadam looks rather extravagent).
+  calculation (even though Nadam looks extravagent).
 
-  Nadam's added Nestov momentum term typically provides a 1-2% shift in momentum 
+  Nadam's added Nesterov momentum term typically provides a 1-2% shift in momentum
   during the initial optimization steps. This is when optimizers are most prone 
   to develop instablity though so this can be quite important. This momentum 
   correction term is both theoretically known to reduce regret bounds as well as
@@ -272,24 +272,29 @@ class NadamOptimizer(AdamOptimizer):
     epsilon_t = math_ops.cast(self._epsilon_t, var.dtype.base_dtype)
     tp = math_ops.sqrt(1 - beta2_power) / (1 - beta1_power)
     tp1 = math_ops.sqrt(1 - beta2_power*beta2_t) / (1 - beta1_power*beta1_t)
+
     # m_t = beta1 * m + (1 - beta1) * g_t
     m = self.get_slot(var, "m")
-    m_scaled_g_values = grad.values * (1 - beta1_t)
-    m_t = state_ops.assign(m, m * beta1_t,
-                           use_locking=self._use_locking)
-    m_t = state_ops.scatter_add(m_t, grad.indices, (tp1 / tp) * m_scaled_g_values,
-                                use_locking=self._use_locking)
+    m_t = state_ops.scatter_update(m, grad.indices,
+                                   beta1_t * array_ops.gather(m, grad.indices) +
+                                   (tp1 / tp) * (1 - beta1_t) * grad.values,
+                                   use_locking=self._use_locking)
+
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
-    v_scaled_g_values = (grad.values * grad.values) * (1 - beta2_t)
-    v_t = state_ops.assign(v, v * beta2_t, use_locking=self._use_locking)
-    v_t = state_ops.scatter_add(v_t, grad.indices, v_scaled_g_values,
-                                use_locking=self._use_locking)
-    v_sqrt = math_ops.sqrt(v_t)
-    var_update = state_ops.assign_sub(var,
-                                      lr_t * tp * m_t / (v_sqrt + epsilon_t),
-                                      use_locking=self._use_locking)
-    return control_flow_ops.group(*[var_update, m_t, v_t])
+    v_t = state_ops.scatter_update(v, grad.indices,
+                                   beta2_t * array_ops.gather(v, grad.indices) +
+                                   (1 - beta2_t) * math_ops.square(grad.values),
+                                   use_locking=self._use_locking)
+
+    # variable -= learning_rate * m_t / (epsilon_t + sqrt(v_t))
+    m_t_slice = array_ops.gather(m_t, grad.indices)
+    v_t_slice = array_ops.gather(v_t, grad.indices)
+    denominator_slice = math_ops.sqrt(v_t_slice) + epsilon_t
+    var_update = state_ops.scatter_sub(var, grad.indices,
+                                       lr_t * tp * m_t_slice / denominator_slice,
+                                       use_locking=self._use_locking)
+    return control_flow_ops.group(var_update, m_t, v_t)
 
 
 
@@ -311,7 +316,7 @@ class RadamOptimizer(AdamOptimizer):
   with lower beta1 and a slightly higher learning rate.
 
   However, Radam's gamma hyperparameter is a more straightforward way for those
-  who have a good learning rate for an Adam optimizer to incorporate a Nestov-like
+  who have a good learning rate for an Adam optimizer to incorporate a Nesterov-like
   momentum adjustment, than attempting to tune beta1 (or beta1+lr) by hand.
 
   """
