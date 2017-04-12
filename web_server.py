@@ -4,20 +4,37 @@ that will be used for training. """
 
 import os
 from stat import *
-from flask import Flask, request, redirect, url_for, flash, send_from_directory, json
+
+from flask import (Flask, flash, json, redirect, request, send_from_directory,
+                   url_for)
 from werkzeug.utils import secure_filename
 
-UPLOAD_FOLDER = './static/uploads'
-ALLOWED_EXTENSIONS = set(['jpg', 'jpeg', 'png', 'bmp'])
+# Default values
+DEFAULTS = {'UploadFolder':'./static/uploads', \
+    'AllowedExtensions': 'jpg,jpeg,png,bmp', \
+    'StaticURLPath':'/static'}
 
-APP = Flask(__name__, static_url_path='/static')
-APP.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+# Read server config file
+with open('server.config') as f:
+    # Read each line and strip all whitespace
+    CONTENT = f.readlines()
+    CONTENT = [x.strip() for x in CONTENT]
+
+    # insert each line into the DEFAULTS dictionary
+    for line in CONTENT:
+        entry = line.split('=')
+        DEFAULTS[entry[0]] = entry[1]
+
+
+APP = Flask(__name__, static_url_path=DEFAULTS['StaticURLPath'])
+APP.config['UPLOAD_FOLDER'] = DEFAULTS['UploadFolder']
 
 def allowed_file(filename):
     """ Check if the attached file contains the valid image extensions defined
-    in ALLOWED_EXTENSIONS """
+    in DEFAULTS['AllowedExtensions'] """
+    allowed_extensions = set(DEFAULTS['AllowedExtensions'].split(','))
     return '.' in filename and \
-        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+        filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
 @APP.route('/')
 def index():
