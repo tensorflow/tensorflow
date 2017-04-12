@@ -3,6 +3,7 @@
 #include "tensorflow/compiler/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/poplar/driver/ops.h"
 #include "tensorflow/compiler/poplar/driver/tensor.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -98,6 +99,47 @@ LookupPoplarVertexName(HloOpcode opcode) {
                                    HloOpcodeString(opcode)));
 }
 
+static bool
+IsInPlaceUpdate(const HloInstruction *inst) {
+  const HloOpcode opcode(inst->opcode());
+
+  if (!(opcode == HloOpcode::kAdd ||
+        opcode == HloOpcode::kDivide ||
+        opcode == HloOpcode::kMaximum ||
+        opcode == HloOpcode::kMinimum ||
+        opcode == HloOpcode::kMultiply ||
+        opcode == HloOpcode::kPower ||
+        opcode == HloOpcode::kRemainder ||
+        opcode == HloOpcode::kSubtract)) {
+    return false;
+  }
+
+  // Operation must be part of an TF core update
+  const OpMetadata& md(inst->metadata());
+  const std::string& tf_op(md.op_type());
+  if (!(tf_op == "AssignAddVariableOp" ||
+        tf_op == "AssignSubVariableOp" ||
+        tf_op == "ResourceApplyGradientDescent" ||
+        tf_op == "ResourceApplyMomentum" ||
+        tf_op == "ResourceApplyAdagrad" ||
+        tf_op == "ResourceApplyRMSProp")) {
+    return false;
+  }
+
+  // Operation must have a Parameter as an input
+  const HloInstruction* op0(inst->operand(0));
+  if (op0->opcode() != HloOpcode::kParameter) return false;
+
+  // Operation must be the root or have the root as an output
+  const HloInstruction* root(inst->parent()->root_instruction());
+  if (inst == root) return true;
+
+  const std::vector<HloInstruction*>& users(inst->users());
+  if (users.size() != 1) return false;
+  if (users[0] == root) return true;
+
+  return false;
+}
 
 port::StatusOr<poplar::program::Program>
 CreateUnaryElementwiseOp(poplar::Graph &graph,
@@ -157,8 +199,13 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
 
   const std::string& poplar_data_type(graph.getTensorElementType(in0));
 
+  bool in_place_update(IsInPlaceUpdate(inst) && (in0.shape() == in1.shape()));
+
   std::string vrtxTemplate;
   TF_ASSIGN_OR_RETURN(vrtxTemplate, LookupPoplarVertexName(inst->opcode()));
+  if (in_place_update) {
+    vrtxTemplate = vrtxTemplate + "InPlace";
+  }
   std::string vertex_name = templateVertex(vrtxTemplate, poplar_data_type);
 
   if (in0.shape() != in1.shape()) {
@@ -184,14 +231,18 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
     in1 = TileTensor(bcast.y_bcast(), r1);
   }
 
+  // Allocate the output tensor
+  poplar::Tensor out;
+  if (!in_place_update) {
+    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  } else {
+    out = in0;
+  }
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
   // And now flatten
   in0 = in0.flatten();
   in1 = in1.flatten();
-
-  // Allocate the output tensor
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
   auto cs = graph.addComputeSet(inst->name());
@@ -205,11 +256,18 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
   for (unsigned i = 0; i < num_workers; ++i) {
     const auto begin = i * N / num_workers;
     const auto end = (i + 1) * N / num_workers;
-    auto v = graph.addVertex(cs, vertex_name,
-                             {{a_conn, in0.slice(begin, end)},
-                              {b_conn, in1.slice(begin, end)},
-                              {out_conn, out.slice(begin, end)}});
-    graph.setTileMapping(v, i / device_info.numWorkerContexts);
+    if (in_place_update) {
+      auto v = graph.addVertex(cs, vertex_name,
+                               {{a_conn, in0.slice(begin, end)},
+                                {b_conn, in1.slice(begin, end)}});
+      graph.setTileMapping(v, i / device_info.numWorkerContexts);
+    } else {
+      auto v = graph.addVertex(cs, vertex_name,
+                               {{a_conn, in0.slice(begin, end)},
+                                {b_conn, in1.slice(begin, end)},
+                                {out_conn, out.slice(begin, end)}});
+      graph.setTileMapping(v, i / device_info.numWorkerContexts);
+    }
   }
 
   return poplar::program::Execute(cs);

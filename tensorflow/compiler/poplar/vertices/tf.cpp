@@ -10,7 +10,6 @@
 
 using namespace poplar;
 
-
 #define BINARY_ELEMENTWISE(NAME, EXP) \
 template<typename T> \
 class NAME : public Vertex { \
@@ -31,7 +30,27 @@ public: \
 \
 template class NAME<float>; \
 template class NAME<half>; \
-template class NAME<int>;
+template class NAME<int>; \
+\
+template<typename T> \
+class NAME##InPlace : public Vertex { \
+public: \
+  InOut<Vector<T>> a; \
+  Input<Vector<T>> b; \
+\
+  bool compute() { \
+    for (unsigned i = 0; i < a.size(); ++i) { \
+      a[i] = (EXP); \
+    } \
+    return true; \
+  } \
+\
+  int getCycleEstimate() const { return 1; } \
+}; \
+\
+template class NAME##InPlace<float>; \
+template class NAME##InPlace<half>; \
+template class NAME##InPlace<int>;
 
 // General math
 BINARY_ELEMENTWISE(Add, a[i] + b[i])
@@ -42,6 +61,7 @@ BINARY_ELEMENTWISE(Mul, a[i] * b[i])
 BINARY_ELEMENTWISE(Pow, pow(a[i], b[i]))
 BINARY_ELEMENTWISE(Remainder, fmod(a[i], b[i]))
 BINARY_ELEMENTWISE(Sub, a[i] - b[i])
+
 
 // Predicates
 #define PREDICATE_ELEMENTWISE(NAME, EXP) \
