@@ -30,7 +30,10 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 
 trunc_normal = lambda stddev: init_ops.truncated_normal_initializer(0.0, stddev)
-
+# Set use_5x5 to True to use the same filter sizes (5x5) as specified in the paper. 3x3 filter is the default.
+use_5x5 = None
+filter_size = [3, 3]
+filter_size_str=str(filter_size[0])+'x'+str(filter_size[1])
 
 def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
   """Defines the Inception V1 base architecture.
@@ -100,7 +103,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
           with variable_scope.variable_scope('Branch_2'):
             branch_2 = layers.conv2d(net, 16, [1, 1], scope='Conv2d_0a_1x1')
             branch_2 = layers.conv2d(
-                branch_2, 32, [5, 5], scope='Conv2d_0b_5x5')
+                branch_2, 32, filter_size, scope='Conv2d_0b_'+filter_size_str)
           with variable_scope.variable_scope('Branch_3'):
             branch_3 = layers_lib.max_pool2d(
                 net, [3, 3], scope='MaxPool_0a_3x3')
@@ -122,7 +125,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
           with variable_scope.variable_scope('Branch_2'):
             branch_2 = layers.conv2d(net, 32, [1, 1], scope='Conv2d_0a_1x1')
             branch_2 = layers.conv2d(
-                branch_2, 96, [5, 5], scope='Conv2d_0b_5x5')
+                branch_2, 96, filter_size, scope='Conv2d_0b_'+filter_size_str)
           with variable_scope.variable_scope('Branch_3'):
             branch_3 = layers_lib.max_pool2d(
                 net, [3, 3], scope='MaxPool_0a_3x3')
@@ -150,7 +153,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
           with variable_scope.variable_scope('Branch_2'):
             branch_2 = layers.conv2d(net, 16, [1, 1], scope='Conv2d_0a_1x1')
             branch_2 = layers.conv2d(
-                branch_2, 48, [5, 5], scope='Conv2d_0b_5x5')
+                branch_2, 48, filter_size, scope='Conv2d_0b_'+filter_size_str)
           with variable_scope.variable_scope('Branch_3'):
             branch_3 = layers_lib.max_pool2d(
                 net, [3, 3], scope='MaxPool_0a_3x3')
@@ -172,7 +175,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
           with variable_scope.variable_scope('Branch_2'):
             branch_2 = layers.conv2d(net, 24, [1, 1], scope='Conv2d_0a_1x1')
             branch_2 = layers.conv2d(
-                branch_2, 64, [5, 5], scope='Conv2d_0b_5x5')
+                branch_2, 64, filter_size, scope='Conv2d_0b_'+filter_size_str)
           with variable_scope.variable_scope('Branch_3'):
             branch_3 = layers_lib.max_pool2d(
                 net, [3, 3], scope='MaxPool_0a_3x3')
@@ -194,7 +197,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
           with variable_scope.variable_scope('Branch_2'):
             branch_2 = layers.conv2d(net, 24, [1, 1], scope='Conv2d_0a_1x1')
             branch_2 = layers.conv2d(
-                branch_2, 64, [5, 5], scope='Conv2d_0b_5x5')
+                branch_2, 64, filter_size, scope='Conv2d_0b_'+filter_size_str)
           with variable_scope.variable_scope('Branch_3'):
             branch_3 = layers_lib.max_pool2d(
                 net, [3, 3], scope='MaxPool_0a_3x3')
@@ -216,7 +219,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
           with variable_scope.variable_scope('Branch_2'):
             branch_2 = layers.conv2d(net, 32, [1, 1], scope='Conv2d_0a_1x1')
             branch_2 = layers.conv2d(
-                branch_2, 64, [5, 5], scope='Conv2d_0b_5x5')
+                branch_2, 64, filter_size, scope='Conv2d_0b_'+filter_size_str)
           with variable_scope.variable_scope('Branch_3'):
             branch_3 = layers_lib.max_pool2d(
                 net, [3, 3], scope='MaxPool_0a_3x3')
@@ -238,7 +241,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
           with variable_scope.variable_scope('Branch_2'):
             branch_2 = layers.conv2d(net, 32, [1, 1], scope='Conv2d_0a_1x1')
             branch_2 = layers.conv2d(
-                branch_2, 128, [5, 5], scope='Conv2d_0b_5x5')
+                branch_2, 128, filter_size, scope='Conv2d_0b_'+filter_size_str)
           with variable_scope.variable_scope('Branch_3'):
             branch_3 = layers_lib.max_pool2d(
                 net, [3, 3], scope='MaxPool_0a_3x3')
@@ -266,7 +269,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
           with variable_scope.variable_scope('Branch_2'):
             branch_2 = layers.conv2d(net, 32, [1, 1], scope='Conv2d_0a_1x1')
             branch_2 = layers.conv2d(
-                branch_2, 128, [5, 5], scope='Conv2d_0a_5x5')
+                branch_2, 128, filter_size, scope='Conv2d_0a_'+filter_size_str)
           with variable_scope.variable_scope('Branch_3'):
             branch_3 = layers_lib.max_pool2d(
                 net, [3, 3], scope='MaxPool_0a_3x3')
@@ -288,7 +291,7 @@ def inception_v1_base(inputs, final_endpoint='Mixed_5c', scope='InceptionV1'):
           with variable_scope.variable_scope('Branch_2'):
             branch_2 = layers.conv2d(net, 48, [1, 1], scope='Conv2d_0a_1x1')
             branch_2 = layers.conv2d(
-                branch_2, 128, [5, 5], scope='Conv2d_0b_5x5')
+                branch_2, 128, filter_size, scope='Conv2d_0b_'+filter_size_str)
           with variable_scope.variable_scope('Branch_3'):
             branch_3 = layers_lib.max_pool2d(
                 net, [3, 3], scope='MaxPool_0a_3x3')
@@ -343,6 +346,10 @@ def inception_v1(inputs,
       scope, 'InceptionV1', [inputs, num_classes], reuse=reuse) as scope:
     with arg_scope(
         [layers_lib.batch_norm, layers_lib.dropout], is_training=is_training):
+      # If we want the same filters as in the original paper. The default is 3x3.
+      if use_5x5:
+        filter_size=[5, 5]
+        filter_size_str=str(filter_size[0])+'x'+str(filter_size[1])
       net, end_points = inception_v1_base(inputs, scope=scope)
       with variable_scope.variable_scope('Logits'):
         net = layers_lib.avg_pool2d(
