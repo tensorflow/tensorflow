@@ -81,9 +81,10 @@ class GridRNNCell(rnn.RNNCell):
                 dimensions.
       cell_fn: function, a function which returns the recurrent cell object.
         Has to be in the following signature:
+              ```
               def cell_func(num_units):
                 # ...
-
+              ```
               and returns an object of type `RNNCell`. If None, LSTMCell with
                 default parameters will be used.
         Note that if you use a custom RNNCell (with `cell_fn`), it is your
@@ -534,20 +535,24 @@ def _propagate(dim_indices, conf, cells, c_prev, m_prev, new_output, new_state,
   if conf.num_dims > 1:
     ls_cell_inputs = [None] * (conf.num_dims - 1)
     for d in conf.dims[:-1]:
-      ls_cell_inputs[d.idx] = new_output[d.idx] \
-        if new_output[d.idx] is not None else m_prev[d.idx]
+      if new_output[d.idx] is None:
+        ls_cell_inputs[d.idx] = m_prev[d.idx]
+      else:
+        ls_cell_inputs[d.idx] = new_output[d.idx]
     cell_inputs = array_ops.concat(ls_cell_inputs, 1)
   else:
     cell_inputs = array_ops.zeros([m_prev[0].get_shape().as_list()[0], 0],
                                   m_prev[0].dtype)
 
-  last_dim_output = new_output[-1] if new_output[-1] is not None else m_prev[-1]
+  last_dim_output = new_output[-1] or m_prev[-1]
 
   for i in dim_indices:
     d = conf.dims[i]
     if d.non_recurrent_fn:
-      linear_args = array_ops.concat([cell_inputs, last_dim_output], 1) \
-        if conf.num_dims > 1 else last_dim_output
+      if conf.num_dims > 1:
+        linear_args = array_ops.concat([cell_inputs, last_dim_output], 1)
+      else:
+        linear_args = last_dim_output
       with vs.variable_scope('non_recurrent' if conf.tied else
                              'non_recurrent/cell_{}'.format(i)):
         if conf.tied and not (first_call and i == dim_indices[0]):
