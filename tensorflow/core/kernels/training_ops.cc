@@ -301,7 +301,7 @@ struct ApplyNadamNonCuda {
     const T alpha2 = Eigen::numext::sqrt(T(1) - beta2_power()*beta2()) /
                      (T(1) - beta1_power()*beta1());
     const T nes = alpha2 / alpha1;
-    var.device(d) -= (m * lr() * alpha) / (v.sqrt() + epsilon());
+    var.device(d) -= (m * lr() * alpha1) / (v.sqrt() + epsilon());
     m.device(d) += (grad - m * nes) * (T(1) - beta1());
     v.device(d) += (grad.square() - v) * (T(1) - beta2());
   }
