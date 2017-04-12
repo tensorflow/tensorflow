@@ -89,6 +89,13 @@ cc_library(
         "-D_REENTRANT",
     ],
     includes = ["include"],
+    linkopts = select({
+        "@%ws%//tensorflow:linux_ppc64le": [
+            "-lpthread",
+        ],
+        "//conditions:default": [
+        ],
+    }),
     visibility = ["//visibility:public"],
 )
 
@@ -183,12 +190,12 @@ sh_binary(
     srcs = ["include/jemalloc/internal/size_classes.sh"],
 )
 
-# Size classes for Linux x86_64. Update if adding builds for other
+# Size classes for Linux x86_64 and ppc64le. Update if adding builds for other
 # architectures. See size_classes.sh for details on the arguments.
 genrule(
     name = "size_classes_h",
     outs = ["include/jemalloc/internal/size_classes.h"],
-    cmd = "$(location :size_classes_sh) \"3 4\" 3 12 2 >$@",
+    cmd = "if [ $$(uname -p) = ppc64le ]; then $(location :size_classes_sh) \"3 4\" 3 16 2 >$@; else $(location :size_classes_sh) \"3 4\" 3 12 2 >$@; fi",
     tools = [":size_classes_sh"],
 )
 
@@ -210,7 +217,11 @@ template_rule(
         "#undef JEMALLOC_PREFIX": "#define JEMALLOC_PREFIX \"jemalloc_\"",
         "#undef JEMALLOC_CPREFIX": "#define JEMALLOC_CPREFIX \"JEMALLOC_\"",
         "#undef JEMALLOC_PRIVATE_NAMESPACE": "#define JEMALLOC_PRIVATE_NAMESPACE je_",
-        "#undef CPU_SPINWAIT": "#define CPU_SPINWAIT __asm__ volatile(\"pause\")",
+        "#undef CPU_SPINWAIT": "\n".join(["#if defined(__powerpc64__) || defined(__powerpc__)",
+                                          "#define CPU_SPINWAIT __asm__ volatile(\"or 27,27,27\")",
+                                          "#else",
+                                          "#define CPU_SPINWAIT __asm__ volatile(\"pause\")",
+                                          "#endif"]),
         "#undef JEMALLOC_HAVE_BUILTIN_CLZ": "#define JEMALLOC_HAVE_BUILTIN_CLZ",
         "#undef JEMALLOC_USE_SYSCALL": "#define JEMALLOC_USE_SYSCALL",
         "#undef JEMALLOC_HAVE_SECURE_GETENV": "#define JEMALLOC_HAVE_SECURE_GETENV",
@@ -226,7 +237,11 @@ template_rule(
         "#undef JEMALLOC_DSS": "#define JEMALLOC_DSS",
         "#undef JEMALLOC_FILL": "#define JEMALLOC_FILL",
         "#undef LG_TINY_MIN": "#define LG_TINY_MIN 3",
-        "#undef LG_PAGE": "#define LG_PAGE 12",
+        "#undef LG_PAGE": "\n".join(["#if defined(__powerpc64__) || defined(__powerpc__)",
+                                     "#define LG_PAGE 16",
+                                     "#else",
+                                     "#define LG_PAGE 12",
+                                     "#endif"]),
         "#undef JEMALLOC_MAPS_COALESCE": "#define JEMALLOC_MAPS_COALESCE",
         "#undef JEMALLOC_TLS": "#define JEMALLOC_TLS",
         "#undef JEMALLOC_INTERNAL_UNREACHABLE": "#define JEMALLOC_INTERNAL_UNREACHABLE __builtin_unreachable",

@@ -89,6 +89,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_ppc64le",
+    values = {"cpu": "ppc"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "debug",
     values = {
         "compilation_mode": "dbg",
