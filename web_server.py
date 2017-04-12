@@ -2,17 +2,21 @@
 """ This web server will handle the training of the TensorFlow model and the image sets
 that will be used for training. """
 
+import json
 import os
-from stat import *
+import re
 
 from flask import (Flask, flash, json, redirect, request, send_from_directory,
-                   url_for)
+                   url_for, jsonify)
 from werkzeug.utils import secure_filename
 
 # Default values
 DEFAULTS = {'UploadFolder':'./static/uploads', \
     'AllowedExtensions': 'jpg,jpeg,png,bmp', \
     'StaticURLPath':'/static'}
+
+# Paths containing the models
+MODELPATHS = {}
 
 # Read server config file
 with open('server.config') as f:
@@ -105,6 +109,81 @@ def images():
             img.save(os.path.join(directory, filename))
             return redirect('/images')
 
+def update_models():
+    """ Update the MODELPATHS dictionary with the model paths. """
+    # Find all files in the ModelPath with the ModelExtension and LabelExtension
+    for path, subdirs, files in os.walk(DEFAULTS['ModelPath']):
+        for name in files:
+            if name.endswith(DEFAULTS['ModelExtension']):
+                entry = os.path.join(path, name)
+                key = entry \
+                    .replace(DEFAULTS['ModelPath'], '') \
+                    .replace(DEFAULTS['ModelExtension'], '')
+
+                # Check if the key already exists in the dictionary
+                if key in MODELPATHS:
+                    MODELPATHS[key]['Model'] = entry
+                else:
+                    MODELPATHS[key] = {'Model':entry}
+            if name.endswith(DEFAULTS['LabelExtension']):
+                entry = os.path.join(path, name)
+                key = entry \
+                    .replace(DEFAULTS['ModelPath'], '') \
+                    .replace(DEFAULTS['LabelExtension'], '')
+
+                # Check if the key already exists in the dictionary
+                if key in MODELPATHS:
+                    MODELPATHS[key]['Label'] = entry
+                else:
+                    MODELPATHS[key] = {'Label':entry}
+
+@APP.route('/list-models')
+def list_models():
+    """ Return the available models in JSON format to the client. """
+    return jsonify(MODELPATHS)
+
+@APP.route('/update-model')
+def download_model():
+    """ Send the specified model to the client. """
+    key = request.args.get('model-key')
+    time = request.args.get('model-time')
+    path = MODELPATHS[key]['Model']
+
+    newer = check_time(path, time)
+
+    if newer:
+        path, name = os.path.split(path)
+        return send_from_directory(path, name)
+    else:
+        return False
+
+@APP.route('/update-label')
+def download_label():
+    """ Send the specified label to the client. """
+    key = request.args.get('model-key')
+    time = request.args.get('model-time')
+    path = MODELPATHS[key]['Label']
+
+    newer = check_time(path, time)
+
+    if newer:
+        path, name = os.path.split(path)
+        return send_from_directory(path, name)
+    else:
+        return False
+
+def check_time(path, time):
+    """ Check the metadata of the model file to see if there is a new
+    version available. """
+    path, name = os.path.split(path)
+    server_time = re.findall('\\d+', name)[0]
+
+    if server_time > time:
+        return True
+    else:
+        return False
+
+'''
 # Check if model has update
 @APP.route('/push-model-update')
 def push_model_update():
@@ -118,10 +197,8 @@ def push_label_update():
     return send_from_directory('tensorflow/examples/android/assets', \
 		'imagenet_comp_graph_label_strings.txt')
 
-@APP.route('/check-version')
+@APP.route('check-version')
 def check_version():
-    """ Check the metadata of the model file to see if there is a new
-    version available. """
     # Grab the URL arguments
     update_available = False
     client_mod_time = int(request.args.get('time-modified'))
@@ -163,3 +240,4 @@ def check_version():
         status=200,
         mimetype='application/json'
     )
+'''
