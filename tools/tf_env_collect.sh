@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -u  # Check for undefined variables
+
 echo "Collecting system information..."
 
 OUTPUT_FILE=tf_env.txt
@@ -45,11 +47,11 @@ echo >> $OUTPUT_FILE
 echo '== tensorflow import ============================================' >> $OUTPUT_FILE
 cat <<EOF > /tmp/check_tf.py
 import tensorflow as tf;
-print("tf.__version__ = %s" % tf.__version__)
-print("tf.__git_version__ = %s" % tf.__git_version__)
-print("tf.__compiler_version__ = %s" % tf.__git_version__)
+print("tf.VERSION = %s" % tf.VERSION)
+print("tf.GIT_VERSION = %s" % tf.GIT_VERSION)
+print("tf.COMPILER_VERSION = %s" % tf.GIT_VERSION)
 with tf.Session() as sess:
-  print "Sanity check: %r" % sess.run(tf.constant([1,2,3])[:1])
+  print("Sanity check: %r" % sess.run(tf.constant([1,2,3])[:1]))
 EOF
 python /tmp/check_tf.py &>> ${OUTPUT_FILE}
 
@@ -58,8 +60,17 @@ grep libcudnn.so /tmp/loadedlibs >> $OUTPUT_FILE
 
 echo >> $OUTPUT_FILE
 echo '== env ==========================================================' >> $OUTPUT_FILE
-echo LD_LIBRARY_PATH ${LD_LIBRARY_PATH}  >> $OUTPUT_FILE
-echo DYLD_LIBRARY_PATH ${DYLD_LIBRARY_PATH}  >> $OUTPUT_FILE
+if [ -z ${LD_LIBRARY_PATH+x} ]; then
+  echo "LD_LIBRARY_PATH is unset" >> $OUTPUT_FILE;
+else
+  echo LD_LIBRARY_PATH ${LD_LIBRARY_PATH}  >> $OUTPUT_FILE;
+fi
+if [ -z ${DYLD_LIBRARY_PATH+x} ]; then
+  echo "DYLD_LIBRARY_PATH is unset" >> $OUTPUT_FILE;
+else
+  echo DYLD_LIBRARY_PATH ${DYLD_LIBRARY_PATH}  >> $OUTPUT_FILE;
+fi
+
 
 echo >> $OUTPUT_FILE >> $OUTPUT_FILE
 echo '== nvidia-smi ===================================================' >> $OUTPUT_FILE
@@ -68,7 +79,7 @@ nvidia-smi &>> $OUTPUT_FILE
 echo >> $OUTPUT_FILE
 
 echo '== cuda libs  ===================================================' >> $OUTPUT_FILE
-find /usr/local -type f -name 'libcudart*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}  
+find /usr/local -type f -name 'libcudart*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
 find /usr/local -type f -name 'libudnn*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
 
 # Remove any words with google.

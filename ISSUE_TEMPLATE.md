@@ -12,6 +12,7 @@ Describe the problem clearly here. Be sure to convey here why it's a bug in Tens
 
 ### System Information
 - *Have I written custom code (as opposed to using a stock example script provided in TensorFlow)?*:
+- *OS Platform and Distribution (i.e. Linux Ubuntu 16.0)*:
 - *TensorFlow installed from (source or binary)?*:
 - *TensorFlow version* (use command below):
 - *Bazel version (if compiling from source)*:
@@ -22,7 +23,7 @@ Describe the problem clearly here. Be sure to convey here why it's a bug in Tens
 You can collect some of this information using our environment capture script https://github.com/tensorflow/tensorflow/blob/master/tools/
 You can collect the TensorFlow version with
 ```sh
-python -c "import tensorflow as tf; print (tf.__git_version__, tf.__version__)"
+python -c "import tensorflow as tf; print (tf.GIT_VERSION, tf.VERSION)"
 ```
 
 
