@@ -105,6 +105,22 @@ TEST(CAPI, AllocateTensor) {
   TF_DeleteTensor(t);
 }
 
+TEST(CAPI, MaybeMove) {
+  const int num_bytes = 6 * sizeof(float);
+  float* values =
+      reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
+          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+  int64_t dims[] = {2, 3};
+  bool deallocator_called = false;
+  TF_Tensor* t = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
+                              &Deallocator, &deallocator_called);
+
+  TF_Tensor* o = TF_TensorMaybeMove(t);
+  ASSERT_TRUE(o == nullptr);  // It is unsafe to move memory TF might not own.
+  TF_DeleteTensor(t);
+  EXPECT_TRUE(deallocator_called);
+}
+
 TEST(CAPI, LibraryLoadFunctions) {
   // Load the library.
   TF_Status* status = TF_NewStatus();

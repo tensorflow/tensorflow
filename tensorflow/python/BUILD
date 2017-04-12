@@ -170,6 +170,8 @@ cc_library(
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
     deps = [
         ":numpy_lib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/core:lib",
     ],
 )
 

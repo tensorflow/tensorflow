@@ -220,6 +220,10 @@ extern TF_Tensor* TF_NewTensor(TF_DataType, const int64_t* dims, int num_dims,
 extern TF_Tensor* TF_AllocateTensor(TF_DataType, const int64_t* dims,
                                     int num_dims, size_t len);
 
+// Deletes `tensor` and returns a new TF_Tensor with the same content if
+// possible. Returns nullptr and leaves `tensor` untouched if not.
+extern TF_Tensor* TF_TensorMaybeMove(TF_Tensor* tensor);
+
 // Destroy a tensor.
 extern void TF_DeleteTensor(TF_Tensor*);
 
