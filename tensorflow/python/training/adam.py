@@ -216,7 +216,7 @@ class NadamOptimizer(AdamOptimizer):
   def __init__(self, learning_rate=0.0002, beta1=0.825, beta2=0.99685, epsilon=1e-8,
                use_locking=False, name="Nadam"):
 
-    super(AdamOptimizer, self).__init__(use_locking, name)
+    super(NadamOptimizer, self).__init__(use_locking, name)
     self._lr = learning_rate
     self._beta1 = beta1
     self._beta2 = beta2
@@ -324,7 +324,7 @@ class RadamOptimizer(AdamOptimizer):
   def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
                gamma=0.05, use_locking=False, name="Radam"):
 
-    super(AdamOptimizer, self).__init__(use_locking, name)
+    super(RadamOptimizer, self).__init__(use_locking, name)
     self._beta1 = beta1 - gamma
     self._lr = learning_rate * (self._beta1 / beta1)
     self._beta2 = beta2
