@@ -638,15 +638,15 @@ TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
   auto fusion = HloInstruction::CreateFusion(
       scalar_shape, HloInstruction::FusionKind::kLoop, map_3_y.get());
 
-  ASSERT_EQ(fusion->called_computations().size(), 1);
-  EXPECT_EQ(fusion->called_computations()[0], computation_y.get());
+  EXPECT_THAT(fusion->called_computations(), ElementsAre(computation_y.get()));
 
   fusion->FuseInstruction(map_2_x.get());
-  ASSERT_EQ(fusion->called_computations().size(), 2);
-  EXPECT_EQ(fusion->called_computations()[1], computation_x.get());
+  EXPECT_THAT(fusion->called_computations(),
+              ElementsAre(computation_y.get(), computation_x.get()));
 
   fusion->FuseInstruction(map_1_x.get());
-  ASSERT_EQ(fusion->called_computations().size(), 2);
+  EXPECT_THAT(fusion->called_computations(),
+              ElementsAre(computation_y.get(), computation_x.get()));
 }
 
 TEST_F(HloInstructionTest, ComplexFusionOp) {

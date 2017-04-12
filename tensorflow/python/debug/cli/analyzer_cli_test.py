@@ -33,6 +33,7 @@ from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import debug_utils
+from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -1353,6 +1354,33 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "List of source files that created nodes in this run",
         "File path regex filter: \"%s\"" % self._curr_file_path,
         "Node name regex filter: \".*read\"", ""], out.lines[:4])
+
+  def testListSourceWithCompiledPythonSourceWorks(self):
+    def fake_list_source_files_against_dump(dump,
+                                            path_regex_whitelist=None,
+                                            node_name_regex_whitelist=None):
+      del dump, path_regex_whitelist, node_name_regex_whitelist
+      return [("compiled_1.pyc", False, 10, 20, 30, 4),
+              ("compiled_2.pyo", False, 10, 20, 30, 5),
+              ("uncompiled.py", False, 10, 20, 30, 6)]
+
+    with test.mock.patch.object(
+        source_utils, "list_source_files_against_dump",
+        side_effect=fake_list_source_files_against_dump):
+      out = self._registry.dispatch_command("list_source", [])
+
+      self.assertStartsWith(out.lines[4], "compiled_1.pyc")
+      self.assertEqual((0, 14, [cli_shared.COLOR_WHITE]),
+                       out.font_attr_segs[4][0])
+      self.assertStartsWith(out.lines[5], "compiled_2.pyo")
+      self.assertEqual((0, 14, [cli_shared.COLOR_WHITE]),
+                       out.font_attr_segs[5][0])
+      self.assertStartsWith(out.lines[6], "uncompiled.py")
+      self.assertEqual(0, out.font_attr_segs[6][0][0])
+      self.assertEqual(13, out.font_attr_segs[6][0][1])
+      self.assertEqual(cli_shared.COLOR_WHITE, out.font_attr_segs[6][0][2][0])
+      self.assertEqual("ps uncompiled.py -b 6",
+                       out.font_attr_segs[6][0][2][1].content)
 
 
 class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):

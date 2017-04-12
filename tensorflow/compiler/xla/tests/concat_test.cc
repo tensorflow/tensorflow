@@ -35,6 +35,7 @@ namespace xla {
 namespace {
 
 using ConcatTest = ClientLibraryTestBase;
+using ::testing::HasSubstr;
 
 // Concatenate expects at least one argument.
 XLA_TEST_F(ConcatTest, Concat_Nothing) {
@@ -42,9 +43,8 @@ XLA_TEST_F(ConcatTest, Concat_Nothing) {
   auto concatenated = builder.ConcatInDim({}, 0);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_THAT(
-      computation_status.status().ToString(),
-      ::testing::ContainsRegex("Concatenate expects at least one argument"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              HasSubstr("Concatenate expects at least one argument"));
 }
 
 // Concatenate with one argument works.
@@ -67,8 +67,7 @@ XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(computation_status.status().ToString(),
-              ::testing::ContainsRegex(
-                  "dimension to concatenate along out of bounds: 0"));
+              HasSubstr("dimension to concatenate along out of bounds: 0"));
 }
 
 XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L0) {
@@ -405,9 +404,9 @@ XLA_TEST_F(ConcatTest, CannotConcatOpaques) {
   auto concatenated = builder.ConcatInDim({x, y}, 0);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_THAT(computation_status.status().ToString(),
-              ::testing::ContainsRegex(
-                  "Expected non-opaque argument for operand of concatenation"));
+  EXPECT_THAT(
+      computation_status.status().ToString(),
+      HasSubstr("Expected non-opaque argument for operand of concatenation"));
 }
 
 XLA_TEST_F(ConcatTest, ConcatSeveralBoxedPredicates) {

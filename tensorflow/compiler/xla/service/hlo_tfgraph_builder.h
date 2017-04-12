@@ -13,16 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_TOOLS_HLO_TFGRAPH_BUILDER_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_TOOLS_HLO_TFGRAPH_BUILDER_H_
+#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_TFGRAPH_BUILDER_H_
+#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_TFGRAPH_BUILDER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/graph/graph.h"
 
 namespace xla {
-namespace tools {
+namespace hlo_graph_dumper {
 
 // This constructs a tensorflow graph for HLO computations.
 class HloTfGraphBuilder {
@@ -53,7 +52,7 @@ class HloTfGraphBuilder {
 // Cleans the node name to make it a valid name in a tensorflow graph.
 void CleanNodeName(string* name);
 
-}  // namespace tools
+}  // namespace hlo_graph_dumper
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_TOOLS_HLO_TFGRAPH_BUILDER_H_
+#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_TFGRAPH_BUILDER_H_

@@ -1904,6 +1904,39 @@ op {
   summary: "Computes atan of x element-wise."
 }
 op {
+  name: "AudioSpectrogram"
+  input_arg {
+    name: "input"
+    description: "Float representation of audio data."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "spectrogram"
+    description: "3D representation of the audio frequencies as an image."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "window_size"
+    type: "int"
+    description: "How wide the input window is in samples. For the highest efficiency\nthis should be a power of two, but other values are accepted."
+  }
+  attr {
+    name: "stride"
+    type: "int"
+    description: "How widely apart the center of adjacent sample windows should be."
+  }
+  attr {
+    name: "magnitude_squared"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Whether to return the squared magnitude or just the\nmagnitude. Using squared magnitude can avoid extra calculations."
+  }
+  summary: "Produces a visualization of audio data over time."
+  description: "Spectrograms are a standard way of representing audio information as a series of\nslices of frequency information, one slice for each window of time. By joining\nthese together into a sequence, they form a distinctive fingerprint of the sound\nover time.\n\nThis op expects to receive audio data as an input, stored as floats in the range\n-1 to 1, together with a window width in samples, and a stride specifying how\nfar to move the window between slices. From this it generates a three\ndimensional output. The lowest dimension has an amplitude value for each\nfrequency during that time slice. The next dimension is time, with successive\nfrequency slices. The final dimension is for the channels in the input, so a\nstereo audio input would have two here for example.\n\nThis means the layout when converted and saved as an image is rotated 90 degrees\nclockwise from a typical spectrogram. Time is descending down the Y axis, and\nthe frequency decreases from left to right.\n\nEach value in the result represents the square root of the sum of the real and\nimaginary parts of an FFT on the current window of samples. In this way, the\nlowest dimension represents the power of each frequency in the current window,\nand adjacent windows are concatenated in the next dimension.\n\nTo get a more intuitive and visual look at what this operation does, you can run\ntensorflow/examples/wav_to_spectrogram to read in an audio file and save out the\nresulting spectrogram as a PNG image."
+}
+op {
   name: "AudioSummary"
   input_arg {
     name: "tag"
@@ -5318,6 +5351,14 @@ op {
     }
     description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
   }
+  attr {
+    name: "gated_grpc"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Whether this op will be gated. If any of the debug_urls of this\ndebug node is of the grpc:// scheme, when the value of this attribute is set\nto True, the data will not actually be sent via the grpc stream unless this\ndebug op has been enabled at the debug_url. If all of the debug_urls of this\ndebug node are of the grpc:// scheme and the debug op is enabled at none of\nthem, the output will be an empty Tensor."
+  }
   summary: "Debug Identity Op."
   description: "Provides an identity mapping of the non-Ref type input tensor for debugging."
   allows_uninitialized_input: true
@@ -5353,7 +5394,15 @@ op {
       list {
       }
     }
-    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011"
+    description: "List of URLs to debug targets, e.g.,\nfile:///foo/tfdbg_dump, grpc:://localhost:11011."
+  }
+  attr {
+    name: "gated_grpc"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Whether this op will be gated. If any of the debug_urls of this\ndebug node is of the grpc:// scheme, when the value of this attribute is set\nto True, the data will not actually be sent via the grpc stream unless this\ndebug op has been enabled at the debug_url. If all of the debug_urls of this\ndebug node are of the grpc:// scheme and the debug op is enabled at none of\nthem, the output will be an empty Tensor."
   }
   summary: "Debug NaN Value Counter Op"
   description: "Counts number of NaNs in the input tensor, for debugging."
@@ -5415,6 +5464,14 @@ op {
       b: false
     }
     description: "(bool) Do not send data to the debug URLs unless at least one\nof elements [2], [3] and [7] (i.e., the nan count and the generalized -inf and\ninf counts) is non-zero."
+  }
+  attr {
+    name: "gated_grpc"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Whether this op will be gated. If any of the debug_urls of this\ndebug node is of the grpc:// scheme, when the value of this attribute is set\nto True, the data will not actually be sent via the grpc stream unless this\ndebug op has been enabled at the debug_url. If all of the debug_urls of this\ndebug node are of the grpc:// scheme and the debug op is enabled at none of\nthem, the output will be an empty Tensor."
   }
   summary: "Debug Numeric Summary Op."
   description: "Provide a basic summary of numeric value types, range and distribution."
@@ -8477,7 +8534,7 @@ op {
     }
   }
   summary: "Gather slices from `params` according to `indices`."
-  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n```python\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n```\n\nIf `indices` is a permutation and `len(indices) == params.shape[0]` then\nthis operation will permute `params` accordingly.\n\n`validate_indices`: DEPRECATED. If this operation is assigned to CPU, values in\n`indices` are always validated to be within range. If assigned to GPU,\nout-of-bound indices result in unspecified behavior (currently the result is\n`0`, but this may become an error in the future).\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/Gather.png\" alt>\n</div>"
+  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n```python\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n```\n\nIf `indices` is a permutation and `len(indices) == params.shape[0]` then\nthis operation will permute `params` accordingly.\n\n`validate_indices`: DEPRECATED. If this operation is assigned to CPU, values in\n`indices` are always validated to be within range. If assigned to GPU,\nout-of-bound indices result in safe but unspecified behavior, which may include\nraising an error.\n`0`, but this may become an error in the future).\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/Gather.png\" alt>\n</div>"
 }
 op {
   name: "GatherNd"
@@ -12807,6 +12864,7 @@ op {
     type: "shape"
     default_value {
       shape {
+        unknown_rank: true
       }
     }
     description: "(Optional) The shape of the tensor. If the shape has 0 dimensions, the\nshape is unconstrained."
@@ -12833,6 +12891,10 @@ op {
   }
   summary: "A placeholder op for a value that will be fed into the computation."
   description: "N.B. This operation will fail with an error if it is executed. It is\nintended as a way to represent a value that will always be fed, and to\nprovide attrs that enable the fed value to be checked at runtime."
+  deprecation {
+    version: 23
+    explanation: "Placeholder now behaves the same as PlaceholderV2."
+  }
 }
 op {
   name: "PlaceholderWithDefault"

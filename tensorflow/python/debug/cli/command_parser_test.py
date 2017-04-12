@@ -297,5 +297,111 @@ class ParseReadableSizeStrTest(test_util.TensorFlowTestCase):
       command_parser.parse_readable_size_str("2EB")
 
 
+class ParseReadableTimeStrTest(test_util.TensorFlowTestCase):
+
+  def testParseNoUnitWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_time_str("0"))
+    self.assertEqual(100, command_parser.parse_readable_time_str("100 "))
+    self.assertEqual(25, command_parser.parse_readable_time_str(" 25 "))
+
+  def testParseSeconds(self):
+    self.assertEqual(1e6, command_parser.parse_readable_time_str("1 s"))
+    self.assertEqual(2e6, command_parser.parse_readable_time_str("2s"))
+
+  def testParseMicros(self):
+    self.assertEqual(2, command_parser.parse_readable_time_str("2us"))
+
+  def testParseMillis(self):
+    self.assertEqual(2e3, command_parser.parse_readable_time_str("2ms"))
+
+  def testParseUnsupportedUnitRaisesException(self):
+    with self.assertRaisesRegexp(
+        ValueError, r".*float.*2us.*"):
+      command_parser.parse_readable_time_str("2uss")
+
+    with self.assertRaisesRegexp(
+        ValueError, r".*float.*2m.*"):
+      command_parser.parse_readable_time_str("2m")
+
+    with self.assertRaisesRegexp(
+        ValueError, r"Invalid time -1. Time value must be positive."):
+      command_parser.parse_readable_time_str("-1s")
+
+
+class ParseInterval(test_util.TensorFlowTestCase):
+
+  def testParseTimeInterval(self):
+    self.assertEquals(
+        command_parser.Interval(10, True, 1e3, True),
+        command_parser.parse_time_interval("[10us, 1ms]"))
+    self.assertEquals(
+        command_parser.Interval(10, False, 1e3, False),
+        command_parser.parse_time_interval("(10us, 1ms)"))
+    self.assertEquals(
+        command_parser.Interval(10, False, 1e3, True),
+        command_parser.parse_time_interval("(10us, 1ms]"))
+    self.assertEquals(
+        command_parser.Interval(10, True, 1e3, False),
+        command_parser.parse_time_interval("[10us, 1ms)"))
+    self.assertEquals(command_parser.Interval(0, False, 1e3, True),
+                      command_parser.parse_time_interval("<=1ms"))
+    self.assertEquals(
+        command_parser.Interval(1e3, True, float("inf"), False),
+        command_parser.parse_time_interval(">=1ms"))
+    self.assertEquals(command_parser.Interval(0, False, 1e3, False),
+                      command_parser.parse_time_interval("<1ms"))
+    self.assertEquals(
+        command_parser.Interval(1e3, False, float("inf"), False),
+        command_parser.parse_time_interval(">1ms"))
+
+  def testInvalidTimeIntervalRaisesException(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Invalid interval format: \[10us, 1ms. Valid formats are: "
+        r"\[min, max\], \(min, max\), <max, >min"):
+      command_parser.parse_time_interval("[10us, 1ms")
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Incorrect interval format: \[10us, 1ms, 2ms\]. Interval should "
+        r"specify two values: \[min, max\] or \(min, max\)"):
+      command_parser.parse_time_interval("[10us, 1ms, 2ms]")
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Invalid interval \[1s, 1ms\]. Start must be before end of interval."):
+      command_parser.parse_time_interval("[1s, 1ms]")
+
+  def testParseMemoryInterval(self):
+    self.assertEquals(
+        command_parser.Interval(1024, True, 2048, True),
+        command_parser.parse_memory_interval("[1k, 2k]"))
+    self.assertEquals(
+        command_parser.Interval(1024, False, 2048, False),
+        command_parser.parse_memory_interval("(1kB, 2kB)"))
+    self.assertEquals(
+        command_parser.Interval(1024, False, 2048, True),
+        command_parser.parse_memory_interval("(1k, 2k]"))
+    self.assertEquals(
+        command_parser.Interval(1024, True, 2048, False),
+        command_parser.parse_memory_interval("[1k, 2k)"))
+    self.assertEquals(
+        command_parser.Interval(0, False, 2048, True),
+        command_parser.parse_memory_interval("<=2k"))
+    self.assertEquals(
+        command_parser.Interval(11, True, float("inf"), False),
+        command_parser.parse_memory_interval(">=11"))
+    self.assertEquals(command_parser.Interval(0, False, 2048, False),
+                      command_parser.parse_memory_interval("<2k"))
+    self.assertEquals(
+        command_parser.Interval(11, False, float("inf"), False),
+        command_parser.parse_memory_interval(">11"))
+
+  def testInvalidMemoryIntervalRaisesException(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Invalid interval \[5k, 3k\]. Start of interval must be less than or "
+        "equal to end of interval."):
+      command_parser.parse_memory_interval("[5k, 3k]")
+
+
 if __name__ == "__main__":
   googletest.main()

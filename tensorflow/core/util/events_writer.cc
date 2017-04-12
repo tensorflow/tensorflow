@@ -56,7 +56,6 @@ bool EventsWriter::InitIfNeeded() {
       strings::Printf("%s.out.tfevents.%010lld.%s%s", file_prefix_.c_str(),
                       static_cast<int64>(time_in_seconds),
                       port::Hostname().c_str(), file_suffix_.c_str());
-  port::AdjustFilenameForLogging(&filename_);
 
   Status s = env_->NewWritableFile(filename_, &recordio_file_);
   if (!s.ok()) {

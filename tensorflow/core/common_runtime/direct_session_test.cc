@@ -1178,7 +1178,7 @@ void FeedFetchBenchmarkHelper(int num_feeds, int iters) {
     // monitor this overhead where possible, but that is not the
     // object of study in this benchmark.
     Node* placeholder;
-    TF_CHECK_OK(NodeBuilder(g.NewName("Placeholder"), "PlaceholderV2")
+    TF_CHECK_OK(NodeBuilder(g.NewName("Placeholder"), "Placeholder")
                     .Attr("shape", TensorShape())
                     .Attr("dtype", DT_FLOAT)
                     .Device("/cpu:0")
