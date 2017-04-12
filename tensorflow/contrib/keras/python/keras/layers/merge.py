@@ -74,8 +74,8 @@ class _Merge(Layer):
       else:
         if i != j:
           raise ValueError('Operands could not be broadcast '
-                           'together with shapes ' + str(shape1) + ' ' + str(
-                               shape2))
+                           'together with shapes ' + str(shape1) + ' ' +
+                           str(shape2))
         output_shape.append(i)
     return tuple(output_shape)
 
@@ -92,8 +92,8 @@ class _Merge(Layer):
     batch_sizes -= set([None])
     if len(batch_sizes) > 1:
       raise ValueError('Can not merge tensors with different '
-                       'batch sizes. Got tensors with shapes : ' + str(
-                           input_shape))
+                       'batch sizes. Got tensors with shapes : ' +
+                       str(input_shape))
     if input_shape[0] is None:
       output_shape = None
     else:

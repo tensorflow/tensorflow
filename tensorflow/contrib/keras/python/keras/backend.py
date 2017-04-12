@@ -351,7 +351,8 @@ def get_session():
       _SESSION = session_module.Session(config=config)
     session = _SESSION
   if not _MANUAL_VAR_INIT:
-    _initialize_variables()
+    with session.graph.as_default():
+      _initialize_variables()
   return session
 
 
@@ -2898,13 +2899,14 @@ def in_top_k(predictions, targets, k):
   """Returns whether the `targets` are in the top `k` `predictions`.
 
   Arguments:
-      predictions: A tensor of shape `batch_size` x classes and type `float32`.
-      targets: A tensor of shape batch_size and type `int32` or `int64`.
+      predictions: A tensor of shape `(batch_size, classes)` and type `float32`.
+      targets: A 1D tensor of length `batch_size` and type `int32` or `int64`.
       k: An `int`, number of top elements to consider.
 
   Returns:
-      A tensor of shape `batch_size` and type `bool`. `output_i` is `True` if
-      `targets_i` is within top-k values of `predictions_i`
+      A 1D tensor of length `batch_size` and type `bool`.
+      `output[i]` is `True` if `predictions[i, targets[i]]` is within top-`k`
+      values of `predictions[i]`.
   """
   return nn.in_top_k(predictions, targets, k)
 
@@ -3452,8 +3454,9 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
   max_num_labels_tns = array_ops.stack([label_shape[1]])
 
   def range_less_than(_, current_input):
-    return array_ops.expand_dims(math_ops.range(
-        label_shape[1]), 0) < array_ops.fill(max_num_labels_tns, current_input)
+    return array_ops.expand_dims(
+        math_ops.range(label_shape[1]), 0) < array_ops.fill(
+            max_num_labels_tns, current_input)
 
   init = math_ops.cast(
       array_ops.fill([1, label_shape[1]], 0), dtypes_module.bool)

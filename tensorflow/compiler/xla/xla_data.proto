@@ -16,6 +16,7 @@ limitations under the License.
 syntax = "proto3";
 
 package xla;
+option cc_enable_arenas = true;
 
 // Primitive types are the individual values that can be held in rectangular
 // multidimensional arrays. A description of the rectangular multidimensional

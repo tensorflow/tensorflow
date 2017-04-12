@@ -35,7 +35,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::ContainsRegex;
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 
 class DeconstructTupleTest : public ClientLibraryTestBase {
  protected:
@@ -164,7 +166,7 @@ TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().error_message(),
-              ::testing::ContainsRegex("global data handle .* is not a tuple"));
+              ContainsRegex("global data handle .* is not a tuple"));
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
@@ -193,8 +195,7 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().error_message(),
-              ::testing::ContainsRegex(
-                  "deconstructing nested tuples not yet supported"));
+              HasSubstr("deconstructing nested tuples not yet supported"));
 }
 
 }  // namespace
