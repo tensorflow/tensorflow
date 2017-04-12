@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import json
 
-from tensorflow.contrib.learn.python.learn import run_config
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
+from tensorflow.python.estimator import run_config as core_run_config
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -34,8 +34,12 @@ patch = test.mock.patch
 
 class RunConfigTest(test.TestCase):
 
+  def test_instance_of_core_run_config(self):
+    config = run_config_lib.RunConfig()
+    self.assertTrue(isinstance(config, core_run_config.RunConfig))
+
   def test_defaults_with_no_tf_config(self):
-    config = run_config.RunConfig()
+    config = run_config_lib.RunConfig()
     self.assertEqual(config.master, "")
     self.assertEqual(config.task_id, 0)
     self.assertEqual(config.num_ps_replicas, 0)
@@ -56,7 +60,7 @@ class RunConfigTest(test.TestCase):
         }
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
-      config = run_config.RunConfig()
+      config = run_config_lib.RunConfig()
 
     self.assertEqual(config.master, "grpc://host4:4")
     self.assertEqual(config.task_id, 1)
@@ -80,7 +84,7 @@ class RunConfigTest(test.TestCase):
         }
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
-      config = run_config.RunConfig(
+      config = run_config_lib.RunConfig(
           master="localhost:0", evaluation_master="localhost:9991")
 
     self.assertEqual(config.master, "localhost:0")
@@ -95,7 +99,7 @@ class RunConfigTest(test.TestCase):
   def test_single_node_in_cluster_spec_produces_empty_master(self):
     tf_config = {"cluster": {run_config_lib.TaskType.WORKER: ["host1:1"]}}
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
-      config = run_config.RunConfig()
+      config = run_config_lib.RunConfig()
       self.assertEqual(config.master, "")
 
   def test_no_task_type_produces_empty_master(self):
@@ -107,7 +111,7 @@ class RunConfigTest(test.TestCase):
         # Omits "task": {"type": "worker}
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
-      config = run_config.RunConfig()
+      config = run_config_lib.RunConfig()
       self.assertEqual(config.master, "")
 
   def test_invalid_job_name_raises(self):
@@ -125,7 +129,7 @@ class RunConfigTest(test.TestCase):
         "os.environ",
         {"TF_CONFIG": json.dumps(tf_config)}), self.assertRaisesRegexp(
             ValueError, expected_msg_regexp):
-      run_config.RunConfig()
+      run_config_lib.RunConfig()
 
   def test_illegal_task_index_raises(self):
     tf_config = {
@@ -143,7 +147,7 @@ class RunConfigTest(test.TestCase):
         "os.environ",
         {"TF_CONFIG": json.dumps(tf_config)}), self.assertRaisesRegexp(
             ValueError, expected_msg_regexp):
-      run_config.RunConfig()
+      run_config_lib.RunConfig()
 
   def test_is_chief_from_cloud_tf_config(self):
     # is_chief should be true when ["task"]["type"] == "master" and
@@ -162,7 +166,7 @@ class RunConfigTest(test.TestCase):
         "environment": "cloud"
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
-      config = run_config.RunConfig()
+      config = run_config_lib.RunConfig()
 
     self.assertTrue(config.is_chief)
 
@@ -182,7 +186,7 @@ class RunConfigTest(test.TestCase):
         "environment": "random"
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
-      config = run_config.RunConfig()
+      config = run_config_lib.RunConfig()
 
     self.assertTrue(config.is_chief)
 
@@ -200,26 +204,26 @@ class RunConfigTest(test.TestCase):
         "environment": "random"
     }
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
-      config = run_config.RunConfig()
+      config = run_config_lib.RunConfig()
 
     self.assertFalse(config.is_chief)
 
   def test_default_is_chief_from_tf_config_without_job_name(self):
     tf_config = {"cluster": {}, "task": {}}
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
-      config = run_config.RunConfig()
+      config = run_config_lib.RunConfig()
 
     self.assertTrue(config.is_chief)
 
   def test_model_dir(self):
-    empty_config = run_config.RunConfig()
+    empty_config = run_config_lib.RunConfig()
     self.assertIsNone(empty_config.model_dir)
 
-    config = run_config.RunConfig(model_dir=TEST_DIR)
+    config = run_config_lib.RunConfig(model_dir=TEST_DIR)
     self.assertEqual(TEST_DIR, config.model_dir)
 
   def test_replace(self):
-    config = run_config.RunConfig(
+    config = run_config_lib.RunConfig(
         tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
     self.assertEqual(TEST_DIR, config.model_dir)
     self.assertEqual(RANDOM_SEED, config.tf_random_seed)
@@ -239,7 +243,7 @@ class RunConfigTest(test.TestCase):
       config.replace(some_undefined_property=RANDOM_SEED)
 
   def test_uid(self):
-    config = run_config.RunConfig(
+    config = run_config_lib.RunConfig(
         tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
 
     expected_uid = config.uid()
