@@ -101,8 +101,8 @@ For example:
     outputs[1] = [30, 40]
 ```
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/DynamicPartition.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/DynamicPartition.png' alt>
 </div>
 
 partitions: Any shape.  Indices in the range `[0, num_partitions)`.
@@ -189,8 +189,8 @@ For example:
               [51, 52], [61, 62]]
 ```
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/DynamicStitch.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/DynamicStitch.png' alt>
 </div>
 )doc");
 
@@ -1163,7 +1163,7 @@ This double counts and generally breaks the TensorArray gradient flow.
 
 The solution is to identify which gradient call this particular
 TensorArray gradient is being called in.  This is performed by identifying
-a unique string (e.g. "gradients", "gradients_1", ...) from the input
+a unique string (e.g. 'gradients', 'gradients_1', ...) from the input
 gradient Tensor's name.  This string is used as a suffix when creating
 the TensorArray gradient object here (the attribute `source`).
 
@@ -2063,7 +2063,7 @@ REGISTER_OP("MutableDenseHashTable")
     .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 Creates an empty hash table that uses tensors as the backing store. It uses
-"open addressing" with quadratic reprobing to resolve collisions.
+'open addressing' with quadratic reprobing to resolve collisions.
 
 This op creates a mutable hash table, specifying the type of its keys and
 values. Each value must be a scalar. Data can be inserted into the table using

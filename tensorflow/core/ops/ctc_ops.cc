@@ -112,8 +112,8 @@ Performs greedy decoding on the logits given in inputs.
 
 A note about the attribute merge_repeated: if enabled, when
 consecutive logits' maximum indices are the same, only the first of
-these is emitted.  Labeling the blank '*', the sequence "A B B * B B"
-becomes "A B B" if merge_repeated = True and "A B B B B" if
+these is emitted.  Labeling the blank '*', the sequence 'A B B * B B'
+becomes 'A B B' if merge_repeated = True and 'A B B B B' if
 merge_repeated = False.
 
 Regardless of the value of merge_repeated, if the maximum index of a given
@@ -178,8 +178,8 @@ Performs beam search decoding on the logits given in input.
 
 A note about the attribute merge_repeated: For the beam search decoder,
 this means that if consecutive entries in a beam are the same, only
-the first of these is emitted.  That is, when the top path is "A B B B B",
-"A B" is returned if merge_repeated = True but "A B B B B" is
+the first of these is emitted.  That is, when the top path is 'A B B B B',
+'A B' is returned if merge_repeated = True but 'A B B B B' is
 returned if merge_repeated = False.
 
 inputs: 3-D, shape: `(max_time x batch_size x num_classes)`, the logits.

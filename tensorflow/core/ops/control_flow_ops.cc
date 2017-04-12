@@ -310,7 +310,7 @@ REGISTER_OP("LoopCond")
 Forwards the input to the output.
 
 This operator represents the loop termination condition used by the
-"pivot" switches of a loop.
+'pivot' switches of a loop.
 
 input: A boolean scalar, representing the branch predicate of the Switch op.
 output: The same tensor as `input`.
