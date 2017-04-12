@@ -48,7 +48,7 @@ string SummarizeFunc(const NameAttrList& func) {
     entries.push_back(
         strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
   }
-  sort(entries.begin(), entries.end());
+  std::sort(entries.begin(), entries.end());
   return strings::StrCat(func.name(), "[", str_util::Join(entries, ", "), "]");
 }
 

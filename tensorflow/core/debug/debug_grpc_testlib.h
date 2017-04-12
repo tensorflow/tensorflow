@@ -64,6 +64,17 @@ class TestEventListenerImpl final : public EventListener::Service {
   mutex changes_mu_;
 };
 
+// Poll a gRPC debug server by sending a small tensor repeatedly till success.
+//
+// Args:
+//   server_url: gRPC URL of the server to poll, e.g., "grpc://foo:3333".
+//   max_attempts: Maximum number of attempts.
+//
+// Returns:
+//   Whether the polling succeeded within max_attempts.
+bool PollTillFirstRequestSucceeds(const string& server_url,
+                                  const size_t max_attempts);
+
 }  // namespace test
 
 }  // namespace tensorflow
