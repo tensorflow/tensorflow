@@ -282,6 +282,13 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       # Some of the computations here are not necessary when training==False
       # but not a constant. However, this makes the code simpler.
       mean, variance = nn.moments(inputs, reduction_axes)
+      mean = _smart_select(training,
+                           lambda: mean,
+                           lambda: self.moving_mean)
+      variance = _smart_select(training,
+                               lambda: variance,
+                               lambda: self.moving_variance)
+
       if self.renorm:
         r, d, new_mean, new_variance = self._renorm_correction_and_moments(
             mean, variance, training)
@@ -311,13 +318,6 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
         # across unrelated input streams (e.g. like in Keras).
         self.updates.append(mean_update)
         self.updates.append(variance_update)
-
-      mean = _smart_select(training,
-                           lambda: mean,
-                           lambda: self.moving_mean)
-      variance = _smart_select(training,
-                               lambda: variance,
-                               lambda: self.moving_variance)
 
     else:
       mean, variance = self.moving_mean, self.moving_variance
