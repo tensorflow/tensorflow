@@ -108,6 +108,17 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
 
 string XlaDevice::Metadata::DebugString() { return "XLA device metadata"; }
 
+/* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
+                                           Metadata** metadata) {
+  ResourceMgr* rm = ctx->resource_manager();
+  if (rm == nullptr) {
+    return errors::Internal("No resource manager.");
+  }
+  TF_RETURN_IF_ERROR(
+      rm->Lookup<Metadata>(rm->default_container(), "xla_metadata", metadata));
+  return Status::OK();
+}
+
 XlaDevice::XlaDevice(const SessionOptions& options,
                      const DeviceAttributes& attrs, int device_ordinal,
                      const DeviceType& jit_device_name,

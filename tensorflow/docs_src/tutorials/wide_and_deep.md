@@ -39,14 +39,14 @@ And that's it! Let's go through a simple example.
 
 To try the code for this tutorial:
 
-1.  @{$install$Install TensorFlow}[Install TensorFlow]  if you haven't already.
+1.  @{$install$Install TensorFlow} if you haven't already.
 
-2.  Download [the tutorial code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py).
+2.  Download [the tutorial code](https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py).
 
 3.  Install the pandas data analysis library. tf.learn doesn't require pandas, but it does support it, and this tutorial uses pandas. To install pandas:
     1. Get `pip`:
 
-       ```shell
+       ```bsh
        # Ubuntu/Linux 64-bit
        $ sudo apt-get install python-pip python-dev
 
@@ -57,7 +57,7 @@ To try the code for this tutorial:
 
     2. Use `pip` to install pandas:
 
-       ```shell
+       ```bsh
        $ sudo pip install pandas
        ```
 
@@ -262,7 +262,7 @@ The first line of the output should be something like `accuracy: 0.84429705`. We
 can see that the accuracy was improved from about 83.6% using a wide-only linear
 model to about 84.4% using a Wide & Deep model. If you'd like to see a working
 end-to-end example, you can download our
-[example code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py).
+[example code](https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py).
 
 Note that this tutorial is just a quick example on a small dataset to get you
 familiar with the API. Wide & Deep Learning will be even more powerful if you

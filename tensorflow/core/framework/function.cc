@@ -408,7 +408,7 @@ string Print(const AttrValue& attr_value) {
     for (auto p : attr_value.func().attr()) {
       entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
     }
-    sort(entries.begin(), entries.end());
+    std::sort(entries.begin(), entries.end());
     return strings::StrCat(attr_value.func().name(), "[",
                            str_util::Join(entries, ", "), "]");
   }
@@ -424,7 +424,7 @@ string Print(const NodeDef& n) {
     for (auto& a : n.attr()) {
       entries.push_back(strings::StrCat(a.first, "=", Print(a.second)));
     }
-    sort(entries.begin(), entries.end());
+    std::sort(entries.begin(), entries.end());
     strings::StrAppend(&out, "[", str_util::Join(entries, ", "), "]");
   }
   strings::StrAppend(&out, "(");
@@ -502,8 +502,8 @@ string Print(const GraphDef& gdef) {
     TF_CHECK_OK(GetNodeAttr(*y, "index", &yi));
     return xi < yi;
   };
-  sort(arg.begin(), arg.end(), comp);
-  sort(ret.begin(), ret.end(), comp);
+  std::sort(arg.begin(), arg.end(), comp);
+  std::sort(ret.begin(), ret.end(), comp);
   string out;
   strings::StrAppend(&out, "\n(");
   auto get_type = [](const NodeDef& n) {
@@ -690,7 +690,7 @@ string Canonicalize(const string& funcname,
   for (auto p : attrs) {
     entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
   }
-  sort(entries.begin(), entries.end());
+  std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
 }
 
