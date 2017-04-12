@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #define EIGEN_USE_THREADS
+
+#include "tensorflow/core/kernels/lookup_table_init_op.h"
 
 #include <algorithm>
 #include <memory>
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/initializable_lookup_table.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -304,6 +304,8 @@ class TextFileLineIterator
   TF_DISALLOW_COPY_AND_ASSIGN(TextFileLineIterator);
 };
 
+}  // namespace
+
 // Helper function to initialize an InitializableLookupTable from a text file.
 Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
                                    char delimiter, int32 key_index,
@@ -349,7 +351,6 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
   return s;
 }
 
-}  // namespace
 }  // namespace lookup
 
 // Kernel to initialize a look table given a key and value tensors.
