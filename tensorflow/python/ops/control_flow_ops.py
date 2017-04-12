@@ -24,6 +24,7 @@ See the @{$python/control_flow_ops} guide.
 @@count_up_to
 @@cond
 @@case
+@@select
 @@while_loop
 @@logical_and
 @@logical_not
@@ -2995,6 +2996,27 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
       case_seq = _build_case()
 
     return case_seq
+
+
+def select(index, inputs, name=None):
+  """Select an input by index.
+
+  This op is optimized by the runtime such that unselected inputs are not
+  evaluated.
+
+  Args:
+    index: An int32 tensor.
+    inputs: A list of tensors of the same type.
+
+  Returns:
+    `inputs[index]`.
+  """
+  inputs = ops.convert_n_to_tensor(inputs)
+  if len(set(t.dtype for t in inputs)) > 1:
+    raise ValueError("Input tensors must have the same type")
+
+  with ops.name_scope(name, "select", [index] + inputs):
+    return gen_control_flow_ops._mux(index, inputs, name)
 
 
 ops.register_proto_function(ops.GraphKeys.COND_CONTEXT,
