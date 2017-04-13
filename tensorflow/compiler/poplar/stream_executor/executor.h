@@ -48,6 +48,7 @@ namespace poplarplugin {
 std::string GetCopyHandle(int64 i);
 
 using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
+using OutputMap = std::map<int64, int64>;
 
 class PoplarExecutor : public internal::StreamExecutorInterface {
  public:
@@ -194,7 +195,8 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   port::StatusOr<DeviceMemoryBase> ExecuteEngine(Stream *stream,
                                                  poplar::Engine* engine,
                                                  const xla::Shape& shape,
-                                                 const Args& args);
+                                                 const Args& args,
+                                                 const OutputMap& output_map);
 
   std::string GetPathToGraphProgFile();
 
@@ -206,7 +208,14 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
     char data[0];
   };
 
-  port::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape&);
+  DeviceMemoryBase AllocateSingleOutput(const xla::Shape& shape,
+                                        int64 n,
+                                        const OutputMap& map,
+                                        const Args& args);
+
+  port::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape&,
+                                                        const OutputMap&,
+                                                        const Args&);
 
   port::Status MoveDeviceToHost(TensorControl* tc) const;
   port::Status MoveHostToDevice(TensorControl* tc) const;

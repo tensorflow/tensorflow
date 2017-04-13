@@ -56,7 +56,9 @@ namespace poplarplugin {
 class PoplarMainVisitor : public PoplarBaseVisitor {
 public:
   PoplarMainVisitor(poplar::Graph* graph, uint64 num_parameters)
-          : PoplarBaseVisitor(graph) {}
+          : PoplarBaseVisitor(graph) {
+    parameters_.resize(num_parameters);
+  }
 
   Status HandleInfeed(HloInstruction* inst) {
     VLOG(1) << inst->ToString();
@@ -78,6 +80,8 @@ public:
     poplar::Tensor out;
     TF_ASSIGN_OR_RETURN(out, AddTensor(*graph_, inst->name(), inst->shape()));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+    parameters_[inst->parameter_number()] = out;
 
     graph_->createHostWrite(sep::GetCopyHandle(inst->parameter_number()), out);
     return Status::OK();
@@ -109,10 +113,22 @@ public:
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, i));
       graph_->createHostRead(sep::GetCopyHandle(i), out);
+
+      for (int64 p = 0; p<parameters_.size(); p++) {
+        if (parameters_[p] == out) {
+          output_map[i] = p;
+          break;
+        }
+      }
     }
 
     return Status::OK();
   }
+
+  std::map<int64,int64> output_map;
+
+private:
+  std::vector<poplar::Tensor> parameters_;
 };
 
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
@@ -198,7 +214,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   executable.reset(
           new PoplarExecutable(std::move(hlo_module),
                                std::move(module_config),
-                               std::move(engine)));
+                               std::move(engine),
+                               std::move(visitor.output_map)));
 
   return std::move(executable);
 }

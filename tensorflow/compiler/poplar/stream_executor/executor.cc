@@ -169,29 +169,47 @@ DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
   return built.release();
 }
 
+se::DeviceMemoryBase
+PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
+                                     int64 n,
+                                     const OutputMap& map,
+                                     const Args& args) {
+  auto it(map.find(n));
+  if (it != map.end()) {
+    se::DeviceMemoryBase buf(args[it->second]);
+    TensorControl* tc = reinterpret_cast<TensorControl*>(buf.opaque());
+    tc->on_device = true;
+    tc->output_handle = n;
+    return buf;
+  } else {
+    int64 size(xla::ShapeUtil::ByteSizeOf(shape));
+    TensorControl* tc =
+            reinterpret_cast<TensorControl*>(
+                    Allocate(size));
+    tc->on_device = true;
+    tc->output_handle = n;
+    return se::DeviceMemoryBase(tc, size);
+  }
+}
+
 port::StatusOr<se::DeviceMemoryBase>
-PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape) {
+PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape,
+                                     const OutputMap& map,
+                                     const Args& args) {
 
   if (shape.element_type() != xla::TUPLE) {
-    uint64 size(xla::ShapeUtil::ByteSizeOf(shape));
-    void* buf(Allocate(size));
-    TensorControl* tc = reinterpret_cast<TensorControl*>(buf);
-    tc->on_device = true;
-    tc->output_handle = 0;
-    return se::DeviceMemoryBase(buf, size);
+    return AllocateSingleOutput(shape, 0, map, args);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     TensorControl* tc = reinterpret_cast<TensorControl*>(Allocate(size));
 
     void** buf = reinterpret_cast<void**>(tc->data);
     for (int64 n=0; n<xla::ShapeUtil::TupleElementCount(shape); n++) {
-      const auto& s(shape.tuple_shapes(n));
-      TensorControl* tc =
-              reinterpret_cast<TensorControl*>(
-                      Allocate(xla::ShapeUtil::ByteSizeOf(s)));
-      tc->on_device = true;
-      tc->output_handle = n;
-      *buf++ = tc;
+      se::DeviceMemoryBase out(AllocateSingleOutput(shape.tuple_shapes(n),
+                                                    n,
+                                                    map,
+                                                    args));
+      *buf++ = out.opaque();
     }
 
     return se::DeviceMemoryBase(tc, size);
@@ -227,8 +245,11 @@ port::StatusOr<se::DeviceMemoryBase>
 PoplarExecutor::ExecuteEngine(Stream *stream,
                               poplar::Engine* engine,
                               const xla::Shape& shape,
-                              const Args& args) {
+                              const Args& args,
+                              const OutputMap& output_map) {
 
+  // TODO - this whole thing needs to be thread safe - or serialized in the
+  // TODO stream.
   bool engine_changed(current_engine_ != engine);
 
   {
@@ -267,12 +288,9 @@ PoplarExecutor::ExecuteEngine(Stream *stream,
   }
 
   perftools::gputools::DeviceMemoryBase retbuf;
+  TF_ASSIGN_OR_RETURN(retbuf, AllocateOutputBuffer(shape, output_map, args));
 
-  AsPoplarStream(stream)->EnqueueTask(
-          [this, shape, &retbuf]() {
-            TF_ASSIGN_OR_RETURN(retbuf, AllocateOutputBuffer(shape));
-            current_engine_->run(0);
-          });
+  AsPoplarStream(stream)->EnqueueTask( [engine]() { engine->run(0); });
 
   stream->BlockHostUntilDone();
   return retbuf;

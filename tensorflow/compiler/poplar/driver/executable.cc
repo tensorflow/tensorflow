@@ -28,10 +28,12 @@ namespace poplarplugin {
 PoplarExecutable::PoplarExecutable(
         std::unique_ptr<HloModule> hlo_module,
         std::unique_ptr<HloModuleConfig> module_config,
-        std::unique_ptr<poplar::Engine> engine)
+        std::unique_ptr<poplar::Engine> engine,
+        const std::map<int64, int64>& output_map)
     : Executable(std::move(hlo_module),
                  std::move(module_config)),
-      poplar_engine_(std::move(engine)) {
+      poplar_engine_(std::move(engine)),
+      output_map_(output_map) {
 }
 
 PoplarExecutable::~PoplarExecutable() {}
@@ -59,7 +61,8 @@ PoplarExecutable::ExecuteOnStream(
                       poplarExecutor->ExecuteEngine(stream,
                                                     poplar_engine_.get(),
                                                     result_shape(),
-                                                    arguments));
+                                                    arguments,
+                                                    output_map_));
   return retbuf;
 }
 

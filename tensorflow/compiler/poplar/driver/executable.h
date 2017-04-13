@@ -41,7 +41,8 @@ class PoplarExecutable : public Executable {
  public:
   PoplarExecutable(std::unique_ptr<HloModule> hlo_module,
                    std::unique_ptr<HloModuleConfig> module_config,
-                   std::unique_ptr<poplar::Engine> engine);
+                   std::unique_ptr<poplar::Engine> engine,
+                   const std::map<int64, int64>& output_map);
   ~PoplarExecutable() override;
 
 
@@ -63,6 +64,7 @@ class PoplarExecutable : public Executable {
 
  private:
   std::unique_ptr<poplar::Engine> poplar_engine_;
+  std::map<int64, int64> output_map_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarExecutable);
 };
