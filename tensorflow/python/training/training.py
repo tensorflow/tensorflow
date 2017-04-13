@@ -24,8 +24,6 @@ See the @{$python/train} guide.
 @@AdagradDAOptimizer
 @@MomentumOptimizer
 @@AdamOptimizer
-@@NadamOptimizer
-@@RadamOptimizer
 @@FtrlOptimizer
 @@ProximalGradientDescentOptimizer
 @@ProximalAdagradOptimizer
@@ -106,8 +104,6 @@ from tensorflow.python.training.adagrad import AdagradOptimizer
 from tensorflow.python.training.adagrad_da import AdagradDAOptimizer
 from tensorflow.python.training.proximal_adagrad import ProximalAdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
-from tensorflow.python.training.adam import NadamOptimizer
-from tensorflow.python.training.adam import RadamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
 from tensorflow.python.training.momentum import MomentumOptimizer
 from tensorflow.python.training.moving_averages import ExponentialMovingAverage
