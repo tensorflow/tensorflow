@@ -898,7 +898,7 @@ typedef struct TF_WhileParams {
 // TF_FinishWhile() or TF_AbortWhile().
 //
 // Missing functionality (TODO):
-// - Gradients (not yet implmented for any ops)
+// - Gradients
 // - Reference-type inputs
 // - Directly referencing external tensors from the cond/body graphs (this is
 //   possible in the Python API)
@@ -921,7 +921,22 @@ void TF_FinishWhile(const TF_WhileParams* params, TF_Status* status,
 // called after a successful TF_NewWhile() call.
 void TF_AbortWhile(const TF_WhileParams* params);
 
-// TODO(andydavis): Function to add gradients to a graph.
+// Adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
+// i.e., d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...
+// `dx` are used as initial gradients (which represent the symbolic partial
+// derivatives of some loss function `L` w.r.t. `y`).
+// `dx` must be nullptr or have size `ny`.
+// If `dx` is nullptr, the implementation will use dx of `OnesLike` for all
+// shapes in `y`.
+// The partial derivatives are returned in `dy`. `dy` should be allocated to
+// size `nx`.
+//
+// WARNING: This function does not yet support all the gradients that python
+// supports. See
+// https://www.tensorflow.org/code/tensorflow/cc/gradients/README.md
+// for instructions on how to add C++ more gradients.
+void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
+                     TF_Output* dx, TF_Status* status, TF_Output* dy);
 
 // TODO(josh11b): Register OpDef, available to all operations added
 // to this graph.
