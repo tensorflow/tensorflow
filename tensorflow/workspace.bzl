@@ -355,10 +355,15 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name="gtest_main",
       actual="@gmock_archive//:gtest_main",)
 
-  native.git_repository(
-      name="com_github_gflags_gflags",
-      commit="f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
-      remote="https://github.com/gflags/gflags.git",)
+  native.http_archive(
+      name = "com_github_gflags_gflags",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/gflags/gflags/archive/f8a0efe03aa69b3336d8e228b37d4ccb17324b88.tar.gz",
+          "https://github.com/gflags/gflags/archive/f8a0efe03aa69b3336d8e228b37d4ccb17324b88.tar.gz",
+      ],
+      sha256 = "4d222fab8f1ede4709cdff417d15a1336f862d7334a81abf76d09c15ecf9acd1",
+      strip_prefix = "gflags-f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
+  )
 
   native.bind(
       name="python_headers",
