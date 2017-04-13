@@ -130,81 +130,6 @@ struct ApplyAdam<GPUDevice, T> {
   }
 };
 
-
-
-
-template <typename T>
-struct ApplyRadam<GPUDevice, T> {
-  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
-                  typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
-                  typename TTypes<T>::ConstScalar beta1_power,
-                  typename TTypes<T>::ConstScalar beta2_power,
-                  typename TTypes<T>::ConstScalar lr,
-                  typename TTypes<T>::ConstScalar beta1,
-                  typename TTypes<T>::ConstScalar beta2,
-                  typename TTypes<T>::ConstScalar epsilon,
-                  typename TTypes<T>::ConstScalar gamma,
-                  typename TTypes<T>::ConstFlat grad) {
-    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
-    bcast[0] = grad.dimension(0);
-    Eigen::Sizes<1> single;
-    const auto one = static_cast<T>(1.0);
-    m.device(d) =
-        m +
-        (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
-            (grad - m);
-    v.device(d) =
-        v +
-        (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
-            (grad.square() - v);
-    var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
-                      (beta1_power.constant(one) - beta1_power))
-                         .reshape(single)
-                         .broadcast(bcast) *
-                     ((gamma.constant(one) - gamma).reshape(single).broadcast(bcast) * m +
-                     (gamma).reshape(single).broadcast(bcast) * grad) /
-                     (epsilon.reshape(single).broadcast(bcast) + v.sqrt());
-
-  }
-};
-
-
-template <typename T>
-struct ApplyNadam<GPUDevice, T> {
-  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
-                  typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
-                  typename TTypes<T>::ConstScalar beta1_power,
-                  typename TTypes<T>::ConstScalar beta2_power,
-                  typename TTypes<T>::ConstScalar lr,
-                  typename TTypes<T>::ConstScalar beta1,
-                  typename TTypes<T>::ConstScalar beta2,
-                  typename TTypes<T>::ConstScalar epsilon,
-                  typename TTypes<T>::ConstFlat grad) {
-    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
-    bcast[0] = grad.dimension(0);
-    Eigen::Sizes<1> single;
-    const auto one = static_cast<T>(1.0);
-    m.device(d) =
-        m +
-        (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
-            (grad - m * ((beta2_power.constant(one) - beta2_power*beta2).sqrt()
-             / (beta1_power.constant(one) - beta1_power*beta1)) /
-              ((beta2_power.constant(one) - beta2_power).sqrt() /
-               (beta1_power.constant(one) - beta1_power)));
-    v.device(d) =
-        v +
-        (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
-            (grad.square() - v);
-    var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
-                      (beta1_power.constant(one) - beta1_power))
-                         .reshape(single)
-                         .broadcast(bcast) *
-                     m / (epsilon.reshape(single).broadcast(bcast) + v.sqrt());
-  }
-};
-
-
-
 template <typename T>
 struct ApplyRMSProp<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
@@ -275,14 +200,6 @@ template struct functor::ApplyMomentum<GPUDevice, double>;
 template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;
 template struct functor::ApplyAdam<GPUDevice, double>;
-
-template struct functor::ApplyRadam<GPUDevice, Eigen::half>;
-template struct functor::ApplyRadam<GPUDevice, float>;
-template struct functor::ApplyRadam<GPUDevice, double>;
-
-template struct functor::ApplyNadam<GPUDevice, Eigen::half>;
-template struct functor::ApplyNadam<GPUDevice, float>;
-template struct functor::ApplyNadam<GPUDevice, double>;
 
 template struct functor::ApplyRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyRMSProp<GPUDevice, float>;
