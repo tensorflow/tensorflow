@@ -821,6 +821,33 @@ TEST(CAPI, ImportGraphDef) {
   EXPECT_EQ(feed, control_inputs[0]);
   EXPECT_EQ(feed2, control_inputs[1]);
 
+  // Export to a graph def so we can import a graph with control dependencies
+  TF_DeleteBuffer(graph_def);
+  graph_def = TF_NewBuffer();
+  TF_GraphToGraphDef(graph, graph_def, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Import again, with remapped control dependency, into the same graph
+  TF_DeleteImportGraphDefOptions(opts);
+  opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsSetPrefix(opts, "imported4");
+  TF_ImportGraphDefOptionsRemapControlDependency(opts, "imported/feed", feed);
+  TF_GraphImportGraphDef(graph, graph_def, opts, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* scalar4 =
+      TF_GraphOperationByName(graph, "imported4/imported3/scalar");
+  TF_Operation* feed4 =
+      TF_GraphOperationByName(graph, "imported4/imported2/feed");
+
+  // Check that imported `imported3/scalar` has remapped control dep from
+  // original graph and imported control dep
+  num_control_inputs = TF_OperationGetControlInputs(
+      scalar4, control_inputs, TF_OperationNumControlInputs(scalar4));
+  ASSERT_EQ(2, num_control_inputs);
+  EXPECT_EQ(feed, control_inputs[0]);
+  EXPECT_EQ(feed4, control_inputs[1]);
+
   TF_DeleteImportGraphDefOptions(opts);
   TF_DeleteBuffer(graph_def);
 
