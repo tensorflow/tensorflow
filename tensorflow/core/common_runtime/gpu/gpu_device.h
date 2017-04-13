@@ -108,7 +108,6 @@ class BaseGPUDevice : public LocalDevice {
   mutex trace_mu_;
   int gpu_id_ = -1;
   const bool sync_every_op_ = false;
-  bool force_gpu_compatible_ = false;
   const int32 max_streams_;
   std::unique_ptr<EventMgr> em_;
 
