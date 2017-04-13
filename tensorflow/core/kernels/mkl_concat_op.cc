@@ -38,6 +38,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 enum AxisArgumentName { NAME_IS_AXIS, NAME_IS_CONCAT_DIM };
 
+// TODO(intelft) Check if we can reuse existing EigenConcatOp using Mutable
+// reference inputs.
 // --------------------------------------------------------------------------
 //                      Eigen Concat Op
 // --------------------------------------------------------------------------
