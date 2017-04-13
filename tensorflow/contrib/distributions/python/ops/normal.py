@@ -215,6 +215,9 @@ class Normal(distribution.Distribution):
   def _mean(self):
     return self.loc * array_ops.ones_like(self.scale)
 
+  def _quantile(self, p):
+    return self._inv_z(special_math.ndtri(p))
+
   def _stddev(self):
     return self.scale * array_ops.ones_like(self.loc)
 
@@ -225,6 +228,11 @@ class Normal(distribution.Distribution):
     """Standardize input `x` to a unit normal."""
     with ops.name_scope("standardize", values=[x]):
       return (x - self.loc) / self.scale
+
+  def _inv_z(self, z):
+    """Reconstruct input `x` from a its normalized version."""
+    with ops.name_scope("reconstruct", values=[z]):
+      return z * self.scale + self.loc
 
 
 class NormalWithSoftplusScale(Normal):
