@@ -8,6 +8,7 @@ import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
+import android.util.Log;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -30,7 +31,6 @@ public class NetworkFragment extends Fragment {
     private DownloadCallback mCallback;
     private DownloadTask mDownloadTask;
     private String mUrlString;
-    private String[] urls;
 
     /*
      * Static initializer for NetworkFragment that sets the URL of the host it will be downloading
@@ -52,8 +52,7 @@ public class NetworkFragment extends Fragment {
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        String args = getArguments().getString(URL_KEY);
-        urls = args.split(" ");
+        mUrlString = getArguments().getString(URL_KEY);
 
         // Retain this Fragment across configuration changes in the host Activity.
         setRetainInstance(true);
@@ -86,7 +85,7 @@ public class NetworkFragment extends Fragment {
     public void startDownload() {
         cancelDownload();
         mDownloadTask = new DownloadTask(mCallback);
-        mDownloadTask.execute(urls[0]);
+        mDownloadTask.execute(mUrlString);
     }
 
     /**
@@ -156,7 +155,7 @@ public class NetworkFragment extends Fragment {
                 String urlString = urls[0];
                 try {
                     URL url = new URL(urlString);
-                    boolean success = downloadUrl(url);
+                    result = new Result(downloadUrl(url));
                 } catch(Exception e) {
                     result = new Result(e);
                 }
@@ -183,6 +182,7 @@ public class NetworkFragment extends Fragment {
          */
         @Override
         protected void onCancelled(Result result) {
+            Log.d("DownloadTask", "onCancelled called");
         }
 
         /**

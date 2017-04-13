@@ -17,8 +17,7 @@ import android.view.View;
 public class MainActivity extends AppCompatActivity implements DownloadCallback {
 
     // Reference to NetworkFragment that executes network operations.
-    private static String modelUrl = "127.0.0.1/push-model-update";
-    private static String labelUrl = "127.0.0.1/push-label-update";
+    private static String serverUrl = "http://192.168.1.102";
     private NetworkFragment mNetworkFragment;
 
     // Flag that is set when a download is in progress to prevent overlapping downloads
@@ -30,7 +29,7 @@ public class MainActivity extends AppCompatActivity implements DownloadCallback 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mNetworkFragment = NetworkFragment.getInstance(getSupportFragmentManager(), modelUrl + " " + labelUrl);
+        mNetworkFragment = NetworkFragment.getInstance(getSupportFragmentManager(), serverUrl);
     }
 
     /*
