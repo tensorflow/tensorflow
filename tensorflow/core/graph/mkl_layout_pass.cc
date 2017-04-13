@@ -97,7 +97,7 @@ namespace tensorflow {
 //
 // When a previous node in the graph is an Mkl node, A_m will represent a valid
 // Mkl tensor. But when a previous node is not an Mkl node, A_m will represent
-// represent a dummy Mkl tensor.
+// a dummy Mkl tensor.
 //
 // Rewriting rules:
 //  - Selection of a node for rewriting happens by registering the op type of
@@ -113,7 +113,7 @@ namespace tensorflow {
 //      number of outputs of the original node.
 //  - Ordering of Tensorflow tensors and Mkl tensors:
 //      Since every rewritten node generates twice the number of inputs and
-//      outputs, one ould imagine various orderings among Tensorflow tensors
+//      outputs, one could imagine various orderings among Tensorflow tensors
 //      and Mkl tensors. E.g., assume an op 'Conv2D' that takes (A, B) as
 //      inputs, then the new op 'MklConv2D' can take inputs A, B, A_m and B_m
 //      in A, A_m, B, B_m order or it can also take them in A, B, A_m, B_m
