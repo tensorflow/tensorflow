@@ -25,6 +25,8 @@ limitations under the License.
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
 
+// TODO(inteltf) Address comments from PR 8968.
+
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 template <typename Device, typename T>
@@ -216,7 +218,6 @@ class MklFusedBatchNormOp : public OpKernel {
     void MklCleanup() {
       bool input_in_mkl_format = mkl_shape_input_shape.IsMklTensor();
       if (!input_in_mkl_format) dnnLayoutDelete_F32(mkl_lt_input);
-
       if (mkl_prim_batchnorm != nullptr) dnnDelete_F32(mkl_prim_batchnorm);
     }
 
