@@ -43,6 +43,7 @@ cc_library(
     name = "cuda_headers",
     hdrs = glob([
         "**/*.h",
+        "**/*.hpp",
     ]),
     includes = [
         ".",
