@@ -77,6 +77,7 @@ class MklAvgPoolingOp : public OpKernel {
     Tensor mkl_tmp_input_buf_tensor_;
     mkl_context.MklCreateLayoutsAndPrimitives(context,
                                               &mkl_tmp_input_buf_tensor_);
+    OP_REQUIRES_OK(context, context->status());
 
     Tensor workspace_tensor;
     void* workspace_buf;
@@ -255,6 +256,7 @@ class MklAvgPoolingGradOp : public OpKernel {
     Tensor outbackprop_buf_tensor;
     void* outbackprop_buf;
     mkl_context.MklCreateLayoutsAndPrimitives(context);
+    OP_REQUIRES_OK(context, context->status());
 
     // Check if outbackprop layout requires conversion.
     if (!dnnLayoutCompare_F32(mkl_context.lt_user_outbackprop,
@@ -352,11 +354,6 @@ class MklAvgPoolingGradOp : public OpKernel {
                                             "4-dimensional"));
       } else {
         // Input in MKL format.
-        OP_REQUIRES(
-            context, out_backprop.dims() == 2,
-            errors::InvalidArgument("out_backprop in MKL format must be "
-                                    "2-dimensional"));
-
         // For avgpooling, out_backprop should have 4 dimensions.
         OP_REQUIRES(context, out_backprop_shape.GetDimension() == 4,
                     errors::InvalidArgument("out_backprop must be "
