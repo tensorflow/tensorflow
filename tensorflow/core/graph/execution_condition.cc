@@ -217,96 +217,10 @@ Status ReplaceWithMerge(Graph* g, Node* n) {
   return Status::OK();
 }
 
-/*
-string DumpGraph(Graph* g) {
-  GraphDef gd;
-  g->ToGraphDef(&gd);
-  string ret;
-  protobuf::TextFormat::PrintToString(gd, &ret);
-  return ret;
-}
-
-void AddInputToNodeDef(NodeDef& dst, StringPiece src_name, int src_slot) {
-  if (src_slot == Graph::kControlSlot) {
-    dst.add_input(strings::StrCat("^", src_name));
-  } else if (src_slot == 0) {
-    dst.add_input(src_name.data(), src_name.size());
-  } else {
-    dst.add_input(strings::StrCat(src_name, ":", src_slot));
-  }
-}
-
-template<typename T> NodeDef NodeToDef(T node) {
-  NodeDef node_def = node->def();
-
-  // Use the node's assigned device, if any, instead of the device requested
-  // in the NodeDef.
-  if (!node->assigned_device_name().empty()) {
-    node_def.set_device(node->assigned_device_name());
-  }
-
-  // Get the inputs for this Node.  We make sure control inputs are
-  // after data inputs, as required by GraphDef.
-  std::vector<const Edge*> inputs(node->num_inputs(), nullptr);
-  for (const Edge* edge : node->in_edges()) {
-    if (edge->IsControlEdge()) {
-      inputs.push_back(edge);
-    } else {
-      CHECK(inputs[edge->dst_input()] == nullptr)
-          << "Edge " << edge->src()->DebugString() << ":"
-          << edge->dst()->DebugString() << " with dst_input "
-          << edge->dst_input() << " and had pre-existing input edge "
-          << inputs[edge->dst_input()]->src()->DebugString() << ":"
-          << inputs[edge->dst_input()]->dst()->DebugString();
-
-      inputs[edge->dst_input()] = edge;
-    }
-  }
-  node_def.clear_input();
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    const Edge* edge = inputs[i];
-    if (edge == nullptr) {
-      node_def.add_input(node->def().input(i));
-    } else {
-      const Node* src = edge->src();
-      if (!src->IsOp()) continue;
-      AddInputToNodeDef(node_def, src->name(), edge->src_output());
-    }
-  }
-
-  return node_def;
-}
-
-template<typename T> string DumpNode(T n) {
-  string ret;
-  protobuf::TextFormat::PrintToString(NodeToDef(n), &ret);
-  return ret;
-}
-
-template<typename T> string DumpNodes(T nodes) {
-  GraphDef graph_def;
-  for (auto n : nodes) {
-    NodeDef* node_def = graph_def.add_node();
-    *node_def = NodeToDef(n);
-  }
-
-  string ret;
-  protobuf::TextFormat::PrintToString(graph_def, &ret);
-  return ret;
-}
-*/
-
 } // namespace
 
 Status AddExecutionConditions(
     Graph* g, const std::unordered_set<Node*>& target_nodes) {
-
-  /*
-  LOG(INFO) << "AddExecutionConditions";
-  LOG(INFO) << DumpGraph(g);
-  LOG(INFO) << "target_nodes";
-  LOG(INFO) << DumpNodes(target_nodes);
-  */
 
   // Connect target nodes to sink so that we can treat sink as
   // the only target node.
@@ -359,11 +273,6 @@ Status AddExecutionConditions(
     DCHECK_EQ(g->num_nodes() - 1, iter_order.size());
   }
 
-  /*
-  LOG(INFO) << "iter_order" << iter_order.size();
-  LOG(INFO) << "\n" << DumpNodes(iter_order);
-  */
-
   // The execution conditions are different for each branch of mux,
   // so we insert an identity node to store the condition for each branch.
   // We also insert identity to the first input (index) so that
@@ -380,11 +289,6 @@ Status AddExecutionConditions(
   for (Node* n : g->nodes()) {
     non_indicator_nodes.push_back(n);
   }
-
-  /*
-  LOG(INFO) << "InsertIdentities";
-  LOG(INFO) << "\n" << DumpGraph(g);
-  */
 
   // A map from nodes to their indicators. An indicator is an identity
   // node that is executed iff the execution condition of a node is true.
@@ -424,20 +328,6 @@ Status AddExecutionConditions(
     }
   }
 
-  /*{
-    string s;
-    for (Node* i : indicators) {
-      if (i) {
-        s.append(i->name()).append(" ");
-      } else {
-        s.append("nullptr ");
-      }
-    }
-    LOG(INFO) << "indicators";
-    LOG(INFO) << s;
-    LOG(INFO) << "\n" << DumpGraph(g);
-  }*/
-
   // Add control edge to each node from its indicator, if necessary.
   for (Node* n : non_indicator_nodes) {
     Node* i = indicators[n->id()];
@@ -460,30 +350,10 @@ Status AddExecutionConditions(
     }();
   }
 
-  /*
-  LOG(INFO) << "AddControlEdge";
-  LOG(INFO) << "\n" << DumpGraph(g);
-  */
-
   for (Node* n : mux_nodes) {
-
-    /*
-    LOG(INFO) << n->name();
-    {
-      const Node* m;
-      string s;
-      for (int i = 0; i < 3; i++) {
-        n->input_node(i, &m);
-        s.append(m->name()).append(" ");
-      }
-      LOG(INFO) << s;
-    }
-    */
-
     TF_RETURN_IF_ERROR(ReplaceWithMerge(g, n));
   }
 
-  //LOG(INFO) << "AddExecutionConditions done.";
   return Status::OK();
 }
 
