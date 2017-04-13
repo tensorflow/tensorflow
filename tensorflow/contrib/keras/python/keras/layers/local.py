@@ -336,8 +336,9 @@ class LocallyConnected2D(Layer):
                                                self.padding, self.strides[1])
     self.output_row = output_row
     self.output_col = output_col
-    self.kernel_shape = (output_row * output_col, self.kernel_size[0] *
-                         self.kernel_size[1] * input_filter, self.filters)
+    self.kernel_shape = (
+        output_row * output_col,
+        self.kernel_size[0] * self.kernel_size[1] * input_filter, self.filters)
     self.kernel = self.add_weight(
         self.kernel_shape,
         initializer=self.kernel_initializer,
