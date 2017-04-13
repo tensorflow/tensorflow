@@ -60,7 +60,7 @@ void *PoplarExecutor::Allocate(uint64 size) {
   allocated->input_handle = -1;
   allocated->output_handle = -1;
   {
-    std::lock_guard<std::mutex> g(mutex_);
+    std::lock_guard<std::recursive_mutex> g(mutex_);
     allocations_.push_back(allocated);
   }
   return allocated;
@@ -76,7 +76,7 @@ void PoplarExecutor::Deallocate(DeviceMemoryBase *mem) {
   if (!mem->is_sub_buffer()) {
     TensorControl* tc = reinterpret_cast<TensorControl*>(mem->opaque());
     {
-      std::lock_guard <std::mutex> g(mutex_);
+      std::lock_guard <std::recursive_mutex> g(mutex_);
       allocations_.remove(tc);
     }
     delete[] static_cast<char *>(mem->opaque());
@@ -113,7 +113,7 @@ port::Status PoplarExecutor::SynchronousMemcpy(void *host_dst,
   const TensorControl* tc =
           reinterpret_cast<const TensorControl*>(pop_src.opaque());
   {
-    std::lock_guard <std::mutex> g(mutex_);
+    std::lock_guard <std::recursive_mutex> g(mutex_);
     if (tc->on_device) {
       TF_RETURN_IF_ERROR(MoveDeviceToHost(const_cast<TensorControl*>(tc)));
     }
@@ -242,18 +242,16 @@ PoplarExecutor::MoveHostToDevice(TensorControl* tc) const {
 }
 
 port::StatusOr<se::DeviceMemoryBase>
-PoplarExecutor::ExecuteEngine(Stream *stream,
-                              poplar::Engine* engine,
+PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
                               const xla::Shape& shape,
                               const Args& args,
                               const OutputMap& output_map) {
 
-  // TODO - this whole thing needs to be thread safe - or serialized in the
-  // TODO stream.
-  bool engine_changed(current_engine_ != engine);
+  perftools::gputools::DeviceMemoryBase retbuf;
 
+  bool engine_changed(current_engine_ != engine);
   {
-    std::lock_guard <std::mutex> g(mutex_);
+    std::lock_guard <std::recursive_mutex> g(mutex_);
 
     // Pull previous execution output back from device if:
     // a) the engine is changing
@@ -285,14 +283,12 @@ PoplarExecutor::ExecuteEngine(Stream *stream,
         TF_RETURN_IF_ERROR(MoveHostToDevice(tc));
       }
     }
+
+    TF_ASSIGN_OR_RETURN(retbuf, AllocateOutputBuffer(shape, output_map, args));
+
+    engine->run(0);
   }
 
-  perftools::gputools::DeviceMemoryBase retbuf;
-  TF_ASSIGN_OR_RETURN(retbuf, AllocateOutputBuffer(shape, output_map, args));
-
-  AsPoplarStream(stream)->EnqueueTask( [engine]() { engine->run(0); });
-
-  stream->BlockHostUntilDone();
   return retbuf;
 }
 

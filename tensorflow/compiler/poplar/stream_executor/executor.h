@@ -192,8 +192,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   // Poplar Interface
 
-  port::StatusOr<DeviceMemoryBase> ExecuteEngine(Stream *stream,
-                                                 poplar::Engine* engine,
+  port::StatusOr<DeviceMemoryBase> ExecuteEngine(poplar::Engine* engine,
                                                  const xla::Shape& shape,
                                                  const Args& args,
                                                  const OutputMap& output_map);
@@ -222,7 +221,7 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   const PluginConfig plugin_config_;
 
-  std::mutex mutex_;
+  std::recursive_mutex mutex_;
 
   poplar::Engine* current_engine_;
 
