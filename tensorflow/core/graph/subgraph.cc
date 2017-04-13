@@ -176,7 +176,11 @@ static Status PruneForTargets(Graph* g, const subgraph::NameIndex& name_index,
   // Reconnect nodes with no outgoing edges to the sink node
   FixupSourceAndSinkEdges(g);
 
-  return AddExecutionConditions(g, targets);
+  TF_RETURN_IF_ERROR(AddExecutionConditions(g, targets));
+
+  FixupSourceAndSinkEdges(g);
+
+  return Status::OK();
 }
 
 }  // namespace

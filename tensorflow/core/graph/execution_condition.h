@@ -23,6 +23,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Compute the execution condition for each node, and rewrite the graph
+// so that nodes are executed only if necessary.
 Status AddExecutionConditions(
     Graph* g, const std::unordered_set<Node*>& target_nodes);
 

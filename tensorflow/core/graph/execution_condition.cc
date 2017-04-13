@@ -32,14 +32,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-struct NodeInfo {
-  // An identity node that is executed iff this node should be executed.
-  Node* condition = nullptr;
-  // When an input node has the same condition as this node, there is no need
-  // to add control edge from condition to this node.
-  bool satisfied = false;
-};
-
+// Insert identity node to every data input edge of n.
 Status InsertIdentities(Graph* g, Node* n) {
   const string& name = n->name();
   const string& device = n->def().device();
@@ -68,56 +61,56 @@ Status InsertIdentities(Graph* g, Node* n) {
   return Status::OK();
 }
 
-Status MergeConditions(std::vector<NodeInfo>& node_info,
-                       Graph* g, Node* n, Node** merged) {
+// Create the indicator for n.
+Status MergeConditions(const std::vector<Node*>& indicators,
+                       Graph* g, Node* n, Node** indicator) {
   //LOG(INFO) << "MergeConditions " << n->name();
 
-  auto ret = [=, &node_info](Node* m) {
-    *merged = m;
-    node_info[n->id()].condition = m;
+  // Collect indicators of output nodes.
+  std::unordered_set<Node*> output_indicators;
+  for (Node* o : n->out_nodes()) {
+    Node* i = indicators[o->id()];
+    if (!i) {
+      // One of the output nodes is executed unconditionally,
+      // so this node is also executed unconditionally.
+      *indicator = nullptr;
+      return Status::OK();
+    }
+    output_indicators.insert(i);
+  }
+
+  if (output_indicators.empty()) {
+    // This node has no output node so it must be sink.
+    DCHECK(n->IsSink());
+    *indicator = nullptr;
     return Status::OK();
-  };
-
-  std::unordered_set<Node*> conditions;
-  for (Node* m : n->out_nodes()) {
-    Node* c = node_info[m->id()].condition;
-    if (!c) {
-      return ret(nullptr);
-    }
-    conditions.insert(c);
   }
 
-  if (conditions.empty()) {
-    if (n->IsSink()) {
-      return ret(nullptr);
-    }
-    return errors::Internal("Encountered node without consumer.", n->name());
+  if (output_indicators.size() == 1) {
+    // All of the output nodes has the same indicator.
+    *indicator = *output_indicators.begin();
+    return Status::OK();
   }
 
-  if (conditions.size() == 1) {
-    for (Node* m : n->out_nodes()) {
-      node_info[m->id()].satisfied = true;
-    }
-    return ret(*conditions.begin());
+  // The output nodes has differenct indicators. We have to create a merge
+  // node followed by an identity node as the indicator of this node.
+  std::vector<NodeBuilder::NodeOut> inputs; // Inputs for the merge node.
+  inputs.reserve(output_indicators.size());
+  for (Node* i : output_indicators) {
+    inputs.emplace_back(i, 0);
   }
-
-  std::vector<NodeBuilder::NodeOut> inputs;
-  inputs.reserve(conditions.size());
-  for (Node* c : conditions) {
-    inputs.emplace_back(c, 0);
-  }
-
   TF_RETURN_IF_ERROR(
     NodeBuilder(g->NewName(strings::StrCat(n->name(), "/Merge")), "Merge")
       .Input(inputs)
       .Device(n->def().device())
-      .Finalize(g, merged));
-  (*merged)->set_assigned_device_name(n->assigned_device_name());
+      .Finalize(g, indicator));
+  (*indicator)->set_assigned_device_name(n->assigned_device_name());
 
-  return ret(*merged);
+  return Status::OK();
 }
 
-Status CreateConditions(Graph* g, Node* n, std::vector<Node*>& conditions) {
+// Create indicators for each branch of mux node.
+Status CreateIndicators(Graph* g, Node* n, std::vector<Node*>& indicators) {
   DCHECK(n->IsMux());
 
   int N = n->num_inputs() - 1;
@@ -146,25 +139,27 @@ Status CreateConditions(Graph* g, Node* n, std::vector<Node*>& conditions) {
       .Finalize(g, &demux_node));
   demux_node->set_assigned_device_name(assigned_device);
 
-  conditions.clear();
-  conditions.reserve(N);
+  indicators.clear();
+  indicators.reserve(N);
   for (int i = 0; i < N; i++) {
-    Node* condition_node;
+    Node* ind;
     TF_RETURN_IF_ERROR(
       NodeBuilder(g->NewName(strings::StrCat(name, "/Identity")), "Identity")
         .Input(demux_node, i)
         .Device(device)
-        .Finalize(g, &condition_node));
-    condition_node->set_assigned_device_name(assigned_device);
-    conditions.push_back(condition_node);
+        .Finalize(g, &ind));
+    ind->set_assigned_device_name(assigned_device);
+    indicators.push_back(ind);
   }
 
   return Status::OK();
 }
 
+// Replace mux node with merge node.
 Status ReplaceWithMerge(Graph* g, Node* n) {
   DCHECK(n->IsMux());
 
+  // Backup input edges.
   std::vector<NodeBuilder::NodeOut> data_inputs;
   data_inputs.reserve(n->num_inputs());
   std::vector<Node*> control_inputs;
@@ -172,22 +167,23 @@ Status ReplaceWithMerge(Graph* g, Node* n) {
   for (const Edge* e : n->in_edges()) {
     switch (e->dst_input()) {
       case Graph::kControlSlot:
-        DCHECK(e->src()->IsIdentity());
         control_inputs.push_back(e->src());
         break;
       case 0:
+        // The first input of mux is index.
         break;
       default:
+        DCHECK(e->src()->IsIdentity());
         data_inputs.emplace_back(e->src(), e->src_output());
     }
   }
-
 
   struct NodeAndPort {
     Node* node;
     int port;
   };
 
+  // Backup output edges.
   std::vector<NodeAndPort> data_outputs;
   std::vector<Node*> control_outputs;
   for (const Edge* e : n->out_edges()) {
@@ -198,6 +194,7 @@ Status ReplaceWithMerge(Graph* g, Node* n) {
     }
   }
 
+  // Create a merge node with the same inputs as the mux node.
   Node* merge_node;
   TF_RETURN_IF_ERROR(
     NodeBuilder(g->NewName(strings::StrCat(n->name(), "/Merge")), "Merge")
@@ -209,6 +206,7 @@ Status ReplaceWithMerge(Graph* g, Node* n) {
 
   g->RemoveNode(n);
 
+  // Restore output edges.
   for (NodeAndPort node_and_port : data_outputs) {
     g->AddEdge(merge_node, 0, node_and_port.node, node_and_port.port);
   }
@@ -304,50 +302,61 @@ Status AddExecutionConditions(
     Graph* g, const std::unordered_set<Node*>& target_nodes) {
 
   /*
-  LOG(INFO) << "CondRewrite";
+  LOG(INFO) << "AddExecutionConditions";
   LOG(INFO) << DumpGraph(g);
   LOG(INFO) << "target_nodes";
   LOG(INFO) << DumpNodes(target_nodes);
   */
 
+  // Connect target nodes to sink so that we can treat sink as
+  // the only target node.
+  for (Node* n : target_nodes) {
+    // This is just an equivalent of python for-else loop.
+    [=]() {
+      for (const Edge* e : n->out_edges()) {
+        if (e->dst()->IsSink()) return;
+      }
+      g->AddControlEdge(n, g->sink_node());
+    }();
+  }
+
+  // Make reverse execution order of the graph and collect mux nodes.
   std::vector<Node*> iter_order;
   std::vector<Node*> mux_nodes;
   {
     iter_order.reserve(g->num_nodes());
 
+    // How many output nodes of a node has not been visited yet.
+    // A node is ready when its count reaches zeros.
     std::vector<int> pending_counts(g->num_node_ids());
     for (Node* n : g->nodes()) {
+      // Initalize pending counts to # of output nodes.
       pending_counts[n->id()] = n->out_edges().size();
     }
-    for (Node* n : target_nodes) {
-      pending_counts[n->id()] = -1;
-    }
 
-    if (!target_nodes.count(g->sink_node())) {
-      iter_order.push_back(g->sink_node());
-    }
+    // Sink is the only node with no output.
+    iter_order.push_back(g->sink_node());
 
-    for (Node* n : target_nodes) {
-      iter_order.push_back(n);
-    }
-
+    // We reuse iter_order[i ... end] as a queue for ready nodes.
     for (int i = 0; i < iter_order.size(); i++) {
       Node* n = iter_order[i];
+
       if (n->IsMux()) {
         mux_nodes.push_back(n);
       }
+
+      // Decrement pending count for each of its inputs.
       for (Node* m : n->in_nodes()) {
         pending_counts[m->id()]--;
-        if (pending_counts[m->id()] == 0) {
+        if (pending_counts[m->id()] == 0 && !m->IsSource()) {
+          // Exclude source node, otherwise we might end up giving it
+          // execution conditions.
           iter_order.push_back(m);
         }
       }
     }
 
-    if (!iter_order.back()->IsSource()) {
-      TF_RETURN_IF_ERROR(errors::Internal("Last node is not source"));
-    }
-    iter_order.pop_back();
+    DCHECK_EQ(g->num_nodes() - 1, iter_order.size());
   }
 
   /*
@@ -355,8 +364,21 @@ Status AddExecutionConditions(
   LOG(INFO) << "\n" << DumpNodes(iter_order);
   */
 
+  // The execution conditions are different for each branch of mux,
+  // so we insert an identity node to store the condition for each branch.
+  // We also insert identity to the first input (index) so that
+  // CreateIndicators() does not add any output node to the first input nodes
+  // (output nodes are added to the inserted identity instead),
+  // otherwise MergeCondition() for the first input node would break.
   for (Node* n : mux_nodes) {
     TF_RETURN_IF_ERROR(InsertIdentities(g, n));
+  }
+
+  // We will add some nodes to the graph later. Backup the current node list.
+  std::vector<Node*> non_indicator_nodes;
+  non_indicator_nodes.reserve(g->num_nodes());
+  for (Node* n : g->nodes()) {
+    non_indicator_nodes.push_back(n);
   }
 
   /*
@@ -364,51 +386,78 @@ Status AddExecutionConditions(
   LOG(INFO) << "\n" << DumpGraph(g);
   */
 
-  std::vector<NodeInfo> node_info(g->num_node_ids());
-
-  std::vector<Node*> conditions;
+  // A map from nodes to their indicators. An indicator is an identity
+  // node that is executed iff the execution condition of a node is true.
+  std::vector<Node*> indicators(g->num_node_ids(), nullptr);
+  // This is used to receive return value from CreateIndicators(). We put
+  // it outside the loop to reduce memory allocation.
+  std::vector<Node*> ind_for_mux;
+  // Traverse the graph in reverse execution order and calculate condition
+  // for each node.
   for (Node* n : iter_order) {
-    Node* c = nullptr;
-    if (!target_nodes.count(n)) {
-      TF_RETURN_IF_ERROR(MergeConditions(node_info, g, n, &c));
+    if (!n->IsSink()) {
+      // Compute the execution condition of this node from the conditions of
+      // its output nodes.
+      TF_RETURN_IF_ERROR(
+        MergeConditions(indicators, g, n, &indicators[n->id()]));
     }
 
     if (n->IsMux()) {
-      TF_RETURN_IF_ERROR(CreateConditions(g, n, conditions));
+      // Create indicators for each branch of mux.
+      ind_for_mux.clear();
+      TF_RETURN_IF_ERROR(CreateIndicators(g, n, ind_for_mux));
 
+      // Input nodes to mux are identities created by InsertIdentities().
+      // These nodes are not in iter_order, so we have to set their indicators
+      // here.
       for (const Edge* e : n->in_edges()) {
+        if (e->IsControlEdge()) continue;
+
         int port = e->dst_input();
-        if (port == 0 || port == Graph::kControlSlot) continue;
-        node_info[e->src()->id()].condition = conditions[port-1];
+        if (port == 0) {
+          // The first input (index) has the same execution condition as mux.
+          indicators[e->src()->id()] = indicators[n->id()];
+        } else {
+          indicators[e->src()->id()] = ind_for_mux[port - 1];
+        }
       }
     }
   }
 
-  /*
-  {
+  /*{
     string s;
-    for (NodeInfo i : node_info) {
-      if (i.condition) {
-        s.append(i.condition->name()).append(" ");
+    for (Node* i : indicators) {
+      if (i) {
+        s.append(i->name()).append(" ");
       } else {
         s.append("nullptr ");
       }
     }
-    LOG(INFO) << "NodeInfo";
+    LOG(INFO) << "indicators";
     LOG(INFO) << s;
-  }
-  LOG(INFO) << "CreateBranchCondtions";
-  LOG(INFO) << "\n" << DumpGraph(g);
-  */
+    LOG(INFO) << "\n" << DumpGraph(g);
+  }*/
 
-  for (Node* n : g->nodes()) {
-    int id = n->id();
-    if (id >= node_info.size()) continue;
+  // Add control edge to each node from its indicator, if necessary.
+  for (Node* n : non_indicator_nodes) {
+    Node* i = indicators[n->id()];
 
-    Node* c = node_info[id].condition;
-    if (c && !node_info[id].satisfied) {
-      g->AddControlEdge(c, n);
+    if (!i || n->IsMux()) {
+      // Mux nodes will be replace with merge later. These merge
+      // nodes do not need additional control edge either.
+      continue;
     }
+
+    [=, &indicators]() {
+      for (const Edge* e : n->in_edges()) {
+        if (indicators[e->src()->id()] == i) {
+          // An input node has the same execution condition, so we can skip
+          // adding control edge from the indicator.
+          return;
+        }
+      }
+      g->AddControlEdge(i, n);
+    }();
   }
 
   /*
@@ -434,7 +483,7 @@ Status AddExecutionConditions(
     TF_RETURN_IF_ERROR(ReplaceWithMerge(g, n));
   }
 
-  //LOG(INFO) << "CondRewrite done.";
+  //LOG(INFO) << "AddExecutionConditions done.";
   return Status::OK();
 }
 
