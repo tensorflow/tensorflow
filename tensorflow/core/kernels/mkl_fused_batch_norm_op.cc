@@ -173,7 +173,7 @@ class MklFusedBatchNormOp : public OpKernel {
                     mkl_context.mkl_res_batchnorm[dnnResourceVariance]),
                 scale.NumElements() * sizeof(float));
 
-    // Bessel's correction on variance, if training mode in on
+    // Bessel's correction on variance, if training mode is on
     if (is_training_) {
       float* p_var = static_cast<float*>(batch_variance->flat<T>().data());
       auto depth = mkl_context.mkl_params.depth;

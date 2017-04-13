@@ -65,10 +65,10 @@ namespace tensorflow {
 // We merge them into Conv2DWithBias as:
 //           P = MklConv2DWithBias(A, A_m, B, B_m, C, C_m)
 //
-// Meaning of A_m, B_m and C_m is explained in B.1.
+// The meaning of A_m, B_m and C_m is explained in B.1.
 //
 // Merge rules:
-//  - Merge for Conv2D and BiasAdd happens when output of Conv2D _only_
+//  - The merge for Conv2D and BiasAdd happens when the output of Conv2D _only_
 //    goes to BiasAdd.
 //  - Also, the intersection of attributes of both the nodes must have same
 //    values.
@@ -76,7 +76,7 @@ namespace tensorflow {
 //
 // Example of B.1 : Rewriting nodes to Mkl nodes
 // ---------------------------------------------
-// Consider Relu layer. Current definition of Relu layer looks like:
+// Consider a Relu node. Current definition of Relu node looks like:
 //
 //           O = Relu(A)
 //
@@ -87,62 +87,59 @@ namespace tensorflow {
 //
 //          O, O_m = MklRelu(A, A_m)
 //
-// MklRelu has 2 inputs (A and A_m) and 2 outputs (O and O_m). Here A input is
-// same as A input of Relu; O output is same as O output of Relu. O_m is the
+// MklRelu has 2 inputs (A and A_m) and 2 outputs (O and O_m). Here input A is
+// same as input A of Relu; output O is same as output O of Relu. O_m is the
 // additional output tensor that will be set by MklRelu, and it represents
 // Mkl tensor corresponding to O -- in other words, O_m is some kind of
 // metadata for O. A_m is additional input of Relu, and it represents metadata
 // for A - as O_m is metadata for O, A_m is metadata for A. MklRelu receives
-// this metadata from previous layer (in the graph).
+// this metadata from previous node in the graph.
 //
-// When previous layer in the graph is Mkl layer, A_m will represent a valid
-// Mkl tensor. But when previous Mkl layer is not an Mkl layer, then A_m
-// represents a dummy Mkl tensor.
+// When a previous node in the graph is an Mkl node, A_m will represent a valid
+// Mkl tensor. But when a previous node is not an Mkl node, A_m will represent
+// represent a dummy Mkl tensor.
 //
 // Rewriting rules:
-//  - Selection of an op for rewriting happens by registering an op with this
-//     pass. If an op is not registered, then it is not rewritten.
+//  - Selection of a node for rewriting happens by registering the op type of
+//    the node with the rewriting pass. If the op type is not registered, then
+//    all nodes of this op type will not be rewritten.
 //  - Number of inputs after rewriting:
-//      Since for every input Tensorflow tensor, the rewritten layer gets Mkl
-//      tensor, rewritten op gets 2*N inputs, where N is the number of inputs
-//      for original op.
+//      Since for every input Tensorflow tensor, the rewritten node gets Mkl
+//      tensor(s), rewritten node gets 2*N inputs, where N is the number of
+//      inputs for the original node.
 //  - Number of outputs after rewriting:
-//      Since for every output Tensorflow tensor, the rewritten layer generates
-//      Mkl tensor, rewritten op generates 2*N outputs, where N is the number
-//      of outputs of original op.
+//      Since for every output Tensorflow tensor, the rewritten node generates
+//      Mkl tensor(s), the rewritten node generates 2*N outputs, where N is the
+//      number of outputs of the original node.
 //  - Ordering of Tensorflow tensors and Mkl tensors:
-//      Since every op generates twice the number of inputs and outputs, one
-//      could imagine different ordering among Tensorflow tensors and Mkl
-//      tensors. E.g., let's assume an op 'Conv2D' takes (A, B) as input, then
-//      new op 'MklConv2D' can take (A, A_m, B, B_m) as input or it can also
-//      take (A, B, A_m, B_m) as input. Among N inputs one can get N!
-//      permutations.
+//      Since every rewritten node generates twice the number of inputs and
+//      outputs, one ould imagine various orderings among Tensorflow tensors
+//      and Mkl tensors. E.g., assume an op 'Conv2D' that takes (A, B) as
+//      inputs, then the new op 'MklConv2D' can take inputs A, B, A_m and B_m
+//      in A, A_m, B, B_m order or it can also take them in A, B, A_m, B_m
+//      order. Among N inputs one can get N! permutations.
 //
-//      So the question is: which one do we follow? We support 2 types of
+//      So the question is: which order do we follow? We support 2 types of
 //      orderings: (1) interleaved, and (2) contiguous. Interleaved ordering
-//      follows an intuitive order where Mkl tensor follows a corresponding
-//      Tensorflow tensor immediately. In the context of above example, it
-//      will be: (A, A_m, B, B_m). We follow same ordering rule for output
-//      tensors. Contiguous ordering means all Tensorflow tensors are
-//      contiguous followed by all contiguous Mkl tensors. We use contiguous
-//      ordering as default.
-//
-// NOTE: Current rewriting approach rewrites an op to Mkl op without any
-//      conditions. But in the future, it may be possible to consider
-//      conditions such as input shapes and sizes to rewrite an op.
+//      follows an intuitive order where an Mkl tensor follows the
+//      corresponding Tensorflow tensor immediately. In the context of the
+//      above example, it will be: A, A_m, B, B_m. Note that the ordering rule
+//      applies to both the inputs and outputs. Contiguous ordering means
+//      all the Tensorflow tensors are contiguous followed by all the Mkl
+//      tensors. We use contiguous ordering as default.
 //
 // Graph rewrite algorithm:
 //      Algorithm: Graph Rewrite
-//      Input: Graph G, Names of nodes to rewrite and their new nodes
-//      Output: Modified Graph G' if nodes are modified, G otherwise.
+//      Input: Graph G, Names of the nodes to rewrite and their new names
+//      Output: Modified Graph G' if the nodes are modified, G otherwise.
 //      Start:
-//        N = Topological_Sort(G) // N is set of nodes in toposort order.
+//        N = Topological_Sort(G) // N is a set of nodes in toposort order.
 //        foreach node n in N
 //        do
-//          if (Is_MKL_Layer(n))  // Can this layer accept Mkl layout as input.
+//          if (Is_MKL_Op(n))  // Can this node accept an Mkl layout as input.
 //          then
 //            E = set of <incoming edge and its src_output slot> of n
-//            E' = {}   // new set of edges for rewritten node
+//            E' = {}   // a new set of edges for rewritten node
 //            foreach <e,s> in E
 //            do
 //              E' U {<e,s>}  // First copy edge which generates Tensorflow
@@ -150,43 +147,44 @@ namespace tensorflow {
 //              m = Source node of edge e
 //              if Is_Rewritten(m)  // Did we rewrite this node in this pass?
 //              then
-//                E' U {<m,s+1>}    // If yes, then m will generate Mkl tensor
-//                                  // as output.
+//                E' U {<m,s+1>}    // If yes, then m will generate an Mkl
+//                                  // tensor as an additional output.
 //              else
-//                d = Generate_Dummy_Mkl_Tensor()  // If not, generate dummy
+//                d = Generate_Dummy_Mkl_Tensor()  // If not, generate a dummy
 //                                                 // Mkl tensor.
-//                E' U {<d,0>}   // Dummy Mkl tensor has only 1 output slot.
+//                E' U {<d,0>}  // The dummy Mkl tensor has only 1 output slot.
 //              fi
 //            done
 //            n' = Build_New_Node(G,new_name,E')
-//            Mark_Rewritten(n')  // Mark new node as being rewritten.
+//            Mark_Rewritten(n')  // Mark the new node as being rewritten.
 //          fi
 //        done
 //
 //      Explanation:
-//        For graph rewrite, we visit nodes of the graph in the topological
-//        sort order. With this ordering, we visit nodes in top-to-bottom
-//        fashion. We need this order because while visiting a node we want
-//        all of its input nodes (parents) visited (and rewritten if
-//        applicable). This is because if we need to rewrite a current node
+//        For graph rewrite, we visit nodes of the input graph in the
+//        topological sort order. With this ordering, we visit nodes in the
+//        top-to-bottom fashion. We need this order because while visiting a
+//        node we want that all of its input nodes are visited and rewritten if
+//        applicable. This is because if we need to rewrite a given node
 //        then all of its input nodes need to be fixed (in other words they
-//        cannot be removed later.)
+//        cannot be deleted later.)
 //
-//        While visiting each node, we first check if it is Mkl layer. If
-//        it is, then we rewrite that node after constructing new inputs to
-//        the node. If it is not Mkl layer, then we do not rewrite the node.
+//        While visiting a node, we first check if the op type of the node is
+//        an Mkl op. If it is, then we rewrite that node after constructing
+//        new inputs to the node. If the op type of the node is not Mkl op,
+//        then we do not rewrite that node.
 //
 // Handling workspace propagation for certain ops:
 //
 //        Certain backward ops in MKL (MaxPool, LRN and BatchNorm) require
-//        passing of workspace from their corresponding forward ops. Workspace
+//        passing of a workspace from their respective forward ops. Workspace
 //        tensors provide memory for storing results of intermediate operations
 //        which are helpful in backward propagation. TensorFlow does not have
-//        a notion of workspace and as a result does not allow producing
+//        a notion of a workspace and as a result does not allow producing
 //        additional outputs from these forward ops. For these ops, we need
-//        to add an additional edge between forward ops and their corresponding
-//        backward ops, and this edge carries workspace tensor value and
-//        another edge carries Mkl tensor for workspace tensor.
+//        to add 2 extra edges between forward ops and their corresponding
+//        backward ops - the first extra edge carries a workspace tensor and
+//        the second one carries an Mkl tensor for the workspace tensor.
 //
 //        Example:
 //
@@ -195,47 +193,47 @@ namespace tensorflow {
 //        A = MaxPool(T)
 //        B = MaxPoolGrad(X, A, Y)
 //
-//        We will transform this graph to propagate workspace as:
-//        (with contiguous ordering)
+//        We will transform this graph to propagate the workspace as:
+//        (with the contiguous ordering)
 //
 //        A, W, A_m, W_m = MklMaxPool(T, T_m)
 //        B, B_m = MklMaxPoolGrad(X, A, Y, W, X_m, A_m, Y_m, W_m)
 //
-//        Here W is the workspace tensor. Transformed tensors with name
-//        suffix _m are Mkl tensors and this transformation has been done
+//        Here W is the workspace tensor. Transformed tensor names with the
+//        suffix _m are Mkl tensors, and this transformation has been done
 //        using the algorithm discussed earlier. The transformation for
-//        workspace only adds extra outputs (W, W_m) for forward op and
-//        connects them to corresponding backward ops.
+//        workspace propagation only adds extra outputs (W, W_m) for a forward
+//        op and connects them to the corresponding backward ops.
 //
 //        Terms:
 //
 //        Forward op name = name of the op in the forward pass
-//          where workspace originates (MaxPool in this example)
+//          where a workspace tensor originates (MaxPool in this example)
 //        Backward op name = name of the op in the backward pass that receives
-//          workspace from forward op (MaxPoolGrad in the example)
+//          a workspace tensor from the forward op (MaxPoolGrad in the example)
 //        Slot = Position of the output or input slot that will be
-//               used by the workspace (1 for MklMaxPool as W is 2nd
+//               used by the workspace tensor (1 for MklMaxPool as W is the 2nd
 //               output of MaxPool (0 is 1st); 3 for MklMaxPoolGrad)
 //
 //        Question:
 //
 //        How do we associate a backward op to a forward op? There can be more
-//        than one op with exact same name.
+//        than one op with the exact same name.
 //
-//        In this example we associate MaxPoolGrad with MaxPool. But there
+//        In this example, we associate MaxPoolGrad with MaxPool. But there
 //        could be more than one MaxPool ops. To solve this problem, we look
-//        for _direct_ edge between forward op and backward op (tensor A is
-//        flowing along this edge in the example.)
+//        for _direct_ edge between a forward op and a backward op (tensor A is
+//        flowing along this edge in the example).
 //
-//        How do we transform forward and backward op when there is no direct
-//        edge between them? In such case, we generate dummy tensors as
+//        How do we transform forward and backward ops when there is no direct
+//        edge between them? In such a case, we generate dummy tensors for
 //        workspace tensors. For the example, transformation of MaxPool will
-//        be exactly same as we would when there is a direct edge between
-//        forward and backward op --- it is just that MaxPool won't generate
-//        any workspace tensor. For MaxPoolGrad, transformation will also be
-//        same, but instead of connecting W and W_m with outputs of MaxPool,
-//        we will produce dummy tensors for them, and we will set
-//        workspace_enabled attribute to false.
+//        be exactly same as it would be when there is a direct edge between
+//        the forward and the backward op --- it is just that MaxPool won't
+//        generate any workspace tensor. For MaxPoolGrad, the transformation
+//        will also be same, but instead of connecting W and W_m with the
+//        outputs of MaxPool, we will produce dummy tensors for them, and we
+//        will set workspace_enabled attribute to false.
 //
 // Example of B.2 : Context-based node rewrite
 // -------------------------------------------
@@ -362,24 +360,25 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   bool RunPass(std::unique_ptr<Graph>* g);
 
  private:
-  /// Structure to specify name of original op, its new name after rewrite,
-  /// the number of inputs to the original op, and the function to be used
-  /// to copy attributes for the op
+  /// Structure to specify the name of an original node, its new name after
+  /// rewrite, the number of inputs to the original node, the function to
+  /// be used to copy attributes for the op, and the rule (if any) which
+  /// must hold for rewriting the node
   typedef struct {
-    string name;      // Original name of the op in the graph
-    string new_name;  // New name of op in the graph
-    int num_ins;      // Number of inputs to the original op
-    // Function handler to copy attributes from old node to new node.
+    string name;      // Original name of op of the node in the graph
+    string new_name;  // New name of the op of the node in the graph
+    int num_ins;      // The number of inputs to the original op type
+    // A function handler to copy attributes from an old node to a new node.
     std::function<void(const Node*, NodeBuilder*)> copy_attrs;
-    std::function<bool(const Node*)> rewrite_rule;  // Rule under which to
+    std::function<bool(const Node*)> rewrite_rule;  // A rule under which to
                                                    // rewrite this node.
   } RewriteInfo;
 
-  /// Structure to specify forward op, backward op, and the slot numbers
-  /// in forward and backward op where we will add workspace edge.
+  /// Structure to specify a forward op, a backward op, and the slot numbers
+  /// in the forward and backward ops where we will add a workspace edge.
   typedef struct {
-    string fwd_op;    // Name of the forward op in the graph
-    string bwd_op;    // Name of the backward op in the graph
+    string fwd_op;    // Name of a forward op in the graph
+    string bwd_op;    // Name of a backward op in the graph
     int fwd_slot;     // Output slot in the forward op node where actual
                       // output tensor resides
     int bwd_slot;     // Input slot in the backward op node where actual
@@ -394,18 +393,18 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   typedef struct {
     string pred;      // Predecessor node string
     string succ;      // Successor node string
-    int op;           // What operand no the predecessor node corresponds
-                      // to successor node?
+    int op;           // The operand no the predecessor node corresponds
+                      // to the successor node
     string new_node;  // Name of the node after merge
   } MergeInfo;
 
-  /// Structure to specify the context information used in node rewrite rule
+  /// Structure to specify the context information used in a node rewrite rule
   typedef struct {
     string node;     // Name of the node to be rewritten
-    string fwd;      // Node name in forward pass that this node
+    string fwd;      // Name of the node in the forward pass that this node
                      // corresponds to
     size_t max_hop;  // Maximum number of hops the fwd is located
-                     // from this node. If fwd is farther than max_hop
+                     // from this node. If the fwd is farther than max_hop
                      // then we do not rewrite the node.
   } ContextInfo;
 
@@ -474,9 +473,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   //
   // Concat, Split are vararg nodes.
   inline bool IsVarArgNode(Node* n) {
-    if (n->type_string() == csinfo_.concat ||
-        n->type_string() == csinfo_.split  ||
-       n->type_string() == csinfo_.concatv2) {
+    if (n->type_string() == csinfo_.concat   ||
+        n->type_string() == csinfo_.concatv2 ||
+        n->type_string() == csinfo_.split) {
       return true;
     }
     return false;
@@ -580,7 +579,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   //         Otherwise, it is not updated.
   Status RewriteNode(std::unique_ptr<Graph>* g, Node* n, const RewriteInfo* ri);
 
-  // Get a node that will feed a list of TF tensors to the new
+  // Get nodes that will feed a list of TF tensors to the new
   // node that we are constructing.
   //
   // @input g - input graph,
@@ -599,7 +598,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     int* input_idx, int list_length,
     std::vector<NodeBuilder::NodeOut>* output_nodes);
 
-  // Get a node that will feed a list of Mkl tensors to the new
+  // Get nodes that will feed a list of Mkl tensors to the new
   // node that we are constructing.
   //
   // @input g - input graph,
@@ -776,12 +775,13 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(
   TensorShape dummy_shape({8});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
-                 .Attr("value", proto)
-                 .Attr("dtype", dt)
-                 .Device(orig_node->def().device())  // We place this node on
-                                             // same device as device of
-                                             // original node.
-                 .Finalize(&**g, out));
+               .Attr("value", proto)
+               .Attr("dtype", dt)
+               .Device(orig_node->def().device())  // We place this node on
+                                                   // the same device as the
+                                                   // device of the original
+                                                   // node.
+               .Finalize(&**g, out));
   (*out)->set_assigned_device_name(orig_node->assigned_device_name());
 }
 
@@ -881,26 +881,26 @@ int MklLayoutRewritePass::SetUpContiguousInputs(std::unique_ptr<Graph>* g,
   // Actual number of inputs can be greater than or equal to number
   // of Input slots because inputs of type list could be unfolded.
   CHECK_GE(old_node_inputs.size(), old_node_input_slots);
-  int nnsidx = 0;  // slot index for inputs of new node
+  int nn_slot_idx = 0;  // slot index for inputs of new node
 
   // Let's copy all inputs (TF tensors) of original node to new node.
   int iidx = 0;
-  for (int onsidx = 0; onsidx < old_node_input_slots; onsidx++) {
+  for (int on_slot_idx = 0; on_slot_idx < old_node_input_slots; on_slot_idx++) {
     // An input slot could be a single tensor or a list. We need
     // to handle this case accordingly.
     CHECK_LT(iidx, old_node_inputs.size());
-    const OpDef::ArgDef& arg = old_node->op_def().input_arg(onsidx);
+    const OpDef::ArgDef& arg = old_node->op_def().input_arg(on_slot_idx);
     if (ArgIsList(arg)) {
       std::vector<NodeBuilder::NodeOut> new_node_inputs;
       int N = GetTensorListLength(arg, old_node);
       GetNodesProducingTFTensorList(old_node_inputs, &iidx, N,
                                     &new_node_inputs);
       nb->Input(new_node_inputs);
-      nnsidx++;
+      nn_slot_idx++;
     } else {
       nb->Input(old_node_inputs[iidx].first, old_node_inputs[iidx].second);
       iidx++;
-      nnsidx++;
+      nn_slot_idx++;
     }
   }
 
@@ -912,24 +912,24 @@ int MklLayoutRewritePass::SetUpContiguousInputs(std::unique_ptr<Graph>* g,
     CHECK_EQ(workspace_tensors->size(), 2);
     // Tensorflow tensor
     nb->Input((*workspace_tensors)[0].node, (*workspace_tensors)[0].index);
-    nnsidx++;
+    nn_slot_idx++;
   }
 
   // Let's now setup all Mkl inputs to new node.
   // Number of Mkl inputs must be same as number of TF inputs.
   iidx = 0;
-  for (int onsidx = 0; onsidx < old_node_input_slots; onsidx++) {
+  for (int on_slot_idx = 0; on_slot_idx < old_node_input_slots; on_slot_idx++) {
     // An input slot could be a single tensor or a list. We need
     // to handle this case accordingly.
     CHECK_LT(iidx, old_node_inputs.size());
-    const OpDef::ArgDef& arg = old_node->op_def().input_arg(onsidx);
+    const OpDef::ArgDef& arg = old_node->op_def().input_arg(on_slot_idx);
     if (ArgIsList(arg)) {
       std::vector<NodeBuilder::NodeOut> new_node_inputs;
       int N = GetTensorListLength(arg, old_node);
       GetNodesProducingMklTensorList(g, old_node_inputs, &iidx,
                                      N, &new_node_inputs);
       nb->Input(new_node_inputs);
-      nnsidx++;
+      nn_slot_idx++;
     } else {
       Node* mkl_node = nullptr;
       int mkl_node_output_slot = 0;
@@ -938,7 +938,7 @@ int MklLayoutRewritePass::SetUpContiguousInputs(std::unique_ptr<Graph>* g,
                                 &mkl_node, &mkl_node_output_slot);
       nb->Input(mkl_node, mkl_node_output_slot);
       iidx++;
-      nnsidx++;
+      nn_slot_idx++;
     }
   }
 
@@ -950,10 +950,10 @@ int MklLayoutRewritePass::SetUpContiguousInputs(std::unique_ptr<Graph>* g,
     CHECK_EQ(workspace_tensors->size(), 2);
     // Mkl tensor
     nb->Input((*workspace_tensors)[1].node, (*workspace_tensors)[1].index);
-    nnsidx++;
+    nn_slot_idx++;
   }
 
-  return nnsidx;
+  return nn_slot_idx;
 }
 
 Status MklLayoutRewritePass::SetUpInputs(std::unique_ptr<Graph>* g,
@@ -1018,11 +1018,13 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
   TensorShape dummy_shape({1});
   dummy_shape.AsProto(proto.mutable_tensor_shape());
   TF_CHECK_OK(NodeBuilder((*g)->NewName("DMT"), "Const")
-                  .Attr("value", proto)
-                  .Attr("dtype", dt)
-                  .Device(orig_node->def().device())  // We place this node on
-                  // same device as device of original node.
-                  .Finalize(&**g, out));
+                .Attr("value", proto)
+                .Attr("dtype", dt)
+                .Device(orig_node->def().device())  // We place this node on
+                                                    // same the device as the
+                                                    // device of the original
+                                                    // node.
+                .Finalize(&**g, out));
   (*out)->set_assigned_device_name(orig_node->assigned_device_name());
 }
 
@@ -1458,30 +1460,30 @@ Status MklLayoutRewritePass::MergeNode(std::unique_ptr<Graph>* g, Node* succ,
     nb.Device(succ->def().device());
 
     // Create node.
-    Node* newn;
-    nb.Finalize(&**g, &newn);
-    CHECK_NOTNULL(newn);
+    Node* new_node;
+    nb.Finalize(&**g, &new_node);
+    CHECK_NOTNULL(new_node);
 
     // Set the Mkl layer label for this op.
-    newn->AddAttr("_kernel", mkl_op_registry::kMklOpLabel);
+    new_node->AddAttr("_kernel", mkl_op_registry::kMklOpLabel);
 
     // Incoming edges are fixed, we will fix the outgoing edges now.
     for (const Edge* e : succ->out_edges()) {
-      (*g)->AddEdge(newn, e->src_output(), e->dst(), e->dst_input());
+      (*g)->AddEdge(new_node, e->src_output(), e->dst(), e->dst_input());
     }
 
     // Copy device assigned to old node to new node.
     // It's ok to use pred or succ as we have enforced a check that
     // both have same device assigned.
-    newn->set_assigned_device_name(pred->assigned_device_name());
+    new_node->set_assigned_device_name(pred->assigned_device_name());
 
     VLOG(1) << "MklLayoutRewritePass: Merged old node:" << pred->DebugString()
             << ", and node: " << succ->DebugString()
-            << ", into node:" << newn->DebugString();
+            << ", into node:" << new_node->DebugString();
 
     (*g)->RemoveNode(succ);
     (*g)->RemoveNode(pred);
-    MarkRewrittenNode(newn);
+    MarkRewrittenNode(new_node);
 
     return Status::OK();
   }
@@ -1574,37 +1576,38 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
   nb.Attr("_kernel", mkl_op_registry::kMklOpLabel);
 
   // Finalize graph and get new node.
-  Node* newn = nullptr;
-  TF_CHECK_OK(nb.Finalize(&**g, &newn));
-  CHECK_NOTNULL(newn);
+  Node* new_node = nullptr;
+  TF_CHECK_OK(nb.Finalize(&**g, &new_node));
+  CHECK_NOTNULL(new_node);
 
-  // Incoming edges from 'orig_node' node to new 'newn' node are already copied
-  // in BuildNode. Copy outgoing edges from 'orig_node' node to new 'newn' node.
-  // Since the output also follows same ordering among Tensorflow tensors and
-  // Mkl tensors. We need to connect Tensorflow tensors appropriately.
-  // Specifically, nth output of original node will become 2*nth output of
-  // Mkl node for interleaved ordering of tensors. For contiguous ordering of
-  // tensors it will be n. GetTensorDataIndex provides this mapping function.
+  // Incoming edges from 'orig_node' node to new 'new_node' node are already
+  // copied in BuildNode. Copy outgoing edges from 'orig_node' node to new
+  // 'new_node' node, since the output also follows same ordering among
+  // Tensorflow tensors and Mkl tensors. We need to connect Tensorflow
+  // tensors appropriately. Specifically, nth output of the original node
+  // will become 2*nth output of the Mkl node for the interleaved ordering
+  // of the tensors. For the contiguous ordering of the tensors, it will be n.
+  // GetTensorDataIndex provides this mapping function.
   for (const Edge* e : orig_node->out_edges()) {
     // We need to handle control-edges by using their original slot number.
     // Generally, -1 is reserved for control slot.
     if (e->src_output() < 0) {
-      (*g)->AddEdge(newn, e->src_output(), e->dst(), e->dst_input());
+      (*g)->AddEdge(new_node, e->src_output(), e->dst(), e->dst_input());
     } else {
-      (*g)->AddEdge(newn, GetTensorDataIndex(e->src_output(),
+      (*g)->AddEdge(new_node, GetTensorDataIndex(e->src_output(),
                             e->src()->num_outputs()),
                     e->dst(), e->dst_input());
     }
   }
 
   // Copy the runtime device assigned from original code to new node.
-  newn->set_assigned_device_name(orig_node->assigned_device_name());
+  new_node->set_assigned_device_name(orig_node->assigned_device_name());
 
   // Delete original node and mark new node as rewritten.
   (*g)->RemoveNode(orig_node);
-  MarkRewrittenNode(newn);
+  MarkRewrittenNode(new_node);
 
-  VLOG(1) << "MklLayoutRewritePass: New node:" << newn->DebugString();
+  VLOG(1) << "MklLayoutRewritePass: New node:" << new_node->DebugString();
   return Status::OK();
 }
 

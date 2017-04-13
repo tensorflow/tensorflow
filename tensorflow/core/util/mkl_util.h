@@ -559,7 +559,7 @@ static inline bool IsMklOp(const std::string& op_name, DataType T) {
   string kernel = KernelsRegisteredForOp(op_name);
   bool result =
       kernel.find(kMklOpLabelPattern) != string::npos && (T == DT_FLOAT);
-  if (result == true) {
+  if (result) {
     VLOG(1) << "mkl_op_registry::" << op_name << " is " << kMklOpLabel;
   }
   return result;
