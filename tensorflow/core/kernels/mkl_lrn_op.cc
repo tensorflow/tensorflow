@@ -109,13 +109,7 @@ class MklLRNOp : public OpKernel {
         mkl_context.lt_input =
             static_cast<dnnLayout_t>(mkl_context.input_shape.GetCurLayout());
         workspace_enabled_ = true;
-        /* std::cout<<" the mkl lrn is enabled!!!!!!!!!!"<<std::endl; */
       } else {
-        /* std::vector<const Tensor *> temp_input(1, &input);
-        std::vector< MklShape> mkl_input_shapes(1, mkl_context.input_shape);
-        std::vector<Tensor> temp_out = ConvertMklToTF<T>(context,
-                                                      temp_input,
-                                                      mkl_input_shapes); */
         mkl_context.MklDefaultToEigen(context, depth_radius_, bias_, alpha_,
                                       beta_, input);
         return;
@@ -124,10 +118,9 @@ class MklLRNOp : public OpKernel {
 
     int kernel_size = 2 * depth_radius_ + 1;
 
-    CHECK_EQ(dnnLRNCreateForward_F32(&mkl_context.lrn_fwd, NULL,
-                                     mkl_context.lt_input, kernel_size,
-                                     static_cast<float>(alpha_ * kernel_size),
-                                     beta_, bias_),
+    CHECK_EQ(dnnLRNCreateForward_F32(
+                 &mkl_context.lrn_fwd, NULL, mkl_context.lt_input, kernel_size,
+                 static_cast<float>(alpha_ * kernel_size), beta_, bias_),
              E_SUCCESS);
 
     // Allocate output tensor and shape
@@ -272,9 +265,11 @@ class MklLRNOp : public OpKernel {
     }
 
     // Fallback implementation - Taken from lrn_op.cc
+    // TODO(intelft) Check if we can use EigenLRNOp directly instead of making a
+    // copy.
     void MklDefaultToEigen(OpKernelContext* context, int depth_radius_,
                            float bias_, float alpha_, float beta_,
-                           const Tensor &input) {
+                           const Tensor& input) {
       const int batch = static_cast<int>(input.dim_size(0));
       const int rows = static_cast<int>(input.dim_size(1));
       const int cols = static_cast<int>(input.dim_size(2));
@@ -321,9 +316,6 @@ class MklLRNOp : public OpKernel {
       dnnLayoutDelete_F32(lt_internal_input);
       dnnLayoutDelete_F32(lt_internal_workspace);
       dnnLayoutDelete_F32(lt_internal_output);
-      // if (!input_in_mkl_format) {
-      //  dnnLayoutDelete_F32(mkl_prims.lt_input);
-      //}
     }
   } MklLRNOpContext;
 
@@ -335,8 +327,6 @@ class MklLRNOp : public OpKernel {
   float alpha_;
   float beta_;
 };
-
-
 
 template <typename T>
 class MklLRNGradOp : public OpKernel {
@@ -432,12 +422,11 @@ class MklLRNGradOp : public OpKernel {
     mkl_context.MklPrepareLRNInputsLayouts(context);
     int ksize = 2 * depth_radius_ + 1;
 
-    CHECK_EQ(
-        dnnLRNCreateBackward_F32(&mkl_context.lrn_bwd, NULL,
-                                 mkl_context.lt_input, mkl_context.lt_output,
-                                 ksize, static_cast<float>(alpha_ *
-                                 ksize), beta_, bias_),
-        E_SUCCESS);
+    CHECK_EQ(dnnLRNCreateBackward_F32(
+                 &mkl_context.lrn_bwd, NULL, mkl_context.lt_input,
+                 mkl_context.lt_output, ksize,
+                 static_cast<float>(alpha_ * ksize), beta_, bias_),
+             E_SUCCESS);
 
     // Allocate output tensor and shape.
     TensorShape mkl_output_tf_shape; /* First tensor */
@@ -477,9 +466,8 @@ class MklLRNGradOp : public OpKernel {
     // in MKL format.
     mkl_context.res_lrn_bwd[dnnResourceDiffSrc] = user_output;
     // Execute LRN backward using dnnExecute
-    CHECK_EQ(
-        dnnExecute_F32(mkl_context.lrn_bwd, mkl_context.res_lrn_bwd),
-        E_SUCCESS);
+    CHECK_EQ(dnnExecute_F32(mkl_context.lrn_bwd, mkl_context.res_lrn_bwd),
+             E_SUCCESS);
     // Release MKL resources.
     mkl_context.Mklcleanup();
   }
@@ -624,6 +612,8 @@ class MklLRNGradOp : public OpKernel {
     }
 
     // Fallback implementation - Taken from lrn_op.cc
+    // TODO(intelft) Check if we can use EigenLRNOp directly instead of making a
+    // copy.
     void MklDefaultToEigen(OpKernelContext* context) {
       // CHECK(false);
       Tensor in_grads = MklGetInput(context, 0);
@@ -633,35 +623,6 @@ class MklLRNGradOp : public OpKernel {
       GetMklShape(context, 0, &ingrad_shape);
       GetMklShape(context, 1, &inimage_shape);
       GetMklShape(context, 2, &outimage_shape);
-
-      /* bool ingrad_in_mkl_format = ingrad_shape.IsMklTensor();
-      bool inimage_in_mkl_format = inimage_shape.IsMklTensor();
-      bool outimage_in_mkl_format = outimage_shape.IsMklTensor();
-
-      if ( ingrad_in_mkl_format ) {
-        std::vector<const Tensor *> temp_ingrad(1, &in_grads);
-        std::vector< MklShape> mkl_ingrad_shapes(1, ingrad_shape);
-        std::vector<Tensor> temp_outingrad = ConvertMklToTF<T>(context,
-                                                      temp_ingrad,
-                                                      mkl_ingrad_shapes);
-        in_grads = temp_outingrad[0];
-      }
-      if ( inimage_in_mkl_format ) {
-        std::vector<const Tensor *> temp_inimage(1, &in_image);
-        std::vector< MklShape> mkl_inimage_shapes(1, inimage_shape);
-        std::vector<Tensor> temp_outinimage = ConvertMklToTF<T>(context,
-                                                      temp_inimage,
-                                                      mkl_inimage_shapes);
-        in_image = temp_outinimage[0];
-      }
-      if ( outimage_in_mkl_format ) {
-        std::vector<const Tensor *> temp_outimage(1, &out_image);
-        std::vector< MklShape> mkl_outimage_shapes(1, outimage_shape);
-        std::vector<Tensor> temp_outoutimage = ConvertMklToTF<T>(context,
-                                                      temp_outimage,
-                                                      mkl_outimage_shapes);
-        out_image = temp_outoutimage[0];
-      } */
 
       const int64 batch = static_cast<int64>(in_grads.dim_size(0));
       const int64 rows = static_cast<int64>(in_grads.dim_size(1));
@@ -686,23 +647,6 @@ class MklLRNGradOp : public OpKernel {
                     depth](int64 begin, int64 end) {
         for (int64 i = begin; i < end; ++i) {
           for (int64 j = 0; j < depth; ++j) {
-            // Let y be the LRN activations and x be the inputs along the depth
-            // dimension. (LRN operates independently along rows, cols, and
-            // batch).
-            // We have
-            // yi = xi / (bias + alpha(sum_j_{i - depth_radius}^{i +
-            // depth_radius}
-            //      x_j^2))^beta
-            //
-            // Let N = (bias + alpha(sum_j_{i - depth_radius}^{i + depth_radius}
-            //           x_j^2))
-            // dy_i/dx_i = (N^beta - xi. beta*N^(beta-1)*2*alpha*xi)/N^(2*beta)
-            // dy_i/dx_j = (       - xi. beta*N^(beta-1)*2*alpha*xj)/N^(2*beta)
-            //
-            // NOTE(keveman) : We can compute N by doing (yi/xi) ^ (1/beta).
-            // However, this is numerically unstable for small values of xi. We
-            // compute N explicitly here to avoid that.
-
             int64 depth_begin = std::max<int64>(0, j - depth_radius_);
             int64 depth_end = std::min<int64>(depth, j + depth_radius_ + 1);
 
@@ -756,16 +700,16 @@ class MklLRNGradOp : public OpKernel {
   float beta_;
 };
 
-#define REGISTER_MKL_LRN_CPU(T)                                           \
-  REGISTER_KERNEL_BUILDER(Name("MklLRN")                                  \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
-                          MklLRNOp<T>);                                   \
-  REGISTER_KERNEL_BUILDER(Name("MklLRNGrad")                              \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
+#define REGISTER_MKL_LRN_CPU(T)                                     \
+  REGISTER_KERNEL_BUILDER(Name("MklLRN")                            \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklLRNOp<T>);                             \
+  REGISTER_KERNEL_BUILDER(Name("MklLRNGrad")                        \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklLRNGradOp<T>);
 
 TF_CALL_float(REGISTER_MKL_LRN_CPU);
