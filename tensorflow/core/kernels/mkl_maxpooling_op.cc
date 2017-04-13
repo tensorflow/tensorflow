@@ -83,6 +83,7 @@ class MklMaxPoolingOp : public OpKernel {
     ExtractMklOpParams(context, data_format_, pool_params, &mkl_context.params);
 
     mkl_context.MklCreateLayoutsAndPrimitives(context);
+    OP_REQUIRES_OK(context, context->status());
 
     // Declare output tensor
     TensorShape tensor_out_shape;
@@ -100,10 +101,6 @@ class MklMaxPoolingOp : public OpKernel {
                             sizeof(T));
     AllocateOutputSetMklShape(context, 0, &output_tensor, tensor_out_shape,
                               mkl_out_shape);
-
-    /* if (workspace_enabled_) {
-      mkl_out_shape.SetMklTensor(false);
-    } */
 
     Tensor* workspace_tensor;
     void* workspace_buf = nullptr;
@@ -257,8 +254,13 @@ class MklMaxPoolingGradOp : public OpKernel {
     ExtractMklOpParams(context, data_format_, pool_params, &mkl_context.params);
 
     mkl_context.MklCreateLayouts(context);
+    OP_REQUIRES_OK(context, context->status());
+
     mkl_context.MklCreatePrimitives(context, workspace_enabled_);
+    OP_REQUIRES_OK(context, context->status());
+
     mkl_context.MklPrepareInputs(context, workspace_enabled_);
+    OP_REQUIRES_OK(context, context->status());
 
     // Create shape for the input back prop output
     TensorShape mkl_input_backprop;
