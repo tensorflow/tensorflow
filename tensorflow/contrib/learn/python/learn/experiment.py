@@ -116,6 +116,7 @@ class Experiment(object):
       min_eval_frequency: (applies only to train_and_evaluate). the minimum
         number of steps between evaluations. Of course, evaluation does not
         occur if no new snapshot is available, hence, this is the minimum.
+        If 0, the evaluation will only happen after training.
         If None, defaults to 1, unless model_dir is on GCS, in which case the
         default is 1000.
       delay_workers_by_global_step: if `True` delays training workers
@@ -164,7 +165,8 @@ class Experiment(object):
     # we use a different default. This is a temporary band-aid, to be
     # fixed holistically later (b/36498507).
     default_min_eval_frequency = 1000 if _is_gcs(estimator.model_dir) else 1
-    self._min_eval_frequency = min_eval_frequency or default_min_eval_frequency
+    self._min_eval_frequency = min_eval_frequency if (
+        min_eval_frequency is not None) else default_min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
     self._train_monitors = train_monitors[:] if train_monitors else []
     self._eval_hooks = eval_hooks[:] if eval_hooks else []
@@ -454,7 +456,7 @@ class Experiment(object):
     """Interleaves training and evaluation.
 
     The frequency of evaluation is controlled by the contructor arg
-    `min_eval_frequency`. When this parameter is None or 0, evaluation happens
+    `min_eval_frequency`. When this parameter is 0, evaluation happens
     only after training has completed. Note that evaluation cannot happen
     more frequently than checkpoints are taken. If no new snapshots are
     available when evaluation is supposed to occur, then evaluation doesn't

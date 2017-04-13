@@ -61,7 +61,10 @@ class AdamOptimizer(optimizer.Optimizer):
 
     The default value of 1e-8 for epsilon might not be a good default in
     general. For example, when training an Inception network on ImageNet a
-    current good choice is 1.0 or 0.1.
+    current good choice is 1.0 or 0.1. Note that since AdamOptimizer uses the
+    formulation just before Section 2.1 of the Kingma and Ba paper rather than
+    the formulation in Algorithm 1, the "epsilon" referred to here is "epsilon
+    hat" in the paper.
 
     The sparse implementation of this algorithm (used when the gradient is an
     IndexedSlices object, typically because of `tf.gather` or an embedding
@@ -78,7 +81,9 @@ class AdamOptimizer(optimizer.Optimizer):
         The exponential decay rate for the 1st moment estimates.
       beta2: A float value or a constant float tensor.
         The exponential decay rate for the 2nd moment estimates.
-      epsilon: A small constant for numerical stability.
+      epsilon: A small constant for numerical stability. This epsilon is
+        "epsilon hat" in the Kingma and Ba paper (in the formula just before
+        Section 2.1), not the epsilon in Algorithm 1 of the paper.
       use_locking: If True use locks for update operations.
       name: Optional name for the operations created when applying gradients.
         Defaults to "Adam".
