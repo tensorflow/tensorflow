@@ -1787,7 +1787,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "split_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["split_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
