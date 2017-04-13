@@ -2122,6 +2122,7 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -2137,6 +2138,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
