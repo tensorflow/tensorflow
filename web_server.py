@@ -7,13 +7,13 @@ import os
 import re
 
 from flask import (Flask, flash, json, redirect, request, send_from_directory,
-                   url_for, jsonify)
+                   url_for, jsonify, render_template)
 from werkzeug.utils import secure_filename
 
 # Default values
-DEFAULTS = {'UploadFolder':'./static/uploads', \
+DEFAULTS = {'UploadFolder':'uploads', \
     'AllowedExtensions': 'jpg,jpeg,png,bmp', \
-    'StaticURLPath':'/static'}
+    'StaticURLPath':'static'}
 
 # Paths containing the models
 MODELPATHS = {}
@@ -30,8 +30,12 @@ with open('server.config') as f:
         DEFAULTS[entry[0]] = entry[1]
 
 
-APP = Flask(__name__, static_url_path=DEFAULTS['StaticURLPath'])
-APP.config['UPLOAD_FOLDER'] = DEFAULTS['UploadFolder']
+APP = Flask(__name__, static_url_path=os.path.join('/', DEFAULTS['StaticURLPath']))
+APP.config['UPLOAD_FOLDER'] = os.path.join(DEFAULTS['StaticURLPath'], DEFAULTS['UploadFolder'])
+
+# Debug lines
+print DEFAULTS
+print APP.config['UPLOAD_FOLDER']
 
 def allowed_file(filename):
     """ Check if the attached file contains the valid image extensions defined
@@ -109,66 +113,136 @@ def images():
             img.save(os.path.join(directory, filename))
             return redirect('/images')
 
+@APP.route('/images/search', methods=['GET', 'POST'])
+def search_images():
+    """ Allows the client to search the uploaded images.
+
+    GET: Serves the image search page.
+    POST: Receives the plant species to search for and returns a grid of images. """
+    if request.method == 'GET':
+        # Serve search page
+        return APP.send_static_file('search.html')
+    if request.method == 'POST':
+        # Grab the form data
+        exist = False
+        search = request.form['species']
+        query = search.replace(' ', '_').lower()
+        directory = os.path.join(DEFAULTS['UploadFolder'], query)
+        full_directory = os.path.join(DEFAULTS['StaticURLPath'], directory)
+        results = []
+
+        # Debug lines
+        print directory
+        print query
+
+        # Check if the directory exists and find all image files if it does
+        if os.path.isdir(full_directory):
+            for path, subdirs, files in os.walk(full_directory):
+                for name in files:
+                    # insert the path in the static folder to the image
+                    results.append(os.path.join('/', os.path.join(directory, name)))
+
+        # If results list is not empty set exists to true
+        if results:
+            exist = True
+
+        # Debug lines
+        print search
+        print exist
+        if exist:
+            print results
+
+        return render_template('search_results.html', search=search, results=results, exist=exist)
+
 def update_models():
     """ Update the MODELPATHS dictionary with the model paths. """
+    # Check if dictionary variables exist
+    if 'ModelPath' and 'ModelExtension' and 'LabelExtension' not in DEFAULTS:
+        return False
+    # Check if path exists
+    if not os.path.isdir(DEFAULTS['ModelPath']):
+        return False
+
     # Find all files in the ModelPath with the ModelExtension and LabelExtension
     for path, subdirs, files in os.walk(DEFAULTS['ModelPath']):
         for name in files:
             if name.endswith(DEFAULTS['ModelExtension']):
-                entry = os.path.join(path, name)
-                key = entry \
+                file_path = os.path.join(path, name)
+                key = file_path \
                     .replace(DEFAULTS['ModelPath'], '') \
                     .replace(DEFAULTS['ModelExtension'], '')
 
                 # Check if the key already exists in the dictionary
                 if key in MODELPATHS:
-                    MODELPATHS[key]['Model'] = entry
+                    MODELPATHS[key]['Model'] = file_path
                 else:
-                    MODELPATHS[key] = {'Model':entry}
+                    MODELPATHS[key] = {'Model':file_path}
             if name.endswith(DEFAULTS['LabelExtension']):
-                entry = os.path.join(path, name)
-                key = entry \
+                file_path = os.path.join(path, name)
+                key = file_path \
                     .replace(DEFAULTS['ModelPath'], '') \
                     .replace(DEFAULTS['LabelExtension'], '')
 
                 # Check if the key already exists in the dictionary
                 if key in MODELPATHS:
-                    MODELPATHS[key]['Label'] = entry
+                    MODELPATHS[key]['Label'] = file_path
                 else:
-                    MODELPATHS[key] = {'Label':entry}
+                    MODELPATHS[key] = {'Label':file_path}
+
+        return True
 
 @APP.route('/list-models')
 def list_models():
     """ Return the available models in JSON format to the client. """
-    return jsonify(MODELPATHS)
+    if update_models():
+        return jsonify(MODELPATHS)
+    else:
+        return Flask.make_response('error: defined model path does not contain any models', 500)
 
 @APP.route('/update-model')
 def download_model():
     """ Send the specified model to the client. """
-    key = request.args.get('model-key')
-    time = request.args.get('model-time')
-    path = MODELPATHS[key]['Model']
+    # Check that URL arguments have been included.
+    if 'model-key' and 'model-time' not in request.args:
+        resp = Flask.make_response("error: model-key and/or model-time arguments are missing", 400)
+        return resp
+    # Update the model locations and check if new version of model exists.
+    if update_models():
+        key = request.args.get('model-key')
+        time = request.args.get('model-time')
+        path = MODELPATHS[key]['Model']
 
-    newer = check_time(path, time)
+        newer = check_time(path, time)
 
-    if newer:
-        path, name = os.path.split(path)
-        return send_from_directory(path, name)
+        # Serve model file if newer, else return False.
+        if newer:
+            path, name = os.path.split(path)
+            return send_from_directory(path, name)
+        else:
+            return False
     else:
         return False
 
 @APP.route('/update-label')
 def download_label():
     """ Send the specified label to the client. """
-    key = request.args.get('model-key')
-    time = request.args.get('model-time')
-    path = MODELPATHS[key]['Label']
+    # Check that URL arguments have been included.
+    if 'model-key' and 'model-time' not in request.args:
+        resp = Flask.make_response("error: model-key and/or model-time arguments are missing", 400)
+        return resp
+    # Update the model locations and check if new version of model exists.
+    if update_models():
+        key = request.args.get('model-key')
+        time = request.args.get('model-time')
+        path = MODELPATHS[key]['Label']
 
-    newer = check_time(path, time)
+        newer = check_time(path, time)
 
-    if newer:
-        path, name = os.path.split(path)
-        return send_from_directory(path, name)
+        if newer:
+            path, name = os.path.split(path)
+            return send_from_directory(path, name)
+        else:
+            return False
     else:
         return False
 
