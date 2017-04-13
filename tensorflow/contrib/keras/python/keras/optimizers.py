@@ -596,8 +596,9 @@ class Nadam(Optimizer):
     # Due to the recommendations in [2], i.e. warming momentum schedule
     momentum_cache_t = self.beta_1 * (1. - 0.5 *
                                       (K.pow(0.96, t * self.schedule_decay)))
-    momentum_cache_t_1 = self.beta_1 * (
-        1. - 0.5 * (K.pow(0.96, (t + 1) * self.schedule_decay)))
+    momentum_cache_t_1 = self.beta_1 * (1. - 0.5 *
+                                        (K.pow(0.96,
+                                               (t + 1) * self.schedule_decay)))
     m_schedule_new = self.m_schedule * momentum_cache_t
     m_schedule_next = self.m_schedule * momentum_cache_t * momentum_cache_t_1
     self.updates.append((self.m_schedule, m_schedule_new))
@@ -615,8 +616,8 @@ class Nadam(Optimizer):
       m_t_prime = m_t / (1. - m_schedule_next)
       v_t = self.beta_2 * v + (1. - self.beta_2) * K.square(g)
       v_t_prime = v_t / (1. - K.pow(self.beta_2, t))
-      m_t_bar = (1. - momentum_cache_t
-                ) * g_prime + momentum_cache_t_1 * m_t_prime
+      m_t_bar = (
+          1. - momentum_cache_t) * g_prime + momentum_cache_t_1 * m_t_prime
 
       self.updates.append(K.update(m, m_t))
       self.updates.append(K.update(v, v_t))
