@@ -1320,6 +1320,20 @@ void MklLayoutRewritePass::CopyAttrsReshape(const Node* orign,
   nb->Attr("Tshape", Tshape);
 }
 
+void MklLayoutRewritePass::CopyAttrsReshape(const Node* orign,
+                                           NodeBuilder* nb) {
+  DataType T;
+  DataType Tshape;
+  
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orign->def(), "Tshape", &Tshape));
+  
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("Tshape", Tshape);
+}
+
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions related to node merge pass
 //////////////////////////////////////////////////////////////////////////

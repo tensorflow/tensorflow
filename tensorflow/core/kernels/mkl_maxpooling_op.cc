@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
