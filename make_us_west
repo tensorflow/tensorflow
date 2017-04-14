@@ -1,0 +1,31 @@
+#!/bin/bash
+# Remove old model files
+rm tf_files/us_west/*.*
+
+python tensorflow/examples/image_retraining/retrain.py \
+--bottleneck_dir=tf_files/us_west/bottlenecks \
+--model_dir=tf_files/inception \
+--output_graph=tf_files/us_west/retrained_graph.pb \
+--output_labels=tf_files/us_west/retrained_labels.txt \
+--image_dir tf_files/us_west/leafs
+
+# Build the unstrip binary
+bazel build tensorflow/python/tools:strip_unused && \
+
+# Get unix time from system
+UNIX_TIME_STAMP=$(date +'%s')
+
+# Strip the retrained graphs
+bazel-bin/tensorflow/python/tools/strip_unused \
+--input_graph=tf_files/us_west/retrained_graph.pb \
+--output_graph="tf_files/us_west/us_west_$UNIX_TIME_STAMP.pb" \
+--input_node_names=Mul \
+--output_node_names=final_result \
+--input_binary=true
+
+# Remove all of the old assets
+rm tensorflow/examples/android/assets/us_west/*.*
+
+# Copy the files into the android application assets
+cp tf_files/us_west/us_west_$UNIX_TIME_STAMP.pb tensorflow/examples/android/assets/us_west/us_west_$UNIX_TIME_STAMP.pb
+cp tf_files/us_west/retrained_labels.txt tensorflow/examples/android/assets/us_west/retrained_labels.txt
