@@ -43,7 +43,7 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
       ComputationBuilder::CreateConvDimensionNumbers(0, 2, 2, 3, 0, 1, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
   ASSERT_THAT(dimension_numbers_status.status().error_message(),
-              ::testing::ContainsRegex("input are not unique"));
+              ::testing::HasSubstr("input are not unique"));
 }
 
 // Tests the convolution operation with invalid weight dimension numbers.
@@ -52,7 +52,7 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidWeightDimensionNumbers) {
       ComputationBuilder::CreateConvDimensionNumbers(0, 1, 2, 3, 2, 3, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
   ASSERT_THAT(dimension_numbers_status.status().error_message(),
-              ::testing::ContainsRegex("weight are not unique"));
+              ::testing::HasSubstr("weight are not unique"));
 }
 
 XLA_TEST_F(ConvolutionDimensionNumbersTest,

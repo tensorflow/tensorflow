@@ -110,6 +110,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "linux_ppc64le",
+    values = {"cpu": "ppc"},
+    visibility = ["//visibility:public"],
+)
+
 # TODO(jhseu): Enable on other platforms other than Linux.
 config_setting(
     name = "with_jemalloc",
@@ -285,6 +291,7 @@ filegroup(
         "//tensorflow/examples/tutorials/estimators:all_files",
         "//tensorflow/examples/tutorials/mnist:all_files",
         "//tensorflow/examples/tutorials/word2vec:all_files",
+        "//tensorflow/examples/wav_to_spectrogram:all_files",
         "//tensorflow/go:all_files",
         "//tensorflow/java:all_files",
         "//tensorflow/java/src/main/java/org/tensorflow/examples:all_files",

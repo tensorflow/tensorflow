@@ -143,10 +143,7 @@ static bool AddNodeToTargets(const string& node_or_tensor_name,
     return false;
   }
   const Node* n = iter->second;
-  if (n->name() != node_or_tensor_name) {
-    return false;
-  }
-
+  CHECK_EQ(n->name(), id.first);
   targets->insert(n);
   return true;
 }

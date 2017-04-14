@@ -16,7 +16,7 @@ limitations under the License.
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
-#include <iostream>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -83,6 +83,7 @@ class MklMaxPoolingOp : public OpKernel {
     ExtractMklOpParams(context, data_format_, pool_params, &mkl_context.params);
 
     mkl_context.MklCreateLayoutsAndPrimitives(context);
+    OP_REQUIRES_OK(context, context->status());
 
     // Declare output tensor
     TensorShape tensor_out_shape;
@@ -101,13 +102,8 @@ class MklMaxPoolingOp : public OpKernel {
     AllocateOutputSetMklShape(context, 0, &output_tensor, tensor_out_shape,
                               mkl_out_shape);
 
-    /* if (workspace_enabled_) {
-      mkl_out_shape.SetMklTensor(false);
-    } */
-
     Tensor* workspace_tensor;
     void* workspace_buf = nullptr;
-    // if (workspace_enabled_) {
 
     TensorShape workspace_shape;
     mkl_workspace_shape.SetMklTensor(false);
@@ -116,14 +112,9 @@ class MklMaxPoolingOp : public OpKernel {
                            sizeof(T));
     AllocateOutputSetMklShape(context, 1, &workspace_tensor, workspace_shape,
                               mkl_workspace_shape);
+
     mkl_context.pooling_res[dnnResourceWorkspace] = const_cast<void*>(
         static_cast<const void*>(workspace_tensor->flat<T>().data()));
-    /* } else {
-     std::cout<<" workspace never enabled??????"<<std::endl;
-     AllocTmpBuffer(context, workspace_tensor, mkl_context.lt_workspace,
-                    &mkl_context.pooling_res[dnnResourceWorkspace]);
-   } */
-
     mkl_context.pooling_res[dnnResourceSrc] =
         const_cast<void*>(static_cast<const void*>(tensor_in.flat<T>().data()));
     mkl_context.pooling_res[dnnResourceDst] = const_cast<void*>(
@@ -257,8 +248,13 @@ class MklMaxPoolingGradOp : public OpKernel {
     ExtractMklOpParams(context, data_format_, pool_params, &mkl_context.params);
 
     mkl_context.MklCreateLayouts(context);
+    OP_REQUIRES_OK(context, context->status());
+
     mkl_context.MklCreatePrimitives(context, workspace_enabled_);
+    OP_REQUIRES_OK(context, context->status());
+
     mkl_context.MklPrepareInputs(context, workspace_enabled_);
+    OP_REQUIRES_OK(context, context->status());
 
     // Create shape for the input back prop output
     TensorShape mkl_input_backprop;
@@ -489,13 +485,13 @@ class MklMaxPoolingGradOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("MklMaxPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklMaxPoolingOp<CPUDevice, float>);
 
 REGISTER_KERNEL_BUILDER(Name("MklMaxPoolGrad")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklMaxPoolingGradOp<CPUDevice, float>);
 
 }  // namespace tensorflow

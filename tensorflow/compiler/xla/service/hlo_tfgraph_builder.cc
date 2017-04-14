@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/tools/hlo_tfgraph_builder.h"
+#include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -31,7 +31,7 @@ using ::tensorflow::strings::StrCat;
 using ::tensorflow::str_util::Join;
 
 namespace xla {
-namespace tools {
+namespace hlo_graph_dumper {
 namespace {
 
 string GetOpDefName(const HloInstruction* instruction) {
@@ -200,5 +200,5 @@ Status HloTfGraphBuilder::AddInstruction(const HloInstruction* instruction) {
   return Status::OK();
 }
 
-}  // namespace tools
+}  // namespace hlo_graph_dumper
 }  // namespace xla

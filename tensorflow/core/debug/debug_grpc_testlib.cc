@@ -116,6 +116,34 @@ void TestEventListenerImpl::StopServer() {
   }
 }
 
+bool PollTillFirstRequestSucceeds(const string& server_url,
+                                  const size_t max_attempts) {
+  const int kSleepDurationMicros = 100 * 1000;
+  size_t n_attempts = 0;
+  bool success = false;
+
+  // Try a number of times to send the Event proto to the server, as it may
+  // take the server a few seconds to start up and become responsive.
+  Tensor prep_tensor(DT_FLOAT, TensorShape({1, 1}));
+  prep_tensor.flat<float>()(0) = 42.0f;
+
+  while (n_attempts++ < max_attempts) {
+    const uint64 wall_time = Env::Default()->NowMicros();
+    Status publish_s = DebugIO::PublishDebugTensor(
+        "prep_node:0", "DebugIdentity", prep_tensor, wall_time, {server_url});
+    Status close_s = DebugIO::CloseDebugURL(server_url);
+
+    if (publish_s.ok() && close_s.ok()) {
+      success = true;
+      break;
+    } else {
+      Env::Default()->SleepForMicroseconds(kSleepDurationMicros);
+    }
+  }
+
+  return success;
+}
+
 }  // namespace test
 
 }  // namespace tensorflow

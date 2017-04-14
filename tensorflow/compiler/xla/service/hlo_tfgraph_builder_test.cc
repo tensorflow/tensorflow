@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/tools/hlo_tfgraph_builder.h"
+#include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 
 namespace xla {
-namespace tools {
+namespace hlo_graph_dumper {
 namespace {
 
 using ::tensorflow::GraphDef;
@@ -40,7 +42,7 @@ class HloTfGraphBuilderTest : public HloTestBase {
 
   // Creates a computation which calls map with the given computation.
   std::unique_ptr<HloComputation> CreateMapComputation(
-      HloComputation* map_computation) {
+      HloComputation *map_computation) {
     auto builder = HloComputation::Builder("Map");
     auto param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, r0f32_, "param0"));
@@ -48,18 +50,18 @@ class HloTfGraphBuilderTest : public HloTestBase {
         HloInstruction::CreateMap(r0f32_, {param}, map_computation));
     return builder.Build();
   }
-  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
+  Shape r0f32_ = ShapeUtil::MakeShape(PrimitiveType::F32, {});
 };
 
 TEST_F(HloTfGraphBuilderTest, CheckConcatenateDimsAndShapes) {
   auto builder = HloComputation::Builder("Concatenate");
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape = ShapeUtil::MakeShape(PrimitiveType::F32, {2, 2});
   auto param_1 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param0"));
   auto param_2 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, shape, "param1"));
   builder.AddInstruction(HloInstruction::CreateConcatenate(
-      ShapeUtil::MakeShape(F32, {2, 4}), {param_1, param_2}, 1));
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {param_1, param_2}, 1));
   TF_CHECK_OK(generator_.AddComputation(*builder.Build()));
   GraphDef graph_def = generator_.GetGraphDef();
   EXPECT_EQ(graph_def.node_size(), 3);
@@ -150,5 +152,5 @@ TEST_F(HloTfGraphBuilderTest, EmbeddedComputationsDiamond) {
 }
 
 }  // namespace
-}  // namespace tools
+}  // namespace hlo_graph_dumper
 }  // namespace xla

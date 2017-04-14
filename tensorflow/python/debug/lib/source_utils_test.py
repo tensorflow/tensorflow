@@ -59,7 +59,7 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     self.assertFalse(source_utils._guess_is_tensorflow_py_library(
         self.curr_file_path))
 
-  def _disabledtestSourceUtilModuleReturnsTrue(self):
+  def testSourceUtilModuleReturnsTrue(self):
     self.assertTrue(source_utils._guess_is_tensorflow_py_library(
         source_utils.__file__))
 

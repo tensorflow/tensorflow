@@ -143,7 +143,11 @@ FunctionDef WXPlusB() {
         {{"T", "$T"},
          {"transpose_a", false},
          {"transpose_b", false},
+#ifdef INTEL_MKL 
+         }},
+#else
          {"_kernel", "eigen"}}},
+#endif
        {{"y"}, "Add", {"mm", "b"}, {{"T", "$T"}}}});
 }
 

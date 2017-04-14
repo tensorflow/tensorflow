@@ -1393,6 +1393,33 @@ cc_test(
 )
 
 cc_library(
+    name = "hlo_tfgraph_builder",
+    srcs = ["hlo_tfgraph_builder.cc"],
+    hdrs = ["hlo_tfgraph_builder.h"],
+    visibility = ["//tensorflow/compiler/xla/tools:__pkg__"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_test(
+    name = "hlo_tfgraph_builder_test",
+    srcs = ["hlo_tfgraph_builder_test.cc"],
+    deps = [
+        ":hlo_tfgraph_builder",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "hlo_graph_dumper",
     srcs = [
         "hlo_graph_dumper.cc",
@@ -1401,6 +1428,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_execution_profile",
+        ":hlo_tfgraph_builder",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
