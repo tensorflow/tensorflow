@@ -107,6 +107,27 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_matchers",
+    testonly = 1,
+    srcs = ["hlo_matchers.cc"],
+    hdrs = ["hlo_matchers.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "hlo_matchers_test",
+    srcs = ["hlo_matchers_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:shape_util",
+    ],
+)
+
+cc_library(
     name = "versioned_computation_handle",
     srcs = ["versioned_computation_handle.cc"],
     hdrs = ["versioned_computation_handle.h"],
@@ -188,10 +209,12 @@ cc_test(
     name = "user_computation_test",
     srcs = ["user_computation_test.cc"],
     deps = [
+        ":hlo_matchers",
         ":user_computation",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
@@ -707,6 +730,7 @@ cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
     deps = [
+        ":hlo_matchers",
         ":instruction_fusion",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test_main",
@@ -740,6 +764,7 @@ cc_test(
         ":algebraic_simplifier",
         ":cpu_plugin",
         ":hlo",
+        ":hlo_matchers",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -770,9 +795,11 @@ cc_test(
     srcs = ["reshape_mover_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_matchers",
         ":reshape_mover",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -803,6 +830,7 @@ cc_test(
     deps = [
         ":cpu_plugin",
         ":hlo",
+        ":hlo_matchers",
         ":inliner",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -938,6 +966,7 @@ cc_test(
     deps = [
         ":cpu_plugin",
         ":hlo",
+        ":hlo_matchers",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -1022,6 +1051,7 @@ cc_test(
     srcs = ["tuple_points_to_analysis_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_matchers",
         ":instruction_fusion",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:literal_util",
@@ -1105,6 +1135,7 @@ cc_test(
         ":copy_insertion",
         ":cpu_plugin",
         ":hlo",
+        ":hlo_matchers",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1205,6 +1236,7 @@ cc_test(
         ":computation_layout",
         ":cpu_plugin",
         ":hlo",
+        ":hlo_matchers",
         ":layout_assignment",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_layout",
@@ -1459,6 +1491,7 @@ cc_test(
     srcs = ["transpose_folding_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_matchers",
         ":shape_inference",
         ":transpose_folding",
         "//tensorflow/compiler/xla:literal_util",
