@@ -220,6 +220,9 @@ class HloComputation {
   // Same as Accept() above, but the visitor is given as a function.
   Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
 
+  // Returns a deep copy of this computation including all instructions.
+  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone");
+
   // Returns true if instructions of the given opcode can be removed from the
   // computation. Instructions such as parameters and send/receive instructions
   // cannot be removed without violating invariants of the HLO computation or

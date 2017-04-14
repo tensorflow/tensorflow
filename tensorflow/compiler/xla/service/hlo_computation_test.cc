@@ -323,6 +323,35 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
   EXPECT_EQ(negate, computation->root_instruction());
 }
 
+TEST_F(HloComputationTest, CloneWithControlDependency) {
+  auto builder = HloComputation::Builder(TestName());
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "param0"));
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, param));
+  auto computation = builder.Build(/*root_instruction=*/add);
+
+  TF_CHECK_OK(negate->AddControlDependencyTo(add));
+
+  auto clone = computation->Clone();
+
+  auto cloned_add = clone->root_instruction();
+  EXPECT_EQ(cloned_add->opcode(), HloOpcode::kAdd);
+
+  auto predecessors = cloned_add->control_predecessors();
+  EXPECT_EQ(1, predecessors.size());
+  EXPECT_EQ(HloOpcode::kNegate, predecessors[0]->opcode());
+  auto successors = predecessors[0]->control_successors();
+  EXPECT_THAT(successors, ::testing::ElementsAre(cloned_add));
+}
+
 }  // namespace
 
 }  // namespace xla

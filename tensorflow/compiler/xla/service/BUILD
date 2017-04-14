@@ -186,6 +186,41 @@ cc_test(
 )
 
 cc_library(
+    name = "flatten_call_graph",
+    srcs = ["flatten_call_graph.cc"],
+    hdrs = ["flatten_call_graph.h"],
+    deps = [
+        ":call_graph",
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "flatten_call_graph_test",
+    srcs = ["flatten_call_graph_test.cc"],
+    deps = [
+        ":call_graph",
+        ":flatten_call_graph",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "user_computation",
     srcs = ["user_computation.cc"],
     hdrs = ["user_computation.h"],
@@ -615,9 +650,11 @@ cc_test(
     srcs = ["buffer_assignment_test.cc"],
     deps = [
         ":buffer_assignment",
+        ":call_graph",
         ":computation_tracker",
         ":copy_insertion",
         ":cpu_plugin",
+        ":flatten_call_graph",
         ":hlo",
         ":hlo_ordering",
         "//tensorflow/compiler/xla:literal_util",
@@ -1177,6 +1214,7 @@ cc_library(
     deps = [
         ":buffer_liveness",
         ":call_graph",
+        ":flatten_call_graph",
         ":hlo",
         ":hlo_cost_analysis",
         ":hlo_dce",
