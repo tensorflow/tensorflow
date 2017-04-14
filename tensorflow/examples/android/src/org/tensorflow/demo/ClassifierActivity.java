@@ -26,12 +26,15 @@ import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
+import android.os.Environment;
 import android.os.SystemClock;
 import android.os.Trace;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -40,7 +43,7 @@ import org.tensorflow.demo.OverlayView.DrawCallback;
 import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
-import org.tensorflow.demo.R;
+
 
 public class ClassifierActivity extends CameraActivity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
@@ -78,17 +81,13 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   private String MODEL_FILE = "";
   private String LABEL_FILE = "";
 
-  private ArrayList<String> Model_Files = new ArrayList<>(Arrays.asList(
-          "file:///android_asset/model1/stripped_graph.pb",
-          "file:///android_asset/model2/stripped_graph.pb",
-          "file:///android_asset/model3/stripped_graph.pb",
-          "file:///android_asset/model4/stripped_graph.pb"));
+  private ArrayList<String> Model_Files = new ArrayList<>();
 
   private ArrayList<String> Label_Files = new ArrayList<>(Arrays.asList(
-          "file:///android_asset/model1/retrained_labels.txt",
-          "file:///android_asset/model2/retrained_labels.txt",
-          "file:///android_asset/model3/retrained_labels.txt",
-          "file:///android_asset/model4/retrained_labels.txt"));;
+          "file:///android_asset/us_north/retrained_labels.txt",
+          "file:///android_asset/us_east/retrained_labels.txt",
+          "file:///android_asset/us_south/retrained_labels.txt",
+          "file:///android_asset/us_west/retrained_labels.txt"));;
 
   private Classifier classifier;
 
@@ -156,6 +155,9 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
             TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
+
+    // Set the model files
+    find_all_model_names();
 
     // Initialize the model file with the first entry in the Model_Files and Label_Files lists.
     setModelLabelFiles( 0 );
@@ -307,4 +309,35 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
       borderedText.drawLines(canvas, 10, canvas.getHeight() - 10, lines);
     }
   }
+
+  private void find_all_model_names()
+  {
+    Model_Files.clear();
+    Model_Files.add(getModelFileName("us_north", ".pb"));
+    Model_Files.add(getModelFileName("us_east", ".pb"));
+    Model_Files.add(getModelFileName("us_south", ".pb"));
+    Model_Files.add(getModelFileName("us_west", ".pb"));
+  }
+
+  public String getModelFileName(String path, String ext) {
+    String [] list;
+    try {
+      list = getAssets().list(path);
+      if (list.length > 0) {
+        for (String file : list)
+        {
+          if (file.endsWith(ext))
+          {
+            return "file:///android_asset/" + path + "/" + file;
+          }
+        }
+      }
+    }
+    catch (IOException e) {
+      return "";
+    }
+
+    return "";
+  }
+
 }

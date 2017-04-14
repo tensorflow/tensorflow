@@ -1,4 +1,11 @@
 #!/bin/bash
+# Check if our tensorflow files exist and if not download them
+if [ ! -d tf_files ]; then
+  curl -O http://people.tamu.edu/~alejandrojsuazo/tf_files.tar.gz
+  tar xzvf tf_files.tar.gz
+  rm tf_files.tar.gz
+fi
+
 # Remove old model files
 rm tf_files/us_west/*.*
 
