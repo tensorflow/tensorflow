@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector_test_util
-from tensorflow.contrib.distributions.python.ops.bijectors import softmax_centered as softmax_centered_lib
+from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_bijective_and_finite
+from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered import SoftmaxCentered
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
 
@@ -34,7 +34,7 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
 
   def testBijectorScalar(self):
     with self.test_session():
-      softmax = softmax_centered_lib.SoftmaxCentered()  # scalar by default
+      softmax = SoftmaxCentered()  # scalar by default
       self.assertEqual("softmax_centered", softmax.name)
       x = np.log([[2., 3, 4],
                   [4., 8, 12]])
@@ -59,7 +59,7 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
 
   def testBijectorVector(self):
     with self.test_session():
-      softmax = softmax_centered_lib.SoftmaxCentered(event_ndims=1)
+      softmax = SoftmaxCentered(event_ndims=1)
       self.assertEqual("softmax_centered", softmax.name)
       x = np.log([[2., 3, 4], [4., 8, 12]])
       y = [[0.2, 0.3, 0.4, 0.1], [0.16, 0.32, 0.48, 0.04]]
@@ -80,11 +80,11 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
     with self.test_session():
       for x, y, b in ((tensor_shape.TensorShape([]),
                        tensor_shape.TensorShape([2]),
-                       softmax_centered_lib.SoftmaxCentered(
+                       SoftmaxCentered(
                            event_ndims=0, validate_args=True)),
                       (tensor_shape.TensorShape([4]),
                        tensor_shape.TensorShape([5]),
-                       softmax_centered_lib.SoftmaxCentered(
+                       SoftmaxCentered(
                            event_ndims=1, validate_args=True))):
         self.assertAllEqual(y, b.forward_event_shape(x))
         self.assertAllEqual(y.as_list(),
@@ -95,7 +95,7 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
 
   def testBijectiveAndFinite(self):
     with self.test_session():
-      softmax = softmax_centered_lib.SoftmaxCentered(event_ndims=1)
+      softmax = SoftmaxCentered(event_ndims=1)
       x = np.linspace(-50, 50, num=10).reshape(5, 2).astype(np.float32)
       # Make y values on the simplex with a wide range.
       y_0 = np.ones(5).astype(np.float32)
@@ -104,7 +104,7 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
       y = np.array([y_0, y_1, y_2])
       y /= y.sum(axis=0)
       y = y.T  # y.shape = [5, 3]
-      bijector_test_util.assert_bijective_and_finite(softmax, x, y)
+      assert_bijective_and_finite(softmax, x, y)
 
 
 if __name__ == "__main__":

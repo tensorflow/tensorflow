@@ -22,7 +22,7 @@ import abc
 
 import six
 
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector as bijector_lib
+from tensorflow.contrib.distributions.python.ops.bijectors.bijector import Bijector
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -36,10 +36,10 @@ class BaseBijectorTest(test.TestCase):
       with self.assertRaisesRegexp(TypeError,
                                    ("Can't instantiate abstract class Bijector "
                                     "with abstract methods __init__")):
-        bijector_lib.Bijector()
+        Bijector()
 
   def testDefaults(self):
-    class _BareBonesBijector(bijector_lib.Bijector):
+    class _BareBonesBijector(Bijector):
       """Minimal specification of a `Bijector`."""
 
       def __init__(self):
@@ -80,7 +80,7 @@ class IntentionallyMissingError(Exception):
   pass
 
 
-class BrokenBijector(bijector_lib.Bijector):
+class BrokenBijector(Bijector):
   """Forward and inverse are not inverses of each other."""
 
   def __init__(self, forward_missing=False, inverse_missing=False):
