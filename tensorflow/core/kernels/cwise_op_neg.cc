@@ -20,7 +20,8 @@ REGISTER7(UnaryOp, CPU, "Neg", functor::neg, float, Eigen::half, double, int32,
           complex64, int64, complex128);
 
 #if GOOGLE_CUDA
-REGISTER4(UnaryOp, GPU, "Neg", functor::neg, float, Eigen::half, double, int64);
+REGISTER6(UnaryOp, GPU, "Neg", functor::neg, float, Eigen::half, double, int64,
+          complex64, complex128);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

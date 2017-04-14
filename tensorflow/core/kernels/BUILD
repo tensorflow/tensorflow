@@ -42,6 +42,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -1029,6 +1030,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/debug:debug_io_utils",
     ],
 )
 
@@ -1972,6 +1974,23 @@ cc_library(
     ],
 )
 
+tf_kernel_library(
+    name = "cuda_solvers",
+    srcs = ["cuda_solvers.cc"],
+    hdrs = ["cuda_solvers.h"],
+    # @local_config_cuda//cuda:cusolver, //third_party/eigen3:blas,
+    # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
+    # and f2c helper functions in global namespace. Tell the compiler to
+    # allow multiple definitions when linking this.
+    linkopts = ["-Wl,-zmuldefs"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@local_config_cuda//cuda:cusolver",
+    ],
+)
+
 LINALG_DEPS = [
     ":linalg_ops_common",
     "//third_party/eigen3",
@@ -1983,7 +2002,10 @@ LINALG_DEPS = [
 tf_kernel_library(
     name = "cholesky_op",
     prefix = "cholesky_op",
-    deps = LINALG_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+        ":matrix_band_part_op",
+    ]) + LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -3538,6 +3560,117 @@ tf_kernel_library(
     ],
 )
 
+filegroup(
+    name = "spectrogram_test_data",
+    srcs = [
+        "spectrogram_test_data/short_test_segment.wav",
+        "spectrogram_test_data/short_test_segment_spectrogram.csv.bin",
+        "spectrogram_test_data/short_test_segment_spectrogram_400_200.csv.bin",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "spectrogram",
+    srcs = ["spectrogram.cc"],
+    hdrs = ["spectrogram.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/fft2d:fft2d_headers",
+        "@fft2d//:fft2d",
+    ],
+)
+
+cc_library(
+    name = "spectrogram_test_utils",
+    testonly = 1,
+    srcs = ["spectrogram_test_utils.cc"],
+    hdrs = ["spectrogram_test_utils.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_binary(
+    name = "spectrogram_convert_test_data",
+    testonly = 1,
+    srcs = ["spectrogram_convert_test_data.cc"],
+    deps = [
+        ":spectrogram_test_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "spectrogram_test",
+    size = "medium",
+    srcs = ["spectrogram_test.cc"],
+    data = [":spectrogram_test_data"],
+    deps = [
+        ":spectrogram",
+        ":spectrogram_test_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "spectrogram_op",
+    prefix = "spectrogram_op",
+    deps = [
+        ":spectrogram",
+        "//tensorflow/core:audio_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_cc_test(
+    name = "spectrogram_op_test",
+    size = "small",
+    srcs = ["spectrogram_op_test.cc"],
+    deps = [
+        ":ops_util",
+        ":spectrogram_op",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "audio",
+    deps = [
+        ":decode_wav_op",
+        ":encode_wav_op",
+        ":spectrogram_op",
+    ],
+)
+
 # Android libraries -----------------------------------------------------------
 
 # Changes to the Android srcs here should be replicated in
@@ -3941,6 +4074,7 @@ filegroup(
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
+            "spectrogram_convert_test_data.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",

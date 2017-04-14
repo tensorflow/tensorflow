@@ -27,6 +27,7 @@ import six
 
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.estimator import run_config as core_run_config
 from tensorflow.python.training import server_lib
 
 
@@ -192,8 +193,10 @@ class ClusterConfig(object):
     return int(task_index) if task_index else 0
 
 
-class RunConfig(ClusterConfig):
+class RunConfig(ClusterConfig, core_run_config.RunConfig):
   """This class specifies the configurations for an `Estimator` run.
+
+  This class is the implementation of ${tf.estimator.RunConfig} interface.
 
   If you're a Google-internal user using command line flags with
   `learn_runner.py` (for instance, to do distributed training or to use

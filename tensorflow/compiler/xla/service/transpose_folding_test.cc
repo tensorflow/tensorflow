@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
@@ -151,8 +152,8 @@ TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
   EXPECT_EQ(call, entry_computation->root_instruction());
   HloComputation* callee_computation = call->to_apply();
   // The arguments to the call should be const1, const2, and const3.
-  EXPECT_MATCH(call->operands(), testing::UnorderedMatcher<HloInstruction*>(
-                                     const1, const2, const3));
+  EXPECT_THAT(call->operands(),
+              ::testing::UnorderedElementsAre(const1, const2, const3));
 
   // The callee should contain 3 parameters and 3 binary operators.
   EXPECT_EQ(6, callee_computation->instructions().size());

@@ -45,6 +45,10 @@ function build_libtensorflow_tarball() {
     echo "Must run this from the root of the bazel workspace"
     exit 1
   fi
+  # Delete any leftovers from previous builds in this workspace.
+  DIR=lib_package
+  rm -rf ${DIR}
+
   TARBALL_SUFFIX="${1}"
   BAZEL="bazel --bazelrc ./tensorflow/tools/ci_build/install/.bazelrc"
   BAZEL_OPTS="-c opt"
@@ -71,8 +75,6 @@ function build_libtensorflow_tarball() {
     //tensorflow/java:libtensorflow.jar \
     //tensorflow/java:libtensorflow-src.jar
 
-  DIR=lib_package
-  rm -rf ${DIR}
   mkdir -p ${DIR}
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz ${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz ${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz

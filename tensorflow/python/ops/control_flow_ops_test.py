@@ -678,6 +678,22 @@ class DataTypesTest(TensorFlowTestCase):
                            [1, TestTuple(2, [3, 4]), np.zeros([5, 5]), 6],
                            [11, TestTuple(12, [13, 14]), np.ones([5, 5]), 16])
 
+  def test_cond_inside_while_loop(self):
+    def Body(i, matrix):
+      result_tuple, unused_matrix = control_flow_ops.cond(
+          constant_op.constant(True),
+          lambda: (TestTuple(matrix * 2, matrix * 4), matrix),
+          lambda: (TestTuple(matrix * 4, matrix * 2), matrix))
+      return [i+1, result_tuple.a]
+
+    iteration, matrix = control_flow_ops.while_loop(
+        lambda i, matrix: i < 10,
+        Body,
+        loop_vars=[constant_op.constant(0), array_ops.ones([2, 2])])
+
+    self.assertEqual(iteration.get_shape(), tensor_shape.TensorShape([]))
+    self.assertEqual(matrix.get_shape(), tensor_shape.TensorShape([2, 2]))
+
 
 if __name__ == "__main__":
   googletest.main()

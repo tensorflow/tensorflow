@@ -26,6 +26,19 @@ _TENSORFLOW_BASEDIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.normpath(os.path.abspath(__file__))))))
 
+UNCOMPILED_SOURCE_SUFFIXES = (".py")
+COMPILED_SOURCE_SUFFIXES = (".pyc", ".pyo")
+
+
+def is_extension_uncompiled_python_source(file_path):
+  _, extension = os.path.splitext(file_path)
+  return extension.lower() in UNCOMPILED_SOURCE_SUFFIXES
+
+
+def is_extension_compiled_python_source(file_path):
+  _, extension = os.path.splitext(file_path)
+  return extension.lower() in COMPILED_SOURCE_SUFFIXES
+
 
 def _convert_watch_key_to_tensor_name(watch_key):
   return watch_key[:watch_key.rfind(":")]
@@ -45,10 +58,11 @@ def _guess_is_tensorflow_py_library(py_file_path):
     (`bool`) Whether the file is a part of the tensorflow library.
 
   Raises:
-    ValueError: if py_file_path does not end with ".py".
+    ValueError: if the extension name of py_file_path does not indicate a Python
+      source file (compiled or uncomplied).
   """
-
-  if not py_file_path.endswith(".py"):
+  if (not is_extension_uncompiled_python_source(py_file_path) and
+      not is_extension_compiled_python_source(py_file_path)):
     raise ValueError(
         "Input file path (%s) is not a Python source file." % py_file_path)
   py_file_path = os.path.normpath(os.path.abspath(py_file_path))

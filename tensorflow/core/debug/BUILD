@@ -140,21 +140,6 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_binary(
-    name = "debug_test_server_main",
-    srcs = [
-        "debug_test_server_main.cc",
-    ],
-    deps = [
-        ":debug_grpc_testlib",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "@grpc//:grpc++_unsecure",
-    ],
-)
-
 # TODO(cais): Fix flakiness on GPU and change this back to a tf_cc_test_gpu.
 #   See b/34081273.
 tf_cc_test(

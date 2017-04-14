@@ -305,9 +305,9 @@ class Recurrent(Layer):
       initial_states = self.get_initial_states(inputs)
 
     if len(initial_states) != len(self.states):
-      raise ValueError('Layer has ' + str(
-          len(self.states)) + ' states but was passed ' + str(
-              len(initial_states)) + ' initial states.')
+      raise ValueError('Layer has ' + str(len(self.states)) +
+                       ' states but was passed ' + str(len(initial_states)) +
+                       ' initial states.')
     input_shape = K.int_shape(inputs)
     if self.unroll and input_shape[1] is None:
       raise ValueError('Cannot unroll a RNN if the '
@@ -381,8 +381,8 @@ class Recurrent(Layer):
       if states_value:
         value = states_value[i]
         if value.shape != (batch_size, self.units):
-          raise ValueError('Expected state #' + str(
-              i) + ' to have shape ' + str((batch_size, self.units)) +
+          raise ValueError('Expected state #' + str(i) + ' to have shape ' +
+                           str((batch_size, self.units)) +
                            ' but got array with shape ' + str(value.shape))
       else:
         value = np.zeros((batch_size, self.units))
@@ -748,8 +748,8 @@ class GRU(Recurrent):
     self.kernel_z = self.kernel[:, :self.units]
     self.recurrent_kernel_z = self.recurrent_kernel[:, :self.units]
     self.kernel_r = self.kernel[:, self.units:self.units * 2]
-    self.recurrent_kernel_r = self.recurrent_kernel[:, self.units:self.units *
-                                                    2]
+    self.recurrent_kernel_r = self.recurrent_kernel[:, self.units:
+                                                    self.units * 2]
     self.kernel_h = self.kernel[:, self.units * 2:]
     self.recurrent_kernel_h = self.recurrent_kernel[:, self.units * 2:]
 
@@ -1071,10 +1071,10 @@ class LSTM(Recurrent):
     self.kernel_o = self.kernel[:, self.units * 3:]
 
     self.recurrent_kernel_i = self.recurrent_kernel[:, :self.units]
-    self.recurrent_kernel_f = self.recurrent_kernel[:, self.units:self.units *
-                                                    2]
-    self.recurrent_kernel_c = self.recurrent_kernel[:, self.units * 2:self.units
-                                                    * 3]
+    self.recurrent_kernel_f = self.recurrent_kernel[:, self.units:
+                                                    self.units * 2]
+    self.recurrent_kernel_c = self.recurrent_kernel[:, self.units * 2:
+                                                    self.units * 3]
     self.recurrent_kernel_o = self.recurrent_kernel[:, self.units * 3:]
 
     if self.use_bias:
@@ -1209,8 +1209,8 @@ class LSTM(Recurrent):
                                                 self.recurrent_kernel_i))
       f = self.recurrent_activation(x_f + K.dot(h_tm1 * rec_dp_mask[1],
                                                 self.recurrent_kernel_f))
-      c = f * c_tm1 + i * self.activation(x_c + K.dot(h_tm1 * rec_dp_mask[2],
-                                                      self.recurrent_kernel_c))
+      c = f * c_tm1 + i * self.activation(
+          x_c + K.dot(h_tm1 * rec_dp_mask[2], self.recurrent_kernel_c))
       o = self.recurrent_activation(x_o + K.dot(h_tm1 * rec_dp_mask[3],
                                                 self.recurrent_kernel_o))
     h = o * self.activation(c)

@@ -24,13 +24,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-#include "tensorflow/compiler/xla/test_helpers.h"
-
 namespace xla {
 namespace {
+
+using ::testing::UnorderedElementsAre;
 
 class CopyInsertionTest : public HloTestBase {
  protected:
@@ -97,7 +99,7 @@ TEST_F(CopyInsertionTest, SingleParameter) {
   HloInstruction* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({x}));
 
-  ExpectEqUnordered(x->users(), {tuple});
+  EXPECT_THAT(x->users(), UnorderedElementsAre(tuple));
 
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
@@ -125,7 +127,7 @@ TEST_F(CopyInsertionTest, SingleConstant) {
   HloInstruction* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant}));
 
-  ExpectEqUnordered(constant->users(), {tuple});
+  EXPECT_THAT(constant->users(), UnorderedElementsAre(tuple));
 
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
@@ -219,9 +221,9 @@ TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
   builder.AddInstruction(HloInstruction::CreateTernary(
       tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
 
-  ExpectEqUnordered(constant1->users(), {tuple1});
-  ExpectEqUnordered(constant2->users(), {tuple1, tuple2});
-  ExpectEqUnordered(constant3->users(), {tuple2});
+  EXPECT_THAT(constant1->users(), UnorderedElementsAre(tuple1));
+  EXPECT_THAT(constant2->users(), UnorderedElementsAre(tuple1, tuple2));
+  EXPECT_THAT(constant3->users(), UnorderedElementsAre(tuple2));
 
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
@@ -259,7 +261,7 @@ TEST_F(CopyInsertionTest, BitcastParameter) {
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
-  ExpectEqUnordered(x->users(), {bitcast});
+  EXPECT_THAT(x->users(), UnorderedElementsAre(bitcast));
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
@@ -287,7 +289,7 @@ TEST_F(CopyInsertionTest, BitcastConstant) {
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
-  ExpectEqUnordered(constant->users(), {bitcast});
+  EXPECT_THAT(constant->users(), UnorderedElementsAre(bitcast));
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
@@ -314,7 +316,7 @@ TEST_F(CopyInsertionTest, BitcastTupleElementParameter) {
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
-  ExpectEqUnordered(x->users(), {bitcast});
+  EXPECT_THAT(x->users(), UnorderedElementsAre(bitcast));
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);

@@ -34,6 +34,9 @@ void AppendHloGraphDumperFlags(std::vector<tensorflow::Flag>* flag_list);
 // The values of flags associated with XLA's hlo_graph_dumper module.
 typedef struct {
   string xla_hlo_dump_graph_path;  // Path to write dumped HLO graphs to
+  // If set, dumps HLO graphs as tensorflow GraphDef; otherwise, dumps HLO
+  // graphs as DOT graph.
+  bool xla_hlo_dump_as_graphdef;
 } HloGraphDumperFlags;
 
 // Return a pointer to the HloGraphDumperFlags struct;

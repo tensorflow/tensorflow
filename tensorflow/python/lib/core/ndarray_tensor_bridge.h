@@ -15,6 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_BRIDGE_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_BRIDGE_H_
 
+// Must be included first.
+#include "tensorflow/python/lib/core/numpy.h"
+
+#include <functional>
+
+#include "tensorflow/c/c_api.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/status.h"
+
 namespace tensorflow {
 
 // Destructor passed to TF_NewTensor when it reuses a numpy buffer. Stores a
@@ -25,6 +34,17 @@ void DelayedNumpyDecref(void* data, size_t len, void* obj);
 // Actually dereferences cached numpy arrays. REQUIRES being called while
 // holding the GIL.
 void ClearDecrefCache();
+
+// Creates a numpy array with shapes specified by dim_size and dims and content
+// in data. The array does not own the memory, and destructor will be called to
+// release it. If the status is not ok the caller is responsible for releasing
+// the memory.
+Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
+                       std::function<void()> destructor, PyObject** result);
+
+// Converts TF_DataType to the corresponding numpy type.
+Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
+                                   int* out_pyarray_type);
 
 }  // namespace tensorflow
 

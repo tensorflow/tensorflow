@@ -220,6 +220,10 @@ extern TF_Tensor* TF_NewTensor(TF_DataType, const int64_t* dims, int num_dims,
 extern TF_Tensor* TF_AllocateTensor(TF_DataType, const int64_t* dims,
                                     int num_dims, size_t len);
 
+// Deletes `tensor` and returns a new TF_Tensor with the same content if
+// possible. Returns nullptr and leaves `tensor` untouched if not.
+extern TF_Tensor* TF_TensorMaybeMove(TF_Tensor* tensor);
+
 // Destroy a tensor.
 extern void TF_DeleteTensor(TF_Tensor*);
 
@@ -814,7 +818,7 @@ extern void TF_ImportGraphDefOptionsAddInputMapping(
 // replaced with `dst`. `src_name` refers to a node in the graph to be imported,
 // `dst` references an operation already existing in the graph being imported
 // into.
-extern void TF_GraphImportGraphDefOptionsRemapControlDependency(
+extern void TF_ImportGraphDefOptionsRemapControlDependency(
     TF_ImportGraphDefOptions* opts, const char* src_name, TF_Operation* dst);
 
 // Cause the imported graph to have a control dependency on `oper`. `oper`

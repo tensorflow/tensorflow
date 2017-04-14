@@ -280,8 +280,8 @@ class Tokenizer(object):
           # Use weighting scheme 2 in
           # https://en.wikipedia.org/wiki/Tf%E2%80%93idf
           tf = 1 + np.log(c)
-          idf = np.log(1 + self.document_count / (1 + self.index_docs.get(j, 0)
-                                                 ))
+          idf = np.log(1 + self.document_count /
+                       (1 + self.index_docs.get(j, 0)))
           x[i][j] = tf * idf
         else:
           raise ValueError('Unknown vectorization mode:', mode)

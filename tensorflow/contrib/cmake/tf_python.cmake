@@ -1,3 +1,17 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 # CMake rules for generating the TensorFlow Python bindings.
 #
 # Known limitations:
@@ -669,12 +683,6 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_writer.cc"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.h"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.cc"
-    "${tensorflow_source_dir}/tensorflow/c/c_api.cc"
-    "${tensorflow_source_dir}/tensorflow/c/c_api.h"
-    "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.cc"
-    "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.h"
-    "${tensorflow_source_dir}/tensorflow/c/tf_status_helper.cc"
-    "${tensorflow_source_dir}/tensorflow/c/tf_status_helper.h"
     "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc"
 )
 
@@ -690,6 +698,7 @@ if(WIN32)
     #
     add_library(pywrap_tensorflow_internal_static STATIC
         ${pywrap_tensorflow_internal_src}
+        $<TARGET_OBJECTS:tf_c>
         $<TARGET_OBJECTS:tf_core_lib>
         $<TARGET_OBJECTS:tf_core_cpu>
         $<TARGET_OBJECTS:tf_core_framework>
@@ -701,30 +710,36 @@ if(WIN32)
         $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
         $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
     )
+    
     target_include_directories(pywrap_tensorflow_internal_static PUBLIC
         ${PYTHON_INCLUDE_DIR}
         ${NUMPY_INCLUDE_DIR}
     )
-    target_link_libraries(pywrap_tensorflow_internal_static
-        tf_protos_cc
-        tf_python_protos_cc
+    
+    add_dependencies(pywrap_tensorflow_internal_static tf_protos_cc tf_python_protos_cc)
+    set(pywrap_tensorflow_internal_static_dependencies
+        $<TARGET_FILE:pywrap_tensorflow_internal_static>
+        $<TARGET_FILE:tf_protos_cc>
+        $<TARGET_FILE:tf_python_protos_cc>
     )
+    
     set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
     set_source_files_properties(${pywrap_tensorflow_deffile} PROPERTIES GENERATED TRUE)
 
     add_custom_command(TARGET pywrap_tensorflow_internal_static POST_BUILD
         COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/create_def_file.py
-            --input $<TARGET_FILE:pywrap_tensorflow_internal_static>
-            --output ${pywrap_tensorflow_deffile}
+            --input "${pywrap_tensorflow_internal_static_dependencies}"
+            --output "${pywrap_tensorflow_deffile}"
+            --target _pywrap_tensorflow_internal.pyd
     )
 endif(WIN32)
-
 
 # pywrap_tensorflow_internal is a shared library containing all of the
 # TensorFlow runtime and the standard ops and kernels. These are installed into
 # tf_python/tensorflow/python/.
 add_library(pywrap_tensorflow_internal SHARED
     ${pywrap_tensorflow_internal_src}
+    $<TARGET_OBJECTS:tf_c>
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>
@@ -746,7 +761,8 @@ target_include_directories(pywrap_tensorflow_internal PUBLIC
     ${PYTHON_INCLUDE_DIR}
     ${NUMPY_INCLUDE_DIR}
 )
-target_link_libraries(pywrap_tensorflow_internal
+
+target_link_libraries(pywrap_tensorflow_internal PRIVATE
     ${tf_core_gpu_kernels_lib}
     ${tensorflow_EXTERNAL_LIBRARIES}
     tf_protos_cc
