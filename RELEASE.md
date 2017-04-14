@@ -16,6 +16,7 @@
   * New navigation bar in Curses-based UI
   * NodeStepper (command `invoke_stepper`) now uses intermediate tensor dumps. It also uses `TensorHandles` as direct feeds during successive `cont` calls for improved performance and reduced memory consumption.
 * Initial release of installation guides for Java, C, and Go.
+* Added Text Dashboard to TensorBoard.
 
 ## Deprecations
 
@@ -71,6 +72,8 @@
   * Command history now persists across runs.
   * Bug fix in graph validation related to `tf.while_loops`.
 * Java Maven fixes for bugs with Windows installation.
+* Backport fixes and improvements from external keras.
+* Keras config file handling fix.
 
 ## Thanks to our Contributors
 
