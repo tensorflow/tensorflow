@@ -36,24 +36,26 @@
         android:icon="@drawable/logo"
         android:label="@string/app_name"
         android:theme="@style/Theme.AppCompat">
-
         <activity
             android:name=".MainActivity"
             android:label="@string/activity_name_classification"
             android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
         <activity
             android:name=".ClassifierActivity"
-            android:parentActivityName=".MainActivity"></activity>
-
+            android:parentActivityName=".MainActivity" />
         <activity
             android:name=".AboutActivity"
-            android:parentActivityName=".MainActivity"></activity>
+            android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ClassifyHistoryActivity"
+            android:label="@string/title_activity_classify_history"
+            android:parentActivityName=".MainActivity" />
     </application>
 
 </manifest>

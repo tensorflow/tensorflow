@@ -23,4 +23,5 @@
     <string name="about_project">This app provides a tool to identify the species of a plant by taking a picture of the plant\'s leaves.</string>
     <string name="previous_classifications">Classification History</string>
     <string name="developers">Developers</string>
+    <string name="title_activity_classify_history">ClassifyHistoryActivity</string>
 </resources>

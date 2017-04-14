@@ -26,11 +26,11 @@
         <Button
             android:id="@+id/history_button"
             style="@style/Widget.AppCompat.Button"
-            android:textSize="24dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:onClick="classifyHistory"
-            android:text="@string/previous_classifications" />
+            android:onClick="history"
+            android:text="@string/previous_classifications"
+            android:textSize="24dp" />
     </LinearLayout>
 </android.support.constraint.ConstraintLayout>
