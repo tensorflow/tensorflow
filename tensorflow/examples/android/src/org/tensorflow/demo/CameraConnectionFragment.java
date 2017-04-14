@@ -20,10 +20,12 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
+import android.graphics.Rect;
 import android.app.Fragment;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.res.Configuration;
+import android.hardware.camera2.CaptureFailure;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.RectF;
@@ -31,6 +33,7 @@ import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
@@ -486,12 +489,12 @@ public class CameraConnectionFragment extends Fragment {
         public void onCaptureCompleted(
             final CameraCaptureSession session,
             final CaptureRequest request,
-            final TotalCaptureResult result)
-        {
-          createCameraPreviewSession();
-          //this is where to swtich screen if need to later.
-          //change the comment out the above call and switch screen
-        }
+            final TotalCaptureResult result) {
+
+            createCameraPreviewSession();
+                //this is where to swtich screen if need to later.
+                //change the comment out the above call and switch screen
+            }
       };
 
   /**
@@ -560,7 +563,9 @@ public class CameraConnectionFragment extends Fragment {
               CaptureRequest.CONTROL_AF_MODE,
               CaptureRequest.CONTROL_AF_MODE_OFF);
               //CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+
       // Flash is automatically enabled when necessary.
+      previewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, null);
       previewRequestBuilder.set(
               CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
 
@@ -580,10 +585,60 @@ public class CameraConnectionFragment extends Fragment {
     /**
      * This implements the manual touch focus
      */
-    private boolean focusInOnTouch()
+    private boolean focusInOnTouch(View view, MotionEvent motionEvent)
     {
-        showToast("Manual Focus in development");
-        return false;
+        //showToast("Manual Focus in development");
+
+        final Activity activity = getActivity();
+        final CameraManager manager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
+        try {
+            CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);;
+
+            Rect sensorArraySize = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+
+            final int y = (int)((motionEvent.getX() / (float)view.getWidth())  * (float)sensorArraySize.height());
+            final int x = (int)((motionEvent.getY() / (float)view.getHeight()) * (float)sensorArraySize.width());
+            final int halfTouchWidth  = 100;
+            final int halfTouchHeight = 100;
+            MeteringRectangle focusAreaTouch = new MeteringRectangle(Math.max(x - halfTouchWidth,  0),
+                    Math.max(y - halfTouchHeight, 0),
+                    halfTouchWidth,
+                    halfTouchHeight,
+                    MeteringRectangle.METERING_WEIGHT_MAX - 1);
+
+
+            //first stop the existing repeating request
+            captureSession.stopRepeating();
+
+            //cancel any existing AF trigger (repeated touches, etc.)
+            //previewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL);
+           // previewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+
+            //Now add a new AF trigger with focus region
+            if (characteristics.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) >= 1) {
+                previewRequestBuilder.set(CaptureRequest.CONTROL_AF_REGIONS, new MeteringRectangle[]{focusAreaTouch});
+            }
+            previewRequestBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+            previewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
+            previewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
+            previewRequestBuilder.setTag("FOCUS_TAG"); //we'll capture this later for resuming the preview
+
+            //then we ask for a single request (not repeating!)
+            previewRequest = previewRequestBuilder.build();
+
+            // This initiates the camera preview.
+            captureSession.setRepeatingRequest(previewRequest, null, backgroundHandler);
+            return true;
+        }
+        catch (final CameraAccessException e) {
+            LOGGER.e(e, "Exception!");
+        } catch (final NullPointerException e) {
+            // Currently an NPE is thrown when the Camera2API is used but not supported on the
+            // device this code runs.
+            ErrorDialog.newInstance(getString(R.string.camera_error))
+                    .show(getChildFragmentManager(), FRAGMENT_DIALOG);
+        }
+        return true;
     }
   /**
    * This creates a new capture session to actually take the photo and analyze it.
@@ -666,7 +721,7 @@ public class CameraConnectionFragment extends Fragment {
             @Override
             public boolean onTouch(View view, MotionEvent motionEvent)
             {
-                return focusInOnTouch();
+                return focusInOnTouch(view, motionEvent);
             }
         });
     }
