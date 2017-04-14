@@ -4695,6 +4695,14 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_reshape_op",
+    prefix = "mkl_reshape_op",
+    deps = ARRAY_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
     name = "mkl_lrn_op",
     prefix = "mkl_lrn_op",
     deps = NN_DEPS + [
