@@ -88,7 +88,7 @@ while true; do
 done
 
 ## Set up MKL related environment settings
-if false; then # Disable building with MKL for now
+if true; then # Disable building with MKL for now
   while [ "$TF_NEED_MKL" == "" ]; do
     fromuser=""
     read -p "Do you wish to build TensorFlow with MKL support? [y/N] " INPUT
