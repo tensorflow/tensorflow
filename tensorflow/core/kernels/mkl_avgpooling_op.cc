@@ -120,7 +120,7 @@ class MklAvgPoolingOp : public UnaryOp<T> {
                                 mkl_out_shape.GetMklLayout())) /
                             sizeof(T));
 
-    AllocateOutputSetMklshape(context, 0, &output, tensor_out_shape,
+    AllocateOutputSetMklShape(context, 0, &output, tensor_out_shape,
                               mkl_out_shape);
     mkl_context.pooling_res[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());
@@ -304,7 +304,7 @@ class MklAvgPoolingGradOp : public OpKernel {
                                 mkl_out_shape.GetMklLayout())) /
                             sizeof(T));
 
-    AllocateOutputSetMklshape(context, 0, &output, tensor_out_shape,
+    AllocateOutputSetMklShape(context, 0, &output, tensor_out_shape,
                               mkl_out_shape);
 
     // Set output tensor.
@@ -415,13 +415,13 @@ class MklAvgPoolingGradOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("MklAvgPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklAvgPoolingOp<CPUDevice, float>);
 
 REGISTER_KERNEL_BUILDER(Name("MklAvgPoolGrad")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklAvgPoolingGradOp<CPUDevice, float>);
 
 }  // namespace tensorflow
