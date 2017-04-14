@@ -142,7 +142,7 @@ class MklReshapeOp : public OpKernel {
                               .HostMemory("shape")                        \
                               .TypeConstraint<T>("T")                     \
                               .TypeConstraint<int32>("Tshape")            \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+                              .Label(mkl_op_registry::kMklOpLabel),       \
                           MklReshapeOp<CPUDevice, T>);
 TF_CALL_float(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
