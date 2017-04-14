@@ -426,8 +426,10 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
           << op_kernel->def().op() << " on GPU" << gpu_id_ << " stream["
           << stream_id << "]";
 
-  port::Tracing::TraceMe activity(
-      strings::StrCat(op_kernel->name(), ":", op_kernel->type_string()));
+  // When TraceMe profiling is off (which is the default), the
+  // following TraceMe constructor is simply a conditional test of
+  // false value. Measurements show that its overhead is negligible.
+  port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string());
   op_kernel->ComputeAsync(context, done);
 }
 
