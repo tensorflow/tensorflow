@@ -1302,7 +1302,7 @@ def framesig(sig, frame_len, frame_step, parallel=False, name="framesig"):
     frames = []
     
     for i in range(num_frames):
-      frames.append(ops.slice(pad_sig, [0, i * frame_step], [-1, frame_len], name=name))
+      frames.append(ops.slice(pad_sig, [0, i * frame_step], [-1, frame_len]))
     
     if parallel:
       return ops.parallel_stack(frames, axis=1, name=name)
