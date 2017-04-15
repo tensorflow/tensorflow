@@ -88,6 +88,8 @@ import math
 import numpy as np
 import six
 
+from six.moves import xrange
+
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1298,20 +1300,26 @@ def framesig(sig, frame_len, frame_step, parallel=False, name="framesig"):
   Returns:
     A `Tensor` of frames with shape [batch_size, num_frames, frame_len].
   """
-  sig_len = int(sig.get_shape()[1])
+  sig_shape = sig.get_shape()
+  sig_rank = len(sig_shape)
   
-  num_frames = 1 + int(math.ceil((1.*sig_len-frame_len)/frame_step))
-  pad_len = int((num_frames-1)*frame_step+frame_len)
+  if sig_rank != 2:
+    raise ValueError("expected sig to have rank 2 but was " + sig_rank)
+  
+  sig_len = int(sig_shape[1])
+  
+  num_frames = 1 + int(math.ceil((1. * sig_len - frame_len) / frame_step))
+  pad_len = int((num_frames - 1) * frame_step + frame_len)
   
   with ops.name_scope(name, "framesig", [sig]) as name:
     if pad_len != sig_len:
-      pad_sig = ops.pad(sig, [[0, 0], [0, pad_len-sig_len]], name=name)
+      pad_sig = ops.pad(sig, [[0, 0], [0, pad_len - sig_len]], name=name)
     else:
       pad_sig = sig
     
     frames = []
     
-    for i in range(num_frames):
+    for i in xrange(num_frames):
       frames.append(ops.slice(pad_sig, [0, i * frame_step], [-1, frame_len]))
     
     if parallel:
