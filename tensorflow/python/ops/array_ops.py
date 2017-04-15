@@ -49,7 +49,7 @@ See the @{$python/array_ops} guide.
 @@reverse
 @@reverse_v2
 @@transpose
-@@frames
+@@framesig
 @@extract_image_patches
 @@space_to_batch_nd
 @@space_to_batch
@@ -1274,7 +1274,7 @@ def transpose(a, perm=None, name="transpose"):
     return ret
 
 
-"""Slices a tensor into (overlapping) frames.
+"""Frame a signal into overlapping frames.
 
 Args:
   sig: A `Tensor` with `rank = 2`.
@@ -1283,16 +1283,16 @@ Args:
   name: A name for the operation (optional).
 
 Returns:
-  A `Tensor` of frames. Shape is [batch_size, num_frames, frame_len]
+  A `Tensor` of frames with shape [batch_size, num_frames, frame_len].
 """
-def frames(sig, frame_len, frame_step, name="frames"):
+def framesig(sig, frame_len, frame_step, name="framesig"):
   batch_size = sig.shape[0]
   slen = sig.shape[1]
   
   num_frames = 1 + int(math.ceil((1.*slen-frame_len)/frame_step))
   padlen = int((num_frames-1)*frame_step+frame_len)
   
-  with ops.name_scope(name, "frames", [sig]) as name:
+  with ops.name_scope(name, "framesig", [sig]) as name:
     padsignal = ops.pad(sig, [[0], [padlen-slen]], name=name)
     frames = []
     
