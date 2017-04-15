@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <deque>
+#include <ostream>
 #include <set>
 #include <unordered_set>
 #include <utility>
@@ -2104,6 +2105,10 @@ string ToString(HloInstruction::FusionKind kind) {
     case HloInstruction::FusionKind::kConvBackwardInput:
       return "kConvBackwardInput";
   }
+}
+
+std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {
+  return os << ToString(kind);
 }
 
 string HloInstruction::ConvolutionDimensionNumbersToString() const {

@@ -22,6 +22,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTION_H_
 
 #include <functional>
+#include <iosfwd>
 #include <list>
 #include <memory>
 #include <string>
@@ -897,6 +898,8 @@ class HloInstruction {
 };
 
 string ToString(HloInstruction::FusionKind kind);
+
+std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 
 }  // namespace xla
 
