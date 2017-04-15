@@ -1277,18 +1277,27 @@ def transpose(a, perm=None, name="transpose"):
 """Slices a tensor into (overlapping) frames.
 
 Args:
-  input: A `Tensor` with `rank = 2`.
-  length: The length of each frame.
-  step: The step between frames.
+  sig: A `Tensor` with `rank = 2`.
+  frame_len: The length of each frame.
+  frame_step: The step between frames.
   name: A name for the operation (optional).
+
+Returns:
+  A `Tensor` of frames. Shape is [batch_size, num_frames, frame_len]
 """
-def frames(input, length, step, name="frames"):
-  with ops.name_scope(name, "frames", [input]) as name:
-    num = (input.shape[1]-length)/step+1
+def frames(sig, frame_len, frame_step, name="frames"):
+  batch_size = sig.shape[0]
+  slen = sig.shape[1]
+  
+  num_frames = 1 + int(math.ceil((1.*slen-frame_len)/frame_step))
+  padlen = int((num_frames-1)*frame_step+frame_len)
+  
+  with ops.name_scope(name, "frames", [sig]) as name:
+    padsignal = ops.pad(sig, [[0], [padlen-slen]], name=name)
     frames = []
     
-    for i in range(num):
-      frames.append(tf.slice(input, [0, i * step], [input.shape[0], length], name=name))
+    for i in range(num_frames):
+      frames.append(tf.slice(padsignal, [0, i * step], [batch_size, frame_len], name=name))
     
     return tf.stack(frames, axis=1, name=name)
 
