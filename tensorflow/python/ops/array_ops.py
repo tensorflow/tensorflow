@@ -84,6 +84,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+import math
 import numpy as np
 import six
 
@@ -1287,7 +1288,7 @@ Returns:
   A `Tensor` of frames with shape [batch_size, num_frames, frame_len].
 """
 def framesig(sig, frame_len, frame_step, parallel=False, name="framesig"):
-  sig_len = sig.shape[1]
+  sig_len = int(sig.get_shape()[1])
   
   num_frames = 1 + int(math.ceil((1.*sig_len-frame_len)/frame_step))
   pad_len = int((num_frames-1)*frame_step+frame_len)
