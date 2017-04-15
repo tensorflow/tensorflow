@@ -1275,19 +1275,29 @@ def transpose(a, perm=None, name="transpose"):
     return ret
 
 
-"""Frame a signal into overlapping frames.
-
-Args:
-  sig: A `Tensor` with `rank = 2`.
-  frame_len: The length of each frame.
-  frame_step: The step between frames.
-  parallel: Whether to use `tf.parallel_stack` or `tf.stack`
-  name: A name for the operation (optional).
-
-Returns:
-  A `Tensor` of frames with shape [batch_size, num_frames, frame_len].
-"""
 def framesig(sig, frame_len, frame_step, parallel=False, name="framesig"):
+  """Frame a signal into overlapping frames.
+  May be used in front of spectral functions.
+  
+  For example:
+  
+  ```python
+  pcm = tf.placeholder(tf.float32, [None, 9152])
+  frames = tf.framesig(pcm, 512, 180)
+  magspec = tf.abs(tf.spectral.rfft(frames, tf.constant(512, shape=[1])))
+  image = tf.reshape(magspec, [-1, 49, 257, 1])
+  ```
+  
+  Args:
+    sig: A `Tensor` with `rank = 2`.
+    frame_len: The length of each frame.
+    frame_step: The step between frames.
+    parallel: Whether to use `tf.parallel_stack` or `tf.stack`
+    name: A name for the operation (optional).
+  
+  Returns:
+    A `Tensor` of frames with shape [batch_size, num_frames, frame_len].
+  """
   sig_len = int(sig.get_shape()[1])
   
   num_frames = 1 + int(math.ceil((1.*sig_len-frame_len)/frame_step))
