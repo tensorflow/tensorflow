@@ -647,9 +647,8 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
         name="variance")
     mean = math_ops.add(shifted_mean, shift, name="mean")
     if not keep_dims:
-      # the dimensions for these axes are 1; use any reduce
-      mean = math_ops.reduce_mean(mean, axes, keep_dims=False)
-      variance = math_ops.reduce_mean(variance, axes, keep_dims=False)
+      mean = array_ops.squeeze(mean, axes)
+      variance = array_ops.squeeze(variance, axes)
     if x.dtype == dtypes.float16:
       return (math_ops.cast(mean, dtypes.float16),
               math_ops.cast(variance, dtypes.float16))
