@@ -49,6 +49,7 @@ See the @{$python/array_ops} guide.
 @@reverse
 @@reverse_v2
 @@transpose
+@@frames
 @@extract_image_patches
 @@space_to_batch_nd
 @@space_to_batch
@@ -1271,6 +1272,25 @@ def transpose(a, perm=None, name="transpose"):
     else:
       ret = gen_array_ops.transpose(a, perm, name=name)
     return ret
+
+
+"""Slices a tensor into (overlapping) frames.
+
+Args:
+  input: A `Tensor` with `rank = 2`.
+  length: The length of each frame.
+  step: The step between frames.
+  name: A name for the operation (optional).
+"""
+def frames(input, length, step, name="frames"):
+  with ops.name_scope(name, "frames", [input]) as name:
+    num = (input.shape[1]-length)/step+1
+    frames = []
+    
+    for i in range(num):
+      frames.append(tf.slice(input, [0, i * step], [input.shape[0], length], name=name))
+    
+    return tf.stack(frames, axis=1, name=name)
 
 
 # pylint: disable=invalid-name
