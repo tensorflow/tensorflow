@@ -654,11 +654,16 @@ def strided_slice(input_,
       new_axis_mask=new_axis_mask,
       shrink_axis_mask=shrink_axis_mask)
 
-  def assign(val):
+  parent_name = name
+
+  def assign(val, name=None):
     """Closure that holds all the arguments to create an assignment."""
 
     if var is None:
       raise ValueError("Sliced assignment is only supported for variables")
+
+    if name is None:
+      name = parent_name + "_assign"
 
     return gen_array_ops.strided_slice_assign(
         ref=var,
@@ -666,7 +671,7 @@ def strided_slice(input_,
         end=end,
         strides=strides,
         value=val,
-        name=name + "_assign",
+        name=name,
         begin_mask=begin_mask,
         end_mask=end_mask,
         ellipsis_mask=ellipsis_mask,
