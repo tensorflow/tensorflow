@@ -47,7 +47,8 @@ def allowed_file(filename):
 @APP.route('/')
 def index():
     """ Index page. TODO: Replace with a dashboard or something to help manage the server """
-    return APP.send_static_file('index.html')
+    #return APP.send_static_file('index.html')
+    return render_template("base.html")
 
 @APP.route('/<path:path>')
 def static_file(path):
@@ -66,11 +67,9 @@ def images():
     if request.method == 'POST':
         # Check if the form data was completed successfully
         if 'species' not in request.form:
-            flash('Plant species not specified')
-            return redirect(request.url)
+            return Flask.make_response('error: species field not specified', 400)
         if 'file' not in request.files:
-            flash('No files attached')
-            return redirect(request.url)
+            return Flask.make_response('error: no file uploaded', 400)
 
         # Grab the form data
         species = request.form['species'].replace(' ', '_').lower()
@@ -82,8 +81,7 @@ def images():
 
         # Check if no file was selected
         if img.filename == '':
-            flash('No file selected')
-            return redirect(request.url)
+            return Flask.make_response('error: no file selected', 400)
 
         # Process file if all information is present
         if img and allowed_file(img.filename) and species:
@@ -111,7 +109,7 @@ def images():
 
             # save the image in the directory
             img.save(os.path.join(directory, filename))
-            return redirect('/images')
+            return Flask.make_response('file uploaded successfully', 200)
 
 @APP.route('/images/search', methods=['GET', 'POST'])
 def search_images():
@@ -123,6 +121,10 @@ def search_images():
         # Serve search page
         return APP.send_static_file('search.html')
     if request.method == 'POST':
+        # Check if form data was completed successfully
+        if 'species' not in request.form:
+            return Flask.make_response('error: species field not specified', 400)
+
         # Grab the form data
         exist = False
         search = request.form['species']
@@ -203,9 +205,11 @@ def list_models():
 def download_model():
     """ Send the specified model to the client. """
     # Check that URL arguments have been included.
-    if 'model-key' and 'model-time' not in request.args:
-        resp = Flask.make_response("error: model-key and/or model-time arguments are missing", 400)
-        return resp
+    if 'model-key' not in request.args:
+        return Flask.make_response('error: model-key argument missing from URL', 400)
+    if 'model-time' not in request.args:
+        return Flask.make_response('error: model-time argument missing from URL', 400)
+
     # Update the model locations and check if new version of model exists.
     if update_models():
         key = request.args.get('model-key')
@@ -219,17 +223,19 @@ def download_model():
             path, name = os.path.split(path)
             return send_from_directory(path, name)
         else:
-            return False
+            return Flask.make_response('error: model file not found', 404)
     else:
-        return False
+        return Flask.make_response('error: model dictionary failed to update', 500)
 
 @APP.route('/update-label')
 def download_label():
     """ Send the specified label to the client. """
     # Check that URL arguments have been included.
-    if 'model-key' and 'model-time' not in request.args:
-        resp = Flask.make_response("error: model-key and/or model-time arguments are missing", 400)
-        return resp
+    if 'model-key' not in request.args:
+        return Flask.make_response('error: model-key argument missing from URL', 400)
+    if 'model-time' not in request.args:
+        return Flask.make_response('error: model-time argument missing from URL', 400)
+
     # Update the model locations and check if new version of model exists.
     if update_models():
         key = request.args.get('model-key')
@@ -242,9 +248,9 @@ def download_label():
             path, name = os.path.split(path)
             return send_from_directory(path, name)
         else:
-            return False
+            return Flask.make_response('error: label file not found', 404)
     else:
-        return False
+        return Flask.make_response('error: model dictionary failed to update', 500)
 
 def check_time(path, time):
     """ Check the metadata of the model file to see if there is a new

@@ -1371,13 +1371,29 @@ a.text-danger:hover,
 a.text-danger:focus {
   color: #843534;
 }
+.bg-white {
+  color: #000;
+  background-color: #FFFFFF;
+}
+a.bg-white:hover,
+a.bg-white:focus {
+  background-color: #cccccc;
+}
 .bg-primary {
   color: #fff;
-  background-color: #337ab7;
+  background-color: #74D117;
 }
 a.bg-primary:hover,
 a.bg-primary:focus {
-  background-color: #286090;
+  background-color: #0DDE2F;
+}
+.bg-secondary {
+  color: #fff;
+  background-color: #C7E80E;
+}
+a.bg-secondary:hover,
+a.bg-secondary:focus {
+  background-color: #DED20D;
 }
 .bg-success {
   background-color: #dff0d8;
