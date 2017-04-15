@@ -1280,12 +1280,13 @@ Args:
   sig: A `Tensor` with `rank = 2`.
   frame_len: The length of each frame.
   frame_step: The step between frames.
+  parallel: Whether to use `tf.parallel_stack` or `tf.stack`
   name: A name for the operation (optional).
 
 Returns:
   A `Tensor` of frames with shape [batch_size, num_frames, frame_len].
 """
-def framesig(sig, frame_len, frame_step, parallel_stack=False, name="framesig"):
+def framesig(sig, frame_len, frame_step, parallel=False, name="framesig"):
   slen = sig.shape[1]
   
   num_frames = 1 + int(math.ceil((1.*slen-frame_len)/frame_step))
@@ -1296,12 +1297,12 @@ def framesig(sig, frame_len, frame_step, parallel_stack=False, name="framesig"):
     frames = []
     
     for i in range(num_frames):
-      frames.append(tf.slice(padsignal, [0, i * step], [-1, frame_len], name=name))
+      frames.append(ops.slice(padsignal, [0, i * step], [-1, frame_len], name=name))
     
-    if parallel_stack:
-      return tf.parallel_stack(frames, axis=1, name=name)
+    if parallel:
+      return ops.parallel_stack(frames, axis=1, name=name)
     else:
-      return tf.stack(frames, axis=1, name=name)
+      return ops.stack(frames, axis=1, name=name)
 
 
 # pylint: disable=invalid-name
