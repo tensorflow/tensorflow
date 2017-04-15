@@ -1286,18 +1286,17 @@ Returns:
   A `Tensor` of frames with shape [batch_size, num_frames, frame_len].
 """
 def framesig(sig, frame_len, frame_step, name="framesig"):
-  batch_size = sig.shape[0]
   slen = sig.shape[1]
   
   num_frames = 1 + int(math.ceil((1.*slen-frame_len)/frame_step))
   padlen = int((num_frames-1)*frame_step+frame_len)
   
   with ops.name_scope(name, "framesig", [sig]) as name:
-    padsignal = ops.pad(sig, [[0], [padlen-slen]], name=name)
+    padsignal = ops.pad(sig, [[0, 0], [0, padlen-slen]], name=name)
     frames = []
     
     for i in range(num_frames):
-      frames.append(tf.slice(padsignal, [0, i * step], [batch_size, frame_len], name=name))
+      frames.append(tf.slice(padsignal, [0, i * step], [-1, frame_len], name=name))
     
     return tf.stack(frames, axis=1, name=name)
 
