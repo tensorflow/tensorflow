@@ -1,52 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
-    <title>{{search}} Results</title>
+{% extends "base.html" %}
 
-    <!-- Bootstrap -->
-    <link href="/css/bootstrap.min.css" rel="stylesheet">
+{% block title %}{{ super() }}{% endblock %}
+{% block header %}
+<h1 class="text-center">{{search}} Results</h1>
+{% endblock %}
 
-    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
-    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
-    <!--[if lt IE 9]>
-      <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
-      <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
-    <![endif]-->
-  </head>
-  <body>
-    <div class="container-fluid">
-		<div class="row">
-			<div class="col-md-3"></div>
-			<div class="col-md-6"><h1 class="text-center">{{search}} Results</h1></div>
-			<div class="col-md-3"></div>
-		</div>
-	</div>
-
-    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
-    <!-- Include all compiled plugins (below), or include individual files as needed -->
-    <script src="/js/bootstrap.min.js"></script>
-
-	<div class="container-fluid">
-		<div class="row">
-            <div class="col-md-3"></div>
-            {% if not exist %}
-            <div class="col-md-6">No images were found for {{search}}.</div>
-            {% else %}
-            <div class="row">
-                {% for result in results %}
-                <div class="col-sm-2">
-                    <img src="{{ result }}" ahref="{{ result }}" class="img-responsive"/>
-                </div>
-                {% endfor %}
-            {% endif %}
-            </div>
-            <div class="col-md-3"></div>
-		</div>
-	</div>
-  </body>
-</html>
+{% block content %}
+  {% if not exist %}
+  <p class="text-center">No images were found for {{search}}.</p>
+  {% else %}
+  <div class="row">
+      {% for result in results %}
+      <div class="col-xs-2 col-sm-2 col-md-1 col-lg-1">
+          <img src="{{ result }}" ahref="{{ result }}" class="img-responsive"/>
+      </div>
+      {% endfor %}
+  {% endif %}
+{% endblock %}
+{% block footer %}{{ super() }}{% endblock %}

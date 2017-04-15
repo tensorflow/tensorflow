@@ -47,8 +47,7 @@ def allowed_file(filename):
 @APP.route('/')
 def index():
     """ Index page. TODO: Replace with a dashboard or something to help manage the server """
-    #return APP.send_static_file('index.html')
-    return render_template("base.html")
+    return render_template("index.html")
 
 @APP.route('/<path:path>')
 def static_file(path):
@@ -63,7 +62,7 @@ def images():
     POST: Upload the given image to store under the UPLOAD_FOLDER. """
     if request.method == 'GET':
         # Display file upload form
-        return APP.send_static_file('upload.html')
+        return render_template('upload.html')
     if request.method == 'POST':
         # Check if the form data was completed successfully
         if 'species' not in request.form:
@@ -119,7 +118,7 @@ def search_images():
     POST: Receives the plant species to search for and returns a grid of images. """
     if request.method == 'GET':
         # Serve search page
-        return APP.send_static_file('search.html')
+        return render_template('search.html')
     if request.method == 'POST':
         # Check if form data was completed successfully
         if 'species' not in request.form:

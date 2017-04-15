@@ -29,12 +29,12 @@
   <body background="/images/leaves_bg.jpg">
 
     <div class="container" id="bodyContainer">
+      <div class="col-xs-12 col-md-2 col-lg-1"></div>
 
-      <div class="container bg-primary" id="header">
-        <div class="row">
-          <div class="col-xs-12 col-md-2 col-lg-1"></div>
+      <div class="col-xs-12 col-md-8 col-lg-10 bg-white">
 
-          <div class="col-xs-12 col-md-8 col-lg-10 bg-white">
+        <div class="row" id="header">
+          <div class="col-xs-12 col-md-12 col-lg-12">
             {% block header %}
             <h1 class="text-center">
               Computer vision for Cloud-based Horticulture Catalog<br />
@@ -43,33 +43,27 @@
             </h1>
             {% endblock %}
           </div>
-
-          <div class="col-xs-12 col-md-2 col-lg-1"></div>
-        </div>
-      </div>
-
-      <div class="container" id="content">
-        <div class="col-xs-12 col-sm-2 col-md-3 col-lg-4"></div>
-
-        <div class="col-xs-12 col-sm-8 col-md-6 col-lg-4">
-          {% block content %}
-
-          {% endblock %}
-        </div>
-        <div class="col-xs-12 col-sm-2 col-md-3 col-lg-4"></div>
-      </div>
-
-      <div class="container" id="footer">
-        <div class="col-xs-12 col-sm-2 col-md-3 col-lg-4"></div>
-
-        <div class="col-xs-12 col-sm-8 col-md-6 col-lg-4">
-          {% block footer %}
-          <small>Copyright 2017 eLeaf Team</small>
-          {% endblock %}
         </div>
 
-        <div class="col-xs-12 col-sm-2 col-md-3 col-lg-4"></div>
+        <div class="row" id="content">
+          <div class="col-xs-12 col-md-12 col-lg-12">
+            {% block content %}
+
+            {% endblock %}
+          </div>
+        </div>
+
+        <div class="row" id="footer">
+          <div class="col-xs-12 col-md-12 col-lg-12 text-center">
+            {% block footer %}
+            <small>Copyright 2017 eLeaf Team</small>
+            {% endblock %}
+          </div>
+        </div>
+
       </div>
 
+      <div class="col-xs-12 col-md-2 col-lg-1"></div>
+    </div>
   </body>
 </html>
