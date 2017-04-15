@@ -326,6 +326,10 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     state = {k: v for k, v in self.__dict__.items() if not k.startswith('__')}
     ordered_state = collections.OrderedDict(
         sorted(state.items(), key=lambda t: t[0]))
+    # For class instance without __repr__, some special cares are required.
+    # Otherwise, the object address will be used.
+    if '_cluster_spec' in ordered_state:
+      ordered_state['_cluster_spec'] = ordered_state['_cluster_spec'].as_dict()
     return ', '.join(
         '%s=%r' % (k, v) for (k, v) in six.iteritems(ordered_state))
 
