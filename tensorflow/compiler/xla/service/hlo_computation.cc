@@ -583,4 +583,40 @@ Status HloComputation::Accept(
   return this->Accept(&visitor);
 }
 
+std::unique_ptr<HloComputation> HloComputation::Clone(const string& suffix) {
+  VLOG(1) << "Cloning " << name() << " --> " << suffix << "\n";
+  auto postorder = MakeInstructionPostOrder();
+  std::unordered_map<HloInstruction*, HloInstruction*> clone_map;
+  std::vector<std::unique_ptr<HloInstruction>> instructions;
+  std::unique_ptr<HloInstruction> new_instr = nullptr;
+  for (auto instr : postorder) {
+    std::vector<HloInstruction*> new_operands;
+    for (auto operand : instr->operands()) {
+      HloInstruction* new_operand = FindOrDie(clone_map, operand);
+      CHECK(new_operand != nullptr);
+      new_operands.push_back(new_operand);
+    }
+
+    new_instr = instr->CloneWithNewOperands(instr->shape(), new_operands);
+    InsertOrDie(&clone_map, instr, new_instr.get());
+    instructions.push_back(std::move(new_instr));
+  }
+  Builder builder(name() + suffix);
+  for (auto& instr : instructions) {
+    builder.AddInstruction(std::move(instr));
+  }
+  auto result = builder.Build(
+      /*root_instruction=*/FindOrDie(clone_map, root_instruction()));
+
+  // Clone control dependencies.
+  for (auto instr : postorder) {
+    HloInstruction* new_instr = FindOrDie(clone_map, instr);
+    for (auto successor : instr->control_successors()) {
+      TF_CHECK_OK(
+          new_instr->AddControlDependencyTo(FindOrDie(clone_map, successor)));
+    }
+  }
+  return result;
+}
+
 }  // namespace xla

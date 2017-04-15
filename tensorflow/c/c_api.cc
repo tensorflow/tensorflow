@@ -21,6 +21,9 @@ limitations under the License.
 #include <vector>
 
 #ifndef __ANDROID__
+#include "tensorflow/cc/framework/gradients.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #endif
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -2112,6 +2115,75 @@ void TF_FinishWhile(const TF_WhileParams* params, TF_Status* status,
 }
 
 void TF_AbortWhile(const TF_WhileParams* params) { FreeWhileResources(params); }
+
+#ifndef __ANDROID__
+namespace {
+
+void OutputsFromTFOutputs(TF_Output* tf_outputs, int n, TF_Status* status,
+                          std::vector<tensorflow::Output>* outputs) {
+  outputs->resize(n);
+  for (int i = 0; i < n; i++) {
+    const TF_Output& tf_output = tf_outputs[i];
+    (*outputs)[i] = tensorflow::Output(&tf_output.oper->node, tf_output.index);
+  }
+}
+
+void TFOutputsFromOutputs(const std::vector<tensorflow::Output>& outputs,
+                          TF_Output* tf_outputs) {
+  for (int i = 0; i < outputs.size(); i++) {
+    tf_outputs[i].oper = ToOperation(outputs[i].node());
+    tf_outputs[i].index = outputs[i].index();
+  }
+}
+
+}  // namespace
+#endif  // __ANDROID__
+
+void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
+                     TF_Output* dx, TF_Status* status, TF_Output* dy) {
+#ifdef __ANDROID__
+  status->status = tensorflow::errors::Unimplemented(
+      "Adding gradients is not supported in Android. File a bug at "
+      "https://github.com/tensorflow/tensorflow/issues if this feature is "
+      "important to you");
+#else
+  std::vector<tensorflow::Output> y_arg;
+  std::vector<tensorflow::Output> x_arg;
+  std::vector<tensorflow::Output> dy_arg;
+  OutputsFromTFOutputs(y, ny, status, &y_arg);
+  OutputsFromTFOutputs(x, nx, status, &x_arg);
+
+  {
+    // We need to hold on to the lock while we have a scope that uses TF_Graph.
+    mutex_lock graph_lock(g->mu);
+
+    const int max_node_id_before = g->graph.num_node_ids();
+
+    tensorflow::Scope scope =
+        NewInternalScope(&g->graph, &status->status, &g->refiner);
+
+    if (dx != nullptr) {
+      std::vector<tensorflow::Output> dx_arg;
+      OutputsFromTFOutputs(dx, ny, status, &dx_arg);
+      status->status =
+          AddSymbolicGradients(scope, y_arg, x_arg, dx_arg, &dy_arg);
+    } else {
+      status->status = AddSymbolicGradients(scope, y_arg, x_arg, &dy_arg);
+    }
+
+    // Update g->name_map with the name_map from the scope, which will contain
+    // the new gradient ops.
+    for (int i = max_node_id_before; i < g->graph.num_node_ids(); ++i) {
+      Node* n = g->graph.FindNodeId(i);
+      if (n == nullptr) continue;
+      g->name_map[n->name()] = n;
+    }
+  }
+
+  // Unpack the results from grad_outputs_arg.
+  TFOutputsFromOutputs(dy_arg, dy);
+#endif  // __ANDROID__
+}
 
 // TF_Session functions ----------------------------------------------
 

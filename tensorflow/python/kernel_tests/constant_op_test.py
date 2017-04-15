@@ -350,7 +350,7 @@ class ZerosTest(test.TestCase):
 
 class ZerosLikeTest(test.TestCase):
 
-  def _compareZeros(self, dtype, use_gpu):
+  def _compareZeros(self, dtype, fully_defined_shape, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       # Creates a tensor of non-zero values with shape 2 x 3.
       # NOTE(kearnes): The default numpy dtype associated with tf.string is
@@ -361,16 +361,24 @@ class ZerosLikeTest(test.TestCase):
         numpy_dtype = np.string_
       else:
         numpy_dtype = dtype.as_numpy_dtype
-      d = constant_op.constant(np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
+      if fully_defined_shape:
+        d = constant_op.constant(
+            np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
+      else:
+        d = array_ops.placeholder(dtype=dtype)
       # Constructs a tensor of zeros of the same dimensions and type as "d".
       z_var = array_ops.zeros_like(d)
       # Test that the type is correct
       self.assertEqual(z_var.dtype, dtype)
       # Test that the shape is correct
-      self.assertEqual([2, 3], z_var.get_shape())
+      if fully_defined_shape:
+        self.assertEqual([2, 3], z_var.get_shape())
 
       # Test that the value is correct
-      z_value = z_var.eval()
+      feed_dict = {}
+      if not fully_defined_shape:
+        feed_dict[d] = np.ones((2, 3), dtype=numpy_dtype)
+      z_value = z_var.eval(feed_dict=feed_dict)
       self.assertFalse(np.any(z_value))
       self.assertEqual((2, 3), z_value.shape)
 
@@ -381,14 +389,16 @@ class ZerosLikeTest(test.TestCase):
         dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64,
         dtypes_lib.string
     ]:
-      self._compareZeros(dtype, False)
+      self._compareZeros(dtype, fully_defined_shape=False, use_gpu=False)
+      self._compareZeros(dtype, fully_defined_shape=True, use_gpu=False)
 
   def testZerosLikeGPU(self):
     for dtype in [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
         dtypes_lib.bool, dtypes_lib.int64, dtypes_lib.string
     ]:
-      self._compareZeros(dtype, True)
+      self._compareZeros(dtype, fully_defined_shape=False, use_gpu=True)
+      self._compareZeros(dtype, fully_defined_shape=True, use_gpu=True)
 
   def testZerosLikePartialShape(self):
     d = array_ops.placeholder(dtypes_lib.float32, shape=[None, 4, None])

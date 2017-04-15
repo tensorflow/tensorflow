@@ -683,6 +683,20 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_writer.cc"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.h"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.cc"
+    "${tensorflow_source_dir}/tensorflow/c/c_api.cc"
+    "${tensorflow_source_dir}/tensorflow/c/c_api.h"
+    "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.cc"
+    "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.h"
+    "${tensorflow_source_dir}/tensorflow/c/tf_status_helper.cc"
+    "${tensorflow_source_dir}/tensorflow/c/tf_status_helper.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/gradients.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/gradients.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/grad_op_registry.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/grad_op_registry.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/ops.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/ops.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/scope_internal.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/scope.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc"
 )
 
@@ -702,6 +716,7 @@ if(WIN32)
         $<TARGET_OBJECTS:tf_core_lib>
         $<TARGET_OBJECTS:tf_core_cpu>
         $<TARGET_OBJECTS:tf_core_framework>
+        $<TARGET_OBJECTS:tf_cc_ops>
         $<TARGET_OBJECTS:tf_core_ops>
         $<TARGET_OBJECTS:tf_core_direct_session>
         $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
@@ -743,6 +758,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>
+    $<TARGET_OBJECTS:tf_cc_ops>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>

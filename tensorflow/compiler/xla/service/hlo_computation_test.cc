@@ -20,11 +20,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 
@@ -250,8 +253,7 @@ TEST_F(HloComputationTest, DeepCopyArray) {
 
   auto copy = computation->DeepCopyInstruction(constant).ValueOrDie();
 
-  EXPECT_EQ(HloOpcode::kCopy, copy->opcode());
-  EXPECT_EQ(constant, copy->operand(0));
+  EXPECT_THAT(copy, op::Copy(constant));
 }
 
 TEST_F(HloComputationTest, DeepCopyTuple) {
@@ -268,18 +270,10 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
 
   auto tuple_copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
 
-  EXPECT_EQ(HloOpcode::kTuple, tuple_copy->opcode());
-  EXPECT_EQ(HloOpcode::kCopy, tuple_copy->operand(0)->opcode());
-  const HloInstruction* gte0 = tuple_copy->operand(0)->operand(0);
-  EXPECT_EQ(HloOpcode::kGetTupleElement, gte0->opcode());
-  EXPECT_EQ(0, gte0->tuple_index());
-  EXPECT_EQ(tuple, gte0->operand(0));
-
-  EXPECT_EQ(HloOpcode::kCopy, tuple_copy->operand(1)->opcode());
-  const HloInstruction* gte1 = tuple_copy->operand(1)->operand(0);
-  EXPECT_EQ(HloOpcode::kGetTupleElement, gte1->opcode());
-  EXPECT_EQ(1, gte1->tuple_index());
-  EXPECT_EQ(tuple, gte1->operand(0));
+  EXPECT_THAT(tuple_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
+                                    op::Copy(op::GetTupleElement(tuple))));
+  EXPECT_EQ(0, tuple_copy->operand(0)->operand(0)->tuple_index());
+  EXPECT_EQ(1, tuple_copy->operand(1)->operand(0)->tuple_index());
 }
 
 TEST_F(HloComputationTest, CycleDetection) {
@@ -319,12 +313,43 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
   auto computation = builder.Build();
 
   EXPECT_EQ(4, computation->instruction_count());
+  EXPECT_THAT(computation->root_instruction(), op::Negate(constant));
   EXPECT_EQ(negate, computation->root_instruction());
 
   ASSERT_IS_OK(computation->RemoveInstructionAndUnusedOperands(dead_add));
 
   EXPECT_EQ(2, computation->instruction_count());
+  EXPECT_THAT(computation->root_instruction(), op::Negate(constant));
   EXPECT_EQ(negate, computation->root_instruction());
+}
+
+TEST_F(HloComputationTest, CloneWithControlDependency) {
+  auto builder = HloComputation::Builder(TestName());
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "param0"));
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, param));
+  auto computation = builder.Build(/*root_instruction=*/add);
+
+  TF_CHECK_OK(negate->AddControlDependencyTo(add));
+
+  auto clone = computation->Clone();
+
+  auto cloned_add = clone->root_instruction();
+  EXPECT_EQ(cloned_add->opcode(), HloOpcode::kAdd);
+
+  auto predecessors = cloned_add->control_predecessors();
+  EXPECT_EQ(1, predecessors.size());
+  EXPECT_EQ(HloOpcode::kNegate, predecessors[0]->opcode());
+  auto successors = predecessors[0]->control_successors();
+  EXPECT_THAT(successors, ::testing::ElementsAre(cloned_add));
 }
 
 }  // namespace

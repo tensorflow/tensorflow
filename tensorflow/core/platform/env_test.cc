@@ -253,10 +253,10 @@ TEST_F(DefaultEnvTest, SleepForMicroseconds) {
   env_->SleepForMicroseconds(sleep_time);
   const int64 delta = env_->NowMicros() - start;
 
-  // Subtract 50 from the sleep_time for this check because NowMicros can
+  // Subtract 200 from the sleep_time for this check because NowMicros can
   // sometimes give slightly inconsistent values between the start and the
   // finish (e.g. because the two calls run on different CPUs).
-  EXPECT_GE(delta, sleep_time - 50);
+  EXPECT_GE(delta, sleep_time - 200);
 }
 
 class TmpDirFileSystem : public NullFileSystem {

@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/parallel_cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -240,7 +241,6 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
                    : TransposeFolding::OperandIndices{};
       },
       TransposeFolding::NeverFoldTranspose);
-  pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
   pipeline.AddPass<CpuInstructionFusion>();
   pipeline.AddPass<CpuLayoutAssignment>(
@@ -268,6 +268,7 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
     pipeline.AddPass<ParallelizationPreparation>();
   }
   pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 

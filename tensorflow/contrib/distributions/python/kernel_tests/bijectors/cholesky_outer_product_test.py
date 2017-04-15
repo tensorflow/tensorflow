@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops import gamma as gamma_lib
 from tensorflow.contrib.distributions.python.ops import transformed_distribution as transformed_distribution_lib
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector_test_util
+from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_scalar_congruency
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -57,7 +57,7 @@ class InvertBijectorTest(test.TestCase):
   def testScalarCongruency(self):
     with self.test_session():
       bijector = bijectors.Invert(bijectors.Exp())
-      bijector_test_util.assert_scalar_congruency(
+      assert_scalar_congruency(
           bijector, lower_x=1e-3, upper_x=1.5, rtol=0.05)
 
   def testShapeGetters(self):

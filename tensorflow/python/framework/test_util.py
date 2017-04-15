@@ -117,6 +117,36 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
     raise AssertionError(compat.as_str(diff))
 
 
+def assert_meta_graph_protos_equal(tester, a, b):
+  """Compares MetaGraphDefs `a` and `b` in unit test class `tester`."""
+  # Carefully check the collection_defs
+  tester.assertEqual(set(a.collection_def), set(b.collection_def))
+  collection_keys = a.collection_def.keys()
+  for k in collection_keys:
+    a_value = a.collection_def[k]
+    b_value = b.collection_def[k]
+    proto_type = ops.get_collection_proto_type(k)
+    if proto_type:
+      a_proto = proto_type()
+      b_proto = proto_type()
+      # Number of entries in the collections is the same
+      tester.assertEqual(len(a_value.bytes_list.value),
+                         len(b_value.bytes_list.value))
+      for (a_value_item, b_value_item) in zip(
+          a_value.bytes_list.value,
+          b_value.bytes_list.value):
+        a_proto.ParseFromString(a_value_item)
+        b_proto.ParseFromString(b_value_item)
+        tester.assertProtoEquals(a_proto, b_proto)
+    else:
+      tester.assertEquals(a_value, b_value)
+  # Compared the fields directly, remove their raw values from the
+  # proto comparison below.
+  a.ClearField("collection_def")
+  b.ClearField("collection_def")
+  tester.assertProtoEquals(a, b)
+
+
 # Matches attributes named via _SHARDED_SUFFIX in
 # tensorflow/python/training/saver.py
 _SHARDED_SAVE_OP_PATTERN = "_temp_[0-9a-z]{32}/part"
