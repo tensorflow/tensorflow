@@ -122,10 +122,13 @@ public:
       }
     }
 
+    all_outputs_are_inputs = (num == output_map.size());
+
     return Status::OK();
   }
 
   std::map<int64,int64> output_map;
+  bool all_outputs_are_inputs;
 
 private:
   std::vector<poplar::Tensor> parameters_;
@@ -199,15 +202,19 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   std::vector<poplar::program::Program> progs;
   progs.push_back(visitor.sequence);
 
-  try {
-    VLOG(1) << "Compile engine " << hlo_module->name();
+  if (visitor.all_outputs_are_inputs) {
+    VLOG(1) << "Skip engine compilation - all outputs are inputs";
+  } else {
+    try {
+      VLOG(1) << "Compile engine " << hlo_module->name();
 
-    engine.reset(new poplar::Engine(*graph, progs));
-  }
-  catch (poplar::poplar_error e) {
-    return port::Status(port::error::UNKNOWN,
-                        port::StrCat("[Poplar Engine] ",
-                                     e.what()));
+      engine.reset(new poplar::Engine(*graph, progs));
+    }
+    catch (poplar::poplar_error e) {
+      return port::Status(port::error::UNKNOWN,
+                          port::StrCat("[Poplar Engine] ",
+                                       e.what()));
+    }
   }
 
   std::unique_ptr<Executable> executable;
