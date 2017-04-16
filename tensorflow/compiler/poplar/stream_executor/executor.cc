@@ -104,6 +104,9 @@ port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
                                              uint64 size) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(pop_dst->opaque());
   memcpy(tc->data, host_src, size);
+  // TODO - this should copy to the device if it is currently on the device.
+  // TODO - can that happen?  maybe buffers from the host are not updated in
+  // TODO - place
   return port::Status::OK();
 }
 
@@ -184,8 +187,7 @@ PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape));
     TensorControl* tc =
-            reinterpret_cast<TensorControl*>(
-                    Allocate(size));
+            reinterpret_cast<TensorControl*>(Allocate(size));
     tc->on_device = true;
     tc->output_handle = n;
     return se::DeviceMemoryBase(tc, size);
@@ -213,6 +215,27 @@ PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape,
     }
 
     return se::DeviceMemoryBase(tc, size);
+  }
+}
+
+port::StatusOr<DeviceMemoryBase>
+PoplarExecutor::RemapArgs(const xla::Shape& shape,
+                          const OutputMap& output_map,
+                          const Args& args) {
+  if (shape.element_type() != xla::TUPLE) {
+    return args[0];
+  } else {
+    int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void *)));
+    TensorControl *tc = reinterpret_cast<TensorControl *>(Allocate(size));
+
+    void **buf = reinterpret_cast<void **>(tc->data);
+    for (int64 n = 0; n < xla::ShapeUtil::TupleElementCount(shape); n++) {
+      se::DeviceMemoryBase out(args[n]);
+      *buf++ = out.opaque();
+    }
+
+    return se::DeviceMemoryBase(tc, size);
+
   }
 }
 
@@ -253,40 +276,47 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
   {
     std::lock_guard <std::recursive_mutex> g(mutex_);
 
-    // Pull previous execution output back from device if:
-    // a) the engine is changing
-    // b) output buffer isn't an input to the current execution
-    // c) output buffer isn't currently in the right place for the new input
-    for (const auto& tc : allocations_) {
-      if (tc->on_device == true && tc->output_handle != -1) {
-        if (engine_changed) {
-          TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-        } else if (tc->input_handle == -1) {
-          TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-        } else if ((void*)tc != args[tc->input_handle].opaque()) {
-          TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+    if (engine == NULL) {
+      TF_ASSIGN_OR_RETURN(retbuf,
+                          RemapArgs(shape, output_map, args));
+
+    } else {
+      // Pull previous execution output back from device if:
+      // a) the engine is changing
+      // b) output buffer isn't an input to the current execution
+      // c) output buffer isn't currently in the right place for the new input
+      for (const auto& tc : allocations_) {
+        if (tc->on_device == true && tc->output_handle != -1) {
+          if (engine_changed) {
+            TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+          } else if (tc->input_handle == -1) {
+            TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+          } else if ((void*)tc != args[tc->input_handle].opaque()) {
+            TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
+          }
         }
       }
-    }
 
-    current_engine_ = engine;
+      current_engine_ = engine;
 
-    // Put data on the device if:
-    // a) the engine has changed
-    // b) it is not on the device
-    // c) it is on the device, but in the wrong place
-    for (int64 a = 0; a < args.size(); a++) {
-      auto mem = args[a];
-      TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
-      if (tc->on_device == false || tc->input_handle != a || engine_changed) {
-        tc->input_handle = a;
-        TF_RETURN_IF_ERROR(MoveHostToDevice(tc));
+      // Put data on the device if:
+      // a) the engine has changed
+      // b) it is not on the device
+      // c) it is on the device, but in the wrong place
+      for (int64 a = 0; a < args.size(); a++) {
+        auto mem = args[a];
+        TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
+        if (tc->on_device == false || tc->input_handle != a || engine_changed) {
+          tc->input_handle = a;
+          TF_RETURN_IF_ERROR(MoveHostToDevice(tc));
+        }
       }
+
+      TF_ASSIGN_OR_RETURN(retbuf,
+                          AllocateOutputBuffer(shape, output_map, args));
+
+      engine->run(0);
     }
-
-    TF_ASSIGN_OR_RETURN(retbuf, AllocateOutputBuffer(shape, output_map, args));
-
-    engine->run(0);
   }
 
   return retbuf;

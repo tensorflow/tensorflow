@@ -216,6 +216,10 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
                                                         const OutputMap&,
                                                         const Args&);
 
+  port::StatusOr<DeviceMemoryBase> RemapArgs(const xla::Shape&,
+                                             const OutputMap&,
+                                             const Args&);
+
   port::Status MoveDeviceToHost(TensorControl* tc) const;
   port::Status MoveHostToDevice(TensorControl* tc) const;
 

@@ -56,9 +56,8 @@ namespace poplarplugin {
 class PoplarMainVisitor : public PoplarBaseVisitor {
 public:
   PoplarMainVisitor(poplar::Graph* graph, uint64 num_parameters)
-          : PoplarBaseVisitor(graph) {
-    parameters_.resize(num_parameters);
-  }
+          : PoplarBaseVisitor(graph),
+            all_outputs_are_parameters(false) {}
 
   Status HandleInfeed(HloInstruction* inst) {
     VLOG(1) << inst->ToString();
@@ -80,8 +79,6 @@ public:
     poplar::Tensor out;
     TF_ASSIGN_OR_RETURN(out, AddTensor(*graph_, inst->name(), inst->shape()));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-
-    parameters_[inst->parameter_number()] = out;
 
     graph_->createHostWrite(sep::GetCopyHandle(inst->parameter_number()), out);
     return Status::OK();
@@ -113,25 +110,23 @@ public:
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, i));
       graph_->createHostRead(sep::GetCopyHandle(i), out);
-
-      for (int64 p = 0; p<parameters_.size(); p++) {
-        if (parameters_[p] == out) {
-          output_map[i] = p;
-          break;
-        }
-      }
     }
 
-    all_outputs_are_inputs = (num == output_map.size());
+    if (inst->opcode() == HloOpcode::kParameter) {
+      all_outputs_are_parameters = true;
+    } else if (inst->opcode() == HloOpcode::kTuple){
+      all_outputs_are_parameters = true;
+      for (auto op : inst->operands()) {
+        LOG(INFO) << "operand is " << op->name();
+        all_outputs_are_parameters &= (op->opcode() == HloOpcode::kParameter);
+      }
+    }
 
     return Status::OK();
   }
 
   std::map<int64,int64> output_map;
-  bool all_outputs_are_inputs;
-
-private:
-  std::vector<poplar::Tensor> parameters_;
+  bool all_outputs_are_parameters;
 };
 
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
@@ -202,7 +197,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   std::vector<poplar::program::Program> progs;
   progs.push_back(visitor.sequence);
 
-  if (visitor.all_outputs_are_inputs) {
+  if (visitor.all_outputs_are_parameters) {
     VLOG(1) << "Skip engine compilation - all outputs are inputs";
   } else {
     try {
