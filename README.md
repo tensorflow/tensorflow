@@ -1,3 +1,28 @@
+# RNN variants in Tensorflow
+
+Implementation of multiplicative integrations[1] of three type of recurrent neural networks, plain RNN, GRU and LSTM, in Tensorflow.
+
+
+# How to use
+
+```python
+# Import Tensorflow
+import tensorflow as tf
+
+# tf.contrib.rnn.MultiplicativeIntegrationRNNCell() # remove comment for RNN
+# tf.contrib.rnn.MultiplicativeIntegrationGRUCell() # remove comment for GRU
+tf.contrib.rnn.MultiplicativeIntegrationLSTMCell() # for LSTM
+
+```
+# References
+
+[1]   Yuhuai Wu, Saizheng Zhang, Ying Zhang, Yoshua Bengio, Ruslan Salakhutdinov,
+      On Multiplicative Integration with Recurrent Neural Networks. NIPS, 2016.
+      [arXiv](https://arxiv.org/abs/1606.06630)
+
+
+-----------------
+ 
 <div align="center">
   <img src="https://www.tensorflow.org/images/tf_logo_transp.png"><br><br>
 </div>

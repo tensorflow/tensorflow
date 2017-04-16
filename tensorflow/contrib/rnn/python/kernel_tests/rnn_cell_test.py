@@ -883,6 +883,157 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(res[1].h, expected_state_h)
 
 
+  def testMultiplicativeIntegrationRNNCell(self):
+    with self.test_session() as sess:
+      num_units = 4
+      state_size = num_units
+      batch_size = 3
+      input_size = 4
+      expected_output = np.array(
+          [[ 0.998508,  0.998508,  0.998508,  0.998508],
+           [ 0.999988,  0.999988,  0.999988,  0.999988],
+           [ 1.      ,  1.      ,  1.      ,  1.      ]],
+          dtype=np.float32)
+      expected_state = np.array(
+          [[ 0.998508,  0.998508,  0.998508,  0.998508],
+           [ 0.999988,  0.999988,  0.999988,  0.999988],
+           [ 1.      ,  1.      ,  1.      ,  1.      ]],
+          dtype=np.float32)
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([batch_size, input_size])
+        h = array_ops.zeros([batch_size, state_size])
+        output, state = rnn_cell.MultiplicativeIntegrationRNNCell(
+            num_units=num_units, bias_start=1.0, alpha_start=1.0, 
+            beta_start=1.0)(x, h)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state], {
+            x.name:
+                np.array([[1., 1., 1., 1.],
+                          [2., 2., 2., 2.],
+                          [3., 3., 3., 3.]]),
+            h.name:
+                0.1 * np.ones((batch_size, state_size))
+        })
+        # This is a smoke test: Only making sure expected values didn't change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_output)
+        self.assertAllClose(res[1], expected_state)
+
+ 
+  def testMultiplicativeIntegrationGRUCell(self):
+    with self.test_session() as sess:
+      num_units = 4
+      state_size = num_units
+      batch_size = 3
+      input_size = 4
+      expected_output = np.array(
+          [[ 0.123896,  0.123896,  0.123896,  0.123896],
+           [ 0.102225,  0.102225,  0.102225,  0.102225],
+           [ 0.100202,  0.100202,  0.100202,  0.100202]],
+          dtype=np.float32)
+      expected_state = np.array(
+          [[ 0.123896,  0.123896,  0.123896,  0.123896],
+           [ 0.102225,  0.102225,  0.102225,  0.102225],
+           [ 0.100202,  0.100202,  0.100202,  0.100202]],
+          dtype=np.float32)
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([batch_size, input_size])
+        h = array_ops.zeros([batch_size, state_size])
+        cell = rnn_cell.MultiplicativeIntegrationGRUCell(
+            num_units=num_units, bias_start=1.0, alpha_start=1.0, 
+            beta_start=1.0)
+        output, state = cell(x, h)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state], {
+            x.name:
+                np.array([[1., 1., 1., 1.],
+                          [2., 2., 2., 2.],
+                          [3., 3., 3., 3.]]),
+            h.name:
+                0.1 * np.ones((batch_size, state_size))
+        })
+        # This is a smoke test: Only making sure expected values didn't change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_output)
+        self.assertAllClose(res[1], expected_state)
+
+
+  def testMultiplicativeIntegrationLSTMCell(self):
+    with self.test_session() as sess:
+      num_units = 4
+      state_size = num_units
+      batch_size = 3
+      input_size = 4
+      expected_output = np.array(
+          [[ 0.768204,  0.768204,  0.768204,  0.768204],
+           [ 0.797539,  0.797539,  0.797539,  0.797539],
+           [ 0.80023 ,  0.80023 ,  0.80023 ,  0.80023 ]],
+          dtype=np.float32)
+      expected_state_c = np.array(
+            [[ 1.069291,  1.069291,  1.069291,  1.069291],
+             [ 1.097268,  1.097268,  1.097268,  1.097268],
+             [ 1.099753,  1.099753,  1.099753,  1.099753]],
+          dtype=np.float32)
+      expected_state_h = np.array(
+          [[ 0.768204,  0.768204,  0.768204,  0.768204],
+           [ 0.797539,  0.797539,  0.797539,  0.797539],
+           [ 0.80023 ,  0.80023 ,  0.80023 ,  0.80023 ]],
+          dtype=np.float32)
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([batch_size, input_size])
+        c = array_ops.zeros([batch_size, state_size])
+        h = array_ops.zeros([batch_size, state_size])
+        output, (state_c, state_h) = rnn_cell.MultiplicativeIntegrationLSTMCell(
+            num_units=num_units, bias_start=1.0, alpha_start=1.0, 
+            beta_start=1.0)(x, (c, h))
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, (state_c, state_h)], {
+            x.name:
+                np.array([[1., 1., 1., 1.],
+                          [2., 2., 2., 2.],
+                          [3., 3., 3., 3.]]),
+            c.name:
+                0.1 * np.ones((batch_size, state_size)),
+            h.name:
+                0.1 * np.ones((batch_size, state_size))
+        })
+        # This is a smoke test: Only making sure expected values didn't change.
+        res_x, (res_c, res_h) = res
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_output)
+        self.assertAllClose(res[1][0], expected_state_c)
+        self.assertAllClose(res[1][1], expected_state_h)
+
+
+  def testMultiplicativeIntegration(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope( "root", initializer=init_ops.constant_initializer(1.0)):
+        batch_size = 3
+        num_units = 4
+        state_size = num_units
+        x = array_ops.zeros([batch_size, num_units])
+        h = array_ops.zeros([batch_size, state_size])
+        mi = rnn_cell._multiplicative_integration([x, h], [num_units, num_units], True, 
+            bias_start=0.1, alpha_start=0.2, beta_start=0.3)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([mi], {
+            x.name:
+                np.array([[1., 1., 1., 1.],
+                          [2., 2., 2., 2.],
+                          [3., 3., 3., 3.]]),
+            h.name:
+                0.1 * np.ones((batch_size, state_size))
+        })
+        self.assertEqual(len(res), 1)
+        self.assertAllClose(res[0], 
+            [[ 1.74,  1.74,  1.74,  1.74,  1.74,  1.74,  1.74,  1.74],
+             [ 3.26,  3.26,  3.26,  3.26,  3.26,  3.26,  3.26,  3.26],
+             [ 4.78,  4.78,  4.78,  4.78,  4.78,  4.78,  4.78,  4.78]])
+
+
 class LayerNormBasicLSTMCellTest(test.TestCase):
 
   # NOTE: all the values in the current test case have been calculated.
