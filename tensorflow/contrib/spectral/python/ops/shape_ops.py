@@ -5,6 +5,9 @@ from six.moves import xrange
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+
 def frames(signal, frame_length, frame_step, name="frames"):
   """Frame a signal into overlapping frames.
   May be used in front of spectral functions.
@@ -36,17 +39,16 @@ def frames(signal, frame_length, frame_step, name="frames"):
   if signal_rank != 2:
     raise ValueError("expected signal to have rank 2 but was " + signal_rank)
   
-  signal_length = int(signal_shape[1])
+  signal_length = array_ops.shape(signal)[1]
   
   with ops.name_scope(name, "frames", [signal]) as name:
-    num_frames = ops.add(1, ops.cast(ops.ceil(ops.divide(ops.subtract(signal_length, frame_length), frame_step)), dtypes.int32))
-    pad_length = ops.add(ops.multiply(ops.subtract(num_frames, 1), frame_step), frame_length)
-    pad_signal = ops.pad(signal, [[0, 0], [0, ops.subtract(pad_length, signal_length)]])
+    num_frames = 1 + math_ops.cast(math_ops.ceil((signal_length - frame_length) / frame_step), dtype=dtypes.int32)
+    pad_length = (num_frames - 1) * frame_step + frame_length
+    pad_signal = ops.pad(signal, [[0, 0], [0, pad_length - signal_length]])
     
     frames = []
     
-    for index in xrange(49): # TODO(Androbin) use num_frames dynamically
-      frames.append(ops.slice(pad_signal, [0, ops.mutiply(index, frame_step)], [-1, frame_length]))
+    for index in xrange(49):
+      frames.append(array_ops.slice(pad_signal, [0, index * frame_step], [-1, frame_length]))
     
-    # TODO(Androbin) consider using tf.gather(...)
     return ops.stack(frames, axis=1, name=name)
