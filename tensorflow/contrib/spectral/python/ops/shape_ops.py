@@ -1,4 +1,21 @@
-import math
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 from six.moves import xrange
 
@@ -44,11 +61,11 @@ def frames(signal, frame_length, frame_step, name="frames"):
   with ops.name_scope(name, "frames", [signal]) as name:
     num_frames = 1 + math_ops.cast(math_ops.ceil((signal_length - frame_length) / frame_step), dtype=dtypes.int32)
     pad_length = (num_frames - 1) * frame_step + frame_length
-    pad_signal = ops.pad(signal, [[0, 0], [0, pad_length - signal_length]])
+    pad_signal = array_ops.pad(signal, [[0, 0], [0, pad_length - signal_length]])
     
     frames = []
     
     for index in xrange(49):
       frames.append(array_ops.slice(pad_signal, [0, index * frame_step], [-1, frame_length]))
     
-    return ops.stack(frames, axis=1, name=name)
+    return array_ops.stack(frames, axis=1, name=name)
