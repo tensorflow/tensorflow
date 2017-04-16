@@ -35,6 +35,9 @@ class ShapeTreeTest : public ::testing::Test {
               array_shape_})});
   }
 
+  void TestShapeConstructor(const Shape& shape, int expected_num_nodes);
+  void TestInitValueConstructor(const Shape& shape, int expected_num_nodes);
+
   // An array shape (non-tuple).
   Shape array_shape_;
 
@@ -44,6 +47,81 @@ class ShapeTreeTest : public ::testing::Test {
   // A nested tuple shape of the following form: (a, (c, d), ((e, f), g))
   Shape nested_tuple_shape_;
 };
+
+TEST_F(ShapeTreeTest, DefaultConstructor) {
+  ShapeTree<int> int_tree;
+  EXPECT_TRUE(ShapeUtil::IsNil(int_tree.shape()));
+
+  ShapeTree<bool> bool_tree;
+  EXPECT_TRUE(ShapeUtil::IsNil(bool_tree.shape()));
+}
+
+void ShapeTreeTest::TestShapeConstructor(const Shape& shape,
+                                         int expected_num_nodes) {
+  ShapeTree<int> int_tree(shape);
+  int num_nodes = 0;
+  TF_CHECK_OK(int_tree.ForEachElement(
+      [&num_nodes](const ShapeIndex& /*index*/, bool /*is_leaf*/, int data) {
+        EXPECT_EQ(0, data);
+        ++num_nodes;
+        return Status::OK();
+      }));
+  EXPECT_EQ(expected_num_nodes, num_nodes);
+
+  ShapeTree<bool> bool_tree(shape);
+  num_nodes = 0;
+  TF_CHECK_OK(bool_tree.ForEachElement(
+      [&num_nodes](const ShapeIndex& /*index*/, bool /*is_leaf*/, bool data) {
+        EXPECT_EQ(false, data);
+        ++num_nodes;
+        return Status::OK();
+      }));
+  EXPECT_EQ(expected_num_nodes, num_nodes);
+}
+
+TEST_F(ShapeTreeTest, ShapeConstructor) {
+  TestShapeConstructor(array_shape_, 1);
+  TestShapeConstructor(tuple_shape_, 4);
+  TestShapeConstructor(nested_tuple_shape_, 10);
+}
+
+void ShapeTreeTest::TestInitValueConstructor(const Shape& shape,
+                                             int expected_num_nodes) {
+  ShapeTree<int> tree(shape, 42);
+  int num_nodes = 0;
+  TF_CHECK_OK(tree.ForEachElement(
+      [&num_nodes](const ShapeIndex& /*index*/, bool /*is_leaf*/, int data) {
+        EXPECT_EQ(42, data);
+        ++num_nodes;
+        return Status::OK();
+      }));
+  EXPECT_EQ(expected_num_nodes, num_nodes);
+
+  num_nodes = 0;
+  TF_CHECK_OK(tree.ForEachMutableElement(
+      [&num_nodes](const ShapeIndex& /*index*/, bool /*is_leaf*/, int* data) {
+        EXPECT_EQ(42, *data);
+        *data = num_nodes;
+        ++num_nodes;
+        return Status::OK();
+      }));
+  EXPECT_EQ(expected_num_nodes, num_nodes);
+
+  num_nodes = 0;
+  TF_CHECK_OK(tree.ForEachElement(
+      [&num_nodes](const ShapeIndex& /*index*/, bool /*is_leaf*/, int data) {
+        EXPECT_EQ(num_nodes, data);
+        ++num_nodes;
+        return Status::OK();
+      }));
+  EXPECT_EQ(expected_num_nodes, num_nodes);
+}
+
+TEST_F(ShapeTreeTest, InitValueConstructor) {
+  TestInitValueConstructor(array_shape_, 1);
+  TestInitValueConstructor(tuple_shape_, 4);
+  TestInitValueConstructor(nested_tuple_shape_, 10);
+}
 
 TEST_F(ShapeTreeTest, ArrayShape) {
   ShapeTree<int> shape_tree{array_shape_};
@@ -77,7 +155,7 @@ TEST_F(ShapeTreeTest, TupleShape) {
   TF_CHECK_OK(shape_tree.ForEachElement(
       [&sum](const ShapeIndex& /*index*/, bool /*is_leaf*/, int data) {
         sum += data;
-        return tensorflow::Status::OK();
+        return Status::OK();
       }));
   EXPECT_EQ(66, sum);
 
@@ -92,7 +170,7 @@ TEST_F(ShapeTreeTest, TupleShape) {
   TF_CHECK_OK(shape_tree.ForEachMutableElement(
       [&sum](const ShapeIndex& /*index*/, bool /*is_leaf*/, int* data) {
         *data = 0;
-        return tensorflow::Status::OK();
+        return Status::OK();
       }));
   EXPECT_EQ(0, shape_tree.element({}));
   EXPECT_EQ(0, shape_tree.element({0}));
