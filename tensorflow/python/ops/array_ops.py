@@ -49,7 +49,6 @@ See the @{$python/array_ops} guide.
 @@reverse
 @@reverse_v2
 @@transpose
-@@framesig
 @@extract_image_patches
 @@space_to_batch_nd
 @@space_to_batch
@@ -84,11 +83,8 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
-import math
 import numpy as np
 import six
-
-from six.moves import xrange
 
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -1275,57 +1271,6 @@ def transpose(a, perm=None, name="transpose"):
     else:
       ret = gen_array_ops.transpose(a, perm, name=name)
     return ret
-
-
-def framesig(sig, frame_len, frame_step, parallel=False, name="framesig"):
-  """Frame a signal into overlapping frames.
-  May be used in front of spectral functions.
-  
-  For example:
-  
-  ```python
-  pcm = tf.placeholder(tf.float32, [None, 9152])
-  frames = tf.framesig(pcm, 512, 180)
-  magspec = tf.abs(tf.spectral.rfft(frames, tf.constant(512, shape=[1])))
-  image = tf.reshape(magspec, [-1, 49, 257, 1])
-  ```
-  
-  Args:
-    sig: A `Tensor` with `rank = 2`.
-    frame_len: The length of each frame.
-    frame_step: The step between frames.
-    parallel: Whether to use `tf.parallel_stack` or `tf.stack`
-    name: A name for the operation (optional).
-  
-  Returns:
-    A `Tensor` of frames with shape [batch_size, num_frames, frame_len].
-  """
-  sig_shape = sig.get_shape()
-  sig_rank = len(sig_shape)
-  
-  if sig_rank != 2:
-    raise ValueError("expected sig to have rank 2 but was " + sig_rank)
-  
-  sig_len = int(sig_shape[1])
-  
-  num_frames = 1 + int(math.ceil((1. * sig_len - frame_len) / frame_step))
-  pad_len = int((num_frames - 1) * frame_step + frame_len)
-  
-  with ops.name_scope(name, "framesig", [sig]) as name:
-    if pad_len != sig_len:
-      pad_sig = ops.pad(sig, [[0, 0], [0, pad_len - sig_len]], name=name)
-    else:
-      pad_sig = sig
-    
-    frames = []
-    
-    for i in xrange(num_frames):
-      frames.append(ops.slice(pad_sig, [0, i * frame_step], [-1, frame_len]))
-    
-    if parallel:
-      return ops.parallel_stack(frames, axis=1, name=name)
-    else:
-      return ops.stack(frames, axis=1, name=name)
 
 
 # pylint: disable=invalid-name
