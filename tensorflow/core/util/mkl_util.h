@@ -559,6 +559,7 @@ inline void CopyMklTensorInToOut(OpKernelContext* context,
   Tensor output(data.dtype());
   Tensor meta_output(meta.dtype());
 
+  // TODO(intel_tf): alternatively, call forward_input_to_output_with_shape(...)
   CHECK(output.CopyFrom(data, data.shape()));
   CHECK(meta_output.CopyFrom(meta, meta.shape()));
   context->set_output(idx_data_out, output);
@@ -578,6 +579,7 @@ inline void CopyTFTensorInToOut(OpKernelContext* context,
   mkl_shape_output.SetMklTensor(false);
   AllocateOutputSetMklShape(context, idx_out, mkl_shape_output);
   Tensor output(data.dtype());
+  // TODO(intel_tf): alternatively, call forward_input_to_output_with_shape(...)
   CHECK(output.CopyFrom(data, shape));
   context->set_output(idx_data_out, output);
 }

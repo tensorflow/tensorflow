@@ -687,7 +687,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsRelu(const Node* orig_node, NodeBuilder* nb);
-  static void CopyAttrsReshape(const Node* orign, NodeBuilder* nb);
+  static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
@@ -1306,14 +1306,14 @@ void MklLayoutRewritePass::CopyAttrsFusedBatchNorm(const Node* orig_node,
   nb->Attr("is_training", is_training);
 }
 
-void MklLayoutRewritePass::CopyAttrsReshape(const Node* orign,
+void MklLayoutRewritePass::CopyAttrsReshape(const Node* orig_node,
                                            NodeBuilder* nb) {
   DataType T;
   DataType Tshape;
   
   // Get all attributes from old node.
-  TF_CHECK_OK(GetNodeAttr(orign->def(), "T", &T));
-  TF_CHECK_OK(GetNodeAttr(orign->def(), "Tshape", &Tshape));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tshape", &Tshape));
   
   // Add attributes to new node.
   nb->Attr("T", T);

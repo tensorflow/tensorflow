@@ -113,11 +113,11 @@ class MklReshapeOp : public OpKernel {
         AllocateOutputSetMklShape(context, 0, &output_tensor, shape_to,
                                   mkl_shape_output);
 
-        // 3. Get input and output layout pointers.
+        // Get output layout pointer.
         dnnLayout_t output_layout = static_cast<dnnLayout_t>(
                                       mkl_shape_input.GetTfLayout());
 
-        // 4. Execute DNNConversion.
+        // Execute DNNConversion.
         // Note: we  assume an MKL tensor always have float as its data type.
         void *input_buffer  = static_cast<void*>(const_cast<float*>(
                                   input.flat<float>().data()));
