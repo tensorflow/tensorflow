@@ -23,7 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
-def frames(signal, frame_length, frame_step, name="frames"):
+def frames(signal, frame_length, frame_step, name=None):
   """Frame a signal into overlapping frames.
   May be used in front of spectral functions.
   
@@ -45,16 +45,16 @@ def frames(signal, frame_length, frame_step, name="frames"):
   Returns:
     A `Tensor` of frames with shape [batch_size, num_frames, frame_length].
   """
-  signal = ops.convert_to_tensor(signal)
-  frame_length = ops.convert_to_tensor(frame_length)
-  frame_step = ops.convert_to_tensor(frame_step)
-  
-  signal_rank = signal.shape.ndims
-  
-  if signal_rank != 2:
-    raise ValueError("expected signal to have rank 2 but was " + signal_rank)
-  
-  with ops.name_scope(name, "frames", [signal, frame_length, frame_step]) as name:
+  with ops.name_scope(name, "Frames", [signal, frame_length, frame_step]) as scope:
+    signal = ops.convert_to_tensor(signal, name="signal")
+    frame_length = ops.convert_to_tensor(frame_length, name="frame_length")
+    frame_step = ops.convert_to_tensor(frame_step, name="frame_step")
+    
+    signal_rank = signal.shape.ndims
+    
+    if signal_rank != 2:
+      raise ValueError("expected signal to have rank 2 but was " + signal_rank)
+    
     signal_length = array_ops.shape(signal)[1]
     
     num_frames = 1 + math_ops.cast(math_ops.ceil((signal_length - frame_length) / frame_step), dtypes.int32)
@@ -65,4 +65,4 @@ def frames(signal, frame_length, frame_step, name="frames"):
     indices_steps = array_ops.transpose(array_ops.tile(array_ops.expand_dims(math_ops.range(0, num_frames * frame_step, frame_step), 0), [frame_length, 1]))
     indices = indices_frames + indices_steps
     
-    return array_ops.gather(pad_signal, indices, name=name)
+    return array_ops.gather(pad_signal, indices, name=scope)
