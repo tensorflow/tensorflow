@@ -150,7 +150,7 @@ class ShapeTree {
   Node root_;
 
   // The XLA shape mirrored in this ShapeTree.
-  const Shape shape_;
+  Shape shape_;
 };
 
 template <typename T>
@@ -167,12 +167,10 @@ void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
 
 template <typename T>
 ShapeTree<T>::ShapeTree(const Shape& shape, const T& init_value)
-    : root_(init_value), shape_([](Shape shape) {
-        // The shape_ field is just used to hold the structure of the shape.
-        // It should not be relied upon to store layout information.
-        LayoutUtil::ClearLayout(&shape);
-        return shape;
-      }(shape)) {
+    : root_(init_value), shape_(shape) {
+  // The shape_ field is just used to hold the structure of the shape.
+  // It should not be relied upon to store layout information.
+  LayoutUtil::ClearLayout(&shape_);
   InitChildren(shape_, init_value, &root_);
 }
 

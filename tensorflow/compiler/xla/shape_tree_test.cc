@@ -135,6 +135,15 @@ TEST_F(ShapeTreeTest, ArrayShape) {
   // Test the copy constructor.
   ShapeTree<int> copy{shape_tree};
   EXPECT_EQ(123, copy.element({}));
+
+  // Mutate the copy, and ensure the original doesn't change.
+  *copy.mutable_element({}) = 99;
+  EXPECT_EQ(99, copy.element({}));
+  EXPECT_EQ(123, shape_tree.element({}));
+
+  // Test the assignment operator.
+  copy = shape_tree;
+  EXPECT_EQ(123, copy.element({}));
 }
 
 TEST_F(ShapeTreeTest, TupleShape) {
@@ -176,6 +185,17 @@ TEST_F(ShapeTreeTest, TupleShape) {
   EXPECT_EQ(0, shape_tree.element({0}));
   EXPECT_EQ(0, shape_tree.element({1}));
   EXPECT_EQ(0, shape_tree.element({2}));
+  EXPECT_EQ(1, copy.element({}));
+  EXPECT_EQ(42, copy.element({0}));
+  EXPECT_EQ(123, copy.element({1}));
+  EXPECT_EQ(-100, copy.element({2}));
+
+  // Test the assignment operator.
+  copy = shape_tree;
+  EXPECT_EQ(0, copy.element({}));
+  EXPECT_EQ(0, copy.element({0}));
+  EXPECT_EQ(0, copy.element({1}));
+  EXPECT_EQ(0, copy.element({2}));
 }
 
 TEST_F(ShapeTreeTest, NestedTupleShape) {
@@ -191,6 +211,23 @@ TEST_F(ShapeTreeTest, NestedTupleShape) {
 
   // Test the copy constructor.
   ShapeTree<int> copy{shape_tree};
+  EXPECT_EQ(42, copy.element({0}));
+  EXPECT_EQ(123, copy.element({1, 1}));
+  EXPECT_EQ(-100, copy.element({2, 0, 1}));
+
+  // Mutate the copy, and ensure the original doesn't change.
+  *copy.mutable_element({0}) = 1;
+  *copy.mutable_element({1, 1}) = 2;
+  *copy.mutable_element({2, 0, 1}) = 3;
+  EXPECT_EQ(1, copy.element({0}));
+  EXPECT_EQ(2, copy.element({1, 1}));
+  EXPECT_EQ(3, copy.element({2, 0, 1}));
+  EXPECT_EQ(42, shape_tree.element({0}));
+  EXPECT_EQ(123, shape_tree.element({1, 1}));
+  EXPECT_EQ(-100, shape_tree.element({2, 0, 1}));
+
+  // Test the assignment operator.
+  copy = shape_tree;
   EXPECT_EQ(42, copy.element({0}));
   EXPECT_EQ(123, copy.element({1, 1}));
   EXPECT_EQ(-100, copy.element({2, 0, 1}));
