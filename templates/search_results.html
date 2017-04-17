@@ -11,8 +11,8 @@
   {% else %}
   <div class="row">
       {% for result in results %}
-      <div class="col-xs-2 col-sm-2 col-md-1 col-lg-1">
-          <img src="{{ result }}" ahref="{{ result }}" class="img-responsive"/>
+      <div class="col-xs-12 col-sm-6 col-md-2 col-lg-2">
+          <a href="{{ result }}"><img src="{{ result }}" class="img-responsive"/></a>
       </div>
       {% endfor %}
   {% endif %}

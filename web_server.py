@@ -7,7 +7,7 @@ import os
 import re
 
 from flask import (Flask, flash, json, redirect, request, send_from_directory,
-                   url_for, jsonify, render_template)
+                   url_for, jsonify, render_template, make_response)
 from werkzeug.utils import secure_filename
 
 # Default values
@@ -54,6 +54,8 @@ def static_file(path):
     """ Serve static files inside the static folder. """
     return APP.send_static_file(path)
 
+# TODO: Change the image upload and search process to use the correct file
+# structure
 @APP.route('/images', methods=['GET', 'POST'])
 def images():
     """ Handles the training set images
@@ -66,9 +68,9 @@ def images():
     if request.method == 'POST':
         # Check if the form data was completed successfully
         if 'species' not in request.form:
-            return Flask.make_response('error: species field not specified', 400)
+            return make_response('error: species field not specified', 400)
         if 'file' not in request.files:
-            return Flask.make_response('error: no file uploaded', 400)
+            return make_response('error: no file uploaded', 400)
 
         # Grab the form data
         species = request.form['species'].replace(' ', '_').lower()
@@ -80,7 +82,7 @@ def images():
 
         # Check if no file was selected
         if img.filename == '':
-            return Flask.make_response('error: no file selected', 400)
+            return make_response('error: no file selected', 400)
 
         # Process file if all information is present
         if img and allowed_file(img.filename) and species:
@@ -108,7 +110,28 @@ def images():
 
             # save the image in the directory
             img.save(os.path.join(directory, filename))
-            return Flask.make_response('file uploaded successfully', 200)
+            return make_response('file uploaded successfully', 200)
+
+def grab_images(search):
+    # initialize variables
+    exist = False
+    query = search.replace(' ', '_').lower()
+    directory = os.path.join(DEFAULTS['UploadFolder'], query)
+    full_directory = os.path.join(DEFAULTS['StaticURLPath'], directory)
+    results = []
+
+    # Check if the directory exists and find all image files if it does
+    if os.path.isdir(full_directory):
+        for path, subdirs, files in os.walk(full_directory):
+            for name in files:
+                # insert the path in the static folder to the image
+                results.append(os.path.join('/', os.path.join(directory, name)))
+
+    # If results list is not empty set exists to true
+    if results:
+        exist = True
+
+    return render_template('search_results.html', search=search, results=results, exist=exist)
 
 @APP.route('/images/search', methods=['GET', 'POST'])
 def search_images():
@@ -117,43 +140,18 @@ def search_images():
     GET: Serves the image search page.
     POST: Receives the plant species to search for and returns a grid of images. """
     if request.method == 'GET':
+        # Check if arguments are present
+        if 'species' in request.args:
+            return grab_images(request.args.get('species'))
+
         # Serve search page
         return render_template('search.html')
     if request.method == 'POST':
         # Check if form data was completed successfully
         if 'species' not in request.form:
-            return Flask.make_response('error: species field not specified', 400)
+            return make_response('error: species field not specified', 400)
 
-        # Grab the form data
-        exist = False
-        search = request.form['species']
-        query = search.replace(' ', '_').lower()
-        directory = os.path.join(DEFAULTS['UploadFolder'], query)
-        full_directory = os.path.join(DEFAULTS['StaticURLPath'], directory)
-        results = []
-
-        # Debug lines
-        print directory
-        print query
-
-        # Check if the directory exists and find all image files if it does
-        if os.path.isdir(full_directory):
-            for path, subdirs, files in os.walk(full_directory):
-                for name in files:
-                    # insert the path in the static folder to the image
-                    results.append(os.path.join('/', os.path.join(directory, name)))
-
-        # If results list is not empty set exists to true
-        if results:
-            exist = True
-
-        # Debug lines
-        print search
-        print exist
-        if exist:
-            print results
-
-        return render_template('search_results.html', search=search, results=results, exist=exist)
+        return grab_images(request.form['species'])
 
 def update_models():
     """ Update the MODELPATHS dictionary with the model paths. """
@@ -198,16 +196,16 @@ def list_models():
     if update_models():
         return jsonify(MODELPATHS)
     else:
-        return Flask.make_response('error: defined model path does not contain any models', 500)
+        return make_response('error: defined model path does not contain any models', 500)
 
 @APP.route('/update-model')
 def download_model():
     """ Send the specified model to the client. """
     # Check that URL arguments have been included.
     if 'model-key' not in request.args:
-        return Flask.make_response('error: model-key argument missing from URL', 400)
+        return make_response('error: model-key argument missing from URL', 400)
     if 'model-time' not in request.args:
-        return Flask.make_response('error: model-time argument missing from URL', 400)
+        return make_response('error: model-time argument missing from URL', 400)
 
     # Update the model locations and check if new version of model exists.
     if update_models():
@@ -222,18 +220,18 @@ def download_model():
             path, name = os.path.split(path)
             return send_from_directory(path, name)
         else:
-            return Flask.make_response('error: model file not found', 404)
+            return make_response('error: model file not found', 404)
     else:
-        return Flask.make_response('error: model dictionary failed to update', 500)
+        return make_response('error: model dictionary failed to update', 500)
 
 @APP.route('/update-label')
 def download_label():
     """ Send the specified label to the client. """
     # Check that URL arguments have been included.
     if 'model-key' not in request.args:
-        return Flask.make_response('error: model-key argument missing from URL', 400)
+        return make_response('error: model-key argument missing from URL', 400)
     if 'model-time' not in request.args:
-        return Flask.make_response('error: model-time argument missing from URL', 400)
+        return make_response('error: model-time argument missing from URL', 400)
 
     # Update the model locations and check if new version of model exists.
     if update_models():
@@ -247,9 +245,9 @@ def download_label():
             path, name = os.path.split(path)
             return send_from_directory(path, name)
         else:
-            return Flask.make_response('error: label file not found', 404)
+            return make_response('error: label file not found', 404)
     else:
-        return Flask.make_response('error: model dictionary failed to update', 500)
+        return make_response('error: model dictionary failed to update', 500)
 
 def check_time(path, time):
     """ Check the metadata of the model file to see if there is a new

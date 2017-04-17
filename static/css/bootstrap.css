@@ -1371,6 +1371,16 @@ a.text-danger:hover,
 a.text-danger:focus {
   color: #843534;
 }
+.solid-border-primary {
+  border-width: 5px;
+  border-style: solid;
+  border-color: #74D117;
+}
+.solid-border-secondary {
+  border-width: 5px;
+  border-style: solid;
+  border-color: #C7E80E;
+}
 .bg-white {
   color: #000;
   background-color: #FFFFFF;

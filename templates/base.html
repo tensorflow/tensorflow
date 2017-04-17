@@ -26,12 +26,18 @@
     <script src="js/bootstrap.min.js"></script>
   </head>
 
-  <body background="/images/leaves_bg.jpg">
+  <body background="/images/tropical_leaves_bg.jpg">
 
     <div class="container" id="bodyContainer">
+
+      <div class="row" id="banner">
+        <div class="col-xs-12 col-sm-12 col-md-12 col-lg-12" style="height: 50px;">
+        </div>
+      </div>
+
       <div class="col-xs-12 col-md-2 col-lg-1"></div>
 
-      <div class="col-xs-12 col-md-8 col-lg-10 bg-white">
+      <div class="col-xs-12 col-md-8 col-lg-10 bg-white solid-border-primary">
 
         <div class="row" id="header">
           <div class="col-xs-12 col-md-12 col-lg-12">
@@ -39,7 +45,14 @@
             <h1 class="text-center">
               Computer vision for Cloud-based Horticulture Catalog<br />
               <small>eLeaf</small><br />
-              <img src="/images/logo.png" class="img-responsive center-block" alt="eLeaf Logo">
+              <div class="row">
+                <div class="col-xs-12 col-md-4"></div>
+                <div class="col-xs-12 col-md-4">
+                  <img src="/images/logo.png" class="img-responsive center-block" alt="eLeaf Logo">
+                </div>
+                <div class="col-xs-12 col-md-4"></div>
+              </div>
+
             </h1>
             {% endblock %}
           </div>
