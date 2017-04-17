@@ -23,6 +23,10 @@ tf_class {
     mtype: "<type \'getset_descriptor\'>"
   }
   member {
+    name: "FORCE_GPU_COMPATIBLE_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "PER_PROCESS_GPU_MEMORY_FRACTION_FIELD_NUMBER"
     mtype: "<type \'int\'>"
   }
