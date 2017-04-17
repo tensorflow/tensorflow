@@ -35,6 +35,18 @@ function is_windows() {
   fi
 }
 
+function bazel_clean_and_fetch() {
+  if ! is_windows; then
+    bazel clean --expunge
+  fi
+
+  if [ -z "$TF_BAZEL_TARGETS" ]; then
+    bazel fetch "//tensorflow/... -//tensorflow/contrib/nccl/... -//tensorflow/examples/android/..."
+  else
+    bazel fetch $TF_BAZEL_TARGETS
+  fi
+}
+
 function sed_hyphen_i() {
   if is_macos; then
     sed -i '' "$@"
