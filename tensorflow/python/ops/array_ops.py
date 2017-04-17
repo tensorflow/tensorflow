@@ -1876,7 +1876,8 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
 @ops.RegisterGradient("FakeQuantWithMinMaxArgs")
 def _FakeQuantWithMinMaxArgsGradient(op, grad):
   """Gradient for FakeQuantWithMinMaxArgs op."""
-  return fake_quant_with_min_max_args_gradient(grad, op.inputs[0])
+  return fake_quant_with_min_max_args_gradient(
+      grad, op.inputs[0], min=op.get_attr("min"), max=op.get_attr("max"))
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxVars")
