@@ -107,8 +107,13 @@ def optimize_loss(loss,
     gradient_noise_scale: float or None, adds 0-mean normal noise scaled by this
                           value.
     gradient_multipliers: dict of variables or variable names to floats.
-                          If present, gradients for specified
-                          variables will be multiplied by given constant.
+                          Most often it should be an instance of
+                          collections.defaultdict(lambda: 1.0), so that
+                          unspecified variable would still be updated with
+                          normal rate. If a common dict is provided, only
+                          gradients for specified variables will be
+                          multiplied by given constant and unspecified
+                          gradients will be dropped.
     clip_gradients: float, callable or `None`. If float, is provided, a global
       clipping is applied to prevent the norm of the gradient to exceed this
       value. Alternatively, a callable can be provided e.g.: adaptive_clipping.
@@ -148,6 +153,7 @@ def optimize_loss(loss,
         * `clip_gradients` is not float or callable.
         * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
           `global_step` is available.
+        * `gradients` is empty
   """
   loss = ops.convert_to_tensor(loss)
   contrib_framework.assert_scalar(loss)
@@ -244,6 +250,10 @@ def optimize_loss(loss,
     # Multiply some gradients.
     if gradient_multipliers is not None:
       gradients = _multiply_gradients(gradients, gradient_multipliers)
+      if not gradients:
+        raise ValueError(
+            "Empty list of (gradient, var) pairs encountered. This is most "
+            "likely to be caused by an improper value of gradient_multipliers.")
 
     if "gradient_norm" in summaries:
       summary.scalar("global_norm/gradient_norm",
@@ -255,8 +265,8 @@ def optimize_loss(loss,
     elif callable(clip_gradients):
       gradients = clip_gradients(gradients)
     elif clip_gradients is not None:
-      raise ValueError("Unknown type %s for clip_gradients" %
-                       type(clip_gradients))
+      raise ValueError(
+          "Unknown type %s for clip_gradients" % type(clip_gradients))
 
     # Add scalar summary for loss.
     if "loss" in summaries:
