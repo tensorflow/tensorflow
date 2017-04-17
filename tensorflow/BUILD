@@ -89,6 +89,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_ppc64le",
+    values = {"cpu": "ppc"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "debug",
     values = {
         "compilation_mode": "dbg",
@@ -110,17 +116,20 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jhseu): Enable on other platforms other than Linux.
 config_setting(
-    name = "linux_ppc64le",
-    values = {"cpu": "ppc"},
+    name = "with_jemalloc_linux_x86_64",
+    values = {
+        "cpu": "k8",
+        "define": "with_jemalloc=true",
+    },
     visibility = ["//visibility:public"],
 )
 
-# TODO(jhseu): Enable on other platforms other than Linux.
 config_setting(
-    name = "with_jemalloc",
+    name = "with_jemalloc_linux_ppc64le",
     values = {
-        "cpu": "k8",
+        "cpu": "ppc",
         "define": "with_jemalloc=true",
     },
     visibility = ["//visibility:public"],
