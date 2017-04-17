@@ -33,9 +33,9 @@ def frames(signal, frame_length, frame_step, name="frames"):
   
   ```python
   pcm = tf.placeholder(tf.float32, [None, 9152])
-  frames = tf.frames(pcm, 512, 180)
-  magspec = tf.abs(tf.spectral.rfft(frames, tf.constant(512, shape=[1])))
-  image = tf.reshape(magspec, [-1, 49, 257, 1])
+  frames = tf.contrib.spectral.frames(pcm, 512, 180)
+  magspec = tf.abs(tf.spectral.rfft(frames, [512]))
+  image = tf.expand_dims(magspec, 3)
   ```
   
   Args:
