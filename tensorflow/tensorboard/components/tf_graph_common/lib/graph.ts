@@ -42,6 +42,9 @@ export enum SeriesGroupingType {GROUP, UNGROUP};
 /** Attribute key reserved for the shapes of the output tensors. */
 const OUTPUT_SHAPES_KEY = '_output_shapes';
 
+/** Attribute key reserved for the XLA cluster that an op runs on. */
+const _XLA_CLUSTER_KEY = '_XlaCluster';
+
 /**
  * A BaseEdge is the label object (in the graphlib sense) for an edge in the
  * original, full graph produced after parsing. Subsequent graphs, like those
@@ -120,12 +123,20 @@ export interface Node {
    *  INCLUDE or EXCLUDE manually by the user.
    */
   include: InclusionType;
+  /**
+   * Node attributes specify customizable visual aspects of a node and
+   * application-specific metadata associated with a node. The name
+   * 'nodeAttributes' is meant to avoid naming-conflicts with the 'attr' in
+   * subclasses of Node.
+   */
+  nodeAttributes: {[key: string]: any;};
 }
 
 export type TensorShape = number[];
 
 export interface OpNode extends Node {
   op: string;
+  // The device on which the op ran. Null if it is unknown.
   device: string;
   attr: {key: string, value: any}[];
   inputs: NormalizedInput[];
@@ -147,6 +158,8 @@ export interface OpNode extends Node {
    *       of the middle dimension is unknown (encoded as -1).
    */
   outputShapes: TensorShape[];
+  // The XLA Cluster on which the op ran. Null if it is unknown.
+  xlaCluster: string;
 }
 
 export interface BridgeNode extends Node {
@@ -299,7 +312,7 @@ export class EllipsisNodeImpl implements EllipsisNode {
   cardinality: number;
   parentNode: Node;
   include: InclusionType;
-
+  nodeAttributes: {[key: string]: any;};
   /**
    * Constructs a new ellipsis annotation node.
    *
@@ -341,6 +354,8 @@ export class OpNodeImpl implements OpNode {
   include: InclusionType;
   owningSeries: string;
   outputShapes: TensorShape[];
+  nodeAttributes: {[key: string]: any;};
+  xlaCluster: string;
 
   /**
    * Constructs a new Op node.
@@ -358,6 +373,7 @@ export class OpNodeImpl implements OpNode {
     // control dependency.
     this.inputs = normalizeInputs(rawNode.input);
     this.outputShapes = extractOutputShapes(rawNode.attr);
+    this.xlaCluster = extractXlaCluster(rawNode.attr);
     // additional properties
     this.type = NodeType.OP;
     this.isGroupNode = false;
@@ -539,6 +555,7 @@ export class MetanodeImpl implements Metanode {
   parentNode: Node;
   hasNonControlEdges: boolean;
   include: InclusionType;
+  nodeAttributes: {[key: string]: any;};
 
   /** A label object for meta-nodes in the graph hierarchy */
   constructor(name: string, opt = {}) {
@@ -762,6 +779,7 @@ class SeriesNodeImpl implements SeriesNode {
   deviceHistogram: {[op: string]: number};
   hasNonControlEdges: boolean;
   include: InclusionType;
+  nodeAttributes: {[key: string]: any;};
 
   constructor(prefix: string, suffix: string, parent: string,
       clusterId: number, name: string) {
@@ -789,7 +807,9 @@ class SeriesNodeImpl implements SeriesNode {
  * Extracts the shapes of the output tensors from the attr property in the
  * node proto.
  */
-function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
+// tslint:disable-next-line:no-any
+function extractOutputShapes(attr: Array<{key: string, value: any}>):
+    TensorShape[] {
   let result = null;
   // We don't know anything about the output tensors.
   if (!attr) {
@@ -798,33 +818,60 @@ function extractOutputShapes(attr: {key: string, value: any}[]): TensorShape[] {
   for (let i = 0; i < attr.length; i++) {
     let {key, value} = attr[i];
     if (key === OUTPUT_SHAPES_KEY) {
-     // Map all output tensors into array of numbers denoting their shape.
-     let result = value.list.shape.map(shape => {
-       if (shape.unknown_rank) {
-         // This output tensor is of unknown rank. We don't know if it is a
-         // scalar, or a tensor, or of what shape it is.
-         return null;
-       }
-       if (shape.dim == null ||
-           (shape.dim.length === 1 && shape.dim[0].size == null)) {
-         // This output tensor is a scalar.
-         return [];
-       }
-       // This output tensor has a known rank. Map each dimension size
-       // into a number.
-       return shape.dim.map(dim => {
-         // Size can be -1 if this particular dimension is unknown.
-         return dim.size;
-       });
-     });
-     // Since we already processed it, remove the entry from the attribute
-     // list (saves memory).
-     attr.splice(i, 1);
-     return result;
+      if (!value.list.shape) {
+        // The OUTPUT_SHAPES_KEY lacks a value. We know nothing about the shape.
+        return null;
+      }
+
+      // Map all output tensors into array of numbers denoting their shape.
+      let result = value.list.shape.map(shape => {
+        if (shape.unknown_rank) {
+          // This output tensor is of unknown rank. We don't know if it is a
+          // scalar, or a tensor, or of what shape it is.
+          return null;
+        }
+        if (shape.dim == null ||
+            (shape.dim.length === 1 && shape.dim[0].size == null)) {
+          // This output tensor is a scalar.
+          return [];
+        }
+        // This output tensor has a known rank. Map each dimension size
+        // into a number.
+        return shape.dim.map(dim => {
+          // Size can be -1 if this particular dimension is unknown.
+          return dim.size;
+        });
+      });
+      // Since we already processed it, remove the entry from the attribute
+      // list (saves memory).
+      attr.splice(i, 1);
+      return result;
     }
   }
   // We didn't find OUTPUT_SHAPES_KEY in attributes, so we don't know anything
   // about the output tensors.
+  return null;
+}
+
+/**
+ * Extracts the XLA Cluster that an op runs on from the attrs of the OpNode.
+ * @param attr The attr property.
+ * @return A string that is the name of the cluster. Or null if it could not be
+ *     determined.
+ */
+// tslint:disable-next-line:no-any
+function extractXlaCluster(attr: Array<{key: string, value: any}>): string|
+    null {
+  if (!attr) {
+    return null;
+  }
+
+  // Find the attribute for XLA cluster if there is one.
+  for (let i = 0; i < attr.length; i++) {
+    if (attr[i].key === _XLA_CLUSTER_KEY) {
+      return attr[i].value['s'] || null;
+    }
+  }
   return null;
 }
 

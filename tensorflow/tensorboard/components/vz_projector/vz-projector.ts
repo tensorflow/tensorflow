@@ -13,21 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, ColumnStats, DataPoint, DataProto, DataSet, SpriteAndMetadataInfo, PointAccessor, PointMetadata, Projection, State, stateGetAccessorDimensions} from './data';
-import {DataProvider, ServingMode, EmbeddingInfo} from './data-provider';
+import {AnalyticsLogger} from './analyticsLogger';
+import * as data from './data';
+import {ColorOption, ColumnStats, DataPoint, DataProto, DataSet, DistanceFunction, PointMetadata, Projection, SpriteAndMetadataInfo, State, stateGetAccessorDimensions} from './data';
+import {DataProvider, EmbeddingInfo, ServingMode} from './data-provider';
 import {DemoDataProvider} from './data-provider-demo';
 import {ProtoDataProvider} from './data-provider-proto';
 import {ServerDataProvider} from './data-provider-server';
-import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
 import * as logging from './logging';
+import {DistanceMetricChangedListener, HoverListener, ProjectionChangedListener, ProjectorEventContext, SelectionChangedListener} from './projectorEventContext';
 import {ProjectorScatterPlotAdapter} from './projectorScatterPlotAdapter';
-import {Mode, ScatterPlot} from './scatterPlot';
-import {ScatterPlotVisualizer3DLabels} from './scatterPlotVisualizer3DLabels';
-import {ScatterPlotVisualizerCanvasLabels} from './scatterPlotVisualizerCanvasLabels';
-import {ScatterPlotVisualizerSprites} from './scatterPlotVisualizerSprites';
-import {ScatterPlotVisualizerTraces} from './scatterPlotVisualizerTraces';
-import {SelectionChangedListener, SelectionContext} from './selectionContext';
+import {MouseMode} from './scatterPlot';
+import * as util from './util';
 import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {DataPanel} from './vz-projector-data-panel';
 import {InspectorPanel} from './vz-projector-inspector-panel';
@@ -49,14 +47,16 @@ export let ProjectorPolymer = PolymerElement({
     routePrefix: String,
     dataProto: {type: String, observer: '_dataProtoChanged'},
     servingMode: String,
-    projectorConfigJsonPath: String
+    projectorConfigJsonPath: String,
+    pageViewLogging: Boolean,
+    eventLogging: Boolean
   }
 });
 
 const INDEX_METADATA_FIELD = '__index__';
 
-export class Projector extends ProjectorPolymer implements SelectionContext,
-                                                           HoverContext {
+export class Projector extends ProjectorPolymer implements
+    ProjectorEventContext {
   // The working subset of the data source's original data set.
   dataSet: DataSet;
   servingMode: ServingMode;
@@ -65,13 +65,16 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   private selectionChangedListeners: SelectionChangedListener[];
   private hoverListeners: HoverListener[];
+  private projectionChangedListeners: ProjectionChangedListener[];
+  private distanceMetricChangedListeners: DistanceMetricChangedListener[];
 
   private originalDataSet: DataSet;
+  private dataSetBeforeFilter: DataSet;
   private dom: d3.Selection<any>;
   private projectorScatterPlotAdapter: ProjectorScatterPlotAdapter;
-  private scatterPlot: ScatterPlot;
   private dim: number;
 
+  private dataSetFilterIndices: number[];
   private selectedPointIndices: number[];
   private neighborsOfFirstPoint: knn.NearestEntry[];
   private hoverPointIndex: number;
@@ -83,7 +86,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private selectedLabelOption: string;
   private routePrefix: string;
   private normalizeData: boolean;
-  private selectedProjection: Projection;
+  private projection: Projection;
 
   /** Polymer component panels */
   private dataPanel: DataPanel;
@@ -92,40 +95,61 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private metadataCard: MetadataCard;
 
   private statusBar: d3.Selection<HTMLElement>;
+  private analyticsLogger: AnalyticsLogger;
+  private eventLogging: boolean;
+  private pageViewLogging: boolean;
 
   ready() {
-    this.selectionChangedListeners = [];
-    this.hoverListeners = [];
-    this.selectedPointIndices = [];
-    this.neighborsOfFirstPoint = [];
     this.dom = d3.select(this);
     logging.setDomContainer(this);
+
+    this.analyticsLogger =
+        new AnalyticsLogger(this.pageViewLogging, this.eventLogging);
+    this.analyticsLogger.logPageView('embeddings');
+
+    if (!util.hasWebGLSupport()) {
+      this.analyticsLogger.logWebGLDisabled();
+      logging.setErrorMessage(
+          'Your browser or device does not have WebGL enabled. Please enable ' +
+          'hardware acceleration, or use a browser that supports WebGL.');
+      return;
+    }
+
+    this.selectionChangedListeners = [];
+    this.hoverListeners = [];
+    this.projectionChangedListeners = [];
+    this.distanceMetricChangedListeners = [];
+    this.selectedPointIndices = [];
+    this.neighborsOfFirstPoint = [];
+
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
-    this.inspectorPanel.initialize(this);
+    this.inspectorPanel.initialize(this, this as ProjectorEventContext);
     this.projectionsPanel = this.$['projections-panel'] as ProjectionsPanel;
     this.projectionsPanel.initialize(this);
+    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
+    this.bookmarkPanel.initialize(this, this as ProjectorEventContext);
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
     this.statusBar = this.dom.select('#status-bar');
-    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
-    this.scopeSubtree(this.$$('#wrapper-notify-msg'), true);
+    this.scopeSubtree(this.$$('#notification-dialog'), true);
     this.setupUIControls();
     this.initializeDataProvider();
   }
 
   setSelectedLabelOption(labelOption: string) {
     this.selectedLabelOption = labelOption;
-    let labelAccessor = (i: number): string => {
-      return this.dataSet.points[i]
-          .metadata[this.selectedLabelOption] as string;
-    };
-    this.scatterPlot.setLabelAccessor(labelAccessor);
     this.metadataCard.setLabelOption(this.selectedLabelOption);
+    this.projectorScatterPlotAdapter.setLabelPointAccessor(labelOption);
+    this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
+    this.projectorScatterPlotAdapter.render();
   }
 
   setSelectedColorOption(colorOption: ColorOption) {
     this.selectedColorOption = colorOption;
-    this.updateScatterPlot();
+    this.projectorScatterPlotAdapter.setLegendPointColorer(
+        this.getLegendPointColorer(colorOption));
+    this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
+    this.projectorScatterPlotAdapter.render();
   }
 
   setNormalizeData(normalizeData: boolean) {
@@ -133,36 +157,57 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.setCurrentDataSet(this.originalDataSet.getSubset());
   }
 
-  updateDataSet(ds: DataSet, spriteAndMetadata?: SpriteAndMetadataInfo,
+  updateDataSet(
+      ds: DataSet, spriteAndMetadata?: SpriteAndMetadataInfo,
       metadataFile?: string) {
+    this.dataSetFilterIndices = null;
     this.originalDataSet = ds;
-    if (this.scatterPlot == null || this.originalDataSet == null) {
-      // We are not ready yet.
-      return;
+    if (ds != null) {
+      this.normalizeData =
+          this.originalDataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
+      spriteAndMetadata = spriteAndMetadata || {};
+      if (spriteAndMetadata.pointsInfo == null) {
+        let [pointsInfo, stats] = this.makeDefaultPointsInfoAndStats(ds.points);
+        spriteAndMetadata.pointsInfo = pointsInfo;
+        spriteAndMetadata.stats = stats;
+      }
+      let metadataMergeSucceeded = ds.mergeMetadata(spriteAndMetadata);
+      if (!metadataMergeSucceeded) {
+        return;
+      }
     }
-    this.normalizeData = this.originalDataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
-    spriteAndMetadata = spriteAndMetadata || {};
-    if (spriteAndMetadata.pointsInfo == null) {
-      let [pointsInfo, stats] = this.makeDefaultPointsInfoAndStats(ds.points);
-      spriteAndMetadata.pointsInfo = pointsInfo;
-      spriteAndMetadata.stats = stats;
+    if (this.projectorScatterPlotAdapter != null) {
+      if (ds == null) {
+        this.projectorScatterPlotAdapter.setLabelPointAccessor(null);
+        this.setProjection(null);
+      } else {
+        this.projectorScatterPlotAdapter.updateScatterPlotPositions();
+        this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
+        this.projectorScatterPlotAdapter.resize();
+        this.projectorScatterPlotAdapter.render();
+      }
     }
-    ds.mergeMetadata(spriteAndMetadata);
-    this.dataPanel.setNormalizeData(this.normalizeData);
-    this.setCurrentDataSet(this.originalDataSet.getSubset());
-    this.inspectorPanel.datasetChanged();
+    if (ds != null) {
+      this.dataPanel.setNormalizeData(this.normalizeData);
+      this.setCurrentDataSet(ds.getSubset());
+      this.projectorScatterPlotAdapter.setLabelPointAccessor(
+          this.selectedLabelOption);
+      this.inspectorPanel.datasetChanged();
 
-    this.inspectorPanel.metadataChanged(spriteAndMetadata);
-    this.projectionsPanel.metadataChanged(spriteAndMetadata);
-    this.dataPanel.metadataChanged(spriteAndMetadata, metadataFile);
-    // Set the container to a fixed height, otherwise in Colab the
-    // height can grow indefinitely.
-    let container = this.dom.select('#container');
-    container.style('height', container.property('clientHeight') + 'px');
+      this.inspectorPanel.metadataChanged(spriteAndMetadata);
+      this.projectionsPanel.metadataChanged(spriteAndMetadata);
+      this.dataPanel.metadataChanged(spriteAndMetadata, metadataFile);
+      // Set the container to a fixed height, otherwise in Colab the
+      // height can grow indefinitely.
+      let container = this.dom.select('#container');
+      container.style('height', container.property('clientHeight') + 'px');
+    } else {
+      this.setCurrentDataSet(null);
+    }
   }
 
   setSelectedTensor(run: string, tensorInfo: EmbeddingInfo) {
-    this.bookmarkPanel.setSelectedTensor(run, tensorInfo);
+    this.bookmarkPanel.setSelectedTensor(run, tensorInfo, this.dataProvider);
   }
 
   /**
@@ -172,20 +217,29 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.selectionChangedListeners.push(listener);
   }
 
-  filterDataset() {
-    let indices = this.selectedPointIndices.concat(
-        this.neighborsOfFirstPoint.map(n => n.index));
-    let selectionSize = this.selectedPointIndices.length;
-    this.setCurrentDataSet(this.dataSet.getSubset(indices));
+  filterDataset(pointIndices: number[]) {
+    const selectionSize = this.selectedPointIndices.length;
+    if (this.dataSetBeforeFilter == null) {
+      this.dataSetBeforeFilter = this.dataSet;
+    }
+    this.setCurrentDataSet(this.dataSet.getSubset(pointIndices));
+    this.dataSetFilterIndices = pointIndices;
+    this.projectorScatterPlotAdapter.updateScatterPlotPositions();
+    this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
     this.adjustSelectionAndHover(d3.range(selectionSize));
-    this.scatterPlot.recreateScene();
   }
 
   resetFilterDataset() {
-    let originalPointIndices = this.selectedPointIndices.map(localIndex => {
-      return this.dataSet.points[localIndex].index;
-    });
-    this.setCurrentDataSet(this.originalDataSet.getSubset());
+    const originalPointIndices = this.selectedPointIndices.map(
+        filteredIndex => this.dataSet.points[filteredIndex].index);
+    this.setCurrentDataSet(this.dataSetBeforeFilter);
+    if (this.projection != null) {
+      this.projection.dataSet = this.dataSetBeforeFilter;
+    }
+    this.dataSetBeforeFilter = null;
+    this.projectorScatterPlotAdapter.updateScatterPlotPositions();
+    this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
+    this.dataSetFilterIndices = [];
     this.adjustSelectionAndHover(originalPointIndices);
   }
 
@@ -224,9 +278,25 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.hoverListeners.forEach(l => l(pointIndex));
   }
 
+  registerProjectionChangedListener(listener: ProjectionChangedListener) {
+    this.projectionChangedListeners.push(listener);
+  }
+
+  notifyProjectionChanged(projection: Projection) {
+    this.projectionChangedListeners.forEach(l => l(projection));
+  }
+
+  registerDistanceMetricChangedListener(l: DistanceMetricChangedListener) {
+    this.distanceMetricChangedListeners.push(l);
+  }
+
+  notifyDistanceMetricChanged(distMetric: DistanceFunction) {
+    this.distanceMetricChangedListeners.forEach(l => l(distMetric));
+  }
+
   _dataProtoChanged(dataProtoString: string) {
-    let dataProto = dataProtoString ?
-        JSON.parse(dataProtoString) as DataProto : null;
+    let dataProto =
+        dataProtoString ? JSON.parse(dataProtoString) as DataProto : null;
     this.initializeDataProvider(dataProto);
   }
 
@@ -250,7 +320,16 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   private initializeDataProvider(dataProto?: DataProto) {
     if (this.servingMode === 'demo') {
-      this.dataProvider = new DemoDataProvider(this.projectorConfigJsonPath);
+      let projectorConfigUrl: string;
+
+      // Only in demo mode do we allow the config being passed via URL.
+      let urlParams = util.getURLParams(window.location.search);
+      if ('config' in urlParams) {
+        projectorConfigUrl = urlParams['config'];
+      } else {
+        projectorConfigUrl = this.projectorConfigJsonPath;
+      }
+      this.dataProvider = new DemoDataProvider(projectorConfigUrl);
     } else if (this.servingMode === 'server') {
       if (!this.routePrefix) {
         throw 'route-prefix is a required parameter';
@@ -261,17 +340,15 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     this.dataPanel.initialize(this, this.dataProvider);
-    this.bookmarkPanel.initialize(this, this.dataProvider);
   }
 
   private getLegendPointColorer(colorOption: ColorOption):
-      (index: number) => string {
+      (ds: DataSet, index: number) => string {
     if ((colorOption == null) || (colorOption.map == null)) {
       return null;
     }
-    const colorer = (i: number) => {
-      let value =
-          this.dataSet.points[i].metadata[this.selectedColorOption.name];
+    const colorer = (ds: DataSet, i: number) => {
+      let value = ds.points[i].metadata[this.selectedColorOption.name];
       if (value == null) {
         return POINT_COLOR_MISSING;
       }
@@ -289,66 +366,62 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     return (label3DModeButton as any).active;
   }
 
-  private getSpriteImageMode(): boolean {
-    return this.dataSet &&
-        this.dataSet.spriteAndMetadataInfo &&
-        this.dataSet.spriteAndMetadataInfo.spriteImage != null;
-  }
-
   adjustSelectionAndHover(selectedPointIndices: number[], hoverIndex?: number) {
     this.notifySelectionChanged(selectedPointIndices);
     this.notifyHoverOverPoint(hoverIndex);
-    this.scatterPlot.setMode(Mode.HOVER);
+    this.setMouseMode(MouseMode.CAMERA_AND_CLICK_SELECT);
   }
 
-  private unsetCurrentDataSet() {
-    this.dataSet.stopTSNE();
+  private setMouseMode(mouseMode: MouseMode) {
+    let selectModeButton = this.querySelector('#selectMode');
+    (selectModeButton as any).active = (mouseMode === MouseMode.AREA_SELECT);
+    this.projectorScatterPlotAdapter.scatterPlot.setMouseMode(mouseMode);
   }
 
   private setCurrentDataSet(ds: DataSet) {
     this.adjustSelectionAndHover([]);
     if (this.dataSet != null) {
-      this.unsetCurrentDataSet();
+      this.dataSet.stopTSNE();
     }
+    if ((ds != null) && this.normalizeData) {
+      ds.normalize();
+    }
+    this.dim = (ds == null) ? 0 : ds.dim[1];
+    this.dom.select('span.numDataPoints').text((ds == null) ? '0' : ds.dim[0]);
+    this.dom.select('span.dim').text((ds == null) ? '0' : ds.dim[1]);
+
     this.dataSet = ds;
-    if (this.normalizeData) {
-      this.dataSet.normalize();
-    }
-    this.dim = this.dataSet.dim[1];
-    this.dom.select('span.numDataPoints').text(this.dataSet.dim[0]);
-    this.dom.select('span.dim').text(this.dataSet.dim[1]);
 
     this.projectionsPanel.dataSetUpdated(
         this.dataSet, this.originalDataSet, this.dim);
 
-    this.scatterPlot.setCameraParametersForNextCameraCreation(null, true);
-    this.scatterPlot.setDataSet(this.dataSet);
-    this.updateScatterPlot();
+    this.projectorScatterPlotAdapter.setDataSet(this.dataSet);
+    this.projectorScatterPlotAdapter.scatterPlot
+        .setCameraParametersForNextCameraCreation(null, true);
   }
 
   private setupUIControls() {
     // View controls
     this.querySelector('#reset-zoom').addEventListener('click', () => {
-      this.scatterPlot.resetZoom();
-      this.scatterPlot.startOrbitAnimation();
+      this.projectorScatterPlotAdapter.scatterPlot.resetZoom();
+      this.projectorScatterPlotAdapter.scatterPlot.startOrbitAnimation();
     });
 
     let selectModeButton = this.querySelector('#selectMode');
     selectModeButton.addEventListener('click', (event) => {
-      this.scatterPlot.setMode(
-          (selectModeButton as any).active ? Mode.SELECT : Mode.HOVER);
+      this.setMouseMode(
+          (selectModeButton as any).active ? MouseMode.AREA_SELECT :
+                                             MouseMode.CAMERA_AND_CLICK_SELECT);
     });
     let nightModeButton = this.querySelector('#nightDayMode');
     nightModeButton.addEventListener('click', () => {
-      this.scatterPlot.setDayNightMode((nightModeButton as any).active);
+      this.projectorScatterPlotAdapter.scatterPlot.setDayNightMode(
+          (nightModeButton as any).active);
     });
 
     const labels3DModeButton = this.get3DLabelModeButton();
     labels3DModeButton.addEventListener('click', () => {
-      this.createVisualizers((labels3DModeButton as any).active);
-      this.scatterPlot.recreateScene();
-      this.updateScatterPlot();
-      this.scatterPlot.update();
+      this.projectorScatterPlotAdapter.set3DLabelMode(this.get3DLabelMode());
     });
 
     window.addEventListener('resize', () => {
@@ -356,18 +429,17 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       let parentHeight =
           (container.node().parentNode as HTMLElement).clientHeight;
       container.style('height', parentHeight + 'px');
-      this.scatterPlot.resize();
+      this.projectorScatterPlotAdapter.resize();
     });
 
-    this.projectorScatterPlotAdapter = new ProjectorScatterPlotAdapter();
+    {
+      this.projectorScatterPlotAdapter = new ProjectorScatterPlotAdapter(
+          this.getScatterContainer(), this as ProjectorEventContext);
+      this.projectorScatterPlotAdapter.setLabelPointAccessor(
+          this.selectedLabelOption);
+    }
 
-    this.scatterPlot = new ScatterPlot(
-        this.getScatterContainer(), i => '' +
-            this.dataSet.points[i].metadata[this.selectedLabelOption],
-        this, this);
-    this.createVisualizers(false);
-
-    this.scatterPlot.onCameraMove(
+    this.projectorScatterPlotAdapter.scatterPlot.onCameraMove(
         (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) =>
             this.bookmarkPanel.clearStateSelection());
 
@@ -390,59 +462,14 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
         hoverText = point.metadata[this.selectedLabelOption].toString();
       }
     }
-    this.updateScatterPlot();
     if (this.selectedPointIndices.length === 0) {
       this.statusBar.style('display', hoverText ? null : 'none');
       this.statusBar.text(hoverText);
     }
   }
 
-  private updateScatterPlot() {
-    const dataSet = this.dataSet;
-    const selectedSet = this.selectedPointIndices;
-    const hoverIndex = this.hoverPointIndex;
-    const neighbors = this.neighborsOfFirstPoint;
-    const pointColorer = this.getLegendPointColorer(this.selectedColorOption);
-
-    const pointColors =
-        this.projectorScatterPlotAdapter.generatePointColorArray(
-            dataSet, pointColorer, selectedSet, neighbors, hoverIndex,
-            this.get3DLabelMode(), this.getSpriteImageMode());
-    const pointScaleFactors =
-        this.projectorScatterPlotAdapter.generatePointScaleFactorArray(
-            dataSet, selectedSet, neighbors, hoverIndex);
-    const labels =
-        this.projectorScatterPlotAdapter.generateVisibleLabelRenderParams(
-            dataSet, selectedSet, neighbors, hoverIndex);
-    const traceColors =
-        this.projectorScatterPlotAdapter.generateLineSegmentColorMap(
-            dataSet, pointColorer);
-
-    this.scatterPlot.setPointColors(pointColors);
-    this.scatterPlot.setPointScaleFactors(pointScaleFactors);
-    this.scatterPlot.setLabels(labels);
-    this.scatterPlot.setTraceColors(traceColors);
-    this.scatterPlot.render();
-  }
-
   private getScatterContainer(): d3.Selection<any> {
     return this.dom.select('#scatter');
-  }
-
-  private createVisualizers(inLabels3DMode: boolean) {
-    const scatterPlot = this.scatterPlot;
-    const selectionContext = this;
-    scatterPlot.removeAllVisualizers();
-
-    if (inLabels3DMode) {
-      scatterPlot.addVisualizer(new ScatterPlotVisualizer3DLabels());
-    } else {
-      scatterPlot.addVisualizer(new ScatterPlotVisualizerSprites());
-      scatterPlot.addVisualizer(
-          new ScatterPlotVisualizerTraces(selectionContext));
-      scatterPlot.addVisualizer(
-          new ScatterPlotVisualizerCanvasLabels(this.getScatterContainer()));
-    }
   }
 
   private onSelectionChanged(
@@ -454,29 +481,18 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
         this.selectedPointIndices.length + neighborsOfFirstPoint.length;
     this.statusBar.text(`Selected ${totalNumPoints} points`)
         .style('display', totalNumPoints > 0 ? null : 'none');
-    this.inspectorPanel.updateInspectorPane(
-        selectedPointIndices, neighborsOfFirstPoint);
-    this.updateScatterPlot();
   }
 
-  setProjection(
-      projection: Projection, dimensionality: number,
-      pointAccessors: [PointAccessor, PointAccessor, PointAccessor]) {
-    this.selectedProjection = projection;
-    this.scatterPlot.setDimensions(dimensionality);
-    this.scatterPlot.showTickLabels(false);
-    this.scatterPlot.setPointAccessors(pointAccessors);
-
-    if (this.dataSet.hasMeaningfulVisualization(projection)) {
-      this.scatterPlot.update();
+  setProjection(projection: Projection) {
+    this.projection = projection;
+    if (projection != null) {
+      this.analyticsLogger.logProjectionChanged(projection.projectionType);
     }
-
-    this.scatterPlot.recreateScene();
-    this.scatterPlot.setCameraParametersForNextCameraCreation(null, false);
+    this.notifyProjectionChanged(projection);
   }
 
-  notifyProjectionsUpdated() {
-    this.scatterPlot.update();
+  notifyProjectionPositionsUpdated() {
+    this.projectorScatterPlotAdapter.notifyProjectionPositionsUpdated();
   }
 
   /**
@@ -496,12 +512,14 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       }
       state.projections.push(projections);
     }
-    state.selectedProjection = this.selectedProjection;
+    state.selectedProjection = this.projection.projectionType;
     state.dataSetDimensions = this.dataSet.dim;
     state.tSNEIteration = this.dataSet.tSNEIteration;
     state.selectedPoints = this.selectedPointIndices;
-    state.cameraDef = this.scatterPlot.getCameraDef();
+    state.filteredPoints = this.dataSetFilterIndices;
+    this.projectorScatterPlotAdapter.populateBookmarkFromUI(state);
     state.selectedColorOptionName = this.dataPanel.selectedColorOptionName;
+    state.forceCategoricalColoring = this.dataPanel.forceCategoricalColoring;
     state.selectedLabelOption = this.selectedLabelOption;
     this.projectionsPanel.populateBookmarkFromUI(state);
     return state;
@@ -509,6 +527,17 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   /** Loads a State object into the world. */
   loadState(state: State) {
+    this.setProjection(null);
+    {
+      this.projectionsPanel.disablePolymerChangesTriggerReprojection();
+      if (this.dataSetBeforeFilter != null) {
+        this.resetFilterDataset();
+      }
+      if (state.filteredPoints != null) {
+        this.filterDataset(state.filteredPoints);
+      }
+      this.projectionsPanel.enablePolymerChangesTriggerReprojection();
+    }
     for (let i = 0; i < state.projections.length; i++) {
       const point = this.dataSet.points[i];
       const projection = state.projections[i];
@@ -520,16 +549,20 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.dataSet.hasTSNERun = (state.selectedProjection === 'tsne');
     this.dataSet.tSNEIteration = state.tSNEIteration;
     this.projectionsPanel.restoreUIFromBookmark(state);
+    this.inspectorPanel.restoreUIFromBookmark(state);
     this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
+    this.dataPanel.setForceCategoricalColoring(
+        !!state.forceCategoricalColoring);
     this.selectedLabelOption = state.selectedLabelOption;
-    this.scatterPlot.setCameraParametersForNextCameraCreation(
-        state.cameraDef, false);
+    this.projectorScatterPlotAdapter.restoreUIFromBookmark(state);
     {
       const dimensions = stateGetAccessorDimensions(state);
-      const accessors =
-          this.dataSet.getPointAccessors(state.selectedProjection, dimensions);
-      this.setProjection(
-          state.selectedProjection, dimensions.length, accessors);
+      const components =
+          data.getProjectionComponents(state.selectedProjection, dimensions);
+      const projection = new Projection(
+          state.selectedProjection, components, dimensions.length,
+          this.dataSet);
+      this.setProjection(projection);
     }
     this.notifySelectionChanged(state.selectedPoints);
   }

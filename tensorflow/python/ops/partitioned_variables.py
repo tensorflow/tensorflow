@@ -263,7 +263,7 @@ def create_partitioned_variables(
     trainable: If True also add all the variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES`.
     collections: List of graph collections keys to add the variables to.
-      Defaults to `[GraphKeys.VARIABLES]`.
+      Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
     name: Optional name for the full variable.  Defaults to
       `"PartitionedVariable"` and gets uniquified automatically.
     reuse: Boolean or `None`; if `True` and name is set, it would reuse

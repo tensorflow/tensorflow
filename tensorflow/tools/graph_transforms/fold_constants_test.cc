@@ -82,12 +82,13 @@ class ConstantFoldingTest : public ::testing::Test {
     TF_ASSERT_OK(unfolded_session->Run(inputs, outputs, {}, &unfolded_tensors));
 
     GraphDef folded_graph_def;
-    std::vector<string> input_names;
+    graph_transforms::TransformFuncContext context;
     for (const std::pair<string, Tensor>& input : inputs) {
-      input_names.push_back(input.first);
+      context.input_names.push_back(input.first);
     }
-    TF_ASSERT_OK(graph_transforms::FoldConstants(graph_def, input_names,
-                                                 outputs, &folded_graph_def));
+    context.output_names = outputs;
+    TF_ASSERT_OK(
+        graph_transforms::FoldConstants(graph_def, context, &folded_graph_def));
 
     std::unique_ptr<tensorflow::Session> folded_session(
         tensorflow::NewSession(tensorflow::SessionOptions()));
@@ -187,7 +188,7 @@ class ConstantFoldingTest : public ::testing::Test {
     TF_ASSERT_OK(root.ToGraphDef(&graph_def));
     GraphDef result_graph_def;
     TF_ASSERT_OK(graph_transforms::RemoveUnusedNodes(
-        graph_def, {"placeholder"}, {"output"}, &result_graph_def));
+        graph_def, {{"placeholder"}, {"output"}}, &result_graph_def));
 
     std::map<string, const NodeDef*> node_map;
     graph_transforms::MapNamesToNodes(result_graph_def, &node_map);

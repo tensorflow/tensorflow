@@ -43,12 +43,13 @@ namespace serving {
 namespace {
 
 auto* load_attempt_count = monitoring::Counter<2>::New(
-    "/tensorflow/contrib/session_bundle/load_attempt_count", "model_path",
-    "status",
-    "The number of times a SessionBundle was requested to be loaded.");
+    "/tensorflow/contrib/session_bundle/load_attempt_count",
+    "The number of times a SessionBundle was requested to be loaded.",
+    "model_path", "status");
 auto* load_latency = monitoring::Counter<1>::New(
-    "/tensorflow/contrib/session_bundle/load_latency", "model_path",
-    "Latency in microseconds for SessionBundles that were succesfully loaded.");
+    "/tensorflow/contrib/session_bundle/load_latency",
+    "Latency in microseconds for SessionBundles that were successfully loaded.",
+    "model_path");
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
 
@@ -89,28 +90,37 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
   }
 }
 
-// Historically, model exporter(exporter.py) takes only saver with
-// sharded=True, and therefore always exports checkpoint in pattern file names.
-// In practice, instead of training from scratch and export directly, we
-// usually want to restore from existing checkpoints and then export directly.
-// To support such case, model exporter now supports reusing saver object
-// restored from existing checkpoint, that may have sharded=False - it will
-// then export checkpoint file in plain file name.
-// This method is to support models exported by both types of saver object.
-// The change is backward-compatible, therefore no changes are needed for
-// existing model exports.
-// Checkpoint v2 support: Models exported in the checkpoint v2 format will have
-// an export.index file. When the exported model uses checkpoint v2 the returned
-// variables filename should not have a file type suffix. The variable is
-// distributed among the export.index and export.data-?????-of-????? files.
+// Historically, model exporter(exporter.py) takes only saver with sharded=True,
+// and therefore always exports checkpoint in pattern file names.  In practice,
+// instead of training from scratch and export directly, we usually want to
+// restore from existing checkpoints and then export directly.  To support such
+// case, model exporter now supports reusing saver object restored from existing
+// checkpoint, that may have sharded=False - it will then export checkpoint file
+// in plain file name.  This method is to support models exported by both types
+// of saver object.  The change is backward-compatible, therefore no changes are
+// needed for existing model exports.
+//
+// Checkpoint v2 support: Variables exported using tf-exporter in the checkpoint
+// v2 format will have export.index and export.data-?????-of-????? files as
+// opposed to just an export or export-?????-of-????? file. The V2 save/restore
+// code accepts a filename prefix and assumes both prefix.index and
+// prefix.data-* are present in the filesystem. So if we see export.index
+// present in the export_dir, we know the export is in V2 format and we return
+// <export_dir>/export as this prefix.
 string GetVariablesFilename(const StringPiece export_dir) {
   const char kVariablesFilename[] = "export";
   const string kVariablesIndexFilename = MetaFilename("export");  // V2 ckpts
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
-  if (Env::Default()->FileExists(
-          io::JoinPath(export_dir, kVariablesFilename)) ||
-      Env::Default()->FileExists(
-          io::JoinPath(export_dir, kVariablesIndexFilename))) {
+  if (Env::Default()
+          ->FileExists(io::JoinPath(export_dir, kVariablesFilename))
+          .ok() ||
+      // This works for the case of V2 because the variables filename is taken
+      // as a prefix in the save/restore abstraction, and the index and actual
+      // variables are meant to be present as prefix.index and
+      // prefix.data-?????-of-?????.
+      Env::Default()
+          ->FileExists(io::JoinPath(export_dir, kVariablesIndexFilename))
+          .ok()) {
     return io::JoinPath(export_dir, kVariablesFilename);
   } else {
     return io::JoinPath(export_dir, kVariablesFilenamePattern);
@@ -122,7 +132,8 @@ Status RunRestoreOp(const RunOptions& run_options, const StringPiece export_dir,
                     const StringPiece restore_op_name,
                     const StringPiece variables_filename_const_op_name,
                     Session* session) {
-  LOG(INFO) << "Running restore op for SessionBundle";
+  LOG(INFO) << "Running restore op for SessionBundle: " << restore_op_name
+            << ", " << variables_filename_const_op_name;
   Tensor variables_tensor =
       CreateStringTensor(GetVariablesFilename(export_dir));
   std::vector<std::pair<string, Tensor>> inputs = {
@@ -248,7 +259,7 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
 bool IsPossibleExportDirectory(const StringPiece directory) {
   const string meta_graph_def_path =
       io::JoinPath(directory, kMetaGraphDefFilename);
-  return Env::Default()->FileExists(meta_graph_def_path);
+  return Env::Default()->FileExists(meta_graph_def_path).ok();
 }
 
 }  // namespace serving

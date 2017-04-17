@@ -89,8 +89,8 @@ def report_uninitialized_resources(resource_list=None,
       # size being 0 as an indication of model ready.
       return array_ops.constant([], dtype=dtypes.string)
     # Get a 1-D boolean tensor listing whether each resource is initialized.
-    variables_mask = math_ops.logical_not(array_ops.pack(
-        [r.is_initialized for r in resource_list]))
+    variables_mask = math_ops.logical_not(
+        array_ops.stack([r.is_initialized for r in resource_list]))
     # Get a 1-D string tensor containing all the resource names.
     variable_names_tensor = array_ops.constant(
         [s.handle.name for s in resource_list])

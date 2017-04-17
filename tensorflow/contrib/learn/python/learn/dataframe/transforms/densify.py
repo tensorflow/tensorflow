@@ -62,5 +62,4 @@ class Densify(transform.TensorFlowTransform):
 
      # pylint: disable=not-callable
     return self.return_type(sparse_ops.sparse_to_dense(
-        s.indices, s.shape, s.values, default_value=self.default_value))
-
+        s.indices, s.dense_shape, s.values, default_value=self.default_value))

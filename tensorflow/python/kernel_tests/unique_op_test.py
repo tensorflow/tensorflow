@@ -12,22 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.kernels.unique_op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
 
-class UniqueTest(tf.test.TestCase):
+class UniqueTest(test.TestCase):
 
   def testInt32(self):
     x = np.random.randint(2, high=10, size=7000)
     with self.test_session() as sess:
-      y, idx = tf.unique(x)
+      y, idx = array_ops.unique(x)
       tf_y, tf_idx = sess.run([y, idx])
 
     self.assertEqual(len(x), len(tf_idx))
@@ -39,7 +41,7 @@ class UniqueTest(tf.test.TestCase):
     indx = np.random.randint(65, high=122, size=7000)
     x = [chr(i) for i in indx]
     with self.test_session() as sess:
-      y, idx = tf.unique(x)
+      y, idx = array_ops.unique(x)
       tf_y, tf_idx = sess.run([y, idx])
 
     self.assertEqual(len(x), len(tf_idx))
@@ -48,12 +50,12 @@ class UniqueTest(tf.test.TestCase):
       self.assertEqual(x[i], tf_y[tf_idx[i]].decode('ascii'))
 
 
-class UniqueWithCountsTest(tf.test.TestCase):
+class UniqueWithCountsTest(test.TestCase):
 
   def testInt32(self):
     x = np.random.randint(2, high=10, size=7000)
     with self.test_session() as sess:
-      y, idx, count = tf.unique_with_counts(x)
+      y, idx, count = array_ops.unique_with_counts(x)
       tf_y, tf_idx, tf_count = sess.run([y, idx, count])
 
     self.assertEqual(len(x), len(tf_idx))
@@ -68,7 +70,7 @@ class UniqueWithCountsTest(tf.test.TestCase):
     x = [chr(i) for i in indx]
 
     with self.test_session() as sess:
-      y, idx, count = tf.unique_with_counts(x)
+      y, idx, count = array_ops.unique_with_counts(x)
       tf_y, tf_idx, tf_count = sess.run([y, idx, count])
 
     self.assertEqual(len(x), len(tf_idx))
@@ -81,4 +83,4 @@ class UniqueWithCountsTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

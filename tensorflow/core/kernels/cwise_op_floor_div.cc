@@ -18,9 +18,14 @@ limitations under the License.
 namespace tensorflow {
 REGISTER5(BinaryOp, CPU, "FloorDiv", functor::safe_floor_div, uint8, uint16,
           int16, int32, int64);
+REGISTER3(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
+          Eigen::half, double);
+
 #if GOOGLE_CUDA
 REGISTER4(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int16,
           int64);
+REGISTER3(BinaryOp, GPU, "FloorDiv", functor::floor_div_real, float,
+          Eigen::half, double);
 #endif
 
 #if GOOGLE_CUDA
@@ -35,4 +40,14 @@ REGISTER_KERNEL_BUILDER(Name("FloorDiv")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::safe_floor_div<int32>>);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("FloorDiv")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::safe_floor_div<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

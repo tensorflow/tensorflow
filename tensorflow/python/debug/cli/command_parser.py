@@ -17,11 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ast
+from collections import namedtuple
 import re
+import sys
+
 
 _BRACKETS_PATTERN = re.compile(r"\[[^\]]*\]")
 _QUOTES_PATTERN = re.compile(r"\"[^\"]*\"")
 _WHITESPACE_PATTERN = re.compile(r"\s+")
+
+
+Interval = namedtuple("Interval",
+                      ["start", "start_included", "end", "end_included"])
 
 
 def parse_command(command):
@@ -71,6 +79,42 @@ def parse_command(command):
   return arguments
 
 
+def extract_output_file_path(args):
+  """Extract output file path from command arguments.
+
+  Args:
+    args: (list of str) command arguments.
+
+  Returns:
+    (list of str) Command arguments with the output file path part stripped.
+    (str or None) Output file path (if any).
+
+  Raises:
+    SyntaxError: If there is no file path after the last ">" character.
+  """
+
+  if args and args[-1].endswith(">"):
+    raise SyntaxError("Redirect file path is empty")
+  elif args and args[-1].startswith(">"):
+    output_file_path = args[-1][1:]
+    args = args[:-1]
+  elif len(args) > 1 and args[-2] == ">":
+    output_file_path = args[-1]
+    args = args[:-2]
+  elif args and args[-1].count(">") == 1:
+    gt_index = args[-1].index(">")
+    output_file_path = args[-1][gt_index + 1:]
+    args[-1] = args[-1][:gt_index]
+  elif len(args) > 1 and args[-2].endswith(">"):
+    output_file_path = args[-1]
+    args = args[:-1]
+    args[-1] = args[-1][:-1]
+  else:
+    output_file_path = None
+
+  return args, output_file_path
+
+
 def parse_tensor_name_with_slicing(in_str):
   """Parse tensor name, potentially suffixed by slicing string.
 
@@ -110,6 +154,35 @@ def validate_slicing_string(slicing_string):
   return bool(re.search(r"^\[(\d|,|\s|:)+\]$", slicing_string))
 
 
+def _parse_slices(slicing_string):
+  """Construct a tuple of slices from the slicing string.
+
+  The string must be a valid slicing string.
+
+  Args:
+    slicing_string: (str) Input slicing string to be parsed.
+
+  Returns:
+    tuple(slice1, slice2, ...)
+
+  Raises:
+    ValueError: If tensor_slicing is not a valid numpy ndarray slicing str.
+  """
+  parsed = []
+  for slice_string in slicing_string[1:-1].split(","):
+    indices = slice_string.split(":")
+    if len(indices) == 1:
+      parsed.append(int(indices[0].strip()))
+    elif 2 <= len(indices) <= 3:
+      parsed.append(
+          slice(*[
+              int(index.strip()) if index.strip() else None for index in indices
+          ]))
+    else:
+      raise ValueError("Invalid tensor-slicing string.")
+  return tuple(parsed)
+
+
 def parse_indices(indices_string):
   """Parse a string representing indices.
 
@@ -132,3 +205,231 @@ def parse_indices(indices_string):
     indices_string = indices_string[1:-1]
 
   return [int(element) for element in indices_string.split(",")]
+
+
+def parse_ranges(range_string):
+  """Parse a string representing numerical range(s).
+
+  Args:
+    range_string: (str) A string representing a numerical range or a list of
+      them. For example:
+        "[-1.0,1.0]", "[-inf, 0]", "[[-inf, -1.0], [1.0, inf]]"
+
+  Returns:
+    (list of list of float) A list of numerical ranges parsed from the input
+      string.
+
+  Raises:
+    ValueError: If the input doesn't represent a range or a list of ranges.
+  """
+
+  range_string = range_string.strip()
+  if not range_string:
+    return []
+
+  if "inf" in range_string:
+    range_string = re.sub(r"inf", repr(sys.float_info.max), range_string)
+
+  ranges = ast.literal_eval(range_string)
+  if isinstance(ranges, list) and not isinstance(ranges[0], list):
+    ranges = [ranges]
+
+  # Verify that ranges is a list of list of numbers.
+  for item in ranges:
+    if len(item) != 2:
+      raise ValueError("Incorrect number of elements in range")
+    elif not isinstance(item[0], (int, float)):
+      raise ValueError("Incorrect type in the 1st element of range: %s" %
+                       type(item[0]))
+    elif not isinstance(item[1], (int, float)):
+      raise ValueError("Incorrect type in the 2nd element of range: %s" %
+                       type(item[0]))
+
+  return ranges
+
+
+def parse_memory_interval(interval_str):
+  """Convert a human-readable memory interval to a tuple of start and end value.
+
+  Args:
+    interval_str: (`str`) A human-readable str representing an interval
+      (e.g., "[10kB, 20kB]", "<100M", ">100G"). Only the units "kB", "MB", "GB"
+      are supported. The "B character at the end of the input `str` may be
+      omitted.
+
+  Returns:
+    `Interval` object where start and end are in bytes.
+
+  Raises:
+    ValueError: if the input is not valid.
+  """
+  str_interval = _parse_interval(interval_str)
+  interval_start = 0
+  interval_end = float("inf")
+  if str_interval.start:
+    interval_start = parse_readable_size_str(str_interval.start)
+  if str_interval.end:
+    interval_end = parse_readable_size_str(str_interval.end)
+  if interval_start > interval_end:
+    raise ValueError(
+        "Invalid interval %s. Start of interval must be less than or equal "
+        "to end of interval." % interval_str)
+  return Interval(interval_start, str_interval.start_included,
+                  interval_end, str_interval.end_included)
+
+
+def parse_time_interval(interval_str):
+  """Convert a human-readable time interval to a tuple of start and end value.
+
+  Args:
+    interval_str: (`str`) A human-readable str representing an interval
+      (e.g., "[10us, 20us]", "<100s", ">100ms"). Supported time suffixes are
+      us, ms, s.
+
+  Returns:
+    `Interval` object where start and end are in microseconds.
+
+  Raises:
+    ValueError: if the input is not valid.
+  """
+  str_interval = _parse_interval(interval_str)
+  interval_start = 0
+  interval_end = float("inf")
+  if str_interval.start:
+    interval_start = parse_readable_time_str(str_interval.start)
+  if str_interval.end:
+    interval_end = parse_readable_time_str(str_interval.end)
+  if interval_start > interval_end:
+    raise ValueError(
+        "Invalid interval %s. Start must be before end of interval." %
+        interval_str)
+  return Interval(interval_start, str_interval.start_included,
+                  interval_end, str_interval.end_included)
+
+
+def _parse_interval(interval_str):
+  """Convert a human-readable interval to a tuple of start and end value.
+
+  Args:
+    interval_str: (`str`) A human-readable str representing an interval
+      (e.g., "[1M, 2M]", "<100k", ">100ms")
+
+  Returns:
+    Interval object where start or end can be None
+    if the range is specified as "<N" or ">N" respectively.
+
+  Raises:
+    ValueError: if the input is not valid.
+  """
+  interval_str = interval_str.strip()
+  if interval_str.startswith("<="):
+    return Interval(start=None, start_included=False,
+                    end=interval_str[2:].strip(), end_included=True)
+  if interval_str.startswith("<"):
+    return Interval(start=None, start_included=False,
+                    end=interval_str[1:].strip(), end_included=False)
+  if interval_str.startswith(">="):
+    return Interval(start=interval_str[2:].strip(), start_included=True,
+                    end=None, end_included=False)
+  if interval_str.startswith(">"):
+    return Interval(start=interval_str[1:].strip(), start_included=False,
+                    end=None, end_included=False)
+  if (not interval_str.startswith(("[", "("))
+      or not interval_str.endswith(("]", ")"))):
+    raise ValueError(
+        "Invalid interval format: %s. Valid formats are: [min, max], "
+        "(min, max), <max, >min" % interval_str)
+  interval = interval_str[1:-1].split(",")
+  if len(interval) != 2:
+    raise ValueError(
+        "Incorrect interval format: %s. Interval should specify two values: "
+        "[min, max] or (min, max)." % interval_str)
+  return Interval(start=interval[0].strip(),
+                  start_included=(interval_str[0] == "["),
+                  end=interval[1].strip(),
+                  end_included=(interval_str[-1] == "]"))
+
+
+def parse_readable_size_str(size_str):
+  """Convert a human-readable str representation to number of bytes.
+
+  Only the units "kB", "MB", "GB" are supported. The "B character at the end
+  of the input `str` may be omitted.
+
+  Args:
+    size_str: (`str`) A human-readable str representing a number of bytes
+      (e.g., "0", "1023", "1.1kB", "24 MB", "23GB", "100 G".
+
+  Returns:
+    (`int`) The parsed number of bytes.
+
+  Raises:
+    ValueError: on failure to parse the input `size_str`.
+  """
+
+  size_str = size_str.strip()
+  if size_str.endswith("B"):
+    size_str = size_str[:-1]
+
+  if size_str.isdigit():
+    return int(size_str)
+  elif size_str.endswith("k"):
+    return int(float(size_str[:-1]) * 1024)
+  elif size_str.endswith("M"):
+    return int(float(size_str[:-1]) * 1048576)
+  elif size_str.endswith("G"):
+    return int(float(size_str[:-1]) * 1073741824)
+  else:
+    raise ValueError("Failed to parsed human-readable byte size str: \"%s\"" %
+                     size_str)
+
+
+def parse_readable_time_str(time_str):
+  """Parses a time string in the format N, Nus, Nms, Ns.
+
+  Args:
+    time_str: (`str`) string consisting of an integer time value optionally
+      followed by 'us', 'ms', or 's' suffix. If suffix is not specified,
+      value is assumed to be in microseconds. (e.g. 100us, 8ms, 5s, 100).
+
+  Returns:
+    Microseconds value.
+  """
+  def parse_positive_float(value_str):
+    value = float(value_str)
+    if value < 0:
+      raise ValueError(
+          "Invalid time %s. Time value must be positive." % value_str)
+    return value
+
+  time_str = time_str.strip()
+  if time_str.endswith("us"):
+    return int(parse_positive_float(time_str[:-2]))
+  elif time_str.endswith("ms"):
+    return int(parse_positive_float(time_str[:-2]) * 1e3)
+  elif time_str.endswith("s"):
+    return int(parse_positive_float(time_str[:-1]) * 1e6)
+  return int(parse_positive_float(time_str))
+
+
+def evaluate_tensor_slice(tensor, tensor_slicing):
+  """Call eval on the slicing of a tensor, with validation.
+
+  Args:
+    tensor: (numpy ndarray) The tensor value.
+    tensor_slicing: (str or None) Slicing of the tensor, e.g., "[:, 1]". If
+      None, no slicing will be performed on the tensor.
+
+  Returns:
+    (numpy ndarray) The sliced tensor.
+
+  Raises:
+    ValueError: If tensor_slicing is not a valid numpy ndarray slicing str.
+  """
+
+  _ = tensor
+
+  if not validate_slicing_string(tensor_slicing):
+    raise ValueError("Invalid tensor-slicing string.")
+
+  return tensor[_parse_slices(tensor_slicing)]

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './data';
 
 /**
  * ScatterPlotVisualizer is an interface used by ScatterPlotContainer
@@ -23,28 +22,17 @@ import {DataSet} from './data';
  * implements this interface and attach it to the ScatterPlotContainer.
  */
 export interface ScatterPlotVisualizer {
+  /** Called to initialize the visualizer with the primary scene. */
+  setScene(scene: THREE.Scene);
   /**
-   * Called when the main scatter plot builds the scene. Add all 3D geometry to
-   * the scene here, set up lights, etc.
+   * Called when the main scatter plot tears down the visualizer. Remove all
+   * objects from the scene, and dispose any heavy resources.
    */
-  onRecreateScene(
-      scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number);
+  dispose();
   /**
-   * Called when the main scatter plot tears down the scene. Remove all
-   * elements from the 3D scene here.
+   * Called when the positions of the scatter plot points have changed.
    */
-  removeAllFromScene(scene: THREE.Scene);
-  /**
-   * Called when the projector data set changes. Do any dataset-specific
-   * initialization here.
-   */
-  onDataSet(dataSet: DataSet);
-  /**
-   * Called when the label accessor (functor that maps point ids to text labels)
-   * changes. The label accessor is also part of RenderContext, but visualizers
-   * may need it outside of a render call, to learn when it changes.
-   */
-  onSetLabelAccessor(labelAccessor: (index: number) => string);
+  onPointPositionsChanged(newWorldSpacePointPositions: Float32Array);
   /**
    * Called immediately before the main scatter plot performs a picking
    * (selection) render. Set up render state for any geometry to use picking IDs
@@ -56,11 +44,6 @@ export interface ScatterPlotVisualizer {
    * render. Set up render state, lights, etc here.
    */
   onRender(renderContext: RenderContext);
-  /**
-   * Called when the projector updates application state (projection style,
-   * etc). Generally followed by a render.
-   */
-  onUpdate(dataSet: DataSet);
   /**
    * Called when the canvas size changes.
    */

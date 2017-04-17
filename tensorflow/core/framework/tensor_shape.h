@@ -157,6 +157,7 @@ class TensorShape {
   static string DebugString(const TensorShapeProto& proto);
 
   void DumpRep() const;  // XXX
+
  private:
   void DestructorOutOfLine();
   void ClearAllButDataType();
@@ -166,6 +167,13 @@ class TensorShape {
 
   void CheckDimsEqual(int NDIMS) const;
   void CheckDimsAtLeast(int NDIMS) const;
+
+  // Used by AddDim and MakeShapeHelper.  Does no error checking.
+  void UnsafeAddDim(int64 size, int64 new_num_elements);
+
+  // For use by TensorShapeUtils::MakeShape
+  template <class T>
+  friend Status MakeShapeHelper(const T*, int64, TensorShape*);
 
   // We use 16 bytes to represent a TensorShape.  Because we need to
   // be able to support full 64-bit dimension sizes and an arbitrary

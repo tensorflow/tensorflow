@@ -40,9 +40,9 @@ namespace serving {
 namespace {
 
 // Constants for the export path and file-names.
-const char kExportPath[] = "session_bundle/example/half_plus_two/00000123";
+const char kExportPath[] = "session_bundle/testdata/half_plus_two/00000123";
 const char kExportCheckpointV2Path[] =
-    "session_bundle/example/half_plus_two_ckpt_v2/00000123";
+    "session_bundle/testdata/half_plus_two_ckpt_v2/00000123";
 const char kMetaGraphDefFilename[] = "export.meta";
 const char kVariablesFilename[] = "export-00000-of-00001";
 

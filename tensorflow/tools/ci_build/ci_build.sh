@@ -26,7 +26,7 @@
 #                  directory as this script will be used.
 #
 # COMMAND: Command to be executed in the docker container, e.g.,
-#          tensorflow/tools/ci_build/builds/pip.sh gpu
+#          tensorflow/tools/ci_build/builds/pip.sh gpu -c opt --config=cuda
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds/builds_common.sh"
@@ -148,9 +148,9 @@ mkdir -p ${WORKSPACE}/bazel-ci_build-cache
 ${DOCKER_BINARY} run --rm --pid=host \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
-    -e "CI_BUILD_USER=$(id -u --name)" \
+    -e "CI_BUILD_USER=$(id -u -n)" \
     -e "CI_BUILD_UID=$(id -u)" \
-    -e "CI_BUILD_GROUP=$(id -g --name)" \
+    -e "CI_BUILD_GROUP=$(id -g -n)" \
     -e "CI_BUILD_GID=$(id -g)" \
     -e "CI_TENSORFLOW_SUBMODULE_PATH=${CI_TENSORFLOW_SUBMODULE_PATH}" \
     -v ${WORKSPACE}:/workspace \

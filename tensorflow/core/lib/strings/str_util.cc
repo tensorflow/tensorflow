@@ -355,5 +355,15 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
   return SplitAndParseAsInts<int64>(text, delim, strings::safe_strto64, result);
 }
 
+bool SplitAndParseAsFloats(StringPiece text, char delim,
+                           std::vector<float>* result) {
+  return SplitAndParseAsInts<float>(text, delim,
+                                    [](StringPiece str, float* value) {
+                                      return strings::safe_strtof(
+                                          str.ToString().c_str(), value);
+                                    },
+                                    result);
+}
+
 }  // namespace str_util
 }  // namespace tensorflow

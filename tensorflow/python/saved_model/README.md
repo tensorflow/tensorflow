@@ -22,6 +22,8 @@ The following is a summary of the features in SavedModel:
       and outputs. This is called a `Signature`.
     * SavedModel uses [SignatureDefs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/meta_graph.proto)
       to allow generic support for signatures that may need to be saved with the graphs.
+    * For commonly used SignatureDefs in the context of TensorFlow Serving,
+      please see documentation [here](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/g3doc/signature_defs.md).
 * Support for `Assets`.
     * For cases where ops depend on external files for initialization, such as
       vocabularies, SavedModel supports this via `assets`.
@@ -94,10 +96,6 @@ restore, along with the shared set of variables and assets. These tags
 typically annotate a MetaGraph with it's functionality (e.g. serving or
 training), and possibly hardware specific aspects such as GPU.
 
-A subset of commonly used tags is specified in [Python](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/tag_constants.py)
-and [C++](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/tag_constants.h)
-for the purpose of easy and consistent usability.
-
 #### Usage
 The typical usage of `builder` is as follows:
 
@@ -106,11 +104,11 @@ export_dir = ...
 ...
 builder = saved_model_builder.SavedModelBuilder(export_dir)
 with tf.Session(graph=tf.Graph()) as sess:
-...
-builder.add_meta_graph_and_variables(sess,
-                                     [tag_constants.TRAINING],
-                                     signature_def_map=foo_signatures,
-                                     assets_collection=foo_assets)
+  ...
+  builder.add_meta_graph_and_variables(sess,
+                                       [tag_constants.TRAINING],
+                                       signature_def_map=foo_signatures,
+                                       assets_collection=foo_assets)
 ...
 with tf.Session(graph=tf.Graph()) as sess:
   ...
@@ -123,7 +121,7 @@ builder.save()
 The SavedModel loader is implemented in C++ and Python.
 
 #### Python
-The Python version of the SavedModel [loader](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/builder.py)
+The Python version of the SavedModel [loader](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/loader.py)
 provides load and restore capability for a SavedModel. The `load` operation
 requires the session in which to restore the graph definition and variables, the
 tags used to identify the meta graph def to load and the location of the
@@ -153,3 +151,25 @@ SavedModelBundle bundle;
 LoadSavedModel(session_options, run_options, export_dir, {kSavedModelTagTrain},
                &bundle);
 ~~~
+
+### Constants
+SavedModel offers the flexibility to build and load TensorFlow graphs for a
+variety of use-cases. For the set of most common expected use-cases,
+SavedModel's APIs provide a set of constants in Python and C++ that are easy to
+reuse and share across tools consistently.
+
+#### Tag constants
+Sets of tags can be used to uniquely identify a `MetaGraphDef` saved in a
+SavedModel. A subset of commonly used tags is specified in:
+
+* [Python](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/tag_constants.py)
+* [C++](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/tag_constants.h).
+
+#### Signature constants
+SignatureDefs are used to define the signature of a computation supported in a
+TensorFlow graph. Commonly used input keys, output keys and method names are
+defined in:
+
+* [Python](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/signature_constants.py)
+* [C++](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/signature_constants.h).
+

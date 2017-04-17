@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/table_builder.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
@@ -106,7 +107,7 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
 }
 
 char* GetBackingBuffer(const Tensor& val) {
-  CHECK(DataTypeCanUseMemcpy(val.dtype()));
+  CHECK(DataTypeCanUseMemcpy(val.dtype())) << val.dtype();
   return const_cast<char*>(val.tensor_data().data());
 }
 
@@ -232,7 +233,7 @@ bool IsFullSlice(const TensorSlice& slice_spec,
     return true;
   } else {
     TensorShape sliced_shape;
-    slice_spec.SliceTensorShape(full_tensor_shape, &sliced_shape);
+    slice_spec.SliceTensorShape(full_tensor_shape, &sliced_shape).IgnoreError();
     return sliced_shape == full_tensor_shape;
   }
 }
@@ -240,25 +241,34 @@ bool IsFullSlice(const TensorSlice& slice_spec,
 }  // namespace
 
 BundleWriter::BundleWriter(Env* env, StringPiece prefix)
-    : env_(env), prefix_(prefix.ToString()), out_(nullptr), size_(0) {
-  status_ =
-      env_->CreateDir(io::Dirname(prefix_).ToString());  // Ignores errors.
+    : env_(env),
+      prefix_(prefix.ToString()),
+      tmp_metadata_path_(strings::StrCat(MetaFilename(prefix_), ".tempstate",
+                                         random::New64())),
+      tmp_data_path_(strings::StrCat(DataFilename(prefix_, 0, 1), ".tempstate",
+                                     random::New64())),
+      out_(nullptr),
+      size_(0) {
+  status_ = env_->CreateDir(io::Dirname(prefix_).ToString());
+  if (!status_.ok() && !errors::IsAlreadyExists(status_)) {
+    return;
+  }
   const string filename = DataFilename(prefix_, 0, 1);
   std::unique_ptr<WritableFile> wrapper;
-  status_ = env_->NewWritableFile(filename, &wrapper);
+  status_ = env_->NewWritableFile(tmp_data_path_, &wrapper);
   if (!status_.ok()) return;
   out_ = std::unique_ptr<FileOutputBuffer>(
       new FileOutputBuffer(wrapper.release(), 8 << 20 /* 8MB write buffer */));
 
-  VLOG(1) << "Writing to file " << filename;
+  VLOG(1) << "Writing to file " << tmp_data_path_;
 }
 
 BundleWriter::~BundleWriter() { CHECK(out_ == nullptr); }
 
 Status BundleWriter::Add(StringPiece key, const Tensor& val) {
+  if (!status_.ok()) return status_;
   CHECK_NE(key, kHeaderEntryKey);
   const string key_string = key.ToString();
-  if (!status_.ok()) return status_;
   if (entries_.find(key_string) != entries_.end()) {
     status_ = errors::InvalidArgument("Adding duplicate key: ", key);
     return status_;
@@ -293,13 +303,13 @@ Status BundleWriter::AddSlice(StringPiece full_tensor_key,
                               const TensorShape& full_tensor_shape,
                               const TensorSlice& slice_spec,
                               const Tensor& slice_tensor) {
+  if (!status_.ok()) return status_;
+  CHECK_NE(full_tensor_key, kHeaderEntryKey);
+
   // If just a singleton full slice, use the regular Add() to be more efficient.
   if (IsFullSlice(slice_spec, full_tensor_shape)) {
     return Add(full_tensor_key, slice_tensor);
   }
-
-  CHECK_NE(full_tensor_key, kHeaderEntryKey);
-  if (!status_.ok()) return status_;
 
   // Inserts/updates the full tensor's metadata entry.
   //
@@ -336,11 +346,17 @@ Status BundleWriter::Finish() {
   if (out_) {
     status_.Update(out_->Close());
     out_ = nullptr;
+    if (status_.ok()) {
+      status_ = Env::Default()->RenameFile(tmp_data_path_,
+                                           DataFilename(prefix_, 0, 1));
+    } else {
+      Env::Default()->DeleteFile(tmp_data_path_).IgnoreError();
+    }
   }
   if (!status_.ok()) return status_;
   // Build key -> BundleEntryProto table.
   std::unique_ptr<WritableFile> file;
-  status_ = env_->NewWritableFile(MetaFilename(prefix_), &file);
+  status_ = env_->NewWritableFile(tmp_metadata_path_, &file);
   if (!status_.ok()) return status_;
   {
     // N.B.: the default use of Snappy compression may not be supported on all
@@ -366,7 +382,14 @@ Status BundleWriter::Finish() {
     status_ = builder.Finish();
   }
   status_.Update(file->Close());
-  if (!status_.ok()) return status_;
+  if (!status_.ok()) {
+    Env::Default()->DeleteFile(tmp_metadata_path_).IgnoreError();
+    return status_;
+  } else {
+    status_ =
+        Env::Default()->RenameFile(tmp_metadata_path_, MetaFilename(prefix_));
+    if (!status_.ok()) return status_;
+  }
   status_ = errors::Internal("BundleWriter is closed");
   return Status::OK();
 }
@@ -412,7 +435,8 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   // Process header.
   {
     iter->Seek(kHeaderEntryKey);
-    CHECK(iter->Valid());
+    CHECK(iter->Valid()) << "File: " << filename
+                         << ", iterator status: " << iter->status();
     BundleHeaderProto header;
     TF_CHECK_OK(ParseEntryProto(iter->key(), iter->value(), &header));
     CHECK_GE(header.num_shards(), 0);
@@ -451,9 +475,9 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
     // Illegal: the duplicated entry is a non-slice tensor.
     if (entry_iter != merge_state->entries.end() &&
         entry_iter->second.slices().empty()) {
-      return errors::InvalidArgument("Duplicate tensor keyed by ", key,
-                                     " encountered, when merging prefix: ",
-                                     prefix);
+      return errors::InvalidArgument(
+          "Duplicate tensor keyed by ", key,
+          " encountered, when merging prefix: ", prefix);
     }
 
     TF_RETURN_IF_ERROR(
@@ -494,7 +518,8 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   // Merges all metadata tables.
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
   MergeState merge;
-  env->CreateDir(io::Dirname(merged_prefix).ToString());  // Ignores errors.
+  Status status = env->CreateDir(io::Dirname(merged_prefix).ToString());
+  if (!status.ok() && !errors::IsAlreadyExists(status)) return status;
   for (int i = 0; i < prefixes.size(); ++i) {
     TF_RETURN_IF_ERROR(MergeOneBundle(env, prefixes[i], &merge));
   }
@@ -512,7 +537,6 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   std::unique_ptr<WritableFile> merged_metadata;
   TF_RETURN_IF_ERROR(
       env->NewWritableFile(MetaFilename(merged_prefix), &merged_metadata));
-  Status status;
   {
     table::TableBuilder builder(table::Options(), merged_metadata.get());
     // Header entry.
@@ -533,7 +557,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
 
   // Cleanup: best effort based and ignores errors.
   for (const string& prefix : prefixes) {
-    env->DeleteFile(MetaFilename(prefix));
+    env->DeleteFile(MetaFilename(prefix)).IgnoreError();
   }
   return status;
 }
@@ -562,7 +586,8 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
 
   // Reads "num_shards_" from the first entry.
   iter_->Seek(kHeaderEntryKey);
-  CHECK(iter_->Valid());
+  CHECK(iter_->Valid()) << "File: " << filename
+                        << ", iterator status: " << iter_->status();
   BundleHeaderProto header;
   TF_CHECK_OK(ParseEntryProto(iter_->key(), iter_->value(), &header));
   num_shards_ = header.num_shards();
@@ -677,6 +702,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
 }
 
 Status BundleReader::Lookup(StringPiece key, Tensor* val) {
+  CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
 
@@ -689,8 +715,21 @@ Status BundleReader::Lookup(StringPiece key, Tensor* val) {
   }
 }
 
+Status BundleReader::LookupTensorSlices(StringPiece key,
+                                        std::vector<TensorSlice>* slices) {
+  slices->clear();
+  BundleEntryProto entry;
+  TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
+  slices->reserve(entry.slices_size());
+  for (const auto& slice : entry.slices()) {
+    slices->emplace_back(slice);
+  }
+  return Status::OK();
+}
+
 Status BundleReader::LookupSlice(StringPiece full_tensor_key,
                                  const TensorSlice& slice_spec, Tensor* val) {
+  CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(full_tensor_key, &entry));
   return GetSliceValue(full_tensor_key, entry, slice_spec, val);
@@ -715,15 +754,15 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
       // Special case: a writer has saved a tensor fully, but the reader wants
       // to read in slices.  We therefore register the full slice on-demand here
       // without further complicating the on-disk bundle format.
-      RegisterTensorSlice(full_tensor_key_string, full_shape,
-                          full_tensor_entry.dtype(), /* tag */ "",
-                          /* full slice */ TensorSlice(full_shape.dims()),
-                          &tensor_slices_);
+      TF_RETURN_IF_ERROR(RegisterTensorSlice(
+          full_tensor_key_string, full_shape, full_tensor_entry.dtype(),
+          /* tag */ "",
+          /* full slice */ TensorSlice(full_shape.dims()), &tensor_slices_));
     }
     for (const TensorSliceProto& slice : full_tensor_entry.slices()) {
-      RegisterTensorSlice(full_tensor_key_string, full_shape,
-                          full_tensor_entry.dtype(),
-                          /* tag */ "", TensorSlice(slice), &tensor_slices_);
+      TF_RETURN_IF_ERROR(RegisterTensorSlice(
+          full_tensor_key_string, full_shape, full_tensor_entry.dtype(),
+          /* tag */ "", TensorSlice(slice), &tensor_slices_));
     }
     tss = gtl::FindPtrOrNull(tensor_slices_, full_tensor_key_string);
     CHECK_NE(tss, nullptr);
@@ -731,8 +770,8 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
   if (!tss->QueryMeta(slice_spec, &details)) {
     return errors::InvalidArgument(
         "Does not have sufficient slices for partitioned tensor ",
-        full_tensor_key, " to restore in slice_spec: ",
-        slice_spec.DebugString());
+        full_tensor_key,
+        " to restore in slice_spec: ", slice_spec.DebugString());
   }
 
   // The union of the slices in "details" covers "slice_spec".  Performs the
@@ -758,10 +797,15 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
     // hard for the caller of the tensor bundle module to allocate these
     // precisely-shaped scratch storage.
 
-    // Optimization for the common case: stored slice == to-restore slice.
-    // TODO(zongheng): also include the case where "slice_spec" is full ("-"),
-    // and "stored_slice" is logically full but contains actual extents.
-    if (stored_slice == slice_spec) {
+    // Optimization for the common case: the stored slice can be directly
+    // copied to the destination without additional slicing. This is true when
+    // either the slices are equal or when they are both full slices having the
+    // same shape.
+    TensorShape stored_slice_shape(stored_slice_entry.shape());
+    if (stored_slice == slice_spec ||
+        (stored_slice_shape == val->shape() &&
+         IsFullSlice(stored_slice, stored_slice_shape) &&
+         IsFullSlice(slice_spec, stored_slice_shape))) {
       VLOG(1) << "Optimized for common case: directly copying into "
                  "pre-allocated buffer; spec: "
               << slice_spec.DebugString();
@@ -769,8 +813,7 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
       return status_;
     }
 
-    Tensor stored_slice_tensor(stored_slice_entry.dtype(),
-                               TensorShape(stored_slice_entry.shape()));
+    Tensor stored_slice_tensor(stored_slice_entry.dtype(), stored_slice_shape);
     status_ = GetValue(stored_slice_entry, &stored_slice_tensor);
     if (!status_.ok()) return status_;
 
@@ -854,19 +897,19 @@ Status FileOutputBuffer::Append(StringPiece data) {
     crc32c_ = crc32c::Extend(crc32c_, &buffer_[position_], data.size());
   } else if (data.size() <= buffer_size_) {
     // Cannot fit, but can fit after flushing.
-    TF_RETURN_IF_ERROR(Flush());
+    TF_RETURN_IF_ERROR(FlushBuffer());
     memcpy(&buffer_[0], data.data(), data.size());
     crc32c_ = crc32c::Extend(crc32c_, &buffer_[0], data.size());
   } else {
     // Cannot fit even after flushing.  So we break down "data" by chunk, and
     // flush/checksum each chunk.
-    TF_RETURN_IF_ERROR(Flush());
+    TF_RETURN_IF_ERROR(FlushBuffer());
     for (size_t i = 0; i < data.size(); i += buffer_size_) {
       const size_t nbytes = std::min(data.size() - i, buffer_size_);
       memcpy(&buffer_[0], data.data() + i, nbytes);
       crc32c_ = crc32c::Extend(crc32c_, &buffer_[0], nbytes);
       position_ = nbytes;
-      TF_RETURN_IF_ERROR(Flush());
+      TF_RETURN_IF_ERROR(FlushBuffer());
     }
     return Status::OK();
   }
@@ -875,16 +918,16 @@ Status FileOutputBuffer::Append(StringPiece data) {
 }
 
 Status FileOutputBuffer::Close() {
-  TF_RETURN_IF_ERROR(Flush());
+  TF_RETURN_IF_ERROR(FlushBuffer());
   return file_->Close();
 }
 
-Status FileOutputBuffer::Flush() {
+Status FileOutputBuffer::FlushBuffer() {
   if (position_ > 0) {
     TF_RETURN_IF_ERROR(file_->Append(StringPiece(&buffer_[0], position_)));
     position_ = 0;
   }
-  return file_->Flush();
+  return Status::OK();
 }
 
 }  // namespace tensorflow

@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 import pandas as pd
 import tensorflow as tf
 
@@ -51,8 +53,9 @@ def main(unused_argv):
                   for k in FEATURES]
 
   # Build 2 layer fully connected DNN with 10, 10 units respectively.
-  regressor = tf.contrib.learn.DNNRegressor(
-      feature_columns=feature_cols, hidden_units=[10, 10])
+  regressor = tf.contrib.learn.DNNRegressor(feature_columns=feature_cols,
+                                            hidden_units=[10, 10],
+                                            model_dir="/tmp/boston_model")
 
   # Fit
   regressor.fit(input_fn=lambda: input_fn(training_set), steps=5000)
@@ -64,7 +67,9 @@ def main(unused_argv):
 
   # Print out predictions
   y = regressor.predict(input_fn=lambda: input_fn(prediction_set))
-  print("Predictions: {}".format(str(y)))
+  # .predict() returns an iterator; convert to a list and print predictions
+  predictions = list(itertools.islice(y, 6))
+  print("Predictions: {}".format(str(predictions)))
 
 if __name__ == "__main__":
   tf.app.run()

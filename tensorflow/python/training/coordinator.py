@@ -106,7 +106,7 @@ class Coordinator(object):
   After a thread has called `coord.request_stop()` the other threads have a
   fixed time to stop, this is called the 'stop grace period' and defaults to 2
   minutes.  If any of the threads is still alive after the grace period expires
-  `coord.join()` raises a RuntimeException reporting the laggards.
+  `coord.join()` raises a RuntimeError reporting the laggards.
 
   ```python
   try:
@@ -117,7 +117,7 @@ class Coordinator(object):
     ...start thread N...(coord, ...)
     # Wait for all the threads to terminate, give them 10s grace period
     coord.join(threads, stop_grace_period_secs=10)
-  except RuntimeException:
+  except RuntimeError:
     ...one of the threads took more than 10s to stop after request_stop()
     ...was called.
   except Exception:
@@ -319,7 +319,8 @@ class Coordinator(object):
     with self._lock:
       self._registered_threads.add(thread)
 
-  def join(self, threads=None, stop_grace_period_secs=120):
+  def join(self, threads=None, stop_grace_period_secs=120,
+           ignore_live_threads=False):
     """Wait for threads to terminate.
 
     This call blocks until a set of threads have terminated.  The set of thread
@@ -341,6 +342,8 @@ class Coordinator(object):
         addition to the registered threads.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `request_stop()` has been called.
+      ignore_live_threads: If `False`, raises an error if any of the threads are
+        still alive after `stop_grace_period_secs`.
 
     Raises:
       RuntimeError: If any thread is still alive after `request_stop()`
@@ -385,13 +388,23 @@ class Coordinator(object):
       if self._exc_info_to_raise:
         six.reraise(*self._exc_info_to_raise)
       elif stragglers:
-        raise RuntimeError(
-            "Coordinator stopped with threads still running: %s" %
-            " ".join(stragglers))
+        if ignore_live_threads:
+          logging.info("Coordinator stopped with threads still running: %s",
+                       " ".join(stragglers))
+        else:
+          raise RuntimeError(
+              "Coordinator stopped with threads still running: %s" %
+              " ".join(stragglers))
 
   @property
   def joined(self):
     return self._joined
+
+  def raise_requested_exception(self):
+    """If an exception has been passed to `request_stop`, this raises it."""
+    with self._lock:
+      if self._exc_info_to_raise:
+        six.reraise(*self._exc_info_to_raise)
 
 
 # Threads for the standard services.

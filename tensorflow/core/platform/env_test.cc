@@ -32,7 +32,7 @@ namespace {
 string CreateTestFile(Env* env, const string& filename, int length) {
   string input(length, 0);
   for (int i = 0; i < length; i++) input[i] = i;
-  WriteStringToFile(env, filename, input);
+  TF_CHECK_OK(WriteStringToFile(env, filename, input));
   return input;
 }
 
@@ -53,15 +53,33 @@ string BaseDir() { return io::JoinPath(testing::TmpDir(), "base_dir"); }
 
 class DefaultEnvTest : public ::testing::Test {
  protected:
-  void SetUp() override { env_->CreateDir(BaseDir()); }
+  void SetUp() override { TF_CHECK_OK(env_->CreateDir(BaseDir())); }
 
   void TearDown() override {
     int64 undeleted_files, undeleted_dirs;
-    env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs);
+    TF_CHECK_OK(
+        env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs));
   }
 
   Env* env_ = Env::Default();
 };
+
+TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
+  const string filename = io::JoinPath(BaseDir(), "out_of_range");
+  const string input = CreateTestFile(env_, filename, 2);
+  std::unique_ptr<RandomAccessFile> f;
+  TF_EXPECT_OK(env_->NewRandomAccessFile(filename, &f));
+
+  // Reading past EOF should give an OUT_OF_RANGE error
+  StringPiece result;
+  char scratch[3];
+  EXPECT_EQ(error::OUT_OF_RANGE, f->Read(0, 3, &result, scratch).code());
+  EXPECT_EQ(input, result);
+
+  // Exact read to EOF works.
+  TF_EXPECT_OK(f->Read(0, 2, &result, scratch));
+  EXPECT_EQ(input, result);
+}
 
 TEST_F(DefaultEnvTest, ReadFileToString) {
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
@@ -161,10 +179,10 @@ TEST_F(DefaultEnvTest, DeleteRecursively) {
       env_->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs));
   EXPECT_EQ(0, undeleted_files);
   EXPECT_EQ(0, undeleted_dirs);
-  EXPECT_FALSE(env_->FileExists(root_file1));
-  EXPECT_FALSE(env_->FileExists(root_file2));
-  EXPECT_FALSE(env_->FileExists(root_file3));
-  EXPECT_FALSE(env_->FileExists(child1_file1));
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(root_file1).code());
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(root_file2).code());
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(root_file3).code());
+  EXPECT_EQ(error::Code::NOT_FOUND, env_->FileExists(child1_file1).code());
 }
 
 TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
@@ -174,7 +192,7 @@ TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
   int64 undeleted_files, undeleted_dirs;
   Status s =
       env_->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs);
-  EXPECT_EQ("Not found: Directory doesn't exist", s.ToString());
+  EXPECT_EQ(error::Code::NOT_FOUND, s.code());
   EXPECT_EQ(0, undeleted_files);
   EXPECT_EQ(1, undeleted_dirs);
 }
@@ -183,7 +201,7 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDir) {
   const string create_path = io::JoinPath(BaseDir(), "a//b/c/d");
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));  // repeat creation.
-  EXPECT_TRUE(env_->FileExists(create_path));
+  TF_EXPECT_OK(env_->FileExists(create_path));
 }
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDirEmpty) {
@@ -195,14 +213,14 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirSubdirsExist) {
   const string subdir_path = io::JoinPath(BaseDir(), "a/b");
   TF_CHECK_OK(env_->CreateDir(io::JoinPath(BaseDir(), "a")));
   TF_CHECK_OK(env_->CreateDir(subdir_path));
-  EXPECT_TRUE(env_->FileExists(subdir_path));
+  TF_EXPECT_OK(env_->FileExists(subdir_path));
 
   // Now try to recursively create a/b/c/d/
   const string create_path = io::JoinPath(BaseDir(), "a/b/c/d/");
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));  // repeat creation.
-  EXPECT_TRUE(env_->FileExists(create_path));
-  EXPECT_TRUE(env_->FileExists(io::JoinPath(BaseDir(), "a/b/c")));
+  TF_EXPECT_OK(env_->FileExists(create_path));
+  TF_EXPECT_OK(env_->FileExists(io::JoinPath(BaseDir(), "a/b/c")));
 }
 
 TEST_F(DefaultEnvTest, LocalFileSystem) {
@@ -243,10 +261,10 @@ TEST_F(DefaultEnvTest, SleepForMicroseconds) {
 
 class TmpDirFileSystem : public NullFileSystem {
  public:
-  bool FileExists(const string& dir) override {
+  Status FileExists(const string& dir) override {
     StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
-    if (path.empty()) return false;
+    if (path.empty()) return errors::NotFound(dir, " not found");
     return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
   }
 
@@ -268,10 +286,15 @@ REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);
 TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
   Env* env = Env::Default();
   const string create_path = "tmpdirfs://testhost/a/b/c/d";
-  EXPECT_FALSE(env->FileExists(create_path));
+  EXPECT_EQ(error::Code::NOT_FOUND, env->FileExists(create_path).code());
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
-  EXPECT_TRUE(env->FileExists(create_path));
+  TF_EXPECT_OK(env->FileExists(create_path));
+}
+
+TEST_F(DefaultEnvTest, GetExecutablePath) {
+  Env* env = Env::Default();
+  TF_EXPECT_OK(env->FileExists(env->GetExecutablePath()));
 }
 
 }  // namespace tensorflow

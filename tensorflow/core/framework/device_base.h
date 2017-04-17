@@ -132,6 +132,7 @@ class DeviceBase {
     perftools::gputools::Stream* stream = nullptr;
     DeviceContext* default_context = nullptr;
     EventMgr* event_mgr = nullptr;
+    int gpu_id = -1;
   };
 
   // Does not take ownership.

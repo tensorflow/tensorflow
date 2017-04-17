@@ -54,15 +54,17 @@ is high)
     <div id="fullContainer" class="container scrollbar">
       <div id="topRow" class="container">
         <div class="noshrink" id="paddingCell"></div>
-        <template
-          is="dom-repeat"
-          items="[[runs]]"
-          as="run"
-        >
-        <div class="run-name-cell noshrink">
-          <span>[[run]]</span>
-        </div>
-      </template>
+        <template is="dom-if" if="[[_tagsExist(tags)]]">
+          <template
+            is="dom-repeat"
+            items="[[runs]]"
+            as="run"
+          >
+            <div class="run-name-cell noshrink">
+              <span>[[run]]</span>
+            </div>
+          </template>
+        </template>
       </div>
       <div id="bottomContainer" class="container">
         <template
@@ -99,6 +101,7 @@ is high)
       :host {
         display: block;
         height: 100%;
+        --audio-cell-min-height: 105px;
       }
       .container {
         display: flex;
@@ -127,13 +130,17 @@ is high)
         padding-top: 5px;
       }
       .audio-cell {
+        background: #FAFAFA;
         width: 300px;
-        height: 30px;
+        min-height: var(--audio-cell-min-height);
         border: 1px solid black;
+        margin-right: 3px;
+        padding: 10px;
+        box-sizing: border-box;
       }
       .tag-name-cell {
         width: 300px;
-        height: 30px;
+        height: var(--audio-cell-min-height);
         display:flex;
         flex-direction: column;
         justify-content: center;
@@ -145,15 +152,14 @@ is high)
       }
       .run-name-cell {
         width: 300px;
-        height: 30px;
         text-align: center;
+        margin-right: 5px;
       }
       .noshrink {
         flex-shrink: 0;
       }
       #paddingCell {
         width: 300px;
-        height: 30px;
       }
     </style>
   </template>
@@ -165,6 +171,9 @@ is high)
         tags: Array,
         runs: Array,
         audioGenerator: Function,
+      },
+      _tagsExist: function(tags) {
+        return tags && tags.length > 0;
       },
       _exists: function (run, tag) {
         return this.runToAudio[run].indexOf(tag) !== -1;

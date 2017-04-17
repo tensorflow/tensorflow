@@ -106,9 +106,9 @@ TEST_F(HadoopFileSystemTest, WritableFile) {
 
 TEST_F(HadoopFileSystemTest, FileExists) {
   const string fname = TmpDir("FileExists");
-  EXPECT_FALSE(hdfs.FileExists(fname));
+  EXPECT_EQ(error::Code::NOT_FOUND, hdfs.FileExists(fname).code());
   TF_ASSERT_OK(WriteString(fname, "test"));
-  EXPECT_TRUE(hdfs.FileExists(fname));
+  TF_EXPECT_OK(hdfs.FileExists(fname));
 }
 
 TEST_F(HadoopFileSystemTest, GetChildren) {
@@ -173,7 +173,7 @@ TEST_F(HadoopFileSystemTest, RenameFile_Overwrite) {
   const string fname2 = TmpDir("RenameFile2");
 
   TF_ASSERT_OK(WriteString(fname2, "test"));
-  EXPECT_TRUE(hdfs.FileExists(fname2));
+  TF_EXPECT_OK(hdfs.FileExists(fname2));
 
   TF_ASSERT_OK(WriteString(fname1, "test"));
   TF_EXPECT_OK(hdfs.RenameFile(fname1, fname2));
@@ -189,6 +189,44 @@ TEST_F(HadoopFileSystemTest, StatFile) {
   TF_EXPECT_OK(hdfs.Stat(fname, &stat));
   EXPECT_EQ(4, stat.length);
   EXPECT_FALSE(stat.is_directory);
+}
+
+TEST_F(HadoopFileSystemTest, WriteWhileReading) {
+  std::unique_ptr<WritableFile> writer;
+  const string fname = TmpDir("WriteWhileReading");
+  // Skip the test if we're not testing on HDFS. Hadoop's local filesystem
+  // implementation makes no guarantees that writable files are readable while
+  // being written.
+  if (!StringPiece(fname).starts_with("hdfs://")) {
+    return;
+  }
+
+  TF_EXPECT_OK(hdfs.NewWritableFile(fname, &writer));
+
+  const string content1 = "content1";
+  TF_EXPECT_OK(writer->Append(content1));
+  TF_EXPECT_OK(writer->Flush());
+
+  std::unique_ptr<RandomAccessFile> reader;
+  TF_EXPECT_OK(hdfs.NewRandomAccessFile(fname, &reader));
+
+  string got;
+  got.resize(content1.size());
+  StringPiece result;
+  TF_EXPECT_OK(
+      reader->Read(0, content1.size(), &result, gtl::string_as_array(&got)));
+  EXPECT_EQ(content1, result);
+
+  string content2 = "content2";
+  TF_EXPECT_OK(writer->Append(content2));
+  TF_EXPECT_OK(writer->Flush());
+
+  got.resize(content2.size());
+  TF_EXPECT_OK(reader->Read(content1.size(), content2.size(), &result,
+                            gtl::string_as_array(&got)));
+  EXPECT_EQ(content2, result);
+
+  TF_EXPECT_OK(writer->Close());
 }
 
 // NewAppendableFile() is not testable. Local filesystem maps to

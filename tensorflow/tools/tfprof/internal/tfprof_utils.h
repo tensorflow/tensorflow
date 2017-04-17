@@ -40,7 +40,7 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
 string StringReplace(const string& str, const string& oldsub,
                      const string& newsub);
 
-Status ReadGraphDefText(Env* env, const string& fname, GraphDef* graph_def);
+Status ReadGraphDef(Env* env, const string& fname, GraphDef* graph_def);
 
 void PrintHelp();
 

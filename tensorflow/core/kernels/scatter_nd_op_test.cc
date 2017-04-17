@@ -48,31 +48,32 @@ class ScatterNdUpdateOpTest : public OpsTestBase {
   }
 };
 
-TEST_F(ScatterNdUpdateOpTest, Simple_StringType) {
-  MakeOp(DT_STRING_REF, DT_INT32);
-  AddInputFromArray<string>(TensorShape({1}), {"Brain"});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<string>(TensorShape({1}), {"TensorFlow"});
-  TF_ASSERT_OK(RunOpKernel());
-  // Check the new state of the input
-  Tensor params_tensor = *mutable_input(0).tensor;
-  Tensor expected(allocator(), DT_STRING, TensorShape({1}));
-  test::FillValues<string>(&expected, {"TensorFlow"});
-  test::ExpectTensorEqual<string>(expected, params_tensor);
-}
+// TODO(simister): Re-enable this once binary size is under control.
+// TEST_F(ScatterNdUpdateOpTest, Simple_StringType) {
+//   MakeOp(DT_STRING_REF, DT_INT32);
+//   AddInputFromArray<string>(TensorShape({1}), {"Brain"});
+//   AddInputFromArray<int32>(TensorShape({1}), {0});
+//   AddInputFromArray<string>(TensorShape({1}), {"TensorFlow"});
+//   TF_ASSERT_OK(RunOpKernel());
+//   // Check the new state of the input
+//   Tensor params_tensor = *mutable_input(0).tensor;
+//   Tensor expected(allocator(), DT_STRING, TensorShape({1}));
+//   test::FillValues<string>(&expected, {"TensorFlow"});
+//   test::ExpectTensorEqual<string>(expected, params_tensor);
+// }
 
-TEST_F(ScatterNdUpdateOpTest, Simple_BoolType) {
-  MakeOp(DT_BOOL_REF, DT_INT32);
-  AddInputFromArray<bool>(TensorShape({1}), {false});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<bool>(TensorShape({1}), {true});
-  TF_ASSERT_OK(RunOpKernel());
-  // Check the new state of the input
-  Tensor params_tensor = *mutable_input(0).tensor;
-  Tensor expected(allocator(), DT_BOOL, TensorShape({1}));
-  test::FillValues<bool>(&expected, {true});
-  test::ExpectTensorEqual<bool>(expected, params_tensor);
-}
+// TEST_F(ScatterNdUpdateOpTest, Simple_BoolType) {
+//   MakeOp(DT_BOOL_REF, DT_INT32);
+//   AddInputFromArray<bool>(TensorShape({1}), {false});
+//   AddInputFromArray<int32>(TensorShape({1}), {0});
+//   AddInputFromArray<bool>(TensorShape({1}), {true});
+//   TF_ASSERT_OK(RunOpKernel());
+//   // Check the new state of the input
+//   Tensor params_tensor = *mutable_input(0).tensor;
+//   Tensor expected(allocator(), DT_BOOL, TensorShape({1}));
+//   test::FillValues<bool>(&expected, {true});
+//   test::ExpectTensorEqual<bool>(expected, params_tensor);
+// }
 
 TEST_F(ScatterNdUpdateOpTest, Simple_TwoD32) {
   MakeOp(DT_FLOAT_REF, DT_INT32);
@@ -111,6 +112,7 @@ TEST_F(ScatterNdUpdateOpTest, Simple_Two64) {
                                       10002, 0, 0, 0, 777, 778, 779});
   test::ExpectTensorEqual<float>(expected, params_tensor);
 }
+
 /*TEST_F(ScatterNdUpdateOpTest, Simple_ZeroElements) {
   MakeOp(DT_FLOAT_REF, DT_INT32);
 
@@ -214,9 +216,9 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedParamsAndUpdateDimensions) {
       TensorShape({3, 4}),
       {100, 101, 102, 103, 777, 778, 779, 780, 10000, 10001, 10002, 10004});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Must have updates.shape = indices.shape[0] + "
-                            "params_shape[IXDIM:], got"))
+  EXPECT_TRUE(
+      StringPiece(s.ToString())
+          .contains("Must have updates.shape = indices.shape[:batch_dim]"))
 
       << s;
 }
@@ -231,9 +233,10 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
   AddInputFromArray<float>(TensorShape({2, 3}),
                            {100, 101, 102, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("The outermost dimension of updates and indices "
-                            "must match. Got "))
+  EXPECT_TRUE(
+      StringPiece(s.ToString())
+          .contains(
+              "The outermost dimension of updates and indices must match."))
       << s;
 }
 

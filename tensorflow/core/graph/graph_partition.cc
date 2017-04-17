@@ -336,14 +336,11 @@ void OptimizeControlFlowColocation(Graph* graph) {
         const Edge* data_edge = nullptr;
         for (const Edge* out_edge : node->out_edges()) {
           if (!out_edge->IsControlEdge()) {
-            if (data_edge) {
-              data_edge = nullptr;
-              return;
-            }
             data_edge = out_edge;
+            break;
           }
         }
-        // Colocate if there is only one downstream data node.
+        // Colocate with the first downstream data node.
         if (data_edge) {
           node->set_assigned_device_name(
               data_edge->dst()->assigned_device_name());
@@ -857,6 +854,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     ref_control_inputs.clear();
     const Edge* control_flow_edge = nullptr;
     int32 num_control_flow_edges = 0;
+    int32 num_input_edges = 0;
     for (const Edge* edge : dst->in_edges()) {
       if (edge->IsControlEdge()) {
         if (IsMerge(edge->src()) && IsControlLoop(edge->src())) {
@@ -871,7 +869,14 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       } else {
         DCHECK(inputs[edge->dst_input()] == nullptr);
         inputs[edge->dst_input()] = edge;
+        ++num_input_edges;
       }
+    }
+
+    if (num_input_edges != dst->num_inputs()) {
+      return errors::InvalidArgument("Incomplete graph, missing ",
+                                     (dst->num_inputs() - num_input_edges),
+                                     " inputs for ", dst->name());
     }
 
     // Process in order so that all data edges are added as inputs to

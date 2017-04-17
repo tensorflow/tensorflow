@@ -62,10 +62,6 @@ export class ProtoDataProvider implements DataProvider {
     });
   }
 
-  getDefaultTensor(run: string, callback: (tensorName: string) => void): void {
-    callback('proto');
-  }
-
   getBookmarks(run: string, tensorName: string,
       callback: (r: State[]) => void): void {
     return callback([]);
@@ -79,16 +75,11 @@ export class ProtoDataProvider implements DataProvider {
       throw 'The shape doesn\'t match the length of the flattened array';
     }
     for (let i = 0; i < n; i++) {
-      let vector: number[] = [];
       let offset = i * d;
-      for (let j = 0; j < d; j++) {
-        vector.push(tensor[offset++]);
-      }
       points.push({
-        vector: vector,
+        vector: new Float32Array(tensor.slice(offset, offset + d)),
         metadata: {},
         projections: null,
-        projectedPoint: null,
         index: i
       });
     }

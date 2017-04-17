@@ -108,7 +108,7 @@ void SaveTensors(
     break;
 
     switch (input.dtype()) {
-      TF_CALL_ALL_TYPES(WRITER_ADD)
+      TF_CALL_POD_STRING_TYPES(WRITER_ADD)
       TF_CALL_QUANTIZED_TYPES(WRITER_ADD)
       default:
         context->SetStatus(errors::Unimplemented("Saving data type ",
@@ -221,7 +221,7 @@ void RestoreTensor(OpKernelContext* context,
     break;
 
   switch (type) {
-    TF_CALL_ALL_TYPES(READER_COPY)
+    TF_CALL_POD_STRING_TYPES(READER_COPY)
     TF_CALL_QUANTIZED_TYPES(READER_COPY)
     default:
       context->SetStatus(errors::Unimplemented(
@@ -268,7 +268,8 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
                                          &parsed_slice, &parsed_slice_shape));
       if (!restored_full_shape.IsSameSize(parsed_full_shape)) {
         return errors::InvalidArgument(
-            "Shape in shape_and_slice spec ", parsed_full_shape.DebugString(),
+            "tensor_name = ", tensor_name, "; shape in shape_and_slice spec ",
+            parsed_full_shape.DebugString(),
             " does not match the shape stored in checkpoint: ",
             restored_full_shape.DebugString());
       }
@@ -279,10 +280,10 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
           reader.LookupSlice(tensor_name, parsed_slice, restored_tensor));
     }
     if (dtypes[i] != restored_tensor->dtype()) {
-      return errors::InvalidArgument("Expected dtype ",
-                                     DataTypeString(dtypes[i]),
-                                     " does not equal restored dtype ",
-                                     DataTypeString(restored_tensor->dtype()));
+      return errors::InvalidArgument(
+          "tensor_name = ", tensor_name, "; expected dtype ",
+          DataTypeString(dtypes[i]), " does not equal restored dtype ",
+          DataTypeString(restored_tensor->dtype()));
     }
   }
   return Status::OK();

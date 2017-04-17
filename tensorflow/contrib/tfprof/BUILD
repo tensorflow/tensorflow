@@ -14,5 +14,6 @@ py_library(
     deps = [
         "//tensorflow/contrib/tfprof/python/tools/tfprof:model_analyzer",
         "//tensorflow/contrib/tfprof/python/tools/tfprof:tfprof_logger",
+        "//tensorflow/python:util",
     ],
 )

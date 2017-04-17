@@ -47,15 +47,15 @@ TEST_F(BatchNormOpTest, Simple) {
   AddInputFromArray<float>(TensorShape({1, 1, 6, 2}),
                            {1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6});
   AddInputFromArray<float>(TensorShape({2}), {10, 20});
-  AddInputFromArray<float>(TensorShape({2}), {0.25, 0.5});
-  AddInputFromArray<float>(TensorShape({2}), {0.1, 0.6});
-  AddInputFromArray<float>(TensorShape({2}), {0.0, 0.0});
+  AddInputFromArray<float>(TensorShape({2}), {0.25f, 0.5f});
+  AddInputFromArray<float>(TensorShape({2}), {0.1f, 0.6f});
+  AddInputFromArray<float>(TensorShape({2}), {0.0f, 0.0f});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 6, 2}));
   test::FillValues<float>(
-      &expected, {-17.86, -22.00, -15.87, -20.59, -13.87, -19.18, -21.86,
-                  -33.31, -23.85, -34.72, -25.85, -36.13});
+      &expected, {-17.86f, -22.00f, -15.87f, -20.59f, -13.87f, -19.18f, -21.86f,
+                  -33.31f, -23.85f, -34.72f, -25.85f, -36.13f });
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 0.01);
 }
 

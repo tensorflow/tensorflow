@@ -16,6 +16,7 @@ limitations under the License.
 import {runAsyncTask} from './util';
 import * as logging from './logging';
 import {KMin} from './heap';
+import {Vector} from './vector';
 import * as vector from './vector';
 
 export type NearestEntry = {
@@ -46,7 +47,7 @@ const KNN_GPU_MSG_ID = 'knn-gpu';
  */
 export function findKNNGPUCosine<T>(
     dataPoints: T[], k: number,
-    accessor: (dataPoint: T) => number[]): Promise<NearestEntry[][]> {
+    accessor: (dataPoint: T) => Float32Array): Promise<NearestEntry[][]> {
   let N = dataPoints.length;
   let dim = accessor(dataPoints[0]).length;
 
@@ -139,8 +140,8 @@ export function findKNNGPUCosine<T>(
  *   distance is above the limit.
  */
 export function findKNN<T>(
-    dataPoints: T[], k: number, accessor: (dataPoint: T) => number[],
-    dist: (a: number[], b: number[], limit: number) =>
+    dataPoints: T[], k: number, accessor: (dataPoint: T) => Float32Array,
+    dist: (a: Vector, b: Vector, limit: number) =>
         number): Promise<NearestEntry[][]> {
   return runAsyncTask<NearestEntry[][]>('Finding nearest neighbors...', () => {
     let N = dataPoints.length;
@@ -218,8 +219,8 @@ function minDist(
  */
 export function findKNNofPoint<T>(
     dataPoints: T[], pointIndex: number, k: number,
-    accessor: (dataPoint: T) => number[],
-    distance: (a: number[], b: number[]) => number) {
+    accessor: (dataPoint: T) => Float32Array,
+    distance: (a: Vector, b: Vector) => number) {
   let kMin = new KMin<NearestEntry>(k);
   let a = accessor(dataPoints[pointIndex]);
   for (let i = 0; i < dataPoints.length; ++i) {

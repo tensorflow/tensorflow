@@ -31,12 +31,13 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
@@ -104,7 +105,7 @@ def _read_file(filename):
   if not file_io.file_exists(filename):
     raise IOError("File %s does not exist." % filename)
   # First try to read it as a binary file.
-  file_content = file_io.read_file_to_string(filename)
+  file_content = file_io.FileIO(filename, "rb").read()
   try:
     graph_def.ParseFromString(file_content)
     return graph_def
@@ -113,7 +114,7 @@ def _read_file(filename):
 
   # Next try to read it as a text file.
   try:
-    text_format.Merge(file_content.decode("utf-8"), graph_def)
+    text_format.Merge(file_content, graph_def)
   except text_format.ParseError as e:
     raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
 
@@ -150,12 +151,8 @@ def ops_used_by_graph_def(graph_def):
     mark_op_as_used(node.op)
   while functions_to_process:
     fun = functions_to_process.pop()
-    if fun.node_def:
-      for node in fun.node_def:
-        mark_op_as_used(node.op)
-    else:  # TODO(josh11b): Eventually remove this case.
-      for node in fun.node:
-        mark_op_as_used(node.op)
+    for node in fun.node_def:
+      mark_op_as_used(node.op)
 
   return [op for op in used_ops if op not in name_to_function]
 
@@ -351,8 +348,13 @@ def create_meta_graph_def(meta_info_def=None,
   # Creates a MetaGraphDef proto.
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
   # Adds meta_info_def.
-  if meta_info_def:
-    meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
+  if not meta_info_def:
+    meta_info_def = meta_graph_pb2.MetaGraphDef.MetaInfoDef()
+
+  # Set the tf version strings to the current tf build.
+  meta_info_def.tensorflow_version = versions.__version__
+  meta_info_def.tensorflow_git_version = versions.__git_version__
+  meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
 
   # Adds graph_def or the default.
   if not graph_def:
@@ -399,7 +401,7 @@ def read_meta_graph_file(filename):
   if not file_io.file_exists(filename):
     raise IOError("File %s does not exist." % filename)
   # First try to read it as a binary file.
-  file_content = file_io.read_file_to_string(filename)
+  file_content = file_io.FileIO(filename, "rb").read()
   try:
     meta_graph_def.ParseFromString(file_content)
     return meta_graph_def
@@ -474,7 +476,8 @@ def import_scoped_meta_graph(meta_graph_or_file,
             sorted(input_map)):
           raise ValueError("Graph contains unbound inputs: %s. Must "
                            "provide these inputs through input_map." %
-                           ",".join([compat.as_str(v) for v in field.value]))
+                           ",".join([compat.as_str(v) for v in field.value
+                                     if not input_map or v not in input_map]))
         break
 
   # Sets graph to default graph if it's not passed in.
@@ -534,7 +537,7 @@ def import_scoped_meta_graph(meta_graph_or_file,
                 key, ops.prepend_name_scope(value, import_scope))
 
     var_list = {}
-    variables = graph.get_collection(ops.GraphKeys.VARIABLES,
+    variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                      scope=import_scope)
     for v in variables:
       var_list[ops.strip_name_scope(v.name, import_scope)] = v
@@ -625,7 +628,7 @@ def export_scoped_meta_graph(filename=None,
         graph.add_to_collection(unbound_inputs_col_name, k)
 
   var_list = {}
-  variables = graph.get_collection(ops.GraphKeys.VARIABLES,
+  variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                    scope=export_scope)
   for v in variables:
     if _should_include_node(v, export_scope):
@@ -638,7 +641,7 @@ def export_scoped_meta_graph(filename=None,
       **kwargs)
 
   if filename:
-    training_util.write_graph(
+    graph_io.write_graph(
         scoped_meta_graph_def,
         os.path.dirname(filename),
         os.path.basename(filename),

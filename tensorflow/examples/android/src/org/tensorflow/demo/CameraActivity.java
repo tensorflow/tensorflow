@@ -27,11 +27,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Size;
-import android.view.MotionEvent;
+import android.view.KeyEvent;
 import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
 import org.tensorflow.demo.env.Logger;
+import org.tensorflow.demo.R;
 
 public abstract class CameraActivity extends Activity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
@@ -48,6 +49,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
+    LOGGER.d("onCreate " + this);
     super.onCreate(null);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -61,7 +63,14 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   }
 
   @Override
+  public synchronized void onStart() {
+    LOGGER.d("onStart " + this);
+    super.onStart();
+  }
+
+  @Override
   public synchronized void onResume() {
+    LOGGER.d("onResume " + this);
     super.onResume();
 
     handlerThread = new HandlerThread("inference");
@@ -71,7 +80,13 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   @Override
   public synchronized void onPause() {
-    super.onPause();
+    LOGGER.d("onPause " + this);
+
+    if (!isFinishing()) {
+      LOGGER.d("Requesting finish");
+      finish();
+    }
+
     handlerThread.quitSafely();
     try {
       handlerThread.join();
@@ -80,6 +95,20 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     } catch (final InterruptedException e) {
       LOGGER.e(e, "Exception!");
     }
+
+    super.onPause();
+  }
+
+  @Override
+  public synchronized void onStop() {
+    LOGGER.d("onStop " + this);
+    super.onStop();
+  }
+
+  @Override
+  public synchronized void onDestroy() {
+    LOGGER.d("onDestroy " + this);
+    super.onDestroy();
   }
 
   protected synchronized void runInBackground(final Runnable r) {
@@ -122,14 +151,17 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   }
 
   protected void setFragment() {
-    final Fragment fragment = CameraConnectionFragment.newInstance(
-        new CameraConnectionFragment.ConnectionCallback(){
-          @Override
-          public void onPreviewSizeChosen(final Size size, final int rotation) {
-            CameraActivity.this.onPreviewSizeChosen(size, rotation);
-          }
-        },
-        this, getLayoutId(), getDesiredPreviewFrameSize());
+    final Fragment fragment =
+        CameraConnectionFragment.newInstance(
+            new CameraConnectionFragment.ConnectionCallback() {
+              @Override
+              public void onPreviewSizeChosen(final Size size, final int rotation) {
+                CameraActivity.this.onPreviewSizeChosen(size, rotation);
+              }
+            },
+            this,
+            getLayoutId(),
+            getDesiredPreviewFrameSize());
 
     getFragmentManager()
         .beginTransaction()
@@ -143,26 +175,45 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     for (int i = 0; i < planes.length; ++i) {
       final ByteBuffer buffer = planes[i].getBuffer();
       if (yuvBytes[i] == null) {
-        LOGGER.i("Initializing buffer %d at size %d", i, buffer.capacity());
+        LOGGER.d("Initializing buffer %d at size %d", i, buffer.capacity());
         yuvBytes[i] = new byte[buffer.capacity()];
       }
       buffer.get(yuvBytes[i]);
     }
   }
 
-  @Override
-  public boolean onTouchEvent(final MotionEvent event) {
-    if (event.getAction() == MotionEvent.ACTION_DOWN) {
-      debug = !debug;
-    }
-    return false;
-  }
-
   public boolean isDebug() {
     return debug;
   }
 
+  public void requestRender() {
+    final OverlayView overlay = (OverlayView) findViewById(R.id.debug_overlay);
+    if (overlay != null) {
+      overlay.postInvalidate();
+    }
+  }
+
+  public void addCallback(final OverlayView.DrawCallback callback) {
+    final OverlayView overlay = (OverlayView) findViewById(R.id.debug_overlay);
+    if (overlay != null) {
+      overlay.addCallback(callback);
+    }
+  }
+
+  public void onSetDebug(final boolean debug) {}
+
+  @Override
+  public boolean onKeyDown(final int keyCode, final KeyEvent event) {
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+      debug = !debug;
+      requestRender();
+      onSetDebug(debug);
+      return true;
+    }
+    return super.onKeyDown(keyCode, event);
+  }
+
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
   protected abstract int getLayoutId();
-  protected abstract int getDesiredPreviewFrameSize();
+  protected abstract Size getDesiredPreviewFrameSize();
 }

@@ -19,10 +19,18 @@ from __future__ import print_function
 
 
 class MetricKey(object):
+  """Metric key strings."""
   LOSS = "loss"
   AUC = "auc"
+  AUC_PR = "auc_precision_recall"
+  CLASS_AUC = "auc/class%d"
+  CLASS_AUC_PR = "auc_precision_recall/class%d"
   PREDICTION_MEAN = "labels/prediction_mean"
+  CLASS_PREDICTION_MEAN = "labels/prediction_mean/class%d"
+  CLASS_LOGITS_MEAN = "labels/logits_mean/class%d"
+  CLASS_PROBABILITY_MEAN = "labels/probability_mean/class%d"
   LABEL_MEAN = "labels/actual_label_mean"
+  CLASS_LABEL_MEAN = "labels/actual_label_mean/class%d"
   ACCURACY = "accuracy"
   ACCURACY_BASELINE = "accuracy/baseline_label_mean"
   ACCURACY_MEAN = "accuracy/threshold_%f_mean"

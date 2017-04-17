@@ -14,25 +14,14 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""## Sparse Tensor Representation
-
-TensorFlow supports a `SparseTensor` representation for data that is sparse
-in multiple dimensions. Contrast this representation with `IndexedSlices`,
-which is efficient for representing tensors that are sparse in their first
-dimension, and dense along all other dimensions.
+"""Sparse Tensor Representation. See the @{python/sparse_ops} guide.
 
 @@SparseTensor
 @@SparseTensorValue
-
-## Conversion
-
 @@sparse_to_dense
 @@sparse_tensor_to_dense
 @@sparse_to_indicator
 @@sparse_merge
-
-## Manipulation
-
 @@sparse_concat
 @@sparse_reorder
 @@sparse_reshape
@@ -41,25 +30,24 @@ dimension, and dense along all other dimensions.
 @@sparse_reset_shape
 @@sparse_fill_empty_rows
 @@sparse_transpose
-
-## Reduction
 @@sparse_reduce_sum
 @@sparse_reduce_sum_sparse
-
-## Math Operations
 @@sparse_add
 @@sparse_softmax
 @@sparse_tensor_dense_matmul
 @@sparse_maximum
 @@sparse_minimum
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import numbers
+
 import numpy as np
 
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -71,8 +59,8 @@ from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
-
 # pylint: enable=wildcard-import
+from tensorflow.python.util import deprecation
 
 
 def _convert_to_sparse_tensor(sp_input):
@@ -116,7 +104,11 @@ def _convert_to_sparse_tensors(sp_inputs):
 
 
 # pylint: disable=protected-access
-def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
+def sparse_concat(axis,
+                  sp_inputs,
+                  name=None,
+                  expand_nonconcat_dim=False,
+                  concat_dim=None):
   """Concatenates a list of `SparseTensor` along the specified dimension.
 
   Concatenation is with respect to the dense versions of each sparse input.
@@ -144,7 +136,7 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
   values across all inputs. This is due to the need for an internal sort in
   order to concatenate efficiently across an arbitrary dimension.
 
-  For example, if `concat_dim = 1` and the inputs are
+  For example, if `axis = 1` and the inputs are
 
       sp_inputs[0]: shape = [2, 3]
       [0, 2]: "a"
@@ -169,7 +161,7 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
       [    a] concat [  d e  ] = [    a   d e  ]
       [b c  ]        [       ]   [b c          ]
 
-  Another example, if 'concat_dim = 1' and the inputs are
+  Another example, if 'axis = 1' and the inputs are
 
       sp_inputs[0]: shape = [3, 3]
       [0, 2]: "a"
@@ -198,12 +190,13 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
 
 
   Args:
-    concat_dim: Dimension to concatenate along. Must be in range [-rank, rank),
+    axis: Dimension to concatenate along. Must be in range [-rank, rank),
       where rank is the number of dimensions in each input `SparseTensor`.
     sp_inputs: List of `SparseTensor` to concatenate.
     name: A name prefix for the returned tensors (optional).
     expand_nonconcat_dim: Whether to allow the expansion in the non-concat
       dimensions. Defaulted to False.
+    concat_dim: The old (deprecated) name for axis.
 
   Returns:
     A `SparseTensor` with the concatenated output.
@@ -211,6 +204,8 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
   Raises:
     TypeError: If `sp_inputs` is not a list of `SparseTensor`.
   """
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "concat_dim",
+                                                concat_dim)
   sp_inputs = _convert_to_sparse_tensors(sp_inputs)
 
   if len(sp_inputs) == 1:  # Degenerate case of one tensor.
@@ -218,20 +213,21 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
 
   inds = [sp_input.indices for sp_input in sp_inputs]
   vals = [sp_input.values for sp_input in sp_inputs]
-  shapes = [sp_input.shape for sp_input in sp_inputs]
+  shapes = [sp_input.dense_shape for sp_input in sp_inputs]
 
   if expand_nonconcat_dim:
     max_shape = math_ops.reduce_max(
-        array_ops.concat(0, [array_ops.reshape(shape, [1, -1])
-                             for shape in shapes]), 0)
-    shapes = [array_ops.concat(0, [
-        max_shape[:concat_dim], shape[-1:] if concat_dim == -1 else
-        shape[concat_dim:concat_dim + 1], [] if concat_dim == -1 else
-        max_shape[concat_dim + 1:]
-    ]) for shape in shapes]
+        array_ops.concat(
+            [array_ops.reshape(shape, [1, -1]) for shape in shapes], 0), 0)
+    shapes = [
+        array_ops.concat([
+            max_shape[:axis], shape[-1:] if axis == -1 else
+            shape[axis:axis + 1], [] if axis == -1 else max_shape[axis + 1:]
+        ], 0) for shape in shapes
+    ]
 
   output_ind, output_val, output_shape = (gen_sparse_ops._sparse_concat(
-      inds, vals, shapes, concat_dim, name=name))
+      inds, vals, shapes, axis, name=name))
 
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
@@ -295,17 +291,16 @@ def sparse_add(a, b, thresh=0):
     thresh = ops.convert_to_tensor(
         thresh, dtype=a.values.dtype.real_dtype, name="thresh")
     output_ind, output_val, output_shape = (gen_sparse_ops._sparse_add(
-        a.indices, a.values, a.shape, b.indices, b.values, b.shape, thresh))
+        a.indices, a.values, a.dense_shape,
+        b.indices, b.values, b.dense_shape,
+        thresh))
     return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
   else:
     # swap to make `a` the SparseTensor.
     if isinstance(b, sparse_classes):
       a, b = b, a
-    return gen_sparse_ops._sparse_tensor_dense_add(a.indices, a.values, a.shape,
-                                                   b)
-
-
-ops.RegisterShape("SparseAdd")(common_shapes.call_cpp_shape_fn)
+    return gen_sparse_ops._sparse_tensor_dense_add(
+        a.indices, a.values, a.dense_shape, b)
 
 
 def sparse_dense_cwise_add(sp_t, dense_t):
@@ -329,13 +324,8 @@ def sparse_dense_cwise_add(sp_t, dense_t):
     output: the SparseTensor output.
   """
   result = gen_sparse_ops.sparse_dense_cwise_add(sp_t.indices, sp_t.values,
-                                                 sp_t.shape, dense_t)
-  return sparse_tensor.SparseTensor(sp_t.indices, result, sp_t.shape)
-
-
-ops.RegisterShape("SparseTensorDenseAdd")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseAddGrad")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseConcat")(common_shapes.call_cpp_shape_fn)
+                                                 sp_t.dense_shape, dense_t)
+  return sparse_tensor.SparseTensor(sp_t.indices, result, sp_t.dense_shape)
 
 
 def sparse_reorder(sp_input, name=None):
@@ -376,13 +366,10 @@ def sparse_reorder(sp_input, name=None):
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   reordered_ind, reordered_val = (gen_sparse_ops._sparse_reorder(
-      sp_input.indices, sp_input.values, sp_input.shape, name=name))
+      sp_input.indices, sp_input.values, sp_input.dense_shape, name=name))
 
   return sparse_tensor.SparseTensor(reordered_ind, reordered_val,
-                                    array_ops.identity(sp_input.shape))
-
-
-ops.RegisterShape("SparseReorder")(common_shapes.call_cpp_shape_fn)
+                                    array_ops.identity(sp_input.dense_shape))
 
 
 def sparse_reshape(sp_input, shape, name=None):
@@ -434,22 +421,29 @@ def sparse_reshape(sp_input, shape, name=None):
 
   with ops.name_scope(name, "SparseReshape", [sp_input]) as name:
     reshaped_ind, reshaped_shape = gen_sparse_ops._sparse_reshape(
-        sp_input.indices, sp_input.shape, shape, name=name)
+        sp_input.indices, sp_input.dense_shape, shape, name=name)
 
     return sparse_tensor.SparseTensor(
         reshaped_ind, array_ops.identity(sp_input.values),
         reshaped_shape)
 
 
-ops.RegisterShape("SparseReshape")(common_shapes.call_cpp_shape_fn)
+# TODO(aselle): Remove keyword required once for 1.0 final
+class KeywordRequired(object):
+
+  def __repr__(self):
+    # This is needed to make documentation without fully qualified module paths
+    return "KeywordRequired()"
 
 
-def sparse_split(split_dim, num_split, sp_input, name=None):
-  """Split a `SparseTensor` into `num_split` tensors along `split_dim`.
+def sparse_split(keyword_required=KeywordRequired(),
+                 sp_input=None, num_split=None, axis=None,
+                 name=None, split_dim=None):
+  """Split a `SparseTensor` into `num_split` tensors along `axis`.
 
-  If the `sp_input.shape[split_dim]` is not an integer multiple of `num_split`
-  each slice starting from 0:`shape[split_dim] % num_split` gets extra one
-  dimension. For example, if `split_dim = 1` and `num_split = 2` and the
+  If the `sp_input.dense_shape[axis]` is not an integer multiple of `num_split`
+  each slice starting from 0:`shape[axis] % num_split` gets extra one
+  dimension. For example, if `axis = 1` and `num_split = 2` and the
   input is:
 
       input_tensor = shape = [2, 7]
@@ -467,24 +461,37 @@ def sparse_split(split_dim, num_split, sp_input, name=None):
       [      ]
 
   Args:
-    split_dim: A 0-D `int32` `Tensor`. The dimension along which to split.
-    num_split: A Python integer. The number of ways to split.
+    keyword_required: Python 2 standin for * (temporary for argument reorder)
     sp_input: The `SparseTensor` to split.
+    num_split: A Python integer. The number of ways to split.
+    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
     name: A name for the operation (optional).
+    split_dim: Deprecated old name for axis.
 
   Returns:
     `num_split` `SparseTensor` objects resulting from splitting `value`.
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
+    ValueError: If the deprecated `split_dim` and `axis` are both non None.
   """
+  if not isinstance(keyword_required, KeywordRequired):
+    raise ValueError("Keyword arguments are required for this function.")
+  if sp_input is None:
+    raise ValueError("sp_input is required")
+  if num_split is None:
+    raise ValueError("num_split is required")
+  if axis is None:
+    raise ValueError("axis is required")
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "split_dim",
+                                                split_dim)
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   output_inds, output_vals, output_shapes = (gen_sparse_ops._sparse_split(
-      split_dim,
+      axis,
       sp_input.indices,
       sp_input.values,
-      sp_input.shape,
+      sp_input.dense_shape,
       num_split,
       name=name))
   sparse_tensors = []
@@ -493,14 +500,6 @@ def sparse_split(split_dim, num_split, sp_input, name=None):
         sparse_tensor.SparseTensor(
             output_inds[i], output_vals[i], output_shapes[i]))
   return sparse_tensors
-
-
-ops.RegisterShape("SparseSplit")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("SparseToDense")
-def _SparseToDenseShape(op):
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 def sparse_to_dense(sparse_indices,
@@ -558,7 +557,8 @@ def sparse_to_dense(sparse_indices,
       name=name)
 
 
-def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
+def sparse_reduce_sum(sp_input, axis=None, keep_dims=False,
+                      reduction_axes=None):
   """Computes the sum of elements across dimensions of a SparseTensor.
 
   This Op takes a SparseTensor and is the sparse counterpart to
@@ -589,23 +589,23 @@ def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
 
   Args:
     sp_input: The SparseTensor to reduce. Should have numeric type.
-    reduction_axes: The dimensions to reduce; list or scalar. If `None` (the
+    axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keep_dims: If true, retain reduced dimensions with length 1.
+    reduction_axes: Deprecated name of axis.
 
   Returns:
     The reduced Tensor.
   """
   return gen_sparse_ops.sparse_reduce_sum(
       sp_input.indices, sp_input.values,
-      sp_input.shape, math_ops._ReductionDims(sp_input, reduction_axes),
+      sp_input.dense_shape,
+      math_ops._ReductionDims(sp_input, axis, reduction_axes),
       keep_dims)
 
 
-ops.RegisterShape("SparseReduceSum")(common_shapes.call_cpp_shape_fn)
-
-
-def sparse_reduce_sum_sparse(sp_input, reduction_axes=None, keep_dims=False):
+def sparse_reduce_sum_sparse(sp_input, axis=None, keep_dims=False,
+                             reduction_axes=None):
   """Computes the sum of elements across dimensions of a SparseTensor.
 
   This Op takes a SparseTensor and is the sparse counterpart to
@@ -623,9 +623,10 @@ def sparse_reduce_sum_sparse(sp_input, reduction_axes=None, keep_dims=False):
 
   Args:
     sp_input: The SparseTensor to reduce. Should have numeric type.
-    reduction_axes: The dimensions to reduce; list or scalar. If `None` (the
+    axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keep_dims: If true, retain reduced dimensions with length 1.
+    reduction_axes: Deprecated name of axis
 
   Returns:
     The reduced SparseTensor.
@@ -633,13 +634,11 @@ def sparse_reduce_sum_sparse(sp_input, reduction_axes=None, keep_dims=False):
   output_ind, output_val, output_shape = (
       gen_sparse_ops.sparse_reduce_sum_sparse(
           sp_input.indices, sp_input.values,
-          sp_input.shape, math_ops._ReductionDims(sp_input, reduction_axes),
+          sp_input.dense_shape, math_ops._ReductionDims(sp_input, axis,
+                                                        reduction_axes),
           keep_dims))
 
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
-
-
-ops.RegisterShape("SparseReduceSumSparse")(common_shapes.call_cpp_shape_fn)
 
 
 def sparse_tensor_to_dense(sp_input,
@@ -675,7 +674,7 @@ def sparse_tensor_to_dense(sp_input,
     name: A name prefix for the returned tensors (optional).
 
   Returns:
-    A dense tensor with shape `sp_input.shape` and values specified by
+    A dense tensor with shape `sp_input.dense_shape` and values specified by
     the non-empty values in `sp_input`. Indices not in `sp_input` are assigned
     `default_value`.
 
@@ -686,7 +685,7 @@ def sparse_tensor_to_dense(sp_input,
 
   return sparse_to_dense(
       sp_input.indices,
-      sp_input.shape,
+      sp_input.dense_shape,
       sp_input.values,
       default_value=default_value,
       validate_indices=validate_indices,
@@ -697,14 +696,14 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
   """Converts a `SparseTensor` of ids into a dense bool indicator tensor.
 
   The last dimension of `sp_input.indices` is discarded and replaced with
-  the values of `sp_input`.  If `sp_input.shape = [D0, D1, ..., Dn, K]`, then
-  `output.shape = [D0, D1, ..., Dn, vocab_size]`, where
+  the values of `sp_input`.  If `sp_input.dense_shape = [D0, D1, ..., Dn, K]`,
+  then `output.shape = [D0, D1, ..., Dn, vocab_size]`, where
 
       output[d_0, d_1, ..., d_n, sp_input[d_0, d_1, ..., d_n, k]] = True
 
   and False elsewhere in `output`.
 
-  For example, if `sp_input.shape = [2, 3, 4]` with non-empty values:
+  For example, if `sp_input.dense_shape = [2, 3, 4]` with non-empty values:
 
       [0, 0, 0]: 0
       [0, 1, 0]: 10
@@ -745,7 +744,7 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
     num_entries = array_ops.shape(sp_input.indices)[0]
     new_values = array_ops.fill(array_ops.expand_dims(num_entries, 0), True)
     sp_values = sparse_tensor.SparseTensor(
-        sp_input.indices, new_values, sp_input.shape)
+        sp_input.indices, new_values, sp_input.dense_shape)
 
     sp_new = sparse_merge(sp_input, sp_values, vocab_size, name)
 
@@ -770,7 +769,7 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
     - `indices` is equivalent to `sp_ids.indices` with the last
       dimension discarded and replaced with `sp_ids.values`.
     - `values` is simply `sp_values.values`.
-    - If `sp_ids.shape = [D0, D1, ..., Dn, K]`, then
+    - If `sp_ids.dense_shape = [D0, D1, ..., Dn, K]`, then
       `output.shape = [D0, D1, ..., Dn, vocab_size]`.
 
   For example, consider the following feature vectors:
@@ -811,15 +810,27 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
   ```python
     SparseTensor(indices=[[0, 0], [1, 1], [1, 3], [1, 4], [2, 0], [2, 3]],
                  values=[-3, 1, 4, 1, 5, 9],
-                 shape=[3, 6])
+                 dense_shape=[3, 6])
   ```
 
+  This method generalizes to higher-dimensions by simply providing a list for
+  both the sp_ids as well as the vocab_size.
+  In this case the resulting `SparseTensor` has the following properties:
+    - `indices` is equivalent to `sp_ids[0].indices` with the last
+      dimension discarded and concatenated with
+      `sp_ids[0].values, sp_ids[1].values, ...`.
+    - `values` is simply `sp_values.values`.
+    - If `sp_ids.dense_shape = [D0, D1, ..., Dn, K]`, then
+      `output.shape = [D0, D1, ..., Dn] + vocab_size`.
+
   Args:
-    sp_ids: A `SparseTensor` with `values` property of type `int32`
-      or `int64`.
+    sp_ids: A single `SparseTensor` with `values` property of type `int32`
+      or `int64` or a Python list of such `SparseTensor`s or a list thereof.
     sp_values: A`SparseTensor` of any type.
     vocab_size: A scalar `int64` Tensor (or Python int) containing the new size
       of the last dimension, `all(0 <= sp_ids.values < vocab_size)`.
+      Or a list thereof with `all(0 <= sp_ids[i].values < vocab_size[i])` for
+      all `i`.
     name: A name prefix for the returned tensors (optional)
     already_sorted: A boolean to specify whether the per-batch values in
      `sp_values` are already sorted. If so skip sorting, False by default
@@ -830,30 +841,54 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
     useful for passing to functions that expect such a `SparseTensor`.
 
   Raises:
-    TypeError: If `sp_ids` or `sp_values` are not a `SparseTensor`.
+    TypeError: If `sp_values` is not a `SparseTensor`. Or if `sp_ids` is neither
+      a `SparseTensor` nor a list thereof. Or if `vocab_size` is not a
+      `Tensor` or a Python int and `sp_ids` is a `SparseTensor`. Or if
+      `vocab_size` is not a or list thereof and `sp_ids` is a list.
+    ValueError: If `sp_ids` and `vocab_size` are lists of different lengths.
   """
-  sp_ids = _convert_to_sparse_tensor(sp_ids)
-  sp_values = _convert_to_sparse_tensor(sp_values)
+  if isinstance(sp_ids, sparse_tensor.SparseTensorValue) or isinstance(
+      sp_ids, sparse_tensor.SparseTensor):
+    sp_ids = [sp_ids]
+    if not (isinstance(vocab_size, ops.Tensor) or
+            isinstance(vocab_size, numbers.Integral)):
+      raise TypeError("vocab_size has to be a Tensor or Python int. Found %s" %
+                      type(vocab_size))
+    vocab_size = [vocab_size]
+  else:
+    if not isinstance(sp_ids, collections.Iterable):
+      raise TypeError("sp_ids has to be a SparseTensor or list thereof. "
+                      "Found %s" % type(sp_ids))
+    if not isinstance(vocab_size, collections.Iterable):
+      raise TypeError("vocab_size has to be a list of Tensors or Python ints. "
+                      "Found %s" % type(vocab_size))
+    for dim in vocab_size:
+      if not (isinstance(dim, ops.Tensor) or
+              isinstance(dim, numbers.Integral)):
+        raise TypeError(
+            "vocab_size has to be a list of Tensors or Python ints. Found %s" %
+            type(dim))
+  if len(sp_ids) != len(vocab_size):
+    raise ValueError("sp_ids and vocab_size have to have equal lengths.")
 
   with ops.name_scope(name, "SparseMerge", [sp_ids, sp_values]):
-    indices_shape = array_ops.shape(sp_ids.indices)
-    rank = indices_shape[1]
+    sp_ids = [_convert_to_sparse_tensor(sp_ids_dim) for sp_ids_dim in sp_ids]
+    sp_values = _convert_to_sparse_tensor(sp_values)
+    ids = []
+    for sp_ids_dim in sp_ids:
+      ids_dim = sp_ids_dim.values
+      if sp_ids_dim.dtype != dtypes.int64:
+        ids_dim = math_ops.cast(ids_dim, dtypes.int64)
+      ids += [array_ops.expand_dims(ids_dim, axis=1)]
 
-    ids = sp_ids.values
-    if ids.dtype != dtypes.int64:
-      ids = math_ops.cast(ids, dtypes.int64)
+    vocab_size = [math_ops.cast(x, dtypes.int64) for x in vocab_size]
 
     # Slice off the last dimension of indices, then tack on the ids
-    indices_columns_to_preserve = array_ops.slice(
-        sp_ids.indices, [0, 0], array_ops.pack([-1, rank - 1]))
-    new_indices = array_ops.concat(1, [indices_columns_to_preserve,
-                                       array_ops.reshape(ids, [-1, 1])])
+    indices_columns_to_preserve = sp_ids[0].indices[:, :-1]
+    new_indices = array_ops.concat([indices_columns_to_preserve] + ids, 1)
 
     new_values = sp_values.values
-    new_shape = array_ops.concat(
-        0,
-        [array_ops.slice(sp_ids.shape, [0], array_ops.expand_dims(rank - 1, 0)),
-         math_ops.cast(array_ops.pack([vocab_size]), dtypes.int64)])
+    new_shape = array_ops.concat([sp_ids[0].dense_shape[:-1], vocab_size], 0)
 
     result = sparse_tensor.SparseTensor(new_indices, new_values, new_shape)
     return result if already_sorted else sparse_reorder(result)
@@ -899,7 +934,7 @@ def sparse_retain(sp_input, to_retain):
   new_indices = array_ops.gather(sp_input.indices, where_true)
   new_values = array_ops.gather(sp_input.values, where_true)
   return sparse_tensor.SparseTensor(new_indices, new_values,
-                                    array_ops.identity(sp_input.shape))
+                                    array_ops.identity(sp_input.dense_shape))
 
 
 def sparse_reset_shape(sp_input, new_shape=None):
@@ -960,7 +995,7 @@ def sparse_reset_shape(sp_input, new_shape=None):
 
   in_indices = array_ops.identity(sp_input.indices)
   in_values = array_ops.identity(sp_input.values)
-  in_shape = array_ops.identity(sp_input.shape)
+  in_shape = array_ops.identity(sp_input.dense_shape)
 
   if new_shape is None:
     dim_low_bound = math_ops.reduce_max(in_indices, 0)
@@ -1039,28 +1074,30 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
     default_value = ops.convert_to_tensor(
         default_value, dtype=sp_input.values.dtype)
 
-    num_rows = math_ops.cast(sp_input.shape[0], dtypes.int32)
+    num_rows = math_ops.cast(sp_input.dense_shape[0], dtypes.int32)
     all_row_indices = math_ops.cast(math_ops.range(num_rows), dtypes.int64)
-    empty_row_indices, _ = array_ops.list_diff(all_row_indices,
+    empty_row_indices, _ = array_ops.setdiff1d(all_row_indices,
                                                sp_input.indices[:, 0])
     empty_row_indicator = sparse_to_dense(
-        empty_row_indices, array_ops.expand_dims(sp_input.shape[0], -1), True,
+        empty_row_indices,
+        array_ops.expand_dims(sp_input.dense_shape[0], -1), True,
         False)
 
     empty_row_indices_as_column = array_ops.reshape(empty_row_indices, [-1, 1])
-    additional_indices = array_ops.concat(
-        1, [empty_row_indices_as_column,
-            array_ops.zeros_like(empty_row_indices_as_column)])
+    additional_indices = array_ops.concat([
+        empty_row_indices_as_column,
+        array_ops.zeros_like(empty_row_indices_as_column)
+    ], 1)
     additional_values = array_ops.fill(
         array_ops.shape(empty_row_indices), default_value)
 
-    all_indices_unordered = array_ops.concat(0, [sp_input.indices,
-                                                 additional_indices])
-    all_values_unordered = array_ops.concat(0, [sp_input.values,
-                                                additional_values])
+    all_indices_unordered = array_ops.concat(
+        [sp_input.indices, additional_indices], 0)
+    all_values_unordered = array_ops.concat(
+        [sp_input.values, additional_values], 0)
     sp_unordered_output = sparse_tensor.SparseTensor(
         all_indices_unordered,
-        all_values_unordered, sp_input.shape)
+        all_values_unordered, sp_input.dense_shape)
     sp_ordered_output = sparse_reorder(sp_unordered_output)
 
     return sp_ordered_output, empty_row_indicator
@@ -1083,10 +1120,7 @@ def serialize_sparse(sp_input, name=None):
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._serialize_sparse(
-      sp_input.indices, sp_input.values, sp_input.shape, name=name)
-
-
-ops.RegisterShape("SerializeSparse")(common_shapes.call_cpp_shape_fn)
+      sp_input.indices, sp_input.values, sp_input.dense_shape, name=name)
 
 
 def serialize_many_sparse(sp_input, name=None):
@@ -1115,10 +1149,7 @@ def serialize_many_sparse(sp_input, name=None):
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._serialize_many_sparse(
-      sp_input.indices, sp_input.values, sp_input.shape, name=name)
-
-
-ops.RegisterShape("SerializeManySparse")(common_shapes.call_cpp_shape_fn)
+      sp_input.indices, sp_input.values, sp_input.dense_shape, name=name)
 
 
 def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
@@ -1190,9 +1221,6 @@ def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
   return sparse_tensor.SparseTensor(output_indices, output_values, output_shape)
 
 
-ops.RegisterShape("DeserializeManySparse")(common_shapes.call_cpp_shape_fn)
-
-
 def sparse_tensor_dense_matmul(sp_a,
                                b,
                                adjoint_a=False,
@@ -1211,7 +1239,7 @@ def sparse_tensor_dense_matmul(sp_a,
     A should be sorted in order of increasing dimension 1 (i.e., "column major"
     order instead of "row major" order).
 
-  Deciding when to use sparse_tensor_dense_matmul vs. matmul(sp_a=True):
+  Deciding when to use sparse_tensor_dense_matmul vs. matmul(a_is_sparse=True):
 
   There are a number of questions to ask in the decision process, including:
 
@@ -1221,14 +1249,14 @@ def sparse_tensor_dense_matmul(sp_a,
 
   If the answer to several of these questions is yes, consider
   converting the `SparseTensor` to a dense one and using `tf.matmul` with
-  `sp_a=True`.
+  `a_is_sparse=True`.
 
   This operation tends to perform well when A is more sparse, if the column size
-  of the product is small (e.g. matrix-vector multiplication), if sp_a.shape
-  takes on large values.
+  of the product is small (e.g. matrix-vector multiplication), if
+  `sp_a.dense_shape` takes on large values.
 
   Below is a rough speed comparison between sparse_tensor_dense_matmul,
-  labelled 'sparse', and matmul(sp_a=True), labelled 'dense'.  For purposes of
+  labelled 'sparse', and matmul(a_is_sparse=True), labelled 'dense'.  For purposes of
   the comparison, the time spent converting from a SparseTensor to a dense
   Tensor is not included, so it is overly conservative with respect to
   the time ratio.
@@ -1238,9 +1266,10 @@ def sparse_tensor_dense_matmul(sp_a,
   GPU: NVidia Tesla k40c
 
   Compiled with:
-  -c opt --config=cuda --copt=-mavx
+  `-c opt --config=cuda --copt=-mavx`
 
-  ```tensorflow/python/sparse_tensor_dense_matmul_op_test --benchmarks
+  ```
+  tensorflow/python/sparse_tensor_dense_matmul_op_test --benchmarks
   A sparse [m, k] with % nonzero values between 1% and 80%
   B dense [k, n]
 
@@ -1366,16 +1395,10 @@ def sparse_tensor_dense_matmul(sp_a,
     return gen_sparse_ops._sparse_tensor_dense_mat_mul(
         a_indices=sp_a.indices,
         a_values=sp_a.values,
-        a_shape=sp_a.shape,
+        a_shape=sp_a.dense_shape,
         b=b,
         adjoint_a=adjoint_a,
         adjoint_b=adjoint_b)
-
-
-@ops.RegisterShape("SparseTensorDenseMatMul")
-def _SparseTensorDenseMatMulShape(op):  # pylint: disable=invalid-name
-  # Pass the shape tensor as needed to access it as a constant value
-  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 def sparse_softmax(sp_input, name=None):
@@ -1427,12 +1450,9 @@ def sparse_softmax(sp_input, name=None):
   with ops.name_scope(name, "SparseSoftmax",
                       [sp_input.indices, sp_input.values]) as name:
     out_vals = gen_sparse_ops.sparse_softmax(sp_input.indices, sp_input.values,
-                                             sp_input.shape)
+                                             sp_input.dense_shape)
     return sparse_tensor.SparseTensor(
-        sp_input.indices, out_vals, sp_input.shape)
-
-
-ops.RegisterShape("SparseSoftmax")(common_shapes.call_cpp_shape_fn)
+        sp_input.indices, out_vals, sp_input.dense_shape)
 
 
 def sparse_maximum(sp_a, sp_b, name=None):
@@ -1463,12 +1483,12 @@ def sparse_maximum(sp_a, sp_b, name=None):
     out_indices, out_values = gen_sparse_ops.sparse_sparse_maximum(
         sp_a.indices,
         sp_a.values,
-        sp_a.shape,
+        sp_a.dense_shape,
         sp_b.indices,
         sp_b.values,
-        sp_b.shape,
+        sp_b.dense_shape,
         name=name)
-  return sparse_tensor.SparseTensor(out_indices, out_values, sp_a.shape)
+  return sparse_tensor.SparseTensor(out_indices, out_values, sp_a.dense_shape)
 
 
 def sparse_minimum(sp_a, sp_b, name=None):
@@ -1499,16 +1519,12 @@ def sparse_minimum(sp_a, sp_b, name=None):
     out_indices, out_values = gen_sparse_ops.sparse_sparse_minimum(
         sp_a.indices,
         sp_a.values,
-        sp_a.shape,
+        sp_a.dense_shape,
         sp_b.indices,
         sp_b.values,
-        sp_b.shape,
+        sp_b.dense_shape,
         name=name)
-  return sparse_tensor.SparseTensor(out_indices, out_values, sp_a.shape)
-
-
-ops.RegisterShape("SparseSparseMaximum")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("SparseSparseMinimum")(common_shapes.call_cpp_shape_fn)
+  return sparse_tensor.SparseTensor(out_indices, out_values, sp_a.dense_shape)
 
 
 def sparse_transpose(sp_input, perm=None, name=None):
@@ -1551,7 +1567,7 @@ def sparse_transpose(sp_input, perm=None, name=None):
     indices = sp_input.indices
     transposed_indices = array_ops.transpose(
         array_ops.gather(array_ops.transpose(indices), perm))
-    dense_shape = sp_input.shape
+    dense_shape = sp_input.dense_shape
     transposed_dense_shape = array_ops.gather(dense_shape, perm)
     transposed_st = sparse_tensor.SparseTensor(
         transposed_indices, sp_input.values,
@@ -1582,7 +1598,7 @@ def _add_sparse_to_tensors_map(sp_input, container=None,
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._add_sparse_to_tensors_map(
-      sp_input.indices, sp_input.values, sp_input.shape,
+      sp_input.indices, sp_input.values, sp_input.dense_shape,
       container=container, shared_name=shared_name, name=name)
 
 
@@ -1616,7 +1632,7 @@ def _add_many_sparse_to_tensors_map(sp_input, container=None,
   sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._add_many_sparse_to_tensors_map(
-      sp_input.indices, sp_input.values, sp_input.shape,
+      sp_input.indices, sp_input.values, sp_input.dense_shape,
       container=container, shared_name=shared_name, name=name)
 
 
@@ -1685,7 +1701,8 @@ def _take_many_sparse_from_tensors_map(
   if sparse_map_op.type not in ("AddSparseToTensorsMap",
                                 "AddManySparseToTensorsMap"):
     raise TypeError("sparse_map_op must be one of AddSparseToTensorsMap or "
-                    "AddSparseToTensorsMap")
+                    "AddSparseToTensorsMap. Instead, found `%s`." %
+                    sparse_map_op.type)
   with ops.colocate_with(sparse_map_op):
     shared_name = sparse_map_op.get_attr("shared_name") or sparse_map_op.name
     output_indices, output_values, output_shape = (
@@ -1699,9 +1716,3 @@ def _take_many_sparse_from_tensors_map(
   output_shape.set_shape([rank])
 
   return sparse_tensor.SparseTensor(output_indices, output_values, output_shape)
-
-
-ops.RegisterShape("AddSparseToTensorsMap")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("AddManySparseToTensorsMap")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("TakeManySparseFromTensorsMap")(
-    common_shapes.call_cpp_shape_fn)

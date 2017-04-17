@@ -40,13 +40,15 @@ class PartialTensorShape {
   PartialTensorShape() : is_unknown_(true) {}
 
   /// \brief Construct a `PartialTensorShape` from the provided sizes.
-  /// REQUIRES: `dim_sizes[i] >= 0`
+  /// REQUIRES: `dim_sizes[i] >= -1`; `-1` means `unknown`.
   explicit PartialTensorShape(gtl::ArraySlice<int64> dim_sizes);
   PartialTensorShape(std::initializer_list<int64> dim_sizes)
       : PartialTensorShape(gtl::ArraySlice<int64>(dim_sizes)) {}
 
   /// REQUIRES: `IsValid(proto)`
-  explicit PartialTensorShape(const TensorShapeProto& proto);
+  PartialTensorShape(
+      const TensorShapeProto& proto);            // NOLINT(runtime/explicit)
+  PartialTensorShape(const TensorShape& shape);  // NOLINT(runtime/explicit)
 
   /// Returns `true` iff `proto` is a valid partial tensor shape.
   static bool IsValid(const TensorShapeProto& proto);
@@ -76,6 +78,12 @@ class PartialTensorShape {
 
   /// Return true iff the rank and all of the dimensions are well defined
   bool IsFullyDefined() const;
+
+  /// Exact equality test. Returns true iff the ranks match (i.e., both are
+  /// unknown, or both are known and equal), and all dimensions are equal (i.e.,
+  /// both dimensions are known, or both are known and equal). This is a
+  /// stronger condition that IsCompatibleWith.
+  bool IsIdenticalTo(const PartialTensorShape& shape) const;
 
   /// Return true iff the ranks match, and if the
   /// dimensions all either match or one is unknown.
@@ -132,6 +140,9 @@ class PartialTensorShapeUtils {
  public:
   static string PartialShapeListString(
       const gtl::ArraySlice<PartialTensorShape>& shapes);
+
+  static bool AreIdentical(const gtl::ArraySlice<PartialTensorShape>& shapes0,
+                           const gtl::ArraySlice<PartialTensorShape>& shapes1);
 
   static bool AreCompatible(const gtl::ArraySlice<PartialTensorShape>& shapes0,
                             const gtl::ArraySlice<PartialTensorShape>& shapes1);

@@ -298,4 +298,9 @@ TEST_F(FusedResizePadConvOpTest, NoResizePadOnlySymmetricComparative) {
   CompareFusedPadOnlyAndSeparate(4, 4, 1, 2, 2, 1, 1, "SYMMETRIC", 1, "SAME");
 }
 
+TEST_F(FusedResizePadConvOpTest, ResizeAndPadSymmetricComparativeLarge) {
+  CompareFusedAndSeparate(1000, 1000, 3, 1006, 1006, 2, 2, 1, 1, false,
+                          "SYMMETRIC", 1, "SAME");
+}
+
 }  // namespace tensorflow

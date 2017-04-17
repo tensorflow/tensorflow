@@ -72,7 +72,9 @@ SSIZE_T pread(HANDLE hfile, char* src, size_t num_bytes, uint64_t offset) {
 
   BOOL read_result = ::ReadFile(hfile, src, static_cast<DWORD>(num_bytes),
                                 &bytes_read, &overlapped);
-  if ((FALSE == read_result) &&
+  if (TRUE == read_result) {
+    result = bytes_read;
+  } else if ((FALSE == read_result) &&
       ((last_error = GetLastError()) != ERROR_IO_PENDING)) {
     result = (last_error == ERROR_HANDLE_EOF) ? 0 : -1;
   } else {
@@ -228,11 +230,9 @@ Status WindowsFileSystem::NewRandomAccessFile(
   result->reset();
 
   // Open the file for read-only random access
-  // Random access is to disable read-ahead as the system reads too much data
   // Open in async mode which makes Windows allow more parallelism even
   // if we need to do sync I/O on top of it.
-  DWORD file_flags = FILE_ATTRIBUTE_READONLY | FILE_FLAG_RANDOM_ACCESS |
-      FILE_FLAG_OVERLAPPED;
+  DWORD file_flags = FILE_ATTRIBUTE_READONLY | FILE_FLAG_OVERLAPPED;
   // Shared access is necessary for tests to pass
   // almost all tests would work with a possible exception of fault_injection.
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
@@ -304,8 +304,8 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
   result->reset();
   Status s = Status::OK();
 
-  // Open the file for read-only random access
-  DWORD file_flags = FILE_ATTRIBUTE_READONLY | FILE_FLAG_RANDOM_ACCESS;
+  // Open the file for read-only
+  DWORD file_flags = FILE_ATTRIBUTE_READONLY;
 
   // Open in async mode which makes Windows allow more parallelism even
   // if we need to do sync I/O on top of it.
@@ -371,9 +371,12 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return s;
 }
 
-bool WindowsFileSystem::FileExists(const string& fname) {
+Status WindowsFileSystem::FileExists(const string& fname) {
   constexpr int kOk = 0;
-  return _access(TranslateName(fname).c_str(), kOk) == 0;
+  if (_access(TranslateName(fname).c_str(), kOk) == 0) {
+    return Status::OK();
+  }
+  return errors::NotFound(fname, " not found");
 }
 
 Status WindowsFileSystem::GetChildren(const string& dir,
@@ -383,7 +386,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 
   string pattern = translated_dir;
   if (!pattern.empty() && pattern.back() != '\\' && pattern.back() != '/') {
-    pattern += '\\*';
+    pattern += "\\*";
   } else {
     pattern += '*';
   }
@@ -462,6 +465,23 @@ Status WindowsFileSystem::RenameFile(const string& src, const string& target) {
     result = IOErrorFromWindowsError(context, ::GetLastError());
   }
   return result;
+}
+
+Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
+                                           std::vector<string>* results) {
+  // NOTE(mrry): The existing implementation of FileSystem::GetMatchingPaths()
+  // does not handle Windows paths containing backslashes correctly. Since
+  // Windows APIs will accept forward and backslashes equivalently, we
+  // convert the pattern to use forward slashes exclusively. Note that this
+  // is not ideal, since the API expects backslash as an escape character,
+  // but no code appears to rely on this behavior.
+  string converted_pattern(pattern);
+  std::replace(converted_pattern.begin(), converted_pattern.end(), '\\', '/');
+  TF_RETURN_IF_ERROR(FileSystem::GetMatchingPaths(converted_pattern, results));
+  for (string& result : *results) {
+    std::replace(result.begin(), result.end(), '/', '\\');
+  }
+  return Status::OK();
 }
 
 Status WindowsFileSystem::Stat(const string& fname, FileStatistics* stat) {

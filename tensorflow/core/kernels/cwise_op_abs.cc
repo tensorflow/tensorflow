@@ -21,6 +21,18 @@ REGISTER5(UnaryOp, CPU, "Abs", functor::abs, float, Eigen::half, double, int32,
 #if !defined(IS_MOBILE_PLATFORM)
 REGISTER2(UnaryOp, CPU, "ComplexAbs", functor::abs, complex64, complex128);
 #endif
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("Abs")                                 \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("T"),                 \
+                          UnaryOp<SYCLDevice, functor::abs<TYPE>>);
+REGISTER_SYCL_KERNEL(float);
+#undef REGISTER_SYCL_KERNEL
+#endif // TENSORFLOW_USE_SYCL
+
 #if GOOGLE_CUDA
 REGISTER4(UnaryOp, GPU, "Abs", functor::abs, float, Eigen::half, double, int64);
 REGISTER2(UnaryOp, GPU, "ComplexAbs", functor::abs, complex64, complex128);

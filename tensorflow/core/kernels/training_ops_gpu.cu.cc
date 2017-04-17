@@ -64,7 +64,7 @@ struct ApplyAdadelta<GPUDevice, T> {
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
 
-    accum.device(d) = accum_update * rho.reshape(single).broadcast(bcast) +
+    accum.device(d) = accum * rho.reshape(single).broadcast(bcast) +
                       grad.square() * (grad.constant(T(1)) -
                                        rho.reshape(single).broadcast(bcast));
     const auto update =

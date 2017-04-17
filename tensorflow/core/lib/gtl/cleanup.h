@@ -96,7 +96,7 @@ class Cleanup {
   bool is_released() const { return released_; }
 
  private:
-  static_assert(!std::is_reference<F>(), "F must not be a reference");
+  static_assert(!std::is_reference<F>::value, "F must not be a reference");
 
   bool released_ = false;
   F f_;

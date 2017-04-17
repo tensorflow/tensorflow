@@ -12,17 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.ops.tf.MatrixDeterminant."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.platform import test
 
 
-class DeterminantOpTest(tf.test.TestCase):
+class DeterminantOpTest(test.TestCase):
 
   def _compareDeterminantBase(self, matrix_x, tf_ans):
     out = tf_ans.eval()
@@ -36,16 +39,18 @@ class DeterminantOpTest(tf.test.TestCase):
 
   def _compareDeterminant(self, matrix_x):
     with self.test_session():
-      self._compareDeterminantBase(matrix_x, tf.matrix_determinant(matrix_x))
+      self._compareDeterminantBase(matrix_x,
+                                   linalg_ops.matrix_determinant(matrix_x))
 
   def testBasic(self):
     # 2x2 matrices
     self._compareDeterminant(np.array([[2., 3.], [3., 4.]]).astype(np.float32))
     self._compareDeterminant(np.array([[0., 0.], [0., 0.]]).astype(np.float32))
     # 5x5 matrices (Eigen forces LU decomposition)
-    self._compareDeterminant(np.array(
-        [[2., 3., 4., 5., 6.], [3., 4., 9., 2., 0.], [2., 5., 8., 3., 8.],
-         [1., 6., 7., 4., 7.], [2., 3., 4., 5., 6.]]).astype(np.float32))
+    self._compareDeterminant(
+        np.array([[2., 3., 4., 5., 6.], [3., 4., 9., 2., 0.], [
+            2., 5., 8., 3., 8.
+        ], [1., 6., 7., 4., 7.], [2., 3., 4., 5., 6.]]).astype(np.float32))
     # A multidimensional batch of 2x2 matrices
     self._compareDeterminant(np.random.rand(3, 4, 5, 2, 2).astype(np.float32))
 
@@ -54,9 +59,10 @@ class DeterminantOpTest(tf.test.TestCase):
     self._compareDeterminant(np.array([[2., 3.], [3., 4.]]).astype(np.float64))
     self._compareDeterminant(np.array([[0., 0.], [0., 0.]]).astype(np.float64))
     # 5x5 matrices (Eigen forces LU decomposition)
-    self._compareDeterminant(np.array(
-        [[2., 3., 4., 5., 6.], [3., 4., 9., 2., 0.], [2., 5., 8., 3., 8.],
-         [1., 6., 7., 4., 7.], [2., 3., 4., 5., 6.]]).astype(np.float64))
+    self._compareDeterminant(
+        np.array([[2., 3., 4., 5., 6.], [3., 4., 9., 2., 0.], [
+            2., 5., 8., 3., 8.
+        ], [1., 6., 7., 4., 7.], [2., 3., 4., 5., 6.]]).astype(np.float64))
     # A multidimensional batch of 2x2 matrices
     self._compareDeterminant(np.random.rand(3, 4, 5, 2, 2).astype(np.float64))
 
@@ -70,14 +76,14 @@ class DeterminantOpTest(tf.test.TestCase):
     # When the determinant of a non-square matrix is attempted we should return
     # an error
     with self.assertRaises(ValueError):
-      tf.matrix_determinant(
+      linalg_ops.matrix_determinant(
           np.array([[1., 2., 3.], [3., 5., 4.]]).astype(np.float32))
 
   def testWrongDimensions(self):
     # The input to the determinant should be a 2-dimensional tensor.
-    tensor1 = tf.constant([1., 2.])
+    tensor1 = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
-      tf.matrix_determinant(tensor1)
+      linalg_ops.matrix_determinant(tensor1)
 
   def testEmpty(self):
     self._compareDeterminant(np.empty([0, 2, 2]))
@@ -85,4 +91,4 @@ class DeterminantOpTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

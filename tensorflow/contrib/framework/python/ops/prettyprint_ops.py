@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variables
 
 __all__ = ["print_op"]
 
@@ -48,13 +49,18 @@ def _get_tensor_repr(t,
       t_type_str = "Type: SparseTensor ({})".format(t.dtype.name)
     elif isinstance(t, tensor_array_ops.TensorArray):
       t_type_str = "Type: TensorArray ({})".format(t.dtype.name)
+    elif isinstance(t, variables.Variable):
+      t_type_str = "Type: Variable ({})".format(t.dtype.name)
+    else:
+      raise ValueError("t must be a Tensor, SparseTensor, TensorArray or "
+                       "Variable.")
 
     tensor_list.append(constant_op.constant(t_type_str))
 
   if print_shape:
     if isinstance(t, sparse_tensor.SparseTensor):
       tensor_list.append(constant_op.constant("Shape:"))
-      tensor_list.append(t.shape)
+      tensor_list.append(t.dense_shape)
     elif isinstance(t, ops.Tensor):
       tensor_list.append(constant_op.constant("Shape: " + str(t.get_shape(
       ).dims)))
@@ -77,7 +83,7 @@ def _get_tensor_repr(t,
     tensor_list.append(t)
   elif isinstance(t, tensor_array_ops.TensorArray):
     tensor_list.append(constant_op.constant("Value:"))
-    tensor_list.append(t.pack())
+    tensor_list.append(t.stack())
 
   return tensor_list
 
@@ -135,7 +141,7 @@ def print_op(input_,
                                           print_tensor_type, print_shape,
                                           summarize_indicator_vector))
 
-  if isinstance(input_, ops.Tensor):
+  if isinstance(input_, ops.Tensor) or isinstance(input_, variables.Variable):
     input_ = logging_ops.Print(input_, tensor_list, message, first_n, summarize,
                                name)
   elif isinstance(input_, sparse_tensor.SparseTensor):
@@ -144,9 +150,10 @@ def print_op(input_,
         name)
 
     with ops.control_dependencies([p]):
-      input_ = sparse_tensor.SparseTensor(array_ops.identity(input_.indices),
-                                          array_ops.identity(input_.values),
-                                          array_ops.identity(input_.shape))
+      input_ = sparse_tensor.SparseTensor(
+          array_ops.identity(input_.indices),
+          array_ops.identity(input_.values),
+          array_ops.identity(input_.dense_shape))
   elif isinstance(input_, tensor_array_ops.TensorArray):
     p = logging_ops.Print(
         constant_op.constant([]), tensor_list, message, first_n, summarize,
@@ -154,7 +161,8 @@ def print_op(input_,
 
     with ops.control_dependencies([p]):
       input_ = tensor_array_ops.TensorArray(dtype=input_.dtype,
-                                            handle=input_.handle)
+                                            handle=input_.handle,
+                                            flow=input_.flow)
   else:
     raise ValueError("input_ must be of type "
                      "Tensor, SparseTensor or TensorArray")

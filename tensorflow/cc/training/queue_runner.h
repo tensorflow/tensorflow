@@ -27,44 +27,66 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 
-// QueueRunner class imitates the behavior of the python version of QueueRunner
-// which creates a thread for each enqueue op, runs close op on completion.
+/// QueueRunner class imitates the behavior of the python version of QueueRunner
+/// which creates a thread for each enqueue op, runs close op on completion.
 class QueueRunner : public RunnerInterface {
  public:
-  // Creates a new QueueRunner from proto.
+  /// Creates a new QueueRunner from proto.
   // TODO(yuefengz): we may want to initialize from queues and ops in the
   // future.
   static Status New(const QueueRunnerDef& queue_runner_def,
                     std::unique_ptr<QueueRunner>* result);
 
-  // Creates a new QueueRunner with a coordinator, see coordinator.h for usage.
+  /// Creates a new QueueRunner with a coordinator, see coordinator.h for usage.
   static Status New(const QueueRunnerDef& queue_runner_def, Coordinator* coord,
                     std::unique_ptr<QueueRunner>* result);
 
-  // The destructor would join all the threads.
+  /// Adds a callback that the queue runner will call when it detects an error.
+  void AddErrorCallback(const std::function<void(Status)>& cb);
+
+  /// Delete the previously registered callbacks.
+  void ClearErrorCallbacks();
+
+  /// The destructor would join all the threads.
   ~QueueRunner();
 
-  // Starts the queue runner with the given session.
+  /// Starts the queue runner with the given session.
   Status Start(Session* sess);
 
-  // Starts the queue runner with the given session, and wait for up to the
-  // specified time (in milliseconds) for the queues to start to fill up.
-  Status Start(Session* sess, int wait_for);
+  /// Starts the queue runner with the given session and sets the run arguments
+  /// for sess->Run. It also collects and stores the run metedata.
+  Status StartAndCollectRunMetadata(Session* sess,
+                                    const RunOptions* run_options = nullptr);
 
-  // Joins all the threads. Returns okay if all threads run successfully;
-  // otherwise returns the first captured failure status.
+  /// Starts the queue runner with the given session, and wait for up to the
+  /// specified time (in milliseconds) for the queues to start to fill up.
+  Status Start(Session* sess, int wait_for_ms);
+  Status StartAndCollectRunMetadata(Session* session, int wait_for_ms,
+                                    const RunOptions* run_options = nullptr);
+
+  /// Requests to stop and runs the cancel op. It would be called in a separate
+  /// thread when coordinator is set. If there is no coordinator it should be
+  /// called before calling Join.
+  void Stop(Session* sess);
+
+  /// Joins all the threads. Returns okay if all threads run successfully;
+  /// otherwise returns the first captured failure status.
   Status Join() final;
 
-  // Returns the lastest status.
+  /// Returns the latest status.
   Status GetStatus();
 
+  // Returns the stored run metadata.
+  Status ExportRunMetadata(RunMetadata* metadata) const override;
+
  private:
-  QueueRunner() : coord_(nullptr) {}
+  QueueRunner() : coord_(nullptr), stopped_(false), rm_mu_(nullptr) {}
 
   // Initializes the instance with the QueueRunnerDef proto.
   Status Init(const QueueRunnerDef& queue_runner_def);
@@ -72,13 +94,20 @@ class QueueRunner : public RunnerInterface {
   // The Run function for each thread.
   void Run(Session* sess, const string& enqueue_op);
 
-  // Requests to stop and runs the cancel op. It would be called in a separate
-  // thread when coordinator is set.
-  void Stop(Session* sess);
-
   // Updates the internal status; it only keeps OK or the first unexpected error
   // status.
   void UpdateStatus(const Status& status);
+
+  bool IsQueueClosed(Status status) const {
+    return queue_closed_exception_types_.count(
+               static_cast<int>(status.code())) > 0;
+  }
+
+  bool IsRunning() const override { return !stopped_; }
+
+  void SetRunArgumentsAndRunMetadata(const RunOptions* run_options);
+
+  Status RealRun(Session* sess, const string& op);
 
   string queue_name_;
   std::vector<string> enqueue_op_names_;
@@ -88,15 +117,22 @@ class QueueRunner : public RunnerInterface {
   std::unordered_set<int> queue_closed_exception_types_;
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
-  condition_variable wait_to_close_;
   mutex mu_;
-  // TODO(yuefengz): implement c++ coordinator.
   int runs_ = 0;
   Status status_ GUARDED_BY(mu_);
   Status enqueue_status_ GUARDED_BY(mu_);
   std::unique_ptr<BlockingCounter> counter_;
 
   Coordinator* coord_;
+
+  std::atomic<bool> stopped_;
+
+  mutex cb_mu_;
+  std::vector<std::function<void(Status)>> callbacks_;
+
+  mutable std::unique_ptr<mutex> rm_mu_;
+  std::unique_ptr<RunMetadata> run_metadata_ GUARDED_BY(rm_mu_);
+  RunOptions run_options_;
 };
 
 }  // namespace tensorflow

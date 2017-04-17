@@ -18,9 +18,7 @@ package org.tensorflow.demo;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.util.AttributeSet;
-import android.view.MotionEvent;
 import android.view.View;
-import android.view.View.MeasureSpec;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -28,6 +26,8 @@ import java.util.List;
  * A simple View providing a render callback to other classes.
  */
 public class OverlayView extends View {
+  private final List<DrawCallback> callbacks = new LinkedList<DrawCallback>();
+
   public OverlayView(final Context context, final AttributeSet attrs) {
     super(context, attrs);
   }
@@ -37,22 +37,6 @@ public class OverlayView extends View {
    */
   public interface DrawCallback {
     public void drawCallback(final Canvas canvas);
-  }
-
-  private int ratioWidth;
-  private int ratioHeight;
-
-  private boolean debug;
-
-  private final List<DrawCallback> callbacks = new LinkedList<DrawCallback>();
-
-  @Override
-  public boolean onTouchEvent(final MotionEvent e) {
-    super.onTouchEvent(e);
-    if (e.getAction() == MotionEvent.ACTION_DOWN) {
-      debug = !debug;
-    }
-    return false;
   }
 
   public void addCallback(final DrawCallback callback) {
@@ -65,30 +49,4 @@ public class OverlayView extends View {
       callback.drawCallback(canvas);
     }
   }
-
-  public void setAspectRatio(final int width, final int height) {
-    if (width < 0 || height < 0) {
-      throw new IllegalArgumentException("Size cannot be negative.");
-    }
-    ratioWidth = width;
-    ratioHeight = height;
-    requestLayout();
-  }
-
-  @Override
-  protected void onMeasure(final int widthMeasureSpec, final int heightMeasureSpec) {
-    super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-    final int width = MeasureSpec.getSize(widthMeasureSpec);
-    final int height = MeasureSpec.getSize(heightMeasureSpec);
-    if (0 == ratioWidth || 0 == ratioHeight) {
-      setMeasuredDimension(width, height);
-    } else {
-      if (width < height * ratioWidth / ratioHeight) {
-        setMeasuredDimension(width, width * ratioHeight / ratioWidth);
-      } else {
-        setMeasuredDimension(height * ratioWidth / ratioHeight, height);
-      }
-    }
-  }
-
 }

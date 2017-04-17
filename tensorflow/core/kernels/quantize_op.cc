@@ -41,11 +41,12 @@ template <typename Device, typename T>
 class QuantizeV2Op : public OpKernel {
  public:
   explicit QuantizeV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    half_range_ = !std::is_signed<T>::value
-                      ? 0.0f
-                      : (std::numeric_limits<T>::max() -
-                         std::numeric_limits<T>::min() + 1) /
-                            2.0f;
+    half_range_ =
+        !std::is_signed<T>::value
+            ? 0.0f
+            : (static_cast<double>(std::numeric_limits<T>::max()) -
+               static_cast<double>(std::numeric_limits<T>::min()) + 1) /
+                  2.0f;
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(ctx,
@@ -80,17 +81,19 @@ class QuantizeV2Op : public OpKernel {
     // overall range from the maximum, so that the value can be easily
     // represented when we promote the quantized value to a higher
     // intermediate bit depth, since that's a common requirement.
-    min_range = input_min_range;
+    min_range = std::min(0.0f, input_min_range);
     const float epsilon = std::max(1.0f, std::max(fabsf(input_min_range),
                                                   fabsf(input_max_range))) /
                           100.0f;
-    max_range = std::max(input_max_range, input_min_range + epsilon);
+    max_range = std::max(input_max_range, min_range + epsilon);
+    max_range = std::max(0.0f, max_range);
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
     if (mode_ == QUANTIZE_MODE_MIN_COMBINED) {
       const float scale_factor =
-          (std::numeric_limits<T>::max() - std::numeric_limits<T>::min()) /
+          (static_cast<double>(std::numeric_limits<T>::max()) -
+           static_cast<double>(std::numeric_limits<T>::min())) /
           (max_range - min_range);
 
       // Quantize:
@@ -99,8 +102,8 @@ class QuantizeV2Op : public OpKernel {
       // Divide by (max_range - min_range) to get to [0, 1.0]
       // Multiply by range of T, after that shift left 1/2 range of T if
       // T is signed.
-      // Note that std::round is used to round the number before the cast.
-      // std::round implements "round-half-away-zero",
+      // Note that the number is rounded before the cast. Rounding follows the
+      // semantic of std::round, which implements "round-half-away-zero",
       // e.g., -5.5 gets rounded to -6, -5.4 goes to -5, 5.4 goes to 5,
       // and 5.5 goes to 6.
       auto o = output->template flat<T>();
@@ -113,7 +116,7 @@ class QuantizeV2Op : public OpKernel {
               min_range) *
                  scale_factor -
              half_range_)
-                .unaryExpr(std::function<float(float)>(round))
+                .round()
                 .template cast<T>();
       } else {
         // The fast path that avoids unaryExpr
@@ -162,5 +165,8 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<qint16>("T"),
     QuantizeV2Op<CPUDevice, qint16>);
+REGISTER_KERNEL_BUILDER(
+    Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<qint32>("T"),
+    QuantizeV2Op<CPUDevice, qint32>);
 
 }  // namespace tensorflow

@@ -162,7 +162,7 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
   float score[batch_size][top_paths] = {{0.0}};
   Eigen::Map<Eigen::MatrixXf> scores(&score[0][0], batch_size, top_paths);
 
-  decoder.Decode(seq_len, inputs, &outputs, &scores);
+  EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(outputs[path][0], expected_output[0][path]);
   }
@@ -172,7 +172,8 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
   for (CTCDecoder::Output& output : dict_outputs) {
     output.resize(batch_size);
   }
-  dictionary_decoder.Decode(seq_len, inputs, &dict_outputs, &scores);
+  EXPECT_TRUE(
+      dictionary_decoder.Decode(seq_len, inputs, &dict_outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(dict_outputs[path][0], expected_dict_output[0][path]);
   }
@@ -264,21 +265,21 @@ TEST(CtcBeamSearch, LabelSelection) {
   float score[batch_size][top_paths] = {{0.0}};
   Eigen::Map<Eigen::MatrixXf> scores(&score[0][0], batch_size, top_paths);
 
-  decoder.Decode(seq_len, inputs, &outputs, &scores);
+  EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(outputs[path][0], expected_default_output[0][path]);
   }
 
   // Try label selection size 2
   decoder.SetLabelSelectionParameters(2, -1);
-  decoder.Decode(seq_len, inputs, &outputs, &scores);
+  EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(outputs[path][0], expected_output_size2[0][path]);
   }
 
   // Try label selection width 2.0
   decoder.SetLabelSelectionParameters(0, 2.0);
-  decoder.Decode(seq_len, inputs, &outputs, &scores);
+  EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(outputs[path][0], expected_output_width2[0][path]);
   }
@@ -286,14 +287,14 @@ TEST(CtcBeamSearch, LabelSelection) {
   // Try both size 2 and width 2.0: the former is more constraining, so
   // it's equivalent to that.
   decoder.SetLabelSelectionParameters(2, 2.0);
-  decoder.Decode(seq_len, inputs, &outputs, &scores);
+  EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(outputs[path][0], expected_output_size2[0][path]);
   }
 
   // Size 4 and width > 3.3 are equivalent to no label selection
   decoder.SetLabelSelectionParameters(4, 3.3001);
-  decoder.Decode(seq_len, inputs, &outputs, &scores);
+  EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(outputs[path][0], expected_default_output[0][path]);
   }

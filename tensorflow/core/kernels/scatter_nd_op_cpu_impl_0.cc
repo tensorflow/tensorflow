@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#define CPU_PROVIDED_IXDIM 0
-#include "tensorflow/core/kernels/scatter_nd_op_cpu_impl.h"
-#undef CPU_PROVIDED_IXDIM
+// TODO(simister): Re-enable once binary size is under control.
+// #define CPU_PROVIDED_IXDIM 0
+// #include "tensorflow/core/kernels/scatter_nd_op_cpu_impl.h"
+// #undef CPU_PROVIDED_IXDIM

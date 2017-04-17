@@ -39,12 +39,17 @@ limitations under the License.
 namespace tensorflow {
 
 // A few string constant used throughout this module.
-static const char* const kArgOp = "_Arg";
-static const char* const kRetOp = "_Retval";
-static const char* const kGradientOp = "SymbolicGradient";
-static const char* const kNodeLabel = "Func";
-static const char* const kFuncAttr = "f";
-static const char* const kNoInlineAttr = "_noinline";
+//
+// TODO(zhifengc): Dedup some of these constants into
+// framework/function.h
+static constexpr const char* const kArgOp = "_Arg";
+static constexpr const char* const kRetOp = "_Retval";
+static constexpr const char* const kGradientOp =
+    FunctionLibraryDefinition::kGradientOp;
+static constexpr const char* const kNodeLabel = "Func";
+static constexpr const char* const kFuncAttr =
+    FunctionLibraryDefinition::kFuncAttr;
+static constexpr const char* const kNoInlineAttr = "_noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -140,7 +145,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Env* env, Device* device,
                              int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
-                             const OptimizerOptions& optimizer_options);
+                             const OptimizerOptions& optimizer_options,
+                             CustomKernelCreator custom_kernel_creator);
 
   ~FunctionLibraryRuntimeImpl() override;
 
@@ -177,6 +183,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const int graph_def_version_;
   const FunctionLibraryDefinition* const lib_def_;
   GraphOptimizer optimizer_;
+  const CustomKernelCreator custom_kernel_creator_;
+
   std::function<Status(const string&, const OpDef**)> get_func_sig_;
   std::function<Status(const NodeDef&, OpKernel**)> create_kernel_;
 
@@ -214,13 +222,15 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
     const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options)
+    const OptimizerOptions& optimizer_options,
+    CustomKernelCreator custom_kernel_creator)
     : device_mgr_(dmgr),
       device_(device),
       env_(env),
       graph_def_version_(graph_def_version),
       lib_def_(lib_def),
-      optimizer_(optimizer_options) {
+      optimizer_(optimizer_options),
+      custom_kernel_creator_(std::move(custom_kernel_creator)) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     return lib_def_->LookUpOpDef(op, sig);
   };
@@ -251,7 +261,7 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
-    opts.step_resource_manager = ctx->step_resource_manager();
+    opts.step_container = ctx->step_container();
     opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
@@ -264,8 +274,9 @@ class CallOp : public AsyncOpKernel {
                if (!status.ok()) {
                  ctx->SetStatus(status);
                } else {
-                 CHECK_EQ(rets->size(), ctx->num_outputs());
-                 for (size_t i = 0; i < rets->size(); ++i) {
+                 const int ret_size = static_cast<int>(rets->size());
+                 CHECK_EQ(ret_size, ctx->num_outputs());
+                 for (int i = 0; i < ret_size; ++i) {
                    ctx->set_output(i, (*rets)[i]);
                  }
                }
@@ -287,37 +298,25 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   return func_graphs_[h];
 }
 
-namespace {
-
-struct CustomCreatorSingleton {
-  mutex mu;
-  CustomKernelCreator custom_creator = nullptr;
-
-  void Set(CustomKernelCreator cb) {
-    mutex_lock l(mu);
-    custom_creator = cb;
-  }
-
-  CustomKernelCreator Get() {
-    mutex_lock l(mu);
-    return custom_creator;
-  }
-};
-
-CustomCreatorSingleton* GetCustomCreatorSingleton() {
-  static CustomCreatorSingleton* ccs = new CustomCreatorSingleton;
-  return ccs;
-}
-
-}  // end namespace
-
-void RegisterCustomKernelCreator(CustomKernelCreator cb) {
-  GetCustomCreatorSingleton()->Set(cb);
-}
-
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                                 OpKernel** kernel) {
+  // If a custom kernel creator is given, try that.
+  Status s;
+  if (custom_kernel_creator_) {
+    std::unique_ptr<OpKernel> ret;
+    s = custom_kernel_creator_(this, ndef, &ret);
+    if (s.ok()) {
+      *kernel = ret.release();
+      return s;
+    } else {
+      VLOG(2) << "Custom creator error: " << s;
+      // Falls through.
+      s = Status::OK();
+    }
+  }
+
   if (lib_def_->Find(ndef.op()) == nullptr) {
+    // A primitive operation. Creates the registered kernel.
     return CreateNonCachedKernel(device_, this, ndef, graph_def_version_,
                                  kernel);
   }
@@ -341,22 +340,6 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   MemoryTypeVector output_memory_types;
   for (const auto& t : fbody->ret_types) {
     output_memory_types.push_back(t == DT_INT32 ? HOST_MEMORY : DEVICE_MEMORY);
-  }
-
-  // If a custom kernel creator is given, try that.
-  CustomKernelCreator custom_creator = GetCustomCreatorSingleton()->Get();
-  Status s;
-  if (custom_creator) {
-    std::unique_ptr<OpKernel> ret;
-    s = custom_creator(this, ndef, &ret);
-    if (s.ok()) {
-      *kernel = ret.release();
-      return s;
-    } else {
-      VLOG(2) << "Custom creator error: " << s;
-      // Falls through.
-      s = Status::OK();
-    }
   }
 
   // Constructs a CallOp kernel for running the instantiated function.
@@ -481,7 +464,7 @@ void DumpGraph(StringPiece label, const Graph* g) {
   }
 }
 
-void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
   OptimizerOptions opts;
   opts.set_do_common_subexpression_elimination(true);
   opts.set_do_function_inlining(true);
@@ -493,16 +476,12 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
-  Graph* g = new Graph(lib_def_);
-  CopyGraph(*fbody->graph, g);
+  std::unique_ptr<Graph> g(new Graph(lib_def_));
+  CopyGraph(*fbody->graph, g.get());
 
   optimizer_.Optimize(this, env(), device(), &g);
-  auto s = EnsureMemoryTypes(DeviceType(device()->device_type()),
-                             device()->name(), g);
-  if (!s.ok()) {
-    delete g;
-    return Status::OK();
-  }
+  TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
+                                       device()->name(), g.get()));
 
   // Creates an executor based on the g.  This must be done without
   // holding mu_ because create_kernel_ calls back into the library.
@@ -513,11 +492,12 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
   };
+  Graph* graph = g.get();
   Executor* exec;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g, &exec));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g.release(), &exec));
 
   *item = new Item;
-  (*item)->graph = g;
+  (*item)->graph = graph;
   (*item)->exec = exec;
   return Status::OK();
 }
@@ -576,7 +556,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
-  exec_args.step_resource_manager = opts.step_resource_manager;
+  exec_args.step_container = opts.step_container;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = *opts.runner;
@@ -616,12 +596,51 @@ string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
   }
 }
 
+namespace {
+
+struct CustomCreatorSingleton {
+  mutex mu;
+  CustomKernelCreator custom_creator = nullptr;
+
+  void Set(CustomKernelCreator cb) {
+    mutex_lock l(mu);
+    custom_creator = cb;
+  }
+
+  CustomKernelCreator Get() {
+    mutex_lock l(mu);
+    return custom_creator;
+  }
+};
+
+CustomCreatorSingleton* GetCustomCreatorSingleton() {
+  static CustomCreatorSingleton* ccs = new CustomCreatorSingleton;
+  return ccs;
+}
+
+}  // end namespace
+
+void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb) {
+  GetCustomCreatorSingleton()->Set(cb);
+}
+
+FunctionLibraryRuntime* NewFunctionLibraryRuntime(
+    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
+    const FunctionLibraryDefinition* lib_def,
+    const OptimizerOptions& optimizer_options,
+    CustomKernelCreator custom_kernel_creator) {
+  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
+                                        lib_def, optimizer_options,
+                                        custom_kernel_creator);
+}
+
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
     const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
-                                        lib_def, optimizer_options);
+  return NewFunctionLibraryRuntime(dmgr, env, device, graph_def_version,
+                                   lib_def, optimizer_options,
+                                   GetCustomCreatorSingleton()->Get());
 }
 
 bool RemoveDeadNodes(Graph* g) {
@@ -649,6 +668,16 @@ const Edge* GetTheOnlyDataEdge(const EdgeSet& edges) {
     if (IsRefType(e->src()->output_type(e->src_output()))) {
       // Don't touch it if the identity node is effectively de-reffing
       // a ref.
+      return nullptr;
+    }
+    if (IsRecv(e->src()) || IsSwitch(e->src())) {
+      // Don't touch it if the identity is introduced for control flow.
+      // Recv disables all its successors if it receives a dead signal.
+      // When Recv has an outgoing control edge, the current executor
+      // would not disable the destination. The current solution (see
+      // graph_partition.cc) is to add an identity after Recv and change
+      // the control edge to be from this identity node. So the identity
+      // can't be removed.
       return nullptr;
     }
     ret = e;
@@ -926,46 +955,13 @@ static void InlineFunctionBody(Graph* g, Node* caller,
   g->RemoveNode(caller);  // 'caller' is replaced with inlined nodes.
 }
 
-// Given a node's NodeDef, returns false iff the node explicitly
-// specified _noinline. This gives ExpandInlineFunctions a heuristic
-// to decide whether to inline the function.
-bool ShouldInline(const NodeDef& ndef) {
-  bool noinline = false;
-  if (GetNodeAttr(ndef, kNoInlineAttr, &noinline).ok()) {
-    // If the node specifies attribute '_noinline', returns accordingly.
-    return !noinline;
-  }
-  if (ndef.op() != kGradientOp) {
-    // If the op is not SymbolicGradient, we should be free to decide
-    // whether to inline or not.
-    return true;
-  }
-  // If the node is a SymbolicGradient, we use the forward
-  // function's attribute '_noinline' instead.
-  const NameAttrList* forward_func_attrs;
-  Status s =
-      GetNodeAttr(AttrSlice(&ndef.attr()), kFuncAttr, &forward_func_attrs);
-  if (!s.ok()) {
-    // The node def is malformed (missing attribute 'f'), we'll just
-    // continue and the runtime will error out.
-    return false;
-  }
-  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), kNoInlineAttr,
-                  &noinline);
-  if (!s.ok()) {
-    // The forward function doesn't specify '_noinline' attr, we should
-    // be free to decide.
-    return true;
-  }
-  // Otherwise, make inline decision according to the attr.
-  return !noinline;
-}
-
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
+  const FunctionLibraryDefinition* fld = lib->GetFunctionLibraryDefinition();
   for (Node* node : graph->nodes()) {
     VLOG(3) << "Expanding " << node->DebugString();
-    if (!ShouldInline(node->def())) {
+    bool noinline;
+    if (fld->GetAttr(node->def(), kNoInlineAttr, &noinline).ok() && noinline) {
       VLOG(3) << "noinline: " << node->DebugString();
       continue;
     }
@@ -1005,7 +1001,7 @@ string NewName(const Node* n, bool pretty) {
 void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   // We visit nodes in forward topological sort order, which is a
   // possible execution order of the graph.
-  std::vector<int> pending(g->num_node_ids());
+  std::vector<size_t> pending(g->num_node_ids());
   std::deque<const Node*> ready;
   for (const Node* n : g->nodes()) {
     pending[n->id()] = n->in_edges().size();
@@ -1159,7 +1155,7 @@ FunctionBody* SymbolicGradientHelper::Compute() {
 
   Graph* g = gbody_->graph;
 
-  const int num_y = gbody_->ret_nodes.size();
+  const int num_y = static_cast<int>(gbody_->ret_nodes.size());
 
   // Populate 'y_node_outputs_' with node function body outputs.
   // Populate 'y_grad_nodes' with initial gradient nodes for each return node of
@@ -1174,7 +1170,7 @@ FunctionBody* SymbolicGradientHelper::Compute() {
     y_node_outputs.push_back({y, 0});
     DCHECK_EQ(y->type_string(), kRetOp);
     const DataType dtype = y->input_type(0);
-    const int index = gbody_->arg_nodes.size();
+    const int index = static_cast<int>(gbody_->arg_nodes.size());
     Node* dy = AddArg(g, dtype, index);
     gbody_->arg_types.push_back(dtype);
     gbody_->arg_nodes.push_back(dy);
@@ -1182,7 +1178,7 @@ FunctionBody* SymbolicGradientHelper::Compute() {
   }
 
   // Populate 'x_nodes' with function args (excluding 'y_grad_node_outputs').
-  const int num_x = fbody_->arg_nodes.size();
+  const size_t num_x = fbody_->arg_nodes.size();
   std::vector<NodeOut> x_node_outputs;
   x_node_outputs.reserve(num_x);
   for (size_t i = 0; i < fbody_->arg_nodes.size(); ++i) {
@@ -1205,7 +1201,8 @@ FunctionBody* SymbolicGradientHelper::Compute() {
   gbody_->ret_nodes.clear();
   // Add new return nodes to the function gradient body for each node
   // in 'x_grad_nodes'.
-  for (size_t i = 0; i < fbody_->arg_types.size(); ++i) {
+  const int arg_types_size = static_cast<int>(fbody_->arg_types.size());
+  for (int i = 0; i < arg_types_size; ++i) {
     Endpoint grad = {x_grad_node_outputs[i].node, x_grad_node_outputs[i].index};
     Node* ret = AddRet(g, grad, i);
     gbody_->ret_nodes.push_back(ret);

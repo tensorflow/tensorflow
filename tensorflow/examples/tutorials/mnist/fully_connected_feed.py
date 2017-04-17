@@ -108,7 +108,7 @@ def do_eval(sess,
                                images_placeholder,
                                labels_placeholder)
     true_count += sess.run(eval_correct, feed_dict=feed_dict)
-  precision = true_count / num_examples
+  precision = float(true_count) / num_examples
   print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
         (num_examples, true_count, precision))
 
@@ -146,13 +146,13 @@ def run_training():
     init = tf.global_variables_initializer()
 
     # Create a saver for writing training checkpoints.
-    saver = tf.train.Saver(write_version=tf.train.SaverDef.V2)
+    saver = tf.train.Saver()
 
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
 
     # Instantiate a SummaryWriter to output summaries and the Graph.
-    summary_writer = tf.train.SummaryWriter(FLAGS.log_dir, sess.graph)
+    summary_writer = tf.summary.FileWriter(FLAGS.log_dir, sess.graph)
 
     # And then after everything is built:
 

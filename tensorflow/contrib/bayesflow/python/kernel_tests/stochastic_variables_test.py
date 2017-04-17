@@ -19,60 +19,71 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.contrib import distributions
+from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
+from tensorflow.contrib.bayesflow.python.ops import stochastic_variables
+from tensorflow.contrib.bayesflow.python.ops import variational_inference_impl
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
-sv = tf.contrib.bayesflow.stochastic_variables
-st = tf.contrib.bayesflow.stochastic_tensor
-vi = tf.contrib.bayesflow.variational_inference
-dist = tf.contrib.distributions
+sv = stochastic_variables
+st = stochastic_tensor
+vi = variational_inference_impl
+dist = distributions
 
 
-class StochasticVariablesTest(tf.test.TestCase):
+class StochasticVariablesTest(test.TestCase):
 
   def testStochasticVariables(self):
     shape = (10, 20)
-    with tf.variable_scope(
+    with variable_scope.variable_scope(
         "stochastic_variables",
         custom_getter=sv.make_stochastic_variable_getter(
-            dist_cls=dist.NormalWithSoftplusSigma)):
-      v = tf.get_variable("sv", shape)
+            dist_cls=dist.NormalWithSoftplusScale)):
+      v = variable_scope.get_variable("sv", shape)
 
     self.assertTrue(isinstance(v, st.StochasticTensor))
-    self.assertTrue(isinstance(v.distribution, dist.NormalWithSoftplusSigma))
+    self.assertTrue(isinstance(v.distribution, dist.NormalWithSoftplusScale))
 
     self.assertEqual(
-        {"stochastic_variables/sv_mu", "stochastic_variables/sv_sigma"},
-        set([v.op.name for v in tf.all_variables()]))
-    self.assertEqual(set(tf.trainable_variables()), set(tf.all_variables()))
+        {"stochastic_variables/sv_loc", "stochastic_variables/sv_scale"},
+        set([v.op.name for v in variables.global_variables()]))
+    self.assertEqual(
+        set(variables.trainable_variables()), set(variables.global_variables()))
 
-    v = tf.convert_to_tensor(v)
+    v = ops.convert_to_tensor(v)
     self.assertEqual(list(shape), v.get_shape().as_list())
     with self.test_session() as sess:
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       self.assertEqual(shape, sess.run(v).shape)
 
   def testStochasticVariablesWithConstantInitializer(self):
     shape = (10, 20)
-    with tf.variable_scope(
+    with variable_scope.variable_scope(
         "stochastic_variables",
         custom_getter=sv.make_stochastic_variable_getter(
-            dist_cls=dist.NormalWithSoftplusSigma,
+            dist_cls=dist.NormalWithSoftplusScale,
             dist_kwargs={"validate_args": True},
             param_initializers={
-                "mu": np.ones(shape) * 4.,
-                "sigma": np.ones(shape) * 2.
+                "loc": np.ones(shape) * 4.,
+                "scale": np.ones(shape) * 2.
             })):
-      v = tf.get_variable("sv")
+      v = variable_scope.get_variable("sv")
 
-    for var in tf.all_variables():
-      if "mu" in var.name:
+    for var in variables.global_variables():
+      if "loc" in var.name:
         mu_var = var
-      if "sigma" in var.name:
+      if "scale" in var.name:
         sigma_var = var
 
-    v = tf.convert_to_tensor(v)
+    v = ops.convert_to_tensor(v)
     with self.test_session() as sess:
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       self.assertAllEqual(np.ones(shape) * 4., sess.run(mu_var))
       self.assertAllEqual(np.ones(shape) * 2., sess.run(sigma_var))
       self.assertEqual(shape, sess.run(v).shape)
@@ -82,29 +93,29 @@ class StochasticVariablesTest(tf.test.TestCase):
 
     def sigma_init(shape, dtype, partition_info):
       _ = partition_info
-      return tf.ones(shape, dtype=dtype) * 2.
+      return array_ops.ones(shape, dtype=dtype) * 2.
 
-    with tf.variable_scope(
+    with variable_scope.variable_scope(
         "stochastic_variables",
         custom_getter=sv.make_stochastic_variable_getter(
-            dist_cls=dist.NormalWithSoftplusSigma,
+            dist_cls=dist.NormalWithSoftplusScale,
             dist_kwargs={"validate_args": True},
             param_initializers={
-                "mu": np.ones(
+                "loc": np.ones(
                     shape, dtype=np.float32) * 4.,
-                "sigma": sigma_init
+                "scale": sigma_init
             })):
-      v = tf.get_variable("sv", shape)
+      v = variable_scope.get_variable("sv", shape)
 
-    for var in tf.all_variables():
-      if "mu" in var.name:
+    for var in variables.global_variables():
+      if "loc" in var.name:
         mu_var = var
-      if "sigma" in var.name:
+      if "scale" in var.name:
         sigma_var = var
 
-    v = tf.convert_to_tensor(v)
+    v = ops.convert_to_tensor(v)
     with self.test_session() as sess:
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       self.assertAllEqual(np.ones(shape) * 4., sess.run(mu_var))
       self.assertAllEqual(np.ones(shape) * 2., sess.run(sigma_var))
       self.assertEqual(shape, sess.run(v).shape)
@@ -112,45 +123,46 @@ class StochasticVariablesTest(tf.test.TestCase):
   def testStochasticVariablesWithPrior(self):
     shape = (10, 20)
     prior = dist.Normal(0., 1.)
-    with tf.variable_scope(
+    with variable_scope.variable_scope(
         "stochastic_variables",
         custom_getter=sv.make_stochastic_variable_getter(
-            dist_cls=dist.NormalWithSoftplusSigma, prior=prior)):
-      w = tf.get_variable("weights", shape)
+            dist_cls=dist.NormalWithSoftplusScale, prior=prior)):
+      w = variable_scope.get_variable("weights", shape)
 
-    x = tf.random_uniform((8, 10))
-    y = tf.matmul(x, w)
+    x = random_ops.random_uniform((8, 10))
+    y = math_ops.matmul(x, w)
 
     prior_map = vi._find_variational_and_priors(y, None)
     self.assertEqual(prior_map[w], prior)
     elbo = vi.elbo(y, keep_batch_dim=False)
 
     with self.test_session() as sess:
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       sess.run(elbo)
 
   def testStochasticVariablesWithCallablePriorInitializer(self):
 
     def prior_init(shape, dtype):
-      return dist.Normal(tf.zeros(shape, dtype), tf.ones(shape, dtype))
+      return dist.Normal(
+          array_ops.zeros(shape, dtype), array_ops.ones(shape, dtype))
 
-    with tf.variable_scope(
+    with variable_scope.variable_scope(
         "stochastic_variables",
         custom_getter=sv.make_stochastic_variable_getter(
-            dist_cls=dist.NormalWithSoftplusSigma, prior=prior_init)):
-      w = tf.get_variable("weights", (10, 20))
+            dist_cls=dist.NormalWithSoftplusScale, prior=prior_init)):
+      w = variable_scope.get_variable("weights", (10, 20))
 
-    x = tf.random_uniform((8, 10))
-    y = tf.matmul(x, w)
+    x = random_ops.random_uniform((8, 10))
+    y = math_ops.matmul(x, w)
 
     prior_map = vi._find_variational_and_priors(y, None)
     self.assertTrue(isinstance(prior_map[w], dist.Normal))
     elbo = vi.elbo(y, keep_batch_dim=False)
 
     with self.test_session() as sess:
-      sess.run(tf.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       sess.run(elbo)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

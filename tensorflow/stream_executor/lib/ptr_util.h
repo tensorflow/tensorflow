@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_PTR_UTIL_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_PTR_UTIL_H_
 
+#include <memory>
+
 namespace perftools {
 namespace gputools {
 namespace port {

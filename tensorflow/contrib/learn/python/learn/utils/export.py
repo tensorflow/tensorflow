@@ -20,11 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -36,6 +34,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 
 
+@deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
 def _get_first_op_from_collection(collection_name):
   """Get first element from the collection."""
   elements = ops.get_collection(collection_name)
@@ -45,6 +44,7 @@ def _get_first_op_from_collection(collection_name):
   return None
 
 
+@deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
 def _get_saver():
   """Lazy init and return saver."""
   saver = _get_first_op_from_collection(ops.GraphKeys.SAVERS)
@@ -53,12 +53,13 @@ def _get_saver():
       saver = saver[0]
     else:
       saver = None
-  if saver is None and variables.all_variables():
-    saver = tf_saver.Saver(write_version=saver_pb2.SaverDef.V1)
+  if saver is None and variables.global_variables():
+    saver = tf_saver.Saver()
     ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
   return saver
 
 
+@deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
 def _export_graph(graph, saver, checkpoint_path, export_dir,
                   default_graph_signature, named_graph_signatures,
                   exports_to_keep):
@@ -66,13 +67,13 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
   with graph.as_default():
     with tf_session.Session('') as session:
       variables.local_variables_initializer()
-      data_flow_ops.initialize_all_tables()
+      data_flow_ops.tables_initializer()
       saver.restore(session, checkpoint_path)
 
       export = exporter.Exporter(saver)
       export.init(init_op=control_flow_ops.group(
           variables.local_variables_initializer(),
-          data_flow_ops.initialize_all_tables()),
+          data_flow_ops.tables_initializer()),
                   default_graph_signature=default_graph_signature,
                   named_graph_signatures=named_graph_signatures,
                   assets_collection=ops.get_collection(
@@ -81,6 +82,10 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
                            session, exports_to_keep=exports_to_keep)
 
 
+@deprecated('2017-03-25',
+            'signature_fns are deprecated. For canned Estimators they are no '
+            'longer needed. For custom Estimators, please return '
+            'output_alternatives from your model_fn via ModelFnOps.')
 def generic_signature_fn(examples, unused_features, predictions):
   """Creates generic signature from given examples and predictions.
 
@@ -109,6 +114,10 @@ def generic_signature_fn(examples, unused_features, predictions):
   return default_signature, {}
 
 
+@deprecated('2017-03-25',
+            'signature_fns are deprecated. For canned Estimators they are no '
+            'longer needed. For custom Estimators, please return '
+            'output_alternatives from your model_fn via ModelFnOps.')
 def classification_signature_fn(examples, unused_features, predictions):
   """Creates classification signature from given examples and predictions.
 
@@ -136,6 +145,10 @@ def classification_signature_fn(examples, unused_features, predictions):
   return default_signature, {}
 
 
+@deprecated('2017-03-25',
+            'signature_fns are deprecated. For canned Estimators they are no '
+            'longer needed. For custom Estimators, please return '
+            'output_alternatives from your model_fn via ModelFnOps.')
 def classification_signature_fn_with_prob(
     examples, unused_features, predictions):
   """Classification signature from given examples and predicted probabilities.
@@ -164,6 +177,10 @@ def classification_signature_fn_with_prob(
   return default_signature, {}
 
 
+@deprecated('2017-03-25',
+            'signature_fns are deprecated. For canned Estimators they are no '
+            'longer needed. For custom Estimators, please return '
+            'output_alternatives from your model_fn via ModelFnOps.')
 def regression_signature_fn(examples, unused_features, predictions):
   """Creates regression signature from given examples and predictions.
 
@@ -186,6 +203,10 @@ def regression_signature_fn(examples, unused_features, predictions):
   return default_signature, {}
 
 
+@deprecated('2017-03-25',
+            'signature_fns are deprecated. For canned Estimators they are no '
+            'longer needed. For custom Estimators, please return '
+            'output_alternatives from your model_fn via ModelFnOps.')
 def logistic_regression_signature_fn(examples, unused_features, predictions):
   """Creates logistic regression signature from given examples and predictions.
 
@@ -232,25 +253,20 @@ def logistic_regression_signature_fn(examples, unused_features, predictions):
 
 
 # pylint: disable=protected-access
-@deprecated(
-    '2016-09-23',
-    'The signature of the input_fn accepted by export is changing to be '
-    'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate, '
-    'which makes this function useless. This will be removed after the '
-    'deprecation date.')
+@deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
 def _default_input_fn(estimator, examples):
   """Creates default input parsing using Estimator's feature signatures."""
   return estimator._get_feature_ops_from_example(examples)
 
 
-@deprecated('2016-09-23', 'Please use BaseEstimator.export')
+@deprecated('2016-09-23', 'Please use Estimator.export_savedmodel() instead.')
 def export_estimator(estimator,
                      export_dir,
                      signature_fn=None,
                      input_fn=_default_input_fn,
                      default_batch_size=1,
                      exports_to_keep=None):
-  """Deprecated, please use BaseEstimator.export."""
+  """Deprecated, please use Estimator.export_savedmodel()."""
   _export_estimator(estimator=estimator,
                     export_dir=export_dir,
                     signature_fn=signature_fn,
@@ -259,16 +275,7 @@ def export_estimator(estimator,
                     exports_to_keep=exports_to_keep)
 
 
-@deprecated_arg_values(
-    '2016-09-23',
-    'The signature of the input_fn accepted by export is changing to be '
-    'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
-    'input_fn and (and in most cases, input_feature_key) will become required '
-    'args. use_deprecated_input_fn will default to False and be removed. '
-    'default_batch_size will also be removed since it will now be a part of '
-    'the input_fn.',
-    use_deprecated_input_fn=True,
-    default_batch_size=1)
+@deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
 def _export_estimator(estimator,
                       export_dir,
                       signature_fn,
@@ -277,13 +284,16 @@ def _export_estimator(estimator,
                       exports_to_keep,
                       input_feature_key=None,
                       use_deprecated_input_fn=True,
-                      prediction_key=None):
+                      prediction_key=None,
+                      checkpoint_path=None):
   if use_deprecated_input_fn:
     input_fn = input_fn or _default_input_fn
   elif input_fn is None:
     raise ValueError('input_fn must be defined.')
 
-  checkpoint_path = tf_saver.latest_checkpoint(estimator._model_dir)
+  # If checkpoint_path is specified, use the specified checkpoint path.
+  checkpoint_path = (checkpoint_path or
+                     tf_saver.latest_checkpoint(estimator._model_dir))
   with ops.Graph().as_default() as g:
     contrib_variables.create_global_step(g)
 
@@ -298,10 +308,11 @@ def _export_estimator(estimator,
       if input_feature_key is not None:
         examples = features.pop(input_feature_key)
 
-    if not features and not examples:
+    if (not features) and (examples is None):
       raise ValueError('Either features or examples must be defined.')
 
-    predictions = estimator._get_predict_ops(features)
+    predictions = estimator._get_predict_ops(features).predictions
+
     if prediction_key is not None:
       predictions = predictions[prediction_key]
 

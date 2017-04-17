@@ -28,6 +28,10 @@ limitations under the License.
 <link rel="import" href="../paper-input/paper-input.html">
 <link rel="import" href="../paper-button/paper-button.html">
 <link rel="import" href="../paper-dialog/paper-dialog.html">
+<link rel="import" href="../paper-toast/paper-toast.html">
+<link rel="import" href="../paper-styles/typography.html">
+<link rel="import" href="../paper-spinner/paper-spinner-lite.html">
+<link rel="import" href="../paper-dialog-scrollable/paper-dialog-scrollable.html">
 
 <link rel="import" href="vz-projector-bookmark-panel.html">
 <link rel="import" href="vz-projector-data-panel.html">
@@ -78,6 +82,13 @@ limitations under the License.
   bottom: 0;
 }
 
+#selector {
+  display: none;
+  height: 100%;
+  position: absolute;
+  width: 100%;
+}
+
 #left-pane {
   display: flex;
   flex-direction: column;
@@ -118,35 +129,34 @@ limitations under the License.
   margin-right: 0;
 }
 
-#wrapper-notify-msg {
-  align-items: center;
-  display: flex;
-  justify-content: center;
+#notification-dialog {
+  width: 400px;
+  padding-bottom: 20px;
+}
+
+#notification-dialog paper-button {
+  background: none;
+  text-transform: uppercase;
+}
+
+#notification-dialog .progress {
+  --paper-spinner-color: #880E4F;
+  --paper-spinner-stroke-width: 2px;
 }
 
 #notify-msgs {
+  text-align: center;
   display: block;
 }
 
 .notify-msg {
-  backface-visibility: hidden;
   font-weight: 500;
   margin: 0;
-  opacity: 1;
   padding: 0;
-  transition: opacity 0.3s ease-out, height 0.3s ease-out;
 }
 
-#warning-msg {
-  display: none;
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  padding: 5px;
-  font-weight: 500;
-  color: black;
-  background-color: #ffb3b6;
-  border: 1px solid black;
+.notify-msg.error {
+  text-align: left;
 }
 
 .brush .extent {
@@ -241,12 +251,6 @@ limitations under the License.
   padding: 20px;
 }
 
-#help3dDialog .note {
-  margin-top: 25px;
-  font-size: 11px;
-  text-align: right;
-}
-
 #help3dDialog h3 {
   margin-top: 20px;
   margin-bottom: 5px;
@@ -260,11 +264,23 @@ limitations under the License.
   border-top: 1px solid rgba(0, 0, 0, 0.1);
   overflow-y: auto;
 }
+
+#toast {
+  display: flex;
+  align-items: center;
+  --paper-toast-color: #eeff41;
+}
 </style>
-<paper-dialog id="wrapper-notify-msg" modal>
-  <div id="notify-msgs"></div>
+<paper-dialog id="notification-dialog" modal>
+  <h2 id="notification-title"></h2>
+  <paper-dialog-scrollable>
+    <div id="notify-msgs"></div>
+  </paper-dialog-scrollable>
+  <div style="text-align: center;"><paper-spinner-lite active class="progress"></paper-spinner-lite></div>
+  <div class="buttons">
+    <paper-button class="close-button" dialog-confirm autofocus>Close</paper-button>
+  </div>
 </paper-dialog>
-<div id="warning-msg"></div>
 <div id="container">
   <div id="left-pane" class="ink-panel">
     <vz-projector-data-panel id="data-panel"></vz-projector-data-panel>
@@ -291,7 +307,9 @@ limitations under the License.
       </div>
     </div>
     <div class="stage">
-      <div id="scatter"></div>
+      <div id="scatter">
+        <svg id="selector"></svg>
+      </div>
       <vz-projector-metadata-card id="metadata-card"></vz-projector-metadata-card>
       <paper-icon-button raised onclick="help3dDialog.open()" icon="help-outline" id="help-3d-icon"></paper-icon-button>
       <paper-tooltip animation-delay="0" for="help-3d-icon">Help with interaction controls.</paper-tooltip>
@@ -305,7 +323,7 @@ limitations under the License.
           <h3>2D controls</h3>
             <b>Pan</b> Mouse left click.<br/>
             <b>Zoom</b> Mouse wheel.
-          <div class="note"> Click anywhere to dismiss.</div>
+          <div class="dismiss-dialog-note"> Click anywhere to dismiss.</div>
         </div>
       </paper-dialog>
     </div>
@@ -319,6 +337,7 @@ limitations under the License.
     </div>
   </div>
 </div>
+<paper-toast id="toast" always-on-top></paper-toast>
 
 </template> <!-- global template -->
 </dom-module>

@@ -14,23 +14,45 @@
 # ==============================================================================
 
 # TODO(ptucker,ipolosukhin): Improve descriptions.
-"""High level API for learning with TensorFlow.
+"""High level API for learning.
 
-## Estimators
-
-Train and evaluate TensorFlow models.
+See the @{$python/contrib.learn} guide.
 
 @@BaseEstimator
 @@Estimator
+@@Trainable
+@@Evaluable
+@@KMeansClustering
 @@ModeKeys
+@@ModelFnOps
+@@MetricSpec
+@@PredictionKey
 @@DNNClassifier
+@@DNNEstimator
 @@DNNRegressor
+@@DNNLinearCombinedRegressor
+@@DNNLinearCombinedEstimator
+@@DNNLinearCombinedClassifier
+@@DynamicRnnEstimator
 @@LinearClassifier
+@@LinearEstimator
 @@LinearRegressor
+@@LogisticRegressor
+@@SVM
+@@SKCompat
 
-## Graph actions
+@@Head
+@@multi_class_head
+@@multi_label_head
+@@binary_svm_head
+@@regression_head
+@@poisson_regression_head
+@@multi_head
+@@no_op_train_fn
 
-Perform various training, evaluation, and inference actions on a graph.
+@@Experiment
+@@ExportStrategy
+@@TaskType
 
 @@NanLossDuringTrainingError
 @@RunConfig
@@ -40,19 +62,21 @@ Perform various training, evaluation, and inference actions on a graph.
 @@run_n
 @@train
 
-## Input processing
-
-Queue and read batched input data.
-
 @@extract_dask_data
 @@extract_dask_labels
 @@extract_pandas_data
 @@extract_pandas_labels
 @@extract_pandas_matrix
+@@infer_real_valued_columns_from_input
+@@infer_real_valued_columns_from_input_fn
 @@read_batch_examples
 @@read_batch_features
 @@read_batch_record_features
 
+@@InputFnOps
+@@ProblemType
+@@build_parsing_serving_input_fn
+@@make_export_strategy
 """
 
 from __future__ import absolute_import
@@ -62,7 +86,11 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import make_all
 
-__all__ = make_all(__name__)
-__all__.append('datasets')
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['datasets', 'head', 'io', 'models',
+                    'monitors', 'NotFittedError', 'ops', 'preprocessing',
+                    'utils', 'graph_actions']
+
+remove_undocumented(__name__, _allowed_symbols)

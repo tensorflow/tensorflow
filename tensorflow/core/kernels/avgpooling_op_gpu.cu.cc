@@ -72,7 +72,7 @@ __global__ void AvePoolBackwardNHWC(const int nthreads,
         wstart = max(wstart, 0);
         int pool_size = (hend - hstart) * (wend - wstart);
         gradient +=
-            top_diff_slice[(ph * pooled_width + pw) * channels] / pool_size;
+            top_diff_slice[(ph * pooled_width + pw) * channels] / dtype(pool_size);
       }
     }
     bottom_diff[index] = gradient;

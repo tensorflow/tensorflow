@@ -13,21 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DistanceFunction, SpriteAndMetadataInfo} from './data';
-import * as vector from './vector';
-import {ProjectorInput} from './vz-projector-input';
-import {Projector} from './vz-projector';
+import {DistanceFunction, SpriteAndMetadataInfo, State} from './data';
 import * as knn from './knn';
-
+import {ProjectorEventContext} from './projectorEventContext';
+import * as adapter from './projectorScatterPlotAdapter';
+import * as vector from './vector';
+import {Projector} from './vz-projector';
+import {ProjectorInput} from './vz-projector-input';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
-
-/** Color scale for nearest neighbors. */
-const NN_COLOR_SCALE =
-    d3.scale.linear<string>()
-        .domain([1, 0.7, 0.4])
-        .range(['hsl(285, 80%, 40%)', 'hsl(0, 80%, 65%)', 'hsl(40, 70%, 60%)'])
-        .clamp(true);
 
 /** Limit the number of search results we show to the user. */
 const LIMIT_RESULTS = 100;
@@ -35,21 +29,21 @@ const LIMIT_RESULTS = 100;
 // tslint:disable-next-line
 export let PolymerClass = PolymerElement({
   is: 'vz-projector-inspector-panel',
-  properties: {
-    selectedMetadataField: String,
-    metadataFields: Array
-  }
+  properties: {selectedMetadataField: String, metadataFields: Array}
 });
 
 export class InspectorPanel extends PolymerClass {
   distFunc: DistanceFunction;
   numNN: number;
 
+  private projectorEventContext: ProjectorEventContext;
+
   private selectedMetadataField: string;
   private metadataFields: string[];
   private dom: d3.Selection<HTMLElement>;
   private projector: Projector;
-  private selectedPointIndex: number;
+  private selectedPointIndices: number[];
+  private neighborsOfFirstPoint: knn.NearestEntry[];
   private searchBox: ProjectorInput;
 
   private resetFilterButton: d3.Selection<HTMLElement>;
@@ -68,19 +62,22 @@ export class InspectorPanel extends PolymerClass {
     this.scopeSubtree(this, true);
   }
 
-  initialize(projector: Projector) {
+  initialize(
+      projector: Projector, projectorEventContext: ProjectorEventContext) {
     this.projector = projector;
-    this.setupUI();
+    this.projectorEventContext = projectorEventContext;
+    this.setupUI(projector);
+    projectorEventContext.registerSelectionChangedListener(
+        (selection, neighbors) =>
+            this.updateInspectorPane(selection, neighbors));
   }
 
   /** Updates the nearest neighbors list in the inspector. */
-  updateInspectorPane(indices: number[],
-      neighbors: knn.NearestEntry[]) {
-    if (neighbors.length > 0) {
-      this.selectedPointIndex = indices[0];
-    } else {
-      this.selectedPointIndex = null;
-    }
+  private updateInspectorPane(
+      indices: number[], neighbors: knn.NearestEntry[]) {
+    this.neighborsOfFirstPoint = neighbors;
+    this.selectedPointIndices = indices;
+
     this.updateFilterButtons(indices.length + neighbors.length);
     this.updateNeighborsList(neighbors);
     if (neighbors.length === 0) {
@@ -88,6 +85,14 @@ export class InspectorPanel extends PolymerClass {
     } else {
       this.updateSearchResults([]);
     }
+  }
+
+  private enableResetFilterButton(enabled: boolean) {
+    this.resetFilterButton.attr('disabled', enabled ? null : true);
+  }
+
+  restoreUIFromBookmark(bookmark: State) {
+    this.enableResetFilterButton(bookmark.filteredPoints != null);
   }
 
   metadataChanged(spriteAndMetadata: SpriteAndMetadataInfo) {
@@ -104,7 +109,7 @@ export class InspectorPanel extends PolymerClass {
   }
 
   datasetChanged() {
-    this.resetFilterButton.attr('disabled', true);
+    this.enableResetFilterButton(false);
   }
 
   private updateSearchResults(indices: number[]) {
@@ -118,22 +123,20 @@ export class InspectorPanel extends PolymerClass {
     this.limitMessage.style(
         'display', indices.length <= LIMIT_RESULTS ? 'none' : null);
     indices = indices.slice(0, LIMIT_RESULTS);
-    let rows = list.selectAll('.row')
-      .data(indices)
-      .enter()
-      .append('div').attr('class', 'row');
+    let rows = list.selectAll('.row').data(indices).enter().append('div').attr(
+        'class', 'row');
     rows.append('a')
-      .attr('class', 'label')
-      .attr('title', index => this.getLabelFromIndex(index))
-      .text(index => this.getLabelFromIndex(index));
+        .attr('class', 'label')
+        .attr('title', index => this.getLabelFromIndex(index))
+        .text(index => this.getLabelFromIndex(index));
     rows.on('mouseenter', index => {
-      this.projector.notifyHoverOverPoint(index);
+      this.projectorEventContext.notifyHoverOverPoint(index);
     });
     rows.on('mouseleave', () => {
-      this.projector.notifyHoverOverPoint(null);
+      this.projectorEventContext.notifyHoverOverPoint(null);
     });
     rows.on('click', index => {
-      this.projector.notifySelectionChanged([index]);
+      this.projectorEventContext.notifySelectionChanged([index]);
     });
   }
 
@@ -154,34 +157,38 @@ export class InspectorPanel extends PolymerClass {
     this.searchBox.message = '';
     let minDist = neighbors.length > 0 ? neighbors[0].dist : 0;
     let n = nnlist.selectAll('.neighbor')
-      .data(neighbors)
-      .enter()
-      .append('div')
-      .attr('class', 'neighbor')
-      .append('a')
-      .attr('class', 'neighbor-link')
-      .attr('title', d => this.getLabelFromIndex(d.index));
+                .data(neighbors)
+                .enter()
+                .append('div')
+                .attr('class', 'neighbor')
+                .append('a')
+                .attr('class', 'neighbor-link')
+                .attr('title', d => this.getLabelFromIndex(d.index));
 
 
     let labelValue = n.append('div').attr('class', 'label-and-value');
     labelValue.append('div')
         .attr('class', 'label')
-        .style('color', d => dist2color(this.distFunc, d.dist, minDist))
+        .style('color', d => adapter.dist2color(this.distFunc, d.dist, minDist))
         .text(d => this.getLabelFromIndex(d.index));
 
     labelValue.append('div')
-      .attr('class', 'value')
-      .text(d => d.dist.toFixed(3));
+        .attr('class', 'value')
+        .text(d => d.dist.toFixed(3));
 
     let bar = n.append('div').attr('class', 'bar');
 
     bar.append('div')
         .attr('class', 'fill')
-        .style('border-top-color', d => {
-          return dist2color(this.distFunc, d.dist, minDist);
-        })
-        .style('width', d =>
-            normalizeDist(this.distFunc, d.dist, minDist) * 100 + '%');
+        .style(
+            'border-top-color',
+            d => {
+              return adapter.dist2color(this.distFunc, d.dist, minDist);
+            })
+        .style(
+            'width',
+            d => adapter.normalizeDist(this.distFunc, d.dist, minDist) * 100 +
+                '%');
 
     bar.selectAll('.tick')
         .data(d3.range(1, 4))
@@ -190,13 +197,13 @@ export class InspectorPanel extends PolymerClass {
         .attr('class', 'tick')
         .style('left', d => d * 100 / 4 + '%');
     n.on('mouseenter', d => {
-      this.projector.notifyHoverOverPoint(d.index);
+      this.projectorEventContext.notifyHoverOverPoint(d.index);
     });
     n.on('mouseleave', () => {
-      this.projector.notifyHoverOverPoint(null);
+      this.projectorEventContext.notifyHoverOverPoint(null);
     });
     n.on('click', d => {
-      this.projector.notifySelectionChanged([d.index]);
+      this.projectorEventContext.notifySelectionChanged([d.index]);
     });
   }
 
@@ -211,15 +218,16 @@ export class InspectorPanel extends PolymerClass {
     }
   }
 
-  private setupUI() {
+  private setupUI(projector: Projector) {
     this.distFunc = vector.cosDist;
     let eucDist = this.dom.select('.distance a.euclidean');
     eucDist.on('click', () => {
       this.dom.selectAll('.distance a').classed('selected', false);
       eucDist.classed('selected', true);
       this.distFunc = vector.dist;
-      let neighbors = this.projector.dataSet.findNeighbors(
-          this.selectedPointIndex, this.distFunc, this.numNN);
+      this.projectorEventContext.notifyDistanceMetricChanged(this.distFunc);
+      let neighbors = projector.dataSet.findNeighbors(
+          this.selectedPointIndices[0], this.distFunc, this.numNN);
       this.updateNeighborsList(neighbors);
     });
 
@@ -228,8 +236,9 @@ export class InspectorPanel extends PolymerClass {
       this.dom.selectAll('.distance a').classed('selected', false);
       cosDist.classed('selected', true);
       this.distFunc = vector.cosDist;
-      let neighbors = this.projector.dataSet.findNeighbors(
-          this.selectedPointIndex, this.distFunc, this.numNN);
+      this.projectorEventContext.notifyDistanceMetricChanged(this.distFunc);
+      let neighbors = projector.dataSet.findNeighbors(
+          this.selectedPointIndices[0], this.distFunc, this.numNN);
       this.updateNeighborsList(neighbors);
     });
 
@@ -237,17 +246,17 @@ export class InspectorPanel extends PolymerClass {
     let updateInput = (value: string, inRegexMode: boolean) => {
       if (value == null || value.trim() === '') {
         this.searchBox.message = '';
-        this.projector.notifySelectionChanged([]);
+        this.projectorEventContext.notifySelectionChanged([]);
         return;
       }
-      let indices = this.projector.dataSet.query(value, inRegexMode,
-          this.selectedMetadataField);
+      let indices = projector.dataSet.query(
+          value, inRegexMode, this.selectedMetadataField);
       if (indices.length === 0) {
         this.searchBox.message = '0 matches.';
       } else {
         this.searchBox.message = `${indices.length} matches.`;
       }
-      this.projector.notifySelectionChanged(indices);
+      this.projectorEventContext.notifySelectionChanged(indices);
     };
     this.searchBox.registerInputChangedListener((value, inRegexMode) => {
       updateInput(value, inRegexMode);
@@ -258,8 +267,9 @@ export class InspectorPanel extends PolymerClass {
     let updateNumNN = () => {
       this.numNN = +numNNInput.value;
       this.dom.select('.num-nn .nn-count').text(this.numNN);
-      if (this.selectedPointIndex != null) {
-        this.projector.notifySelectionChanged([this.selectedPointIndex]);
+      if (this.selectedPointIndices != null) {
+        this.projectorEventContext.notifySelectionChanged(
+            [this.selectedPointIndices[0]]);
       }
     };
     numNNInput.addEventListener('change', updateNumNN);
@@ -267,36 +277,23 @@ export class InspectorPanel extends PolymerClass {
 
     // Filtering dataset.
     this.setFilterButton.on('click', () => {
-      this.projector.filterDataset();
-      this.resetFilterButton.attr('disabled', null);
+      const indices = this.selectedPointIndices.concat(
+          this.neighborsOfFirstPoint.map(n => n.index));
+      projector.filterDataset(indices);
+      this.enableResetFilterButton(true);
       this.updateFilterButtons(0);
     });
 
     this.resetFilterButton.on('click', () => {
-      this.projector.resetFilterDataset();
-      this.resetFilterButton.attr('disabled', true);
+      projector.resetFilterDataset();
+      this.enableResetFilterButton(false);
     });
 
     this.clearSelectionButton.on('click', () => {
-      this.projector.adjustSelectionAndHover([]);
+      projector.adjustSelectionAndHover([]);
     });
-    this.resetFilterButton.attr('disabled', true);
+    this.enableResetFilterButton(false);
   }
-}
-
-/**
- * Normalizes the distance so it can be visually encoded with color.
- * The normalization depends on the distance metric (cosine vs euclidean).
- */
-function normalizeDist(distFunc: DistanceFunction,
-    d: number, minDist: number): number {
-  return distFunc === vector.dist ? minDist / d : 1 - d;
-}
-
-/** Normalizes and encodes the provided distance with color. */
-function dist2color(distFunc: DistanceFunction,
-    d: number, minDist: number): string {
-  return NN_COLOR_SCALE(normalizeDist(distFunc, d, minDist));
 }
 
 document.registerElement(InspectorPanel.prototype.is, InspectorPanel);

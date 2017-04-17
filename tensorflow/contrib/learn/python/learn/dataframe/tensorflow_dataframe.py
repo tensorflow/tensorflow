@@ -116,7 +116,7 @@ class TensorFlowDataFrame(df.DataFrame):
       if initialize_variables:
         if variables.local_variables():
           session.run(variables.local_variables_initializer())
-        if variables.all_variables():
+        if variables.global_variables():
           session.run(variables.global_variables_initializer())
       if start_queues:
         coord = coordinator.Coordinator()

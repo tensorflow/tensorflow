@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 describe('end-to-end test', () => {
-  let assert = chai.assert;
   window.HTMLImports.whenReady(() => {
     let tb = d3.select('tf-tensorboard');
     var tabs = (<any>tb.node()).$.tabs;

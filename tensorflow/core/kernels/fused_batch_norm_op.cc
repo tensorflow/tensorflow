@@ -108,7 +108,7 @@ struct FusedBatchNorm<CPUDevice, T> {
         x_rest_by_depth - mean.reshape(one_by_depth).broadcast(bcast_spec);
 
     if (is_training) {
-      variance = x_centered.square().sum(reduce_dims) * rest_size_inv;
+      variance.device(d) = x_centered.square().sum(reduce_dims) * rest_size_inv;
       batch_var.device(d) = variance * rest_size_adjust;
       saved_var.device(d) = variance;
     } else {
@@ -300,8 +300,9 @@ struct FusedBatchNorm<GPUDevice, T> {
     GPUDevice d = context->eigen_device<GPUDevice>();
     using perftools::gputools::DeviceMemory;
     Tensor inv_var;
-    context->allocate_temp(DataTypeToEnum<T>::value, estimated_variance.shape(),
-                           &inv_var);
+    OP_REQUIRES_OK(
+        context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                        estimated_variance.shape(), &inv_var));
     auto inv_var_ptr = StreamExecutorUtil::AsDeviceMemory<T>(inv_var);
     std::function<const DeviceMemory<T>&()> var_to_inv_var =
         [d, epsilon, estimated_variance,
@@ -520,7 +521,8 @@ class FusedBatchNormOp : public OpKernel {
     }
 
     Tensor* y = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, x.shape(), &y));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, x.shape(), &y));
     Tensor* batch_mean = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(1, scale.shape(), &batch_mean));

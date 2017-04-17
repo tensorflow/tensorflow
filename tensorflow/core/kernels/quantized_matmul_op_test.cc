@@ -110,7 +110,7 @@ TEST_F(QuantizedMatMulTest, VerySmall_WithParams) {
   // values as n+a_offset, where a_offset is 12 above. For example that means -1
   // is represented as -1 + 12, or 11.
   // We have set the transpose_a flag to true, so the matrix is transposed, and
-  // for filling the the values the in-memory storage order is effectively
+  // for filling the values the in-memory storage order is effectively
   // column major, rather than the default row-major.
   AddInputFromArray<quint8>(TensorShape({a_rows, a_cols}), {11});
 
@@ -203,7 +203,7 @@ TEST_F(QuantizedMatMulTest, Small_WithParams) {
   // values as n+a_offset, where a_offset is 12 above. For example that means -1
   // is represented as -1 + 12, or 11.
   // We have set the transpose_a flag to true, so the matrix is transposed, and
-  // for filling the the values the in-memory storage order is effectively
+  // for filling the values the in-memory storage order is effectively
   // column major, rather than the default row-major.
   AddInputFromArray<quint8>(TensorShape({a_rows, a_cols}),
                             {

@@ -24,8 +24,9 @@ import numpy as np
 import pandas
 from sklearn import metrics
 import tensorflow as tf
+from tensorflow.contrib.layers.python.layers import encoders
 
-from tensorflow.contrib import learn
+learn = tf.contrib.learn
 
 FLAGS = None
 
@@ -37,16 +38,19 @@ n_words = 0
 def bag_of_words_model(features, target):
   """A bag-of-words model. Note it disregards the word order in the text."""
   target = tf.one_hot(target, 15, 1, 0)
-  features = tf.contrib.layers.bow_encoder(
+  features = encoders.bow_encoder(
       features, vocab_size=n_words, embed_dim=EMBEDDING_SIZE)
   logits = tf.contrib.layers.fully_connected(features, 15, activation_fn=None)
   loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
   train_op = tf.contrib.layers.optimize_loss(
-      loss, tf.contrib.framework.get_global_step(),
-      optimizer='Adam', learning_rate=0.01)
-  return (
-      {'class': tf.argmax(logits, 1), 'prob': tf.nn.softmax(logits)},
-      loss, train_op)
+      loss,
+      tf.contrib.framework.get_global_step(),
+      optimizer='Adam',
+      learning_rate=0.01)
+  return ({
+      'class': tf.argmax(logits, 1),
+      'prob': tf.nn.softmax(logits)
+  }, loss, train_op)
 
 
 def rnn_model(features, target):
@@ -60,14 +64,14 @@ def rnn_model(features, target):
 
   # Split into list of embedding per word, while removing doc length dim.
   # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
-  word_list = tf.unpack(word_vectors, axis=1)
+  word_list = tf.unstack(word_vectors, axis=1)
 
   # Create a Gated Recurrent Unit cell with hidden size of EMBEDDING_SIZE.
-  cell = tf.nn.rnn_cell.GRUCell(EMBEDDING_SIZE)
+  cell = tf.contrib.rnn.GRUCell(EMBEDDING_SIZE)
 
   # Create an unrolled Recurrent Neural Networks to length of
   # MAX_DOCUMENT_LENGTH and passes word_list as inputs for each unit.
-  _, encoding = tf.nn.rnn(cell, word_list, dtype=tf.float32)
+  _, encoding = tf.contrib.rnn.static_rnn(cell, word_list, dtype=tf.float32)
 
   # Given encoding of RNN, take encoding of last step (e.g hidden size of the
   # neural network of last step) and pass it as features for logistic
@@ -78,12 +82,15 @@ def rnn_model(features, target):
 
   # Create a training op.
   train_op = tf.contrib.layers.optimize_loss(
-      loss, tf.contrib.framework.get_global_step(),
-      optimizer='Adam', learning_rate=0.01)
+      loss,
+      tf.contrib.framework.get_global_step(),
+      optimizer='Adam',
+      learning_rate=0.01)
 
-  return (
-      {'class': tf.argmax(logits, 1), 'prob': tf.nn.softmax(logits)},
-      loss, train_op)
+  return ({
+      'class': tf.argmax(logits, 1),
+      'prob': tf.nn.softmax(logits)
+  }, loss, train_op)
 
 
 def main(unused_argv):
@@ -98,8 +105,13 @@ def main(unused_argv):
 
   # Process vocabulary
   vocab_processor = learn.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH)
-  x_train = np.array(list(vocab_processor.fit_transform(x_train)))
-  x_test = np.array(list(vocab_processor.transform(x_test)))
+  
+  x_transform_train = vocab_processor.fit_transform(x_train)
+  x_transform_test = vocab_processor.transform(x_test)
+  
+  x_train = np.array(list(x_transform_train))
+  x_test = np.array(list(x_transform_test))
+  
   n_words = len(vocab_processor.vocabulary_)
   print('Total words: %d' % n_words)
 
@@ -113,7 +125,9 @@ def main(unused_argv):
   # Train and predict
   classifier.fit(x_train, y_train, steps=100)
   y_predicted = [
-      p['class'] for p in classifier.predict(x_test, as_iterable=True)]
+      p['class'] for p in classifier.predict(
+          x_test, as_iterable=True)
+  ]
   score = metrics.accuracy_score(y_test, y_predicted)
   print('Accuracy: {0:f}'.format(score))
 
@@ -124,13 +138,11 @@ if __name__ == '__main__':
       '--test_with_fake_data',
       default=False,
       help='Test the example code with fake data.',
-      action='store_true'
-  )
+      action='store_true')
   parser.add_argument(
       '--bow_model',
       default=False,
       help='Run with BOW model instead of RNN.',
-      action='store_true'
-  )
+      action='store_true')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

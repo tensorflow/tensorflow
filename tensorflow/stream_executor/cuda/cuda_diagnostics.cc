@@ -57,7 +57,7 @@ namespace cuda {
 
 #ifdef __APPLE__
 static const CFStringRef kDriverKextIdentifier = CFSTR("com.nvidia.CUDA");
-#else
+#elif !defined(PLATFORM_WINDOWS)
 static const char *kDriverVersionPath = "/proc/driver/nvidia/version";
 #endif
 
@@ -339,6 +339,12 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
     port::Status{port::error::INTERNAL,
                  port::StrCat("failed to read driver bundle version: ",
                               CFStringGetCStringPtr(kDriverKextIdentifier, kCFStringEncodingUTF8))
+    };
+  return status;
+#elif defined(PLATFORM_WINDOWS)
+  auto status =
+    port::Status{port::error::UNIMPLEMENTED,
+                 "kernel reported driver version not implemented on Windows"
     };
   return status;
 #else

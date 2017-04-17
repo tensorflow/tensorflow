@@ -13,60 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Monitors allow user instrumentation of the training process.
-
-Monitors are useful to track training, report progress, request early
-stopping and more. Monitors use the observer pattern and notify at the following
-points:
-
-* when training begins
-* before a training step
-* after a training step
-* when training ends
-
-Monitors are not intended to be reusable.
-
-There are a few pre-defined monitors:
-
-* `CaptureVariable`: saves a variable's values
-* `GraphDump`: intended for debug only - saves all tensor values
-* `PrintTensor`: outputs one or more tensor values to log
-* `SummarySaver`: saves summaries to a summary writer
-* `ValidationMonitor`: runs model validation, by periodically calculating eval
-    metrics on a separate data set; supports optional early stopping
-
-For more specific needs, you can create custom monitors by extending one of the
-following classes:
-
-* `BaseMonitor`: the base class for all monitors
-* `EveryN`: triggers a callback every N training steps
-
-Example:
-
-```python
-  class ExampleMonitor(monitors.BaseMonitor):
-    def __init__(self):
-      print 'Init'
-
-    def begin(self, max_steps):
-      print 'Starting run. Will train until step %d.' % max_steps
-
-    def end(self):
-      print 'Completed run.'
-
-    def step_begin(self, step):
-      print 'About to run step %d...' % step
-      return ['loss_1:0']
-
-    def step_end(self, step, outputs):
-      print 'Done running step %d. The value of "loss" tensor: %s' % (
-        step, outputs['loss_1:0'])
-
-  linear_regressor = LinearRegressor()
-  example_monitor = ExampleMonitor()
-  linear_regressor.fit(
-    x, y, steps=2, batch_size=1, monitors=[example_monitor])
-```
+"""Monitors instrument the training process.
 
 @@get_default_monitors
 @@BaseMonitor
@@ -95,7 +42,7 @@ import time
 import numpy as np
 import six
 
-from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
@@ -105,6 +52,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import summary_io
+from tensorflow.python.util import deprecation
 
 
 # TODO(ptucker): Split each monitor class into a separate file.
@@ -117,13 +65,15 @@ class BaseMonitor(object):
   to run exclusively on the elected chief worker.
   """
 
+  @deprecation.deprecated(
+      "2016-12-05",
+      "Monitors are deprecated. Please use tf.train.SessionRunHook.")
   def __init__(self):
     self._begun = False
     self._current_epoch = None
     self._current_step = None
     self._max_steps = None
     self._estimator = None
-    self._estimator_locked = False
 
   @property
   def run_on_all_workers(self):
@@ -140,20 +90,10 @@ class BaseMonitor(object):
     Raises:
       ValueError: if the estimator is None.
     """
-    if self._estimator_locked:
-      return
     if estimator is None:
       raise ValueError("Missing estimator.")
     # TODO(mdan): This should fail if called twice with the same estimator.
     self._estimator = estimator
-
-  def _lock_estimator(self):
-    """Locks the estimator until _unlock_estimator is called."""
-    self._estimator_locked = True
-
-  def _unlock_estimator(self):
-    """Unlocks the estimator."""
-    self._estimator_locked = False
 
   def begin(self, max_steps=None):
     """Called at the beginning of training.
@@ -623,7 +563,8 @@ class ValidationMonitor(EveryN):
 
   def __init__(self, x=None, y=None, input_fn=None, batch_size=None,
                eval_steps=None,
-               every_n_steps=100, metrics=None, early_stopping_rounds=None,
+               every_n_steps=100, metrics=None, hooks=None,
+               early_stopping_rounds=None,
                early_stopping_metric="loss",
                early_stopping_metric_minimize=True, name=None):
     """Initializes a ValidationMonitor.
@@ -637,6 +578,8 @@ class ValidationMonitor(EveryN):
       every_n_steps: Check for new checkpoints to evaluate every N steps. If a
           new checkpoint is found, it is evaluated. See `EveryN`.
       metrics: See `BaseEstimator.evaluate`.
+      hooks: A list of `SessionRunHook` hooks to pass to the
+        `Estimator`'s `evaluate` function.
       early_stopping_rounds: `int`. If the metric indicated by
           `early_stopping_metric` does not change according to
           `early_stopping_metric_minimize` for this many steps, then training
@@ -665,6 +608,7 @@ class ValidationMonitor(EveryN):
     self.batch_size = batch_size
     self.eval_steps = eval_steps
     self.metrics = metrics
+    self.hooks = hooks
     self.early_stopping_rounds = early_stopping_rounds
     self.early_stopping_metric = early_stopping_metric
     self.early_stopping_metric_minimize = early_stopping_metric_minimize
@@ -714,7 +658,8 @@ class ValidationMonitor(EveryN):
     # Run evaluation and log it.
     validation_outputs = self._estimator.evaluate(
         x=self.x, y=self.y, input_fn=self.input_fn, batch_size=self.batch_size,
-        steps=self.eval_steps, metrics=self.metrics, name=self.name)
+        steps=self.eval_steps, metrics=self.metrics, hooks=self.hooks,
+        name=self.name)
     stats = []
     for name in validation_outputs:
       stats.append("%s = %s" % (name, str(validation_outputs[name])))
@@ -902,16 +847,9 @@ class GraphDump(BaseMonitor):
 class ExportMonitor(EveryN):
   """Monitor that exports Estimator every N steps."""
 
-  # TODO(philstahlfeld): Investigate switching export.export_estimator
-  # configuration values to **kwargs so that updates to the export_estimator
-  # function don't have to be reflected here.
-  @deprecated_arg_values(
-      "2016-09-23",
-      "The signature of the input_fn accepted by export is changing to be "
-      "consistent with what's used by tf.Learn Estimator's train/evaluate. "
-      "input_fn (and in most cases, input_feature_key) will both become "
-      "required args.",
-      input_fn=None)
+  @deprecated("2017-03-25",
+              "ExportMonitor is deprecated. Please pass an "
+              "ExportStrategy to Experiment instead.")
   def __init__(self,
                every_n_steps,
                export_dir,
@@ -931,9 +869,9 @@ class ExportMonitor(EveryN):
         `None`).
       input_feature_key: String key into the features dict returned by
         `input_fn` that corresponds to the raw `Example` strings `Tensor` that
-        the exported model will take as input. Can only be `None` if you're
-        using a custom `signature_fn` that does not use the first arg
-        (examples).
+        the exported model will take as input. Should be `None` if and only if
+        you're passing in a `signature_fn` that does not use the first arg
+        (`Tensor` of `Example` strings).
       exports_to_keep: int, number of exports to keep.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
@@ -1022,7 +960,7 @@ class ExportMonitor(EveryN):
 
 
 class CheckpointSaver(BaseMonitor):
-  """Saves checkpoints every N steps."""
+  """Saves checkpoints every N steps or N seconds."""
 
   def __init__(self,
                checkpoint_dir,
@@ -1230,6 +1168,48 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
         m.end(session=session)
       else:
         m.end()
+
+
+def replace_monitors_with_hooks(monitors_or_hooks, estimator):
+  """Wraps monitors with a hook.
+
+  `Monitor` is deprecated in favor of `SessionRunHook`. If you're using a
+  monitor, you can wrap it with a hook using function. It is recommended to
+  implement hook version of your monitor.
+
+  Args:
+    monitors_or_hooks: A `list` may contain both monitors and hooks.
+    estimator: An `Estimator` that monitor will be used with.
+
+  Returns:
+    Returns a list of hooks. If there is any monitor in the given list, it is
+    replaced by a hook.
+  """
+  monitors_or_hooks = monitors_or_hooks or []
+  hooks = [
+      m for m in monitors_or_hooks
+      if isinstance(m, session_run_hook.SessionRunHook)
+  ]
+
+  deprecated_monitors = [
+      m for m in monitors_or_hooks
+      if not isinstance(m, session_run_hook.SessionRunHook)
+  ]
+
+  if not estimator.config.is_chief:
+    # Prune list of monitor to the ones runnable on all workers.
+    deprecated_monitors = [
+        m for m in deprecated_monitors if m.run_on_all_workers
+    ]
+
+  # Setup monitors.
+  for monitor in deprecated_monitors:
+    monitor.set_estimator(estimator)
+
+  if deprecated_monitors:
+    hooks.append(RunHookAdapterForMonitors(deprecated_monitors))
+
+  return hooks
 
 
 def _as_graph_element(obj):

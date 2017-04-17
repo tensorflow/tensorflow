@@ -19,10 +19,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.estimator.inputs.pandas_io import pandas_input_fn as core_pandas_input_fn
+
 try:
   # pylint: disable=g-import-not-at-top
   import pandas as pd
   HAS_PANDAS = True
+except IOError:
+  # Pandas writes a temporary file during import. If it fails, don't use pandas.
+  HAS_PANDAS = False
 except ImportError:
   HAS_PANDAS = False
 
@@ -40,6 +45,25 @@ PANDAS_DTYPES = {
     'float64': 'float',
     'bool': 'i'
 }
+
+
+def pandas_input_fn(x,
+                    y=None,
+                    batch_size=128,
+                    num_epochs=1,
+                    shuffle=True,
+                    queue_capacity=1000,
+                    num_threads=1,
+                    target_column='target'):
+  """This input_fn diffs from the core version with default `shuffle`."""
+  return core_pandas_input_fn(x=x,
+                              y=y,
+                              batch_size=batch_size,
+                              shuffle=shuffle,
+                              num_epochs=num_epochs,
+                              queue_capacity=queue_capacity,
+                              num_threads=num_threads,
+                              target_column=target_column)
 
 
 def extract_pandas_data(data):

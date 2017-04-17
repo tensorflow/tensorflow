@@ -250,7 +250,7 @@ Status ValidateStridedSliceOp(
   // Make a dense spec that corresponds to thte number of dimensions
   //
   // For example suppose foo[...,3:] on foo.shape=(2,2,3) then
-  // we need to produce the missing begin_mask for the the first two
+  // we need to produce the missing begin_mask for the first two
   // dimensions i.e. from begin_mask_spec=0, end_mask_spec=2
   // we achieve begin_mask=6, end_mask=7
   StridedSliceDenseSpec dense_spec = {input_shape.dims(),

@@ -151,6 +151,38 @@ TEST(NNOpsTest, BatchNormWithGlobalNormalization_ShapeFn) {
            "[d0_0,d0_1,d0_2,d0_3|d1_0|d2_0|d3_0|d4_0]");
 }
 
+TEST(NNOpsTest, QuantizedBatchNormWithGlobalNormalization_ShapeFn) {
+  // These are the same tests as BatchNormWithGlobalNormalization tests, but
+  // with extra scalar inputs and outputs for the mins and maxes.
+
+  ShapeInferenceTestOp op("QuantizedBatchNormWithGlobalNormalization");
+
+  // Test rank errors.
+  INFER_ERROR("Shape must be rank 4 but is rank 3", op,
+              "[1,2,3];?;?;?;?;?;?;?;?;?;?;?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op,
+              "?;?;?;[1,2,3];?;?;?;?;?;?;?;?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op,
+              "?;?;?;?;?;?;[1,2,3];?;?;?;?;?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op,
+              "?;?;?;?;?;?;?;?;?;[1,2,3];?;?;?;?;?");
+  INFER_ERROR("Shape must be rank 1 but is rank 3", op,
+              "?;?;?;?;?;?;?;?;?;?;?;?;[1,2,3];?;?");
+
+  // last dim of first input is merged with the single dim in other 4 inputs.
+  INFER_OK(op, "?;[];[];?;[];[];?;[];[];?;[];[];?;[];[]", "[?,?,?,?];[];[]");
+  INFER_OK(op, "?;[];[];[1];[];[];?;[];[];?;[];[];?;[];[]",
+           "[?,?,?,d3_0];[];[]");
+  INFER_OK(op, "?;[];[];?;[];[];[1];[];[];?;[];[];?;[];[]",
+           "[?,?,?,d6_0];[];[]");
+  INFER_OK(op, "?;[];[];?;[];[];?;[];[];[1];[];[];?;[];[]",
+           "[?,?,?,d9_0];[];[]");
+  INFER_OK(op, "?;[];[];?;[];[];?;[];[];?;[];[];[1];[];[]",
+           "[?,?,?,d12_0];[];[]");
+  INFER_OK(op, "[1,2,3,4];[];[];[4];[];[];[4];[];[];[4];[];[];[4];[];[]",
+           "[d0_0,d0_1,d0_2,d0_3|d3_0|d6_0|d9_0|d12_0];[];[]");
+}
+
 TEST(NNOpsTest, BatchNormWithGlobalNormalizationGrad_ShapeFn) {
   ShapeInferenceTestOp op("BatchNormWithGlobalNormalizationGrad");
 
@@ -475,7 +507,7 @@ TEST(NNOpsTest, FractionalPool_ShapeFn) {
                        .Finalize(&op.node_def));
     };
 
-    set_op(std::vector<float>{2.0, 1, 1 / 1.5, 1 / 2.0});
+    set_op(std::vector<float>{2.0f, 1, 1 / 1.5f, 1 / 2.0f});
 
     // Rank check.
     INFER_ERROR("must be rank 4", op, "[?,?,?]");

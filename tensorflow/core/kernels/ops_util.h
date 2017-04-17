@@ -54,6 +54,25 @@ bool IsInnerDimsSizeAligned(const TensorShape& s) {
   return bytes_per_dim0 % EIGEN_MAX_ALIGN_BYTES == 0;
 }
 
+// Given a shape 's' of a tensor of type T and the `start` and `end` index of a
+// dim 0 slice, returns true iff slice is aligned with respect to original
+// tensor. Here aligned implies the address is a multiple of
+// EIGEN_MAX_ALIGN_BYTES.
+template <typename T>
+bool IsDim0SliceAligned(const TensorShape& s, int64 start, int64 end_or_size) {
+  if (s.dims() == 1) {
+    bool start_aligned = (start * sizeof(T)) % EIGEN_MAX_ALIGN_BYTES == 0;
+    // End is aligned if either the explicit end index is passed and is a
+    // a multiple of EIGEN_MAX_ALIGN_BYTES, or the start index is aligned and
+    // the size is aligned. So for convenience we can either pass start and
+    // index, or start and size.
+    bool end_aligned = (end_or_size * sizeof(T)) % EIGEN_MAX_ALIGN_BYTES == 0;
+    return start_aligned && end_aligned;
+  } else {
+    return IsInnerDimsSizeAligned<T>(s);
+  }
+}
+
 // Returns <suffix> sanitized to have only [a-zA-Z0-9-_].
 string SanitizeThreadSuffix(string suffix);
 

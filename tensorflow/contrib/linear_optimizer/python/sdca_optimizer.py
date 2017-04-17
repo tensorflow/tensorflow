@@ -18,6 +18,7 @@ from __future__ import print_function
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.linear_optimizer.python.ops import sdca_ops
+from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
@@ -31,6 +32,8 @@ class SDCAOptimizer(object):
   Estimator.
 
   Example usage:
+
+  ```python
     real_feature_column = real_valued_column(...)
     sparse_feature_column = sparse_column_with_hash_bucket(...)
     sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
@@ -43,19 +46,22 @@ class SDCAOptimizer(object):
         optimizer=sdca_optimizer)
     classifier.fit(input_fn_train, steps=50)
     classifier.evaluate(input_fn=input_fn_eval)
+  ```
 
-  Here the expectation is that the input_fn_* functions passed to train and
+  Here the expectation is that the `input_fn_*` functions passed to train and
   evaluate return a pair (dict, label_tensor) where dict has `example_id_column`
   as `key` whose value is a `Tensor` of shape [batch_size] and dtype string.
   num_loss_partitions defines the number of partitions of the global loss
-  function and should be set to (#concurrent train ops/per worker) x (#workers).
-  Convergence of (global) loss is guaranteed if num_loss_partitions is larger or
-  equal to the above product. Larger values for num_loss_partitions lead to
-  slower convergence. The recommended value for num_loss_partitions in tf.learn
-  (where currently there is one process per worker) is the number of workers
-  running the train steps. It defaults to 1 (single machine). num_table_shards
-  defines the number of shards for the internal state table, typically set to
-  match the number of parameter servers for large data sets.
+  function and should be set to `(#concurrent train ops/per worker)
+  x (#workers)`.
+  Convergence of (global) loss is guaranteed if `num_loss_partitions` is larger
+  or equal to the above product. Larger values for `num_loss_partitions` lead to
+  slower convergence. The recommended value for `num_loss_partitions` in
+  `tf.learn` (where currently there is one process per worker) is the number
+  of workers running the train steps. It defaults to 1 (single machine).
+  `num_table_shards` defines the number of shards for the internal state
+  table, typically set to match the number of parameter servers for large
+  data sets.
   """
 
   def __init__(self,
@@ -73,6 +79,26 @@ class SDCAOptimizer(object):
   def get_name(self):
     return 'SDCAOptimizer'
 
+  @property
+  def example_id_column(self):
+    return self._example_id_column
+
+  @property
+  def num_loss_partitions(self):
+    return self._num_loss_partitions
+
+  @property
+  def num_table_shards(self):
+    return self._num_table_shards
+
+  @property
+  def symmetric_l1_regularization(self):
+    return self._symmetric_l1_regularization
+
+  @property
+  def symmetric_l2_regularization(self):
+    return self._symmetric_l2_regularization
+
   def get_train_step(self, columns_to_variables,
                      weight_column_name, loss_type, features, targets,
                      global_step):
@@ -86,13 +112,14 @@ class SDCAOptimizer(object):
       sparse_values = array_ops.gather_nd(dense_tensor, sparse_indices)
       # TODO(sibyl-Aix6ihai, sibyl-vie3Poto): Makes this efficient, as now SDCA supports
       # very sparse features with weights and not weights.
-      return sdca_ops.SparseFeatureColumn(
+      return SparseFeatureColumn(
           array_ops.reshape(
-              array_ops.split(1, 2, sparse_indices)[0], [-1]),
+              array_ops.split(
+                  value=sparse_indices, num_or_size_splits=2, axis=1)[0], [-1]),
           array_ops.reshape(
-              array_ops.split(1, 2, sparse_indices)[1], [-1]),
-          array_ops.reshape(
-              math_ops.to_float(sparse_values), [-1]))
+              array_ops.split(
+                  value=sparse_indices, num_or_size_splits=2, axis=1)[1], [-1]),
+          array_ops.reshape(math_ops.to_float(sparse_values), [-1]))
 
     def _training_examples_and_variables():
       """Returns dictionaries for training examples and variables."""
@@ -134,19 +161,27 @@ class SDCAOptimizer(object):
               columns_to_variables[column][0])
         elif isinstance(column, (layers.feature_column._CrossedColumn,
                                  layers.feature_column._SparseColumn)):
-          sparse_features.append(sdca_ops.SparseFeatureColumn(
-              array_ops.reshape(
-                  array_ops.split(1, 2, transformed_tensor.indices)[0], [-1]),
-              array_ops.reshape(transformed_tensor.values, [-1]), None))
+          sparse_features.append(
+              SparseFeatureColumn(
+                  array_ops.reshape(
+                      array_ops.split(
+                          value=transformed_tensor.indices,
+                          num_or_size_splits=2,
+                          axis=1)[0], [-1]),
+                  array_ops.reshape(transformed_tensor.values, [-1]),
+                  None))
           sparse_feature_weights.append(columns_to_variables[column][0])
         elif isinstance(column, layers.feature_column._WeightedSparseColumn):
           id_tensor = column.id_tensor(transformed_tensor)
           weight_tensor = column.weight_tensor(transformed_tensor)
-          sparse_feature_with_values.append(sdca_ops.SparseFeatureColumn(
-              array_ops.reshape(
-                  array_ops.split(1, 2, id_tensor.indices)[0], [-1]),
-              array_ops.reshape(id_tensor.values, [-1]), array_ops.reshape(
-                  weight_tensor.values, [-1])))
+          sparse_feature_with_values.append(
+              SparseFeatureColumn(
+                  array_ops.reshape(
+                      array_ops.split(
+                          value=id_tensor.indices, num_or_size_splits=2, axis=1)
+                      [0], [-1]),
+                  array_ops.reshape(id_tensor.values, [-1]),
+                  array_ops.reshape(weight_tensor.values, [-1])))
           sparse_feature_with_values_weights.append(
             columns_to_variables[column][0])
         else:

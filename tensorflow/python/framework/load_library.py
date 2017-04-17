@@ -26,7 +26,7 @@ import threading
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.python import pywrap_tensorflow as py_tf
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import compat
 
 
@@ -60,7 +60,8 @@ def load_op_library(library_filename):
     if error_code != 0:
       error_msg = compat.as_text(py_tf.TF_Message(status))
       # pylint: disable=protected-access
-      raise errors._make_specific_exception(None, None, error_msg, error_code)
+      raise errors_impl._make_specific_exception(
+          None, None, error_msg, error_code)
       # pylint: enable=protected-access
   finally:
     py_tf.TF_DeleteStatus(status)
@@ -69,6 +70,10 @@ def load_op_library(library_filename):
   op_list = op_def_pb2.OpList()
   op_list.ParseFromString(compat.as_bytes(op_list_str))
   wrappers = py_tf.GetPythonWrappers(op_list_str)
+
+  # Delete the library handle to release any memory held in C
+  # that are no longer needed.
+  py_tf.TF_DeleteLibraryHandle(lib_handle)
 
   # Get a unique name for the module.
   module_name = hashlib.md5(wrappers).hexdigest()
@@ -109,7 +114,8 @@ def load_file_system_library(library_filename):
     if error_code != 0:
       error_msg = compat.as_text(py_tf.TF_Message(status))
       # pylint: disable=protected-access
-      raise errors._make_specific_exception(None, None, error_msg, error_code)
+      raise errors_impl._make_specific_exception(
+          None, None, error_msg, error_code)
       # pylint: enable=protected-access
   finally:
     py_tf.TF_DeleteStatus(status)

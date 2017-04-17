@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-
 """
 
 import ctypes
@@ -31,46 +30,41 @@ import inspect
 import sys
 import traceback
 
+
+# TODO(drpng): write up instructions for editing this file in a doc and point to
+# the doc instead.
+# If you want to edit this file to expose modules in public tensorflow API, you
+# need to follow these steps:
+# 1. Consult with tensorflow team and get approval for adding a new API to the
+#    public interface.
+# 2. Document the module in the gen_docs_combined.py.
+# 3. Import the module in the main tensorflow namespace by adding an import
+#    statement in this file.
+# 4. Sanitize the entry point by making sure that your module does not expose
+#    transitively imported modules used for implementation, such as os, sys.
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
-# On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated
-# python library that dynamically loads _pywrap_tensorflow.so. The
-# default mode for loading keeps all the symbol private and not
-# visible to other libraries that may be loaded. Setting the mode to
-# RTLD_GLOBAL to make the symbols visible, so that custom op libraries
-# imported using `tf.load_op_library()` can access symbols defined in
-# _pywrap_tensorflow.so.
 import numpy as np
-try:
-  if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-    _default_dlopen_flags = sys.getdlopenflags()
-    sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
-    from tensorflow.python import pywrap_tensorflow
-    sys.setdlopenflags(_default_dlopen_flags)
-  else:
-    # TODO(keveman,mrry): Support dynamic op loading on platforms that do not
-    # use `dlopen()` for dynamic loading.
-    from tensorflow.python import pywrap_tensorflow
-except ImportError:
-  msg = """%s\n\nError importing tensorflow.  Unless you are using bazel,
-you should not try to import tensorflow from its source directory;
-please exit the tensorflow source tree, and relaunch your python interpreter
-from there.""" % traceback.format_exc()
-  raise ImportError(msg)
+
+from tensorflow.python import pywrap_tensorflow
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
 from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
+from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
 from tensorflow.core.protobuf.config_pb2 import *
+from tensorflow.core.protobuf.rewriter_config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
 # Framework
 from tensorflow.python.framework.framework_lib import *
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import graph_util
 
 # Session
 from tensorflow.python.client.client_lib import *
@@ -81,12 +75,18 @@ from tensorflow.python.ops.standard_ops import *
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import resources
-from tensorflow.python.ops import sdca_ops as sdca
+from tensorflow.python.estimator import estimator_lib as estimator
+from tensorflow.python.layers import layers
 from tensorflow.python.ops import image_ops as image
+from tensorflow.python.ops import metrics
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import sdca_ops as sdca
+from tensorflow.python.ops import sets
+from tensorflow.python.ops import spectral_ops as spectral
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
+from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
 
 # Import the names from python/training.py as train.Name.
@@ -114,12 +114,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import confusion_matrix as confusion_matrix_m
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import histogram_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resources
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import session_ops
 from tensorflow.python.ops import sparse_ops
@@ -132,6 +132,7 @@ from tensorflow.python.ops import tensor_array_ops
 # documentation, or remove.
 _allowed_symbols = [
     'AttrValue',
+    'AutoParallelOptions',
     'ConfigProto',
     'DeviceSpec',
     'Event',
@@ -146,10 +147,12 @@ _allowed_symbols = [
     'NameAttrList',
     'NodeDef',
     'OptimizerOptions',
+    'RewriterConfig',
     'RunOptions',
     'RunMetadata',
     'SessionLog',
     'Summary',
+    'TensorInfo',  # Used for tf.saved_model functionality.
 ]
 
 # The following symbols are kept for compatibility. It is our plan
@@ -157,10 +160,14 @@ _allowed_symbols = [
 _allowed_symbols.extend([
     'arg_max',
     'arg_min',
+    'mul',  # use tf.multiply instead.
+    'neg',  # use tf.negative instead.
+    'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
     'deserialize_many_sparse',
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.
+    'listdiff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
     'serialize_many_sparse',
     'serialize_sparse',
@@ -169,7 +176,6 @@ _allowed_symbols.extend([
 
 # This is needed temporarily because we import it explicitly.
 _allowed_symbols.extend([
-    'platform',  ## This is included by the tf.learn main template.
     'pywrap_tensorflow',
 ])
 
@@ -178,49 +184,27 @@ _allowed_symbols.extend([
 _allowed_symbols.extend([
     'QUANTIZED_DTYPES',
     'bfloat16',
-    'bfloat16_ref',
     'bool',
-    'bool_ref',
     'complex64',
-    'complex64_ref',
     'complex128',
-    'complex128_ref',
     'double',
-    'double_ref',
     'half',
-    'half_ref',
     'float16',
-    'float16_ref',
     'float32',
-    'float32_ref',
     'float64',
-    'float64_ref',
     'int16',
-    'int16_ref',
     'int32',
-    'int32_ref',
     'int64',
-    'int64_ref',
     'int8',
-    'int8_ref',
     'qint16',
-    'qint16_ref',
     'qint32',
-    'qint32_ref',
     'qint8',
-    'qint8_ref',
     'quint16',
-    'quint16_ref',
     'quint8',
-    'quint8_ref',
     'string',
-    'string_ref',
     'uint16',
-    'uint16_ref',
     'uint8',
-    'uint8_ref',
     'resource',
-    'resource_ref',
 ])
 
 # Export modules and constants.
@@ -228,21 +212,28 @@ _allowed_symbols.extend([
     'app',
     'compat',
     'errors',
+    'estimator',
     'flags',
     'gfile',
+    'graph_util',
     'image',
     'logging',
+    'losses',
+    'metrics',
     'newaxis',
     'nn',
     'python_io',
-    'resources',
     'resource_loader',
+    'saved_model',
     'sdca',
+    'sets',
+    'spectral',
     'summary',
     'sysconfig',
     'test',
     'train',
     'user_ops',
+    'layers',
 ])
 
 # Variables framework.versions:
@@ -254,12 +245,13 @@ _allowed_symbols.extend([
 
 # Remove all extra symbols that don't have a docstring or are not explicitly
 # referenced in the whitelist.
-remove_undocumented(__name__, _allowed_symbols,
-                    [framework_lib, array_ops, client_lib, check_ops,
-                     compat, constant_op, control_flow_ops, functional_ops,
-                     histogram_ops, io_ops, math_ops, nn, resource_loader,
-                     resources, script_ops, session_ops, sparse_ops, state_ops,
-                     string_ops, summary, tensor_array_ops, train])
+remove_undocumented(__name__, _allowed_symbols, [
+    framework_lib, array_ops, check_ops, client_lib, compat, constant_op,
+    control_flow_ops, confusion_matrix_m, functional_ops, histogram_ops, io_ops,
+    losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
+    session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
+    train, layers
+])
 
 # Special dunders that we choose to export:
 _exported_dunders = set([

@@ -114,6 +114,25 @@ TEST(PartialTensorShapeTest, ToTensorShape) {
   EXPECT_FALSE(d.AsTensorShape(&full));
 }
 
+TEST(PartialTensorShapeTest, PartialShapeIdenticalTo) {
+  const PartialTensorShape a({-1, 0, 1});
+  const PartialTensorShape b({1, 0, 1});
+  const PartialTensorShape c({-1, -1, 1});
+  const PartialTensorShape d({1, 0});
+  const PartialTensorShape e({-1, 0, 2});
+  const PartialTensorShape f({});
+  const PartialTensorShape g;
+  std::vector<PartialTensorShape> shapes = {a, b, c, d, e, f, g};
+  for (int i = 0; i < shapes.size(); ++i) {
+    for (int j = 0; j < i; ++j) {
+      if (i == j) {
+        EXPECT_TRUE(shapes[i].IsIdenticalTo(shapes[j]));
+      } else {
+        EXPECT_FALSE(shapes[i].IsIdenticalTo(shapes[j]));
+      }
+    }
+  }
+}
 
 TEST(PartialTensorShapeTest, PartialShapeCompatibleWith) {
   const PartialTensorShape a({-1, 0, 1});
@@ -220,7 +239,7 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
 
 TEST(PartialTensorShapeTest, MakePartialShapeEmpty) {
   // Empty made partial shapes should still be fully defined
-  const int64 dims[0] = {};
+  const int64 dims[1] = {};
   PartialTensorShape shape;
   EXPECT_FALSE(shape.IsFullyDefined());
   TF_ASSERT_OK(PartialTensorShape::MakePartialShape(dims, 0, &shape));

@@ -16,6 +16,7 @@ limitations under the License.
 var gulp = require('gulp');
 var server = require('gulp-server-livereload');
 var minimist = require('minimist');
+var util = require('./gulp_tasks/util');
 
 var options = minimist(process.argv.slice(2), {
   default: {
@@ -42,6 +43,13 @@ gulp.task('watch', [], function() {
       {ignoreInitial: true}, ['compile']);
 });
 
+var httpPrefix = 'http://' + options.h + ':' + options.p + '/components';
+var proxies = util.tbComponents.map(function(component) {
+  return {
+    source: '/components' + component.replace(/_/g, '-'),
+    target: httpPrefix + component
+  };
+});
 
 // Do first-compile before turning on server, to avoid spamming
 // livereload info
@@ -57,6 +65,7 @@ gulp.task('server', ['first-compile'], function() {
       filter: function(filePath, cb) { cb(!(/\.ts$/.test(filePath))); },
       port: 27729 + options.p
     },
+    proxies: proxies,
     directoryListing: true,
   }));
 });

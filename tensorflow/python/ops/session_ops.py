@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""## Tensor Handle Operations.
 
-TensorFlow provides several operators that allows the user to keep tensors
-"in-place" across run calls.
+"""Tensor Handle Operations. See the @{python/session_ops} guide.
 
 @@get_session_handle
+@@get_session_handle_v2
 @@get_session_tensor
 @@delete_session_tensor
 """
@@ -27,12 +26,33 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+import numpy as np
+
+from tensorflow.core.framework import resource_handle_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.util import compat
+
+
+def decode_resource_handle(encoded):
+  """Decode a ResourceHandle proto encoded as custom numpy struct type."""
+  resource_handle = resource_handle_pb2.ResourceHandle()
+  if sys.version_info.major < 3:
+    resource_handle.ParseFromString("".join([chr(ch[0]) for ch in encoded]))
+  else:
+    resource_handle.ParseFromString(bytes([ch[0] for ch in encoded]))
+  return resource_handle
+
+
+def encode_resource_handle(resource_handle):
+  """Encode a ResourceHandle proto as custom numpy struct type."""
+  return np.asarray(bytearray(resource_handle.SerializeToString()),
+                    dtype=dtypes.np_resource)
 
 
 class TensorHandle(object):
@@ -49,7 +69,8 @@ class TensorHandle(object):
       dtype: The data type of the tensor represented by `handle`.
       session: The session in which the tensor is produced.
     """
-    self._handle = compat.as_str_any(handle)
+    self._resource_handle = decode_resource_handle(handle)
+    self._handle = compat.as_str_any(self._resource_handle.name)
     self._dtype = dtype
     self._session = session
     self._auto_gc_enabled = True
@@ -60,6 +81,20 @@ class TensorHandle(object):
 
   def __str__(self):
     return self._handle
+
+  @property
+  def resource_handle(self):
+    """The ResourceHandle representation of this handle."""
+    return self._resource_handle
+
+  def to_numpy_array(self):
+    """Convert a TensorHandle object to a feedable numpy value.
+
+    Returns:
+      A numpy array of a custom struct type that can be used as a feed value
+      to run().
+    """
+    return encode_resource_handle(self.resource_handle)
 
   @property
   def handle(self):
@@ -81,7 +116,7 @@ class TensorHandle(object):
       raise TypeError("Persistent tensor %s may have already been deleted."
                       % self.handle)
     self._auto_gc_enabled = False
-    holder, deleter = _get_handle_deleter(self._session.graph, self._handle)
+    holder, deleter = _get_handle_deleter(self._session.graph, 0, self._handle)
     self._session.run(deleter, feed_dict={holder: self.handle})
 
   def get_raw_handle(self):
@@ -105,11 +140,6 @@ class TensorHandle(object):
     """The graph key for reader."""
     handle_parts = str(handle).split(";")
     return handle_parts[0] + ";" + handle_parts[-1]
-
-  @staticmethod
-  def _get_deleter_key(handle):
-    """The graph key for deleter."""
-    return str(handle).split(";")[-1]
 
   @staticmethod
   def _get_mover_key(feeder, handle):
@@ -141,12 +171,12 @@ def get_session_handle(data, name=None):
   Example:
 
   ```python
-  c = tf.mul(a, b)
+  c = tf.multiply(a, b)
   h = tf.get_session_handle(c)
   h = sess.run(h)
 
   p, a = tf.get_session_tensor(h.handle, tf.float32)
-  b = tf.mul(a, 10)
+  b = tf.multiply(a, 10)
   c = sess.run(b, feed_dict={p: h.handle})
   ```
 
@@ -156,7 +186,7 @@ def get_session_handle(data, name=None):
 
   # Colocate this operation with data.
   with ops.colocate_with(data):
-    return gen_data_flow_ops._get_session_handle(data, name=name)
+    return gen_data_flow_ops._get_session_handle_v2(data, name=name)  # pylint: disable=protected-access
 
 
 def get_session_tensor(handle, dtype, name=None):
@@ -181,12 +211,12 @@ def get_session_tensor(handle, dtype, name=None):
   Example:
 
   ```python
-  c = tf.mul(a, b)
+  c = tf.multiply(a, b)
   h = tf.get_session_handle(c)
   h = sess.run(h)
 
   p, a = tf.get_session_tensor(h.handle, tf.float32)
-  b = tf.mul(a, 10)
+  b = tf.multiply(a, 10)
   c = sess.run(b, feed_dict={p: h.handle})
   ```
 
@@ -261,16 +291,15 @@ def _get_handle_mover(graph, feeder, handle):
     # Create mover if we haven't done it.
     holder, reader = _get_handle_reader(graph, handle, dtype)
     with graph.as_default(), graph.device(feeder.op.device):
-      mover = gen_data_flow_ops._get_session_handle(reader)
+      mover = gen_data_flow_ops._get_session_handle_v2(reader)  # pylint: disable=protected-access
     result = (holder, mover)
     graph._handle_movers[graph_key] = result
   return result
 
 
-def _get_handle_deleter(graph, handle):
+def _get_handle_deleter(graph, deleter_key, handle):
   """Return a deletion subgraph for this handle."""
-  graph_key = TensorHandle._get_deleter_key(handle)
-  result = graph._handle_deleters.get(graph_key)
+  result = graph._handle_deleters.get(deleter_key)
   if result is None:
     # Create deleter if we haven't done it.
     handle_device = TensorHandle._get_device_name(handle)
@@ -278,5 +307,5 @@ def _get_handle_deleter(graph, handle):
       holder = array_ops.placeholder(dtypes.string)
       deleter = gen_data_flow_ops._delete_session_tensor(holder)
     result = (holder, deleter)
-    graph._handle_deleters[graph_key] = result
+    graph._handle_deleters[deleter_key] = result
   return result

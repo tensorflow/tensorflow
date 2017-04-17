@@ -729,7 +729,7 @@ TEST(Tensor, FailureToAllocate) {
 // On the alignment.
 //
 // As of 2015/8, tensorflow::Tensor allocates its buffer with 32-byte
-// alignment. Tensor::tensor/flat/vec/matrix methods requires the the
+// alignment. Tensor::tensor/flat/vec/matrix methods requires the
 // buffer satisfies Eigen::Aligned (e.g., 16-bytes aligned usually,
 // and 32-bytes for AVX). Tensor::Slice requires the caller to ensure
 // its result is aligned if the caller intends to use those methods.

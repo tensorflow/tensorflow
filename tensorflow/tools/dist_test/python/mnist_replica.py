@@ -177,7 +177,7 @@ def main(unused_argv):
       else:
         replicas_to_aggregate = FLAGS.replicas_to_aggregate
 
-      opt = tf.train.SyncReplicasOptimizerV2(
+      opt = tf.train.SyncReplicasOptimizer(
           opt,
           replicas_to_aggregate=replicas_to_aggregate,
           total_num_replicas=num_workers,

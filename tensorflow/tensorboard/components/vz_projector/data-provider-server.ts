@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 import {DataSet, SpriteAndMetadataInfo, State} from './data';
-import {ProjectorConfig, DataProvider, TENSORS_MSG_ID, EmbeddingInfo} from './data-provider';
 import * as dataProvider from './data-provider';
+import {DataProvider, EmbeddingInfo, ProjectorConfig} from './data-provider';
 import * as logging from './logging';
 
+// Limit for the number of data points we receive from the server.
+export const LIMIT_NUM_POINTS = 100000;
 
 /**
  * Data provider that loads data provided by a python server (usually backed
@@ -50,7 +52,7 @@ export class ServerDataProvider implements DataProvider {
     let msgId = logging.setModalMessage('Fetching runs...');
     d3.json(`${this.routePrefix}/runs`, (err, runs: string[]) => {
       if (err) {
-        logging.setModalMessage('Error: ' + err.responseText);
+        logging.setErrorMessage(err.responseText, 'fetching runs');
         return;
       }
       logging.setModalMessage(null, msgId);
@@ -69,7 +71,7 @@ export class ServerDataProvider implements DataProvider {
     d3.json(`${this.routePrefix}/info?run=${run}`, (err,
         config: ProjectorConfig) => {
       if (err) {
-        logging.setModalMessage('Error: ' + err.responseText);
+        logging.setErrorMessage(err.responseText, 'fetching projector config');
         return;
       }
       logging.setModalMessage(null, msgId);
@@ -80,19 +82,13 @@ export class ServerDataProvider implements DataProvider {
 
   retrieveTensor(run: string, tensorName: string,
       callback: (ds: DataSet) => void) {
-    // Get the tensor.
-    logging.setModalMessage('Fetching tensor values...', TENSORS_MSG_ID);
-    d3.text(
-        `${this.routePrefix}/tensor?run=${run}&name=${tensorName}`,
-        (err: any, tsv: string) => {
-          if (err) {
-            logging.setModalMessage('Error: ' + err.responseText);
-            return;
-          }
-          dataProvider.parseTensors(tsv).then(dataPoints => {
-            callback(new DataSet(dataPoints));
-          });
-        });
+    this.getEmbeddingInfo(run, tensorName, embedding => {
+      dataProvider.retrieveTensorAsBytes(
+          this, embedding, run, tensorName,
+          `${this.routePrefix}/tensor?run=${run}&name=${tensorName}` +
+              `&num_rows=${LIMIT_NUM_POINTS}`,
+          callback);
+    });
   }
 
   retrieveSpriteAndMetadata(run: string, tensorName: string,
@@ -101,7 +97,8 @@ export class ServerDataProvider implements DataProvider {
       let metadataPath = null;
       if (embedding.metadataPath) {
         metadataPath =
-            `${this.routePrefix}/metadata?run=${run}&name=${tensorName}`;
+            `${this.routePrefix}/metadata?` +
+            `run=${run}&name=${tensorName}&num_rows=${LIMIT_NUM_POINTS}`;
       }
       let spriteImagePath = null;
       if (embedding.sprite && embedding.sprite.imagePath) {
@@ -110,21 +107,6 @@ export class ServerDataProvider implements DataProvider {
       }
       dataProvider.retrieveSpriteAndMetadataInfo(metadataPath, spriteImagePath,
           embedding.sprite, callback);
-    });
-  }
-
-  getDefaultTensor(run: string, callback: (tensorName: string) => void) {
-    this.retrieveProjectorConfig(run, config => {
-      let tensorNames = config.embeddings.map(e => e.tensorName);
-      // Return the first tensor that has metadata.
-      for (let i = 0; i < tensorNames.length; i++) {
-        let e = config.embeddings[i];
-        if (e.metadataPath) {
-          callback(e.tensorName);
-          return;
-        }
-      }
-      callback(tensorNames.length >= 1 ? tensorNames[0] : null);
     });
   }
 

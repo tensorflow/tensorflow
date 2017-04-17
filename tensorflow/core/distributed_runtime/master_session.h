@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/master.pb.h"
@@ -36,7 +37,7 @@ struct MasterEnv;
 
 // A session encapsulates a graph computation (resource allocation,
 // placement, execution, etc.).
-class MasterSession {
+class MasterSession : public core::RefCounted {
  public:
   // This session encapsulates the graph computation for a graph.
   //
@@ -44,9 +45,10 @@ class MasterSession {
   // operations on these devices.
   //
   // The caller takes ownership of all remote devices.
-  MasterSession(const SessionOptions& options, const MasterEnv* env,
-                std::vector<Device*>* remote_devs,
-                StatsPublisherFactory stats_publisher_factory);
+  MasterSession(
+      const SessionOptions& options, const MasterEnv* env,
+      std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
+      StatsPublisherFactory stats_publisher_factory);
 
   // Initialize the MasterSession for "def".  Must be called before Extend(),
   // Run(), or Close().
@@ -78,14 +80,20 @@ class MasterSession {
                          PartialRunSetupResponse* resp);
 
   // Run one step.
-  Status Run(CallOptions* opts, const RunStepRequest* req,
-             RunStepResponse* resp);
+  Status Run(CallOptions* opts, const RunStepRequestWrapper& req,
+             MutableRunStepResponseWrapper* resp);
 
   // Close this session and delete "*this". Returns OK if all known
   // states are cleanup successfully.
   //
   // Close() may block the caller thread for a long time.
   Status Close();
+
+  // Close this session and release a reference on "*this".
+  //
+  // Note that, unlike Close(), this method does not block on the
+  // completion of all work.
+  void GarbageCollect();
 
  private:
   SessionOptions session_opts_;
@@ -96,8 +104,7 @@ class MasterSession {
   // The opaque session handle.
   const string handle_;
 
-  // Owned.
-  std::vector<Device*> remote_devs_;
+  std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs_;
 
   // The device set used by this session.
   DeviceSet devices_;
@@ -119,8 +126,8 @@ class MasterSession {
   // scope and lose their state.
   class ReffedClientGraph;
   typedef std::unordered_map<uint64, ReffedClientGraph*> RCGMap;
-  RCGMap runs_ GUARDED_BY(mu_);
-  RCGMap obsolete_ GUARDED_BY(mu_);
+  RCGMap run_graphs_ GUARDED_BY(mu_);
+  RCGMap partial_run_graphs_ GUARDED_BY(mu_);
 
   struct PerStepState {
     bool collect_costs = false;
@@ -156,6 +163,9 @@ class MasterSession {
   condition_variable num_running_is_zero_;
   int32 num_running_ GUARDED_BY(mu_) = 0;
 
+  bool closed_ GUARDED_BY(mu_) = false;
+  bool garbage_collected_ GUARDED_BY(mu_) = false;
+
   std::unordered_map<uint64, int64> subgraph_execution_counts_ GUARDED_BY(mu_);
 
   // We need to ensure that certain nodes added (e.g., send and recv
@@ -163,7 +173,7 @@ class MasterSession {
   int64 next_node_id_ GUARDED_BY(mu_) = 0;
 
   // Used to cancel running steps on Close().
-  CancellationManager* cancellation_manager_;
+  CancellationManager cancellation_manager_;
 
   // Private dtor. The client must call Close().
   virtual ~MasterSession();
@@ -172,10 +182,11 @@ class MasterSession {
                    ReffedClientGraph** graph, bool is_partial);
   void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
                       RCGMap* rcg_map) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  Status DoRunWithLocalExecution(CallOptions* opts, const RunStepRequest* req,
-                                 RunStepResponse* resp);
-  Status DoPartialRun(CallOptions* opts, const RunStepRequest* req,
-                      RunStepResponse* resp);
+  Status DoRunWithLocalExecution(CallOptions* opts,
+                                 const RunStepRequestWrapper& req,
+                                 MutableRunStepResponseWrapper* resp);
+  Status DoPartialRun(CallOptions* opts, const RunStepRequestWrapper& req,
+                      MutableRunStepResponseWrapper* resp);
   void UpdateLastAccessTime();
 
   Status BuildAndRegisterPartitions(ReffedClientGraph* rcg);

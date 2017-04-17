@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if !TENSORFLOW_USE_SYCL
+#error This file must only be included when building TensorFlow with SYCL support
+#endif
+
 #ifndef TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_DEVICE_CONTEXT_H_
 #define TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_DEVICE_CONTEXT_H_
 
@@ -24,17 +28,16 @@ namespace tensorflow {
 class SYCLDeviceContext : public DeviceContext {
  public:
   SYCLDeviceContext() {}
-  
+
   ~SYCLDeviceContext() override {}
-  
-  void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-			     Tensor* device_tensor,
-			     StatusCallback done) const override;
-  
-  void CopyDeviceTensorToCPU(const Tensor* device_tensor, StringPiece edge_name,
-			     Device* device, Tensor* cpu_tensor,
-			     StatusCallback done) override;
-  
+
+  void CopyCPUTensorToDevice(const Tensor *cpu_tensor, Device *device,
+                             Tensor *device_tensor,
+                             StatusCallback done) const override;
+
+  void CopyDeviceTensorToCPU(const Tensor *device_tensor, StringPiece edge_name,
+                             Device *device, Tensor *cpu_tensor,
+                             StatusCallback done) override;
 };
 
 }  // namespace tensorflow

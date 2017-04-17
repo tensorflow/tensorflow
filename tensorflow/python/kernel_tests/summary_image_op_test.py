@@ -12,23 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for summary image op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
+from tensorflow.core.framework import summary_pb2
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import image_ops
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
+from tensorflow.python.summary import summary
 
 
-class SummaryImageOpTest(tf.test.TestCase):
+class SummaryImageOpTest(test.TestCase):
 
   def _AsSummary(self, s):
-    summ = tf.Summary()
+    summ = summary_pb2.Summary()
     summ.ParseFromString(s)
     return summ
 
@@ -37,7 +42,7 @@ class SummaryImageOpTest(tf.test.TestCase):
     # Only the first 3 images are returned.
     for v in image_summ.value:
       v.image.ClearField("encoded_image_string")
-    expected = '\n'.join("""
+    expected = "\n".join("""
         value {
           tag: "img/image/%d"
           image { height: %d width: %d colorspace: %d }
@@ -48,7 +53,7 @@ class SummaryImageOpTest(tf.test.TestCase):
     np.random.seed(7)
     for depth in (1, 3, 4):
       for positive in False, True:
-        with self.test_session(graph=tf.Graph()) as sess:
+        with self.test_session(graph=ops.Graph()) as sess:
           shape = (4, 5, 7) + (depth,)
           bad_color = [255, 0, 0, 255][:depth]
           # Build a mostly random image with one nan
@@ -65,14 +70,14 @@ class SummaryImageOpTest(tf.test.TestCase):
           const[0, 1, 2, depth // 2] = np.nan
 
           # Summarize
-          summ = tf.summary.image("img", const)
+          summ = summary.image("img", const)
           value = sess.run(summ)
           self.assertEqual([], summ.get_shape())
           image_summ = self._AsSummary(value)
 
           # Decode the first image and check consistency
-          image = image_ops.decode_png(
-              image_summ.value[0].image.encoded_image_string).eval()
+          image = image_ops.decode_png(image_summ.value[0]
+                                       .image.encoded_image_string).eval()
           self.assertAllEqual(image[1, 2], bad_color)
           image[1, 2] = adjusted[0, 1, 2]
           self.assertAllClose(image, adjusted[0])
@@ -83,24 +88,24 @@ class SummaryImageOpTest(tf.test.TestCase):
   def testImageSummaryUint8(self):
     np.random.seed(7)
     for depth in (1, 3, 4):
-      with self.test_session(graph=tf.Graph()) as sess:
+      with self.test_session(graph=ops.Graph()) as sess:
         shape = (4, 5, 7) + (depth,)
 
         # Build a random uint8 image
         images = np.random.randint(256, size=shape).astype(np.uint8)
-        tf_images = tf.convert_to_tensor(images)
-        self.assertEqual(tf_images.dtype, tf.uint8)
+        tf_images = ops.convert_to_tensor(images)
+        self.assertEqual(tf_images.dtype, dtypes.uint8)
 
         # Summarize
-        summ = tf.summary.image("img", tf_images)
+        summ = summary.image("img", tf_images)
         value = sess.run(summ)
         self.assertEqual([], summ.get_shape())
         image_summ = self._AsSummary(value)
 
         # Decode the first image and check consistency.
         # Since we're uint8, everything should be exact.
-        image = image_ops.decode_png(
-            image_summ.value[0].image.encoded_image_string).eval()
+        image = image_ops.decode_png(image_summ.value[0]
+                                     .image.encoded_image_string).eval()
         self.assertAllEqual(image, images[0])
 
         # Check the rest of the proto
@@ -108,4 +113,4 @@ class SummaryImageOpTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -63,6 +63,7 @@ cc_library(
 )
 
 tf_cc_tests(
+    name = "ctc_beam_search_test",
     size = "small",
     srcs = [
         "ctc_beam_search_test.cc",

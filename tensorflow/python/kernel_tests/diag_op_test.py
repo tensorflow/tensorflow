@@ -18,17 +18,25 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
-class MatrixDiagTest(tf.test.TestCase):
+class MatrixDiagTest(test.TestCase):
   _use_gpu = False
 
   def testVector(self):
     with self.test_session(use_gpu=self._use_gpu):
       v = np.array([1.0, 2.0, 3.0])
       mat = np.diag(v)
-      v_diag = tf.matrix_diag(v)
+      v_diag = array_ops.matrix_diag(v)
       self.assertEqual((3, 3), v_diag.get_shape())
       self.assertAllEqual(v_diag.eval(), mat)
 
@@ -43,28 +51,30 @@ class MatrixDiagTest(tf.test.TestCase):
            [[4.0, 0.0, 0.0],
             [0.0, 5.0, 0.0],
             [0.0, 0.0, 6.0]]])
-      v_batch_diag = tf.matrix_diag(v_batch)
+      v_batch_diag = array_ops.matrix_diag(v_batch)
       self.assertEqual((2, 3, 3), v_batch_diag.get_shape())
       self.assertAllEqual(v_batch_diag.eval(), mat_batch)
 
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
-      tf.matrix_diag(0)
+      array_ops.matrix_diag(0)
 
   def testInvalidShapeAtEval(self):
     with self.test_session(use_gpu=self._use_gpu):
-      v = tf.placeholder(dtype=tf.float32)
+      v = array_ops.placeholder(dtype=dtypes_lib.float32)
       with self.assertRaisesOpError("input must be at least 1-dim"):
-        tf.matrix_diag(v).eval(feed_dict={v: 0.0})
+        array_ops.matrix_diag(v).eval(feed_dict={v: 0.0})
 
   def testGrad(self):
     shapes = ((3,), (7, 4))
     with self.test_session(use_gpu=self._use_gpu):
       for shape in shapes:
-        x = tf.constant(np.random.rand(*shape), np.float32)
-        y = tf.matrix_diag(x)
-        error = tf.test.compute_gradient_error(x, x.get_shape().as_list(),
-                                               y, y.get_shape().as_list())
+        x = constant_op.constant(np.random.rand(*shape), np.float32)
+        y = array_ops.matrix_diag(x)
+        error = gradient_checker.compute_gradient_error(x,
+                                                        x.get_shape().as_list(),
+                                                        y,
+                                                        y.get_shape().as_list())
         self.assertLess(error, 1e-4)
 
 
@@ -72,7 +82,7 @@ class MatrixDiagGpuTest(MatrixDiagTest):
   _use_gpu = True
 
 
-class MatrixSetDiagTest(tf.test.TestCase):
+class MatrixSetDiagTest(test.TestCase):
   _use_gpu = False
 
   def testSquare(self):
@@ -84,7 +94,7 @@ class MatrixSetDiagTest(tf.test.TestCase):
       mat_set_diag = np.array([[1.0, 1.0, 0.0],
                                [1.0, 2.0, 1.0],
                                [1.0, 1.0, 3.0]])
-      output = tf.matrix_set_diag(mat, v)
+      output = array_ops.matrix_set_diag(mat, v)
       self.assertEqual((3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag, output.eval())
 
@@ -93,14 +103,14 @@ class MatrixSetDiagTest(tf.test.TestCase):
       v = np.array([3.0, 4.0])
       mat = np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0]])
       expected = np.array([[3.0, 1.0, 0.0], [1.0, 4.0, 1.0]])
-      output = tf.matrix_set_diag(mat, v)
+      output = array_ops.matrix_set_diag(mat, v)
       self.assertEqual((2, 3), output.get_shape())
       self.assertAllEqual(expected, output.eval())
 
       v = np.array([3.0, 4.0])
       mat = np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 1.0]])
       expected = np.array([[3.0, 1.0], [1.0, 4.0], [1.0, 1.0]])
-      output = tf.matrix_set_diag(mat, v)
+      output = array_ops.matrix_set_diag(mat, v)
       self.assertEqual((3, 2), output.get_shape())
       self.assertAllEqual(expected, output.eval())
 
@@ -123,7 +133,7 @@ class MatrixSetDiagTest(tf.test.TestCase):
            [[-4.0, 0.0, 4.0],
             [0.0, -5.0, 0.0],
             [2.0, 0.0, -6.0]]])
-      output = tf.matrix_set_diag(mat_batch, v_batch)
+      output = array_ops.matrix_set_diag(mat_batch, v_batch)
       self.assertEqual((2, 3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, output.eval())
 
@@ -142,52 +152,56 @@ class MatrixSetDiagTest(tf.test.TestCase):
             [0.0, -2.0, 0.0]],
            [[-4.0, 0.0, 4.0],
             [0.0, -5.0, 0.0]]])
-      output = tf.matrix_set_diag(mat_batch, v_batch)
+      output = array_ops.matrix_set_diag(mat_batch, v_batch)
       self.assertEqual((2, 2, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, output.eval())
 
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
-      tf.matrix_set_diag(0, [0])
+      array_ops.matrix_set_diag(0, [0])
     with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
-      tf.matrix_set_diag([[0]], 0)
+      array_ops.matrix_set_diag([[0]], 0)
 
   def testInvalidShapeAtEval(self):
     with self.test_session(use_gpu=self._use_gpu):
-      v = tf.placeholder(dtype=tf.float32)
+      v = array_ops.placeholder(dtype=dtypes_lib.float32)
       with self.assertRaisesOpError("input must be at least 2-dim"):
-        tf.matrix_set_diag(v, [v]).eval(feed_dict={v: 0.0})
+        array_ops.matrix_set_diag(v, [v]).eval(feed_dict={v: 0.0})
       with self.assertRaisesOpError(
           r"but received input shape: \[1,1\] and diagonal shape: \[\]"):
-        tf.matrix_set_diag([[v]], v).eval(feed_dict={v: 0.0})
+        array_ops.matrix_set_diag([[v]], v).eval(feed_dict={v: 0.0})
 
   def testGrad(self):
     shapes = ((3, 4, 4), (3, 3, 4), (3, 4, 3), (7, 4, 8, 8))
     with self.test_session(use_gpu=self._use_gpu):
       for shape in shapes:
-        x = tf.constant(np.random.rand(*shape), dtype=tf.float32)
+        x = constant_op.constant(
+            np.random.rand(*shape), dtype=dtypes_lib.float32)
         diag_shape = shape[:-2] + (min(shape[-2:]),)
-        x_diag = tf.constant(np.random.rand(*diag_shape), dtype=tf.float32)
-        y = tf.matrix_set_diag(x, x_diag)
-        error_x = tf.test.compute_gradient_error(x, x.get_shape().as_list(),
-                                                 y, y.get_shape().as_list())
+        x_diag = constant_op.constant(
+            np.random.rand(*diag_shape), dtype=dtypes_lib.float32)
+        y = array_ops.matrix_set_diag(x, x_diag)
+        error_x = gradient_checker.compute_gradient_error(
+            x, x.get_shape().as_list(), y, y.get_shape().as_list())
         self.assertLess(error_x, 1e-4)
-        error_x_diag = tf.test.compute_gradient_error(
-            x_diag, x_diag.get_shape().as_list(),
-            y, y.get_shape().as_list())
+        error_x_diag = gradient_checker.compute_gradient_error(
+            x_diag, x_diag.get_shape().as_list(), y, y.get_shape().as_list())
         self.assertLess(error_x_diag, 1e-4)
 
   def testGradWithNoShapeInformation(self):
     with self.test_session(use_gpu=self._use_gpu) as sess:
-      v = tf.placeholder(dtype=tf.float32)
-      mat = tf.placeholder(dtype=tf.float32)
-      grad_input = tf.placeholder(dtype=tf.float32)
-      output = tf.matrix_set_diag(mat, v)
-      grads = tf.gradients(output, [mat, v], grad_ys=grad_input)
+      v = array_ops.placeholder(dtype=dtypes_lib.float32)
+      mat = array_ops.placeholder(dtype=dtypes_lib.float32)
+      grad_input = array_ops.placeholder(dtype=dtypes_lib.float32)
+      output = array_ops.matrix_set_diag(mat, v)
+      grads = gradients_impl.gradients(output, [mat, v], grad_ys=grad_input)
       grad_input_val = np.random.rand(3, 3).astype(np.float32)
-      grad_vals = sess.run(
-          grads, feed_dict={v: 2 * np.ones(3), mat: np.ones((3, 3)),
-                            grad_input: grad_input_val})
+      grad_vals = sess.run(grads,
+                           feed_dict={
+                               v: 2 * np.ones(3),
+                               mat: np.ones((3, 3)),
+                               grad_input: grad_input_val
+                           })
       self.assertAllEqual(np.diag(grad_input_val), grad_vals[1])
       self.assertAllEqual(grad_input_val - np.diag(np.diag(grad_input_val)),
                           grad_vals[0])
@@ -197,24 +211,24 @@ class MatrixSetDiagGpuTest(MatrixSetDiagTest):
   _use_gpu = True
 
 
-class MatrixDiagPartTest(tf.test.TestCase):
+class MatrixDiagPartTest(test.TestCase):
   _use_gpu = False
 
   def testSquare(self):
     with self.test_session(use_gpu=self._use_gpu):
       v = np.array([1.0, 2.0, 3.0])
       mat = np.diag(v)
-      mat_diag = tf.matrix_diag_part(mat)
+      mat_diag = array_ops.matrix_diag_part(mat)
       self.assertEqual((3,), mat_diag.get_shape())
       self.assertAllEqual(mat_diag.eval(), v)
 
   def testRectangular(self):
     with self.test_session(use_gpu=self._use_gpu):
       mat = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-      mat_diag = tf.matrix_diag_part(mat)
+      mat_diag = array_ops.matrix_diag_part(mat)
       self.assertAllEqual(mat_diag.eval(), np.array([1.0, 5.0]))
       mat = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
-      mat_diag = tf.matrix_diag_part(mat)
+      mat_diag = array_ops.matrix_diag_part(mat)
       self.assertAllEqual(mat_diag.eval(), np.array([1.0, 4.0]))
 
   def testSquareBatch(self):
@@ -229,7 +243,7 @@ class MatrixDiagPartTest(tf.test.TestCase):
             [0.0, 5.0, 0.0],
             [0.0, 0.0, 6.0]]])
       self.assertEqual(mat_batch.shape, (2, 3, 3))
-      mat_batch_diag = tf.matrix_diag_part(mat_batch)
+      mat_batch_diag = array_ops.matrix_diag_part(mat_batch)
       self.assertEqual((2, 3), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
@@ -243,28 +257,30 @@ class MatrixDiagPartTest(tf.test.TestCase):
            [[4.0, 0.0, 0.0],
             [0.0, 5.0, 0.0]]])
       self.assertEqual(mat_batch.shape, (2, 2, 3))
-      mat_batch_diag = tf.matrix_diag_part(mat_batch)
+      mat_batch_diag = array_ops.matrix_diag_part(mat_batch)
       self.assertEqual((2, 2), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
-      tf.matrix_diag_part(0)
+      array_ops.matrix_diag_part(0)
 
   def testInvalidShapeAtEval(self):
     with self.test_session(use_gpu=self._use_gpu):
-      v = tf.placeholder(dtype=tf.float32)
+      v = array_ops.placeholder(dtype=dtypes_lib.float32)
       with self.assertRaisesOpError("input must be at least 2-dim"):
-        tf.matrix_diag_part(v).eval(feed_dict={v: 0.0})
+        array_ops.matrix_diag_part(v).eval(feed_dict={v: 0.0})
 
   def testGrad(self):
     shapes = ((3, 3), (2, 3), (3, 2), (5, 3, 3))
     with self.test_session(use_gpu=self._use_gpu):
       for shape in shapes:
-        x = tf.constant(np.random.rand(*shape), dtype=np.float32)
-        y = tf.matrix_diag_part(x)
-        error = tf.test.compute_gradient_error(x, x.get_shape().as_list(),
-                                               y, y.get_shape().as_list())
+        x = constant_op.constant(np.random.rand(*shape), dtype=np.float32)
+        y = array_ops.matrix_diag_part(x)
+        error = gradient_checker.compute_gradient_error(x,
+                                                        x.get_shape().as_list(),
+                                                        y,
+                                                        y.get_shape().as_list())
         self.assertLess(error, 1e-4)
 
 
@@ -272,13 +288,13 @@ class MatrixDiagPartGpuTest(MatrixDiagPartTest):
   _use_gpu = True
 
 
-class DiagTest(tf.test.TestCase):
+class DiagTest(test.TestCase):
 
   def diagOp(self, diag, dtype, expected_ans, use_gpu=False):
     with self.test_session(use_gpu=use_gpu):
-      tf_ans = tf.diag(tf.convert_to_tensor(diag.astype(dtype)))
+      tf_ans = array_ops.diag(ops.convert_to_tensor(diag.astype(dtype)))
       out = tf_ans.eval()
-      tf_ans_inv = tf.diag_part(expected_ans)
+      tf_ans_inv = array_ops.diag_part(expected_ans)
       inv_out = tf_ans_inv.eval()
     self.assertAllClose(out, expected_ans)
     self.assertAllClose(inv_out, diag)
@@ -392,19 +408,19 @@ class DiagTest(tf.test.TestCase):
               [[0 + 0j, 0 + 0j], [7.7 + 7.7j, 0 + 0j]]],
              [[[0 + 0j, 0 + 0j], [0 + 0j, 0 + 0j]],
               [[0 + 0j, 0 + 0j], [0 + 0j, 8.8 + 8.8j]]]]]],
-             dtype=dtype)
+          dtype=dtype)
       self.diagOp(x, dtype, expected_ans)
 
 
-class DiagPartOpTest(tf.test.TestCase):
+class DiagPartOpTest(test.TestCase):
 
   def setUp(self):
     np.random.seed(0)
 
   def diagPartOp(self, tensor, dtype, expected_ans, use_gpu=False):
     with self.test_session(use_gpu=use_gpu):
-      tensor = tf.convert_to_tensor(tensor.astype(dtype))
-      tf_ans_inv = tf.diag_part(tensor)
+      tensor = ops.convert_to_tensor(tensor.astype(dtype))
+      tf_ans_inv = array_ops.diag_part(tensor)
       inv_out = tf_ans_inv.eval()
     self.assertAllClose(inv_out, expected_ans)
     self.assertShapeEqual(expected_ans, tf_ans_inv)
@@ -422,9 +438,9 @@ class DiagPartOpTest(tf.test.TestCase):
     expected_ans = x[i, i]
     for shape in None, (None, 3), (3, None):
       with self.test_session(use_gpu=False):
-        t = tf.convert_to_tensor(x.astype(np.float32))
+        t = ops.convert_to_tensor(x.astype(np.float32))
         t.set_shape(shape)
-        tf_ans = tf.diag_part(t)
+        tf_ans = array_ops.diag_part(t)
         out = tf_ans.eval()
       self.assertAllClose(out, expected_ans)
       self.assertShapeEqual(expected_ans, tf_ans)
@@ -459,40 +475,41 @@ class DiagPartOpTest(tf.test.TestCase):
     self.assertRaises(ValueError, self.diagPartOp, x, np.float32, 0)
 
 
-class DiagGradOpTest(tf.test.TestCase):
+class DiagGradOpTest(test.TestCase):
 
   def testDiagGrad(self):
     np.random.seed(0)
-    shapes = ((3,), (3,3), (3,3,3))
-    dtypes = (tf.float32, tf.float64)
+    shapes = ((3,), (3, 3), (3, 3, 3))
+    dtypes = (dtypes_lib.float32, dtypes_lib.float64)
     with self.test_session(use_gpu=False):
       errors = []
       for shape in shapes:
         for dtype in dtypes:
-          x1 = tf.constant(np.random.rand(*shape), dtype=dtype)
-          y = tf.diag(x1)
-          error = tf.test.compute_gradient_error(x1, x1.get_shape().as_list(),
-                                                 y, y.get_shape().as_list())
-          tf.logging.info("error = %f", error)
+          x1 = constant_op.constant(np.random.rand(*shape), dtype=dtype)
+          y = array_ops.diag(x1)
+          error = gradient_checker.compute_gradient_error(
+              x1, x1.get_shape().as_list(), y, y.get_shape().as_list())
+          tf_logging.info("error = %f", error)
           self.assertLess(error, 1e-4)
 
 
-class DiagGradPartOpTest(tf.test.TestCase):
+class DiagGradPartOpTest(test.TestCase):
 
   def testDiagPartGrad(self):
     np.random.seed(0)
-    shapes = ((3,3), (3,3,3,3))
-    dtypes = (tf.float32, tf.float64)
+    shapes = ((3, 3), (3, 3, 3, 3))
+    dtypes = (dtypes_lib.float32, dtypes_lib.float64)
     with self.test_session(use_gpu=False):
       errors = []
       for shape in shapes:
         for dtype in dtypes:
-          x1 = tf.constant(np.random.rand(*shape), dtype=dtype)
-          y = tf.diag_part(x1)
-          error = tf.test.compute_gradient_error(x1, x1.get_shape().as_list(),
-                                                 y, y.get_shape().as_list())
-          tf.logging.info("error = %f", error)
+          x1 = constant_op.constant(np.random.rand(*shape), dtype=dtype)
+          y = array_ops.diag_part(x1)
+          error = gradient_checker.compute_gradient_error(
+              x1, x1.get_shape().as_list(), y, y.get_shape().as_list())
+          tf_logging.info("error = %f", error)
           self.assertLess(error, 1e-4)
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

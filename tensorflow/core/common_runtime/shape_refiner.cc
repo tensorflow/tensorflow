@@ -19,7 +19,6 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -31,10 +30,17 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-ShapeRefiner::ShapeRefiner(const OpRegistryInterface* ops)
-    : ops_registry_(ops) {}
+ShapeRefiner::ShapeRefiner(int graph_def_version,
+                           const OpRegistryInterface* ops)
+    : graph_def_version_(graph_def_version),
+      ops_registry_(ops),
+      graph_runner_(Env::Default()) {}
 
-ShapeRefiner::~ShapeRefiner() { gtl::STLDeleteValues(&node_to_context_); }
+ShapeRefiner::~ShapeRefiner() {
+  // The lifetime of the tensors are bound to the GraphRunner, so the tensors
+  // should be deleted before it.
+  const_tensor_map_.clear();
+}
 
 Status ShapeRefiner::AddNode(const Node* node) {
   // For each 'input' of this node, fetch the corresponding shape
@@ -55,7 +61,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
           node->name(), "' was not previously added to ShapeRefiner.");
     }
 
-    InferenceContext* c = it->second;
+    InferenceContext* c = it->second.get();
     DCHECK_GE(e->dst_input(), 0);
     input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
@@ -87,9 +93,10 @@ Status ShapeRefiner::AddNode(const Node* node) {
   std::vector<ShapeHandle> input_tensors_as_shapes;
 
   // Create the inference context for this node with the existing input shapes.
-  std::unique_ptr<InferenceContext> c(new InferenceContext(
-      &node->def(), node->op_def(), input_shapes, input_tensors,
-      input_tensors_as_shapes, input_handle_shapes, input_handle_dtypes));
+  std::unique_ptr<InferenceContext> c(
+      new InferenceContext(graph_def_version_, &node->def(), node->op_def(),
+                           input_shapes, input_tensors, input_tensors_as_shapes,
+                           input_handle_shapes, input_handle_dtypes));
   if (!c->construction_status().ok()) {
     return c->construction_status();
   }
@@ -161,7 +168,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
   } while (rerun_shape_fn);
 
   // Store the resulting InferenceContext object in the map.
-  node_to_context_[node] = c.release();
+  node_to_context_[node].swap(c);
 
   return Status::OK();
 }
@@ -203,6 +210,9 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
 
   bool is_constant_graph = false;
   Graph subgraph(ops_registry_);
+  auto versions = subgraph.versions();
+  versions.set_producer(graph_def_version_);
+  subgraph.set_versions(versions);
 
   // We identify the possibly constant subgraph to evaluate by
   // recursively iterating backwards through the inputs to 'node'
@@ -220,9 +230,8 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
   std::vector<Tensor> outputs;
   // NOTE; we should pass in a function library runtime if we want
   // to support constant-expression evaluation on functions.
-  Status s = GraphRunner::Run(&subgraph, nullptr /* function_library */,
-                              Env::Default(), const_inputs,
-                              {output_tensor_name}, &outputs);
+  Status s = graph_runner_.Run(&subgraph, nullptr /* function_library */,
+                               const_inputs, {output_tensor_name}, &outputs);
 
   // If all kernels in the constant graph are not registered
   // in the process, GraphRunner::Run may fail, in which case
@@ -279,6 +288,20 @@ Status ShapeRefiner::ExtractConstantSubgraph(
 
     // If the node is stateful, assume the graph is not constant.
     if (current_node->op_def().is_stateful()) {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
+    // During construction or import from GraphConstructor, back edges may not
+    // be filled in.  Don't constant fold through merges at all for now.
+    if (IsMerge(current_node)) {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
+    // Don't constant fold enter/exit currently either, as it's easy to end
+    // up with a partial frame.
+    if (IsEnter(current_node) || IsExit(current_node)) {
       *is_constant_graph = false;
       return Status::OK();
     }
@@ -397,18 +420,22 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
       }
     }
     *result = target_context->MakeShape(dims);
-  } else if (src_op == "Concat") {
+  } else if (src_op == "Concat" || src_op == "ConcatV2") {
     *result = target_context->Scalar();
+    // For Concat, input 0 is concat dim; for V2 it is the last input.
+    const int concat_dim =
+        src_op == "Concat" ? 0 : src_context->num_inputs() - 1;
     // Concat is concatenating its input shape vectors.
-    // input 0 is ignored as it is the concat dim and will always be 0.
-    for (int i = 1; i < src_context->num_inputs(); ++i) {
+    for (int i = 0; i < src_context->num_inputs(); ++i) {
+      // Concat dim is ignored (and will always be a scalar).
+      if (i == concat_dim) continue;
       ShapeHandle sub_result;
       TF_RETURN_IF_ERROR(ConstantPartialShape(target_context, input_edge->src(),
                                               i, &sub_result));
       if (!target_context->RankKnown(sub_result)) {
         // Failed to evaluate. Treat the output as completely unknown.
-        // TODO(cwhipkey): we could rely on all inputs being the same size, so
-        // figure that size out and append the right number of unknown dims.
+        // TODO(cwhipkey): we could rely on all inputs being the same rank, so
+        // figure that rank out and append the right number of unknown dims.
         *result = target_context->UnknownShape();
         return Status::OK();
       }

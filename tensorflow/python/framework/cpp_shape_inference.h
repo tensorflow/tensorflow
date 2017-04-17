@@ -35,14 +35,14 @@ namespace swig {
 // Returns an error, or OK, in <out_status> according to whether the shape
 // inference was successful.
 //
-// On success, <*output_shapes> is populated with the inferred output shapes (as
-// serialized CppShapeInferenceResult protos).
-// <*output_shapes> must be empty when this function is called.
+// On success, returns a vector populated with the inferred output shapes (as
+// serialized CppShapeInferenceResult protos) followed by a serialized
+// CppShapeInferenceInputsNeeded proto.
 //
 // This is temporary code to be used during the migration
 // from python shape inference functions to C++ shape inference functions.
 std::vector<string> RunCppShapeInference(
-    const string& serialized_node_def,
+    int graph_def_version, const string& serialized_node_def,
     const std::vector<string>& input_serialized_shapes,
     PyObject* input_constant_tensor_values,
     const std::vector<string>& input_constant_tensor_as_shape_values,

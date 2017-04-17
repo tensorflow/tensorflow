@@ -11,7 +11,6 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
 """Example of DNNClassifier for Iris plant dataset, with pipeline."""
 
 from __future__ import absolute_import
@@ -25,7 +24,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import tensorflow as tf
 
-from tensorflow.contrib import learn
+learn = tf.contrib.learn
 
 
 def main(unused_argv):
@@ -40,10 +39,10 @@ def main(unused_argv):
   # DNN classifier.
   classifier = learn.DNNClassifier(
       feature_columns=learn.infer_real_valued_columns_from_input(x_train),
-      hidden_units=[10, 20, 10], n_classes=3)
+      hidden_units=[10, 20, 10],
+      n_classes=3)
 
-  pipeline = Pipeline([('scaler', scaler),
-                       ('DNNclassifier', classifier)])
+  pipeline = Pipeline([('scaler', scaler), ('DNNclassifier', classifier)])
 
   pipeline.fit(x_train, y_train, DNNclassifier__steps=200)
 

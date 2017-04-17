@@ -21,17 +21,14 @@ limitations under the License.
 namespace tensorflow {
 namespace lookup {
 
-namespace {
-Status CheckKeyShape(const TensorShape& table_key_shape,
-                     const TensorShape& key_shape) {
-  if (!TensorShapeUtils::EndsWith(key_shape, table_key_shape)) {
-    return errors::InvalidArgument("Input key shape ", key_shape.DebugString(),
+Status LookupInterface::CheckKeyShape(const TensorShape& shape) {
+  if (!TensorShapeUtils::EndsWith(shape, key_shape())) {
+    return errors::InvalidArgument("Input key shape ", shape.DebugString(),
                                    " must end with the table's key shape ",
-                                   table_key_shape.DebugString());
+                                   key_shape().DebugString());
   }
   return Status::OK();
 }
-}  // namespace
 
 Status LookupInterface::CheckKeyAndValueTypes(const Tensor& keys,
                                               const Tensor& values) {
@@ -46,28 +43,38 @@ Status LookupInterface::CheckKeyAndValueTypes(const Tensor& keys,
   return Status::OK();
 }
 
-Status LookupInterface::CheckKeyAndValueTensors(const Tensor& key,
-                                                const Tensor& value) {
-  TF_RETURN_IF_ERROR(CheckKeyAndValueTypes(key, value));
-  TF_RETURN_IF_ERROR(CheckKeyShape(key_shape(), key.shape()));
+Status LookupInterface::CheckKeyAndValueTensorsHelper(const Tensor& keys,
+                                                      const Tensor& values) {
+  TF_RETURN_IF_ERROR(CheckKeyAndValueTypes(keys, values));
+  TF_RETURN_IF_ERROR(CheckKeyShape(keys.shape()));
 
-  TensorShape expected_value_shape = key.shape();
+  TensorShape expected_value_shape = keys.shape();
   for (int i = 0; i < key_shape().dims(); ++i) {
     expected_value_shape.RemoveDim(expected_value_shape.dims() - 1);
   }
   expected_value_shape.AppendShape(value_shape());
-  if (value.shape() != expected_value_shape) {
+  if (values.shape() != expected_value_shape) {
     return errors::InvalidArgument(
         "Expected shape ", expected_value_shape.DebugString(),
-        " for value, got ", value.shape().DebugString());
+        " for value, got ", values.shape().DebugString());
   }
   return Status::OK();
+}
+
+Status LookupInterface::CheckKeyAndValueTensorsForInsert(const Tensor& keys,
+                                                         const Tensor& values) {
+  return CheckKeyAndValueTensorsHelper(keys, values);
+}
+
+Status LookupInterface::CheckKeyAndValueTensorsForImport(const Tensor& keys,
+                                                         const Tensor& values) {
+  return CheckKeyAndValueTensorsHelper(keys, values);
 }
 
 Status LookupInterface::CheckFindArguments(const Tensor& key,
                                            const Tensor& default_value) {
   TF_RETURN_IF_ERROR(CheckKeyAndValueTypes(key, default_value));
-  TF_RETURN_IF_ERROR(CheckKeyShape(key_shape(), key.shape()));
+  TF_RETURN_IF_ERROR(CheckKeyShape(key.shape()));
   if (default_value.shape() != value_shape()) {
     return errors::InvalidArgument(
         "Expected shape ", value_shape().DebugString(),

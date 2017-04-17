@@ -146,7 +146,7 @@ TEST(JpegMemTest, Jpeg2) {
     CHECK_EQ(cptest, cpdata2);
   }
 
-  // Uncompress twice: once with 3 components and once with autodetect
+  // Uncompress twice: once with 3 components and once with autodetect.
   std::unique_ptr<uint8[]> imgdata1;
   for (const int components : {0, 3}) {
     // Uncompress it
@@ -185,6 +185,27 @@ TEST(JpegMemTest, Jpeg2) {
     const int totalerr = ComputeSumAbsoluteDifference(
         imgdata1.get(), imgdata2.get(), in_w, in_h, stride1, flags.stride);
     CHECK_EQ(totalerr, 0);
+  }
+
+  {
+    // Uncompress it with a faster, lossier algorithm.
+    UncompressFlags flags;
+    flags.components = 3;
+    flags.dct_method = JDCT_IFAST;
+    int w, h, c;
+    imgdata1.reset(
+        Uncompress(cpdata1.c_str(), cpdata1.length(), flags, &w, &h, &c, NULL));
+
+    // Check obvious formatting stuff
+    CHECK_EQ(w, in_w);
+    CHECK_EQ(h, in_h);
+    CHECK_EQ(c, 3);
+    CHECK(imgdata1.get());
+
+    // Compare the two images
+    const int totalerr = ComputeSumAbsoluteDifference(
+        imgdata1.get(), refdata1.get(), in_w, in_h, stride1, stride1);
+    ASSERT_LE(totalerr, 200000);
   }
 }
 

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -27,16 +29,46 @@ from tensorflow.python.ops import math_ops
 _DIVERGENCES = {}
 
 
-def kl(dist_a, dist_b, allow_nan=False, name=None):
+def _registered_kl(type_a, type_b):
+  """Get the KL function registered for classes a and b."""
+  hierarchy_a = inspect.getmro(type_a)
+  hierarchy_b = inspect.getmro(type_b)
+  dist_to_children = None
+  kl_fn = None
+  for mro_to_a, parent_a in enumerate(hierarchy_a):
+    for mro_to_b, parent_b in enumerate(hierarchy_b):
+      candidate_dist = mro_to_a + mro_to_b
+      candidate_kl_fn = _DIVERGENCES.get((parent_a, parent_b), None)
+      if not kl_fn or (candidate_kl_fn and candidate_dist < dist_to_children):
+        dist_to_children = candidate_dist
+        kl_fn = candidate_kl_fn
+  return kl_fn
+
+
+def kl(dist_a, dist_b, allow_nan_stats=True, name=None):
   """Get the KL-divergence KL(dist_a || dist_b).
+
+  If there is no KL method registered specifically for `type(dist_a)` and
+  `type(dist_b)`, then the class hierarchies of these types are searched.
+
+  If one KL method is registered between any pairs of classes in these two
+  parent hierarchies, it is used.
+
+  If more than one such registered method exists, the method whose registered
+  classes have the shortest sum MRO paths to the input types is used.
+
+  If more than one such shortest path exists, the first method
+  identified in the search is used (favoring a shorter MRO distance to
+  `type(dist_a)`).
 
   Args:
     dist_a: The first distribution.
     dist_b: The second distribution.
-    allow_nan: If `False` (default), a runtime error is raised
-      if the KL returns NaN values for any batch entry of the given
-      distributions.  If `True`, the KL may return a NaN for the given entry.
-    name: (optional) Name scope to use for created operations.
+    allow_nan_stats: Python `bool`, default `True`. When `True`,
+      statistics (e.g., mean, mode, variance) use the value "`NaN`" to
+      indicate the result is undefined. When `False`, an exception is raised
+      if one or more of the statistic's batch members are undefined.
+    name: Python `str` name prefixed to Ops created by this class.
 
   Returns:
     A Tensor with the batchwise KL-divergence between dist_a and dist_b.
@@ -45,14 +77,15 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
     NotImplementedError: If no KL method is defined for distribution types
       of dist_a and dist_b.
   """
-  kl_fn = _DIVERGENCES.get((type(dist_a), type(dist_b)), None)
+  kl_fn = _registered_kl(type(dist_a), type(dist_b))
   if kl_fn is None:
     raise NotImplementedError(
         "No KL(dist_a || dist_b) registered for dist_a type %s and dist_b "
-        "type %s" % ((type(dist_a).__name__, type(dist_b).__name__)))
+        "type %s" % (type(dist_a).__name__, type(dist_b).__name__))
+
   with ops.name_scope("KullbackLeibler"):
     kl_t = kl_fn(dist_a, dist_b, name=name)
-    if allow_nan:
+    if allow_nan_stats:
       return kl_t
 
     # Check KL for NaNs
@@ -63,7 +96,7 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
             math_ops.logical_not(
                 math_ops.reduce_any(math_ops.is_nan(kl_t))),
             ["KL calculation between %s and %s returned NaN values "
-             "(and was called with allow_nan=False).  Values:"
+             "(and was called with allow_nan_stats=False). Values:"
              % (dist_a.name, dist_b.name), kl_t])]):
       return array_ops.identity(kl_t, name="checked_kl")
 

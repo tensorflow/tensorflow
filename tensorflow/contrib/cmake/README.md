@@ -13,15 +13,39 @@ Linux.
 Current Status
 --------------
 
+CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/install/install_windows)
+for instructions on how to install a pre-built TensorFlow package on Windows.
+
+### Current known limitations
+* It is not possible to load a custom Op library.
+* GCS file system is not supported.
+* The following Ops are not currently implemented:
+ - Dequantize
+ - QuantizeAndDequantize
+ - QuantizedAvgPool
+ - QuantizedBatchNomWithGlobalNormalization
+ - QuantizedBiasAdd 
+ - QuantizedConcat
+ - QuantizedConv2D
+ - QuantizedMatmul
+ - QuantizedMaxPoo
+ - QuantizeDownAndShrinkRange
+ - QuantizedRelu
+ - QuantizedRelu6
+ - QuantizedReshape
+ - QuantizeV2
+ - RequantizationRange
+ - Requantize
+
+## Building with CMake
+
 The CMake files in this directory can build the core TensorFlow runtime, an
 example C++ binary, and a PIP package containing the runtime and Python
 bindings.
 
-Note: Windows support is in an **alpha** state, and we welcome your feedback.
-
 ### Pre-requisites
 
-* CMake version 3.1 up to 3.6
+* CMake version 3.5 or later.
 
 * [Git](http://git-scm.com)
 
@@ -44,8 +68,10 @@ Note: Windows support is in an **alpha** state, and we welcome your feedback.
   - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.continuum.io/downloads)
   - [Git for Windows version 2.9.2.windows.1](https://git-scm.com/download/win)
   - [swigwin-3.0.10](http://www.swig.org/download.html)
-  - [NVidia CUDA Toolkit 8.0] (https://developer.nvidia.com/cuda-downloads)
-  - [NVidia CUDNN 5.1] (https://developer.nvidia.com/cudnn)
+  - [NVidia CUDA Toolkit 8.0](https://developer.nvidia.com/cuda-downloads)
+  - [NVidia CUDNN 5.1](https://developer.nvidia.com/cudnn)
+  - [CMake 3.6](https://cmake.org/files/v3.6/cmake-3.6.3-win64-x64.msi)
+  
 * Ubuntu 14.04
   - Makefile generator
   - Docker 1.9.1 (for automated testing)
@@ -155,7 +181,11 @@ Step-by-step Windows build
    More? -Dtensorflow_ENABLE_GPU=ON ^
    More? -DCUDNN_HOME="D:\...\cudnn"
    ```
-    
+   To enable SIMD instructions with MSVC, as AVX and SSE, define it as follows:
+   ```
+   More? -Dtensorflow_WIN_CPU_SIMD_OPTIONS=/arch:AVX
+   ```     
+
    Note that the `-DCMAKE_BUILD_TYPE=Release` flag must match the build
    configuration that you choose when invoking `msbuild`. The known-good
    values are `Release` and `RelWithDebInfo`. The `Debug` build type is

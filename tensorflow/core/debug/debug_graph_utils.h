@@ -17,19 +17,46 @@ limitations under the License.
 #define TENSORFLOW_DEBUG_NODE_INSERTER_H_
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 
-// Returns a summary string for RepeatedPtrFields of DebugTensorWatches.
-const string SummarizeDebugTensorWatches(
-    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches);
+class DebuggerState : public DebuggerStateInterface {
+ public:
+  DebuggerState(const DebugOptions& debug_options);
+  virtual ~DebuggerState();
+
+  // Returns a summary string for RepeatedPtrFields of DebugTensorWatches.
+  const string SummarizeDebugTensorWatches() override;
+
+  // Insert special-purpose debug nodes to graph. See the documentation of
+  // DebugNodeInserter::InsertNodes() for details.
+  Status DecorateGraphForDebug(Graph* graph, Device* device) override;
+
+  const protobuf::RepeatedPtrField<DebugTensorWatch>& watches;
+
+  // Publish metadata about the debugged Session::Run() call.
+  //
+  // See the doc string of DebuggerStateInterface::PublishDebugMetadata() for
+  // details.
+  Status PublishDebugMetadata(const int64 global_step,
+                              const int64 session_run_count,
+                              const int64 executor_step_count,
+                              const std::vector<string>& input_names,
+                              const std::vector<string>& output_names,
+                              const std::vector<string>& target_names) override;
+
+ private:
+  std::unordered_set<string> debug_urls_;
+};
 
 class DebugNodeInserter {
  public:
@@ -78,11 +105,17 @@ class DebugNodeInserter {
       const protobuf::RepeatedPtrField<DebugTensorWatch>& watches, Graph* graph,
       Device* device);
 
-  // Get canonical name of the copy node.
+  // Set the parallel_iterations attribute of TensorFlow while loops
+  // (specifically the nodes for which IsEnter() returns true) to 1 to prevent
+  // any node from being executed multiple times concurrently and
+  // generating temporally-overlapping debug Tensor dumps.
+  static void DeparallelizeWhileLoops(Graph* graph, Device* device);
+
+  // Get canonical name of a copy node.
   static const string GetCopyNodeName(const string& node_name,
                                       const int output_slot);
 
-  // Get canonical name of the debug node.
+  // Get canonical name of a debug node.
   static const string GetDebugNodeName(const string& tensor_name,
                                        const int debug_op_num,
                                        const string& debug_op_name);
@@ -94,6 +127,19 @@ class DebugNodeInserter {
                                const int src_output, const DataType src_dt,
                                const string& tensor_name, Node** copy_node);
 
+  // Parse the debug_op_name string to extract proper op name and attributes.
+  // debug_op_name can be the proper op name only, e.g., "DebugNumericSummary".
+  // It can also contain customizable keys and values. Each key-value pair is
+  // connected with an equal sign ("="). Multiple key-value pairs are separated
+  // with semicolons (";"), which optional whitespace in between, e.g.,
+  // "DebugNumericSummary(mute_if_healthy=true, lower_bound=-100.0)".
+  static Status ParseDebugOpName(
+      const string& debug_op_name, string* debug_op_name_proper,
+      std::unordered_map<string, string>* attributes);
+
+  static Status SetDebugNodeAttributes(
+      Node* debug_node, const std::unordered_map<string, string>& attributes);
+
   static Status CreateDebugNode(Graph* graph, const DeviceType device_type,
                                 const string& src_copy_node_name,
                                 const DataType src_dt,
@@ -101,6 +147,8 @@ class DebugNodeInserter {
                                 const std::vector<string>& debug_urls,
                                 const int debug_op_num,
                                 const string& debug_op_name, Node** debug_node);
+
+  friend class DebugGraphUtilsTest;
 };
 }  // namespace tensorflow
 

@@ -20,62 +20,17 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/subprocess.h"
 
 namespace tensorflow {
 namespace testing {
 
-namespace {
-class PosixSubProcess : public SubProcess {
- public:
-  PosixSubProcess(const std::vector<string>& argv) : argv_(argv), pid_(0) {}
-
-  ~PosixSubProcess() override {}
-
-  bool Start() override {
-    if (pid_ != 0) {
-      LOG(ERROR) << "Tried to start process multiple times.";
-      return false;
-    }
-    pid_ = fork();
-    if (pid_ == 0) {
-      // We are in the child process.
-      const char* path = argv_[0].c_str();
-      const char** argv = new const char*[argv_.size() + 1];
-      int i = 0;
-      for (const string& arg : argv_) {
-        argv[i++] = arg.c_str();
-      }
-      argv[argv_.size()] = nullptr;
-      execv(path, (char* const*)argv);
-      // Never executes.
-      return true;
-    } else if (pid_ < 0) {
-      LOG(ERROR) << "Failed to fork process.";
-      return false;
-    } else {
-      // We are in the parent process and fork() was successful.
-      // TODO(mrry): Consider collecting stderr from the child.
-      return true;
-    }
-  }
-
-  bool Kill(int signal) override {
-    if (pid_ == 0) {
-      LOG(ERROR) << "Tried to kill process before starting it.";
-      return false;
-    }
-    return kill(pid_, signal) == 0;
-  }
-
- private:
-  const std::vector<string> argv_;
-  pid_t pid_;
-  TF_DISALLOW_COPY_AND_ASSIGN(PosixSubProcess);
-};
-}  // namespace
-
 std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
-  return std::unique_ptr<SubProcess>(new PosixSubProcess(argv));
+  std::unique_ptr<SubProcess> proc(new SubProcess());
+  proc->SetProgram(argv[0], argv);
+  proc->SetChannelAction(CHAN_STDERR, ACTION_DUPPARENT);
+  proc->SetChannelAction(CHAN_STDOUT, ACTION_DUPPARENT);
+  return proc;
 }
 
 int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }

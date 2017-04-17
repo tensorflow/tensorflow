@@ -42,7 +42,7 @@ class AssetManagerFileSystem : public FileSystem {
   AssetManagerFileSystem(AAssetManager* asset_manager, const string& prefix);
   ~AssetManagerFileSystem() override = default;
 
-  bool FileExists(const string& fname) override;
+  Status FileExists(const string& fname) override;
   Status NewRandomAccessFile(
       const string& filename,
       std::unique_ptr<RandomAccessFile>* result) override;
@@ -68,6 +68,11 @@ class AssetManagerFileSystem : public FileSystem {
 
  private:
   string RemoveAssetPrefix(const string& name);
+
+  // Return a string path that can be passed into AAssetManager functions.
+  // For example, 'my_prefix://some/dir/' would return 'some/dir'.
+  string NormalizeDirectoryPath(const string& fname);
+  bool DirectoryExists(const std::string& fname);
 
   AAssetManager* asset_manager_;
   string prefix_;

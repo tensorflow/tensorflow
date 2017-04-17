@@ -19,15 +19,18 @@ message VariableDef {
 
   // Support for saving variables as slices of a larger variable.
   SaveSliceInfoDef save_slice_info_def = 4;
+
+  // Whether to represent this as a ResourceVariable.
+  bool is_resource = 5;
 }
 
 message SaveSliceInfoDef {
   // Name of the full variable of which this is a slice.
   string full_name = 1;
   // Shape of the full variable.
-  repeated int32 full_shape = 2;
+  repeated int64 full_shape = 2;
   // Offset of this variable into the full variable.
-  repeated int32 var_offset = 3;
+  repeated int64 var_offset = 3;
   // Shape of this variable.
-  repeated int32 var_shape = 4;
+  repeated int64 var_shape = 4;
 }

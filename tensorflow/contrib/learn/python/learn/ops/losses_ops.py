@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
@@ -26,9 +27,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
 
+@deprecated('2016-12-01', 'Use `tf.contrib.losses.mean_squared_error` '
+            'and explicit logits computation.')
 def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
   """Returns prediction and loss for mean squared error regression."""
-  with ops.name_scope(name, "mean_squared_error_regressor",
+  with ops.name_scope(name, 'mean_squared_error_regressor',
                       [tensor_in, labels]):
     predictions = nn.xw_plus_b(tensor_in, weights, biases)
     if len(labels.get_shape()) == 1 and len(predictions.get_shape()) == 2:
@@ -36,6 +39,8 @@ def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
     return predictions, loss_ops.mean_squared_error(predictions, labels)
 
 
+@deprecated('2016-12-01', 'Use `tf.contrib.losses.softmax_cross_entropy` '
+            'and explicit logits computation.')
 def softmax_classifier(tensor_in,
                        labels,
                        weights,
@@ -63,8 +68,8 @@ def softmax_classifier(tensor_in,
   Returns:
     `tuple` of softmax predictions and loss `Tensor`s.
   """
-  with ops.name_scope(name, "softmax_classifier", [tensor_in, labels]):
+  with ops.name_scope(name, 'softmax_classifier', [tensor_in, labels]):
     logits = nn.xw_plus_b(tensor_in, weights, biases)
     if class_weight is not None:
-      logits = math_ops.mul(logits, class_weight)
+      logits = math_ops.multiply(logits, class_weight)
     return nn.softmax(logits), loss_ops.softmax_cross_entropy(logits, labels)

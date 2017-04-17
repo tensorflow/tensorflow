@@ -22,12 +22,14 @@ namespace tensorflow {
 
 inline string CurrentStackTrace() { return "No stack trace available"; }
 
+inline void DebugWriteToString(const char* data, void* arg) {}
+
 // A dummy class that does nothing.  Someday, add real support.
 class SavedStackTrace {
  public:
   SavedStackTrace() {}
 
-  void CreateCurrent() {}
+  void CreateCurrent(int skip_count) {}
 
   void Reset() {}
 

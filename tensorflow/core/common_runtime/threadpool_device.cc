@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
@@ -26,6 +27,10 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+
+#ifdef INTEL_MKL
+#include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
+#endif
 
 namespace tensorflow {
 
@@ -59,13 +64,19 @@ Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
 Status ThreadPoolDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
     Tensor* tensor) {
-  Tensor parsed(tensor_proto.dtype());
-  if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-    return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                   ProtoDebugString(tensor_proto));
+  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
+    Tensor parsed(tensor_proto.dtype());
+    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
+      *tensor = parsed;
+      return Status::OK();
+    }
   }
-  *tensor = parsed;
-  return Status::OK();
+  return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                 ProtoDebugString(tensor_proto));
 }
+
+#ifdef INTEL_MKL
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocator);
+#endif
 
 }  // namespace tensorflow

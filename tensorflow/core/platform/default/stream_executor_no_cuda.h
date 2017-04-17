@@ -20,10 +20,12 @@ limitations under the License.
 // IWYU pragma: friend third_party/tensorflow/core/platform/stream_executor_no_cuda.h
 
 #include "tensorflow/core/platform/default/from_stream_executor_status.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/event.h"
+#include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"

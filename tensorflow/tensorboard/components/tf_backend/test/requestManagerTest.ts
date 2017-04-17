@@ -12,8 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-var assert = chai.assert;
-
 module TF.Backend {
   interface MockRequest {
     resolve: Function;
@@ -93,10 +91,12 @@ module TF.Backend {
         var promise = rm.request('data/example.json');
         promise.then(
             (response) => {
-              assert.deepEqual(response, {foo: 3, bar: 'zoidberg'});
+              chai.assert.deepEqual(response, {foo: 3, bar: 'zoidberg'});
               done();
             },
-            (reject) => { throw new Error(reject); });
+            (reject) => {
+              throw new Error(reject);
+            });
       });
 
       it('rejects on bad url', (done) => {
@@ -108,10 +108,10 @@ module TF.Backend {
               done(new Error('the promise should have rejected'));
             },
             (reject: TF.Backend.RequestNetworkError) => {
-              assert.instanceOf(reject, TF.Backend.RequestNetworkError);
-              assert.include(reject.message, '404');
-              assert.include(reject.message, bad_url);
-              assert.equal(reject.req.status, 404);
+              chai.assert.instanceOf(reject, TF.Backend.RequestNetworkError);
+              chai.assert.include(reject.message, '404');
+              chai.assert.include(reject.message, bad_url);
+              chai.assert.equal(reject.req.status, 404);
               done();
             });
       });
@@ -152,25 +152,26 @@ module TF.Backend {
         var r1 = rm.request('2');
         var r2 = rm.request('3');
         var r3 = rm.request('4');
-        assert.equal(rm.activeRequests(), 3, 'three requests are active');
-        assert.equal(rm.outstandingRequests(), 4, 'four requests are pending');
+        chai.assert.equal(rm.activeRequests(), 3, 'three requests are active');
+        chai.assert.equal(
+            rm.outstandingRequests(), 4, 'four requests are pending');
         rm.waitForDispatch(3)
             .then(() => {
-              assert.equal(
+              chai.assert.equal(
                   rm.activeRequests(), 3,
                   'three requests are still active (1)');
-              assert.equal(
+              chai.assert.equal(
                   rm.requestsDispatched, 3, 'three requests were dispatched');
               rm.resolveFakeRequest();
               return rm.waitForDispatch(4);
             })
             .then(() => {
-              assert.equal(
+              chai.assert.equal(
                   rm.activeRequests(), 3,
                   'three requests are still active (2)');
-              assert.equal(
+              chai.assert.equal(
                   rm.requestsDispatched, 4, 'four requests were dispatched');
-              assert.equal(
+              chai.assert.equal(
                   rm.outstandingRequests(), 3, 'three requests are pending');
               rm.resolveFakeRequest();
               rm.resolveFakeRequest();
@@ -178,8 +179,10 @@ module TF.Backend {
               return r3;
             })
             .then(() => {
-              assert.equal(rm.activeRequests(), 0, 'all requests finished');
-              assert.equal(rm.outstandingRequests(), 0, 'no requests pending');
+              chai.assert.equal(
+                  rm.activeRequests(), 0, 'all requests finished');
+              chai.assert.equal(
+                  rm.outstandingRequests(), 0, 'no requests pending');
               done();
             });
       });
@@ -220,7 +223,7 @@ module TF.Backend {
         function assertResolutionOrder(expectedSpotInSequence) {
           return function() {
             nResolved++;
-            assert.equal(expectedSpotInSequence, nResolved);
+            chai.assert.equal(expectedSpotInSequence, nResolved);
           };
         }
 
@@ -254,16 +257,16 @@ module TF.Backend {
         var requestsRejected = 0;
         var success = () => requestsResolved++;
         var failure = (err) => {
-          assert.equal(err.name, 'RequestCancellationError');
+          chai.assert.equal(err.name, 'RequestCancellationError');
           requestsRejected++;
         };
         var finishTheTest = () => {
-          assert.equal(rm.activeRequests(), 0, 'no requests still active');
-          assert.equal(
+          chai.assert.equal(rm.activeRequests(), 0, 'no requests still active');
+          chai.assert.equal(
               rm.requestsDispatched, 1, 'only one req was ever dispatched');
-          assert.equal(rm.outstandingRequests(), 0, 'no pending requests');
-          assert.equal(requestsResolved, 1, 'one request got resolved');
-          assert.equal(
+          chai.assert.equal(rm.outstandingRequests(), 0, 'no pending requests');
+          chai.assert.equal(requestsResolved, 1, 'one request got resolved');
+          chai.assert.equal(
               requestsRejected, 4, 'four were cancelled and threw errors');
           done();
         };
@@ -272,11 +275,12 @@ module TF.Backend {
         rm.request('2').then(success, failure);
         rm.request('3').then(success, failure);
         rm.request('4').then(success, failure);
-        assert.equal(rm.activeRequests(), 1, 'one req is active');
+        chai.assert.equal(rm.activeRequests(), 1, 'one req is active');
         rm.waitForDispatch(1).then(() => {
-          assert.equal(rm.activeRequests(), 1, 'one req is active');
-          assert.equal(rm.requestsDispatched, 1, 'one req was dispatched');
-          assert.equal(rm.outstandingRequests(), 5, 'five reqs outstanding');
+          chai.assert.equal(rm.activeRequests(), 1, 'one req is active');
+          chai.assert.equal(rm.requestsDispatched, 1, 'one req was dispatched');
+          chai.assert.equal(
+              rm.outstandingRequests(), 5, 'five reqs outstanding');
           rm.clearQueue();
           rm.resolveFakeRequest();
           // resolving the first request triggers finishTheTest

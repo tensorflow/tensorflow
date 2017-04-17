@@ -35,6 +35,7 @@ namespace tensorflow {
 
 class ExecutorOpts;
 class StepStatsCollector;
+class RendezvousMgrInterface;
 
 // GraphMgr keeps track of a set of graphs that are registered with a
 // TensorFlow worker. Each registered graph is identified by a handle
@@ -60,7 +61,8 @@ class StepStatsCollector;
 //   EXPECT_EQ(out["c"], Tensor({4, 6}));
 class GraphMgr {
  public:
-  explicit GraphMgr(const WorkerEnv* worker_env);
+  explicit GraphMgr(const WorkerEnv* worker_env,
+                    RendezvousMgrInterface* rendezvous_mgr);
   ~GraphMgr();
 
   // Registers a graph. Fills in "handle"
@@ -81,6 +83,8 @@ class GraphMgr {
 
   Status SendInputs(const int64 step_id, const NamedTensors& in);
   Status RecvOutputs(const int64 step_id, NamedTensors* out);
+  void RecvOutputsAsync(const int64 step_id, NamedTensors* out,
+                        StatusCallback done);
 
   // Deregisters a graph.
   Status Deregister(const string& handle);
@@ -118,16 +122,23 @@ class GraphMgr {
     // A graph is partitioned over multiple devices.  Each partition
     // has a root executor which may call into the runtime library.
     std::vector<ExecutionUnit> units;
+
+    // Used to deresgister a cost model when cost model is requried in graph
+    // manager.
+    GraphMgr* graph_mgr;
   };
 
-  // Not owned.
-  const WorkerEnv* worker_env_;
+  const WorkerEnv* worker_env_;             // Not owned.
+  RendezvousMgrInterface* rendezvous_mgr_;  // Not owned.
 
   CostModelManager cost_model_manager_;
 
   // Owned.
   mutex mu_;
   int64 next_id_ GUARDED_BY(mu_) = 0;
+
+  // If true, blocks until device has finished all queued operations in a step.
+  bool sync_on_finish_ = true;
 
   // Table mapping graph handles to registered graphs.
   //
@@ -136,7 +147,7 @@ class GraphMgr {
   // mechanism to gc these graphs.
   std::unordered_map<string, Item*> table_;
 
-  void StartParallelExecutors(const string& handle, Item* item,
+  void StartParallelExecutors(const string& handle, int64 step_id, Item* item,
                               Rendezvous* rendezvous,
                               StepStatsCollector* collector,
                               CostGraphDef* cost_graph,
@@ -152,6 +163,8 @@ class GraphMgr {
 
   Status SendInputsToRendezvous(Rendezvous* rendezvous, const NamedTensors& in);
   Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out);
+  void RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous, NamedTensors* out,
+                                      const StatusCallback& done);
 
   Status InitItem(const string& session, const GraphDef& gdef,
                   const GraphOptions& graph_options, Item* item);

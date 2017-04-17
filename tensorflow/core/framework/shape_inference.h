@@ -144,7 +144,8 @@ class InferenceContext {
   // Values of <input_tensors_as_shapes> do not need to outlive the context.
   //
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
-  InferenceContext(const NodeDef* node_def, const OpDef& op_def,
+  InferenceContext(int graph_def_version, const NodeDef* node_def,
+                   const OpDef& op_def,
                    const std::vector<ShapeHandle>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
                    const std::vector<ShapeHandle>& input_tensors_as_shapes,
@@ -161,7 +162,8 @@ class InferenceContext {
   // Values of <input_tensors_as_shapes> do not need to outlive the context.
   //
   // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
-  InferenceContext(const NodeDef* node_def, const OpDef& op_def,
+  InferenceContext(int graph_def_version, const NodeDef* node_def,
+                   const OpDef& op_def,
                    const std::vector<TensorShapeProto>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
                    const std::vector<TensorShapeProto>& input_tensors_as_shapes,
@@ -180,10 +182,19 @@ class InferenceContext {
     if (!s.ok()) {
       return AttachContext(s);
     }
+#if 0
+    // TODO(cwhipkey): enable this check
+#ifndef NDEBUG
+    for (int i = 0; i < num_outputs(); ++i) {
+      DCHECK(output(i).IsSet()) << i << " for " << node_def().name()
+                                << " of type " << node_def().op();
+    }
+#endif  // NDEBUG
+#endif
     return s;
   }
 
-  ShapeHandle input(int idx) const { return inputs_[idx]; }
+  ShapeHandle input(int64 idx) const { return inputs_[idx]; }
   Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
 
@@ -226,7 +237,7 @@ class InferenceContext {
 
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
-  DimensionHandle Dim(ShapeHandle s, int32 idx) {
+  DimensionHandle Dim(ShapeHandle s, int64 idx) {
     if (s->rank_ == kUnknownRank) {
       return UnknownDim();
     }
@@ -235,8 +246,13 @@ class InferenceContext {
     }
     return s->dims_[idx];
   }
-  int32 Rank(ShapeHandle s) const { return s->rank_; }
-  bool RankKnown(ShapeHandle s) const { return Rank(s) != kUnknownRank; }
+  int32 Rank(ShapeHandle s) const {
+    DCHECK(s.IsSet());
+    return s.IsSet() ? s->rank_ : kUnknownRank;
+  }
+  bool RankKnown(ShapeHandle s) const {
+    return (s.IsSet() && (Rank(s) != kUnknownRank));
+  }
   inline int64 Value(DimensionOrConstant d) const {
     return d.dim.IsSet() ? d.dim->value_ : d.val;
   }
@@ -254,15 +270,18 @@ class InferenceContext {
   string DebugString(ShapeHandle s);
   string DebugString(DimensionHandle d);
 
+  // Describes the whole context, for debugging purposes.
+  string DebugString() const;
+
   // If <shape> has rank <rank>, or its rank is unknown, return OK and return
   // the shape with asserted rank in <*out>. Otherwise return an error.
   //
   // Note that <*out> may be set to <shape>.
-  Status WithRank(ShapeHandle shape, int32 rank,
+  Status WithRank(ShapeHandle shape, int64 rank,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
-  Status WithRankAtLeast(ShapeHandle shape, int32 rank,
+  Status WithRankAtLeast(ShapeHandle shape, int64 rank,
                          ShapeHandle* out) TF_MUST_USE_RESULT;
-  Status WithRankAtMost(ShapeHandle shape, int32 rank,
+  Status WithRankAtMost(ShapeHandle shape, int64 rank,
                         ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // If <dim> has value <value>, or its value is unknown, returns OK and returns
@@ -313,7 +332,7 @@ class InferenceContext {
 
   // Returns in <out> the shape from replacing <s.dim[dim_index]> with
   // <new_dim>.
-  Status ReplaceDim(ShapeHandle s, int dim_index, DimensionHandle new_dim,
+  Status ReplaceDim(ShapeHandle s, int64 dim_index, DimensionHandle new_dim,
                     ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns a new shape with the given dims. The returned value is owned by
@@ -325,7 +344,7 @@ class InferenceContext {
   ShapeHandle UnknownShape();
 
   // Returns a shape with specified rank but unknown dims.
-  ShapeHandle UnknownShapeOfRank(int32 rank);
+  ShapeHandle UnknownShapeOfRank(int64 rank);
 
   // Returns a new shape of zero dimensions.
   ShapeHandle Scalar();
@@ -345,6 +364,13 @@ class InferenceContext {
   Status MakeShapeFromShapeProto(const TensorShapeProto& proto,
                                  ShapeHandle* out);
 
+  // Returns in <out> a new shape corresponding to <partial_shape>.
+  Status MakeShapeFromPartialTensorShape(
+      const PartialTensorShape& partial_shape, ShapeHandle* out);
+
+  // Returns in <out> a new shape corresponding to <shape>.
+  Status MakeShapeFromTensorShape(const TensorShape& shape, ShapeHandle* out);
+
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
   inline DimensionHandle MakeDim(DimensionOrConstant d) {
@@ -357,6 +383,11 @@ class InferenceContext {
   // The input tensor must be in host memory, since it is dereferenced to get
   // the value.
   Status MakeDimForScalarInput(int idx, DimensionHandle* out);
+
+  // Returns the NodeDef. The returned reference does not outlive the
+  // InferenceContext, and it should not be used after InferenceContext is
+  // destroyed.
+  const NodeDef& node_def() { return node_def_; }
 
   // Look up the attr for the NodeDef being evaluated with name attr_name and
   // set *value to its value.  If no attr with attr_name is found in def(), or
@@ -419,50 +450,6 @@ class InferenceContext {
     return output_handle_dtype_[idx];
   }
 
-  // Validates the 3 component tensors of a sparse tensor have the proper
-  // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
-  Status ValidateSparseTensor(ShapeHandle indices_shape,
-                              ShapeHandle values_shape,
-                              ShapeHandle shape_shape) {
-    // Validate ranks.
-    ShapeHandle unused_shape;
-    TF_RETURN_IF_ERROR(WithRank(indices_shape, 2, &unused_shape));
-    TF_RETURN_IF_ERROR(WithRank(values_shape, 1, &unused_shape));
-    TF_RETURN_IF_ERROR(WithRank(shape_shape, 1, &unused_shape));
-
-    // Number of elements in indices and values must match.
-    DimensionHandle num_index_elements_dim = Dim(indices_shape, 0);
-    if (ValueKnown(num_index_elements_dim)) {
-      DimensionHandle num_values_elements_dim = Dim(values_shape, 0);
-      if (ValueKnown(num_values_elements_dim)) {
-        int64 num_index_elements = Value(num_index_elements_dim);
-        int64 num_values_elements = Value(num_values_elements_dim);
-        if (num_index_elements != num_values_elements) {
-          return errors::InvalidArgument(
-              "Number of elements in index (", num_index_elements,
-              ") and values (", num_values_elements, ") do not match.");
-        }
-      }
-    }
-
-    // Rank embedded in indices must match shape.
-    DimensionHandle index_rank_dim = Dim(indices_shape, 1);
-    if (ValueKnown(index_rank_dim)) {
-      DimensionHandle shape_rank_dim = Dim(shape_shape, 0);
-      if (ValueKnown(shape_rank_dim)) {
-        int64 index_rank = Value(index_rank_dim);
-        int32 shape_rank = Value(shape_rank_dim);
-        if (index_rank != shape_rank) {
-          return errors::InvalidArgument("Index rank (", index_rank,
-                                         ") and shape rank (", shape_rank,
-                                         ") do not match.");
-        }
-      }
-    }
-
-    return Status::OK();
-  }
-
   // Note that shape functions should usually call MakeShapeFromShapeTensor,
   // as it does more analysis to provide partial shapes.
   //
@@ -471,6 +458,8 @@ class InferenceContext {
   // then an unknown shape is returned.
   Status MakeShapeFromTensor(const Tensor* t, ShapeHandle tensor_shape,
                              ShapeHandle* out);
+
+  int graph_def_version() const { return graph_def_version_; }
 
  private:
   // Creates and stores shapes for use in InferenceContext.
@@ -544,6 +533,7 @@ class InferenceContext {
   std::vector<ShapeHandle> output_handle_shape_;
   std::vector<DataType> output_handle_dtype_;
 
+  const int graph_def_version_;
   const NodeDef& node_def_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
@@ -562,7 +552,7 @@ inline Dimension::Dimension() : value_(InferenceContext::kUnknownDim) {}
 inline Dimension::Dimension(int64 value) : value_(value) {
   DCHECK(value >= 0 || value == InferenceContext::kUnknownDim)
       << "Dimension must be non-negative or equal to "
-         "InferenceContext::kUnknownDim but got"
+         "InferenceContext::kUnknownDim but got "
       << value;
 }
 
@@ -578,7 +568,7 @@ inline DimensionOrConstant::DimensionOrConstant(DimensionHandle dim)
 inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
   DCHECK(val >= 0 || val == InferenceContext::kUnknownDim)
       << "Dimension must be non-negative or equal to "
-         "InferenceContext::kUnknownDim but got"
+         "InferenceContext::kUnknownDim but got "
       << val;
 }
 

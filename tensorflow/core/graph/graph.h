@@ -40,6 +40,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <vector>
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
@@ -70,6 +71,15 @@ class Node {
   int cost_id() const { return cost_id_; }
   const string& name() const { return props_->node_def_.name(); }
   const string& type_string() const { return props_->node_def_.op(); }
+  // def() provides the NodeDef the user supplied, but the specifics
+  // of this Node may have changed due to placement, optimization, etc.
+  // In particular:
+  // * def().name() will match name();
+  // * def().op() will match type_string() and op_def().name();
+  // * def().input() is not reliable, use "in_edges()" below instead;
+  // * def().device() is the "user's requested device" and may not match
+  //   the actual assigned device, see assigned_device_name() below;
+  // * def().attr() is authoritative.
   const NodeDef& def() const { return props_->node_def_; }
   const OpDef& op_def() const { return *props_->op_def_; }
 
@@ -86,8 +96,8 @@ class Node {
   // you want the device the user requested, use def().device() instead.
   // TODO(josh11b): Validate that the assigned_device, if not empty:
   // fully specifies a device, and satisfies def().device().
-  // TODO(josh11b): Move device_name outside of Node into a NodeId->DeviceName
-  // map.
+  // TODO(josh11b): Move assigned_device_name outside of Node into a
+  // NodeId->DeviceName map.
   string assigned_device_name() const { return assigned_device_name_; }
   void set_assigned_device_name(const string& device_name) {
     assigned_device_name_ = device_name;
@@ -141,6 +151,10 @@ class Node {
 
   // Returns into '*e' the edge connecting to the 'idx' input of this Node.
   Status input_edge(int idx, const Edge** e) const;
+
+  // Returns into '*edges' the input data edges of this Node, indexed by input
+  // number. Does not return control edges.
+  Status input_edges(std::vector<const Edge*>* edges) const;
 
   // Returns into '*n' the node that has an output connected to the
   // 'idx' input of this Node.
@@ -259,11 +273,23 @@ class Graph {
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
   //
-  // The graph can hold ops found in registry.
+  // The graph can hold ops found in registry. `registry`s lifetime must be at
+  // least that of the constructed graph's.
   explicit Graph(const OpRegistryInterface* registry);
+
+  // Constructs a graph with a single SOURCE (always id kSourceId) and a
+  // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
+  //
+  // The graph can hold ops found in `flib_def`. Unlike the constructor taking
+  // an OpRegistryInterface, this constructor copies the function definitions in
+  // `flib_def` so its lifetime may be shorter than that of the graph's. The
+  // OpRegistryInterface backing `flib_def` must still have the lifetime of the
+  // graph though.
+  explicit Graph(const FunctionLibraryDefinition& flib_def);
+
   ~Graph();
 
-  static const int kControlSlot = -1;
+  static const int kControlSlot;
 
   // The GraphDef version range of this graph (see graph.proto).
   const VersionDef& versions() const { return versions_; }
@@ -297,6 +323,12 @@ class Graph {
   // Removes edge from the graph.
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
+
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib);
 
   // The number of live nodes in the graph.
   //
@@ -355,7 +387,8 @@ class Graph {
   Node* source_node() const { return FindNodeId(kSourceId); }
   Node* sink_node() const { return FindNodeId(kSinkId); }
 
-  const OpRegistryInterface* op_registry() const { return ops_; }
+  const OpRegistryInterface* op_registry() const { return &ops_; }
+  const FunctionLibraryDefinition& flib_def() const { return ops_; }
 
   // TODO(josh11b): uint64 hash() const;
 
@@ -367,8 +400,8 @@ class Graph {
   Node* AllocateNode(Node::Properties* props, const Node* cost_node);
   void ReleaseNode(Node* node);
 
-  // Registry of all known ops.  Not owned.
-  const OpRegistryInterface* const ops_;
+  // Registry of all known ops, including functions.
+  FunctionLibraryDefinition ops_;
 
   // GraphDef versions
   VersionDef versions_;
@@ -406,6 +439,8 @@ class Graph {
 
 // Helper routines
 
+inline bool IsSource(const Node* node) { return node->IsSource(); }
+inline bool IsSink(const Node* node) { return node->IsSink(); }
 inline bool IsSwitch(const Node* node) { return node->IsSwitch(); }
 inline bool IsMerge(const Node* node) { return node->IsMerge(); }
 inline bool IsEnter(const Node* node) { return node->IsEnter(); }

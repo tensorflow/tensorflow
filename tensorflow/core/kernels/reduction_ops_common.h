@@ -40,6 +40,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device>
 struct Constants {
@@ -60,13 +63,16 @@ struct Constants {
 };
 
 #if defined(EIGEN_HAS_INDEX_LIST)
-template <>
-struct Constants<CPUDevice> {
+struct ConstantsBase {
   const Eigen::IndexList<Eigen::type2index<0>> kZero;
   const Eigen::IndexList<Eigen::type2index<1>> kOne;
   const Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<2>> kZeroTwo;
 };
-#endif
+template<> struct Constants<CPUDevice> : ConstantsBase{};
+#ifdef TENSORFLOW_USE_SYCL
+template<> struct Constants<SYCLDevice> : ConstantsBase{};
+#endif // TENSORFLOW_USE_SYCL
+#endif // EIGEN_HAS_INDEX_LIST
 
 class ReductionHelper {
  public:
@@ -145,19 +151,16 @@ class ReductionOp : public OpKernel {
     OP_REQUIRES_OK(ctx, helper.Simplify(data, axes, keep_dims_));
     CHECK_GE(helper.ndims(), 0);
 
-    // The real output shape will be assigned below.
-    TensorShape empty_shape;
-    Tensor* out = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, empty_shape, &out));
-
     if (helper.ndims() == 0 ||
         (helper.ndims() == 1 && !helper.reduce_first_axis())) {
       // Special case. Reduces nothing.  It is unclear why this is
       // necessary, but tests fail without it.  Look into why this
       // case occurs.
-      if (!out->CopyFrom(data, helper.out_shape())) {
+      Tensor out;
+      if (!out.CopyFrom(data, helper.out_shape())) {
         ctx->SetStatus(errors::Internal("Error during reduction copy."));
       }
+      ctx->set_output(0, out);
       return;
     }
 
@@ -168,8 +171,9 @@ class ReductionOp : public OpKernel {
     // A temporary tensor whose size matches the size of the reduced
     // output.
     Tensor tmp_out;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(out->dtype(), helper.out_reshape(),
-                                           &tmp_out, alloc_attr));
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(ctx->expected_output_dtype(0),
+                                helper.out_reshape(), &tmp_out, alloc_attr));
 
     typedef functor::ReduceFunctor<Device, Reducer> Functor;
     Constants<Device> constants;
@@ -227,9 +231,19 @@ class ReductionOp : public OpKernel {
     // Set the real output using the contents of the reduction but the
     // real expected output shape.  The number of elements should
     // match between the two shapes.
-    if (!out->CopyFrom(tmp_out, helper.out_shape())) {
+    Tensor out;
+    if (!out.CopyFrom(tmp_out, helper.out_shape())) {
       ctx->SetStatus(errors::Internal("Error during reduction copy."));
     }
+    if (ctx->track_allocations()) {
+      // The temporary memory becomes the output memory.
+      if (ctx->allocate_on_host(alloc_attr)) {
+        ctx->record_host_temp_memory_size(-out.AllocatedBytes());
+      } else {
+        ctx->record_device_temp_memory_size(-out.AllocatedBytes());
+      }
+    }
+    ctx->set_output(0, out);
   }
 
  private:
@@ -239,21 +253,55 @@ class ReductionOp : public OpKernel {
 
 namespace functor {
 
-template <typename Reducer>
-struct ReduceFunctor<CPUDevice, Reducer> {
+template <typename Device, typename Reducer>
+struct ReduceFunctorBase {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(const CPUDevice& d, OUT_T out, IN_T in,
+  static void Reduce(const Device& d, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer) {
     ReduceEigenImpl(d, out, in, reduction_axes, reducer);
   }
 
   template <typename OUT_T>
-  static void FillIdentity(const CPUDevice& d, OUT_T out,
+  static void FillIdentity(const Device& d, OUT_T out,
                            const Reducer& reducer) {
     FillIdentityEigenImpl(d, out, reducer);
   }
 };
+
+template <typename Reducer>
+struct ReduceFunctor<CPUDevice, Reducer>
+        : ReduceFunctorBase<CPUDevice, Reducer>{};
+#if TENSORFLOW_USE_SYCL
+template <typename Reducer>
+struct ReduceFunctor<SYCLDevice, Reducer>
+        : ReduceFunctorBase<SYCLDevice, Reducer>{};
+
+template <typename T>
+struct ReduceFunctor<SYCLDevice, Eigen::internal::MeanReducer<T> > {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(const SYCLDevice& d, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const Eigen::internal::MeanReducer<T>& reducer) {
+    typedef typename IN_T::Index Index;
+    // Eigen sum reductions are much faster on GPU than mean reductions:
+    // Simply trigger them by computing the sum of the weighted inputs.
+    Index num_coeffs_to_reduce = 1;
+    for (int i = 0; i < Eigen::internal::array_size<ReductionAxes>::value;
+         ++i) {
+      num_coeffs_to_reduce *= in.dimension(reduction_axes[i]);
+    }
+    T scale = T(1.0) / num_coeffs_to_reduce;
+    out.device(d) = (in * scale).sum(reduction_axes);
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(const SYCLDevice& d, OUT_T out,
+                           const Eigen::internal::MeanReducer<T>& reducer) {
+    FillIdentityEigenImpl(d, out, reducer);
+  }
+};
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

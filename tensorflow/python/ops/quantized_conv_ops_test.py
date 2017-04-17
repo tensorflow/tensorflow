@@ -12,17 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Functional tests for quantized convolutional operations."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.platform import test
 
 
-class Conv2DTest(tf.test.TestCase):
+class Conv2DTest(test.TestCase):
 
   def __init__(self, method_name="runTest"):
     super(Conv2DTest, self).__init__(method_name)
@@ -57,18 +61,18 @@ class Conv2DTest(tf.test.TestCase):
     x2_min = 0.0
     x2_max = 255.0
     with self.test_session(use_gpu=False) as sess:
-      t1 = tf.constant(x1, shape=tensor_in_sizes, dtype=tf.quint8)
-      t2 = tf.constant(x2, shape=filter_in_sizes, dtype=tf.quint8)
-      conv = tf.nn.quantized_conv2d(t1,
-                                    t2,
-                                    out_type=tf.qint32,
-                                    strides=[1, stride,
-                                             stride, 1],
-                                    padding=padding,
-                                    min_input=x1_min,
-                                    max_input=x1_max,
-                                    min_filter=x2_min,
-                                    max_filter=x2_max)
+      t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtypes.quint8)
+      t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtypes.quint8)
+      conv = nn_ops.quantized_conv2d(
+          t1,
+          t2,
+          out_type=dtypes.qint32,
+          strides=[1, stride, stride, 1],
+          padding=padding,
+          min_input=x1_min,
+          max_input=x1_max,
+          min_filter=x2_min,
+          max_filter=x2_max)
       value = sess.run(conv)
     quantized_output = value[0]
     output_min = value[1]
@@ -120,13 +124,16 @@ class Conv2DTest(tf.test.TestCase):
     # 16*3+17*6+18*9=312, clamped to 255
     # Because the output shift is zero, we call the non-optimized reference
     # path for the convolution.
-    expected_output = [30, 36, 42, 66, 81, 96, 102, 126, 150, 138, 171, 204,
-                       174, 216, 258, 210, 261, 312]
-    self._VerifyValues(tensor_in_sizes=[1, 2, 3, 3],
-                       filter_in_sizes=[1, 1, 3, 3],
-                       stride=1,
-                       padding="VALID",
-                       expected=expected_output)
+    expected_output = [
+        30, 36, 42, 66, 81, 96, 102, 126, 150, 138, 171, 204, 174, 216, 258,
+        210, 261, 312
+    ]
+    self._VerifyValues(
+        tensor_in_sizes=[1, 2, 3, 3],
+        filter_in_sizes=[1, 1, 3, 3],
+        stride=1,
+        padding="VALID",
+        expected=expected_output)
 
   def testConv2D2x2Filter(self):
     # Our generated input is [batch, rows, cols, depth], and looks like this:
@@ -151,40 +158,47 @@ class Conv2DTest(tf.test.TestCase):
     # The expected values are taken from the raw totals and rescaled to fit into
     # eight bits.
     expected_output = [2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0]
-    self._VerifyValues(tensor_in_sizes=[1, 2, 3, 3],
-                       filter_in_sizes=[2, 2, 3, 3],
-                       stride=1,
-                       padding="VALID",
-                       expected=expected_output)
+    self._VerifyValues(
+        tensor_in_sizes=[1, 2, 3, 3],
+        filter_in_sizes=[2, 2, 3, 3],
+        stride=1,
+        padding="VALID",
+        expected=expected_output)
 
   def testConv2D1x2Filter(self):
     # The outputs are computed using third_party/py/IPython/notebook.
     # With a shift of 21, we should execute the optimized path here.
-    expected_output = [231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0,
-                       840.0, 843.0, 936.0, 1029.0]
-    self._VerifyValues(tensor_in_sizes=[1, 2, 3, 3],
-                       filter_in_sizes=[1, 2, 3, 3],
-                       stride=1,
-                       padding="VALID",
-                       expected=expected_output)
+    expected_output = [
+        231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0, 840.0, 843.0,
+        936.0, 1029.0
+    ]
+    self._VerifyValues(
+        tensor_in_sizes=[1, 2, 3, 3],
+        filter_in_sizes=[1, 2, 3, 3],
+        stride=1,
+        padding="VALID",
+        expected=expected_output)
 
   def testConv2D2x2FilterStride2(self):
     # With a shift of 21, we should execute the optimized path here.
     expected_output = [2271.0, 2367.0, 2463.0]
-    self._VerifyValues(tensor_in_sizes=[1, 2, 3, 3],
-                       filter_in_sizes=[2, 2, 3, 3],
-                       stride=2,
-                       padding="VALID",
-                       expected=expected_output)
+    self._VerifyValues(
+        tensor_in_sizes=[1, 2, 3, 3],
+        filter_in_sizes=[2, 2, 3, 3],
+        stride=2,
+        padding="VALID",
+        expected=expected_output)
 
   def testConv2D2x2FilterStride2Same(self):
     # With a shift of 21, we should execute the optimized path here.
     expected_output = [2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0]
-    self._VerifyValues(tensor_in_sizes=[1, 2, 3, 3],
-                       filter_in_sizes=[2, 2, 3, 3],
-                       stride=2,
-                       padding="SAME",
-                       expected=expected_output)
+    self._VerifyValues(
+        tensor_in_sizes=[1, 2, 3, 3],
+        filter_in_sizes=[2, 2, 3, 3],
+        stride=2,
+        padding="SAME",
+        expected=expected_output)
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

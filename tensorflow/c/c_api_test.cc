@@ -19,6 +19,10 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <vector>
+#include "tensorflow/cc/saved_model/signature_constants.h"
+#include "tensorflow/cc/saved_model/tag_constants.h"
+#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -27,9 +31,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 using tensorflow::int32;
 using tensorflow::string;
@@ -44,6 +52,11 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src);
 }  // namespace tensorflow
 
 namespace {
+
+typedef std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)>
+    unique_tensor_ptr;
+
+TEST(CAPI, Version) { EXPECT_NE("", string(TF_Version())); }
 
 TEST(CAPI, Status) {
   TF_Status* s = TF_NewStatus();
@@ -90,6 +103,22 @@ TEST(CAPI, AllocateTensor) {
   EXPECT_EQ(dims[1], TF_Dim(t, 1));
   EXPECT_EQ(num_bytes, TF_TensorByteSize(t));
   TF_DeleteTensor(t);
+}
+
+TEST(CAPI, MaybeMove) {
+  const int num_bytes = 6 * sizeof(float);
+  float* values =
+      reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
+          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+  int64_t dims[] = {2, 3};
+  bool deallocator_called = false;
+  TF_Tensor* t = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
+                              &Deallocator, &deallocator_called);
+
+  TF_Tensor* o = TF_TensorMaybeMove(t);
+  ASSERT_TRUE(o == nullptr);  // It is unsafe to move memory TF might not own.
+  TF_DeleteTensor(t);
+  EXPECT_TRUE(deallocator_called);
 }
 
 TEST(CAPI, LibraryLoadFunctions) {
@@ -154,10 +183,10 @@ TEST(CAPI, SessionOptions) {
   TF_DeleteSessionOptions(opt);
 }
 
-TEST(CAPI, SessionWithRunMetadata) {
+TEST(CAPI, DeprecatedSession) {
   TF_Status* s = TF_NewStatus();
   TF_SessionOptions* opt = TF_NewSessionOptions();
-  TF_Session* session = TF_NewSession(opt, s);
+  TF_DeprecatedSession* session = TF_NewDeprecatedSession(opt, s);
   TF_DeleteSessionOptions(opt);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
@@ -171,7 +200,7 @@ TEST(CAPI, SessionWithRunMetadata) {
   TF_DeleteBuffer(run_metadata);
   TF_DeleteBuffer(run_options);
 
-  TF_DeleteSession(session, s);
+  TF_DeleteDeprecatedSession(session, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   TF_DeleteStatus(s);
@@ -198,6 +227,12 @@ TEST(CAPI, DataTypeEnum) {
   EXPECT_EQ(TF_UINT16, static_cast<TF_DataType>(tensorflow::DT_UINT16));
   EXPECT_EQ(TF_COMPLEX128, static_cast<TF_DataType>(tensorflow::DT_COMPLEX128));
   EXPECT_EQ(TF_HALF, static_cast<TF_DataType>(tensorflow::DT_HALF));
+  EXPECT_EQ(TF_DataTypeSize(TF_DOUBLE),
+            tensorflow::DataTypeSize(tensorflow::DT_DOUBLE));
+  EXPECT_EQ(TF_DataTypeSize(TF_STRING),
+            tensorflow::DataTypeSize(tensorflow::DT_STRING));
+  // Test with invalid type; should always return 0 as documented
+  EXPECT_EQ(TF_DataTypeSize(static_cast<TF_DataType>(0)), 0);
 }
 
 TEST(CAPI, StatusEnum) {
@@ -250,32 +285,51 @@ static TF_Tensor* Int32Tensor(int32 v) {
                       &Int32Deallocator, nullptr);
 }
 
-TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s) {
-  TF_OperationDescription* desc = TF_NewOperation(graph, "Placeholder", "feed");
+TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
+                          const char* name = "feed") {
+  TF_OperationDescription* desc = TF_NewOperation(graph, "Placeholder", name);
   TF_SetAttrType(desc, "dtype", TF_INT32);
   return TF_FinishOperation(desc, s);
 }
 
-TF_Operation* ScalarConst(int32 v, TF_Graph* graph, TF_Status* s) {
-  TF_OperationDescription* desc = TF_NewOperation(graph, "Const", "scalar");
-  TF_SetAttrTensor(desc, "value", Int32Tensor(v), s);
+TF_Operation* ScalarConst(int32 v, TF_Graph* graph, TF_Status* s,
+                          const char* name = "scalar") {
+  unique_tensor_ptr tensor(Int32Tensor(v), TF_DeleteTensor);
+  TF_OperationDescription* desc = TF_NewOperation(graph, "Const", name);
+  TF_SetAttrTensor(desc, "value", tensor.get(), s);
   if (TF_GetCode(s) != TF_OK) return nullptr;
   TF_SetAttrType(desc, "dtype", TF_INT32);
   return TF_FinishOperation(desc, s);
 }
 
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
-                  TF_Status* s) {
-  TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", "add");
-  TF_Port add_inputs[2] = {{l, 0}, {r, 0}};
+                  TF_Status* s, const char* name = "add") {
+  TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", name);
+  TF_Output add_inputs[2] = {{l, 0}, {r, 0}};
   TF_AddInputList(desc, add_inputs, 2);
+  return TF_FinishOperation(desc, s);
+}
+
+TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
+                  const char* name = "add") {
+  TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", name);
+  TF_Output inputs[2] = {l, r};
+  TF_AddInputList(desc, inputs, 2);
   return TF_FinishOperation(desc, s);
 }
 
 TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "Neg", "neg");
-  TF_Port neg_input = {n, 0};
+  TF_Output neg_input = {n, 0};
   TF_AddInput(desc, neg_input);
+  return TF_FinishOperation(desc, s);
+}
+
+TF_Operation* LessThan(TF_Output l, TF_Output r, TF_Graph* graph,
+                       TF_Status* s) {
+  TF_OperationDescription* desc = TF_NewOperation(graph, "Less", "less_than");
+  TF_AddInput(desc, l);
+  TF_AddInput(desc, r);
   return TF_FinishOperation(desc, s);
 }
 
@@ -395,7 +449,7 @@ TEST(CAPI, SetShape) {
 
   TF_Operation* feed = Placeholder(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  TF_Port feed_out_0 = TF_Port{feed, 0};
+  TF_Output feed_out_0 = TF_Output{feed, 0};
   int num_dims;
 
   // Fetch the shape, it should be completely unknown.
@@ -456,7 +510,7 @@ TEST(CAPI, SetShape) {
   // Test for a scalar.
   TF_Operation* three = ScalarConst(3, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  TF_Port three_out_0 = TF_Port{three, 0};
+  TF_Output three_out_0 = TF_Output{three, 0};
 
   num_dims = TF_GraphGetTensorNumDims(graph, three_out_0, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
@@ -482,11 +536,11 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(string("Placeholder"), string(TF_OperationOpType(feed)));
   EXPECT_EQ(string(""), string(TF_OperationDevice(feed)));
   EXPECT_EQ(1, TF_OperationNumOutputs(feed));
-  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Port{feed, 0}));
+  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Output{feed, 0}));
   EXPECT_EQ(1, TF_OperationOutputListLength(feed, "output", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(0, TF_OperationNumInputs(feed));
-  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Port{feed, 0}));
+  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Output{feed, 0}));
   EXPECT_EQ(0, TF_OperationNumControlInputs(feed));
   EXPECT_EQ(0, TF_OperationNumControlOutputs(feed));
 
@@ -515,21 +569,21 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(string("AddN"), string(TF_OperationOpType(add)));
   EXPECT_EQ(string(""), string(TF_OperationDevice(add)));
   EXPECT_EQ(1, TF_OperationNumOutputs(add));
-  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Port{add, 0}));
+  EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Output{add, 0}));
   EXPECT_EQ(1, TF_OperationOutputListLength(add, "sum", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(2, TF_OperationNumInputs(add));
   EXPECT_EQ(2, TF_OperationInputListLength(add, "inputs", s));
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Port{add, 0}));
-  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Port{add, 1}));
-  TF_Port add_in_0 = TF_OperationInput(TF_Port{add, 0});
+  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Input{add, 0}));
+  EXPECT_EQ(TF_INT32, TF_OperationInputType(TF_Input{add, 1}));
+  TF_Output add_in_0 = TF_OperationInput(TF_Input{add, 0});
   EXPECT_EQ(feed, add_in_0.oper);
   EXPECT_EQ(0, add_in_0.index);
-  TF_Port add_in_1 = TF_OperationInput(TF_Port{add, 1});
+  TF_Output add_in_1 = TF_OperationInput(TF_Input{add, 1});
   EXPECT_EQ(three, add_in_1.oper);
   EXPECT_EQ(0, add_in_1.index);
-  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Port{add, 0}));
+  EXPECT_EQ(0, TF_OperationOutputNumConsumers(TF_Output{add, 0}));
   EXPECT_EQ(0, TF_OperationNumControlInputs(add));
   EXPECT_EQ(0, TF_OperationNumControlOutputs(add));
 
@@ -539,16 +593,17 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(attr_value.i(), 2);
 
   // Placeholder oper now has a consumer.
-  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Port{feed, 0}));
-  TF_Port feed_port;
-  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Port{feed, 0}, &feed_port, 1));
+  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Output{feed, 0}));
+  TF_Input feed_port;
+  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Output{feed, 0}, &feed_port, 1));
   EXPECT_EQ(add, feed_port.oper);
   EXPECT_EQ(0, feed_port.index);
 
   // The scalar const oper also has a consumer.
-  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Port{three, 0}));
-  TF_Port three_port;
-  EXPECT_EQ(1, TF_OperationOutputConsumers(TF_Port{three, 0}, &three_port, 1));
+  ASSERT_EQ(1, TF_OperationOutputNumConsumers(TF_Output{three, 0}));
+  TF_Input three_port;
+  EXPECT_EQ(1,
+            TF_OperationOutputConsumers(TF_Output{three, 0}, &three_port, 1));
   EXPECT_EQ(add, three_port.oper);
   EXPECT_EQ(1, three_port.index);
 
@@ -646,6 +701,28 @@ TEST(CAPI, Graph) {
   TF_DeleteStatus(s);
 }
 
+/*
+TODO(skyewm): this test currently DCHECKs, change to bad status
+
+TEST(CAPI, InputFromDifferentGraphError) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* g1 = TF_NewGraph();
+  TF_Graph* g2 = TF_NewGraph();
+
+  TF_Operation* feed = Placeholder(g1, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Attempt to create node in g2 with input from g1
+  Neg(feed, g2, s);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s));
+  EXPECT_STREQ("foo", TF_Message(s));
+
+  TF_DeleteGraph(g1);
+  TF_DeleteGraph(g2);
+  TF_DeleteStatus(s);
+}
+*/
+
 TEST(CAPI, ImportGraphDef) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -654,9 +731,12 @@ TEST(CAPI, ImportGraphDef) {
   Placeholder(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   ASSERT_TRUE(TF_GraphOperationByName(graph, "feed") != nullptr);
-  ScalarConst(3, graph, s);
+  TF_Operation* oper = ScalarConst(3, graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   ASSERT_TRUE(TF_GraphOperationByName(graph, "scalar") != nullptr);
+  Neg(oper, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "neg") != nullptr);
 
   // Export to a GraphDef
   TF_Buffer* graph_def = TF_NewBuffer();
@@ -671,13 +751,105 @@ TEST(CAPI, ImportGraphDef) {
   TF_GraphImportGraphDef(graph, graph_def, opts, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  TF_DeleteImportGraphDefOptions(opts);
-  TF_DeleteBuffer(graph_def);
-
   TF_Operation* scalar = TF_GraphOperationByName(graph, "imported/scalar");
   TF_Operation* feed = TF_GraphOperationByName(graph, "imported/feed");
+  TF_Operation* neg = TF_GraphOperationByName(graph, "imported/neg");
   ASSERT_TRUE(scalar != nullptr);
   ASSERT_TRUE(feed != nullptr);
+  ASSERT_TRUE(neg != nullptr);
+
+  // Import it again, with an input mapping and return outputs, into the same
+  // graph.
+  TF_DeleteImportGraphDefOptions(opts);
+  opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsSetPrefix(opts, "imported2");
+  TF_ImportGraphDefOptionsAddInputMapping(opts, "scalar", 0, {scalar, 0});
+  TF_ImportGraphDefOptionsAddReturnOutput(opts, "feed", 0);
+  TF_ImportGraphDefOptionsAddReturnOutput(opts, "scalar", 0);
+  EXPECT_EQ(2, TF_ImportGraphDefOptionsNumReturnOutputs(opts));
+  TF_Output return_outputs[2];
+  TF_GraphImportGraphDefWithReturnOutputs(graph, graph_def, opts,
+                                          return_outputs, 2, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* scalar2 = TF_GraphOperationByName(graph, "imported2/scalar");
+  TF_Operation* feed2 = TF_GraphOperationByName(graph, "imported2/feed");
+  TF_Operation* neg2 = TF_GraphOperationByName(graph, "imported2/neg");
+  ASSERT_TRUE(scalar2 != nullptr);
+  ASSERT_TRUE(feed2 != nullptr);
+  ASSERT_TRUE(neg2 != nullptr);
+
+  // Check input mapping
+  TF_Output neg_input = TF_OperationInput({neg, 0});
+  EXPECT_EQ(scalar, neg_input.oper);
+  EXPECT_EQ(0, neg_input.index);
+
+  // Check return outputs
+  EXPECT_EQ(feed2, return_outputs[0].oper);
+  EXPECT_EQ(0, return_outputs[0].index);
+  EXPECT_EQ(scalar, return_outputs[1].oper);  // remapped
+  EXPECT_EQ(0, return_outputs[1].index);
+
+  // Import again, with control dependencies, into the same graph.
+  TF_DeleteImportGraphDefOptions(opts);
+  opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsSetPrefix(opts, "imported3");
+  TF_ImportGraphDefOptionsAddControlDependency(opts, feed);
+  TF_ImportGraphDefOptionsAddControlDependency(opts, feed2);
+  TF_GraphImportGraphDef(graph, graph_def, opts, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* scalar3 = TF_GraphOperationByName(graph, "imported3/scalar");
+  TF_Operation* feed3 = TF_GraphOperationByName(graph, "imported3/feed");
+  TF_Operation* neg3 = TF_GraphOperationByName(graph, "imported3/neg");
+  ASSERT_TRUE(scalar3 != nullptr);
+  ASSERT_TRUE(feed3 != nullptr);
+  ASSERT_TRUE(neg3 != nullptr);
+
+  // Check that newly-imported scalar and feed have control deps (neg3 will
+  // inherit them from input)
+  TF_Operation* control_inputs[100];
+  int num_control_inputs = TF_OperationGetControlInputs(
+      scalar3, control_inputs, TF_OperationNumControlInputs(scalar3));
+  ASSERT_EQ(2, num_control_inputs);
+  EXPECT_EQ(feed, control_inputs[0]);
+  EXPECT_EQ(feed2, control_inputs[1]);
+
+  num_control_inputs = TF_OperationGetControlInputs(
+      feed3, control_inputs, TF_OperationNumControlInputs(feed3));
+  ASSERT_EQ(2, num_control_inputs);
+  EXPECT_EQ(feed, control_inputs[0]);
+  EXPECT_EQ(feed2, control_inputs[1]);
+
+  // Export to a graph def so we can import a graph with control dependencies
+  TF_DeleteBuffer(graph_def);
+  graph_def = TF_NewBuffer();
+  TF_GraphToGraphDef(graph, graph_def, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Import again, with remapped control dependency, into the same graph
+  TF_DeleteImportGraphDefOptions(opts);
+  opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsSetPrefix(opts, "imported4");
+  TF_ImportGraphDefOptionsRemapControlDependency(opts, "imported/feed", feed);
+  TF_GraphImportGraphDef(graph, graph_def, opts, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* scalar4 =
+      TF_GraphOperationByName(graph, "imported4/imported3/scalar");
+  TF_Operation* feed4 =
+      TF_GraphOperationByName(graph, "imported4/imported2/feed");
+
+  // Check that imported `imported3/scalar` has remapped control dep from
+  // original graph and imported control dep
+  num_control_inputs = TF_OperationGetControlInputs(
+      scalar4, control_inputs, TF_OperationNumControlInputs(scalar4));
+  ASSERT_EQ(2, num_control_inputs);
+  EXPECT_EQ(feed, control_inputs[0]);
+  EXPECT_EQ(feed4, control_inputs[1]);
+
+  TF_DeleteImportGraphDefOptions(opts);
+  TF_DeleteBuffer(graph_def);
 
   // Can add nodes to the imported graph without trouble.
   Add(feed, scalar, graph, s);
@@ -687,27 +859,28 @@ TEST(CAPI, ImportGraphDef) {
   TF_DeleteStatus(s);
 }
 
-class CSessionWithGraph {
+class CSession {
  public:
-  CSessionWithGraph(TF_Graph* graph, TF_Status* s) {
+  CSession(TF_Graph* graph, TF_Status* s) {
     TF_SessionOptions* opts = TF_NewSessionOptions();
-    session_ = TF_NewSessionWithGraph(graph, opts, s);
+    session_ = TF_NewSession(graph, opts, s);
     TF_DeleteSessionOptions(opts);
   }
 
-  ~CSessionWithGraph() {
+  CSession(TF_Session* session) { session_ = session; }
+
+  ~CSession() {
     TF_Status* s = TF_NewStatus();
     CloseAndDelete(s);
     EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_DeleteStatus(s);
   }
 
-  void SetInputs(
-      std::initializer_list<std::pair<TF_Operation*, TF_Tensor*>> inputs) {
+  void SetInputs(std::vector<std::pair<TF_Operation*, TF_Tensor*>> inputs) {
     DeleteInputValues();
     inputs_.clear();
     for (const auto& p : inputs) {
-      inputs_.emplace_back(TF_Port{p.first, 0});
+      inputs_.emplace_back(TF_Output{p.first, 0});
       input_values_.emplace_back(p.second);
     }
   }
@@ -716,8 +889,13 @@ class CSessionWithGraph {
     ResetOutputValues();
     outputs_.clear();
     for (TF_Operation* o : outputs) {
-      outputs_.emplace_back(TF_Port{o, 0});
+      outputs_.emplace_back(TF_Output{o, 0});
     }
+  }
+
+  void SetOutputs(const std::vector<TF_Output>& outputs) {
+    ResetOutputValues();
+    outputs_ = outputs;
   }
 
   void SetTargets(std::initializer_list<TF_Operation*> targets) {
@@ -735,11 +913,11 @@ class CSessionWithGraph {
     ResetOutputValues();
     output_values_.resize(outputs_.size(), nullptr);
 
-    const TF_Port* inputs_ptr = inputs_.empty() ? nullptr : &inputs_[0];
+    const TF_Output* inputs_ptr = inputs_.empty() ? nullptr : &inputs_[0];
     TF_Tensor* const* input_values_ptr =
         input_values_.empty() ? nullptr : &input_values_[0];
 
-    const TF_Port* outputs_ptr = outputs_.empty() ? nullptr : &outputs_[0];
+    const TF_Output* outputs_ptr = outputs_.empty() ? nullptr : &outputs_[0];
     TF_Tensor** output_values_ptr =
         output_values_.empty() ? nullptr : &output_values_[0];
 
@@ -750,17 +928,16 @@ class CSessionWithGraph {
                   inputs_.size(), outputs_ptr, output_values_ptr,
                   outputs_.size(), targets_ptr, targets_.size(), nullptr, s);
 
-    // TF_SessionRun() takes ownership of the tensors in input_values_.
-    input_values_.clear();
+    DeleteInputValues();
   }
 
   void CloseAndDelete(TF_Status* s) {
     DeleteInputValues();
     ResetOutputValues();
     if (session_ != nullptr) {
-      TF_CloseSessionWithGraph(session_, s);
+      TF_CloseSession(session_, s);
       EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-      TF_DeleteSessionWithGraph(session_, s);
+      TF_DeleteSession(session_, s);
       session_ = nullptr;
     }
   }
@@ -782,15 +959,15 @@ class CSessionWithGraph {
     output_values_.clear();
   }
 
-  TF_SessionWithGraph* session_;
-  std::vector<TF_Port> inputs_;
+  TF_Session* session_;
+  std::vector<TF_Output> inputs_;
   std::vector<TF_Tensor*> input_values_;
-  std::vector<TF_Port> outputs_;
+  std::vector<TF_Output> outputs_;
   std::vector<TF_Tensor*> output_values_;
   std::vector<TF_Operation*> targets_;
 };
 
-TEST(CAPI, SessionWithGraph) {
+TEST(CAPI, Session) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
@@ -807,7 +984,7 @@ TEST(CAPI, SessionWithGraph) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Create a session for this graph.
-  CSessionWithGraph csession(graph, s);
+  CSession csession(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Run the graph.
@@ -847,6 +1024,74 @@ TEST(CAPI, SessionWithGraph) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, SessionPRun) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Construct the graph: A + 2 + B
+  TF_Operation* a = Placeholder(graph, s, "A");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* b = Placeholder(graph, s, "B");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* two = ScalarConst(2, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* plus2 = Add(a, two, graph, s, "plus2");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* plusB = Add(plus2, b, graph, s, "plusB");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Setup a session and a partial run handle.  The partial run will allow
+  // computation of A + 2 + B in two phases (calls to TF_SessionPRun):
+  // 1. Feed A and get (A+2)
+  // 2. Feed B and get (A+2)+B
+  TF_SessionOptions* opts = TF_NewSessionOptions();
+  TF_Session* sess = TF_NewSession(graph, opts, s);
+  TF_DeleteSessionOptions(opts);
+
+  TF_Output feeds[] = {TF_Output{a, 0}, TF_Output{b, 0}};
+  TF_Output fetches[] = {TF_Output{plus2, 0}, TF_Output{plusB, 0}};
+
+  const char* handle = nullptr;
+  TF_SessionPRunSetup(sess, feeds, TF_ARRAYSIZE(feeds), fetches,
+                      TF_ARRAYSIZE(fetches), nullptr, 0, &handle, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Feed A and fetch A + 2.
+  TF_Output feeds1[] = {TF_Output{a, 0}};
+  TF_Output fetches1[] = {TF_Output{plus2, 0}};
+  TF_Tensor* feedValues1[] = {Int32Tensor(1)};
+  TF_Tensor* fetchValues1[1];
+  TF_SessionPRun(sess, handle, feeds1, feedValues1, 1, fetches1, fetchValues1,
+                 1, nullptr, 0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(3, *(static_cast<int32*>(TF_TensorData(fetchValues1[0]))));
+  TF_DeleteTensor(feedValues1[0]);
+  TF_DeleteTensor(fetchValues1[0]);
+
+  // Feed B and fetch (A + 2) + B.
+  TF_Output feeds2[] = {TF_Output{b, 0}};
+  TF_Output fetches2[] = {TF_Output{plusB, 0}};
+  TF_Tensor* feedValues2[] = {Int32Tensor(4)};
+  TF_Tensor* fetchValues2[1];
+  TF_SessionPRun(sess, handle, feeds2, feedValues2, 1, fetches2, fetchValues2,
+                 1, nullptr, 0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(7, *(static_cast<int32*>(TF_TensorData(fetchValues2[0]))));
+  TF_DeleteTensor(feedValues2[0]);
+  TF_DeleteTensor(fetchValues2[0]);
+
+  // Clean up.
+  TF_DeletePRunHandle(handle);
+  TF_DeleteSession(sess, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 TEST(CAPI, ColocateWith) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -858,7 +1103,7 @@ TEST(CAPI, ColocateWith) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", "add");
-  TF_Port inputs[] = {{feed, 0}, {constant, 0}};
+  TF_Output inputs[] = {{feed, 0}, {constant, 0}};
   TF_AddInputList(desc, inputs, TF_ARRAYSIZE(inputs));
   TF_ColocateWith(desc, feed);
   TF_Operation* add = TF_FinishOperation(desc, s);
@@ -871,7 +1116,7 @@ TEST(CAPI, ColocateWith) {
   EXPECT_EQ(1, m.list_size);
   EXPECT_EQ(TF_ATTR_STRING, m.type);
   void* values[1];
-  int lens[1];
+  size_t lens[1];
   std::unique_ptr<char[]> storage(new char[m.total_size]);
   TF_OperationGetAttrStringList(add, tensorflow::kColocationAttrName, values,
                                 lens, 1, storage.get(), m.total_size, s);
@@ -880,6 +1125,404 @@ TEST(CAPI, ColocateWith) {
 
   TF_DeleteGraph(graph);
   TF_DeleteStatus(s);
+}
+
+TEST(CAPI, SavedModel) {
+  // Load the saved model.
+  const char kSavedModel[] = "cc/saved_model/testdata/half_plus_two/00000123";
+  const string saved_model_dir = tensorflow::io::JoinPath(
+      tensorflow::testing::TensorFlowSrcRoot(), kSavedModel);
+  TF_SessionOptions* opt = TF_NewSessionOptions();
+  TF_Buffer* run_options = TF_NewBufferFromString("", 0);
+  TF_Buffer* metagraph = TF_NewBuffer();
+  TF_Status* s = TF_NewStatus();
+  const char* tags[] = {tensorflow::kSavedModelTagServe};
+  TF_Graph* graph = TF_NewGraph();
+  TF_Session* session = TF_LoadSessionFromSavedModel(
+      opt, run_options, saved_model_dir.c_str(), tags, 1, graph, metagraph, s);
+  TF_DeleteBuffer(run_options);
+  TF_DeleteSessionOptions(opt);
+  tensorflow::MetaGraphDef metagraph_def;
+  metagraph_def.ParseFromArray(metagraph->data, metagraph->length);
+  TF_DeleteBuffer(metagraph);
+
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  CSession csession(session);
+
+  // Retrieve the regression signature from meta graph def.
+  const auto signature_def_map = metagraph_def.signature_def();
+  const auto signature_def = signature_def_map.at("regress_x_to_y");
+
+  const string input_name =
+      signature_def.inputs().at(tensorflow::kRegressInputs).name();
+  const string output_name =
+      signature_def.outputs().at(tensorflow::kRegressOutputs).name();
+
+  // Write {0, 1, 2, 3} as tensorflow::Example inputs.
+  Tensor input(tensorflow::DT_STRING, TensorShape({4}));
+  for (tensorflow::int64 i = 0; i < input.NumElements(); ++i) {
+    tensorflow::Example example;
+    auto* feature_map = example.mutable_features()->mutable_feature();
+    (*feature_map)["x"].mutable_float_list()->add_value(i);
+    input.flat<string>()(i) = example.SerializeAsString();
+  }
+
+  const tensorflow::string input_op_name =
+      tensorflow::ParseTensorName(input_name).first.ToString();
+  TF_Operation* input_op =
+      TF_GraphOperationByName(graph, input_op_name.c_str());
+  ASSERT_TRUE(input_op != nullptr);
+  csession.SetInputs({{input_op, TF_Tensor_EncodeStrings(input)}});
+
+  const tensorflow::string output_op_name =
+      tensorflow::ParseTensorName(output_name).first.ToString();
+  TF_Operation* output_op =
+      TF_GraphOperationByName(graph, output_op_name.c_str());
+  ASSERT_TRUE(output_op != nullptr);
+  csession.SetOutputs({output_op});
+  csession.Run(s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Tensor* out = csession.output_tensor(0);
+  ASSERT_TRUE(out != nullptr);
+  EXPECT_EQ(TF_FLOAT, TF_TensorType(out));
+  EXPECT_EQ(2, TF_NumDims(out));
+  EXPECT_EQ(4, TF_Dim(out, 0));
+  EXPECT_EQ(1, TF_Dim(out, 1));
+  float* values = static_cast<float*>(TF_TensorData(out));
+  // These values are defined to be (input / 2) + 2.
+  EXPECT_EQ(2, values[0]);
+  EXPECT_EQ(2.5, values[1]);
+  EXPECT_EQ(3, values[2]);
+  EXPECT_EQ(3.5, values[3]);
+
+  csession.CloseAndDelete(s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, SavedModelNullArgsAreValid) {
+  const char kSavedModel[] = "cc/saved_model/testdata/half_plus_two/00000123";
+  const string saved_model_dir = tensorflow::io::JoinPath(
+      tensorflow::testing::TensorFlowSrcRoot(), kSavedModel);
+  TF_SessionOptions* opt = TF_NewSessionOptions();
+  TF_Status* s = TF_NewStatus();
+  const char* tags[] = {tensorflow::kSavedModelTagServe};
+  TF_Graph* graph = TF_NewGraph();
+  // NULL run_options and meta_graph_def should work.
+  TF_Session* session = TF_LoadSessionFromSavedModel(
+      opt, nullptr, saved_model_dir.c_str(), tags, 1, graph, nullptr, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteSessionOptions(opt);
+  TF_CloseSession(session, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteSession(session, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+class CApiWhileLoopTest : public ::testing::Test {
+ protected:
+  CApiWhileLoopTest() : s_(TF_NewStatus()), graph_(TF_NewGraph()) {}
+
+  ~CApiWhileLoopTest() override {
+    TF_DeleteGraph(graph_);
+    TF_DeleteStatus(s_);
+  }
+
+  void Init(int ninputs) {
+    DCHECK(inputs_.empty());
+    DCHECK_GT(ninputs, 0);
+
+    for (int i = 0; i < ninputs; ++i) {
+      TF_Operation* placeholder = Placeholder(
+          graph_, s_, ::tensorflow::strings::StrCat("p", i).c_str());
+      DCHECK_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+      inputs_.push_back({placeholder, 0});
+    }
+
+    original_graph_description_ = GraphDebugString();
+
+    params_.reset(new TF_WhileParams(
+        TF_NewWhile(graph_, &inputs_[0], inputs_.size(), s_)));
+    ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+    ASSERT_EQ(original_graph_description_, GraphDebugString())
+        << "TF_NewWhile() altered graph";
+
+    params_->name = "test_loop";
+
+    // Initialize outputs_ so we can easily detect errors/bugs
+    outputs_.resize(ninputs, {nullptr, -1});
+  }
+
+  void ExpectOK() {
+    TF_FinishWhile(params_.get(), s_, &outputs_[0]);
+    EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  }
+
+  void ExpectError(TF_Code expected_code, const string& expected_msg) {
+    TF_FinishWhile(params_.get(), s_, &outputs_[0]);
+    EXPECT_EQ(expected_code, TF_GetCode(s_));
+    EXPECT_EQ(expected_msg, TF_Message(s_));
+    // TODO(skyewm): this assert is currently broken. Fix or remove guarantee.
+    // ASSERT_EQ(original_graph_description_, GraphDebugString()) <<
+    //     "TF_FinishWhile() altered graph on error";
+  }
+
+  void Run(std::initializer_list<int> input_values) {
+    DCHECK_EQ(inputs_.size(), input_values.size());
+    std::vector<std::pair<TF_Operation*, TF_Tensor*>> inputs(inputs_.size());
+    int i = 0;
+    for (int v : input_values) {
+      inputs[i] = {inputs_[i].oper, Int32Tensor(v)};
+      ++i;
+    }
+    csession_.reset(new CSession(graph_, s_));
+    csession_->SetInputs(inputs);
+    csession_->SetOutputs(outputs_);
+    csession_->Run(s_);
+    ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  }
+
+  void ExpectOutputValue(int idx, int expected_value) {
+    TF_Tensor* out = csession_->output_tensor(idx);
+    ASSERT_TRUE(out != nullptr);
+    EXPECT_EQ(TF_INT32, TF_TensorType(out));
+    EXPECT_EQ(0, TF_NumDims(out));
+    ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
+    int32* data = static_cast<int32*>(TF_TensorData(out));
+    EXPECT_EQ(expected_value, *data);
+  }
+
+  // Create a valid conditonal graph. Useful for testing unrelated errors.
+  void CreateCondGraph() {
+    TF_Operation* one = ScalarConst(1, params_->cond_graph, s_);
+    TF_Operation* less_than =
+        LessThan(params_->cond_inputs[0], {one, 0}, params_->cond_graph, s_);
+    DCHECK_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+    params_->cond_output = {less_than, 0};
+  }
+
+  string GraphDebugString() const {
+    TF_Buffer* buf = TF_NewBuffer();
+    TF_GraphToGraphDef(graph_, buf, s_);
+    DCHECK_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+    GraphDef def;
+    bool success = def.ParseFromArray(buf->data, buf->length);
+    DCHECK(success);
+    TF_DeleteBuffer(buf);
+    return def.DebugString();
+  }
+
+  TF_Status* s_;
+  TF_Graph* graph_;
+  std::vector<TF_Output> inputs_;   // The inputs to the while loop
+  std::vector<TF_Output> outputs_;  // The final outputs of the while loop
+  std::unique_ptr<TF_WhileParams> params_;
+  std::unique_ptr<CSession> csession_;
+
+ private:
+  // Used to verify that errors don't change graph_
+  string original_graph_description_;
+};
+
+TEST_F(CApiWhileLoopTest, BasicLoop) {
+  Init(2);
+
+  // Validate TF_WhileParams returned by TF_NewWhile()
+  EXPECT_TRUE(params_->body_graph != nullptr);
+  EXPECT_TRUE(params_->cond_graph != nullptr);
+
+  EXPECT_EQ(params_->ninputs, 2);
+
+  ASSERT_TRUE(params_->cond_inputs != nullptr);
+  ASSERT_TRUE(params_->cond_inputs[0].oper != nullptr);
+  EXPECT_TRUE(params_->cond_inputs[1].oper != nullptr);
+
+  ASSERT_TRUE(params_->body_inputs != nullptr);
+  EXPECT_TRUE(params_->body_inputs[0].oper != nullptr);
+  EXPECT_TRUE(params_->body_inputs[1].oper != nullptr);
+
+  ASSERT_TRUE(params_->body_outputs != nullptr);
+
+  // Create loop: while (input1 < input2) input1 += input2 + 1
+  TF_Operation* less_than =
+      LessThan(params_->cond_inputs[0], params_->cond_inputs[1],
+               params_->cond_graph, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  params_->cond_output = {less_than, 0};
+
+  TF_Operation* add1 = Add(params_->body_inputs[0], params_->body_inputs[1],
+                           params_->body_graph, s_, "add1");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_Operation* one = ScalarConst(1, params_->body_graph, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_Operation* add2 = Add(add1, one, params_->body_graph, s_, "add2");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  params_->body_outputs[0] = {add2, 0};
+  params_->body_outputs[1] = params_->body_inputs[1];
+
+  // Finalize while loop
+  ExpectOK();
+
+  // Validate while loop outputs returned by TF_FinishWhile()
+  EXPECT_TRUE(outputs_[0].oper != nullptr);
+  EXPECT_GE(outputs_[0].index, 0);
+  EXPECT_TRUE(outputs_[1].oper != nullptr);
+  EXPECT_GE(outputs_[1].index, 0);
+
+  // Run the graph
+  Run({-9, 2});
+  ExpectOutputValue(0, 3);
+  ExpectOutputValue(1, 2);
+}
+
+TEST_F(CApiWhileLoopTest, NestedLoop) {
+  Init(2);
+  // Create nested loop:
+  //  while (input1 < 6) {
+  //    inner_input1 = input1
+  //    while (inner_input1 < 3) {
+  //      input2 += 1
+  //      inner_input1 += 2
+  //    }
+  //    input1 += input2
+  //  }
+  //
+  // Expected execution with initial values input1 = input2 = 0:
+  //
+  // outer inner               inner_
+  // step# step# input1 input2 input1
+  // ------------------------------------
+  //   0     0     0      0      0
+  //   0     1     0      1      2
+  //   0     2     0      2      4
+  //   0     -     2      2      -
+  //   1     0     2      2      2
+  //   1     1     2      3      4
+  //   1     -     5      3      -
+  //   2     0     5      3      5
+  //   2     -     8      3      -
+
+  // Create outer cond graph
+  TF_Operation* six = ScalarConst(6, params_->cond_graph, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_Operation* less_than =
+      LessThan(params_->cond_inputs[0], {six, 0}, params_->cond_graph, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  params_->cond_output = {less_than, 0};
+
+  // Create outer body graph
+  // Init inner graph
+  TF_Output inner_inputs[] = {params_->body_inputs[0], params_->body_inputs[1]};
+  TF_WhileParams inner_params =
+      TF_NewWhile(params_->body_graph, inner_inputs, 2, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  inner_params.name = "inner_loop";
+
+  // Create inner cond graph
+  TF_Operation* three = ScalarConst(3, inner_params.cond_graph, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_Operation* inner_less_than = LessThan(
+      inner_params.cond_inputs[0], {three, 0}, inner_params.cond_graph, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  inner_params.cond_output = {inner_less_than, 0};
+
+  // Create inner body graph
+  TF_Operation* one = ScalarConst(1, inner_params.body_graph, s_, "one");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_Operation* two = ScalarConst(2, inner_params.body_graph, s_, "two");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  TF_Operation* input2_add =
+      Add(inner_params.body_inputs[1].oper, one, inner_params.body_graph, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  inner_params.body_outputs[1] = {input2_add, 0};
+
+  TF_Operation* inner_input1_add = Add(inner_params.body_inputs[0].oper, two,
+                                       inner_params.body_graph, s_, "add2");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  inner_params.body_outputs[0] = {inner_input1_add, 0};
+
+  // Finalize inner graph
+  TF_Output inner_outputs[2] = {{nullptr, -1}};
+  TF_FinishWhile(&inner_params, s_, inner_outputs);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  TF_Operation* input1_add =
+      Add(params_->body_inputs[0], inner_outputs[1], params_->body_graph, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  params_->body_outputs[0] = {input1_add, 0};
+
+  params_->body_outputs[1] = inner_outputs[1];
+
+  // Finalize outer graph
+  ExpectOK();
+
+  // Check for a few expected nodes
+  const char* node_name = "test_loop/cond/scalar";
+  EXPECT_TRUE(TF_GraphOperationByName(graph_, node_name) != nullptr);
+  node_name = "test_loop/body/add";
+  EXPECT_TRUE(TF_GraphOperationByName(graph_, node_name) != nullptr);
+  node_name = "test_loop/body/inner_loop/body/one";
+  EXPECT_TRUE(TF_GraphOperationByName(graph_, node_name) != nullptr);
+  node_name = "test_loop/body/inner_loop/cond/less_than";
+  EXPECT_TRUE(TF_GraphOperationByName(graph_, node_name) != nullptr);
+
+  // Run the graph
+  Run({0, 0});
+  ExpectOutputValue(0, 8);
+  ExpectOutputValue(1, 3);
+}
+
+TEST_F(CApiWhileLoopTest, BadCondOutput) {
+  Init(1);
+  params_->body_outputs[0] = params_->body_inputs[0];
+  ExpectError(TF_INVALID_ARGUMENT,
+              "TF_WhileParams `cond_output` field isn't set");
+}
+
+TEST_F(CApiWhileLoopTest, BadBodyOutput) {
+  Init(1);
+  CreateCondGraph();
+  ExpectError(TF_INVALID_ARGUMENT,
+              "TF_WhileParams `body_outputs[0]` field isn't set");
+}
+
+TEST_F(CApiWhileLoopTest, NullName) {
+  Init(1);
+  CreateCondGraph();
+  params_->body_outputs[0] = params_->body_inputs[0];
+  params_->name = nullptr;
+  ExpectError(TF_INVALID_ARGUMENT, "TF_WhileParams `name` field is null");
+}
+
+TEST_F(CApiWhileLoopTest, WrongGraph) {
+  Init(1);
+  CreateCondGraph();
+  // Set body output to output from outer graph
+  params_->body_outputs[0] = inputs_[0];
+  // TODO(skyewm): improve error message
+  ExpectError(TF_INVALID_ARGUMENT,
+              "Requested return node 'p0' not found in graph def");
+}
+
+TEST_F(CApiWhileLoopTest, BadTypes) {
+  Init(1);
+  CreateCondGraph();
+  // Op that has a float input + output
+  TF_OperationDescription* desc = TF_NewOperation(
+      params_->body_graph, "FakeQuantWithMinMaxArgs", "float_op");
+  TF_AddInput(desc, params_->body_inputs[0]);
+  TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  string msg(TF_Message(s_));
+  EXPECT_NE(msg.find("Input 'inputs' passed int32 expected float while "
+                     "building NodeDef 'float_op'"),
+            msg.npos);
+  TF_AbortWhile(params_.get());
 }
 
 // Create a tensor with values of type TF_INT8 provided by `values`.
@@ -896,9 +1539,9 @@ TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
 
 void StringVectorToArrays(const std::vector<string>& v,
                           std::unique_ptr<const void* []>* ptrs,
-                          std::unique_ptr<int[]>* lens) {
+                          std::unique_ptr<size_t[]>* lens) {
   ptrs->reset(new const void*[v.size()]);
-  lens->reset(new int[v.size()]);
+  lens->reset(new size_t[v.size()]);
   for (size_t i = 0; i < v.size(); ++i) {
     (*ptrs)[i] = v[i].data();
     (*lens)[i] = v[i].size();
@@ -986,7 +1629,7 @@ TEST_F(CApiAttributesTest, String) {
 TEST_F(CApiAttributesTest, StringList) {
   std::vector<string> list = {"bugs", "bunny", "duck"};
   std::unique_ptr<const void* []> list_ptrs;
-  std::unique_ptr<int[]> list_lens;
+  std::unique_ptr<size_t[]> list_lens;
   StringVectorToArrays(list, &list_ptrs, &list_lens);
   int list_total_size = 0;
   for (const auto& s : list) {
@@ -1002,7 +1645,7 @@ TEST_F(CApiAttributesTest, StringList) {
 
   EXPECT_TF_META("v", list.size(), TF_ATTR_STRING, list_total_size);
   std::unique_ptr<void* []> values(new void*[list.size()]);
-  std::unique_ptr<int[]> lens(new int[list.size()]);
+  std::unique_ptr<size_t[]> lens(new size_t[list.size()]);
   std::unique_ptr<char[]> storage(new char[list_total_size]);
   TF_OperationGetAttrStringList(oper, "v", values.get(), lens.get(),
                                 list.size(), storage.get(), list_total_size,
@@ -1227,7 +1870,7 @@ TEST_F(CApiAttributesTest, TensorShapeProtoList) {
   proto.SerializeToString(&bytes2);
 
   std::unique_ptr<const void* []> list_ptrs;
-  std::unique_ptr<int[]> list_lens;
+  std::unique_ptr<size_t[]> list_lens;
   const std::vector<string> list = {bytes1, bytes2};
   StringVectorToArrays(list, &list_ptrs, &list_lens);
 
@@ -1259,7 +1902,8 @@ TEST_F(CApiAttributesTest, Tensor) {
   const size_t ndims = TF_ARRAYSIZE(dims);
 
   auto desc = init("tensor");
-  TF_SetAttrTensor(desc, "v", Int8Tensor(dims, ndims, tensor), s_);
+  unique_tensor_ptr v(Int8Tensor(dims, ndims, tensor), TF_DeleteTensor);
+  TF_SetAttrTensor(desc, "v", v.get(), s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
 
   auto oper = TF_FinishOperation(desc, s_);
@@ -1294,6 +1938,9 @@ TEST_F(CApiAttributesTest, TensorList) {
       Int8Tensor(dims1, ndims1, tensor1), Int8Tensor(dims2, ndims2, tensor2),
   };
   TF_SetAttrTensorList(desc, "v", tmp, TF_ARRAYSIZE(tmp), s_);
+  for (int i = 0; i < TF_ARRAYSIZE(tmp); ++i) {
+    TF_DeleteTensor(tmp[i]);
+  }
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   auto oper = TF_FinishOperation(desc, s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
@@ -1314,8 +1961,8 @@ TEST_F(CApiAttributesTest, TensorList) {
     EXPECT_EQ(TF_INT8, TF_TensorType(v)) << i;
     EXPECT_EQ(tensor_ndims[i], TF_NumDims(v)) << i;
     for (int j = 0; j < TF_NumDims(v); ++j) {
-      EXPECT_EQ(tensor_dims[i][j], TF_Dim(v, j)) << "Tensor #" << i
-                                                 << ", dimension #" << j;
+      EXPECT_EQ(tensor_dims[i][j], TF_Dim(v, j))
+          << "Tensor #" << i << ", dimension #" << j;
     }
     EXPECT_EQ(sizeof(char) * tensor_size[i], TF_TensorByteSize(v)) << i;
     EXPECT_EQ(0,
@@ -1346,6 +1993,6 @@ TEST_F(CApiAttributesTest, Errors) {
 // * TF_SetDevice(desc, "/job:worker");
 // * control inputs / outputs
 // * targets
-// * TF_DeleteGraph() before TF_DeleteSessionWithGraph()
+// * TF_DeleteGraph() before TF_DeleteSession()
 
 }  // namespace

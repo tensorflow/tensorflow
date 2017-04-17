@@ -84,6 +84,20 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
             .Finalize(g, &recv_node));
     recv_node->set_assigned_device_name(device_info.name());
 
+    // Copy the _output_shapes from the original node to the feed node,
+    // if any.
+    std::vector<PartialTensorShape> output_shapes;
+    if (GetNodeAttr(n->def(), "_output_shapes", &output_shapes).ok()) {
+      if (n->num_outputs() != output_shapes.size()) {
+        return errors::InvalidArgument(
+            "FeedInputs: ", t,
+            ": size of _output_shapes attribute does not "
+            "match the number of node outputs");
+      }
+      std::vector<PartialTensorShape> feed_shapes = {output_shapes[id.second]};
+      recv_node->AddAttr("_output_shapes", feed_shapes);
+    }
+
     // Update name_index
     (*name_index)[recv_node->name()] = recv_node;
     g->AddControlEdge(g->source_node(), recv_node);
@@ -129,10 +143,7 @@ static bool AddNodeToTargets(const string& node_or_tensor_name,
     return false;
   }
   const Node* n = iter->second;
-  if (n->name() != node_or_tensor_name) {
-    return false;
-  }
-
+  CHECK_EQ(n->name(), id.first);
   targets->insert(n);
   return true;
 }
@@ -254,6 +265,7 @@ Status RewriteGraphForExecution(
   // A separate index mapping name to Node*, for use by FeedInputs,
   // FetchOutputs, and PruneForTargets
   NameIndex name_index;
+  name_index.reserve(g->num_nodes());
   for (Node* n : g->nodes()) {
     name_index[n->name()] = n;
   }
