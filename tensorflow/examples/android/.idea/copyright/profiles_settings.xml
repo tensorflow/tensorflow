@@ -1,3 +1,0 @@
-<component name="CopyrightManager">
-  <settings default="" />
-</component>

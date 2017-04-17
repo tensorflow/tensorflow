@@ -28,6 +28,8 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Size;
 import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
@@ -56,7 +58,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     setContentView(R.layout.activity_camera);
 
     if (hasPermission()) {
-      setFragment();
+      setCameraConnectionFragment();
     } else {
       requestPermission();
     }
@@ -125,7 +127,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
         if (grantResults.length > 0
                 && grantResults[0] == PackageManager.PERMISSION_GRANTED
                 && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
-          setFragment();
+          setCameraConnectionFragment();
         } else {
           requestPermission();
         }
@@ -150,12 +152,18 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
   }
 
-  protected void setFragment() {
+  protected void setCameraConnectionFragment() {
     final Fragment fragment = CameraConnectionFragment.newInstance(
         new CameraConnectionFragment.ConnectionCallback(){
           @Override
           public void onPreviewSizeChosen(final Size size, final int rotation) {
             CameraActivity.this.onPreviewSizeChosen(size, rotation);
+          }
+
+          @Override
+          public void onModelLabelSelected(int index)
+          {
+              setModelLabelFiles(index);
           }
         },
         this, getLayoutId(), getDesiredPreviewFrameSize());
@@ -213,4 +221,5 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
   protected abstract int getLayoutId();
   protected abstract int getDesiredPreviewFrameSize();
+  public abstract void setModelLabelFiles(int index);
 }

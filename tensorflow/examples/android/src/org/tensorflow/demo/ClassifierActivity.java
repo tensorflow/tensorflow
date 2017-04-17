@@ -26,18 +26,24 @@ import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
+import android.os.Environment;
 import android.os.SystemClock;
 import android.os.Trace;
 import android.util.Size;
 import android.util.TypedValue;
 import android.view.Display;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Vector;
 import org.tensorflow.demo.OverlayView.DrawCallback;
 import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
-import org.tensorflow.demo.R;
+
 
 public class ClassifierActivity extends CameraActivity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
@@ -67,13 +73,21 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   private static final String INPUT_NAME = "Mul:0";
   private static final String OUTPUT_NAME = "final_result:0";
 
-  private static final String MODEL_FILE = "file:///android_asset/tensorflow_inception_graph.pb";
-  private static final String LABEL_FILE =
-      "file:///android_asset/imagenet_comp_graph_label_strings.txt";
-
   private static final boolean SAVE_PREVIEW_BITMAP = false;
 
   private static final boolean MAINTAIN_ASPECT = true;
+
+  // These variables contain the currently in-use model and label files.
+  private String MODEL_FILE = "";
+  private String LABEL_FILE = "";
+
+  private ArrayList<String> Model_Files = new ArrayList<>();
+
+  private ArrayList<String> Label_Files = new ArrayList<>(Arrays.asList(
+          "file:///android_asset/us_north/retrained_labels.txt",
+          "file:///android_asset/us_east/retrained_labels.txt",
+          "file:///android_asset/us_south/retrained_labels.txt",
+          "file:///android_asset/us_west/retrained_labels.txt"));;
 
   private Classifier classifier;
 
@@ -112,6 +126,29 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   private static final float TEXT_SIZE_DIP = 10;
 
   @Override
+  public void setModelLabelFiles(int index)
+  {
+    MODEL_FILE = Model_Files.get(index);
+    LABEL_FILE = Label_Files.get(index);
+
+    try {
+      classifier =
+              TensorFlowImageClassifier.create(
+                      getAssets(),
+                      MODEL_FILE,
+                      LABEL_FILE,
+                      NUM_CLASSES,
+                      INPUT_SIZE,
+                      IMAGE_MEAN,
+                      IMAGE_STD,
+                      INPUT_NAME,
+                      OUTPUT_NAME);
+    } catch (final Exception e) {
+      throw new RuntimeException("Error initializing TensorFlow!", e);
+    }
+  }
+
+  @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
     final float textSizePx =
         TypedValue.applyDimension(
@@ -119,21 +156,11 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    try {
-      classifier =
-          TensorFlowImageClassifier.create(
-              getAssets(),
-              MODEL_FILE,
-              LABEL_FILE,
-              NUM_CLASSES,
-              INPUT_SIZE,
-              IMAGE_MEAN,
-              IMAGE_STD,
-              INPUT_NAME,
-              OUTPUT_NAME);
-    } catch (final Exception e) {
-      throw new RuntimeException("Error initializing TensorFlow!", e);
-    }
+    // Set the model files
+    find_all_model_names();
+
+    // Initialize the model file with the first entry in the Model_Files and Label_Files lists.
+    setModelLabelFiles( 0 );
 
     resultsView = (ResultsView) findViewById(R.id.results);
     previewWidth = size.getWidth();
@@ -282,4 +309,35 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
       borderedText.drawLines(canvas, 10, canvas.getHeight() - 10, lines);
     }
   }
+
+  private void find_all_model_names()
+  {
+    Model_Files.clear();
+    Model_Files.add(getModelFileName("us_north", ".pb"));
+    Model_Files.add(getModelFileName("us_east", ".pb"));
+    Model_Files.add(getModelFileName("us_south", ".pb"));
+    Model_Files.add(getModelFileName("us_west", ".pb"));
+  }
+
+  public String getModelFileName(String path, String ext) {
+    String [] list;
+    try {
+      list = getAssets().list(path);
+      if (list.length > 0) {
+        for (String file : list)
+        {
+          if (file.endsWith(ext))
+          {
+            return "file:///android_asset/" + path + "/" + file;
+          }
+        }
+      }
+    }
+    catch (IOException e) {
+      return "";
+    }
+
+    return "";
+  }
+
 }

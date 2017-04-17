@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}{{ super() }}{% endblock %}
+{% block header %}
+<h1 class="text-center">{{search}} Results</h1>
+{% endblock %}
+
+{% block content %}
+  {% if not exist %}
+  <p class="text-center">No images were found for {{search}}.</p>
+  {% else %}
+  <div class="row">
+      {% for result in results %}
+      <div class="col-xs-2 col-sm-2 col-md-1 col-lg-1">
+          <img src="{{ result }}" ahref="{{ result }}" class="img-responsive"/>
+      </div>
+      {% endfor %}
+  {% endif %}
+{% endblock %}
+{% block footer %}{{ super() }}{% endblock %}

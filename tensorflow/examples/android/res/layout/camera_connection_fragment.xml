@@ -47,4 +47,14 @@
         app:fabSize="mini"
         app:srcCompat="@android:drawable/ic_menu_camera" />
 
+    <Button
+        android:id="@+id/model_select_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentEnd="true"
+        android:layout_alignTop="@+id/cameraFloatingActionButton"
+        android:layout_marginEnd="26dp"
+        android:text="Model Select"
+        android:textSize="12sp" />
+
 </RelativeLayout>

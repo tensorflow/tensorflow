@@ -17,4 +17,13 @@
     <string name="description_info">Info</string>
     <string name="request_permission">This sample needs camera permission.</string>
     <string name="camera_error">This device doesn\'t support Camera2 API.</string>
+    <string name="update_model">Update model</string>
+    <string name="about">About</string>
+    <string name="classify">Classify</string>
+    <string name="about_project">This app provides a tool to identify the species of a plant by taking a picture of the plant\'s leaves.</string>
+    <string name="previous_classifications">Classification History</string>
+    <string name="capture_images">Capture</string>
+    <string name="developers">Developers</string>
+    <string name="title_activity_classify_history">ClassifyHistoryActivity</string>
+    <string name="title_activity_capture">CaptureActivity</string>
 </resources>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+
+    <item
+        android:id="@+id/one"
+        android:title="North US"/>
+
+    <item
+        android:id="@+id/two"
+        android:title="East US"/>
+
+    <item
+        android:id="@+id/three"
+        android:title="South US"/>
+
+    <item
+        android:id="@+id/four"
+        android:title="West US"/>
+
+</menu>

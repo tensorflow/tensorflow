@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}{{ super() }}{% endblock %}
+
+{% block header %}
+<h1 class="text-center">Upload Plant Image</h1>
+{% endblock %}
+
+{% block content %}
+<form method="POST" enctype="multipart/form-data">
+  <div class="form-group">
+    <label for="species">Species</label>
+    <input type="text" name="species" id="species">
+    <p class="help-block">Enter the binomial name of the species, for example <i>Chrysanthemum indicum</i>.</p>
+  </div>
+  <div class="form-group">
+    <label for="image-file">Image file</label>
+    <input type="file" name="file" id="image-file">
+    <p class="help-block">Select the image to upload and then click "Upload Image"</p>
+  </div>
+  <button type="submit" class="btn btn-primary">Upload Image</button>
+</form>
+{% endblock %}
+
+{% block footer %}{{ super() }}{% endblock %}

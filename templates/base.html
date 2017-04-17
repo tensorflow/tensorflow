@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <!-- The above 3 meta tags *must* come first in the head; any other head
+         content must come *after* these tags -->
+
+    <title>{% block title %}eLeaf - Texas A&amp;M University{% endblock %}</title>
+
+    <!-- Bootstrap -->
+    <link href="/css/bootstrap.css" rel="stylesheet" />
+    <link href="/css/bootstrap-theme.css" rel="stylesheet" />
+
+    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+      <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
+      <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <!-- Include all compiled plugins (below), or include individual files as needed -->
+    <script src="js/bootstrap.min.js"></script>
+  </head>
+
+  <body background="/images/leaves_bg.jpg">
+
+    <div class="container" id="bodyContainer">
+      <div class="col-xs-12 col-md-2 col-lg-1"></div>
+
+      <div class="col-xs-12 col-md-8 col-lg-10 bg-white">
+
+        <div class="row" id="header">
+          <div class="col-xs-12 col-md-12 col-lg-12">
+            {% block header %}
+            <h1 class="text-center">
+              Computer vision for Cloud-based Horticulture Catalog<br />
+              <small>eLeaf</small><br />
+              <img src="/images/logo.png" class="img-responsive center-block" alt="eLeaf Logo">
+            </h1>
+            {% endblock %}
+          </div>
+        </div>
+
+        <div class="row" id="content">
+          <div class="col-xs-12 col-md-12 col-lg-12">
+            {% block content %}
+
+            {% endblock %}
+          </div>
+        </div>
+
+        <div class="row" id="footer">
+          <div class="col-xs-12 col-md-12 col-lg-12 text-center">
+            {% block footer %}
+            <small>Copyright 2017 eLeaf Team</small>
+            {% endblock %}
+          </div>
+        </div>
+
+      </div>
+
+      <div class="col-xs-12 col-md-2 col-lg-1"></div>
+    </div>
+  </body>
+</html>

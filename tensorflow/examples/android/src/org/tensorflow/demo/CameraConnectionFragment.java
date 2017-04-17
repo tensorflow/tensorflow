@@ -50,11 +50,14 @@ import android.support.design.widget.FloatingActionButton;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
+import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.PopupMenu;
 import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -126,6 +129,7 @@ public class CameraConnectionFragment extends Fragment {
    */
   public interface ConnectionCallback {
     void onPreviewSizeChosen(Size size, int cameraRotation);
+    void onModelLabelSelected(int index);
   }
 
   /**
@@ -171,7 +175,8 @@ public class CameraConnectionFragment extends Fragment {
           cameraDevice = cd;
           createCameraPreviewSession();
           configureCameraFloatingActionButton();
-            configureTouchFocus();
+          configureModelLabelButton();
+	  configureTouchFocus();
         }
 
         @Override
@@ -312,7 +317,7 @@ public class CameraConnectionFragment extends Fragment {
   @Override
   public View onCreateView(
       final LayoutInflater inflater, final ViewGroup container, final Bundle savedInstanceState) {
-    return inflater.inflate(layout, container, false);
+    return inflater.inflate(R.layout.camera_connection_fragment, container, false);
   }
 
   @Override
@@ -713,7 +718,98 @@ public class CameraConnectionFragment extends Fragment {
       }
 
     });
+  }
 
+  /**
+   * Configures the Model Selection Button
+   */
+  private void configureModelLabelButton()
+  {
+    final Context mContext = getActivity().getApplicationContext();
+    final Activity mActivity = getActivity();
+
+    final Button modelSelect = (Button) parentView.findViewById(R.id.model_select_button);
+
+    modelSelect.setOnClickListener(new View.OnClickListener()
+       {
+         @Override
+         public void onClick(View view) {
+                /*
+                    public PopupMenu (Context context, View anchor)
+                        Constructor to create a new popup menu with an anchor view.
+
+                    Parameters
+                        context : Context the popup menu is running in, through which it can access
+                                  the current theme, resources, etc.
+                        anchor : Anchor view for this popup. The popup will appear below the anchor
+                                 if there is room, or above it if there is not.
+                */
+           // Initialize a new instance of popup menu
+           PopupMenu popupMenu = new PopupMenu(mContext,modelSelect);
+
+                /*
+                    public MenuInflater getMenuInflater ()
+
+                    Returns
+                        a MenuInflater that can be used to inflate menu items from XML into
+                        the menu returned by getMenu().
+                */
+                /*
+                    public void inflate (int menuRes)
+                        Inflate a menu resource into this PopupMenu. This is equivalent to calling
+                        popupMenu.getMenuInflater().inflate(menuRes, popupMenu.getMenu()).
+
+                    Parameters
+                        menuRes : Menu resource to inflate
+                */
+           // Inflate the popup menu
+           popupMenu.getMenuInflater().inflate(R.menu.model_selection_popup,popupMenu.getMenu());
+
+                /*
+                    public void setOnMenuItemClickListener (PopupMenu.OnMenuItemClickListener listener)
+                        Set a listener that will be notified when the user selects an item from the menu.
+
+                    Parameters
+                        listener : Listener to notify
+                */
+                /*
+                    public abstract boolean onMenuItemClick (MenuItem item)
+                        This method will be invoked when a menu item is clicked if the item itself
+                        did not already handle the event.
+
+                    Parameters
+                        item : MenuItem that was clicked
+                    Returns
+                        true : if the event was handled, false otherwise.
+                */
+           // Set a click listener for menu item click
+           popupMenu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+             @Override
+             public boolean onMenuItemClick(MenuItem menuItem) {
+               switch(menuItem.getItemId()){
+                 case R.id.one:
+                   cameraConnectionCallback.onModelLabelSelected(0);
+                   return true;
+                 case R.id.two:
+                   cameraConnectionCallback.onModelLabelSelected(1);
+                   return true;
+                 case R.id.three:
+                   cameraConnectionCallback.onModelLabelSelected(2);
+                   return true;
+                 case R.id.four:
+                   cameraConnectionCallback.onModelLabelSelected(3);
+                   return true;
+                 default:
+                   return false;
+               }
+             }
+           });
+
+           // Finally, show the popup menu
+           popupMenu.show();
+         }
+       }
+    );
   }
     private void configureTouchFocus()
     {

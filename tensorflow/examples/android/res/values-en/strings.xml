@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Texas A&amp;M eLeaf</string>
+    <string name="about">About</string>
+    <string name="activity_name_classification">eLeaf</string>
+    <string name="camera_error">This device doesn\'t support Camera2 API.</string>
+    <string name="description_info">Info</string>
+    <string name="request_permission">This sample needs camera permission.</string>
+    <string name="update_model">Update model</string>
+    <string name="classify">Classify</string>
+    <string name="about_project">This app aims to provide a tool to identify the species of a plant by taking a picture of the plant\'s leaves.</string>
+    <string name="previous_classifications">History</string>
+    <string name="capture_images">Capture</string>
+    <string name="developers">Developers</string>
+</resources>
