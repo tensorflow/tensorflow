@@ -30,6 +30,7 @@
     <module>libtensorflow</module>
     <module>libtensorflow_jni</module>
     <module>tensorflow</module>
+    <module>proto</module>
   </modules>
 
 

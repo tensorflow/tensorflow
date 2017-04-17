@@ -23,6 +23,7 @@ IS_SNAPSHOT="false"
 if [[ "${TF_VERSION}" == *"-SNAPSHOT" ]]; then
   IS_SNAPSHOT="true"
 fi
+PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.2.0/protoc-3.2.0-linux-x86_64.zip"
 
 set -ex
 
@@ -81,6 +82,50 @@ download_libtensorflow_jni() {
   cd "${DIR}"
 }
 
+# Ideally, the .jar for generated Java code for TensorFlow protocol buffer files
+# would have been produced by bazel rules. However, protocol buffer library
+# support in bazel is in flux. Once
+# https://github.com/bazelbuild/bazel/issues/2626 has been resolved, perhaps
+# TensorFlow can move to something like
+# https://bazel.build/blog/2017/02/27/protocol-buffers.html
+# for generating C++, Java and Python code for protocol buffers.
+#
+# At that point, perhaps the libtensorflow build scripts
+# (tensorflow/tools/ci_build/builds/libtensorflow.sh) can build .jars for
+# generated code and this function would not need to download protoc to generate
+# code.
+generate_java_protos() {
+  # Clean any previous attempts
+  rm -rf "${DIR}/proto/tmp"
+
+  # Download protoc
+  curl -L "${PROTOC_RELEASE_URL}" -o "/tmp/protoc.zip"
+  mkdir -p "${DIR}/proto/tmp/protoc"
+  unzip -d "${DIR}/proto/tmp/protoc" "/tmp/protoc.zip"
+  rm -f "/tmp/protoc.zip"
+
+  # Download the release archive of TensorFlow protos.
+  if [[ "${IS_SNAPSHOT}" == "true" ]]; then
+    URL="http://ci.tensorflow.org/view/Nightly/job/nightly-libtensorflow/TYPE=cpu-slave/lastSuccessfulBuild/artifact/lib_package/libtensorflow_proto.zip"
+  else
+    URL="${RELEASE_URL_PREFIX}/libtensorflow_proto-${TF_VERSION}.zip"
+  fi
+  curl -L "${URL}" -o /tmp/libtensorflow_proto.zip
+  mkdir -p "${DIR}/proto/tmp/src"
+  unzip -d "${DIR}/proto/tmp/src" "/tmp/libtensorflow_proto.zip"
+  rm -f "/tmp/libtensorflow_proto.zip"
+
+  # Generate Java code
+  mkdir -p "${DIR}/proto/src/main/java"
+  find "${DIR}/proto/tmp/src" -name "*.proto" | xargs \
+  ${DIR}/proto/tmp/protoc/bin/protoc \
+    --proto_path="${DIR}/proto/tmp/src" \
+    --java_out="${DIR}/proto/src/main/java"
+
+  # Cleanup
+  rm -rf "${DIR}/proto/tmp"
+}
+
 if [ -z "${TF_VERSION}" ]
 then
   echo "Must set the TF_VERSION environment variable"
@@ -99,6 +144,7 @@ clean
 update_version_in_pom
 download_libtensorflow
 download_libtensorflow_jni
+generate_java_protos
 # Build the release artifacts
 mvn verify
 # If successfully built, try to deploy.
