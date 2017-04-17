@@ -732,6 +732,18 @@ The polygamma function is defined as:
 where \\(\psi(x)\\) is the digamma function.
 )doc");
 
+REGISTER_OP("Atan2")
+    .Input("y: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
+Computes arctan2 of y and x element-wise.
+
+This is the angle of x + iy.
+)doc");
+
 REGISTER_OP("Betainc")
     .Input("a: T")
     .Input("b: T")

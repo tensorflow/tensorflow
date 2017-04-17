@@ -610,6 +610,7 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y, np.multiply, _MUL)
     self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
     self._compareBoth(x, y + 0.1, np.floor_divide, _FLOORDIV)
+    self._compareBoth(x, y, np.arctan2, math_ops.atan2)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
       a_pos_small = np.linspace(0.1, 2, 15).reshape(1, 3, 5).astype(np.float32)
@@ -667,6 +668,7 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y, np.multiply, _MUL)
     self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
     self._compareBoth(x, y + 0.1, np.floor_divide, _FLOORDIV)
+    self._compareBoth(x, y, np.arctan2, math_ops.atan2)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
       a_pos_small = np.linspace(0.1, 2, 15).reshape(1, 3, 5).astype(np.float32)

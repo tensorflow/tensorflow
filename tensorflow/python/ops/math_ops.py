@@ -56,6 +56,7 @@ See the @{$python/math_ops} guide.
 @@acos
 @@asin
 @@atan
+@@atan2
 @@lgamma
 @@digamma
 @@erf
