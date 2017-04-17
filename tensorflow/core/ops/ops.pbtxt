@@ -4884,8 +4884,17 @@ op {
     }
     description: "The name of the input tensor."
   }
+  attr {
+    name: "debug_ops_spec"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "A list of debug op spec (op, url, gated_grpc) for attached debug\nops. Each element of the list has the format\n<debug_op>;<grpc_url>;<gated_grpc>, wherein gated_grpc is boolean represented\nas 0/1. E.g., \"DebugIdentity;grpc://foo:3333;1\",\n\"DebugIdentity;file:///tmp/tfdbg_1;0\"."
+  }
   summary: "Copy Op."
-  description: "Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the\ndevice on which the tensor is allocated.\n\nUnlike the CopyHost Op, this op does not have HostMemory constraint on its\ninput or output."
+  description: "Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the\ndevice on which the tensor is allocated.\nN.B.: If the all downstream attached debug ops are disabled given the current\ngRPC gating status, the output will simply forward the input tensor without\ndeep-copying. See the documentation of Debug* ops for more details.\n\nUnlike the CopyHost Op, this op does not have HostMemory constraint on its\ninput or output."
   allows_uninitialized_input: true
 }
 op {
@@ -4912,8 +4921,17 @@ op {
     }
     description: "The name of the input tensor."
   }
+  attr {
+    name: "debug_ops_spec"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    description: "A list of debug op spec (op, url, gated_grpc) for attached debug\nops. Each element of the list has the format\n<debug_op>;<grpc_url>;<gated_grpc>, wherein gated_grpc is boolean represented\nas 0/1. E.g., \"DebugIdentity;grpc://foo:3333;1\",\n\"DebugIdentity;file:///tmp/tfdbg_1;0\"."
+  }
   summary: "Copy Host Op."
-  description: "Performs CPU-to-CPU deep-copying of tensor.\n\nUnlike the Copy Op, this op has HostMemory constraint on its input or output."
+  description: "Performs CPU-to-CPU deep-copying of tensor.\nN.B.: If the all downstream attached debug ops are disabled given the current\ngRPC gating status, the output will simply forward the input tensor without\ndeep-copying. See the documentation of Debug* ops for more details.\n\nUnlike the Copy Op, this op has HostMemory constraint on its input or output."
   allows_uninitialized_input: true
 }
 op {
@@ -8574,20 +8592,19 @@ op {
   name: "GetSessionHandle"
   input_arg {
     name: "value"
+    description: "The tensor to be stored."
     type_attr: "T"
   }
   output_arg {
     name: "handle"
+    description: "The handle for the tensor stored in the session state, represented\nas a string."
     type: DT_STRING
   }
   attr {
     name: "T"
     type: "type"
   }
-  deprecation {
-    version: 23
-    explanation: "Use GetSessionHandleV2"
-  }
+  summary: "Store the input tensor in the state of the current session."
 }
 op {
   name: "GetSessionHandleV2"
@@ -23565,6 +23582,150 @@ op {
   summary: "Stage values similar to a lightweight Enqueue.  The basic functionality of this"
   description: "Op is similar to a queue with many fewer capabilities and options.  This Op is\noptimized for performance."
   is_stateful: true
+}
+op {
+  name: "StatelessRandomNormal"
+  input_arg {
+    name: "shape"
+    description: "The shape of the output tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "seed"
+    description: "2 seeds (shape [2])."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    description: "Random values with specified shape."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    description: "The type of the output."
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Outputs deterministic pseudorandom values from a normal distribution."
+  description: "The generated values will have mean 0 and standard deviation 1.\n\nThe outputs are a deterministic function of `shape` and `seed`."
+}
+op {
+  name: "StatelessRandomUniform"
+  input_arg {
+    name: "shape"
+    description: "The shape of the output tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "seed"
+    description: "2 seeds (shape [2])."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    description: "Random values with specified shape."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    description: "The type of the output."
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Outputs deterministic pseudorandom random values from a uniform distribution."
+  description: "The generated values follow a uniform distribution in the range `[0, 1)`. The\nlower bound 0 is included in the range, while the upper bound 1 is excluded.\n\nThe outputs are a deterministic function of `shape` and `seed`."
+}
+op {
+  name: "StatelessTruncatedNormal"
+  input_arg {
+    name: "shape"
+    description: "The shape of the output tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "seed"
+    description: "2 seeds (shape [2])."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    description: "Random values with specified shape."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    description: "The type of the output."
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Outputs deterministic pseudorandom values from a truncated normal distribution."
+  description: "The generated values follow a normal distribution with mean 0 and standard\ndeviation 1, except that values whose magnitude is more than 2 standard\ndeviations from the mean are dropped and re-picked.\n\nThe outputs are a deterministic function of `shape` and `seed`."
 }
 op {
   name: "StopGradient"
