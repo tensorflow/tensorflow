@@ -1,0 +1,12 @@
+<component name="libraryTable">
+  <library name="support-fragment-25.2.0">
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-fragment/25.2.0/res" />
+      <root url="jar://$PROJECT_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-fragment/25.2.0/jars/classes.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="jar://$USER_HOME$/Android/Sdk/extras/android/m2repository/com/android/support/support-fragment/25.2.0/support-fragment-25.2.0-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

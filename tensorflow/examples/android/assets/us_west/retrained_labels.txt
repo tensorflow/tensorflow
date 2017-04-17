@@ -1,16 +1,17 @@
-aesculus flava
-abies concolor
-betula alleghaniensis
-crataegus viridis
-phellodendron amurense
-magnolia acuminata
-eucommia ulmoides
-acer campestre
-carya ovata
-albizia julibrissin
-malus baccata
-gymnocladus dioicus
-diospyros virginiana
-cornus kousa
-fagus grandifolia
-morus rubra
+toona
+stewartia
+carya
+staphylea
+betula
+ptelea
+cornus
+chamaecyparis
+pseudolarix
+oxydendrum
+eucommia
+malus
+morus
+tilia
+gleditsia
+pyrus
+cladrastis

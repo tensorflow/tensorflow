@@ -1,0 +1,10 @@
+<component name="libraryTable">
+  <library name="support-v4-25.2.0">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-v4/25.2.0/jars/classes.jar!/" />
+      <root url="file://$PROJECT_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-v4/25.2.0/res" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
