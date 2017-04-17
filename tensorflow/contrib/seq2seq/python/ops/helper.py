@@ -450,12 +450,14 @@ class GreedyEmbeddingHelper(Helper):
 
     Args:
       embedding: A callable that takes a vector tensor of `ids` (argmax ids),
-        or the `params` argument for `embedding_lookup`.
+        or the `params` argument for `embedding_lookup`. The returned tensor
+        will be passed to the decoder input.
       start_tokens: `int32` vector shaped `[batch_size]`, the start tokens.
       end_token: `int32` scalar, the token that marks end of decoding.
 
     Raises:
-      ValueError: if `sequence_length` is not a 1D tensor.
+      ValueError: if `start_tokens` is not a 1D tensor or `end_token` is not a
+        scalar.
     """
     if callable(embedding):
       self._embedding_fn = embedding
