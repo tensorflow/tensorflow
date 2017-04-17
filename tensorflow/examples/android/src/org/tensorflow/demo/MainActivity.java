@@ -40,8 +40,19 @@ public class MainActivity extends AppCompatActivity implements DownloadCallback 
         startActivity(intent);
     }
 
+    /*
+     * Change to the History activity when the button is pressed.
+     */
     public void history(View view) {
         Intent intent = new Intent(this, ClassifyHistoryActivity.class);
+        startActivity(intent);
+    }
+
+    /*
+     * Change to the Capture activity when the button is pressed.
+     */
+    public void capture(View view) {
+        Intent intent = new Intent(this, CaptureActivity.class);
         startActivity(intent);
     }
 

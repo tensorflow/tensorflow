@@ -12,5 +12,6 @@
     <string name="classify">Clasificar</string>
     <string name="about_project">Esta aplicación provee una herramenta para identificar la especie de una planta usando una imagen de las hojas de la planta.</string>
     <string name="previous_classifications">Historia</string>
+    <string name="capture_images">Tomar Fotos</string>
     <string name="developers">Desarrolladores</string>
 </resources>
