@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 
 from tensorflow.python.ops import array_ops
@@ -56,7 +57,7 @@ def frames(signal, frame_length, frame_step, name="frames"):
   with ops.name_scope(name, "frames", [signal, frame_length, frame_step]) as name:
     signal_length = array_ops.shape(signal)[1]
     
-    num_frames = 1 + (signal_length - frame_length) // frame_step
+    num_frames = 1 + math_ops.cast(math_ops.ceil((signal_length - frame_length) / frame_step), dtypes.int32)
     pad_length = (num_frames - 1) * frame_step + frame_length
     pad_signal = array_ops.pad(signal, [[0, 0], [0, pad_length - signal_length]])
     
