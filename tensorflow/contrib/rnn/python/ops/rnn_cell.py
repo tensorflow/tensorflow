@@ -1876,12 +1876,12 @@ class MultiplicativeIntegrationRNNCell(core_rnn_cell.RNNCell):
     """Initialize the Multiplicative Integration RNN cell.
 
     Args:
-      num_units: int, The number of units in the LSTM cell.
+      num_units: int, The number of units in the RNN cell.
       bias_start: float. Starting value to initialize the bias, b.
         0.0 by default.
       alpha_start: float. Starting value to initialize the bias, alpha.
         1.0 by default.
-      beta_start: float. Starting value to initialize the two bias, 
+      beta_start: float. Starting value to initialize the two biases, 
         beta_1 and beta_2. 1.0 by default.
       input_size: Deprecated and unused.
       activation: Activation function of the inner states.
@@ -1929,12 +1929,12 @@ class MultiplicativeIntegrationGRUCell(core_rnn_cell.RNNCell):
     """Initialize the Multiplicative Integration GRU cell.
 
     Args:
-      num_units: int, The number of units in the LSTM cell.
+      num_units: int, The number of units in the GRU cell.
       bias_start: float. Starting value to initialize the bias, b.
         1.0 by default.
       alpha_start: float. Starting value to initialize the bias, alpha.
         1.0 by default.
-      beta_start: float. Starting value to initialize the two bias, 
+      beta_start: float. Starting value to initialize the two biases, 
         beta_1 and beta_2. 1.0 by default.
       input_size: Deprecated and unused.
       activation: Activation function of the inner states.
@@ -1990,12 +1990,11 @@ class MultiplicativeIntegrationLSTMCell(core_rnn_cell.RNNCell):
   def __init__(self, num_units, forget_bias=0.0, bias_start=0.0, alpha_start=1.0, 
       beta_start=1.0, input_size=None, state_is_tuple=True, 
       activation=math_ops.tanh):
-    #################### delete forget bias
     """Initialize the Multiplicative Integration LSTM cell.
 
     Args:
       num_units: int, The number of units in the LSTM cell.
-      forget_bias: float, The bias added to forget gates (see above).
+      forget_bias: float, The bias added to forget gates,
         0.0 by default.
       bias_start: float. Starting value to initialize the bias, b.
         1.0 by default.

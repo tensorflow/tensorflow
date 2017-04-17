@@ -1001,7 +1001,6 @@ class RNNCellTest(test.TestCase):
                 0.1 * np.ones((batch_size, state_size))
         })
         # This is a smoke test: Only making sure expected values didn't change.
-        res_x, (res_c, res_h) = res
         self.assertEqual(len(res), 2)
         self.assertAllClose(res[0], expected_output)
         self.assertAllClose(res[1][0], expected_state_c)
