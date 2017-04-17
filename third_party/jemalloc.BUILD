@@ -89,6 +89,7 @@ cc_library(
         "-D_REENTRANT",
     ],
     includes = ["include"],
+    # pthread_atfork() is called for PPC.
     linkopts = select({
         "@%ws%//tensorflow:linux_ppc64le": [
             "-lpthread",
