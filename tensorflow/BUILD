@@ -239,6 +239,7 @@ filegroup(
         "//tensorflow/contrib/sparsemax:all_files",
         "//tensorflow/contrib/specs:all_files",
         "//tensorflow/contrib/stat_summarizer:all_files",
+        "//tensorflow/contrib/stateless:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/tensorboard:all_files",

@@ -3055,6 +3055,18 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "stateless_random_ops",
+    prefix = "stateless_random_ops",
+    deps = [
+        ":bounds_check",
+        ":random_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stateless_random_ops_op_lib",
+    ],
+)
+
 cc_library(
     name = "required",
     deps = [
