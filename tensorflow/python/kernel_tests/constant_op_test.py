@@ -230,6 +230,29 @@ class AsTensorTest(test.TestCase):
       self.assertEqual(dtypes_lib.int32, x.dtype)
       self.assertAllEqual([1, 2, 3], x.eval())
 
+      x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31-1, 2, 3]))
+      self.assertEqual(dtypes_lib.int32, x.dtype)
+      self.assertAllEqual([2**31-1, 2, 3], x.eval())
+
+      x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31-1, 2, 3]),
+                                dtype=dtypes_lib.int32)
+      self.assertEqual(dtypes_lib.int32, x.dtype)
+      self.assertAllEqual([2**31-1, 2, 3], x.eval())
+
+      x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3]))
+      self.assertEqual(dtypes_lib.int64, x.dtype)
+      self.assertAllEqual([2**31, 2, 3], x.eval())
+
+      x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3]),
+                                dtype=dtypes_lib.int64)
+      self.assertEqual(dtypes_lib.int64, x.dtype)
+      self.assertAllEqual([2**31, 2, 3], x.eval())
+
+      with self.assertRaisesRegexp(
+          ValueError, "a dimension is too large .2147483648."):
+        x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3]),
+                                  dtype=dtypes_lib.int32)
+
       x = ops.convert_to_tensor(
           tensor_shape.TensorShape([1, 2, 3]), dtype=dtypes_lib.int64)
       self.assertEqual(dtypes_lib.int64, x.dtype)
