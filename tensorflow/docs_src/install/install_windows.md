@@ -194,7 +194,7 @@ ImportError: cannot import name 'descriptor'</pre>
 </tr>
 
 <tr>
-  <td><a href="https://stackoverflow.com/q/41007279">42217532</a></td>
+  <td><a href="https://stackoverflow.com/q/42217532">42217532</a></td>
   <td>
   <pre>OpKernel ('op: "BestSplits" device_type: "CPU"') for unknown op: BestSplits</pre>
   </td>
