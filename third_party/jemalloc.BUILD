@@ -195,7 +195,10 @@ sh_binary(
 genrule(
     name = "size_classes_h",
     outs = ["include/jemalloc/internal/size_classes.h"],
-    cmd = "if [ $$(uname -p) = ppc64le ]; then $(location :size_classes_sh) \"3 4\" 3 16 2 >$@; else $(location :size_classes_sh) \"3 4\" 3 12 2 >$@; fi",
+    cmd = select({
+        "@%ws%//tensorflow:linux_ppc64le": "$(location :size_classes_sh) \"3 4\" 3 16 2 >$@",
+        "@%ws%//tensorflow:linux_x86_64": "$(location :size_classes_sh) \"3 4\" 3 12 2 >$@",
+    }),
     tools = [":size_classes_sh"],
 )
 

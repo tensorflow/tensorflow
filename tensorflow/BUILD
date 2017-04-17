@@ -124,9 +124,18 @@ config_setting(
 
 # TODO(jhseu): Enable on other platforms other than Linux.
 config_setting(
-    name = "with_jemalloc",
+    name = "with_jemalloc_linux_x86_64",
     values = {
         "cpu": "k8",
+        "define": "with_jemalloc=true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_jemalloc_linux_ppc64le",
+    values = {
+        "cpu": "ppc",
         "define": "with_jemalloc=true",
     },
     visibility = ["//visibility:public"],
