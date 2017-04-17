@@ -191,13 +191,15 @@ sh_binary(
 )
 
 # Size classes for Linux x86_64 and ppc64le. Update if adding builds for other
-# architectures. See size_classes.sh for details on the arguments.
+# architectures. See size_classes.sh for details on the arguments. 
+# For default case, kept the arguments same as that of  x86_64 for now.
 genrule(
     name = "size_classes_h",
     outs = ["include/jemalloc/internal/size_classes.h"],
     cmd = select({
         "@%ws%//tensorflow:linux_ppc64le": "$(location :size_classes_sh) \"3 4\" 3 16 2 >$@",
         "@%ws%//tensorflow:linux_x86_64": "$(location :size_classes_sh) \"3 4\" 3 12 2 >$@",
+        "//conditions:default": "$(location :size_classes_sh) \"3 4\" 3 12 2 >$@",
     }),
     tools = [":size_classes_sh"],
 )

@@ -116,12 +116,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "linux_ppc64le",
-    values = {"cpu": "ppc"},
-    visibility = ["//visibility:public"],
-)
-
 # TODO(jhseu): Enable on other platforms other than Linux.
 config_setting(
     name = "with_jemalloc_linux_x86_64",
