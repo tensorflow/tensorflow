@@ -29,7 +29,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
 
@@ -125,14 +125,14 @@ class _SweepHook(session_run_hook.SessionRunHook):
     """
     processed_rows_init = array_ops.fill(dims=[self._num_rows], value=False)
     with ops.colocate_with(processed_rows_init):
-      processed_rows = variables.Variable(
+      processed_rows = variable_scope.variable(
           processed_rows_init,
           collections=[ops.GraphKeys.GLOBAL_VARIABLES],
           trainable=False,
           name="sweep_hook_processed_rows")
     processed_cols_init = array_ops.fill(dims=[self._num_cols], value=False)
     with ops.colocate_with(processed_cols_init):
-      processed_cols = variables.Variable(
+      processed_cols = variable_scope.variable(
           processed_cols_init,
           collections=[ops.GraphKeys.GLOBAL_VARIABLES],
           trainable=False,
@@ -280,7 +280,7 @@ def _wals_factorization_model_function(features, labels, mode, params):
   # During a col sweep:
   #   update_col_factors_op
 
-  is_row_sweep_var = variables.Variable(
+  is_row_sweep_var = variable_scope.variable(
       True, "is_row_sweep",
       collections=[ops.GraphKeys.GLOBAL_VARIABLES])
   # The row sweep is determined by is_row_sweep_var (controlled by the

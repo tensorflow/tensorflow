@@ -44,7 +44,6 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training
 
@@ -1734,7 +1733,7 @@ def _centered_bias(logits_dimension, head_name=None):
   # Do not create a variable with variable_scope.get_variable, because that may
   # create a PartitionedVariable, which does not support indexing, so
   # summary.scalar will not work.
-  centered_bias = variables.Variable(
+  centered_bias = variable_scope.variable(
       name="centered_bias_weight",
       initial_value=array_ops.zeros(shape=(logits_dimension,)),
       trainable=True)
