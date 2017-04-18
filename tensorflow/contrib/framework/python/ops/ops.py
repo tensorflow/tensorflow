@@ -21,7 +21,8 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 
 
-__all__ = ['get_graph_from_inputs']
+__all__ = ['get_graph_from_inputs',
+           'get_name_scope']
 
 
 def get_graph_from_inputs(op_input_list, graph=None):
@@ -62,7 +63,7 @@ def get_name_scope():
     ```python
     with tf.name_scope('scope1'):
       with tf.name_scope('scope2'):
-        print(tf.get_name_scope())
+        print(tf.contrib.framework.get_name_scope())
     ```
     would print the string `scope1/scope2`.
 
