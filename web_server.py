@@ -188,7 +188,7 @@ def search_images():
                 return grab_images(species, entries, page)
 
             # Return all images
-            return grab_images(species)
+            return grab_images(species, -1, -1)
 
         # Serve search page
         return render_template('search.html')
