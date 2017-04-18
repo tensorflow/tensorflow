@@ -40,7 +40,7 @@ class GradientsTest : public ::testing::Test {
     TF_ASSERT_OK(scope_test_.ToGraphDef(&gdef_test));
     GraphDef gdef_exp;
     TF_ASSERT_OK(scope_expected_.ToGraphDef(&gdef_exp));
-    TF_EXPECT_GRAPH_EQ(gdef_test, gdef_exp);
+    TF_EXPECT_GRAPH_EQ(gdef_exp, gdef_test);
   }
 
   Scope scope_expected_;
@@ -93,6 +93,32 @@ TEST_F(GradientsTest, OneMatMul) {
       std::vector<Output> grad_outputs;
       TF_ASSERT_OK(
           AddSymbolicGradients(scope, {z}, {x, y}, {dz}, &grad_outputs));
+    }
+  }
+  CompareTestAndExpectedGraphs();
+}
+
+TEST_F(GradientsTest, OneMatMul_InferGradInputs) {
+  for (const bool expected : {false, true}) {
+    const Scope& scope = expected ? scope_expected_ : scope_test_;
+    // Construct forward graph.
+    auto x = Const(scope, {{1.0, 2.0}, {3.0, 4.0}});
+    auto y = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
+    auto z = MatMul(scope, x, y);
+    TF_ASSERT_OK(scope.status());
+    CHECK_NOTNULL(z.node());
+
+    if (expected) {
+      // Construct backward graph.
+      // The gradients function adds a OnesLike to create a dz of ones with the
+      // shape of z.
+      auto dz = OnesLike(scope, z);
+      auto dx = MatMul(scope, dz, y, MatMul::TransposeB(true));
+      auto dy = MatMul(scope, x, dz, MatMul::TransposeA(true));
+    } else {
+      // Call AddSymbolicGradients.
+      std::vector<Output> grad_outputs;
+      TF_ASSERT_OK(AddSymbolicGradients(scope, {z}, {x, y}, &grad_outputs));
     }
   }
   CompareTestAndExpectedGraphs();

@@ -2907,6 +2907,23 @@ class Graph(object):
         self._names_in_use[name] = 1
     return name
 
+  def get_name_scope(self):
+    """Returns the current name scope.
+
+    For example:
+
+    ```python
+    with tf.name_scope('scope1'):
+      with tf.name_scope('scope2'):
+        print(tf.get_default_graph().get_name_scope())
+    ```
+    would print the string `scope1/scope2`.
+
+    Returns:
+      A string representing the current name scope.
+    """
+    return self._name_stack
+
   @contextlib.contextmanager
   def colocate_with(self, op, ignore_existing=False):
     """Returns a context manager that specifies an op to colocate with.

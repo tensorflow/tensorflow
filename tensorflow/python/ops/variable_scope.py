@@ -1639,3 +1639,22 @@ def _compute_slice_dim_and_shape(full_shape, slicing):
   if slice_dim is None:
     slice_dim = 0
   return slice_dim, slice_shape
+
+
+def variable(initial_value=None,
+             trainable=True,
+             collections=None,
+             validate_shape=True,
+             caching_device=None,
+             name=None,
+             dtype=None):
+  if get_variable_scope().use_resource:
+    return resource_variable_ops.ResourceVariable(
+        initial_value=initial_value, trainable=trainable,
+        collections=collections, validate_shape=validate_shape,
+        caching_device=caching_device, name=name, dtype=dtype)
+  else:
+    return variables.Variable(
+        initial_value=initial_value, trainable=trainable,
+        collections=collections, validate_shape=validate_shape,
+        caching_device=caching_device, name=name, dtype=dtype)

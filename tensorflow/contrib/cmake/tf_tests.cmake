@@ -134,7 +134,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/python/kernel_tests/*_test.py"
     )
   endif()
- 
+
   file(GLOB_RECURSE tf_test_src_py
     ${tf_test_rnn_src_py}
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/*_test.py"
@@ -146,6 +146,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/tensorboard/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/integration_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/stateless/python/kernel_tests/*_test.py"
     # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/*_test.py"

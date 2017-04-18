@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops.bijectors import sigmoid_centered as sigmoid_centered_lib
+from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid_centered import SigmoidCentered
 from tensorflow.python.platform import test
 
 
@@ -29,7 +29,7 @@ class SigmoidCenteredBijectorTest(test.TestCase):
 
   def testBijector(self):
     with self.test_session():
-      sigmoid = sigmoid_centered_lib.SigmoidCentered()
+      sigmoid = SigmoidCentered()
       self.assertEqual("sigmoid_centered", sigmoid.name)
       x = np.log([[2., 3, 4],
                   [4., 8, 12]])

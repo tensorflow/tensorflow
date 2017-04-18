@@ -173,17 +173,26 @@ def infer_real_valued_columns_from_input(x):
   return infer_real_valued_columns_from_input_fn(input_fn)
 
 
-def _get_arguments(func):
-  """Returns list of arguments this function has."""
-  if hasattr(func, '__code__'):
-    # Regular function.
-    return inspect.getargspec(func).args
-  elif hasattr(func, '__call__'):
-    # Callable object.
-    return _get_arguments(func.__call__)
-  elif hasattr(func, 'func'):
-    # Partial function.
-    return _get_arguments(func.func)
+def _model_fn_args(fn):
+  """Get argument names for function-like object.
+
+  Args:
+    fn: Function, or function-like object (e.g., result of `functools.partial`).
+
+  Returns:
+    `tuple` of string argument names.
+
+  Raises:
+    ValueError: if partial function has positionally bound arguments
+  """
+  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
+    # Handle functools.partial and similar objects.
+    return tuple([
+        arg for arg in inspect.getargspec(fn.func).args[len(fn.args):]
+        if arg not in set(fn.keywords.keys())
+    ])
+  # Handle function.
+  return tuple(inspect.getargspec(fn).args)
 
 
 def _get_replica_device_setter(config):
@@ -1070,7 +1079,7 @@ class Estimator(BaseEstimator):
     super(Estimator, self).__init__(model_dir=model_dir, config=config)
     if model_fn is not None:
       # Check number of arguments of the given function matches requirements.
-      model_fn_args = _get_arguments(model_fn)
+      model_fn_args = _model_fn_args(model_fn)
       if params is not None and 'params' not in model_fn_args:
         raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
                          'arguments, but not None params (%s) are passed.' %
@@ -1100,7 +1109,7 @@ class Estimator(BaseEstimator):
       ValueError: if model_fn returns invalid objects.
     """
     features, labels = self._feature_engineering_fn(features, labels)
-    model_fn_args = _get_arguments(self._model_fn)
+    model_fn_args = _model_fn_args(self._model_fn)
     kwargs = {}
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode

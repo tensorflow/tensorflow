@@ -64,6 +64,18 @@ message GPUOptions {
   // PollEvents calls, when the queue is empty.  If value is not
   // set or set to 0, gets set to a non-zero default.
   int32 polling_inactive_delay_msecs = 7;
+
+  // Force all tensors to be gpu_compatible. On a GPU-enabled TensorFlow,
+  // enabling this option forces all CPU tensors to be allocated with Cuda
+  // pinned memory. Normally, TensorFlow will infer which tensors should be
+  // allocated as the pinned memory. But in case where the inference is
+  // incomplete, this option can significantly speed up the cross-device memory
+  // copy performance as long as it fits the memory.
+  // Note that this option is not something that should be
+  // enabled by default for unknown or very large models, since all Cuda pinned
+  // memory is unpageable, having too much pinned memory might negatively impact
+  // the overall host system performance.
+  bool force_gpu_compatible = 8;
 };
 
 // Options passed to the graph optimizer

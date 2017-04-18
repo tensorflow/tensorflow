@@ -18,6 +18,7 @@ syntax = "proto3";
 package tensorflow;
 option cc_enable_arenas = true;
 
+import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/framework/attr_value.proto";
@@ -31,10 +32,11 @@ message OpInfo {
   // Custom parameters impacting the behavior of the op.
   map<string, AttrValue> attr = 2;
 
-  // Input types and shapes
+  // Input types, shapes and values if known.
   message TensorProperties {
     DataType dtype = 1;
     TensorShapeProto shape = 2;
+    TensorProto value = 3;
   };
   repeated TensorProperties inputs = 3;
 

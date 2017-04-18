@@ -33,13 +33,13 @@ class KerasIntegrationTest(test.TestCase):
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=200,
           test_samples=100,
-          input_shape=(8,),
+          input_shape=(10,),
           num_classes=2)
       y_train = keras.utils.to_categorical(y_train)
       y_test = keras.utils.to_categorical(y_test)
 
       model = keras.models.Sequential([
-          keras.layers.Dense(8,
+          keras.layers.Dense(16,
                              activation='relu',
                              input_shape=x_train.shape[1:]),
           keras.layers.Dropout(0.1),
@@ -59,13 +59,13 @@ class KerasIntegrationTest(test.TestCase):
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=200,
           test_samples=100,
-          input_shape=(8,),
+          input_shape=(10,),
           num_classes=2)
       y_train = keras.utils.to_categorical(y_train)
       y_test = keras.utils.to_categorical(y_test)
 
       inputs = keras.layers.Input(shape=x_train.shape[1:])
-      x = keras.layers.Dense(8, activation='relu')(inputs)
+      x = keras.layers.Dense(16, activation='relu')(inputs)
       x = keras.layers.Dropout(0.1)(x)
       outputs = keras.layers.Dense(y_train.shape[-1], activation='softmax')(x)
 

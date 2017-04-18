@@ -58,7 +58,8 @@ class IndexUtil {
   //
   // Returns true iff the indices were successfully bumped; false if we've hit
   // the limit where it can no longer be bumped in-bounds.
-  static bool BumpIndices(const Shape& shape, std::vector<int64>* indices);
+  static bool BumpIndices(const Shape& shape,
+                          tensorflow::gtl::MutableArraySlice<int64> indices);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(IndexUtil);

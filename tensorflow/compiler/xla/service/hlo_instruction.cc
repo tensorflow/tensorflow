@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <deque>
+#include <ostream>
 #include <set>
 #include <unordered_set>
 #include <utility>
@@ -27,6 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -497,14 +500,28 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(instruction_to_fuse->IsFusable());
 
-  bool new_fusion_instruction = fused_instructions_.empty();
-  fused_instructions_.emplace_back(instruction_to_fuse->Clone());
-  HloInstruction* clone = fused_instructions_.back().get();
-  clone->parent_fusion_instruction_ = this;
-
-  if (new_fusion_instruction) {
-    fused_root_ = clone;
+  HloInstruction* clone = nullptr;
+  if (fused_instructions_computation_ == nullptr) {
+    // New fusion instruction.
+    string computation_name;
+    HloModule* module = GetModule();
+    if (module) {
+      computation_name = module->GetUniqueCompuationName(
+          instruction_to_fuse->name() + ".fusion");
+    } else {
+      computation_name = instruction_to_fuse->name() + ".fusion";
+    }
+    auto builder = HloComputation::Builder(computation_name, true);
+    builder.AddInstruction(instruction_to_fuse->Clone());
+    fused_instructions_computation_ = builder.Build();
+    clone = fused_expression_root();
+    clone->parent_fusion_instruction_ = this;
   } else {
+    CHECK(fused_instructions_computation_ != nullptr &&
+          fused_instructions_computation_->IsFusionComputation());
+    clone = fused_instructions_computation_->AddInstruction(
+        instruction_to_fuse->Clone());
+    clone->parent_fusion_instruction_ = this;
     // instruction_to_fuse is necessarily an operand of the fusion instruction.
     // After fusion this will no longer be the case. Remove the operand from the
     // operand list and remove its corresponding fused parameter
@@ -512,6 +529,8 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     // consistent with their index in the fused_parameter_ vector.
     CHECK(std::find(operands_.begin(), operands_.end(), instruction_to_fuse) !=
           operands_.end());
+    const std::vector<HloInstruction*>& fused_parameters_ =
+        fused_instructions_computation_->parameter_instructions();
     for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
       if (instruction_to_fuse == operands_[operand_num]) {
         // replace the fused parameter instruction's uses with the clone.
@@ -520,22 +539,9 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
 
         // Remove the corresponding fused parameter and operand from their
         // respective vectors.
-        fused_parameters_.erase(fused_parameters_.begin() + operand_num);
+        TF_CHECK_OK(
+            fused_instructions_computation_->RemoveParameter(operand_num));
         operands_.erase(operands_.begin() + operand_num);
-
-        // Renumber fused parameter numbers to match the vector index.
-        while (operand_num < fused_parameters_.size()) {
-          fused_parameters_[operand_num]->parameter_number_ = operand_num;
-          operand_num++;
-        }
-        // Throw removed fused parameter instruction away.
-        auto inst_it =
-            std::find_if(fused_instructions_.begin(), fused_instructions_.end(),
-                         [=](const std::unique_ptr<HloInstruction>& inst) {
-                           return inst.get() == fused_parameter;
-                         });
-        CHECK(inst_it != fused_instructions_.end());
-        fused_instructions_.erase(inst_it);
         break;
       }
     }
@@ -543,6 +549,10 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     // fusion instruction is no longer a use of instruction_to_fuse.
     instruction_to_fuse->RemoveUser(this);
   }
+
+  // Reread the parameters in the computation.
+  const std::vector<HloInstruction*>& fused_parameters_ =
+      fused_instructions_computation_->parameter_instructions();
 
   // Add each operand of the clone as an operand of the fusion instruction. A
   // complication is that some clone operands may already be operands of the
@@ -569,13 +579,10 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       std::unique_ptr<HloInstruction> param_instruction =
           CreateParameter(param_no, operand->shape(), "fusion_param");
 
-      param_instruction->set_parent(parent());
       param_instruction->parent_fusion_instruction_ = this;
-      fused_parameters_.push_back(param_instruction.get());
-      fused_instructions_.push_back(std::move(param_instruction));
+      fused_param = fused_instructions_computation_->AddParameter(
+          std::move(param_instruction));
       AppendOperand(operand);
-
-      fused_param = fused_instructions_.back().get();
     }
     TF_CHECK_OK(clone->ReplaceOperandWith(operand_num, fused_param));
   }
@@ -598,18 +605,25 @@ RandomDistribution HloInstruction::random_distribution() const {
 
 void HloInstruction::CheckFusionInstruction() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
+  CHECK(fused_instructions_computation_ != nullptr &&
+        fused_instructions_computation_->IsFusionComputation());
 
+  const std::list<std::unique_ptr<HloInstruction>>& fused_instructions_ =
+      fused_instructions_computation_->instructions();
   // All instructions owned by this fusion instruction must be fused, and the
   // parent fusion instruction of the fused instructions must be 'this'.
   for (auto& instruction : fused_instructions_) {
     CHECK(instruction->IsFused());
     CHECK_EQ(this, instruction->fusion_instruction());
-    CHECK_EQ(parent(), instruction->parent()) << instruction->ToString();
+    CHECK_EQ(fused_instructions_computation_.get(), instruction->parent())
+        << instruction->ToString();
   }
 
   // Fused root instruction and fused parameters must all be owned by the fusion
   // instruction.
   bool root_owned = false;
+  const std::vector<HloInstruction*>& fused_parameters_ = fused_parameters();
+  const HloInstruction* fused_root_ = fused_expression_root();
   std::vector<bool> parameter_owned(fused_parameters_.size(), false);
   for (auto& instruction : fused_instructions_) {
     if (fused_root_ == instruction.get()) {
@@ -792,9 +806,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateSelectAndScatter(shape, new_operands[0], select(), *window_,
                                     new_operands[1], new_operands[2],
                                     scatter());
-    case HloOpcode::kRecv:
-      CHECK_EQ(new_operands.size(), 0);
-      return CreateRecv(shape, channel_id_);
     case HloOpcode::kReverse:
       CHECK_EQ(new_operands.size(), 1);
       return CreateReverse(shape, new_operands[0], dimensions_);
@@ -803,9 +814,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kReshape:
       CHECK_EQ(new_operands.size(), 1);
       return CreateReshape(shape, new_operands[0]);
-    case HloOpcode::kSend:
-      CHECK_EQ(new_operands.size(), 1);
-      return CreateSend(new_operands[0], channel_id_);
     case HloOpcode::kSlice:
       CHECK_EQ(new_operands.size(), 1);
       return CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_);
@@ -832,6 +840,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kParameter:
       return CreateParameter(parameter_number_, shape, parameter_name_);
     // Unsupported ops for cloning.
+    case HloOpcode::kRecv:
+    case HloOpcode::kSend:
     case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
     case HloOpcode::kInfeed:
@@ -840,6 +850,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
 }
+
+HloInstruction::~HloInstruction() {}
 
 std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
   std::unique_ptr<HloInstruction> clone =
@@ -853,6 +865,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
     const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(parent() != nullptr);
+  CHECK(fused_instructions_computation_ != nullptr &&
+        fused_instructions_computation_->IsFusionComputation());
 
   auto new_instruction =
       WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
@@ -866,6 +880,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
   // Create the list of fused parameters by mapping through the cloned,
   // fused instructions.
   std::vector<HloInstruction*> new_fused_parameters;
+  const std::vector<HloInstruction*>& fused_parameters_ =
+      fused_instructions_computation_->parameter_instructions();
+  const std::list<std::unique_ptr<HloInstruction>>& fused_instructions_ =
+      fused_instructions_computation_->instructions();
+
   for (HloInstruction* old_fused_parameter : fused_parameters_) {
     new_fused_instructions.push_back(old_fused_parameter->Clone());
     HloInstruction* new_fusion_parameter = new_fused_instructions.back().get();
@@ -896,13 +915,19 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneFusionWithNewOperands(
     new_fused_instruction->parent_fusion_instruction_ = new_instruction.get();
     InsertOrDie(&old_to_new, old_fused_instruction, new_fused_instruction);
   }
+  new_instruction->fusion_kind_ = fusion_kind_;
+  auto computation_builder = HloComputation::Builder(
+      fused_instructions_computation_->name() + ".clone", true);
   // We iterated the fusion instructions in reverse post order which means
   // that we must reverse our new list of fusion instructions.
-  std::reverse(new_fused_instructions.begin(), new_fused_instructions.end());
-  new_instruction->fusion_kind_ = fusion_kind_;
-  new_instruction->fused_instructions_ = std::move(new_fused_instructions);
-  new_instruction->fused_parameters_ = std::move(new_fused_parameters);
-  new_instruction->fused_root_ = FindOrDie(old_to_new, fused_root_);
+  for (auto new_fused_instruction_iter = new_fused_instructions.rbegin();
+       new_fused_instruction_iter != new_fused_instructions.rend();
+       ++new_fused_instruction_iter) {
+    computation_builder.AddInstruction(std::move(*new_fused_instruction_iter));
+  }
+  auto fused_root_ = fused_expression_root();
+  new_instruction->fused_instructions_computation_ =
+      computation_builder.Build(FindOrDie(old_to_new, fused_root_));
   new_instruction->set_parent(parent());
   new_instruction->CheckFusionInstruction();
   return new_instruction;
@@ -1573,6 +1598,11 @@ bool HloInstruction::IsFusable() const {
   }
 }
 
+HloComputation* HloInstruction::fused_instructions_computation() const {
+  CHECK_EQ(opcode_, HloOpcode::kFusion);
+  return fused_instructions_computation_.get();
+}
+
 HloInstruction* HloInstruction::fusion_instruction() const {
   CHECK(IsFused());
   return parent_fusion_instruction_;
@@ -1580,25 +1610,32 @@ HloInstruction* HloInstruction::fusion_instruction() const {
 
 HloInstruction* HloInstruction::fused_expression_root() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
-  return fused_root_;
+  CHECK(fused_instructions_computation_ != nullptr &&
+        fused_instructions_computation_->IsFusionComputation());
+  return fused_instructions_computation_->root_instruction();
 }
 
 HloInstruction* HloInstruction::fused_parameter(int64 parameter_number) const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
-  CHECK_GE(parameter_number, 0);
-  CHECK_LT(parameter_number, fused_parameters_.size());
-  return fused_parameters_[parameter_number];
+  CHECK(fused_instructions_computation_ != nullptr &&
+        fused_instructions_computation_->IsFusionComputation());
+  return fused_instructions_computation_->parameter_instruction(
+      parameter_number);
 }
 
 const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
-  return fused_parameters_;
+  CHECK(fused_instructions_computation_ != nullptr &&
+        fused_instructions_computation_->IsFusionComputation());
+  return fused_instructions_computation_->parameter_instructions();
 }
 
 const std::list<std::unique_ptr<HloInstruction>>&
 HloInstruction::fused_instructions() const {
   CHECK_EQ(opcode_, HloOpcode::kFusion);
-  return fused_instructions_;
+  CHECK(fused_instructions_computation_ != nullptr &&
+        fused_instructions_computation_->IsFusionComputation());
+  return fused_instructions_computation_->instructions();
 }
 
 HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
@@ -1720,12 +1757,11 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kRng:
       return visitor->HandleRng(this, distribution_);
     case HloOpcode::kWhile:
-      return visitor->HandleWhile(this, operands_[0], while_condition(),
-                                  while_body());
+      return visitor->HandleWhile(this);
     case HloOpcode::kFusion:
       return visitor->HandleFusion(this);
     case HloOpcode::kCall:
-      return visitor->HandleCall(this, operands_, to_apply());
+      return visitor->HandleCall(this);
     case HloOpcode::kCustomCall:
       return visitor->HandleCustomCall(this, operands_, custom_call_target_);
     case HloOpcode::kSend:
@@ -2080,7 +2116,7 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
             }
             return cache[&hlo];
           };
-      return reuses_parameter_elements(*fused_root_);
+      return reuses_parameter_elements(*fused_expression_root());
     }
     default:
       return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
@@ -2109,6 +2145,10 @@ string ToString(HloInstruction::FusionKind kind) {
     case HloInstruction::FusionKind::kConvBackwardInput:
       return "kConvBackwardInput";
   }
+}
+
+std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {
+  return os << ToString(kind);
 }
 
 string HloInstruction::ConvolutionDimensionNumbersToString() const {
@@ -2168,4 +2208,10 @@ bool HloInstruction::CouldBeBitcast() const {
   }
 }
 
+HloModule* HloInstruction::GetModule() const {
+  if (parent_) {
+    return parent_->parent();
+  }
+  return nullptr;
+}
 }  // namespace xla

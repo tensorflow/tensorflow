@@ -565,6 +565,25 @@ class ExperimentTest(test.TestCase):
       self.assertEqual([noop_hook], est.eval_hooks)
       self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
 
+  def test_train_and_evaluate_with_no_eval_during_training(self):
+    for est in self._estimators_for_tests():
+      eval_metrics = 'eval_metrics' if not isinstance(
+          est, core_estimator.Estimator) else None
+      noop_hook = _NoopHook()
+      ex = experiment.Experiment(
+          est,
+          train_input_fn='train_input',
+          eval_input_fn='eval_input',
+          eval_metrics=eval_metrics,
+          eval_hooks=[noop_hook],
+          train_steps=100,
+          eval_steps=100,
+          min_eval_frequency=0)
+      ex.train_and_evaluate()
+      self.assertEqual(1, est.fit_count)
+      self.assertEqual(1, est.eval_count)
+      self.assertEqual(0, len(est.monitors))
+
   def test_min_eval_frequency_defaults(self):
     def dummy_model_fn(features, labels):  # pylint: disable=unused-argument
       pass

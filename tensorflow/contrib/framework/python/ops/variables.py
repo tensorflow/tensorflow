@@ -32,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
@@ -157,7 +156,7 @@ def local_variable(initial_value, validate_shape=True, name=None):
   Returns:
     New variable.
   """
-  return variables.Variable(
+  return variable_scope.variable(
       initial_value, trainable=False,
       collections=[ops.GraphKeys.LOCAL_VARIABLES],
       validate_shape=validate_shape, name=name)
