@@ -113,6 +113,15 @@ test_suite(
     ],
 )
 
+py_test(
+    name = "example_mnist_conv",
+    size = "enormous",
+    srcs = ["examples/example_mnist_conv.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
