@@ -6709,8 +6709,8 @@ func AvgPoolGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksize
 
 // Computes the maximum along segments of a tensor.
 //
-// Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)
-// for an explanation of segments.
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
 //
 // Computes a tensor such that
 // \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
@@ -6719,7 +6719,7 @@ func AvgPoolGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksize
 // If the max is empty for a given segment ID `i`, `output[i] = 0`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/SegmentMax.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
 // </div>
 //
 // Arguments:
@@ -7879,9 +7879,8 @@ func SdcaOptimizer(scope *Scope, sparse_example_indices []tf.Output, sparse_feat
 
 // Computes the minimum along segments of a tensor.
 //
-// Read [the section on
-// Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-// of segments.
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
 //
 // Computes a tensor such that
 // \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
@@ -7890,7 +7889,7 @@ func SdcaOptimizer(scope *Scope, sparse_example_indices []tf.Output, sparse_feat
 // If the min is empty for a given segment ID `i`, `output[i] = 0`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/SegmentMin.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
 // </div>
 //
 // Arguments:
@@ -11313,9 +11312,8 @@ func ResourceSparseApplyCenteredRMSProp(scope *Scope, var_ tf.Output, mg tf.Outp
 
 // Computes the mean along segments of a tensor.
 //
-// Read [the section on
-// Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-// of segments.
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
 //
 // Computes a tensor such that
 // \\(output_i = \frac{\sum_j data_j}{N}\\) where `mean` is
@@ -11325,7 +11323,7 @@ func ResourceSparseApplyCenteredRMSProp(scope *Scope, var_ tf.Output, mg tf.Outp
 // If the mean is empty for a given segment ID `i`, `output[i] = 0`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/SegmentMean.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
 // </div>
 //
 // Arguments:
@@ -14014,9 +14012,8 @@ func IFFT(scope *Scope, input tf.Output) (output tf.Output) {
 //
 // N is the size of the segment being reduced.
 //
-// Read [the section on
-// Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-// of segments.
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
 //
 // Arguments:
 //
@@ -17662,11 +17659,10 @@ func Exp(scope *Scope, x tf.Output) (y tf.Output) {
 
 // Computes the Max along segments of a tensor.
 //
-// Read [the section on
-// Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-// of segments.
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
 //
-// This operator is similar to the [unsorted segment sum operator](../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+// This operator is similar to the [unsorted segment sum operator](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
 // Instead of computing the sum over segments, it computes the maximum
 // such that:
 //
@@ -17677,7 +17673,7 @@ func Exp(scope *Scope, x tf.Output) (y tf.Output) {
 //  `output[i] = numeric_limits<T>::min()`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
 // </div>
 //
 // Arguments:
@@ -18413,8 +18409,8 @@ func ArgMax(scope *Scope, input tf.Output, dimension tf.Output) (output tf.Outpu
 
 // Computes the sum along segments of a tensor.
 //
-// Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)
-// for an explanation of segments.
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
 //
 // Computes a tensor such that
 // \\(output_i = \sum_j data_j\\) where sum is over `j` such
@@ -18423,7 +18419,7 @@ func ArgMax(scope *Scope, input tf.Output, dimension tf.Output) (output tf.Outpu
 // If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/SegmentSum.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentSum.png" alt>
 // </div>
 //
 // Arguments:
@@ -18577,9 +18573,8 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 
 // Computes the product along segments of a tensor.
 //
-// Read [the section on
-// Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-// of segments.
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
 //
 // Computes a tensor such that
 // \\(output_i = \prod_j data_j\\) where the product is over `j` such
@@ -18588,7 +18583,7 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 // If the product is empty for a given segment ID `i`, `output[i] = 1`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/SegmentProd.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
 // </div>
 //
 // Arguments:
@@ -18614,9 +18609,8 @@ func SegmentProd(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf
 
 // Computes the sum along segments of a tensor.
 //
-// Read [the section on
-// Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-// of segments.
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
 //
 // Computes a tensor such that
 // `(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such
@@ -18629,7 +18623,7 @@ func SegmentProd(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf
 // `num_segments` should equal the number of distinct segment IDs.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
 // </div>
 //
 // Arguments:
@@ -18656,9 +18650,8 @@ func UnsortedSegmentSum(scope *Scope, data tf.Output, segment_ids tf.Output, num
 
 // Computes the sum along sparse segments of a tensor.
 //
-// Read [the section on
-// Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-// of segments.
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
 //
 // Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
 // dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -20023,9 +20016,8 @@ func AvgPool(scope *Scope, value tf.Output, ksize []int64, strides []int64, padd
 
 // Computes the mean along sparse segments of a tensor.
 //
-// Read [the section on
-// Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-// of segments.
+// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+// segments.
 //
 // Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
 // dimension, selecting a subset of dimension 0, specified by `indices`.
