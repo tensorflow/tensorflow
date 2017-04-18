@@ -5,18 +5,34 @@ that will be used for training. """
 import json
 import os
 import re
+import math
 
 from flask import (Flask, flash, json, redirect, request, send_from_directory,
                    url_for, jsonify, render_template, make_response)
 from werkzeug.utils import secure_filename
 
 # Default values
-DEFAULTS = {'UploadFolder':'uploads', \
-    'AllowedExtensions': 'jpg,jpeg,png,bmp', \
-    'StaticURLPath':'static'}
+DEFAULTS = { \
+    'StaticURLPath':'static', \
+    'DatabaseFolder':'database', \
+    'UploadFolder':'uploads', \
+    'AllowedExtensions':'jpg,jpeg,png,bmp', \
+    'ModelPath':'tensorflow/examples/android/assets', \
+    'ModelExtension':'.pb', \
+    'LabelExtension':'.txt' \
+}
 
 # Paths containing the models
 MODELPATHS = {}
+
+# Check if server config file exists
+# If if doesn't, create the file
+if not os.path.isfile('server.config'):
+    conf = open('server.config', 'w+')
+    for key, value in DEFAULTS.iteritems():
+        conf.write(key + '=' + value + '\n')
+
+    conf.close()
 
 # Read server config file
 with open('server.config') as f:
@@ -31,11 +47,6 @@ with open('server.config') as f:
 
 
 APP = Flask(__name__, static_url_path=os.path.join('/', DEFAULTS['StaticURLPath']))
-APP.config['UPLOAD_FOLDER'] = os.path.join(DEFAULTS['StaticURLPath'], DEFAULTS['UploadFolder'])
-
-# Debug lines
-print DEFAULTS
-print APP.config['UPLOAD_FOLDER']
 
 def allowed_file(filename):
     """ Check if the attached file contains the valid image extensions defined
@@ -70,68 +81,94 @@ def images():
         if 'species' not in request.form:
             return make_response('error: species field not specified', 400)
         if 'file' not in request.files:
-            return make_response('error: no file uploaded', 400)
+            return make_response('error: no file(s) uploaded', 400)
 
         # Grab the form data
         species = request.form['species'].replace(' ', '_').lower()
-        img = request.files['file']
-        extension = img.filename.rsplit('.', 1)[1].lower()
-
-        # Debug lines
-        print 'species: {0}'.format(species)
+        imgs = request.files.getlist('file')
 
         # Check if no file was selected
-        if img.filename == '':
-            return make_response('error: no file selected', 400)
+        if not imgs:
+            return make_response('error: no file(s) selected', 400)
+
+        # Create the file path if it does not exist
+        directory = os.path.join( \
+            DEFAULTS['StaticURLPath'], \
+            DEFAULTS['DatabaseFolder'], \
+            DEFAULTS['UploadFolder'], \
+            species.replace(' ', '_'))
+        if not os.path.exists(directory):
+            os.makedirs(directory)
 
         # Process file if all information is present
-        if img and allowed_file(img.filename) and species:
-            # Create the file path if it does not exist
-            directory = os.path.join(APP.config['UPLOAD_FOLDER'], species.replace(' ', '_'))
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-
-            # Count the number of files in the species directory to figure out
-            # what number to assign to the uploaded image
-            number = len([name for name in os.listdir(directory) if os.path.isfile(name)])
-            filename = species.replace(' ', '_') + '_' + str(number).zfill(4) + '.' + extension
-
-            # Check if file name already exists
-            while os.path.isfile(os.path.join(directory, filename)):
-                number = number + 1
+        for img in imgs:
+            if img and allowed_file(img.filename) and species:
+                # Count the number of files in the species directory to figure out
+                # what number to assign to the uploaded image
+                number = len([name for name in os.listdir(directory) if os.path.isfile(name)])
+                extension = img.filename.rsplit('.', 1)[1].lower()
                 filename = species.replace(' ', '_') + '_' + str(number).zfill(4) + '.' + extension
 
-                # Debug lines
-                print 'number incremented to {0}'.format(number)
+                # Check if file name already exists
+                while os.path.isfile(os.path.join(directory, filename)):
+                    number = number + 1
+                    filename = species.replace(' ', '_') + '_' + str(number).zfill(4) + '.' + extension
 
-            # Debug lines
-            print 'directory: {0}'.format(directory)
-            print 'file name: {0}'.format(filename)
+                # save the image in the directory
+                img.save(os.path.join(directory, filename))
 
-            # save the image in the directory
-            img.save(os.path.join(directory, filename))
-            return make_response('file uploaded successfully', 200)
+        return make_response('file(s) uploaded successfully', 200)
 
-def grab_images(search):
+def grab_images(search, number, page):
     # initialize variables
     exist = False
     query = search.replace(' ', '_').lower()
-    directory = os.path.join(DEFAULTS['UploadFolder'], query)
-    full_directory = os.path.join(DEFAULTS['StaticURLPath'], directory)
+    directory = os.path.join(DEFAULTS['StaticURLPath'], DEFAULTS['DatabaseFolder'])
     results = []
 
     # Check if the directory exists and find all image files if it does
-    if os.path.isdir(full_directory):
-        for path, subdirs, files in os.walk(full_directory):
-            for name in files:
-                # insert the path in the static folder to the image
-                results.append(os.path.join('/', os.path.join(directory, name)))
+    #if os.path.isdir(full_directory):
+    #    for path, subdirs, files in os.walk(full_directory):
+    #        for name in files:
+    #            # insert the path in the static folder to the image
+    #            results.append(os.path.join('/', os.path.join(directory, name)))
+    if os.path.isdir(directory):
+        for path, subdirs, files in os.walk(directory):
+            for subdir in subdirs:
+                if query in subdir:
+                    for filepath, subsubdirs, subfiles in os.walk(os.path.join(path, subdir)):
+                        for name in subfiles:
+                            if allowed_file(name):
+                                results.append('/' + os.path.join(filepath, name))
 
     # If results list is not empty set exists to true
     if results:
         exist = True
 
-    return render_template('search_results.html', search=search, results=results, exist=exist)
+    # Return all images if number or page are -1
+    if number == -1 or page == -1:
+        return render_template('search_results.html', search=search.capitalize(), results=results, exist=exist)
+    # Return paginated result if number and page are not -1
+    else:
+        # Calculate pagination info
+        page_start = (page-1) * number
+        page_end = page_start + number
+        pages = int(math.ceil(float(len(results)) / number))
+
+        # Check if pageStart is within the results list
+        if page_start >= 0 and page_start < len(results) - 1:
+            results_page = []
+
+            # Check if pageEnd is within the results list end
+            if page_end <= len(results):
+                results_page = results[page_start:page_end]
+            else:
+                results_page = results[page_start:]
+
+            return render_template('search_results.html', search=search.capitalize(), results=results_page, exist=exist, paginated=True, entries=number, page=page, pages=pages)
+        else:
+            return render_template('search_results.html', search=search.capitalize(), results=[], exist=False, paginated=True, entries=number, page=1, pages=pages)
+
 
 @APP.route('/images/search', methods=['GET', 'POST'])
 def search_images():
@@ -142,7 +179,16 @@ def search_images():
     if request.method == 'GET':
         # Check if arguments are present
         if 'species' in request.args:
-            return grab_images(request.args.get('species'))
+            species = request.args.get('species')
+
+            # Return paginated images
+            if 'entries' and 'page' in request.args:
+                entries = int(request.args.get('entries'))
+                page = int(request.args.get('page'))
+                return grab_images(species, entries, page)
+
+            # Return all images
+            return grab_images(species)
 
         # Serve search page
         return render_template('search.html')
