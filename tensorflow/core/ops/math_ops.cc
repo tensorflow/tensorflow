@@ -1396,8 +1396,8 @@ REGISTER_OP("SegmentSum")
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
 
-Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)
-for an explanation of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 \\(output_i = \sum_j data_j\\) where sum is over `j` such
@@ -1406,7 +1406,7 @@ that `segment_ids[j] == i`.
 If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/SegmentSum.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentSum.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1426,9 +1426,8 @@ REGISTER_OP("SegmentMean")
     .Doc(R"doc(
 Computes the mean along segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 \\(output_i = \frac{\sum_j data_j}{N}\\) where `mean` is
@@ -1438,7 +1437,7 @@ values summed.
 If the mean is empty for a given segment ID `i`, `output[i] = 0`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/SegmentMean.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1458,9 +1457,8 @@ REGISTER_OP("SegmentProd")
     .Doc(R"doc(
 Computes the product along segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 \\(output_i = \prod_j data_j\\) where the product is over `j` such
@@ -1469,7 +1467,7 @@ that `segment_ids[j] == i`.
 If the product is empty for a given segment ID `i`, `output[i] = 1`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/SegmentProd.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1489,9 +1487,8 @@ REGISTER_OP("SegmentMin")
     .Doc(R"doc(
 Computes the minimum along segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
@@ -1500,7 +1497,7 @@ that `segment_ids[j] == i`.
 If the min is empty for a given segment ID `i`, `output[i] = 0`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/SegmentMin.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1520,8 +1517,8 @@ REGISTER_OP("SegmentMax")
     .Doc(R"doc(
 Computes the maximum along segments of a tensor.
 
-Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)
-for an explanation of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
@@ -1530,7 +1527,7 @@ that `segment_ids[j] == i`.
 If the max is empty for a given segment ID `i`, `output[i] = 0`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/SegmentMax.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1551,9 +1548,8 @@ REGISTER_OP("UnsortedSegmentSum")
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 `(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such
@@ -1566,7 +1562,7 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 `num_segments` should equal the number of distinct segment IDs.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
 </div>
 
 segment_ids: A tensor whose shape is a prefix of `data.shape`.
@@ -1576,7 +1572,6 @@ output: Has same shape as data, except for the first `segment_ids.rank`
   `num_segments`.
 
 )doc");
-
 
 REGISTER_OP("UnsortedSegmentMax")
     .Input("data: T")
@@ -1589,11 +1584,10 @@ REGISTER_OP("UnsortedSegmentMax")
     .Doc(R"doc(
 Computes the Max along segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
-This operator is similar to the [unsorted segment sum operator](../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to the [unsorted segment sum operator](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
 Instead of computing the sum over segments, it computes the maximum
 such that:
 
@@ -1604,7 +1598,7 @@ If the maximum is empty for a given segment ID `i`, it outputs the smallest poss
  `output[i] = numeric_limits<T>::min()`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1625,9 +1619,8 @@ REGISTER_OP("SparseSegmentSum")
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
 dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -1674,9 +1667,8 @@ REGISTER_OP("SparseSegmentMean")
     .Doc(R"doc(
 Computes the mean along sparse segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
 dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -1724,9 +1716,8 @@ Computes the sum along sparse segments of a tensor divided by the sqrt of N.
 
 N is the size of the segment being reduced.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 indices: A 1-D tensor. Has same rank as `segment_ids`.
 
