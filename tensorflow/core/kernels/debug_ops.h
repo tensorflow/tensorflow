@@ -73,8 +73,10 @@ class CopyOp : public OpKernel {
         *copied_tensor = tensor::DeepCopy(src_tensor);
       }
 #elif defined(TENSORFLOW_USE_SYCL)
+      Device* device = static_cast<Device*>(context->device());
       // Determine if the input tensor is not on CPU (e.g., on GPU).
-      bool off_host_input = !context->input_alloc_attr(0).on_host();
+      bool off_host_input = device->device_type() == DEVICE_SYCL &&
+                            !context->input_alloc_attr(0).on_host();
 
       if (off_host_input) {
         auto size = src_tensor.NumElements() * sizeof(src_tensor.dtype());
