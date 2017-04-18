@@ -32,7 +32,7 @@ class MemoryStatsOpsTest(test_util.TensorFlowTestCase):
   def testBytesLimit(self):
     # AllocatorStats.bytes_limit is set to zero for CPU allocators, so we skip
     # the check.
-    if not test.is_gpu_available():
+    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
       return
 
     with self.test_session(use_gpu=True) as sess:
@@ -50,7 +50,7 @@ class MemoryStatsOpsTest(test_util.TensorFlowTestCase):
   # computation needs space for only three matrix plus some small overhead.
   def testChainOfMatmul(self):
     # MaxBytesInUse is registerd on GPU only. See kernels/memory_stats_ops.cc.
-    if not test.is_gpu_available():
+    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
       return
 
     with self.test_session(use_gpu=True) as sess:

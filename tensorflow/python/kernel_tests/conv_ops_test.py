@@ -146,6 +146,9 @@ def GetTestConfigs():
     all the valid test configs as tuples of data_format and use_gpu.
   """
   test_configs = [("NHWC", False), ("NHWC", True)]
+  # Currently not implemented for OpenCL
+  if "sycl" in test_util.gpu_device_name():
+    test_configs = [("NHWC", False)]
   if test.is_gpu_available(cuda_only=True):
     # "NCHW" format is only supported on CUDA.
     test_configs += [("NCHW", True)]
@@ -1276,7 +1279,8 @@ class SeparableConv2DTest(test.TestCase):
     self._testSeparableConv2D("NHWC")
 
   def testSeparableConv2DNCHW(self):
-    if not test.is_gpu_available():
+    # Currently not implemented for OpenCL
+    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
       return
     self._testSeparableConv2D("NCHW")
 
@@ -1313,7 +1317,8 @@ class SeparableConv2DTest(test.TestCase):
     self._testSeparableConv2DEqualInputOutputDepth("NHWC")
 
   def testSeparableConv2DEqualInputOutputDepthNCHW(self):
-    if not test.is_gpu_available():
+    # Currently not implemented for OpenCL
+    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
       return
     self._testSeparableConv2DEqualInputOutputDepth("NCHW")
 
@@ -1383,7 +1388,9 @@ class Conv2DBenchmark(test.Benchmark):
   def benchmarkGPUConvStackFirst(self):
     # Benchmark the first iteration of a conv-net with many identical conv
     # operations.
-    if not test.is_gpu_available():
+
+    # Curently not implemented for OpenCL
+    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
       return
 
     with ops.Graph().as_default(), session_lib.Session() as session:

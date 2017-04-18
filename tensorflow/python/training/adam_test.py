@@ -30,7 +30,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
-
+from tensorflow.python.framework import test_util
 
 def adam_update_numpy(param,
                       g_t,
@@ -106,6 +106,9 @@ class AdamOptimizerTest(test.TestCase):
     self.doTestSparse(use_resource=True)
 
   def testSparseDevicePlacement(self):
+    # Currently not implemented for OpenCL
+    if "sycl" in test_util.gpu_device_name():
+        return
     for index_dtype in [dtypes.int32, dtypes.int64]:
       with self.test_session(force_gpu=test.is_gpu_available()):
         # If a GPU is available, tests that all optimizer ops can be placed on

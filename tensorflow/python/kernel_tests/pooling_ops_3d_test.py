@@ -227,6 +227,10 @@ class PoolingTest(test.TestCase):
       data_format: Data format string.
       use_gpu: Whether to run on GPU.
     """
+    # Currently not implemented for OpenCL
+    if "sycl" in test_util.gpu_device_name():
+        return
+
     total_size = 1
     for s in input_sizes:
       total_size *= s
