@@ -52,3 +52,21 @@ def get_graph_from_inputs(op_input_list, graph=None):
   """
   # pylint: disable=protected-access
   return ops._get_graph_from_inputs(op_input_list, graph)
+
+
+def get_name_scope():
+  """Returns the current name scope of the default graph.
+
+  For example:
+
+    ```python
+    with tf.name_scope('scope1'):
+      with tf.name_scope('scope2'):
+        print(tf.get_name_scope())
+    ```
+    would print the string `scope1/scope2`.
+
+  Returns:
+    A string represnting the current name scope.
+  """
+  return ops.get_default_graph().get_name_scope()
