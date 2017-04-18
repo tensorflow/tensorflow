@@ -39,9 +39,13 @@ should choose depends on (1) the feature type and (2) the model type.
      age_column = real_valued_column("age")
 
    To feed sparse features into DNN models, wrap the column with
-   `embedding_column` or `one_hot_column`. `one_hot_column` is recommended for
-   features with only a few possible values. For features with many possible
-   values, `embedding_column` is recommended.
+   `embedding_column` or `one_hot_column`. `one_hot_column` will create a dense
+   boolean tensor with an entry for each possible value, and thus the
+   computation cost is linear in the number of possible values versus the number
+   of values that occur in the sparse tensor. Thus using a "one_hot_column" is
+   only recommended for features with only a few possible values. For features
+   with many possible values or for very sparse features, `embedding_column` is
+   recommended.
 
      embedded_dept_column = embedding_column(
        sparse_column_with_keys("department", ["math", "philosphy", ...]),
@@ -49,7 +53,9 @@ should choose depends on (1) the feature type and (2) the model type.
 
 * Wide (aka linear) models (`LinearClassifier`, `LinearRegressor`).
 
-   Sparse features can be fed directly into linear models.
+   Sparse features can be fed directly into linear models. When doing so
+   an embedding_lookups are used to efficiently perform the sparse matrix
+   multiplication.
 
      dept_column = sparse_column_with_keys("department",
        ["math", "philosophy", "english"])
@@ -856,7 +862,7 @@ class _OneHotColumn(_FeatureColumn,
       output_rank: the desired rank of the output `Tensor`.
 
     Returns:
-      A multihot Tensor to be fed into the first layer of neural network.
+      A multi-hot Tensor to be fed into the first layer of neural network.
 
     Raises:
       ValueError: When using one_hot_column with weighted_sparse_column.

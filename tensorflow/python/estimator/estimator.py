@@ -111,7 +111,9 @@ class Estimator(object):
           `EstimatorSpec`
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model.
+        continue training a previously saved model. If `None`, the model_dir in
+        `config` will be used if set. If both are set, they must be same. If
+        both are `None`, a temporary directory will be used.
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
@@ -122,12 +124,6 @@ class Estimator(object):
         a member of `Estimator`.
     """
     Estimator._assert_members_are_not_overridden(self)
-    # Model directory.
-    self._model_dir = model_dir
-    if self._model_dir is None:
-      self._model_dir = tempfile.mkdtemp()
-      logging.warning('Using temporary folder as model directory: %s',
-                      self._model_dir)
 
     if config is None:
       self._config = run_config.RunConfig()
@@ -139,6 +135,21 @@ class Estimator(object):
             config)
       self._config = config
 
+    # Model directory.
+    if (model_dir is not None) and (self._config.model_dir is not None):
+      if model_dir != self._config.model_dir:
+        # pylint: disable=g-doc-exception
+        raise ValueError(
+            "model_dir are set both in constructor and RunConfig, but with "
+            "different values. In constructor: '{}', in RunConfig: "
+            "'{}' ".format(model_dir, self._config.model_dir))
+        # pylint: enable=g-doc-exception
+
+    self._model_dir = model_dir or self._config.model_dir
+    if self._model_dir is None:
+      self._model_dir = tempfile.mkdtemp()
+      logging.warning('Using temporary folder as model directory: %s',
+                      self._model_dir)
     logging.info('Using config: %s', str(vars(self._config)))
 
     if self._config.session_config is None:

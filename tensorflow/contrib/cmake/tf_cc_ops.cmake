@@ -19,6 +19,7 @@ set(tf_cc_framework_srcs
     "${tensorflow_source_dir}/tensorflow/cc/framework/ops.h"
     "${tensorflow_source_dir}/tensorflow/cc/framework/ops.cc"
     "${tensorflow_source_dir}/tensorflow/cc/framework/scope.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/scope_internal.h"
     "${tensorflow_source_dir}/tensorflow/cc/framework/scope.cc"
 )
 

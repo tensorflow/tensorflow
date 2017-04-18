@@ -120,7 +120,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
   }
 
   // Constructs the graph out of "gdef".
-  Graph graph(item->lib_def);
+  Graph graph(OpRegistry::Global());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = true;
@@ -152,7 +152,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
   std::unordered_map<string, std::unique_ptr<Graph>> partition_graphs;
   for (const auto& partition : partitions) {
-    std::unique_ptr<Graph> device_graph(new Graph(item->lib_def));
+    std::unique_ptr<Graph> device_graph(new Graph(OpRegistry::Global()));
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now allow.
     device_opts.allow_internal_ops = true;

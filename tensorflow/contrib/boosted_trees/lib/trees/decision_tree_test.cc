@@ -181,6 +181,26 @@ TEST_F(DecisionTreeTest, TraverseCategoricalIdBinarySplit) {
   EXPECT_EQ(2, DecisionTree::Traverse(tree_config, 0, *++example_it));
 }
 
+TEST_F(DecisionTreeTest, TraverseCategoricalIdSetMembershipBinarySplit) {
+  DecisionTreeConfig tree_config;
+  auto* split_node = tree_config.add_nodes()
+                         ->mutable_categorical_id_set_membership_binary_split();
+  split_node->set_feature_column(0);
+  split_node->add_feature_ids(3);
+  split_node->set_left_id(1);
+  split_node->set_right_id(2);
+  tree_config.add_nodes()->mutable_leaf();
+  tree_config.add_nodes()->mutable_leaf();
+  auto example_iterable = batch_features_.examples_iterable(0, 2);
+
+  // Expect left child to be picked as 3 in {3};
+  auto example_it = example_iterable.begin();
+  EXPECT_EQ(1, DecisionTree::Traverse(tree_config, 0, *example_it));
+
+  // Expect right child to be picked as the feature is missing;
+  EXPECT_EQ(2, DecisionTree::Traverse(tree_config, 0, *++example_it));
+}
+
 TEST_F(DecisionTreeTest, TraverseHybridSplits) {
   DecisionTreeConfig tree_config;
   auto* split_node1 =

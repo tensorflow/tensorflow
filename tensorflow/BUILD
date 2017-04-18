@@ -14,9 +14,7 @@ exports_files([
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-    },
+    values = {"crosstool_top": "//external:android/crosstool"},
     visibility = ["//visibility:public"],
 )
 
@@ -76,9 +74,7 @@ config_setting(
 
 config_setting(
     name = "ios",
-    values = {
-        "crosstool_top": "//tools/osx/crosstool:crosstool",
-    },
+    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
     visibility = ["//visibility:public"],
 )
 
@@ -266,6 +262,7 @@ filegroup(
         "//tensorflow/contrib/sparsemax:all_files",
         "//tensorflow/contrib/specs:all_files",
         "//tensorflow/contrib/stat_summarizer:all_files",
+        "//tensorflow/contrib/stateless:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/tensorboard:all_files",

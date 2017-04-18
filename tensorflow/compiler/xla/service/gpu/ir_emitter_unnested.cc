@@ -1540,10 +1540,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
       .EmitLoop();
 }
 
-Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while,
-                                      HloInstruction* init,
-                                      HloComputation* condition,
-                                      HloComputation* body) {
+Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
+  HloComputation* condition = xla_while->while_condition();
   TF_RET_CHECK(ShapeUtil::IsScalar(condition->root_instruction()->shape()) &&
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";

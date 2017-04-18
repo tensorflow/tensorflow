@@ -18,6 +18,7 @@ limitations under the License.
 %{
 
 #include "tensorflow/python/client/tf_session_helper.h"
+#include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/public/version.h"
 
@@ -56,6 +57,9 @@ tensorflow::ImportNumpy();
     SWIG_fail;
   }
 }
+
+// Constants used by TensorHandle (get_session_handle).
+%constant const char* TENSOR_HANDLE_KEY = tensorflow::SessionState::kTensorHandleResourceTypeName;
 
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()

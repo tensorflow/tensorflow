@@ -121,11 +121,11 @@ class DebugNodeInserter {
                                        const string& debug_op_name);
 
  private:
-  static Status CreateCopyNode(Graph* graph, const DeviceType device_type,
-                               const bool is_host_memory,
-                               const string& src_node_name,
-                               const int src_output, const DataType src_dt,
-                               const string& tensor_name, Node** copy_node);
+  static Status CreateCopyNode(
+      Graph* graph, const DeviceType device_type, const bool is_host_memory,
+      const string& src_node_name, const int src_output, const DataType src_dt,
+      const string& tensor_name, const std::vector<string>& debug_ops,
+      const std::vector<string>& debug_urls, Node** copy_node);
 
   // Parse the debug_op_name string to extract proper op name and attributes.
   // debug_op_name can be the proper op name only, e.g., "DebugNumericSummary".
