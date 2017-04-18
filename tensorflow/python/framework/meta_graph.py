@@ -21,6 +21,7 @@ from __future__ import print_function
 import copy
 import os.path
 import re
+from collections import OrderedDict, deque
 
 import six
 from google.protobuf.any_pb2 import Any
@@ -309,6 +310,7 @@ def add_collection_def(meta_graph_def, key, graph=None,
 def create_meta_graph_def(meta_info_def=None,
                           graph_def=None,
                           saver_def=None,
+                          add_collections=True,
                           collection_list=None,
                           graph=None,
                           export_scope=None):
@@ -374,14 +376,15 @@ def create_meta_graph_def(meta_info_def=None,
     meta_graph_def.saver_def.MergeFrom(saver_def)
 
   # Adds collection_list.
-  if collection_list:
-    clist = collection_list
-  else:
-    clist = graph.get_all_collection_keys()
-  for ctype in clist:
-    add_collection_def(meta_graph_def, ctype,
-                       graph=graph,
-                       export_scope=export_scope)
+  if add_collections:
+    if collection_list:
+      clist = collection_list
+    else:
+      clist = graph.get_all_collection_keys()
+    for ctype in clist:
+      add_collection_def(meta_graph_def, ctype,
+                         graph=graph,
+                         export_scope=export_scope)
   return meta_graph_def
 
 
@@ -472,7 +475,7 @@ def import_scoped_meta_graph(meta_graph_or_file,
         field = getattr(col_def, kind)
         if field.value and (
             not input_map or
-            sorted([compat.as_str(v) for v in field.value]) !=
+            sorted(set([compat.as_str(v) for v in field.value])) !=
             sorted(input_map)):
           raise ValueError("Graph contains unbound inputs: %s. Must "
                            "provide these inputs through input_map." %
@@ -682,3 +685,305 @@ def copy_scoped_meta_graph(from_scope, to_scope,
                                       graph=to_graph,
                                       import_scope=to_scope)
   return var_list
+
+
+def _unbound_name(name):
+  return re.sub(r"([\^]|loc:@|^)(.*?)", r"\1" + _UNBOUND_INPUT_PREFIX + r"\2",
+                compat.as_str(name))
+
+
+def _node_def_unbound(from_node_def, export_scope, unbound_inputs,
+                      as_unbound_inputs, clear_devices=False):
+  """Create a `NodeDef` proto with export_scope stripped given input names
+  that are treated as unbound.
+
+  Args:
+    from_node_def: A `node_def_pb2.NodeDef` protocol buffer.
+    export_scope: A `string` representing the name scope to remove.
+    unbound_inputs: An array of unbound input names if they exist.
+    as_unbound_inputs: A list of `String`s. Input names that are treated as
+      unbound when exporting Operations.
+    clear_devices: Boolean which controls whether to clear device information
+      from node_def. Default false.
+
+  Returns:
+    A `node_def_pb2.NodeDef` protocol buffer.
+  """
+  node_def = copy.deepcopy(from_node_def)
+  as_unbound_inputs = set(as_unbound_inputs)
+  for i, v in enumerate(node_def.input):
+    if node_def.input[i] in as_unbound_inputs:
+      # Adds "$unbound_inputs_" prefix to the unbound name so they are easily
+      # identifiable.
+      node_def.input[i] = _unbound_name(v)
+      unbound_inputs.append(node_def.input[i])
+    else:
+      node_def.input[i] = ops.strip_name_scope(v, export_scope)
+  node_def.name = compat.as_bytes(
+      ops.strip_name_scope(from_node_def.name, export_scope))
+  for k, v in six.iteritems(from_node_def.attr):
+    if k == "_class":
+      new_s = []
+      for s in v.list.s:
+        if compat.as_str(s) in as_unbound_inputs:
+          new_s.append(compat.as_bytes(_unbound_name(s)))
+        else:
+          new_s.append(compat.as_bytes(ops.strip_name_scope(s, export_scope)))
+      node_def.attr[k].CopyFrom(attr_value_pb2.AttrValue(
+          list=attr_value_pb2.AttrValue.ListValue(s=new_s)))
+    else:
+      node_def.attr[k].CopyFrom(v)
+
+  if clear_devices:
+    node_def.device = ""
+
+  return node_def
+
+
+def export_ops_meta_graph(op_list,
+                          graph=None,
+                          export_scope="",
+                          as_unbound_inputs=None,
+                          as_text=False,
+                          unbound_inputs_col_name="unbound_inputs",
+                          clear_devices=False,
+                          **kwargs):
+  """This function exports a list of `Operation` objects into `MetaGraphDef`
+  protocol buffer with the intention of it being imported at a later time or
+  location.
+
+  Args:
+    op_list: A list of `Operation` objects to export.
+    graph: The `Graph` to import into. If `None`, use the default graph.
+    export_scope: Optional `string`. Name scope under which to extract the ops.
+      The scope name will be striped from the node definitions for easy import
+      later into new name scopes.
+    as_unbound_inputs: A list of `String`s. Input names that are treated as
+      unbound when exporting Operations.
+    as_text: If `True`, writes the `MetaGraphDef` as an ASCII proto.
+    unbound_inputs_col_name: Optional `string`. If provided, a string collection
+      with the given name will be added to the returned `MetaGraphDef`,
+      containing the names of tensors that must be remapped when importing the
+      `MetaGraphDef`.
+    clear_devices: Boolean which controls whether to clear device information
+      before exporting the graph.
+    **kwargs: Optional keyed arguments, including meta_info_def,
+      saver_def, collection_list.
+
+  Returns:
+    A `MetaGraphDef` proto.
+  """
+  op_list = set(op_list)
+  for op in op_list:
+    if not op.name.startswith(export_scope):
+      raise ValueError("The Operation (%s) to export is not under "
+                       "'export_scope'." % op.name)
+
+  graph = graph or ops.get_default_graph()
+  as_unbound_inputs = as_unbound_inputs or []
+  unbound_inputs = []
+  graph_def = graph_pb2.GraphDef()
+  # pylint: disable=protected-access
+  graph_def.versions.CopyFrom(graph.graph_def_versions)
+  bytesize = 0
+  for key in sorted(graph._nodes_by_id):
+    if graph._nodes_by_id[key] in op_list:
+      op = graph._nodes_by_id[key]
+      node_def = _node_def_unbound(
+        op.node_def, export_scope, unbound_inputs, as_unbound_inputs,
+        clear_devices=clear_devices)
+      graph_def.node.extend([node_def])
+      if op.outputs:
+        assert "_output_shapes" not in graph_def.node[-1].attr
+        graph_def.node[-1].attr["_output_shapes"].list.shape.extend([
+          output.get_shape().as_proto() for output in op.outputs])
+      bytesize += op.node_def.ByteSize()
+      if bytesize >= (1 << 31) or bytesize < 0:
+        raise ValueError("GraphDef cannot be larger than 2GB.")
+  # It's possible that not all the inputs are in the export_scope.
+  # If we would like such information included in the exported meta_graph,
+  # add them to a special unbound_inputs collection.
+  if unbound_inputs_col_name:
+    # Clears the unbound_inputs collections.
+    graph.clear_collection(unbound_inputs_col_name)
+    for k in unbound_inputs:
+      graph.add_to_collection(unbound_inputs_col_name, k)
+
+  scoped_meta_graph_def = create_meta_graph_def(
+    graph_def=graph_def,
+    graph=graph,
+    add_collections=False,
+    **kwargs)
+
+  return scoped_meta_graph_def
+
+
+def copy_ops_meta_graph(op_list, from_scope, to_scope, replace=None):
+  """Copies a list of `Operation`s from one scope to another, with variables
+  shared between them.
+
+  Args:
+    op_list: A list of `Operation` objects to be copied.
+    from_scope: `String` name scope containing the ops to be copied.
+    to_scope: `String` name scope under which the copied ops will reside.
+    replace: A dictionary containing the mapping from input Tensors of these
+      ops to their replacements.
+
+  Returns:
+    A dictionary containing the mapping from original ops to their copies and
+    a dictionary of `Variables` that have been copied into `to_scope`.
+
+  Raises:
+    ValueError: If `from_scope` and `to_scope` are the same.
+  """
+  if from_scope == to_scope:
+    raise ValueError("'from_scope' and 'to_scope' need to be different "
+                     "when performing copy in the same graph.")
+  op_list = set(op_list)
+  op_names = set(op.name for op in op_list)
+  op_outputs = set()
+  for op in op_list:
+    if not op.name.startswith(from_scope):
+      raise ValueError("The Operation (%s) to copy is not under "
+                       "'from_scope'." % op.name)
+    op_outputs.update(set(op.outputs))
+
+  input_map = {}
+  as_unbound_inputs = []
+  for op in op_list:
+    for tensor in op.inputs:
+      if not (tensor in op_outputs) or (tensor in replace):
+        name = tensor.name[:-2] if tensor.name[-2:] == ":0" else tensor.name
+        as_unbound_inputs.append(name)
+        if tensor in replace:
+          input_map[_unbound_name(name)] = replace[tensor]
+        else:
+          input_map[_unbound_name(name)] = tensor
+    for dep in op.control_inputs:
+      if dep not in op_list:
+        name = "^" + dep.name
+        as_unbound_inputs.append(name)
+        input_map[_unbound_name(name)] = dep
+    for name in op.colocation_groups():
+      if name[5:] not in op_names:
+        as_unbound_inputs.append(name)
+        input_map[_unbound_name(name)] = ops.get_default_graph(). \
+          as_graph_element(name[5:])
+
+  orig_meta_graph = export_ops_meta_graph(
+    op_list, export_scope=from_scope, as_unbound_inputs=as_unbound_inputs)
+  _ = import_scoped_meta_graph(orig_meta_graph,
+                               import_scope=to_scope,
+                               input_map=input_map)
+  copied_ops = {}
+  for op in op_list:
+    new_op_name = ops.prepend_name_scope(
+      ops.strip_name_scope(op.name, from_scope), to_scope)
+    new_op = ops.get_default_graph().as_graph_element(new_op_name,
+                                                      allow_tensor=False)
+    copied_ops[op] = new_op
+  return copied_ops
+
+
+def _get_backward_ops(seed_tensors, as_inputs=None):
+  """Get backward ops from inputs to `seed_tensors` by topological order.
+
+  Args:
+    seed_tensors:  A list of `Tensor`s, for which to get all preceding ops.
+    as_inputs: A list of `Tensor`s that are treated as inputs during the
+      search (where to stop searching the backward graph).
+
+  Returns:
+    A list of `Operation`s in topological order.
+  """
+  as_inputs = set(as_inputs or [])
+  seed_tensors = [t for t in seed_tensors if t not in as_inputs]
+  seed_ops = list(OrderedDict.fromkeys(t.op for t in seed_tensors))
+  q = deque(seed_ops)
+  seen = set()
+  done = set()
+  ret = []
+  while q:
+    op = q[0]
+    if op not in seen:
+      seen.add(op)
+      for tensor in reversed(op.inputs):
+        if tensor not in as_inputs:
+          q.appendleft(tensor.op)
+      q.extendleft(reversed(op.control_inputs))
+    else:
+      # have seen this op before
+      q.popleft()
+      if op not in done:
+        done.add(op)
+        ret.append(op)
+  return ret
+
+
+def clone(outputs, to_scope, from_scope="", replace=None):
+  """Copy the subgraph that generates `outputs` from one scope to another,
+  with Tensors in `replace` being replaced by their corresponding values. with
+  variables shared between them.
+
+  Args:
+    outputs: A `Tensor` or a list of `Tensor`s.
+    to_scope: `String` name scope under which the copied subgraph will reside.
+    from_scope: `String` name scope containing the subgraph to be copied.
+    replace: A dictionary containing the mapping from Tensors in the subgraph
+      to their replacements.
+
+  Returns:
+    A copy or a list of the copies of `outputs` in `to_scope` and
+    a dictionary of `Variables` that have been copied into `to_scope`.
+  """
+  if from_scope == to_scope:
+    raise ValueError("'from_scope' and 'to_scope' need to be different "
+                     "when performing copying in the same graph.")
+
+  seed_tensors = outputs
+  if not isinstance(outputs, (list, tuple)):
+    seed_tensors = [outputs]
+  seed_tensors_set = set(seed_tensors)
+
+  replace = replace or {}
+  for k, v in six.iteritems(replace):
+    try:
+      assert isinstance(k, ops.Tensor)
+      v = ops.convert_to_tensor(v)
+    except Exception:
+      raise TypeError(
+        "The 'replace' argument should consist of Tensor pairs. "
+        "Error type: (%s, %s)" % (type(k), type(v)))
+    try:
+      k.get_shape().merge_with(v.get_shape())
+    except ValueError:
+      raise ValueError(
+        "Key-value pairs in 'replace' should have the same "
+        "shape (%s vs %s). Error pair: (%s, %s)" % (
+          k.get_shape(), v.get_shape(), k, v))
+
+  as_inputs = list(replace.keys())
+  backward_ops = _get_backward_ops(seed_tensors, as_inputs)
+  copied_ops = set()
+  copied_tensors = set()
+  for op in backward_ops:
+    if any((t in replace or t in copied_tensors) for t in op.inputs) or \
+        any(dep in copied_ops for dep in op.control_inputs) or \
+        any(t in seed_tensors_set for t in op.outputs):
+      copied_ops.add(op)
+      copied_tensors.update(set(op.outputs))
+
+  new_ops = copy_ops_meta_graph(list(copied_ops), from_scope,
+                                to_scope, replace=replace)
+  new_tensors = []
+  for tensor in seed_tensors:
+    if tensor in replace:
+      new_tensors.append(replace[tensor])
+    elif tensor.op in new_ops:
+      new_tensors.append(new_ops[tensor.op].outputs[tensor.value_index])
+    else:
+      new_tensors.append(tensor)
+
+  if len(new_tensors) == 1:
+    new_tensors = new_tensors[0]
+  return new_tensors

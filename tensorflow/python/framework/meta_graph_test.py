@@ -22,6 +22,9 @@ import math
 import os.path
 import random
 import shutil
+from itertools import permutations
+
+import numpy as np
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import constant_op
@@ -29,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -36,10 +40,16 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import queue_runner_impl
+from tensorflow.python.training import training as train
+from tensorflow.python.layers.core import fully_connected
+from tensorflow.python.layers.convolutional import conv2d
+from tensorflow.python.layers.normalization import batch_norm
 
 
 # pylint: disable=invalid-name
@@ -521,6 +531,452 @@ class ScopedMetaGraphTest(test.TestCase):
     self.assertEqual("", str(graph2.as_graph_element("a").device))
     self.assertEqual("", str(graph2.as_graph_element("b").device))
     self.assertEqual("", str(graph2.as_graph_element("matmul").device))
+
+
+class TestGetBackwardTensors(test.TestCase):
+
+  def testGetBackwardOpsChain(self):
+    # a -> b -> c
+    a = array_ops.placeholder(dtypes.float32)
+    b = math_ops.sqrt(a)
+    c = math_ops.square(b)
+    for n in range(4):
+      for seed_tensors in permutations([a, b, c], n):
+        if c in seed_tensors:
+          truth = [a.op, b.op, c.op]
+        elif b in seed_tensors:
+          truth = [a.op, b.op]
+        elif a in seed_tensors:
+          truth = [a.op]
+        else:
+          truth = []
+        self.assertEqual(meta_graph._get_backward_ops(seed_tensors), truth)
+
+    self.assertEqual(meta_graph._get_backward_ops([c], as_inputs=[b]), [c.op])
+    self.assertEqual(
+      meta_graph._get_backward_ops([b, c], as_inputs=[b]), [c.op])
+    self.assertEqual(
+      meta_graph._get_backward_ops([a, c], as_inputs=[b]), [a.op, c.op])
+
+
+  def testGetBackwardOpsSplit(self):
+    # a -> b -> c
+    #       \-> d
+    a = array_ops.placeholder(dtypes.float32)
+    b = math_ops.exp(a)
+    c = math_ops.log(b)
+    d = math_ops.negative(b)
+    self.assertEqual(meta_graph._get_backward_ops([d]), [a.op, b.op, d.op])
+    self.assertEqual(meta_graph._get_backward_ops([c]), [a.op, b.op, c.op])
+    self.assertEqual(
+      meta_graph._get_backward_ops([c, d]), [a.op, b.op, c.op, d.op])
+    self.assertEqual(meta_graph._get_backward_ops([b, d]), [a.op, b.op, d.op])
+    self.assertEqual(meta_graph._get_backward_ops([a, d]), [a.op, b.op, d.op])
+
+    self.assertEqual(
+      meta_graph._get_backward_ops([c, d], as_inputs=[b]), [c.op, d.op])
+    self.assertEqual(
+      meta_graph._get_backward_ops([c], as_inputs=[d]), [a.op, b.op, c.op])
+
+
+  def testGetBackwardOpsMerge(self):
+    # a -> c -> d
+    # b ->/
+    a = array_ops.placeholder(dtypes.float32)
+    b = array_ops.constant(0, dtype=dtypes.int32)
+    c = math_ops.reduce_sum(a, reduction_indices=b)
+    d = array_ops.stop_gradient(c)
+    self.assertEqual(
+      meta_graph._get_backward_ops([d]), [a.op, b.op, c.op, d.op])
+    self.assertEqual(meta_graph._get_backward_ops([d], as_inputs=[c]), [d.op])
+    self.assertEqual(
+      meta_graph._get_backward_ops([d], as_inputs=[a]), [b.op, c.op, d.op])
+
+
+  def testGetBackwardOpsBridge(self):
+    # a -> b -> c -> d -> e
+    #       \  ---  /
+    a = array_ops.placeholder(dtypes.int32)
+    b = array_ops.identity(a)
+    c = math_ops.cast(b, dtypes.float32)
+    d = array_ops.tile(c, b)
+    e = math_ops.tanh(d)
+    self.assertEqual(
+      meta_graph._get_backward_ops([e]), [a.op, b.op, c.op, d.op, e.op])
+    self.assertEqual(meta_graph._get_backward_ops([c]), [a.op, b.op, c.op])
+    self.assertEqual(meta_graph._get_backward_ops([e], as_inputs=[c]),
+                    [a.op, b.op, d.op, e.op])
+
+
+  def testGetBackwardOpsControlDeps(self):
+    # a -> b - \
+    # c -> d - e
+    #       \ /
+    #        f
+    a = array_ops.placeholder(dtypes.float32, name='a')
+    b = array_ops.identity(a, name='b')
+    c = array_ops.placeholder(dtypes.float32, name='c')
+    d = array_ops.identity(c, name='d')
+    with ops.control_dependencies([b, d]):
+      e = array_ops.placeholder(dtypes.float32, name='e')
+    with ops.control_dependencies([e, d]):
+      f = array_ops.placeholder(dtypes.float32, name='f')
+    self.assertEqual(meta_graph._get_backward_ops([f]),
+                    [a.op, b.op, c.op, d.op, e.op, f.op])
+    self.assertEqual(meta_graph._get_backward_ops([d, f]),
+                    [c.op, d.op, a.op, b.op, e.op, f.op])
+
+    self.assertEqual(meta_graph._get_backward_ops([f], as_inputs=[b]),
+                    [a.op, b.op, c.op, d.op, e.op, f.op])
+    self.assertEqual(meta_graph._get_backward_ops([f], as_inputs=[b, c]),
+                    [a.op, b.op, d.op, e.op, f.op])
+    self.assertEqual(meta_graph._get_backward_ops([f], as_inputs=[d, e]),
+                    [a.op, b.op, c.op, d.op, e.op, f.op])
+    self.assertEqual(meta_graph._get_backward_ops([d, f], as_inputs=[b]),
+                    [c.op, d.op, a.op, b.op, e.op, f.op])
+
+
+class TestClone(test.TestCase):
+
+  def testCloneChain(self):
+    # a -> b -> c
+    g = ops.Graph()
+    with g.as_default():
+      a = array_ops.constant(1., name="a")
+      b = math_ops.sqrt(a, name="b")
+      c = math_ops.square(b, name="c")
+
+      a_new = array_ops.constant(4., name="a_new")
+      b_new = array_ops.constant(2., name="b_new")
+
+      # case 1
+      c_out = meta_graph.clone(c, "copy1", replace={b: b_new})
+      with self.test_session(use_gpu=True) as sess:
+        self.assertNear(sess.run(c_out), 4., 1e-6)
+
+      # case 2
+      copies = meta_graph.clone([b, c], "copy2", replace={b: b_new})
+      with self.test_session(use_gpu=True) as sess:
+        b_out_, c_out_ = sess.run(copies)
+      self.assertNear(b_out_, 2., 1e-6)
+      self.assertNear(c_out_, 4., 1e-6)
+
+      # case 3
+      copies = meta_graph.clone([a, c], "copy3", replace={b: b_new})
+      with self.test_session(use_gpu=True) as sess:
+        a_out_, c_out_ = sess.run(copies)
+      self.assertNear(a_out_, 1., 1e-6)
+      self.assertNear(c_out_, 4., 1e-6)
+
+      # case 4
+      copies = meta_graph.clone([a, b, c], "copy4", replace={a: a_new})
+      with self.test_session(use_gpu=True) as sess:
+        a_out_, b_out_, c_out_ = sess.run(copies)
+      self.assertNear(a_out_, 4., 1e-6)
+      self.assertNear(b_out_, 2., 1e-6)
+      self.assertNear(c_out_, 4., 1e-6)
+
+  def testCloneSplit(self):
+    # a -> b -> c
+    #       \-> d
+    g = ops.Graph()
+    with g.as_default():
+      a = array_ops.constant(1., name="a")
+      b = math_ops.exp(a, name="b")
+      c = math_ops.log(b, name="c")
+      d = math_ops.negative(b, name="d")
+
+      b_new = array_ops.constant(math.e ** 2, name="b_new")
+      d_new = array_ops.constant(-math.e ** 2, name="d_new")
+
+      # case 1
+      d_out = meta_graph.clone(d, "copy1")
+      self.assertEqual(d_out.name, "copy1/d:0")
+      self.assertEqual(d_out.op.inputs[:], [b])
+
+      # case 2
+      copies = meta_graph.clone([c, d], "copy2")
+      self.assertEqual(copies[0].op.inputs[:], [b])
+      self.assertEqual(copies[1].op.inputs[:], [b])
+
+      # case 3
+      copies = meta_graph.clone([c, d], "copy3", replace={b: b_new})
+      with self.test_session(use_gpu=True) as sess:
+        c_out_, d_out_ = sess.run(copies)
+      self.assertNear(c_out_, 2., 1e-6)
+      self.assertNear(d_out_, -math.e ** 2, 1e-6)
+
+      # case 4
+      c_out = meta_graph.clone(c, "copy4", replace={d: d_new})
+      self.assertEqual(c_out.op.inputs[:], [b])
+      with self.test_session(use_gpu=True) as sess:
+        self.assertNear(sess.run(c_out), 1., 1e-6)
+
+  def testCloneMerge(self):
+    # a -> c -> d
+    # b ->/
+    g = ops.Graph()
+    with g.as_default():
+      a = array_ops.constant(4., name='a')
+      b = array_ops.constant(0., name='b')
+      c = math_ops.add(a, b, name='c')
+      d = array_ops.stop_gradient(c, name='d')
+
+      a_new = array_ops.constant(10., name='a_new')
+      b_new = array_ops.constant(1., name='b_new')
+      c_new = array_ops.constant(-1., name='c_new')
+
+      # case 1
+      copies = meta_graph.clone([a, b, c, d], "copy1", replace={a: a_new})
+      with self.test_session(use_gpu=True) as sess:
+        a_out_, b_out_, c_out_, d_out_ = sess.run(copies)
+      self.assertNear(a_out_, 10., 1e-6)
+      self.assertNear(b_out_, 0., 1e-6)
+      self.assertNear(c_out_, 10., 1e-6)
+      self.assertNear(d_out_, 10., 1e-6)
+
+      # case 2
+      copies = meta_graph.clone([a, b, c, d], "copy2", replace={b: b_new})
+      with self.test_session(use_gpu=True) as sess:
+        a_out_, b_out_, c_out_, d_out_ = sess.run(copies)
+      self.assertNear(a_out_, 4., 1e-6)
+      self.assertNear(b_out_, 1., 1e-6)
+      self.assertNear(c_out_, 5., 1e-6)
+      self.assertNear(d_out_, 5., 1e-6)
+
+      # case 3
+      copies = meta_graph.clone([a, b, c, d], "copy3", replace={c: c_new})
+      assert copies[0].name == "copy3/a:0"
+      assert copies[1].name == "copy3/b:0"
+      with self.test_session(use_gpu=True) as sess:
+        a_out_, b_out_, c_out_, d_out_ = sess.run(copies)
+      self.assertNear(a_out_, 4., 1e-6)
+      self.assertNear(b_out_, 0., 1e-6)
+      self.assertNear(c_out_, -1., 1e-6)
+      self.assertNear(d_out_, -1., 1e-6)
+
+  def testCloneBridge(self):
+    # a -> b -> c -> d -> e
+    #       \  ---  /
+    g = ops.Graph()
+    with g.as_default():
+      a = array_ops.constant([2], dtype=dtypes.int32, name='a')
+      b = array_ops.identity(a, name='b')
+      c = math_ops.negative(b, name='c')
+      d = array_ops.tile(c, b, name='d')
+      e = math_ops.square(d, name='e')
+
+      a_new = array_ops.constant([3], dtype=dtypes.int32, name='a_new')
+      b_new = array_ops.constant([4], dtype=dtypes.int32, name='b_new')
+      c_new = array_ops.constant([5], dtype=dtypes.int32, name='c_new')
+      d_new = array_ops.constant([5, 5, 5], name='d_new')
+
+      # case 1
+      copies = meta_graph.clone([d, e], "copy1", replace={a: a_new, c: c_new})
+      with self.test_session(use_gpu=True) as sess:
+        d_out_, e_out_ = sess.run(copies)
+      self.assertAllClose(d_out_, np.array([5, 5, 5]))
+      self.assertAllClose(e_out_, np.array([25, 25, 25]))
+
+      # case 2
+      copies = meta_graph.clone([c, e], "copy2",
+                                replace={a: a_new, b: b_new, d: d_new})
+      with self.test_session(use_gpu=True) as sess:
+        c_out_, e_out_ = sess.run(copies)
+      self.assertAllClose(c_out_, [-4])
+      self.assertAllClose(e_out_, np.array([25, 25, 25]))
+
+  def testCloneOneToManyOp(self):
+    # array_ops.unstack
+    # a -.---- a0
+    #     \ -- a1
+    #      \ - a2 -> c
+    # b ----------- /
+    g = ops.Graph()
+    with g.as_default():
+      a = array_ops.zeros([3, 2, 1, 4], name="a")
+      a0, a1, a2 = array_ops.unstack(a, axis=0)
+      b = array_ops.ones([2, 4, 1], name="b")
+      c = math_ops.matmul(a2, b, name="c")
+
+      a1_new = array_ops.ones([2, 1, 4], name="a1_new")
+      a_new = array_ops.ones([3, 2, 1, 4], name="a_new")
+      a2_new = array_ops.ones([2, 1, 4], name="a2_new") * 2
+
+      # case 1
+      copies = meta_graph.clone([a2, c], "copy1", replace={a1: a1_new})
+      a2_out, c_out = copies
+      self.assertEqual(a2_out.name, "copy1/unstack:2")
+      self.assertEqual(c_out.name, "copy1/c:0")
+
+      # case 2
+      copies = meta_graph.clone([a0, a2, c], "copy2",
+                                replace={a: a_new, a2: a2_new})
+      with self.test_session(use_gpu=True) as sess:
+        a0_out_, a2_out_, c_out_ = sess.run(copies)
+      self.assertAllClose(a0_out_, np.ones([2, 1, 4]))
+      self.assertAllClose(a2_out_, np.ones([2, 1, 4]) * 2)
+      self.assertAllClose(c_out_, np.array([[[8]], [[8]]]))
+
+  def testClonePlaceholderFeed(self):
+    # a -> c -> c0
+    # b - /    /
+    #  \ ---- /
+    g = ops.Graph()
+    with g.as_default():
+      a = array_ops.placeholder(dtypes.float32, name='a')
+      b = array_ops.placeholder(dtypes.int32, name='b')
+      c = array_ops.expand_dims(a, b, name='c')
+      c0 = array_ops.split(c, 1, axis=b)[0]
+
+      b_new = array_ops.placeholder(dtypes.int32, name='b_new')
+      c0_out = meta_graph.clone(c0, "copy", replace={b: b_new})
+      with self.test_session(use_gpu=True) as sess:
+        with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                     "You must feed a value for placeholder"):
+          sess.run(c0_out, feed_dict={a: np.ones([2, 3]), b: 0})
+        c0_out_ = sess.run(c0_out, feed_dict={a: np.ones([2, 3]),
+                                              b_new: 0})
+      self.assertAllClose(c0_out_, np.ones([1, 2, 3]))
+
+  def testCloneControlDeps(self):
+    # a -> b ---> e -----
+    # c -> d --- /       \
+    #       \ ----------- f
+    g = ops.Graph()
+    with g.as_default():
+      a = array_ops.placeholder(dtypes.float32, name='a')
+      b = array_ops.identity(a, name='b')
+      c = array_ops.placeholder(dtypes.float32, name='c')
+      d = array_ops.identity(c, name='d')
+      with ops.control_dependencies([b, d]):
+        e = array_ops.identity(a, name='e')
+      with ops.control_dependencies([e, d]):
+        f = array_ops.identity(a, name='f')
+
+      d_new = math_ops.add(1., array_ops.ones([]), name='d_new')
+      e_new = math_ops.add(1., array_ops.constant([2., 2.]), name='e_new')
+      f_out = meta_graph.clone(f, "copy1", replace={d: d_new, e: e_new})
+      self.assertEqual(f_out.op.name, "copy1/f")
+      self.assertEqual(f_out.op.control_inputs[0].name, "e")
+      self.assertEqual(f_out.op.control_inputs[1].name, "d")
+
+  def testCloneAssertEqual(self):
+    g = ops.Graph()
+    with g.as_default():
+      a = array_ops.placeholder(dtypes.float32, shape=(), name='a')
+      b = array_ops.identity(a, name='b')
+      c = array_ops.identity(a, name='c')
+      _assert_equal = check_ops.assert_equal(b, c)
+      with ops.control_dependencies([_assert_equal]):
+        d = math_ops.add(b, c, name='d')
+
+      a_new = array_ops.constant(1, dtype=dtypes.float32, name='a_new')
+      d_out = meta_graph.clone(d, "copy1", replace={a: a_new})
+      with self.test_session(use_gpu=True) as sess:
+        self.assertNear(sess.run(d_out), 2., 1e-6)
+
+  def testCloneVariable(self):
+    # w -> y
+    # x - /
+    g = ops.Graph()
+    with g.as_default():
+      with ops.name_scope("weights"):
+        w = variables.Variable(
+            random_ops.truncated_normal([4, 5], stddev=1.0 / math_ops.sqrt(4.)),
+            name="w")
+      x = array_ops.ones([5, 2], name="x")
+      y = math_ops.matmul(w, x, name="y")
+
+      x_new = array_ops.zeros([5, 2], name="x_new")
+      with ops.name_scope("weights_new"):
+        w_new = variables.Variable(
+            random_ops.truncated_normal([4, 5], stddev=1.0 / math_ops.sqrt(4.)),
+            name="w_new")
+
+      # case 1
+      y_out = meta_graph.clone(y, "copy1", replace={x: x_new})
+      with self.test_session(use_gpu=True) as sess:
+        sess.run(variables.global_variables_initializer())
+        y_out_ = sess.run(y_out)
+        self.assertAllClose(y_out_, np.zeros((4, 2)))
+
+      # case 2
+      with self.assertRaisesRegexp(TypeError, "consist of Tensor pairs"):
+        meta_graph.clone(y, "copy2", replace={w: w_new})
+
+  def testCloneFullyConnected(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = array_ops.ones([3, 4], name='x')
+      y = fully_connected(x, 10)
+
+      x_new = array_ops.zeros([3, 4], name='x_new')
+      y_out = meta_graph.clone(y, "dense/copy1",
+                               from_scope="dense",
+                               replace={x: x_new})
+      self.assertEqual(y_out.op.inputs[0].op.inputs[1].name,
+                       "dense/kernel/read:0")
+      with self.test_session(use_gpu=True) as sess:
+        sess.run(variables.global_variables_initializer())
+        y_out_ = sess.run(y_out)
+      self.assertAllClose(y_out_, np.zeros((3, 10)))
+
+  def testCloneConvolution(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = array_ops.ones([2, 5, 5, 3], name='x')
+      y = conv2d(x, 2, [3, 3], padding='same')
+
+      x_new = array_ops.zeros([2, 5, 5, 3], name='x_new')
+      y_out = meta_graph.clone(y, "conv2d/copy1", from_scope="conv2d",
+                               replace={x: x_new})
+      with self.test_session(use_gpu=True) as sess:
+        sess.run(variables.global_variables_initializer())
+        y_out_ = sess.run(y_out)
+      self.assertEqual(y_out.op.inputs[0].op.inputs[1].name,
+                       "conv2d/kernel/read:0")
+      self.assertAllClose(y_out_, np.zeros((2, 5, 5, 2)))
+
+  def testCloneBatchNorm(self):
+    g = ops.Graph()
+    with g.as_default():
+      np.random.seed(1234)
+      x_value = np.random.random([2, 5, 5, 3])
+      w_value = np.random.random([3, 3, 3, 2])
+      is_training_t = array_ops.placeholder(dtypes.bool, name='is_training_t')
+      x_t = array_ops.constant(x_value, dtype=dtypes.float32, name='x_t')
+      y_t = conv2d(x_t, 2, [3, 3],
+                   kernel_initializer=init_ops.constant_initializer(w_value))
+      y_t = batch_norm(y_t, training=is_training_t)
+      optimizer_t = train.AdamOptimizer()
+      optimize_t = optimizer_t.minimize(math_ops.reduce_sum(y_t))
+      with self.test_session(use_gpu=True) as sess:
+        sess.run(variables.global_variables_initializer())
+        y_test_1 = sess.run(y_t, feed_dict={is_training_t: False})
+        sess.run(optimize_t, feed_dict={is_training_t: True})
+        y_test_2 = sess.run(y_t, feed_dict={is_training_t: False})
+
+      is_training = array_ops.placeholder(dtypes.bool, name='is_training')
+      x = array_ops.constant(np.zeros([2, 5, 5, 3]), dtype=dtypes.float32,
+                             name='x')
+      y = conv2d(x, 2, [3, 3],
+                 kernel_initializer=init_ops.constant_initializer(w_value))
+      y = batch_norm(y, training=is_training)
+      x_new = array_ops.constant(x_value, dtype=dtypes.float32, name='x')
+      y_out = meta_graph.clone(y, "copy", replace={x: x_new})
+      optimizer = train.AdamOptimizer()
+      optimize = optimizer.minimize(math_ops.reduce_sum(y_out))
+      with self.test_session(use_gpu=True) as sess:
+        sess.run(variables.global_variables_initializer())
+        y_out_1 = sess.run(y_out, feed_dict={is_training: False})
+        y_out_2 = sess.run(y_out, feed_dict={is_training: False})
+        sess.run(optimize, feed_dict={is_training: True})
+        y_out_3 = sess.run(y_out, feed_dict={is_training: False})
+      self.assertAllClose(y_out_1, y_out_2)
+      self.assertTrue(np.abs(y_out_1 - y_out_3).max() > 1e-6)
+      self.assertAllClose(y_test_1, y_out_1)
+      self.assertAllClose(y_test_2, y_out_3)
 
 
 if __name__ == "__main__":

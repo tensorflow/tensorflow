@@ -88,6 +88,11 @@ def _IsControlInput(input_name):
   return input_name.startswith('^')
 
 
+def _IsColocatedOp(input_name):
+  # Expected format: 'loc:@operation_name' (Colocated op).
+  return input_name.startswith('loc:@')
+
+
 def _ParseTensorName(tensor_name):
   """Parses a tensor name into an operation name and output index.
 
@@ -124,7 +129,7 @@ def _ParseTensorName(tensor_name):
 
 def _CanonicalInputName(input_name):
   input_name = compat.as_str(input_name)
-  if _IsControlInput(input_name):
+  if _IsControlInput(input_name) or _IsColocatedOp(input_name):
     return input_name
   input_op_name, output_index = _ParseTensorName(input_name)
   return '%s:%d' % (input_op_name, output_index)
@@ -214,7 +219,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             and all(isinstance(k, compat.bytes_or_text_types)
                     for k in input_map.keys())):
       raise TypeError('input_map must be a dictionary mapping strings to '
-                      'Tensor objects.')
+                      'Tensor or Operation objects.')
   if return_elements is not None:
     return_elements = tuple(return_elements)
     if not all(isinstance(x, compat.bytes_or_text_types)
@@ -268,7 +273,9 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             'contains non-Tensor values. Try calling tf.convert_to_tensor() on '
             '`input_map` values before calling tf.import_graph_def().')
       with ops.name_scope('_inputs'):
-        input_map = {k: ops.convert_to_tensor(v) for k, v in input_map.items()}
+        for k, v in input_map.items():
+          if not (_IsControlInput(k) or _IsColocatedOp(k)):
+            input_map[k] = ops.convert_to_tensor(v)
 
     # NOTE(mrry): We do this in two passes, because there may be a cycle in
     # `graph_def`.
@@ -320,13 +327,18 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
           new_class_values = []
           for class_value in class_values.s:
             if class_value.startswith(b'loc:@'):
-              op_to_bind_to = class_value[5:].decode()
-              # Find the op by its original name.
-              if op_to_bind_to not in name_to_op:
-                raise ValueError('Specified colocation to an op that '
-                                 'does not exist during import: %s in %s' % (
-                                     op_to_bind_to, node.name))
-              original_op = name_to_op[op_to_bind_to]
+              class_value_str = class_value.decode()
+              if class_value_str in input_map:
+                original_op = input_map[class_value_str]
+                used_input_keys.add(class_value_str)
+              else:
+                op_to_bind_to = class_value_str[5:]
+                # Find the op by its original name.
+                if op_to_bind_to not in name_to_op:
+                  raise ValueError('Specified colocation to an op that '
+                                   'does not exist during import: %s in %s' % (
+                                       op_to_bind_to, node.name))
+                original_op = name_to_op[op_to_bind_to]
               new_class_values.append(compat.as_bytes(
                   'loc:@' + original_op.name))
             else:
@@ -342,13 +354,17 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
         if _IsControlInput(input_name):
           # (a) Input is a control input that should be taken from an op
           #     in "graph_def".
-          try:
-            source_op = name_to_op[input_name[1:]]
-          except KeyError:
-            raise ValueError(
-                _InvalidNodeMessage(
-                    node,
-                    'Control input %r not found in graph_def.' % (input_name,)))
+          if input_name in input_map:
+            source_op = input_map[input_name]
+            used_input_keys.add(input_name)
+          else:
+            try:
+              source_op = name_to_op[input_name[1:]]
+            except KeyError:
+              raise ValueError(
+                  _InvalidNodeMessage(
+                      node, 'Control input %r not found in graph_def.' % (
+                      input_name,)))
           # pylint: disable=protected-access
           op._add_control_input(source_op)
           # pylint: enable=protected-access
