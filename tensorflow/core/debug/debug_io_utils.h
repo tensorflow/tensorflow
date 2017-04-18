@@ -30,6 +30,16 @@ namespace tensorflow {
 
 Status ReadEventFromFile(const string& dump_file_path, Event* event);
 
+struct DebugWatchAndURLSpec {
+  DebugWatchAndURLSpec(const string& watch_key, const string& url,
+                       const bool gated_grpc)
+      : watch_key(watch_key), url(url), gated_grpc(gated_grpc) {}
+
+  const string watch_key;
+  const string url;
+  const bool gated_grpc;
+};
+
 class DebugIO {
  public:
   static Status PublishDebugMetadata(
@@ -72,7 +82,22 @@ class DebugIO {
   static Status PublishGraph(const Graph& graph,
                              const std::unordered_set<string>& debug_urls);
 
-  // TODO(cais): (b/37150755) Implement IsCopyNodeGateOpen.
+  // Determine whether a copy node needs to perform deep-copy of input tensor.
+  //
+  // The input arguments contain sufficient information about the attached
+  // downstream debug ops for this method to determine whether all the said
+  // ops are disabled given the current status of the gRPC gating.
+  //
+  // Args:
+  //   specs: A vector of DebugWatchAndURLSpec carrying information about the
+  //     debug ops attached to the Copy node, their debug URLs and whether
+  //     they have the attribute value gated_grpc == True.
+  //
+  // Returns:
+  //   Whether any of the attached downstream debug ops is enabled given the
+  //   current status of the gRPC gating.
+  static bool IsCopyNodeGateOpen(
+      const std::vector<DebugWatchAndURLSpec>& specs);
 
   // Determine whether a debug node needs to proceed given the current gRPC
   // gating status.

@@ -367,6 +367,19 @@ Status AddSymbolicGradients(const Scope& scope,
   return builder.AddGradients();
 }
 
+Status AddSymbolicGradients(const Scope& scope,
+                            const std::vector<Output>& outputs,
+                            const std::vector<Output>& inputs,
+                            std::vector<Output>* grad_outputs) {
+  std::vector<Output> grad_inputs;
+  grad_inputs.reserve(outputs.size());
+  for (const Output& output : outputs) {
+    grad_inputs.emplace_back(ops::OnesLike(scope, output));
+  }
+  return AddSymbolicGradients(scope, outputs, inputs, grad_inputs,
+                              grad_outputs);
+}
+
 Output NoGradient() { return SymbolicGradientBuilder::NoGradient(); }
 
 }  // end namespace tensorflow

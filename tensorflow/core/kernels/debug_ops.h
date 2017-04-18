@@ -35,17 +35,32 @@ class CopyOp : public OpKernel {
  public:
   explicit CopyOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
+
+    std::vector<string> debug_ops_spec;
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("debug_ops_spec", &debug_ops_spec));
+    for (const string& debug_op_spec : debug_ops_spec) {
+      // Assume debug_op_spec has the format
+      // <debug_op>;<debug_url>;<gated_grpc>, e.g.,
+      // DebugIdentity;grpc://localhost:3333;1
+      const std::vector<string> items = str_util::Split(debug_op_spec, ";");
+      OP_REQUIRES(
+          context, items.size() == 3,
+          errors::Internal(
+              "Unexpected number of semicolons in debug_ops_spec element: ",
+              debug_op_spec));
+      debug_op_and_url_specs_.push_back(
+          DebugWatchAndURLSpec(strings::StrCat(tensor_name_, ":", items[0]),
+                               items[1], items[2] == "1"));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
-    // TODO(cais): (b/37150755) Copy ops need to be gated in a similar way to
-    // Debug* ops, so that unnecessary mem-copying can be avoided when all the
-    // downstream Debug* ops are gated off.
-
     const Tensor& src_tensor = context->input(0);
 
     if (src_tensor.IsInitialized() &&
-        DataTypeCanUseMemcpy(src_tensor.dtype())) {
+        DataTypeCanUseMemcpy(src_tensor.dtype()) &&
+        DebugIO::IsCopyNodeGateOpen(debug_op_and_url_specs_)) {
       // Source tensor is initialized and is mem-copyable. Make a copy.
       Tensor* copied_tensor;
       OP_REQUIRES_OK(context, context->allocate_output(0, src_tensor.shape(),
@@ -83,6 +98,7 @@ class CopyOp : public OpKernel {
 
  private:
   string tensor_name_;
+  std::vector<DebugWatchAndURLSpec> debug_op_and_url_specs_;
 };
 
 // Base class of all debug ops.

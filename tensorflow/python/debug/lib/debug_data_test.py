@@ -47,12 +47,12 @@ class ParseNodeOrTensorNameTest(test_util.TensorFlowTestCase):
 class NodeNameChecksTest(test_util.TensorFlowTestCase):
 
   def testIsCopyNode(self):
-    self.assertTrue(debug_data._is_copy_node("__copy_ns1/ns2/node3_0"))
+    self.assertTrue(debug_data.is_copy_node("__copy_ns1/ns2/node3_0"))
 
-    self.assertFalse(debug_data._is_copy_node("copy_ns1/ns2/node3_0"))
-    self.assertFalse(debug_data._is_copy_node("_copy_ns1/ns2/node3_0"))
-    self.assertFalse(debug_data._is_copy_node("_copyns1/ns2/node3_0"))
-    self.assertFalse(debug_data._is_copy_node("__dbg_ns1/ns2/node3_0"))
+    self.assertFalse(debug_data.is_copy_node("copy_ns1/ns2/node3_0"))
+    self.assertFalse(debug_data.is_copy_node("_copy_ns1/ns2/node3_0"))
+    self.assertFalse(debug_data.is_copy_node("_copyns1/ns2/node3_0"))
+    self.assertFalse(debug_data.is_copy_node("__dbg_ns1/ns2/node3_0"))
 
   def testIsDebugNode(self):
     self.assertTrue(

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
@@ -38,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
@@ -305,11 +308,9 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::GetSubshape(result_shape, {1}),
                                root->operand(1)->shape()));
 
-  // Verify some of the structure of the HLO graph.
-  EXPECT_EQ(constant, root->operand(0)->operand(0));
-  EXPECT_EQ(HloOpcode::kCopy, root->operand(1)->operand(0)->opcode());
-  EXPECT_EQ(HloOpcode::kConstant,
-            root->operand(1)->operand(0)->operand(0)->opcode());
+  // Verify the structure of the HLO graph.
+  EXPECT_THAT(root,
+              op::Tuple(op::Tuple(constant), op::Tuple(op::Copy(constant))));
 }
 
 TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {

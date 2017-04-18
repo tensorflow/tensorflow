@@ -99,13 +99,6 @@ class TransferManager {
   // region for a host-to-device transfer.
   virtual int64 GetByteSizeRequirement(const Shape& shape) = 0;
 
-  // Returns whether tuple elements are distinct buffers (in which case each of
-  // the elements of a tuple should be deallocated, in addition to the tuple's
-  // buffer itself).
-  //
-  // TODO(b/36256956) Ideally tuple elements could always be distinct buffers.
-  virtual bool TupleElementsAreDistinctBuffers() const { return true; }
-
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.
   //

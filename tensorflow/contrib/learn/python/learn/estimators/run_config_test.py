@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import json
 
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
@@ -242,7 +243,7 @@ class RunConfigTest(test.TestCase):
     with self.assertRaises(ValueError):
       config.replace(some_undefined_property=RANDOM_SEED)
 
-  def test_uid(self):
+  def test_uid_for_different_configs(self):
     config = run_config_lib.RunConfig(
         tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
 
@@ -252,7 +253,32 @@ class RunConfigTest(test.TestCase):
       self.assertEqual(expected_uid, config.uid())
 
     new_config = config.replace(model_dir=ANOTHER_TEST_DIR)
+    self.assertEqual(TEST_DIR, config.model_dir)
     self.assertNotEqual(expected_uid, new_config.uid())
+    self.assertEqual(ANOTHER_TEST_DIR, new_config.model_dir)
+
+  def test_uid_for_deepcopy(self):
+    tf_config = {
+        "cluster": {
+            run_config_lib.TaskType.PS: ["host1:1", "host2:2"],
+            run_config_lib.TaskType.WORKER: ["host3:3", "host4:4", "host5:5"]
+        },
+        "task": {
+            "type": run_config_lib.TaskType.WORKER,
+            "index": 1
+        }
+    }
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config_lib.RunConfig(
+          tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
+    self.assertEqual(config.cluster_spec.as_dict(), tf_config["cluster"])
+
+    config = run_config_lib.RunConfig(
+        tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
+
+    expected_uid = config.uid()
+    new_config = copy.deepcopy(config)
+    self.assertEqual(expected_uid, new_config.uid())
 
 
 if __name__ == "__main__":

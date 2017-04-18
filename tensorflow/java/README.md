@@ -24,7 +24,7 @@ your project's `pom.xml`:
 <dependency>
   <groupId>org.tensorflow</groupId>
   <artifactId>tensorflow</artifactId>
-  <version>1.1.0-rc1</version>
+  <version>1.1.0-rc2</version>
 </dependency>
 ```
 
@@ -50,7 +50,7 @@ That's all. As an example, to create a Maven project for the
           <dependency>
             <groupId>org.tensorflow</groupId>
             <artifactId>tensorflow</artifactId>
-            <version>1.1.0-rc1</version>
+            <version>1.1.0-rc2</version>
           </dependency>
         </dependencies>
     </project>
@@ -75,22 +75,22 @@ That's all. As an example, to create a Maven project for the
 This section describes how to use TensorFlow armed with just a JDK installation.
 
 1.  Download the Java archive (JAR):
-    [libtensorflow.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-1.1.0-rc1.jar)
+    [libtensorflow.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-1.1.0-rc2.jar)
     (optionally, the Java sources:
-    [libtensorflow-src.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-src-1.1.0-rc1.jar)).
+    [libtensorflow-src.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-src-1.1.0-rc2.jar)).
 
 2.  Download the native library. GPU-enabled versions required CUDA 8 and cuDNN
     5.1. For other versions, the native library will need to be built from
     source (see below).
 
     -   Linux:
-        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-linux-x86_64-1.1.0-rc1.tar.gz),
-        [GPU-enabled](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-gpu-linux-x86_64-1.1.0-rc1.tar.gz)
+        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-linux-x86_64-1.1.0-rc2.tar.gz),
+        [GPU-enabled](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-gpu-linux-x86_64-1.1.0-rc2.tar.gz)
     -   OS X:
-        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-darwin-x86_64-1.1.0-rc1.tar.gz),
-        [GPU-enabled](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-gpu-darwin-x86_64-1.1.0-rc1.tar.gz)
+        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-darwin-x86_64-1.1.0-rc2.tar.gz),
+        [GPU-enabled](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-gpu-darwin-x86_64-1.1.0-rc2.tar.gz)
     -   Windows:
-        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-windows-x86_64-1.1.0-rc1.zip)
+        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-windows-x86_64-1.1.0-rc2.zip)
 
 
     The following shell snippet downloads and extracts the native library on
@@ -101,7 +101,7 @@ This section describes how to use TensorFlow armed with just a JDK installation.
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
     mkdir -p ./jni
     curl -L \
-      "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-${TF_TYPE}-${OS}-x86_64-1.1.0-rc1.tar.gz" |
+      "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-${TF_TYPE}-${OS}-x86_64-1.1.0-rc2.tar.gz" |
     tar -xz -C ./jni
     ```
 
@@ -121,7 +121,7 @@ This section describes how to use TensorFlow armed with just a JDK installation.
     then it should be compiled with:
 
     ```sh
-    javac -cp libtensorflow-1.1.0-rc1.jar MyClass.java
+    javac -cp libtensorflow-1.1.0-rc2.jar MyClass.java
     ```
 
     For a more sophisticated example, see
@@ -130,7 +130,7 @@ This section describes how to use TensorFlow armed with just a JDK installation.
 
     ```sh
     javac \
-      -cp libtensorflow-1.1.0-rc1.jar \
+      -cp libtensorflow-1.1.0-rc2.jar \
       ./src/main/java/org/tensorflow/examples/LabelImage.java
     ```
 
@@ -138,7 +138,7 @@ This section describes how to use TensorFlow armed with just a JDK installation.
     library path during execution. For example:
 
     ```sh
-    java -cp libtensorflow-1.1.0-rc1.jar:. -Djava.library.path=./jni MyClass
+    java -cp libtensorflow-1.1.0-rc2.jar:. -Djava.library.path=./jni MyClass
     ```
 
     or for the `LabelImage` example:
@@ -146,7 +146,7 @@ This section describes how to use TensorFlow armed with just a JDK installation.
     ```sh
     java \
       -Djava.library.path=./jni \
-      -cp libtensorflow-1.1.0-rc1.jar:./src/main/java \
+      -cp libtensorflow-1.1.0-rc2.jar:./src/main/java \
       org.tensorflow.examples.LabelImage
     ```
 

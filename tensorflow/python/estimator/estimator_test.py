@@ -58,6 +58,9 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
 
+_TMP_DIR = '/tmp'
+_ANOTHER_TMP_DIR = '/another_tmp'
+
 
 def dummy_model_fn(features, labels, params):
   _, _, _ = features, labels, params
@@ -122,7 +125,7 @@ class EstimatorConstructorTest(test.TestCase):
     def model_fn(features, labels, params):
       _, _, _ = features, labels, params
 
-    class FakeConfig(run_config.RunConfig):  # pylint: disable=g-wrong-blank-lines
+    class FakeConfig(run_config.RunConfig):
       pass
 
     params = {'hidden_layers': [3, 4]}
@@ -147,6 +150,61 @@ class EstimatorConstructorTest(test.TestCase):
 
     est = estimator.Estimator(model_fn=model_fn)
     self.assertTrue(est.model_dir is not None)
+
+  def test_model_dir_in_constructor(self):
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    est = estimator.Estimator(model_fn=model_fn, model_dir=_TMP_DIR)
+    self.assertEqual(_TMP_DIR, est.model_dir)
+
+  def test_model_dir_in_run_config(self):
+
+    class FakeConfig(run_config.RunConfig):
+
+      @property
+      def model_dir(self):
+        return _TMP_DIR
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    est = estimator.Estimator(model_fn=model_fn, config=FakeConfig())
+    self.assertEqual(_TMP_DIR, est.model_dir)
+
+  def test_same_model_dir_in_constructor_and_run_config(self):
+
+    class FakeConfig(run_config.RunConfig):
+
+      @property
+      def model_dir(self):
+        return _TMP_DIR
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    est = estimator.Estimator(
+        model_fn=model_fn, config=FakeConfig(), model_dir=_TMP_DIR)
+    self.assertEqual(_TMP_DIR, est.model_dir)
+
+  def test_different_model_dir_in_constructor_and_run_config(self):
+
+    class FakeConfig(run_config.RunConfig):
+
+      @property
+      def model_dir(self):
+        return _TMP_DIR
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'model_dir are set both in constructor and RunConfig, but '
+        'with different values'):
+      estimator.Estimator(
+          model_fn=model_fn, config=FakeConfig(), model_dir=_ANOTHER_TMP_DIR)
 
   def test_model_fn_args_must_include_features(self):
 
@@ -359,7 +417,7 @@ class EstimatorTrainTest(test.TestCase):
           training_chief_hooks=[chief_hook],
           training_hooks=[hook])
 
-    class NonChiefRunConfig(run_config.RunConfig):  # pylint: disable=g-wrong-blank-lines
+    class NonChiefRunConfig(run_config.RunConfig):
       @property
       def is_chief(self):  # pylint: disable=g-wrong-blank-lines
         return False

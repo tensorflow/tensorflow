@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -74,7 +75,8 @@ namespace tensorflow {
 
 class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
  public:
-  EigenCudaStreamDevice() : scratch_(nullptr), semaphore_(nullptr) {
+  EigenCudaStreamDevice()
+      : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {
     Eigen::initializeDeviceProp();
   }
   ~EigenCudaStreamDevice() {}
@@ -84,6 +86,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
       operation_ = context->op_kernel().name() + "/EigenAllocator";
       step_id_ = context->step_id();
     }
+    context_ = context;
     scratch_ = scratch;
     semaphore_ =
         reinterpret_cast<unsigned int*>(scratch + Eigen::kCudaScratchSize);
@@ -100,8 +103,15 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   void* allocate(size_t num_bytes) const override {
     void* ret = allocator_->AllocateRaw(32 /* alignment */, num_bytes);
     if (ret == nullptr) {
-      LOG(FATAL) << "EigenAllocator for GPU ran out of memory when allocating "
-                 << num_bytes << ". See error logs for more detailed info.";
+      if (context_) {
+        context_->SetStatus(errors::ResourceExhausted(
+            strings::StrCat("Ran out of GPU memory when allocating ", num_bytes,
+                            " bytes for ", operation_)));
+      } else {
+        LOG(FATAL)
+            << "EigenAllocator for GPU ran out of memory when allocating "
+            << num_bytes << ". See error logs for more detailed info.";
+      }
     }
     if (LogMemory::IsEnabled()) {
       LogMemory::RecordRawAllocation(operation_, step_id_, num_bytes, ret,
@@ -159,6 +169,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   ::tensorflow::Allocator* allocator_;  // Not owned.
   mutable char* scratch_;
   mutable unsigned int* semaphore_;
+  OpKernelContext* context_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenCudaStreamDevice);
 };
@@ -426,8 +437,10 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
           << op_kernel->def().op() << " on GPU" << gpu_id_ << " stream["
           << stream_id << "]";
 
-  port::Tracing::TraceMe activity(
-      strings::StrCat(op_kernel->name(), ":", op_kernel->type_string()));
+  // When TraceMe profiling is off (which is the default), the
+  // following TraceMe constructor is simply a conditional test of
+  // false value. Measurements show that its overhead is negligible.
+  port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string());
   op_kernel->ComputeAsync(context, done);
 }
 
