@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/google/integral_types.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {

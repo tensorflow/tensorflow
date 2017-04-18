@@ -85,7 +85,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -101,7 +100,7 @@ cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
     ],
 )
