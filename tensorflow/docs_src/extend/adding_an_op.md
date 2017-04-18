@@ -174,7 +174,7 @@ Assuming you have `g++` installed, here is the sequence of commands you can use
 to compile your op into a dynamic library.
 
 ```bash
-TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
+TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())' 2>/dev/null)
 
 g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC -O2
 ```
