@@ -67,6 +67,10 @@ class XlaDevice : public LocalDevice {
     perftools::gputools::Platform* platform_;  // Not owned.
   };
 
+  // Sets `*metadata` to the XlaDevice Metadata in the resource manager of
+  // `ctx`.
+  static Status GetMetadata(OpKernelContext* ctx, Metadata** metadata);
+
   // Factory function. 'platform_name' is the name of the XLA platform.
   // 'device_name' is the name of the Tensorflow device to create.
   // 'jit_device_name' is the name of the corresponding JIT device.

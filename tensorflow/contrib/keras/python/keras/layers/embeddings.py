@@ -53,8 +53,8 @@ class Embedding(Layer):
   ```
 
   Arguments:
-    input_dim: int > 0. Size of the vocabulary, ie.
-        1 + maximum integer index occurring in the input data.
+    input_dim: int > 0. Size of the vocabulary,
+        i.e. maximum integer index + 1.
     output_dim: int >= 0. Dimension of the dense embedding.
     embeddings_initializer: Initializer for the `embeddings` matrix.
     embeddings_regularizer: Regularizer function applied to
@@ -68,7 +68,8 @@ class Embedding(Layer):
         If this is `True` then all subsequent layers
         in the model need to support masking or an exception will be raised.
         If mask_zero is set to True, as a consequence, index 0 cannot be
-        used in the vocabulary (input_dim should equal `|vocabulary| + 2`).
+        used in the vocabulary (input_dim should equal size of
+        vocabulary + 1).
     input_length: Length of input sequences, when it is constant.
         This argument is required if you are going to connect
         `Flatten` then `Dense` layers upstream

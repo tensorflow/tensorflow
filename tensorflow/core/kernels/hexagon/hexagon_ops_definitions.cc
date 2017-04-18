@@ -156,6 +156,7 @@ const std::unordered_map<string, SupportedOpType> OP_NAME_TO_SOC_OP_TYPE_MAP{
     {"NoOp", SupportedOpType::NOP},
     {IGraphTransferOpsDefinitions::FLATTEN_OP_NAME, SupportedOpType::FLATTEN},
     // Tensorflow op name
+    {"Const", SupportedOpType::OP_CONST},
     {"QuantizedConv2D", SupportedOpType::QUANTIZEDCONV2D_8X8TO32},
     {"QuantizedMatMul", SupportedOpType::QUANTIZEDMATMUL_8X8TO32},
     {"QuantizeDownAndShrinkRange",

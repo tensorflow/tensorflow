@@ -155,8 +155,8 @@ def deserialize_keras_object(identifier,
         return cls.from_config(
             config['config'],
             custom_objects=dict(
-                list(_GLOBAL_CUSTOM_OBJECTS.items()) + list(
-                    custom_objects.items())))
+                list(_GLOBAL_CUSTOM_OBJECTS.items()) +
+                list(custom_objects.items())))
       return cls.from_config(config['config'])
     else:
       # Then `cls` may be a function returning a class.

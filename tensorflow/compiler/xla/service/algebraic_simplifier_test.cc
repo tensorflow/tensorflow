@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -844,8 +844,8 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4_6x1x1x4) {
                                  non_bitcasting_callback());
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_EQ(HloOpcode::kBroadcast, computation->root_instruction()->opcode());
-  EXPECT_MATCH(computation->root_instruction()->dimensions(),
-               testing::VectorMatcher<int64>({3}));
+  EXPECT_THAT(computation->root_instruction()->dimensions(),
+              ::testing::ElementsAre(3));
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x2x1_6x1x1x1) {
@@ -867,8 +867,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x2x1_6x1x1x1) {
   const std::vector<int64> broadcast_dims =
       computation->root_instruction()->dimensions();
   EXPECT_EQ(1, broadcast_dims.size());
-  EXPECT_TRUE(broadcast_dims[0] == 1 || broadcast_dims[0] == 2 ||
-              broadcast_dims[0] == 3);
+  EXPECT_THAT(broadcast_dims[0], ::testing::AnyOf(1, 2, 3));
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4x2_6x8) {
@@ -1464,6 +1463,36 @@ TEST_F(AlgebraicSimplifierTest, ReversalOfTrivialDimensionsToBitcast) {
   EXPECT_EQ(root->opcode(), HloOpcode::kParameter);
   EXPECT_EQ(a, root);
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), shape));
+}
+
+TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
+  // Dots add computations to the parent module. Test that, when the HloModule's
+  // computations are updated, then iterator invalidation doesn't occur
+  // when running on subsequent computations.
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {1});
+  HloComputation::Builder builder(TestName() + ".Dot");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r1f32, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, r1f32, "y"));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r1f32, HloOpcode::kDot, x, y));
+  std::unique_ptr<HloComputation> dot_computation(builder.Build());
+
+  HloComputation::Builder call_builder(TestName() + ".Call");
+  HloInstruction* zero = call_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({0.0f})));
+  HloInstruction* one = call_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1.0f})));
+  builder.AddInstruction(
+      HloInstruction::CreateCall(r1f32, {zero, one}, dot_computation.get()));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  module->AddEmbeddedComputation(std::move(dot_computation));
+  module->AddEntryComputation(call_builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 }
 
 }  // namespace

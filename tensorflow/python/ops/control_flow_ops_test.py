@@ -18,11 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import numpy as np
+
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -37,7 +42,12 @@ from tensorflow.python.ops import variables
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import momentum
+from tensorflow.python.util import nest
 from tensorflow.python.util.protobuf import compare
+
+
+TestTuple = collections.namedtuple("TestTuple", "a b")
+SingletonTestTuple = collections.namedtuple("SingletonTestTuple", "a")
 
 
 class GroupTestCase(TensorFlowTestCase):
@@ -332,6 +342,357 @@ class ContextTest(TensorFlowTestCase):
           compare.ProtoEq(
               c.to_proto(),
               control_flow_ops.WhileContext.from_proto(c.to_proto()).to_proto())
+
+
+def _GetNestedShape(nested):
+  def _GetShape(tensor):
+    if isinstance(tensor, tensor_array_ops.TensorArray):
+      return tensor_array_ops.TensorArray
+    elif isinstance(tensor, ops.IndexedSlices):
+      return tensor.dense_shape
+    else:
+      return tensor.get_shape()
+
+  return nest.map_structure(_GetShape, nested)
+
+
+def _CreateTensorArray(size, shape):
+  ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size,
+                                    clear_after_read=False)
+  for i in range(size):
+    ta = ta.write(i, array_ops.zeros(shape))
+  return ta
+
+
+def _RawNestedShape(nested_shape):
+  def _RawShape(shape):
+    if isinstance(shape, tensor_shape.TensorShape) and shape.ndims is not None:
+      return [x.value for x in shape]
+    else:
+      return None
+  return nest.map_structure(_RawShape, nested_shape)
+
+
+# TODO(yori): Add tests for indexed slices.
+class DataTypesTest(TensorFlowTestCase):
+
+  def assertAllEqualNested(self, a, b):
+    if isinstance(a, (list, tuple)):
+      for entry_a, entry_b in zip(a, b):
+        self.assertAllEqualNested(entry_a, entry_b)
+    else:
+      self.assertAllEqual(a, b)
+
+  def _testShape(self, fn_true, fn_false, expected_shape,
+                 strict=False):
+    condition = array_ops.placeholder(dtypes.bool)
+    output_cond = control_flow_ops.cond(condition, fn_true, fn_false,
+                                        strict=strict)
+    self.assertEqual(_RawNestedShape(_GetNestedShape(output_cond)),
+                     _RawNestedShape(expected_shape))
+
+    output_case = control_flow_ops.case([(condition, fn_true)], fn_false,
+                                        strict=strict)
+    self.assertEqual(_RawNestedShape(_GetNestedShape(output_case)),
+                     _RawNestedShape(expected_shape))
+
+  def _testReturnValues(self, fn_true, fn_false, expected_value_true,
+                        expected_value_false, strict=False,
+                        check_cond=True):
+    condition = array_ops.placeholder(dtypes.bool)
+    output_cond = control_flow_ops.cond(condition, fn_true, fn_false,
+                                        strict=strict)
+    output_case = control_flow_ops.case([(condition, fn_true)], fn_false,
+                                        strict=strict)
+
+    with self.test_session() as sess:
+      variables.global_variables_initializer().run()
+      result_cond, result_case = sess.run([output_cond, output_case],
+                                          feed_dict={condition: True})
+      self.assertAllEqualNested(result_cond, expected_value_true)
+      if check_cond:
+        self.assertAllEqualNested(result_case, expected_value_true)
+      result_cond, result_case = sess.run([output_cond, output_case],
+                                          feed_dict={condition: False})
+      self.assertAllEqualNested(result_cond, expected_value_false)
+      if check_cond:
+        self.assertAllEqualNested(result_case, expected_value_false)
+
+  def test_int(self):
+    shape = tensor_shape.TensorShape([])
+    fn_true = lambda: 1
+    fn_false = lambda: 2
+    self._testShape(fn_true, fn_false, shape)
+    self._testReturnValues(fn_true, fn_false, 1, 2)
+    self._testShape(fn_true, fn_false, shape, strict=True)
+    self._testReturnValues(fn_true, fn_false, 1, 2, strict=True)
+
+  def test_float(self):
+    shape = tensor_shape.TensorShape([])
+    fn_true = lambda: 1.0
+    fn_false = lambda: 2.0
+    self._testShape(fn_true, fn_false, shape)
+    self._testReturnValues(fn_true, fn_false, 1.0, 2.0)
+
+  def test_noop(self):
+    shape = tensor_shape.TensorShape(None)
+    self._testShape(control_flow_ops.no_op, control_flow_ops.no_op, shape)
+    self._testReturnValues(control_flow_ops.no_op, control_flow_ops.no_op,
+                           True, False, check_cond=False)
+
+  def test_string(self):
+    shape = tensor_shape.TensorShape([])
+    fn_true = lambda: "abc"
+    fn_false = lambda: "xyz"
+    self._testShape(fn_true, fn_false, shape)
+    self._testReturnValues(fn_true, fn_false, b"abc", b"xyz")
+
+  def test_variable(self):
+    shape = tensor_shape.TensorShape([])
+    fn_true = lambda: variables.Variable(3.0)
+    fn_false = lambda: variables.Variable(4.0)
+    self._testShape(fn_true, fn_false, shape)
+    self._testReturnValues(fn_true, fn_false, 3.0, 4.0)
+
+  def test_none(self):
+    fn_none = lambda: None
+    fn_tensor = lambda: constant_op.constant(1)
+
+    with self.assertRaises(ValueError):
+      control_flow_ops.cond(constant_op.constant(True), fn_none, fn_tensor)
+
+    with self.assertRaises(ValueError):
+      control_flow_ops.cond(constant_op.constant(True), fn_tensor, fn_none)
+
+  def test_tensors(self):
+    def _BuildTrueBranch(dtype):
+      def _Build():
+        return (array_ops.zeros([2, 2], dtype=dtype),
+                array_ops.ones([3, 3], dtype=dtype))
+      return _Build
+
+    def _BuildFalseBranch(dtype):
+      def _Build():
+        return (array_ops.ones([2, 2], dtype=dtype),
+                array_ops.zeros([3, 3], dtype=dtype))
+      return _Build
+
+    for dtype in (dtypes.float16, dtypes.int8, dtypes.int32, dtypes.uint8):
+      shape = (tensor_shape.TensorShape([2, 2]),
+               tensor_shape.TensorShape([3, 3]))
+      fn_true = _BuildTrueBranch(dtype)
+      fn_false = _BuildFalseBranch(dtype)
+      self._testShape(fn_true, fn_false, shape)
+      self._testReturnValues(fn_true, fn_false,
+                             (np.zeros([2, 2]), np.ones([3, 3])),
+                             (np.ones([2, 2]), np.zeros([3, 3])))
+
+  def test_tensors_unknown_shape(self):
+    def _BuildTrueBranch(dtype):
+      def _Build():
+        tensor = array_ops.zeros([2, 2], dtype=dtype)
+        tensor._shape = tensor_shape.TensorShape(None)
+        return tensor
+      return _Build
+
+    def _BuildFalseBranch(dtype):
+      def _Build():
+        tensor = array_ops.ones([2, 2], dtype=dtype)
+        tensor._shape = tensor_shape.TensorShape(None)
+        return tensor
+      return _Build
+
+    for dtype in (dtypes.float16, dtypes.int8, dtypes.int32, dtypes.uint8):
+      shape = tensor_shape.TensorShape(None)
+      fn_true = _BuildTrueBranch(dtype)
+      fn_false = _BuildFalseBranch(dtype)
+      self._testShape(fn_true, fn_false, shape)
+      self._testReturnValues(fn_true, fn_false,
+                             np.zeros([2, 2]), np.ones([2, 2]))
+
+  def test_sparse_tensors(self):
+    shape = tensor_shape.TensorShape([None, None])
+
+    def FnTrue():
+      return [sparse_tensor.SparseTensor(indices=[[0, 0], [1, 2]],
+                                         values=[1, 2], dense_shape=[3, 4])]
+
+    def FnFalse():
+      return [sparse_tensor.SparseTensor(indices=[[0, 0], [2, 1]],
+                                         values=[3, 4], dense_shape=[3, 4])]
+
+    value1 = sparse_tensor.SparseTensorValue(indices=[[0, 0], [1, 2]],
+                                             values=[1, 2], dense_shape=[3, 4])
+    value2 = sparse_tensor.SparseTensorValue(indices=[[0, 0], [2, 1]],
+                                             values=[3, 4], dense_shape=[3, 4])
+    self._testShape(FnTrue, FnFalse, shape)
+    self._testReturnValues(FnTrue, FnFalse, value1, value2)
+    self._testShape(FnTrue, FnFalse, [shape], strict=True)
+    self._testReturnValues(FnTrue, FnFalse, [value1], [value2], strict=True)
+
+  def test_tensors_with_partially_specified_shapes(self):
+    def _BuildBranch(dtype, shape):
+      def _Build():
+        a = array_ops.zeros([2, 2], dtype=dtype)
+        b = array_ops.zeros([5], dtype=dtype)
+        c = array_ops.ones([3, 3], dtype=dtype)
+        a._shape = tensor_shape.TensorShape(shape[0])
+        b._shape = tensor_shape.TensorShape(shape[1])
+        c._shape = tensor_shape.TensorShape(shape[2])
+        return a, b, c
+      return _Build
+
+    for dtype in (dtypes.float16, dtypes.int8, dtypes.int32, dtypes.uint8):
+      shape = (tensor_shape.TensorShape([None, 2]),
+               tensor_shape.TensorShape([None]),
+               tensor_shape.TensorShape([3, None]))
+      fn_true = _BuildBranch(dtype, shape)
+      fn_false = _BuildBranch(dtype, shape)
+      self._testShape(fn_true, fn_false, shape)
+      self._testReturnValues(fn_true, fn_false,
+                             (np.zeros([2, 2]), np.zeros(5), np.ones([3, 3])),
+                             (np.zeros([2, 2]), np.zeros(5), np.ones([3, 3])))
+
+  def test_tensor_arrays(self):
+    element_shape = tensor_shape.TensorShape([2])
+    ta1 = _CreateTensorArray(4, element_shape)
+    ta2 = _CreateTensorArray(4, element_shape)
+    shape = tensor_array_ops.TensorArray
+    fn_true = lambda: ta1
+    fn_false = lambda: ta2
+    self._testShape(fn_true, fn_false, shape)
+
+  def test_tensor_array_reads(self):
+    shape = tensor_shape.TensorShape([2])
+    ta = _CreateTensorArray(4, shape)
+    fn_true = lambda: ta.read(0)
+    fn_false = lambda: ta.read(1)
+    self._testShape(fn_true, fn_false, shape)
+
+  def test_list(self):
+    shape = [tensor_shape.TensorShape([]), tensor_shape.TensorShape([]),
+             tensor_shape.TensorShape([])]
+    fn_true = lambda: [constant_op.constant(1), 2, variables.Variable(3.0)]
+    fn_false = lambda: [constant_op.constant(3), 4, variables.Variable(5.0)]
+    self._testShape(fn_true, fn_false, shape)
+    self._testReturnValues(fn_true, fn_false, [1, 2, 3.0], [3, 4, 5.0])
+
+  def test_non_strict(self):
+    shape = tensor_shape.TensorShape([])
+    fn_tensor = lambda: constant_op.constant(1)
+    fn_list = lambda: [constant_op.constant(2)]
+    fn_tuple = lambda: (constant_op.constant(3),)
+    self._testShape(fn_tensor, fn_list, shape)
+    self._testShape(fn_tensor, fn_tuple, shape)
+    self._testShape(fn_list, fn_tuple, shape)
+    self._testReturnValues(fn_tensor, fn_list, 1, 2)
+    self._testReturnValues(fn_tensor, fn_tuple, 1, 3)
+    self._testReturnValues(fn_list, fn_tuple, 2, 3)
+
+  def test_singleton_strict(self):
+    fn_tensor = lambda: constant_op.constant(1)
+    fn_list = lambda: [constant_op.constant(2)]
+    fn_tuple = lambda: (constant_op.constant(3),)
+
+    with self.assertRaises(ValueError):
+      control_flow_ops.cond(constant_op.constant(True), fn_tensor, fn_list,
+                            strict=True)
+
+    with self.assertRaises(TypeError):
+      control_flow_ops.cond(constant_op.constant(True), fn_list, fn_tuple,
+                            strict=True)
+
+    with self.assertRaises(ValueError):
+      control_flow_ops.case([(constant_op.constant(True), fn_tensor)], fn_list,
+                            strict=True)
+
+    with self.assertRaises(TypeError):
+      control_flow_ops.case([(constant_op.constant(True), fn_list)], fn_tuple,
+                            strict=True)
+
+  def test_singleton_list(self):
+    shape = tensor_shape.TensorShape([])
+    fn_true = lambda: [constant_op.constant(1)]
+    fn_false = lambda: [constant_op.constant(3)]
+    self._testShape(fn_true, fn_false, shape)
+    self._testReturnValues(fn_true, fn_false, 1, 3)
+    self._testShape(fn_true, fn_false, [shape], strict=True)
+    self._testReturnValues(fn_true, fn_false, [1], [3], strict=True)
+
+  def test_singleton_tuple(self):
+    shape = tensor_shape.TensorShape([])
+    fn_true = lambda: (constant_op.constant(1),)
+    fn_false = lambda: (constant_op.constant(3),)
+    self._testShape(fn_true, fn_false, shape)
+    self._testReturnValues(fn_true, fn_false, 1, 3)
+    self._testShape(fn_true, fn_false, (shape,), strict=True)
+    self._testReturnValues(fn_true, fn_false, (1,), (3,),
+                           strict=True)
+
+  def test_singleton_namedtuple(self):
+    shape = tensor_shape.TensorShape([])
+    fn_true = lambda: SingletonTestTuple(constant_op.constant(1))
+    fn_false = lambda: SingletonTestTuple(constant_op.constant(3))
+    self._testShape(fn_true, fn_false, shape)
+    self._testReturnValues(fn_true, fn_false, 1, 3)
+    self._testShape(fn_true, fn_false, SingletonTestTuple(shape),
+                    strict=True)
+    self._testReturnValues(fn_true, fn_false, SingletonTestTuple(1),
+                           SingletonTestTuple(3), strict=True)
+
+  def test_tuple(self):
+    shape = (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
+    fn_true = lambda: (constant_op.constant(1), 2)
+    fn_false = lambda: (constant_op.constant(3), 4)
+    self._testShape(fn_true, fn_false, shape)
+    self._testReturnValues(fn_true, fn_false, (1, 2), (3, 4))
+
+  def test_namedtuple(self):
+    shape = TestTuple(tensor_shape.TensorShape([]),
+                      tensor_shape.TensorShape([]))
+    fn_true = lambda: TestTuple(constant_op.constant(1), 2)
+    fn_false = lambda: TestTuple(constant_op.constant(3), 4)
+    self._testShape(fn_true, fn_false, shape)
+    self._testReturnValues(fn_true, fn_false, TestTuple(1, 2), TestTuple(3, 4))
+
+  def test_nested(self):
+    shape = [tensor_shape.TensorShape([]),
+             TestTuple(tensor_shape.TensorShape([]),
+                       [tensor_shape.TensorShape([]),
+                        tensor_shape.TensorShape([])]),
+             tensor_shape.TensorShape([5, 5]),
+             tensor_shape.TensorShape([])]
+
+    def FnTrue():
+      return [constant_op.constant(1),
+              TestTuple(constant_op.constant(2), [3, 4]),
+              array_ops.zeros([5, 5]), 6]
+
+    def FnFalse():
+      return [constant_op.constant(11),
+              TestTuple(constant_op.constant(12), [13, 14]),
+              array_ops.ones([5, 5]), 16]
+
+    self._testShape(FnTrue, FnFalse, shape)
+    self._testReturnValues(FnTrue, FnFalse,
+                           [1, TestTuple(2, [3, 4]), np.zeros([5, 5]), 6],
+                           [11, TestTuple(12, [13, 14]), np.ones([5, 5]), 16])
+
+  def test_cond_inside_while_loop(self):
+    def Body(i, matrix):
+      result_tuple, unused_matrix = control_flow_ops.cond(
+          constant_op.constant(True),
+          lambda: (TestTuple(matrix * 2, matrix * 4), matrix),
+          lambda: (TestTuple(matrix * 4, matrix * 2), matrix))
+      return [i+1, result_tuple.a]
+
+    iteration, matrix = control_flow_ops.while_loop(
+        lambda i, matrix: i < 10,
+        Body,
+        loop_vars=[constant_op.constant(0), array_ops.ones([2, 2])])
+
+    self.assertEqual(iteration.get_shape(), tensor_shape.TensorShape([]))
+    self.assertEqual(matrix.get_shape(), tensor_shape.TensorShape([2, 2]))
 
 
 if __name__ == "__main__":

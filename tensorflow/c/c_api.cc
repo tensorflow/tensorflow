@@ -220,6 +220,18 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
   return new TF_Tensor{dtype, TensorShape(dimvec), buf};
 }
 
+TF_Tensor* TF_TensorMaybeMove(TF_Tensor* tensor) {
+  // It is safe to move the Tensor if and only if we own the unique reference to
+  // it. In that case, we might as well not delete and reallocate, but a future
+  // implementation might need to do so.
+  if (tensor->buffer->RefCountIsOne() &&
+      tensor->buffer->root_buffer()->RefCountIsOne() &&
+      tensor->buffer->OwnsMemory()) {
+    return tensor;
+  }
+  return nullptr;
+}
+
 void TF_DeleteTensor(TF_Tensor* t) {
   t->buffer->Unref();
   delete t;

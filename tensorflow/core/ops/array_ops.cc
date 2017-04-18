@@ -394,6 +394,26 @@ output: A `Tensor` with the concatenation of values stacked along the
   in `concat_dim` where it has the sum of the sizes.
 )doc");
 
+#ifdef INTEL_MKL
+REGISTER_OP("MklConcatV2")
+    .Input("values: N * T")
+    .Input("axis: Tidx")
+    .Input("mkl_values: N * uint8")
+    .Input("mkl_axis: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("N: int >= 2")
+    .Attr("T: type")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::ConcatV2Shape)
+    .Doc(R"doc(
+MKL version of ConcatV2 operator. Uses MKL DNN APIs to perform concatenation.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+#endif
+
 REGISTER_OP("ConcatOffset")
     .Input("concat_dim: int32")
     .Input("shape: N * int32")
@@ -488,7 +508,7 @@ REGISTER_OP("SplitV")
       ShapeHandle output_shape;
       const Tensor* size_splits = c->input_tensor(1);
       if (rank == InferenceContext::kUnknownRank) {
-        // If the rank of input tensor is unknown, then return unkown shapes.
+        // If the rank of input tensor is unknown, then return unknown shapes.
         output_shape = c->UnknownShape();
         for (int i = 0; i < num_outputs; ++i) {
           c->set_output(i, output_shape);
@@ -497,7 +517,7 @@ REGISTER_OP("SplitV")
         // Throw error if input is a scalar.
         return errors::InvalidArgument("Can't split scalars");
       } else if (size_splits == nullptr || !c->ValueKnown(split_dimension)) {
-        // If split dimension or tensor containing the split sizes is unkown,
+        // If split dimension or tensor containing the split sizes is unknown,
         // then return unknown shapes of same rank as input.
         output_shape = c->UnknownShapeOfRank(rank);
         for (int i = 0; i < num_outputs; ++i) {
@@ -1328,11 +1348,11 @@ this operation will permute `params` accordingly.
 
 `validate_indices`: DEPRECATED. If this operation is assigned to CPU, values in
 `indices` are always validated to be within range. If assigned to GPU,
-out-of-bound indices result in unspecified behavior (currently the result is
-`0`, but this may become an error in the future).
+out-of-bound indices result in safe but unspecified behavior, which may include
+raising an error.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/Gather.png" alt>
+<img style="width:100%" src="../../../images/Gather.png" alt>
 </div>
 )doc");
 
@@ -1637,6 +1657,21 @@ reshape(t, []) ==> 7
 
 shape: Defines the shape of the output tensor.
 )Doc");
+
+#ifdef INTEL_MKL
+REGISTER_OP("MklReshape")
+    .Input("tensor: T")
+    .Input("shape: Tshape")
+    .Input("mkl_tensor: uint8")
+    .Input("mkl_shape: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) { return SetOutputShapeForReshape(c); })
+    .Doc(R"Doc( MKL implementation of ReshapeOp.
+)Doc");
+#endif // INTEL_MKL
 
 // --------------------------------------------------------------------------
 REGISTER_OP("InvertPermutation")
@@ -2737,7 +2772,7 @@ output: The folded tensor.
 REGISTER_OP("Placeholder")
     .Output("output: dtype")
     .Attr("dtype: type")
-    .Attr("shape: shape = {}")
+    .Attr("shape: shape = { unknown_rank: true }")
     .SetShapeFn([](InferenceContext* c) {
       PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
@@ -2745,7 +2780,7 @@ REGISTER_OP("Placeholder")
       // Placeholder has legacy behavior where we cannot tell the difference
       // between a scalar shape attribute and 'unknown shape'.  So if the shape
       // is a scalar, we return an unknown shape.
-      if (shape.dims() <= 0) {
+      if (c->graph_def_version() <= 21 && shape.dims() <= 0) {
         return shape_inference::UnknownShape(c);
       }
 
@@ -2769,11 +2804,9 @@ shape: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
   shape is unconstrained.
 )doc");
 
-// This version fixes an issue with the original version of Placeholder
-// where the empty shape attribute "[]" was used to denote
-// an unknown shape.  This meant that scalars (added later) could
-// not be represented natively.  This new version fixes that
-// limitation.
+// Placeholder was modified in a backwards compatible way to do what
+// PlaceholderV2 did, so we have deprecated V2 (no one was really
+// using it).
 REGISTER_OP("PlaceholderV2")
     .Output("output: dtype")
     .Attr("dtype: type")
@@ -2786,6 +2819,7 @@ REGISTER_OP("PlaceholderV2")
       c->set_output(0, output);
       return Status::OK();
     })
+    .Deprecated(23, "Placeholder now behaves the same as PlaceholderV2.")
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.
 
@@ -4965,6 +4999,27 @@ backprop_wrt_min: Backpropagated gradients w.r.t. min parameter, shape `[d]`:
 backprop_wrt_max: Backpropagated gradients w.r.t. max parameter, shape `[d]`:
   `sum_per_d(gradients * (inputs > max))`.
 )doc");
+
+#ifdef INTEL_MKL
+REGISTER_OP("MklConcat")
+    .Input("concat_dim: int32")
+    .Input("values: N * T")
+    .Input("mkl_concat_dim: uint8")
+    .Input("mkl_values: N * uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("N: int >= 2")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::ConcatShape(c, c->num_inputs() - 3);
+    })
+    .Doc(R"doc(
+MKL version of Concat operator. Uses MKL DNN APIs to perform concatenation.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+#endif
 
 // Deprecated op registrations:
 

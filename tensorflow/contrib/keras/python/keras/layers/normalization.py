@@ -109,8 +109,8 @@ class BatchNormalization(Layer):
     if dim is None:
       raise ValueError('Axis ' + str(self.axis) + ' of '
                        'input tensor should have a defined dimension '
-                       'but the layer received an input with shape ' + str(
-                           input_shape) + '.')
+                       'but the layer received an input with shape ' +
+                       str(input_shape) + '.')
     self.input_spec = InputSpec(ndim=len(input_shape), axes={self.axis: dim})
     shape = (dim,)
 

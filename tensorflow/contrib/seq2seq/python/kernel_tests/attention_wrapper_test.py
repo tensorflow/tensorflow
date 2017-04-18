@@ -68,7 +68,8 @@ class AttentionWrapperTest(test.TestCase):
                          expected_final_output,
                          expected_final_state,
                          attention_mechanism_depth=3,
-                         attention_history=False,
+                         alignment_history=False,
+                         expected_final_alignment_history=None,
                          name=""):
     encoder_sequence_length = [3, 2, 3, 1, 0]
     decoder_sequence_length = [2, 0, 1, 2, 3]
@@ -96,8 +97,10 @@ class AttentionWrapperTest(test.TestCase):
           initializer=init_ops.random_normal_initializer(stddev=0.01, seed=3)):
         cell = core_rnn_cell.LSTMCell(cell_depth)
         cell = wrapper.AttentionWrapper(
-            cell, attention_mechanism, attention_size=attention_depth,
-            attention_history=attention_history)
+            cell,
+            attention_mechanism,
+            attention_size=attention_depth,
+            alignment_history=alignment_history)
         helper = helper_py.TrainingHelper(decoder_inputs,
                                           decoder_sequence_length)
         my_decoder = basic_decoder.BasicDecoder(
@@ -127,21 +130,21 @@ class AttentionWrapperTest(test.TestCase):
       self.assertEqual((batch_size, cell_depth),
                        tuple(final_state.cell_state.h.get_shape().as_list()))
 
-      if attention_history:
-        state_attention_history = final_state.attention_history.stack()
+      if alignment_history:
+        state_alignment_history = final_state.alignment_history.stack()
         # Remove the history from final_state for purposes of the
         # remainder of the tests.
-        final_state = final_state._replace(attention_history=())  # pylint: disable=protected-access
-        self.assertEqual((None, batch_size, attention_depth),
-                         tuple(state_attention_history.get_shape().as_list()))
+        final_state = final_state._replace(alignment_history=())  # pylint: disable=protected-access
+        self.assertEqual((None, batch_size, encoder_max_time),
+                         tuple(state_alignment_history.get_shape().as_list()))
       else:
-        state_attention_history = ()
+        state_alignment_history = ()
 
       sess.run(variables.global_variables_initializer())
       sess_results = sess.run({
           "final_outputs": final_outputs,
           "final_state": final_state,
-          "state_attention_history": state_attention_history,
+          "state_alignment_history": state_alignment_history,
       })
 
       print("Copy/paste (%s)\nexpected_final_output = " % name,
@@ -150,16 +153,18 @@ class AttentionWrapperTest(test.TestCase):
       print("Copy/paste (%s)\nexpected_final_state = " % name,
             sess_results["final_state"])
       sys.stdout.flush()
+      print("Copy/paste (%s)\nexpected_final_alignment_history = " % name,
+            sess_results["state_alignment_history"])
+      sys.stdout.flush()
       nest.map_structure(self.assertAllClose, expected_final_output,
                          sess_results["final_outputs"])
       nest.map_structure(self.assertAllClose, expected_final_state,
                          sess_results["final_state"])
-      if attention_history:  # by default, the wrapper emits attention as output
+      if alignment_history:  # by default, the wrapper emits attention as output
         self.assertAllClose(
             # outputs are batch major but the stacked TensorArray is time major
-            sess_results["state_attention_history"],
-            np.transpose(sess_results["final_outputs"].rnn_output,
-                         (1, 0, 2)))
+            sess_results["state_alignment_history"],
+            expected_final_alignment_history)
 
   def testBahdanauNotNormalized(self):
     create_attention_mechanism = wrapper.BahdanauAttention
@@ -284,13 +289,52 @@ class AttentionWrapperTest(test.TestCase):
             ]],
             dtype=float32),
         time=3,
-        attention_history=())
+        alignment_history=())
+
+    expected_final_alignment_history = [[[
+        0.12525459, 0.12438694, 0.12613983, 0.12484372, 0.12484372, 0.12484372,
+        0.12484372, 0.12484372
+    ], [
+        0.12648369, 0.12322279, 0.12504892, 0.12504892, 0.12504892, 0.12504892,
+        0.12504892, 0.12504892
+    ], [
+        0.12611018, 0.12528601, 0.12638952, 0.12444285, 0.12444285, 0.12444285,
+        0.12444285, 0.12444285
+    ], [
+        0.12492625, 0.12501054, 0.12501054, 0.12501054, 0.12501054, 0.12501054,
+        0.12501054, 0.12501054
+    ], [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125]], [[
+        0.12525459, 0.12438691, 0.1261397, 0.12484375, 0.12484375, 0.12484375,
+        0.12484375, 0.12484375
+    ], [
+        0.12648349, 0.12322238, 0.12504902, 0.12504902, 0.12504902, 0.12504902,
+        0.12504902, 0.12504902
+    ], [
+        0.12611009, 0.12528586, 0.12638941, 0.12444293, 0.12444293, 0.12444293,
+        0.12444293, 0.12444293
+    ], [
+        0.12492625, 0.12501054, 0.12501054, 0.12501054, 0.12501054, 0.12501054,
+        0.12501054, 0.12501054
+    ], [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125]], [[
+        0.12525487, 0.12438726, 0.12613991, 0.12484358, 0.12484358, 0.12484358,
+        0.12484358, 0.12484358
+    ], [
+        0.12648354, 0.12322233, 0.12504901, 0.12504901, 0.12504901, 0.12504901,
+        0.12504901, 0.12504901
+    ], [
+        0.12611021, 0.125286, 0.12638955, 0.12444286, 0.12444286, 0.12444286,
+        0.12444286, 0.12444286
+    ], [
+        0.12492625, 0.12501054, 0.12501054, 0.12501054, 0.12501054, 0.12501054,
+        0.12501054, 0.12501054
+    ], [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125]]]
 
     self._testWithAttention(
         create_attention_mechanism,
         expected_final_output,
         expected_final_state,
-        attention_history=True,
+        alignment_history=True,
+        expected_final_alignment_history=expected_final_alignment_history,
         name="testBahdanauNotNormalized")
 
   def testBahdanauNormalized(self):
@@ -417,7 +461,7 @@ class AttentionWrapperTest(test.TestCase):
             ]],
             dtype=float32),
         time=3,
-        attention_history=())
+        alignment_history=())
 
     self._testWithAttention(
         create_attention_mechanism,
@@ -548,7 +592,7 @@ class AttentionWrapperTest(test.TestCase):
             ]],
             dtype=float32),
         time=3,
-        attention_history=())
+        alignment_history=())
 
     self._testWithAttention(
         create_attention_mechanism,
@@ -681,7 +725,7 @@ class AttentionWrapperTest(test.TestCase):
             ]],
             dtype=float32),
         time=3,
-        attention_history=())
+        alignment_history=())
 
     self._testWithAttention(
         create_attention_mechanism,

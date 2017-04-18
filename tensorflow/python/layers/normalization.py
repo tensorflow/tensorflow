@@ -238,10 +238,14 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       # For example, after a single update, the moving average would be
       # (1-decay) * value. and the weight will be 1-decay, with their ratio
       # giving value.
+      # Make sure the weight is not updated until before r and d computation.
+      value = array_ops.identity(value)
+      with ops.control_dependencies([value]):
+        weight_value = array_ops.constant(1., dtype=weight.dtype)
       new_var = moving_averages.assign_moving_average(
           var, value, decay, zero_debias=False)
       new_weight = moving_averages.assign_moving_average(
-          weight, 1., decay, zero_debias=False)
+          weight, weight_value, decay, zero_debias=False)
       return new_var / new_weight
 
     with ops.colocate_with(self.moving_mean):
@@ -278,6 +282,13 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       # Some of the computations here are not necessary when training==False
       # but not a constant. However, this makes the code simpler.
       mean, variance = nn.moments(inputs, reduction_axes)
+      mean = _smart_select(training,
+                           lambda: mean,
+                           lambda: self.moving_mean)
+      variance = _smart_select(training,
+                               lambda: variance,
+                               lambda: self.moving_variance)
+
       if self.renorm:
         r, d, new_mean, new_variance = self._renorm_correction_and_moments(
             mean, variance, training)
@@ -307,13 +318,6 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
         # across unrelated input streams (e.g. like in Keras).
         self.updates.append(mean_update)
         self.updates.append(variance_update)
-
-      mean = _smart_select(training,
-                           lambda: mean,
-                           lambda: self.moving_mean)
-      variance = _smart_select(training,
-                               lambda: variance,
-                               lambda: self.moving_variance)
 
     else:
       mean, variance = self.moving_mean, self.moving_variance

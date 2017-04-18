@@ -170,6 +170,8 @@ cc_library(
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
     deps = [
         ":numpy_lib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -1555,6 +1557,7 @@ py_library(
         ":rnn",
         ":sparse_ops",
         ":util",
+        ":variables",
     ],
 )
 
@@ -2204,6 +2207,9 @@ cuda_py_test(
         ":nn",
         ":nn_grad",
         ":nn_ops",
+        ":partitioned_variables",
+        ":variable_scope",
+        ":variables",
         "//third_party/py/numpy",
     ],
 )
@@ -2871,6 +2877,26 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "moving_averages_test",
+    size = "small",
+    srcs = [
+        "training/moving_averages_test.py",
+    ],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":constant_op",
+        ":dtypes",
+        ":framework_for_generated_wrappers",
+        ":framework_ops",
+        ":training",
+        ":variable_scope",
+        ":variables",
+    ],
+    tags = ["notsan"],
+)
+
 cuda_py_tests(
     name = "training_tests",
     size = "small",
@@ -2885,7 +2911,6 @@ cuda_py_tests(
         "training/gradient_descent_test.py",
         "training/learning_rate_decay_test.py",
         "training/momentum_test.py",
-        "training/moving_averages_test.py",
         "training/optimizer_test.py",
         "training/proximal_adagrad_test.py",
         "training/proximal_gradient_descent_test.py",

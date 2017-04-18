@@ -21,7 +21,7 @@ Then, cd into the TensorBoard directory:
 
 and install dependencies:
 
-`npm run prepare`
+`npm run prep`
 
 Then, run gulp: `gulp`
 

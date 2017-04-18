@@ -496,7 +496,6 @@ cc_library(
 tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
-        "audio_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
         "ctc_ops",
@@ -524,6 +523,13 @@ tf_gen_op_libs(
         "string_ops",
         "training_ops",
     ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = [
+        "audio_ops",
+    ],
+    deps = [":lib"],
 )
 
 cc_library(
@@ -688,6 +694,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:control_flow_ops",
@@ -722,9 +729,13 @@ cc_library(
         "//tensorflow/core/kernels:math_not_windows",
         "//tensorflow/core/kernels:quantized_ops",
     ]) + if_mkl([
+        "//tensorflow/core/kernels:mkl_concat_op",
         "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels:mkl_lrn_op",
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
+        "//tensorflow/core/kernels:mkl_reshape_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
 )
@@ -2078,7 +2089,6 @@ tf_cc_test_mkl(
     size = "small",
     srcs = [
         "graph/mkl_layout_pass_test.cc",
-        "graph/mkl_optimizer_merge_test.cc",
         "graph/mkl_tfconversion_pass_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -2099,9 +2109,13 @@ tf_cc_test_mkl(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core/kernels:mkl_concat_op",
         "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels:mkl_lrn_op",
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
+        "//tensorflow/core/kernels:mkl_reshape_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
