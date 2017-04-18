@@ -4582,7 +4582,7 @@ var VZ;
                 // If b===a, we would create an empty range. We instead select the range
                 // [0, 2*a] if a > 0, or [-2*a, 0] if a < 0, plus a little bit of
                 // extra padding on the top and bottom of the plot.
-                padding = Math.abs(a) * 1.1;
+                padding = Math.abs(a) * 1.1 + 1.1;
             }
             else {
                 padding = span * 0.2;
@@ -5332,7 +5332,7 @@ var VZ;
                 // If b===a, we would create an empty range. We instead select the range
                 // [0, 2*a] if a > 0, or [-2*a, 0] if a < 0, plus a little bit of
                 // extra padding on the top and bottom of the plot.
-                padding = Math.abs(a) * 1.1;
+                padding = Math.abs(a) * 1.1 + 1.1;
             }
             else {
                 padding = span * 0.2;
@@ -17812,11 +17812,14 @@ TF.Dashboard.TfGraphDashboard = Polymer({
   properties: {
     _datasets: Object,
     _renderHierarchy: {type: Object, observer: '_renderHierarchyChanged'},
-    backend: {type: Object, observer: '_backendChanged'},
+    backend: Object,
     debuggerDataEnabled: Boolean,
     allStepsModeEnabled: Boolean,
     specificHealthPillStep: {type: Number, value: 0},
     healthPillsToggledOn: {type: Boolean, value: true, observer: '_healthPillsToggledOnChanged'},
+    _isAttached: Boolean,
+    // Whether this dashboard is initialized. This dashboard should only be initialized once.
+    _initialized: Boolean,
     // Whether health pills are currently being loaded, in which case we may want to say show a
     // spinner.
     _areHealthPillsLoading: Boolean,
@@ -17845,7 +17848,14 @@ TF.Dashboard.TfGraphDashboard = Polymer({
   },
   observers: [
     '_maybeFetchHealthPillsAtSpecificStep(allStepsModeEnabled, specificHealthPillStep)',
+    '_maybeInitializeDashboard(backend, _isAttached)',
   ],
+  attached: function() {
+    this.set('_isAttached', true);
+  },
+  detached: function() {
+    this.set('_isAttached', false);
+  },
   reload: function() {
     if (!this.debuggerDataEnabled ||
         !this.healthPillsToggledOn ||
@@ -17861,7 +17871,14 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     // would not change across reloads.
     this._requestHealthPills();
   },
-  _backendChanged: function(backend) {
+  _maybeInitializeDashboard: function(backend, isAttached) {
+    if (this._initialized || !backend || !isAttached) {
+      // Either this dashboard is already initialized ... or we are not yet ready to initialize.
+      return;
+    }
+
+    // Set this to true so we only initialize once.
+    this._initialized = true;
     Promise.all([backend.graphRuns(), backend.runMetadataRuns()])
       .then(function(result) {
         var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
@@ -18846,6 +18863,7 @@ paper-dropdown-menu paper-item {
           </p>
           <p>
             One option is using a <a target="_blank" href="https://gist.github.com/">github gist</a>.
+            If you choose this approach, make sure to link directly to the raw file.
           </p>
         </div>
         <div>
@@ -19822,23 +19840,25 @@ TF.Dashboard.VzProjectorDashboard = Polymer({
   },
   properties: {
     dataNotFound: Boolean,
-    routePrefix: String
+    routePrefix: String,
+    // Whether this dashboard is initialized. This dashboard should only be initialized once.
+    _initialized: Boolean,
   },
   behaviors: [
     TF.Dashboard.DashboardBehavior("embeddings"),
   ],
-  observers: [
-    "_routePrefixSet(routePrefix)",
-  ],
   reload: function() {
     // Do not reload the embedding projector. Reloading could take a long time.
   },
-  _routePrefixSet: function(routePrefix) {
-    if (routePrefix === undefined) {
-      // The route prefix has not been set yet.
+  attached: function() {
+    if (this._initialized) {
       return;
     }
-    d3.json(routePrefix + '/runs', (err, runs) => {
+
+    // Set this to true so we only initialize once.
+    this._initialized = true;
+
+    d3.json(this.routePrefix + '/runs', (err, runs) => {
       this.set('dataNotFound', runs.length === 0);
     });
   },
@@ -25619,8 +25639,8 @@ var DataPanel = (function (_super) {
             embeddings: [{
                     tensorName: 'My tensor',
                     tensorShape: [1000, 50],
-                    tensorPath: 'https://gist.github.com/.../tensors.tsv',
-                    metadataPath: 'https://gist.github.com/.../optional.metadata.tsv',
+                    tensorPath: 'https://raw.githubusercontent.com/.../tensors.tsv',
+                    metadataPath: 'https://raw.githubusercontent.com/.../optional.metadata.tsv',
                 }],
         };
         this.setProjectorConfigTemplateJson(projectorConfigTemplate, projectorConfigTemplateJson);
@@ -25642,7 +25662,7 @@ var DataPanel = (function (_super) {
         bookmarksFieldCheckbox.addEventListener('change', function () {
             if (bookmarksFieldCheckbox.checked) {
                 projectorConfigTemplateJson.embeddings[0].bookmarksPath =
-                    'https://gist.github.com/.../bookmarks.txt';
+                    'https://raw.githubusercontent.com/.../bookmarks.txt';
             }
             else {
                 delete projectorConfigTemplateJson.embeddings[0].bookmarksPath;
@@ -25653,7 +25673,7 @@ var DataPanel = (function (_super) {
         metadataFieldCheckbox.addEventListener('change', function () {
             if (metadataFieldCheckbox.checked) {
                 projectorConfigTemplateJson.embeddings[0].metadataPath =
-                    'https://gist.github.com/.../optional.metadata.tsv';
+                    'https://raw.githubusercontent.com/.../optional.metadata.tsv';
             }
             else {
                 delete projectorConfigTemplateJson.embeddings[0].metadataPath;
