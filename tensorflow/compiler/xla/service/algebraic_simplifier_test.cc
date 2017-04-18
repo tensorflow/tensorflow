@@ -510,6 +510,27 @@ TEST_F(AlgebraicSimplifierTest, RemoveCopy) {
   EXPECT_THAT(computation->root_instruction(), param0);
 }
 
+// Test that unary concatenates are removed.
+TEST_F(AlgebraicSimplifierTest, RemoveUnaryConcatenate) {
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {100});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  builder.AddInstruction(
+      HloInstruction::CreateConcatenate(param0->shape(), {param0}, 0));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Concatenate(param0));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), param0);
+}
+
 // Test that a simplification which changes layouts is not performed if layout
 // sensitive is true.
 TEST_F(AlgebraicSimplifierTest, CopyWithDifferentLayout) {
