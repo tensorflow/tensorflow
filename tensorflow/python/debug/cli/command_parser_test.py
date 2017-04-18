@@ -132,6 +132,63 @@ class ExtractOutputFilePathTest(test_util.TensorFlowTestCase):
     self.assertEqual(["pt", "a:0"], args)
     self.assertEqual(output_path, "/tmp/foo.txt")
 
+  def testFlagWithEqualGreaterThanShouldIgnoreIntervalFlags(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--execution_time=>100ms"])
+    self.assertEqual(["lp", "--execution_time=>100ms"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--execution_time", ">1.2s"])
+    self.assertEqual(["lp", "--execution_time", ">1.2s"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "-e", ">1200"])
+    self.assertEqual(["lp", "-e", ">1200"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--foo_value", ">-.2MB"])
+    self.assertEqual(["lp", "--foo_value", ">-.2MB"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--bar_value", ">-42e3GB"])
+    self.assertEqual(["lp", "--bar_value", ">-42e3GB"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--execution_time", ">=100ms"])
+    self.assertEqual(["lp", "--execution_time", ">=100ms"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--execution_time=>=100ms"])
+    self.assertEqual(["lp", "--execution_time=>=100ms"], args)
+    self.assertIsNone(output_path)
+
+  def testFlagWithEqualGreaterThanShouldRecognizeFilePaths(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", ">1.2s"])
+    self.assertEqual(["lp"], args)
+    self.assertEqual("1.2s", output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--execution_time", ">x.yms"])
+    self.assertEqual(["lp", "--execution_time"], args)
+    self.assertEqual("x.yms", output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--memory", ">a.1kB"])
+    self.assertEqual(["lp", "--memory"], args)
+    self.assertEqual("a.1kB", output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--memory", ">e002MB"])
+    self.assertEqual(["lp", "--memory"], args)
+    self.assertEqual("e002MB", output_path)
+
   def testOneArgumentIsHandledCorrectly(self):
     args, output_path = command_parser.extract_output_file_path(["lt"])
     self.assertEqual(["lt"], args)
@@ -354,6 +411,27 @@ class ParseInterval(test_util.TensorFlowTestCase):
         command_parser.Interval(1e3, False, float("inf"), False),
         command_parser.parse_time_interval(">1ms"))
 
+  def testParseTimeGreaterLessThanWithInvalidValueStrings(self):
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after >= "):
+      command_parser.parse_time_interval(">=wms")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after > "):
+      command_parser.parse_time_interval(">Yms")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after <= "):
+      command_parser.parse_time_interval("<= _ms")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after < "):
+      command_parser.parse_time_interval("<-ms")
+
+  def testParseTimeIntervalsWithInvalidValueStrings(self):
+    with self.assertRaisesRegexp(ValueError, "Invalid first item in interval:"):
+      command_parser.parse_time_interval("[wms, 10ms]")
+    with self.assertRaisesRegexp(ValueError,
+                                 "Invalid second item in interval:"):
+      command_parser.parse_time_interval("[ 0ms, _ms]")
+    with self.assertRaisesRegexp(ValueError, "Invalid first item in interval:"):
+      command_parser.parse_time_interval("(xms, _ms]")
+    with self.assertRaisesRegexp(ValueError, "Invalid first item in interval:"):
+      command_parser.parse_time_interval("((3ms, _ms)")
+
   def testInvalidTimeIntervalRaisesException(self):
     with self.assertRaisesRegexp(
         ValueError,
@@ -394,6 +472,16 @@ class ParseInterval(test_util.TensorFlowTestCase):
     self.assertEquals(
         command_parser.Interval(11, False, float("inf"), False),
         command_parser.parse_memory_interval(">11"))
+
+  def testParseMemoryIntervalsWithInvalidValueStrings(self):
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after >= "):
+      command_parser.parse_time_interval(">=wM")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after > "):
+      command_parser.parse_time_interval(">YM")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after <= "):
+      command_parser.parse_time_interval("<= _MB")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after < "):
+      command_parser.parse_time_interval("<-MB")
 
   def testInvalidMemoryIntervalRaisesException(self):
     with self.assertRaisesRegexp(
