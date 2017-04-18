@@ -545,8 +545,46 @@ inline int64 GetMklTensorDim(const MklShape& mkl_shape, char dimension) {
   return mkl_shape.dim_size(index);
 }
 
-namespace mkl_op_registry {
+inline void CopyMklTensorInToOut(OpKernelContext* context,
+                                 int idx_in, int idx_out) {
+  int num_inputs = context->num_inputs();
+  int num_outputs = context->num_outputs();
+  int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
+  int idx_meta_in = GetTensorMetaDataIndex(idx_in, num_inputs);
+  int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
+  int idx_meta_out = GetTensorMetaDataIndex(idx_out, num_outputs);
 
+  const Tensor& data = context->input(idx_data_in);
+  const Tensor& meta = context->input(idx_meta_in);
+  Tensor output(data.dtype());
+  Tensor meta_output(meta.dtype());
+
+  // TODO(intel_tf): alternatively, call forward_input_to_output_with_shape(...)
+  CHECK(output.CopyFrom(data, data.shape()));
+  CHECK(meta_output.CopyFrom(meta, meta.shape()));
+  context->set_output(idx_data_out, output);
+  context->set_output(idx_meta_out, meta_output);
+}
+
+inline void CopyTFTensorInToOut(OpKernelContext* context,
+                                int idx_in, int idx_out,
+                                const TensorShape& shape) {
+  int num_inputs = context->num_inputs();
+  int num_outputs = context->num_outputs();
+  int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
+  int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
+
+  const Tensor& data = context->input(idx_data_in);
+  MklShape mkl_shape_output;
+  mkl_shape_output.SetMklTensor(false);
+  AllocateOutputSetMklShape(context, idx_out, mkl_shape_output);
+  Tensor output(data.dtype());
+  // TODO(intel_tf): alternatively, call forward_input_to_output_with_shape(...)
+  CHECK(output.CopyFrom(data, shape));
+  context->set_output(idx_data_out, output);
+}
+
+namespace mkl_op_registry {
 static const char* kMklOpLabel = "MklOp";
 static const char* kMklOpLabelPattern = "label='MklOp'";
 
