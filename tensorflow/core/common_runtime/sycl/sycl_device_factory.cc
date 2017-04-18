@@ -30,11 +30,20 @@ class SYCLDeviceFactory : public DeviceFactory {
 
     auto syclInterface = GSYCLInterface::instance();
 
-    devices->push_back(
-        new SYCLDevice(options, name, Bytes(256 << 20), DeviceLocality()
-                       , syclInterface->GetShortDeviceDescription(0)
-                       , syclInterface->GetSYCLAllocator(0)
-                       , syclInterface->GetCPUAllocator(0)));
+    size_t n = 1;
+    auto iter = options.config.device_count().find("SYCL");
+    if (iter != options.config.device_count().end()) {
+      n = iter->second;
+    }
+
+    for (int i = 0; i < n; i++) {
+      devices->push_back(
+          new SYCLDevice(options, name, Bytes(256 << 20), DeviceLocality()
+                         , syclInterface->GetShortDeviceDescription(i)
+                         , syclInterface->GetSYCLAllocator(i)
+                         , syclInterface->GetCPUAllocator(i)));
+    }
+
     return Status::OK();
   }
 };
