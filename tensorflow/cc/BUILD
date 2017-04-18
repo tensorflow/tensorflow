@@ -122,7 +122,10 @@ cc_library_with_android_deps(
 
 cc_library_with_android_deps(
     name = "scope",
-    srcs = ["framework/scope.cc"],
+    srcs = [
+        "framework/scope.cc",
+        "framework/scope_internal.h",
+    ],
     hdrs = ["framework/scope.h"],
     android_deps = ["//tensorflow/core:android_tensorflow_lib"],
     common_deps = [
@@ -134,6 +137,15 @@ cc_library_with_android_deps(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+cc_library_with_android_deps(
+    name = "scope_internal",
+    hdrs = ["framework/scope_internal.h"],
+    common_deps = [
+        ":scope",
+    ],
+    deps = [],
 )
 
 tf_cc_test(

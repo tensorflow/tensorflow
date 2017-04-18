@@ -307,7 +307,7 @@ class SdcaModel(object):
           sparse_features_values.append(sf.feature_values)
 
       # pylint: disable=protected-access
-      example_ids_hashed = gen_sdca_ops._sdca_fprint(
+      example_ids_hashed = gen_sdca_ops.sdca_fprint(
           internal_convert_to_tensor(self._examples['example_ids']))
       # pylint: enable=protected-access
       example_state_data = self._hashtable.lookup(example_ids_hashed)
@@ -328,7 +328,7 @@ class SdcaModel(object):
           sparse_weights.append(array_ops.gather(w, sparse_indices[-1]))
 
       # pylint: disable=protected-access
-      esu, sfw, dfw = gen_sdca_ops._sdca_optimizer(
+      esu, sfw, dfw = gen_sdca_ops.sdca_optimizer(
           sparse_example_indices,
           sparse_feature_indices,
           sparse_features_values,
@@ -390,7 +390,7 @@ class SdcaModel(object):
           with ops.device(var.device):
             # pylint: disable=protected-access
             update_ops.append(
-                gen_sdca_ops._sdca_shrink_l1(
+                gen_sdca_ops.sdca_shrink_l1(
                     self._convert_n_to_tensor(
                         [var], as_ref=True),
                     l1=self._symmetric_l1_regularization(),

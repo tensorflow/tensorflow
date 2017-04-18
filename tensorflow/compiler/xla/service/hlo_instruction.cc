@@ -792,9 +792,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateSelectAndScatter(shape, new_operands[0], select(), *window_,
                                     new_operands[1], new_operands[2],
                                     scatter());
-    case HloOpcode::kRecv:
-      CHECK_EQ(new_operands.size(), 0);
-      return CreateRecv(shape, channel_id_);
     case HloOpcode::kReverse:
       CHECK_EQ(new_operands.size(), 1);
       return CreateReverse(shape, new_operands[0], dimensions_);
@@ -803,9 +800,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kReshape:
       CHECK_EQ(new_operands.size(), 1);
       return CreateReshape(shape, new_operands[0]);
-    case HloOpcode::kSend:
-      CHECK_EQ(new_operands.size(), 1);
-      return CreateSend(new_operands[0], channel_id_);
     case HloOpcode::kSlice:
       CHECK_EQ(new_operands.size(), 1);
       return CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_);
@@ -832,6 +826,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kParameter:
       return CreateParameter(parameter_number_, shape, parameter_name_);
     // Unsupported ops for cloning.
+    case HloOpcode::kRecv:
+    case HloOpcode::kSend:
     case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
     case HloOpcode::kInfeed:

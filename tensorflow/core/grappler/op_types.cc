@@ -23,5 +23,10 @@ bool IsPlaceholder(const NodeDef& node) {
   return op == "Placeholder" || op == "PlaceholderV2";
 }
 
+bool IsVariable(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Variable" || op == "VariableV2";
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -28,6 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
@@ -604,7 +607,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
                     .ValueOrDie());
     // Get computation root instruction (should be a kFusion).
     auto* fusion = module_->entry_computation()->root_instruction();
-    EXPECT_EQ(HloOpcode::kFusion, fusion->opcode());
+    EXPECT_THAT(fusion, op::Fusion(tuple_param0));
     // Run points-to analysis (should include fused instructions from 'fusion').
     RunAnalysis(/*include_loop_fusion_instructions=*/true);
 

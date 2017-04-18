@@ -59,8 +59,7 @@ class Zeros(Initializer):
   def __call__(self, shape, dtype=None, partition_info=None):
     if dtype is None:
       dtype = self.dtype
-    return constant_op.constant(False if dtype is dtypes.bool else 0,
-                                dtype=dtype, shape=shape)
+    return array_ops.zeros(shape, dtype)
 
 
 class Ones(Initializer):
@@ -72,7 +71,7 @@ class Ones(Initializer):
   def __call__(self, shape, dtype=None, partition_info=None):
     if dtype is None:
       dtype = self.dtype
-    return constant_op.constant(1, dtype=dtype, shape=shape)
+    return array_ops.ones(shape, dtype)
 
 
 class Constant(Initializer):

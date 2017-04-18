@@ -14,9 +14,7 @@ exports_files([
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    values = {
-        "crosstool_top": "//external:android/crosstool",
-    },
+    values = {"crosstool_top": "//external:android/crosstool"},
     visibility = ["//visibility:public"],
 )
 
@@ -76,9 +74,7 @@ config_setting(
 
 config_setting(
     name = "ios",
-    values = {
-        "crosstool_top": "//tools/osx/crosstool:crosstool",
-    },
+    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
     visibility = ["//visibility:public"],
 )
 

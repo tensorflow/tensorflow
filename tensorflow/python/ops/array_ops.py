@@ -1402,10 +1402,15 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    if dtype is not None and tensor.dtype != dtype:
-      ret = zeros(shape_internal(tensor, optimize=optimize), dtype, name=name)
-      ret.set_shape(tensor.get_shape())
-      return ret
+
+    if tensor.shape.is_fully_defined():
+      # We can produce a zeros tensor independent of the value of 'tensor',
+      # since the shape is known statically.
+      return zeros(tensor.shape, dtype=dtype or tensor.dtype, name=name)
+
+    if dtype is not None and dtype != tensor.dtype:
+      return zeros(shape_internal(tensor, optimize=optimize), dtype=dtype,
+                   name=name)
     else:
       return gen_array_ops._zeros_like(tensor, name=name)
 

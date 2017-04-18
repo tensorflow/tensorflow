@@ -671,6 +671,13 @@ def _ConstantValue(tensor):
         return None
       values.append(value)
     return np.array(values)
+  elif tensor.op.type == "Fill":
+    fill_shape = tensor.shape
+    fill_value = constant_value(tensor.op.inputs[1])
+    if fill_shape.is_fully_defined() and fill_value is not None:
+      return np.full(fill_shape.as_list(), fill_value, dtype=fill_value.dtype)
+    else:
+      return None
   else:
     return None
 
