@@ -193,5 +193,19 @@ ImportError: cannot import name 'descriptor'</pre>
   <td><pre>No module named "pywrap_tensorflow"</pre></td>
 </tr>
 
+<tr>
+  <td><a href="https://stackoverflow.com/q/42217532">42217532</a></td>
+  <td>
+  <pre>OpKernel ('op: "BestSplits" device_type: "CPU"') for unknown op: BestSplits</pre>
+  </td>
+</tr>
+
+<tr>
+  <td><a href="https://stackoverflow.com/q/43134753">43134753</a></td>
+  <td>
+  <pre>The TensorFlow library wasn't compiled to use SSE instructions</pre>
+  </td>
+</tr>
+
 </table>
 
