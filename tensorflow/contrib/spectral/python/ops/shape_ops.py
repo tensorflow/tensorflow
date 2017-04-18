@@ -61,8 +61,8 @@ def frames(signal, frame_length, frame_step, name=None):
     pad_length = (num_frames - 1) * frame_step + frame_length
     pad_signal = array_ops.pad(signal, [[0, 0], [0, pad_length - signal_length]])
     
-    indices_frames = array_ops.tile(array_ops.expand_dims(math_ops.range(0, frame_length), 0), [num_frames, 1])
-    indices_steps = array_ops.transpose(array_ops.tile(array_ops.expand_dims(math_ops.range(0, num_frames * frame_step, frame_step), 0), [frame_length, 1]))
+    indices_frames = array_ops.tile(array_ops.expand_dims(math_ops.range(frame_length), 0), [num_frames, 1])
+    indices_steps = array_ops.tile(array_ops.expand_dims(math_ops.range(num_frames) * frame_step, 1), [1, frame_length])
     indices = indices_frames + indices_steps
     
     return array_ops.gather(pad_signal, indices, name=scope)
