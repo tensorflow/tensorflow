@@ -64,6 +64,16 @@ class FixedLengthRecordReader : public ReaderBase {
 
   Status ReadLocked(string* key, string* value, bool* produced,
                     bool* at_end) override {
+    // The condition `input_buffer_->Tell() + record_bytes_ > file_pos_limit_`
+    // is to confirm that none of record bytes is out of the range of
+    // file_pos_limit_.
+    // This is necessary for the condition `hop_bytes > 0`. For example.
+    // File: "0123456"
+    // Reader setting: `record_bytes=3`, `hop_bytes=2`, `footer_bytes=0`,
+    //     `header_bytes=0`
+    // Without this checking condition, the forth time the reader will at
+    // this position: "012345|6" and the reading operation will result in
+    // an error.
     if (input_buffer_->Tell() >= file_pos_limit_ ||
         input_buffer_->Tell() + record_bytes_ > file_pos_limit_) {
       *at_end = true;

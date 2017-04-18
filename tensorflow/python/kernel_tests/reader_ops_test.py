@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import collections
 import gzip
-import os
 import math
+import os
 import threading
 import zlib
 
