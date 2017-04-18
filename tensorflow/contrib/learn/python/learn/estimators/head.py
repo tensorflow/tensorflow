@@ -611,7 +611,7 @@ def _create_model_fn_ops(features,
   if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
     weight_tensor = _weight_tensor(features, weight_column_name)
     loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
-    logging_ops.scalar_summary(
+    summary.scalar(
         _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
     if mode == model_fn.ModeKeys.TRAIN:

@@ -1330,10 +1330,9 @@ this operation will permute `params` accordingly.
 `indices` are always validated to be within range. If assigned to GPU,
 out-of-bound indices result in safe but unspecified behavior, which may include
 raising an error.
-`0`, but this may become an error in the future).
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/Gather.png" alt>
+<img style="width:100%" src="../../../images/Gather.png" alt>
 </div>
 )doc");
 
