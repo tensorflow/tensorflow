@@ -16,6 +16,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdlib.h>
+#include <fstream>
+
 #include "tensorflow/compiler/poplar/driver/compiler.h"
 #include "tensorflow/compiler/poplar/driver/executable.h"
 #include "tensorflow/compiler/poplar/driver/ops.h"
@@ -117,7 +120,6 @@ public:
     } else if (inst->opcode() == HloOpcode::kTuple){
       all_outputs_are_parameters = true;
       for (auto op : inst->operands()) {
-        LOG(INFO) << "operand is " << op->name();
         all_outputs_are_parameters &= (op->opcode() == HloOpcode::kParameter);
       }
     }
@@ -159,9 +161,15 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   sep::PoplarExecutor* poplarExecutor(
           static_cast<sep::PoplarExecutor*>(stream_exec->implementation()));
 
-  poplar::DeviceOptions opts;
-  opts.convertFloat16 = true;
-  poplar::Device dev(poplar::createCPUDevice(opts));
+  bool use_ipu_model = (getenv("TF_POPLAR_COMPILE_IPU_MODEL") != NULL);
+
+  poplar::DeviceInfo dev_info;
+  poplar::DeviceOptions dev_opts;
+  dev_opts.convertFloat16 = true;
+
+  poplar::Device dev(use_ipu_model ?
+                     poplar::createIPUModelDevice(dev_info, dev_opts) :
+                     poplar::createCPUDevice(dev_opts));
 
   poplar::Graph* graph = new poplar::Graph(dev);
   graph->addCodelets(poplarExecutor->GetPathToGraphProgFile());
@@ -210,6 +218,20 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
                           port::StrCat("[Poplar Engine] ",
                                        e.what()));
     }
+  }
+
+  const char *vertex_graph = getenv("TF_POPLAR_VERTEX_GRAPH_FILENAME");
+  if (vertex_graph != NULL) {
+    std::ofstream stream;
+    stream.open(vertex_graph);
+    engine->outputVertexGraph(stream, *graph);
+  }
+
+  const char *compute_graph = getenv("TF_POPLAR_COMPUTE_GRAPH_FILENAME");
+  if (compute_graph != NULL) {
+    std::ofstream stream;
+    stream.open(compute_graph);
+    engine->outputComputeGraph(stream, *graph);
   }
 
   std::unique_ptr<Executable> executable;

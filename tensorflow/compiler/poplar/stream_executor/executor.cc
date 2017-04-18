@@ -23,6 +23,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
+#include <fstream>
+
 #include <string.h>
 #include <dlfcn.h>
 
@@ -285,13 +287,13 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
       // a) the engine is changing
       // b) output buffer isn't an input to the current execution
       // c) output buffer isn't currently in the right place for the new input
-      for (const auto& tc : allocations_) {
+      for (const auto &tc : allocations_) {
         if (tc->on_device == true && tc->output_handle != -1) {
           if (engine_changed) {
             TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
           } else if (tc->input_handle == -1) {
             TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
-          } else if ((void*)tc != args[tc->input_handle].opaque()) {
+          } else if ((void *) tc != args[tc->input_handle].opaque()) {
             TF_RETURN_IF_ERROR(MoveDeviceToHost(tc));
           }
         }
@@ -316,6 +318,17 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
                           AllocateOutputBuffer(shape, output_map, args));
 
       engine->run(0);
+
+      try {
+        const char *report_filename = getenv("TF_POPLAR_REPORT_FILENAME");
+        if (report_filename != NULL) {
+          std::ofstream stream;
+          stream.open(report_filename);
+          engine->report(stream);
+        }
+      } catch (std::logic_error e) {
+        LOG(WARNING) << "Error producing execution report: " << e.what();
+      }
     }
   }
 
