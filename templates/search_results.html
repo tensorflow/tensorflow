@@ -38,7 +38,9 @@
           {% endif %}
           {% set p = x + offset %}
           <li {% if page == p %}class="active"{% endif %}>
-            <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ p }}">{{ p }}</a>
+            {% if p > 0 and p <= pages %}
+              <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ p }}">{{ p }}</a>
+            {% endif %}
           </li>
         {% endfor %}
 
@@ -97,7 +99,9 @@
           {% endif %}
           {% set p = x + offset %}
           <li {% if page == p %}class="active"{% endif %}>
-            <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ p }}">{{ p }}</a>
+            {% if p > 0 and p <= pages %}
+              <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ p }}">{{ p }}</a>
+            {% endif %}
           </li>
         {% endfor %}
 
@@ -117,7 +121,7 @@
     </nav>
   </div>
   {% endif %}
-  
+
 {% endblock %}
 
 {% block footer %}{{ super() }}{% endblock %}

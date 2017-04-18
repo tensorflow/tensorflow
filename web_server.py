@@ -185,6 +185,7 @@ def search_images():
             if 'entries' and 'page' in request.args:
                 entries = int(request.args.get('entries'))
                 page = int(request.args.get('page'))
+
                 return grab_images(species, entries, page)
 
             # Return all images
@@ -197,7 +198,7 @@ def search_images():
         if 'species' not in request.form:
             return make_response('error: species field not specified', 400)
 
-        return grab_images(request.form['species'])
+        return grab_images(request.form['species'], -1, -1)
 
 def update_models():
     """ Update the MODELPATHS dictionary with the model paths. """

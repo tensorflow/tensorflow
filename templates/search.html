@@ -1,18 +1,23 @@
 {% extends "base.html" %}
 
 {% block title %}{{ super() }}{% endblock %}
+
+{% block imports %}
+<script src="/js/search.js"></script>
+{% endblock %}
+
 {% block header %}
 <h1 class="text-center">Search Upload Database</h1>
 {% endblock %}
 
 {% block content %}
-<form method="POST" enctype="multipart/form-data">
-  <div class="form-group">
-    <label for="species">Species</label>
-    <input type="text" name="species" id="species">
-    <p class="help-block">Enter the binomial name of the species, for example <i>Chrysanthemum indicum</i>.</p>
-  </div>
-  <button type="submit" class="btn btn-primary">Search</button>
-</form>
+
+<div class="form-group">
+  <label for="species">Species</label>
+  <input type="text" name="species" id="species">
+  <p class="help-block">Enter the binomial name of the species, for example <i>Chrysanthemum indicum</i>.</p>
+</div>
+<button onclick="submitForm()" class="btn btn-primary">Search</button>
+
 {% endblock %}
 {% block footer %}{{ super() }}{% endblock %}
