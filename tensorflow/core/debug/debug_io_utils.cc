@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#if defined(PLATFORM_GOOGLE)
 #include "grpc++/create_channel.h"
+#endif
 
 #if defined(PLATFORM_WINDOWS)
 // winsock2.h is used in grpc, so Ws2_32.lib is needed
