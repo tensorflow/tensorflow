@@ -262,7 +262,8 @@ class EstimatorTrainTest(test.TestCase):
         model_dir=model_dir1,
         model_fn=model_fn_global_step_incrementer)
     est1.train(dummy_input_fn, steps=5)
-
+    del est1
+    
     model_dir2 = os.path.join(tmpdir, 'model_dir2')
     os.renames(model_dir1, model_dir2)
     est2 = estimator.Estimator(
