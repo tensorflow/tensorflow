@@ -447,6 +447,8 @@ add_python_module("tensorflow/contrib/saved_model")
 add_python_module("tensorflow/contrib/saved_model/python")
 add_python_module("tensorflow/contrib/saved_model/python/saved_model")
 add_python_module("tensorflow/contrib/seq2seq")
+add_python_module("tensorflow/contrib/seq2seq/kernels")
+add_python_module("tensorflow/contrib/seq2seq/ops")
 add_python_module("tensorflow/contrib/seq2seq/python")
 add_python_module("tensorflow/contrib/seq2seq/python/kernel_tests")
 add_python_module("tensorflow/contrib/seq2seq/python/ops")
@@ -629,6 +631,8 @@ GENERATE_PYTHON_OP_LIB("contrib_rnn_gru_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_gru_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_lstm_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_lstm_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_seq2seq_beam_search_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/seq2seq/ops/gen_beam_search_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_hybrid_ops"
@@ -818,6 +822,26 @@ if(WIN32)
         GPUSOURCES ${tf_lstm_gpu_srcs}
         DEPENDS pywrap_tensorflow_internal tf_python_ops
         DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/python/ops/)
+endif(WIN32)
+
+if(WIN32)
+    # include contrib/seq2seq as .so
+    #
+    set(tf_beam_search_srcs
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.cc"
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.h"
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/ops/beam_search_ops.cc"
+    )
+
+    set(tf_beam_search_gpu_srcs
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops_gpu.cu.cc"
+    )
+
+    AddUserOps(TARGET _beam_search_ops
+        SOURCES "${tf_beam_search_srcs}"
+        GPUSOURCES ${tf_beam_search_gpu_srcs}
+        DEPENDS pywrap_tensorflow_internal tf_python_ops
+        DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/seq2seq/python/ops/)
 endif(WIN32)
 
 ############################################################
