@@ -42,13 +42,6 @@ void SYCLAllocator::DeallocateRaw(void *ptr) {
   }
 }
 
-void SYCLAllocator::EnterLameDuckMode() {
-//  if (sycl_device_) {
-    //sycl_device_->m_queue_stream->deallocate_all();
-//    sycl_device_ = nullptr;
-//  }
-}
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_USE_SYCL

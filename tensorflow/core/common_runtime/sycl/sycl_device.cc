@@ -29,9 +29,6 @@ static std::unordered_set<SYCLDevice *> live_devices;
 static bool first_time = true;
 
 void ShutdownSycl() {
-  for (auto device : live_devices) {
-    device->EnterLameDuckMode();
-  }
   live_devices.clear();
   if(GSYCLInterface::instance())
   {
@@ -49,12 +46,7 @@ void SYCLDevice::RegisterDevice() {
 
 SYCLDevice::~SYCLDevice() {
   device_context_->Unref();
-  sycl_allocator_->EnterLameDuckMode();
   live_devices.erase(this);
-}
-
-void SYCLDevice::EnterLameDuckMode() {
-  sycl_allocator_->EnterLameDuckMode();
 }
 
 void SYCLDevice::Compute(OpKernel *op_kernel, OpKernelContext *context) {

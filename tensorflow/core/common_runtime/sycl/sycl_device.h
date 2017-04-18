@@ -156,8 +156,6 @@ class SYCLDevice : public LocalDevice {
 
   ~SYCLDevice() override;
 
-  void EnterLameDuckMode();
-
   void Compute(OpKernel *op_kernel, OpKernelContext *context) override;
   Allocator *GetAllocator(AllocatorAttributes attr) override;
   Status MakeTensorFromProto(const TensorProto &tensor_proto,

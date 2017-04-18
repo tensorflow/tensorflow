@@ -34,7 +34,6 @@ class SYCLAllocator : public Allocator {
   void *AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void *ptr) override;
 
-  void EnterLameDuckMode();
   virtual bool ShouldAllocateEmptyTensors() override final { return true; }
   void Synchronize() { sycl_device_->synchronize(); }
   bool Ok() { return sycl_device_->ok(); }
