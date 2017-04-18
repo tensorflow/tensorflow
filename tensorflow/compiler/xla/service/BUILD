@@ -72,6 +72,41 @@ cc_test(
 )
 
 cc_library(
+    name = "hlo_evaluator",
+    srcs = ["hlo_evaluator.cc"],
+    hdrs = ["hlo_evaluator.h"],
+    deps = [
+        ":hlo",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_test(
+    name = "hlo_evaluator_test",
+    srcs = ["hlo_evaluator_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_evaluator",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "hlo",
     srcs = [
         "dfs_hlo_visitor.cc",
