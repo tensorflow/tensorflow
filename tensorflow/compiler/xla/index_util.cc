@@ -118,13 +118,13 @@ namespace xla {
   return multi_index;
 }
 
-/* static */ bool IndexUtil::BumpIndices(const Shape& shape,
-                                         std::vector<int64>* indices) {
-  for (int64 dimno = indices->size() - 1; dimno >= 0; --dimno) {
+/* static */ bool IndexUtil::BumpIndices(
+    const Shape& shape, tensorflow::gtl::MutableArraySlice<int64> indices) {
+  for (int64 dimno = indices.size() - 1; dimno >= 0; --dimno) {
     int64 limit = shape.dimensions(dimno);
-    if ((*indices)[dimno] + 1 < limit) {
-      (*indices)[dimno]++;
-      std::fill(indices->begin() + dimno + 1, indices->end(), 0);
+    if (indices[dimno] + 1 < limit) {
+      indices[dimno]++;
+      std::fill(indices.begin() + dimno + 1, indices.end(), 0);
       return true;
     }
   }

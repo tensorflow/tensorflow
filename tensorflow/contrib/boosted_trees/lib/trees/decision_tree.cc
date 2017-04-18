@@ -73,6 +73,26 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
                       : split.right_id();
         break;
       }
+      case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
+        const auto& split =
+            current_node.categorical_id_set_membership_binary_split();
+        bool found = false;
+        for (const int64 feature_id :
+             example.sparse_int_features[split.feature_column()]) {
+          const auto iter =
+              std::lower_bound(split.feature_ids().begin(),
+                               split.feature_ids().end(), feature_id);
+          if (iter != split.feature_ids().end() && *iter == feature_id) {
+            node_id = split.left_id();
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          node_id = split.right_id();
+        }
+        break;
+      }
       case TreeNode::NODE_NOT_SET: {
         QCHECK(false) << "Invalid node in tree: " << current_node.DebugString();
         break;
@@ -129,6 +149,15 @@ void DecisionTree::LinkChildren(const std::vector<int32>& children,
       split->set_right_id(*++children_it);
       break;
     }
+    case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
+      QCHECK(children.size() == 2)
+          << "A binary split node must have exactly two children.";
+      auto* split =
+          parent_node->mutable_categorical_id_set_membership_binary_split();
+      split->set_left_id(*children_it);
+      split->set_right_id(*++children_it);
+      break;
+    }
     case TreeNode::NODE_NOT_SET: {
       QCHECK(false) << "A non-set node cannot have children.";
       break;
@@ -157,6 +186,10 @@ std::vector<int32> DecisionTree::GetChildren(const TreeNode& node) {
     }
     case TreeNode::kCategoricalIdBinarySplit: {
       const auto& split = node.categorical_id_binary_split();
+      return {split.left_id(), split.right_id()};
+    }
+    case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
+      const auto& split = node.categorical_id_set_membership_binary_split();
       return {split.left_id(), split.right_id()};
     }
     case TreeNode::NODE_NOT_SET: {

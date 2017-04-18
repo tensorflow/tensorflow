@@ -870,6 +870,36 @@ class Distribution(_BaseDistribution):
     with self._name_scope(name):
       return self._mean()
 
+  def _quantile(self, value):
+    raise NotImplementedError("quantile is not implemented")
+
+  def _call_quantile(self, value, name, **kwargs):
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      try:
+        return self._quantile(value, **kwargs)
+      except NotImplementedError as original_exception:
+        raise original_exception
+
+  def quantile(self, value, name="quantile"):
+    """Quantile function. Aka "inverse cdf" or "percent point function".
+
+    Given random variable `X` and `p in [0, 1]`, the `quantile` is:
+
+    ```none
+    quantile(p) := x such that P[X <= x] == p
+    ```
+
+    Args:
+      value: `float` or `double` `Tensor`.
+      name: The name to give this op.
+
+    Returns:
+      quantile: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+        values of type `self.dtype`.
+    """
+    return self._call_quantile(value, name)
+
   def _variance(self):
     raise NotImplementedError("variance is not implemented")
 

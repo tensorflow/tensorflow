@@ -33,6 +33,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as test_lib
 
@@ -825,12 +826,14 @@ class StridedSliceAssignChecker(object):
     with self.test.test_session(use_gpu=True) as sess:
       var = variables.Variable(self.x)
       sess.run(variables.initialize_variables([var]))
-      val = sess.run(var[index].assign(
-          constant_op.constant(
-              value, dtype=self.tensor_type)))
+      val = sess.run(var[index].assign(value))
+      # val_copy is used to check that tf.assign works equivalently to the
+      # assign method above.
+      val_copy = sess.run(state_ops.assign(var[index], value))
       valnp = np.copy(self.x_np)
       valnp[index] = np.array(value)
       self.test.assertAllEqual(val, valnp)
+      self.test.assertAllEqual(val_copy, valnp)
 
 
 class SliceAssignTest(test_util.TensorFlowTestCase):

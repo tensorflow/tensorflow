@@ -93,7 +93,7 @@ module VZ.ChartHelpers {
       // If b===a, we would create an empty range. We instead select the range
       // [0, 2*a] if a > 0, or [-2*a, 0] if a < 0, plus a little bit of
       // extra padding on the top and bottom of the plot.
-      padding = Math.abs(a) * 1.1;
+      padding = Math.abs(a) * 1.1 + 1.1;
     } else {
       padding = span * 0.2;
     }

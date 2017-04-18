@@ -421,10 +421,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "sdca"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "sets"
     mtype: "<type \'module\'>"
   }

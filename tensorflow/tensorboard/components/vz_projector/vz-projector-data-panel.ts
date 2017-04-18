@@ -402,8 +402,9 @@ export class DataPanel extends DataPanelPolymer {
       embeddings: [{
         tensorName: 'My tensor',
         tensorShape: [1000, 50],
-        tensorPath: 'https://gist.github.com/.../tensors.tsv',
-        metadataPath: 'https://gist.github.com/.../optional.metadata.tsv',
+        tensorPath: 'https://raw.githubusercontent.com/.../tensors.tsv',
+        metadataPath:
+            'https://raw.githubusercontent.com/.../optional.metadata.tsv',
       }],
     };
     this.setProjectorConfigTemplateJson(
@@ -427,7 +428,7 @@ export class DataPanel extends DataPanelPolymer {
     bookmarksFieldCheckbox.addEventListener('change', () => {
       if ((bookmarksFieldCheckbox as any).checked) {
         projectorConfigTemplateJson.embeddings[0].bookmarksPath =
-            'https://gist.github.com/.../bookmarks.txt';
+            'https://raw.githubusercontent.com/.../bookmarks.txt';
       } else {
         delete projectorConfigTemplateJson.embeddings[0].bookmarksPath;
       }
@@ -438,7 +439,7 @@ export class DataPanel extends DataPanelPolymer {
     metadataFieldCheckbox.addEventListener('change', () => {
       if ((metadataFieldCheckbox as HTMLInputElement).checked) {
         projectorConfigTemplateJson.embeddings[0].metadataPath =
-            'https://gist.github.com/.../optional.metadata.tsv';
+            'https://raw.githubusercontent.com/.../optional.metadata.tsv';
       } else {
         delete projectorConfigTemplateJson.embeddings[0].metadataPath;
       }

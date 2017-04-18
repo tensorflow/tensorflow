@@ -40,6 +40,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import resource_loader
 
@@ -328,7 +329,7 @@ class WALSModel(object):
       var_name = "%s_shard_%d" % (name, i)
       var_init = make_initializer(i, size)
       sharded_matrix.append(
-          variables.Variable(
+          variable_scope.variable(
               var_init, dtype=dtypes.float32, name=var_name))
 
     return sharded_matrix
@@ -387,7 +388,7 @@ class WALSModel(object):
       var_name = "%s_shard_%d" % (name, i)
       var_init = make_wt_initializer(i, size)
       sharded_weight.append(
-          variables.Variable(
+          variable_scope.variable(
               var_init, dtype=dtypes.float32, name=var_name))
 
     return sharded_weight
@@ -404,7 +405,7 @@ class WALSModel(object):
     Returns:
       A gramian Tensor with shape of [n_components, n_components].
     """
-    return variables.Variable(
+    return variable_scope.variable(
         array_ops.zeros([n_components, n_components]),
         dtype=dtypes.float32,
         name=name)
@@ -412,7 +413,7 @@ class WALSModel(object):
   @staticmethod
   def _transient_var(name):
     """Helper function to create a Variable."""
-    return variables.Variable(
+    return variable_scope.variable(
         1.0,
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],

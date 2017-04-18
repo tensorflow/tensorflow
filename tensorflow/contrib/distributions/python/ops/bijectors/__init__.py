@@ -14,8 +14,6 @@
 # ==============================================================================
 """Bijector Ops.
 
-See the @{$python/contrib.distributions.bijectors} guide.
-
 @@Affine
 @@AffineLinearOperator
 @@Bijector
@@ -56,3 +54,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered impo
 from tensorflow.contrib.distributions.python.ops.bijectors.softplus import *
 
 # pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+remove_undocumented(__name__)

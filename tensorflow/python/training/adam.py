@@ -23,7 +23,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
@@ -117,12 +117,12 @@ class AdamOptimizer(optimizer.Optimizer):
     if (self._beta1_power is None or
         self._beta1_power.graph is not var_list[0].graph):
       with ops.colocate_with(var_list[0]):
-        self._beta1_power = variables.Variable(self._beta1,
-                                               name="beta1_power",
-                                               trainable=False)
-        self._beta2_power = variables.Variable(self._beta2,
-                                               name="beta2_power",
-                                               trainable=False)
+        self._beta1_power = variable_scope.variable(self._beta1,
+                                                    name="beta1_power",
+                                                    trainable=False)
+        self._beta2_power = variable_scope.variable(self._beta2,
+                                                    name="beta2_power",
+                                                    trainable=False)
     # Create slots for the first and second moments.
     for v in var_list:
       self._zeros_slot(v, "m", self._name)

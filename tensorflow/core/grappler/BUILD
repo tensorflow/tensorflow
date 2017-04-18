@@ -21,6 +21,8 @@ filegroup(
         "devices.h",
         "grappler_item.cc",
         "grappler_item.h",
+        "op_types.cc",
+        "op_types.h",
         "utils.cc",
         "utils.h",
         "//tensorflow/core/grappler/clusters:android_srcs",
@@ -84,6 +86,7 @@ cc_library(
     hdrs = ["grappler_item.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_types",
         ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

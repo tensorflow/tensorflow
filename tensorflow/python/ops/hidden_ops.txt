@@ -301,9 +301,6 @@ PyFunc
 PyFuncStateless
 
 # sdca_ops
-SdcaFprint
-SdcaOptimizer
-SdcaShrinkL1
 
 # state_ops
 Variable

@@ -20,8 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector_test_util
-from tensorflow.contrib.distributions.python.ops.bijectors import power_transform as power_transform_lib
+from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_bijective_and_finite
+from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_scalar_congruency
+from tensorflow.contrib.distributions.python.ops.bijectors.power_transform import PowerTransform
 from tensorflow.python.platform import test
 
 
@@ -31,7 +32,7 @@ class PowerTransformBijectorTest(test.TestCase):
   def testBijector(self):
     with self.test_session():
       c = 0.2
-      bijector = power_transform_lib.PowerTransform(
+      bijector = PowerTransform(
           power=c, event_ndims=1, validate_args=True)
       self.assertEqual("power_transform", bijector.name)
       x = np.array([[[-1.], [2.], [-5. + 1e-4]]])
@@ -49,18 +50,18 @@ class PowerTransformBijectorTest(test.TestCase):
 
   def testScalarCongruency(self):
     with self.test_session():
-      bijector = power_transform_lib.PowerTransform(
+      bijector = PowerTransform(
           power=0.2, validate_args=True)
-      bijector_test_util.assert_scalar_congruency(
+      assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=1.5, rtol=0.05)
 
   def testBijectiveAndFinite(self):
     with self.test_session():
-      bijector = power_transform_lib.PowerTransform(
+      bijector = PowerTransform(
           power=0.2, event_ndims=0, validate_args=True)
       x = np.linspace(-4.999, 10, num=10).astype(np.float32)
       y = np.logspace(0.001, 10, num=10).astype(np.float32)
-      bijector_test_util.assert_bijective_and_finite(bijector, x, y, rtol=1e-3)
+      assert_bijective_and_finite(bijector, x, y, rtol=1e-3)
 
 
 if __name__ == "__main__":

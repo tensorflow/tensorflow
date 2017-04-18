@@ -34,6 +34,7 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
       name = name + "_proto_srcs",
       srcs = srcs + tf_deps(protodeps, "_proto_srcs"),
       testonly = testonly,
+      visibility = visibility,
   )
 
   use_grpc_plugin = None
