@@ -611,6 +611,12 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
     self._compareBoth(x, y + 0.1, np.floor_divide, _FLOORDIV)
     self._compareBoth(x, y, np.arctan2, math_ops.atan2)
+    x1 = np.random.randn(5, 6).astype(np.float32)
+    x2 = np.random.randn(5, 6).astype(np.float32)
+    # Remove tiny values--atan2 gradients are flaky near the origin.
+    x1[np.abs(x1) < 0.05] = 0.05 * np.sign(x1[np.abs(x1) < 0.05])
+    x2[np.abs(x2) < 0.05] = 0.05 * np.sign(x2[np.abs(x2) < 0.05])
+    self._compareBoth(x1, x2, np.arctan2, math_ops.atan2)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
       a_pos_small = np.linspace(0.1, 2, 15).reshape(1, 3, 5).astype(np.float32)
@@ -669,6 +675,12 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
     self._compareBoth(x, y + 0.1, np.floor_divide, _FLOORDIV)
     self._compareBoth(x, y, np.arctan2, math_ops.atan2)
+    x1 = np.random.randn(7, 4).astype(np.float64)
+    x2 = np.random.randn(7, 4).astype(np.float64)
+    # Remove tiny values--atan2 gradients are flaky near the origin.
+    x1[np.abs(x1) < 0.5] = 0.5 * np.sign(x1[np.abs(x1) < 0.5])
+    x2[np.abs(x2) < 0.5] = 0.5 * np.sign(x2[np.abs(x2) < 0.5])
+    self._compareBoth(x1, x2, np.arctan2, math_ops.atan2)
     try:
       from scipy import special  # pylint: disable=g-import-not-at-top
       a_pos_small = np.linspace(0.1, 2, 15).reshape(1, 3, 5).astype(np.float32)
@@ -1087,6 +1099,17 @@ class BinaryOpTest(test.TestCase):
           error = gradient_checker.compute_gradient_error(y, [], z, [])
           self.assertLess(error, 2e-4)
 
+  def testAtan2SpecialValues(self):
+    x1l, x2l = zip((+0.0, +0.0), (+0.0, -0.0), (-0.0, +0.0), (-0.0, -0.0),
+                    (1.2345, math.inf), (1.2345, -math.inf),
+                    (-4.321, math.inf), (-4.125, -math.inf),
+                    (math.inf, math.inf), (math.inf, -math.inf),
+                    (-math.inf, math.inf), (-math.inf, -math.inf))
+    for dtype in np.float32, np.float64:
+      x1 = np.array(x1l).astype(dtype)
+      x2 = np.array(x2l).astype(dtype)
+      self._compareCpu(x1, x2, np.arctan2, math_ops.atan2)
+      self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
 
 class ComparisonOpTest(test.TestCase):
 
