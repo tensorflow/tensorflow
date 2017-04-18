@@ -31,27 +31,6 @@ namespace tensorflow {
 
   inline void* GetBase(Tensor* dst) { return DMAHelper::base(dst); }
 
-  inline cl::sycl::device GetSYCLDevice() {
-    // Obtain list of supported devices from Eigen
-    for (const auto& device :Eigen::get_sycl_supported_devices()) {
-      if(device.is_gpu()) {
-        // returns first found GPU
-        return device;
-      }
-    }
-
-    // Currently Intel GPU is not supported
-    LOG(WARNING) << "No OpenCL GPU found that is supported by ComputeCpp, trying OpenCL CPU";
-
-    for (const auto& device :Eigen::get_sycl_supported_devices()) {
-      if(device.is_cpu()) {
-        // returns first found CPU
-        return device;
-      }
-    }
-    // Currently Intel GPU is not supported
-    LOG(FATAL) << "No OpenCL GPU nor CPU found that is supported by ComputeCpp";
-  }
 }
 
 #endif // TENSORFLOW_CORE_COMMON_RUNTIME_SYCL_SYCL_UTIL_H_
