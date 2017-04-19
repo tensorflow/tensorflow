@@ -36,6 +36,16 @@ namespace tensorflow {
 class GrpcWorker;
 class Master;
 
+// function that creates a RendezvousMgr.
+typedef std::function<RendezvousMgrInterface*(const WorkerEnv*, 
+          const std::string& worker_name, WorkerCacheInterface* worker_cache)> 
+        RendezvousMgrCreationFunction;
+
+// function that registers a service to the server. The service needs to
+// be registered before builder.BuildAndStart().
+typedef std::function<void(const WorkerEnv*, ::grpc::ServerBuilder*)> 
+        ServiceInitFunction;
+
 class GrpcServer : public ServerInterface {
  protected:
   GrpcServer(const ServerDef& server_def, Env* env);
@@ -55,7 +65,8 @@ class GrpcServer : public ServerInterface {
   const string target() const override;
 
  protected:
-  Status Init();
+  Status Init(ServiceInitFunction service_func,
+              RendezvousMgrCreationFunction rendezvous_mgr_func);
 
   // A subclass can override this method to support secure credentials.
   virtual std::shared_ptr<::grpc::ServerCredentials> GetServerCredentials(
@@ -77,6 +88,10 @@ class GrpcServer : public ServerInterface {
   // Returns the port to which this server is bound.
   // This method may only be called after `this->Init()` returns successfully.
   int bound_port() const { return bound_port_; }
+
+  WorkerEnv* worker_env() { return &worker_env_; }
+  
+  const ServerDef& server_def() const { return server_def_; }
 
  private:
   // The overall server configuration.
@@ -100,7 +115,7 @@ class GrpcServer : public ServerInterface {
   //            Stop(), Join()
   enum State { NEW, STARTED, STOPPED };
   State state_ GUARDED_BY(mu_);
-
+  
   // Implementation of a TensorFlow master, and RPC polling thread.
   MasterEnv master_env_;
   std::unique_ptr<Master> master_impl_;
