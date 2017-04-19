@@ -25,6 +25,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
+from tensorflow.python.framework import test_util
 
 CASES = [(stateless.stateless_random_uniform, random_ops.random_uniform),
          (stateless.stateless_random_normal, random_ops.random_normal),
