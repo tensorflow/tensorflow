@@ -177,6 +177,11 @@ Status GrpcSession::RunHelper(
 
   *req->mutable_options() = run_options;
 
+  if (run_options.timeout_in_ms() == 0) {
+    req->mutable_options()->set_timeout_in_ms(
+        options_.config.operation_timeout_in_ms());
+  }
+
   if (!prun_handle.empty()) {
     req->set_partial_run_handle(prun_handle);
   }
@@ -197,7 +202,7 @@ Status GrpcSession::RunHelper(
   }
 
   CallOptions call_options;
-  call_options.SetTimeout(run_options.timeout_in_ms());
+  call_options.SetTimeout(req->options().timeout_in_ms());
   TF_RETURN_IF_ERROR(RunProto(&call_options, req.get(), resp.get()));
 
   if (!output_tensor_names.empty()) {

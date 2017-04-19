@@ -165,9 +165,8 @@ Status GrpcServer::Init() {
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
   master_impl_ = CreateMaster(&master_env_);
-  // TODO(suharshs): Pass the default operation timeout to this, to ensure
-  // timeouts are propagated to GrpcMasterService.
-  master_service_ = NewGrpcMasterService(master_impl_.get(), &builder);
+  master_service_ = NewGrpcMasterService(
+      master_impl_.get(), config.operation_timeout_in_ms(), &builder);
   worker_impl_ = NewGrpcWorker(&worker_env_);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
@@ -205,10 +204,9 @@ Status GrpcServer::Init() {
                                  CreateNoOpStatsPublisher);
       };
 
-  // TODO(suharshs): Pass the default operation timeout to this, to ensure
-  // timeouts are propagated to LocalMaster.
   // Provide direct access to the master from in-process clients.
-  LocalMaster::Register(target(), master_impl_.get());
+  LocalMaster::Register(target(), master_impl_.get(),
+                        config.operation_timeout_in_ms());
 
   return Status::OK();
 }
