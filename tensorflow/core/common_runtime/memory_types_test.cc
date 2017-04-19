@@ -62,7 +62,7 @@ TEST(MemoryTypeChecker, Int32NotOk) {
   EXPECT_TRUE(errors::IsInternal(ValidateMemoryTypes(DEVICE_SYCL, g)));
 
   // But we can insert _HostSend/_HostRecv to ensure the invariant.
-  TF_EXPECT_OK(EnsureMemoryTypes(DEVICE_SYCL, "/device:SYCL:0", g));
+  TF_EXPECT_OK(EnsureMemoryTypes(DEVICE_SYCL, "/sycl:0", g));
   TF_EXPECT_OK(ValidateMemoryTypes(DEVICE_SYCL, g));
 #endif // TENSORFLOW_USE_SYCL
   delete g;

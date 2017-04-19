@@ -46,7 +46,7 @@ class SessionDebugMinusAXTest : public ::testing::Test {
 #if GOOGLE_CUDA
     const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
 #elif defined(TENSORFLOW_USE_SYCL)
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/sycl:0";
 #else
     const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
 #endif
@@ -504,7 +504,7 @@ class SessionDebugOutputSlotWithoutOngoingEdgeTest : public ::testing::Test {
 #if GOOGLE_CUDA
     const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
 #elif defined(TENSORFLOW_USE_SYCL)
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/sycl:0";
 #else
     const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
 #endif
@@ -606,7 +606,7 @@ class SessionDebugVariableTest : public ::testing::Test {
 #if GOOGLE_CUDA
     const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
 #elif defined(TENSORFLOW_USE_SYCL)
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/sycl:0";
 #else
     const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
 #endif
@@ -874,7 +874,7 @@ class SessionDebugGPUSwitchTest : public ::testing::Test {
 #ifdef GOOGLE_CUDA
     const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
 #elif TENSORFLOW_USE_SYCL
-    const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/sycl:0";
 #endif
 
     Tensor vb(DT_BOOL, TensorShape({}));
