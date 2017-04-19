@@ -67,6 +67,11 @@ from tensorflow.contrib import util
 from tensorflow.contrib.ndlstm import python as ndlstm
 from tensorflow.contrib.specs import python as specs
 
+from tensorflow.python.util.lazy_loader import LazyLoader
+ffmpeg = LazyLoader("ffmpeg", globals(),
+                    "tensorflow.contrib.ffmpeg")
+del LazyLoader
+
 del absolute_import
 del division
 del print_function

@@ -40,7 +40,6 @@ class BuildDocsTest(googletest.TestCase):
     doc_generator = generate_lib.DocGenerator()
 
     doc_generator.set_py_modules([('tf', tf), ('tfdbg', tf_debug)])
-    doc_generator.load_contrib()
 
     status = doc_generator.build(Flags())
 

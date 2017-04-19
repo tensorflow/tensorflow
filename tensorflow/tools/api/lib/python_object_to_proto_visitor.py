@@ -27,9 +27,7 @@ from tensorflow.tools.api.lib import api_objects_pb2
 
 # Following object need to be handled individually.
 _CORNER_CASES = {
-    '': {'contrib': {'name': 'contrib',
-                     'mtype': '<class \'_LazyContribLoader\'>'},
-         'tools': {}},
+    '': {'tools': {}},
     'test.TestCase': {},
     'test.TestCase.failureException': {},
 }

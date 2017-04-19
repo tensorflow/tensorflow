@@ -278,7 +278,7 @@ tf_module {
   }
   member {
     name: "contrib"
-    mtype: "<class \'_LazyContribLoader\'>"
+    mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
   }
   member {
     name: "double"
