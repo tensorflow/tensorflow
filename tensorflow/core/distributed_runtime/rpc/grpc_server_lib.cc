@@ -334,7 +334,9 @@ std::shared_ptr<::grpc::ServerCredentials> GrpcServer::GetServerCredentials(
 
 ChannelCreationFunction GrpcServer::GetChannelCreationFunction(
     const ServerDef& server_def) const {
-  return NewHostPortGrpcChannel;
+  // We can do this because SparseGrpcChannelCache is robust to nullptr being
+  // returned by the channel creation function
+  return ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
 }
 
 std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
