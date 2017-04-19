@@ -669,6 +669,7 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
     memcpy(buf, new_handle.c_str(), new_handle.size() + 1);
     *handle = buf;
   } else {
+    *handle = nullptr;
     status->status = result;
   }
 }

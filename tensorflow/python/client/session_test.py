@@ -1431,6 +1431,14 @@ class SessionTest(test_util.TensorFlowTestCase):
                                  'You must feed a value for placeholder'):
       sess.partial_run(handle, fetches[0])
 
+  def testInvalidPartialRunSetup(self):
+    sess = session.Session()
+    x = array_ops.placeholder(dtypes.float32, shape=[])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        'specify at least one target to fetch or execute.'):
+      sess.partial_run_setup(fetches=[], feeds=[x])
+
   def testPartialRunDirect(self):
     self.runTestPartialRun(session.Session())
 
