@@ -278,9 +278,10 @@ class ResourceVariable(object):
     """A cached operation which reads the value of this variable."""
     if self._cached_value is not None:
       return self._cached_value
-    with ops.device(self._handle.device):
-      return gen_resource_variable_ops.read_variable_op(
-          self._handle, dtype=self._dtype)
+    with ops.colocate_with(None, ignore_existing=True):
+      with ops.device(self._handle.device):
+        return gen_resource_variable_ops.read_variable_op(
+            self._handle, dtype=self._dtype)
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
