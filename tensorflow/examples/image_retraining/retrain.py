@@ -59,7 +59,7 @@ import re
 import struct
 import sys
 import tarfile
-from PIL import Image
+#from PIL import Image
 
 
 import itertools
@@ -879,7 +879,7 @@ def main(_):
     print('=== MISCLASSIFIED TEST IMAGES ===')
     for i, test_filename in enumerate(test_filenames):
       if predictions[i] != test_ground_truth[i].argmax():
-        image = Image.open(test_filename)
+        #image = Image.open(test_filename)
         #image.show()
         print('%70s  %s' % (test_filename,
                             list(image_lists.keys())[predictions[i]]))
