@@ -63,7 +63,7 @@ class CreateLocalClusterTest(test.TestCase):
 
   def testCreateLocalCluster(self):
     # Currently not implemented for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
         return
 
     workers, _ = create_local_cluster(num_workers=2, num_ps=2)

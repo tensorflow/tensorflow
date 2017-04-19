@@ -2676,7 +2676,7 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     therefore necessary to test with manually crafted data as well."""
 
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     # Generate a test-array.
@@ -2703,7 +2703,7 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
   def testTotalVariationHandmade(self):
     """Test the total variation for a few handmade examples."""
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     # We create an image that is 2x2 pixels with 3 color channels.

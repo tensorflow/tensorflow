@@ -41,7 +41,7 @@ def GetTestConfigs():
   """
   test_configs = [("NHWC", False), ("NHWC", True)]
   # Currently not implemented for OpenCL
-  if "sycl" in test_util.gpu_device_name():
+  if test_util.is_sycl_enabled():
       test_configs = [("NHWC", False)]
   if test.is_gpu_available(cuda_only=True):
     # "NCHW" format is currently supported exclusively on CUDA GPUs.
@@ -1108,7 +1108,7 @@ class PoolingTest(test.TestCase):
         padding="VALID",
         use_gpu=False)
 
-    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
+    if not test.is_gpu_available() or test_util.is_sycl_enabled():
       return
 
     # Test the GPU implementation that uses cudnn for now.
@@ -1154,7 +1154,7 @@ class PoolingTest(test.TestCase):
         padding="VALID",
         use_gpu=False)
 
-    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
+    if not test.is_gpu_available() or test_util.is_sycl_enabled():
       return
 
     # Test the GPU implementation that uses cudnn for now.

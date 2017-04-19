@@ -919,7 +919,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   def testPrintTensor(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     node_name = "simple_mul_add/matmul"
@@ -949,7 +949,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   def testPrintTensorHighlightingRanges(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     node_name = "simple_mul_add/matmul"
@@ -1003,7 +1003,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   def testPrintTensorWithSlicing(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     node_name = "simple_mul_add/matmul"
@@ -1039,7 +1039,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   def testPrintTensorValidExplicitNumber(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     node_name = "simple_mul_add/matmul"
@@ -1090,7 +1090,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   def testPrintTensorMissingOutputSlotLeadsToOnlyDumpedTensorPrinted(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     node_name = "simple_mul_add/matmul"

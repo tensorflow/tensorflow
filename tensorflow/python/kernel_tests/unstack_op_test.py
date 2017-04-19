@@ -54,7 +54,7 @@ class UnstackOpTest(test.TestCase):
 
   def testGradientsAxis0(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):

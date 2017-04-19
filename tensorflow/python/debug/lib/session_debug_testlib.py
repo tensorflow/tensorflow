@@ -161,7 +161,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testConcurrentDumpingToPathsWithOverlappingParentDirsWorks(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     results = self._generate_dump_from_simple_addition_graph()
@@ -327,7 +327,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testDebugWhileLoopGeneratesMultipleDumps(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     with session.Session() as sess:
@@ -869,7 +869,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     """Test watching output slots not attached to any outgoing edges."""
 
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     with session.Session() as sess:

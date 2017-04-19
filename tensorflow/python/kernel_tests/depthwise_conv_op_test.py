@@ -167,7 +167,7 @@ class DepthwiseConv2DTest(test.TestCase):
 
   def testDepthwiseConv2DFormat(self):
     # Currently not implemented for OpenCL
-    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
+    if not test.is_gpu_available() or test_util.is_sycl_enabled():
       return
 
     for index, (input_size, filter_size, _, stride,
@@ -370,7 +370,7 @@ class DepthwiseConv2DTest(test.TestCase):
 
   def testDepthwiseConv2DInputGradFormat(self):
     # Currently not implemented for OpenCL
-    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
+    if not test.is_gpu_available() or test_util.is_sycl_enabled():
       return
 
     for index, (input_size, filter_size, output_size, stride,
@@ -404,7 +404,7 @@ class DepthwiseConv2DTest(test.TestCase):
 
   def testDepthwiseConv2DFilterGradFormat(self):
     # Currently not implemented for OpenCL
-    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
+    if not test.is_gpu_available() or test_util.is_sycl_enabled():
       return
 
     for index, (input_size, filter_size, output_size, stride,

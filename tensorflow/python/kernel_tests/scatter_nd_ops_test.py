@@ -96,7 +96,7 @@ class ScatterNdTest(test.TestCase):
                         itype,
                         repeat_indices=False):
     # Currently not implemented for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     np.random.seed(8)
@@ -150,7 +150,7 @@ class ScatterNdTest(test.TestCase):
 
   def testSimple(self):
     # Currently not implemented for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
@@ -167,7 +167,7 @@ class ScatterNdTest(test.TestCase):
 
   def testSimple2(self):
     # Currently not implemented for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     indices = constant_op.constant([[1, 0], [1, 1]], dtype=dtypes.int32)
@@ -185,7 +185,7 @@ class ScatterNdTest(test.TestCase):
 
   def testSimple3(self):
     # Currently not implemented for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     indices = constant_op.constant([[1]], dtype=dtypes.int32)
@@ -421,7 +421,7 @@ class ScatterNdTest(test.TestCase):
 
   def testConcurrentUpdates(self):
     # Currently not implemented for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     num_updates = 10000

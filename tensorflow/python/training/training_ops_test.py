@@ -122,7 +122,7 @@ class TrainingOpsTest(TensorFlowTestCase):
 
   def testApplyAdagrad(self):
     # Currently not implemented for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
         return
 
     for (dtype, use_gpu) in itertools.product(

@@ -86,7 +86,7 @@ class StepperTest(test_util.TensorFlowTestCase):
 
   def testUsingNamesNotUsingIntermediateTensors(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     with NodeStepper(self.sess, "e:0") as stepper:
@@ -115,7 +115,7 @@ class StepperTest(test_util.TensorFlowTestCase):
 
   def testUsingNodesNotUsingIntermediateTensors(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     with NodeStepper(self.sess, self.e) as stepper:
@@ -492,7 +492,7 @@ class StepperTestWithPlaceHolders(test_util.TensorFlowTestCase):
 
   def testContWithPlaceholders(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     with NodeStepper(
@@ -728,7 +728,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
 
   def testContToUpdateA(self):
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     with NodeStepper(self.sess, "optim") as stepper:
@@ -881,7 +881,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     """
 
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     with NodeStepper(self.sess, "optim") as stepper:
@@ -977,7 +977,7 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     """Test cont() to update nodes after overriding tensor values."""
 
     # Currently fails for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
       return
 
     with NodeStepper(self.sess, "optim") as stepper:

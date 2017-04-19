@@ -107,7 +107,7 @@ class AdamOptimizerTest(test.TestCase):
 
   def testSparseDevicePlacement(self):
     # Currently not implemented for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
         return
     for index_dtype in [dtypes.int32, dtypes.int64]:
       with self.test_session(force_gpu=test.is_gpu_available()):

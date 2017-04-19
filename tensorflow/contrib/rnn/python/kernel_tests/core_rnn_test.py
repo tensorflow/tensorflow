@@ -1014,7 +1014,7 @@ class LSTMTest(test.TestCase):
 
   def _testDynamicEquivalentToStaticRNN(self, use_gpu, use_sequence_length):
     # Currently not implemented for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
         return
     time_steps = 8
     num_units = 3
@@ -2209,7 +2209,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
 
   def testRNNOnCPUCellOnGPU(self):
     # Currently not implemented for OpenCL
-    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
+    if not test.is_gpu_available() or test_util.is_sycl_enabled():
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(
@@ -2235,7 +2235,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
 
   def testRNNOnCPUCellOnCPU(self):
     # Currently not implemented for OpenCL
-    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
+    if not test.is_gpu_available() or test_util.is_sycl_enabled():
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(
@@ -2256,7 +2256,7 @@ class TensorArrayOnCorrectDeviceTest(test.TestCase):
 
   def testInputOnGPUCellNotDeclared(self):
     # Currently not implemented for OpenCL
-    if not test.is_gpu_available() or "sycl" in test_util.gpu_device_name():
+    if not test.is_gpu_available() or test_util.is_sycl_enabled():
       return  # Test requires access to a GPU
 
     run_metadata = self._execute_rnn_on(

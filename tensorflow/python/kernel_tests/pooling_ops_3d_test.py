@@ -228,7 +228,7 @@ class PoolingTest(test.TestCase):
       use_gpu: Whether to run on GPU.
     """
     # Currently not implemented for OpenCL
-    if "sycl" in test_util.gpu_device_name():
+    if test_util.is_sycl_enabled():
         return
 
     total_size = 1
