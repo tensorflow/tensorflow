@@ -1272,8 +1272,9 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     auto it = run_state->pending_inputs.find(req.feed_name(i));
     if (it == run_state->pending_inputs.end()) {
-      return errors::InvalidArgument("The feed ", req.feed_name(i),
-                                     " had already been fed.");
+      return errors::InvalidArgument(
+          "The feed ", req.feed_name(i),
+          " has already been fed or was not specified in partial_run_setup.");
     }
   }
   // Check that this is a new set of fetches that are still pending.
@@ -1282,7 +1283,8 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     auto it = run_state->pending_outputs.find(fetch);
     if (it == run_state->pending_outputs.end()) {
       return errors::InvalidArgument("The fetch ", fetch,
-                                     " had already been fetched.");
+                                     " had already been fetched or was not "
+                                     "specified in partial_run_setup.");
     }
   }
 
