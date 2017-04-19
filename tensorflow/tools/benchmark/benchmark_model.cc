@@ -209,7 +209,8 @@ Status CalculateFlops(const GraphDef& graph,
 
 Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
                     const std::vector<string>& outputs, Session* session,
-                    StatSummarizer* stats, int64* inference_time_us) {
+                    StatSummarizer* stats, int64* inference_time_us,
+                    StepStats* step_stats_out) {
   std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
   CreateTensorsFromInputInfo(inputs, &input_tensors);
 
@@ -218,7 +219,7 @@ Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
   tensorflow::Status s;
 
   RunOptions run_options;
-  if (stats != nullptr) {
+  if (stats != nullptr || step_stats_out != nullptr) {
     run_options.set_trace_level(RunOptions::FULL_TRACE);
   }
 
@@ -227,17 +228,24 @@ Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
   s = session->Run(run_options, input_tensors, outputs, {}, &output_tensors,
                    &run_metadata);
   const int64 end_time = Env::Default()->NowMicros();
-  *inference_time_us = end_time - start_time;
+  if (inference_time_us != nullptr) {
+    *inference_time_us = end_time - start_time;
+  }
 
   if (!s.ok()) {
     LOG(ERROR) << "Error during inference: " << s;
     return s;
   }
 
-  if (stats != nullptr) {
+  if (stats != nullptr || step_stats_out != nullptr) {
     assert(run_metadata.has_step_stats());
     const StepStats& step_stats = run_metadata.step_stats();
-    stats->ProcessStepStats(step_stats);
+    if (stats != nullptr) {
+      stats->ProcessStepStats(step_stats);
+    }
+    if (step_stats_out != nullptr) {
+      *step_stats_out = run_metadata.step_stats();
+    }
   }
 
   return s;
@@ -287,6 +295,32 @@ Status TimeMultipleRuns(double sleep_seconds, int num_runs,
   return Status::OK();
 }
 
+Status DumpStepStats(const std::vector<InputLayerInfo>& inputs,
+                     const std::vector<string>& outputs, Session* session,
+                     const std::string& step_stats_name) {
+  if (step_stats_name.empty()) {
+    return errors::InvalidArgument("Cannot dump step stats, filename empty");
+  }
+  LOG(INFO) << "Dumping step stats";
+  StepStats step_stats;
+  Status run_status = RunBenchmark(inputs, outputs, session, nullptr, nullptr, &step_stats);
+  if (!run_status.ok()) {
+    LOG(ERROR) << "Step stats dump failed" << run_status;
+    return run_status;
+  }
+  std::unique_ptr<WritableFile> step_stats_file;
+  LOG(INFO) << "dumping step stats into " << step_stats_name;
+  Env* env = Env::Default();
+  if (env->FileExists(step_stats_name).ok()) {
+    return errors::InvalidArgument("Cannot dump step stats, file exists: ",
+    step_stats_name);
+  }
+  TF_RETURN_IF_ERROR(env->NewWritableFile(step_stats_name, &step_stats_file));
+  TF_RETURN_IF_ERROR(step_stats_file->Flush());
+  TF_RETURN_IF_ERROR(step_stats_file->Append(step_stats.SerializeAsString()));
+  return step_stats_file->Close();
+}
+
 int Main(int argc, char** argv) {
   string graph = "/data/local/tmp/tensorflow_inception_graph.pb";
   string input_layer_string = "input:0";
@@ -299,6 +333,7 @@ int Main(int argc, char** argv) {
   int num_threads = -1;
   string benchmark_name = "";
   string output_prefix = "";
+  string step_stats_name = "";
   bool show_sizes = false;
   bool show_run_order = true;
   int run_order_limit = 0;
@@ -324,6 +359,7 @@ int Main(int argc, char** argv) {
       Flag("num_threads", &num_threads, "number of threads"),
       Flag("benchmark_name", &benchmark_name, "benchmark name"),
       Flag("output_prefix", &output_prefix, "benchmark output prefix"),
+      Flag("step_stats_name", &step_stats_name, "step stats filename"),
       Flag("show_sizes", &show_sizes, "whether to show sizes"),
       Flag("show_run_order", &show_run_order,
            "whether to list stats by run order"),
@@ -482,6 +518,9 @@ int Main(int argc, char** argv) {
     stats->PrintOutputs();
   }
 
+  if (!step_stats_name.empty()) {
+    DumpStepStats(inputs, output_layers, session.get(), step_stats_name);
+  }
   if (show_flops) {
     int64 total_flops;
     std::unordered_map<string, int64> flops_by_op;

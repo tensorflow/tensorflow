@@ -55,3 +55,11 @@ $bazel-bin/tensorflow/tools/benchmark/benchmark_model \
 
 The Inception graph used as an example here may be downloaded from
 https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip
+
+## To visualize benchmark
+
+Since [timeline](https://github.com/tensorflow/tensorflow/blob/27711108b5fce2e1692f9440631a183b3808fa01/tensorflow/python/client/timeline.py) is a python only visualization tool, we need to write collected **StepStats** to a file and then use timeline to generate JSON-formatted file in Chrome Trace format.
+
+To store collected **StepStats**, set `benchmark_model`' s `--step_stats_name` flag to the name of the file you want to write to.
+
+To generate Chrome Trace format, run `transform_chrome_trace.py` directly with **StepStats** file and desired JSON file as arguments. Navigate to `chrome://tracing` to visualize the benchmark.
