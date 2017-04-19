@@ -93,9 +93,7 @@ def images():
 
         # Create the file path if it does not exist
         directory = os.path.join( \
-            DEFAULTS['StaticURLPath'], \
             DEFAULTS['DatabaseFolder'], \
-            DEFAULTS['UploadFolder'], \
             species.replace(' ', '_'))
         if not os.path.exists(directory):
             os.makedirs(directory)
