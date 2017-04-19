@@ -104,7 +104,6 @@ Status SingleMachine::Run(const GraphDef& graph_def,
         for (auto node : *init_metadata_.mutable_cost_graph()->mutable_node()) {
           node.clear_compute_cost();
         }
-        metadata->MergeFrom(init_metadata_);
       }
       for (int i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
@@ -128,7 +127,10 @@ Status SingleMachine::Run(const GraphDef& graph_def,
   }
 
   TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
+
   if (metadata) {
+    // Add the costs of initialization and the queue runners.
+    metadata->MergeFrom(init_metadata_);
     return coordinator_->ExportCostGraph(metadata->mutable_cost_graph());
   } else {
     return Status::OK();
