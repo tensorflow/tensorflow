@@ -1741,6 +1741,22 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaises(errors.DeadlineExceededError):
         sess.run(dequeued_t)
 
+  def runTestBuildGraphError(self, sess):
+    # Ensure that errors from building the graph get propagated.
+    data = array_ops.placeholder(dtypes.float32, shape=[])
+    enter_1 = control_flow_ops.enter(data, 'foo_1', False)
+    enter_2 = control_flow_ops.enter(data, 'foo_2', False)
+    res = math_ops.add(enter_1, enter_2)
+    with self.assertRaisesOpError('has inputs from different frames'):
+      sess.run(res, feed_dict={data: 1.0})
+
+  def testBuildGraphErrorDirect(self):
+    self.runTestBuildGraphError(session.Session())
+
+  def testBuildGraphErrorDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestBuildGraphError(session.Session(server.target))
+
 
 if __name__ == '__main__':
   googletest.main()

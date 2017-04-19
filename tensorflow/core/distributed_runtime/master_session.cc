@@ -278,17 +278,19 @@ Status MasterSession::ReffedClientGraph::RegisterPartitions(
       mu_.unlock();
       std::unordered_map<string, GraphDef> graph_defs;
       Status s = DoBuildPartitions(popts, &graph_defs);
-      // NOTE(mrry): The pointers in `graph_defs_for_publishing` do not remain
-      // valid after the call to DoRegisterPartitions begins, so
-      // `stats_publisher_` must make a copy if it wants to retain the
-      // GraphDef objects.
-      std::vector<const GraphDef*> graph_defs_for_publishing;
-      graph_defs_for_publishing.reserve(partitions_.size());
-      for (const auto& name_def : graph_defs) {
-        graph_defs_for_publishing.push_back(&name_def.second);
+      if (s.ok()) {
+        // NOTE(mrry): The pointers in `graph_defs_for_publishing` do not remain
+        // valid after the call to DoRegisterPartitions begins, so
+        // `stats_publisher_` must make a copy if it wants to retain the
+        // GraphDef objects.
+        std::vector<const GraphDef*> graph_defs_for_publishing;
+        graph_defs_for_publishing.reserve(partitions_.size());
+        for (const auto& name_def : graph_defs) {
+          graph_defs_for_publishing.push_back(&name_def.second);
+        }
+        stats_publisher_->PublishGraphProto(graph_defs_for_publishing);
+        s = DoRegisterPartitions(popts, func_def_lib, std::move(graph_defs));
       }
-      stats_publisher_->PublishGraphProto(graph_defs_for_publishing);
-      s = DoRegisterPartitions(popts, func_def_lib, std::move(graph_defs));
       mu_.lock();
       init_result_ = s;
       init_done_.Notify();
@@ -363,7 +365,6 @@ Status MasterSession::ReffedClientGraph::DoBuildPartitions(
   }
 
   // Partition the graph.
-  Status s;
   return Partition(popts, &client_graph_->graph, out_partitions);
 }
 
