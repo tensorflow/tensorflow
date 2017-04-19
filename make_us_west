@@ -30,6 +30,9 @@ bazel-bin/tensorflow/python/tools/strip_unused \
 --output_node_names=final_result \
 --input_binary=true
 
+# Remove retrained_graph
+rm tf_files/us_west/retrained_graph.pb
+
 # Remove all of the old assets
 rm tensorflow/examples/android/assets/us_west/*.*
 

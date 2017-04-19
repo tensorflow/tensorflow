@@ -176,7 +176,7 @@ public class CameraConnectionFragment extends Fragment {
           createCameraPreviewSession();
           configureCameraFloatingActionButton();
           configureModelLabelButton();
-	  configureTouchFocus();
+	      configureTouchFocus();
         }
 
         @Override

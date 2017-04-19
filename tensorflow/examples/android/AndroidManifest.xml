@@ -58,7 +58,10 @@
             android:parentActivityName=".MainActivity" />
         <activity
             android:name=".CaptureActivity"
-            android:label="@string/title_activity_capture"></activity>
+            android:label="@string/title_activity_capture" />
+        <activity
+            android:name=".UploadActivity"
+            android:label="@string/title_activity_upload"></activity>
     </application>
 
 </manifest>
