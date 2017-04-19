@@ -77,15 +77,16 @@ def main():
                                       '-I', COMPUTECPP_INCLUDE, '-isystem', COMPUTECPP_INCLUDE,
                                       '-std=c++11', '-sycl', '-emit-llvm', '-no-serial-memop',
                                       '-Xclang', '-cl-denorms-are-zero', '-Xclang', '-cl-fp32-correctly-rounded-divide-sqrt']
-  computecpp_device_compiler_flags += [flag for flag in compiler_flags if not flag.startswith(('-fsanitize', '-march=native', '-mavx'))]
+  # disable flags enabling SIMD instructions
+  computecpp_device_compiler_flags += [flag for flag in compiler_flags if \
+    not any(x in flag.lower() for x in ('-fsanitize', '=native', '=core2', 'msse', 'vectorize', 'mavx', 'mmmx', 'm3dnow', 'fma'))]
 
   x = call([COMPUTECPP_DRIVER] + computecpp_device_compiler_flags)
   if x == 0:
     # dont want that in case of compiling with computecpp first
     host_compiler_flags = [flag for flag in compiler_flags if (not flag.startswith(('-MF', '-MD',)) and not '.d' in flag)]
     host_compiler_flags[host_compiler_flags.index('-c')] = "--include"
-    host_compiler_flags = ['-xc++', '-D_GLIBCXX_USE_CXX11_ABI=0', '-DTENSORFLOW_USE_SYCL',
-                           '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, '-c', bc_out] + host_compiler_flags
+    host_compiler_flags = ['-xc++', '-Wno-unused-variable', '-I', COMPUTECPP_INCLUDE, '-c', bc_out] + host_compiler_flags
     x = call([CPU_CXX_COMPILER] + host_compiler_flags)
   return x
 
