@@ -173,7 +173,7 @@ void TransposeSYCL(const Device& d, const Tensor& in,
       internal::TransposeUsingEigen<Device, T, 8>(d, in, perm, out);
       break;
     default:
-      errors::Unimplemented("Unsupported TransposeUsingEigen for: ", in.dims());
+      LOG(FATAL) << "Unsupported TransposeUsingEigen for: " << in.dims();
       break;
   }
 }
