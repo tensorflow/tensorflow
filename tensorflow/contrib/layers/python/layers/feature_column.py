@@ -629,7 +629,7 @@ class _SparseColumnVocabulary(_SparseColumn):
     else:
       sparse_string_tensor = st
 
-    table = lookup.string_to_index_table_from_file(
+    table = lookup.index_table_from_file(
         vocabulary_file=self.lookup_config.vocabulary_file,
         num_oov_buckets=self.lookup_config.num_oov_buckets,
         vocab_size=self.lookup_config.vocab_size,
