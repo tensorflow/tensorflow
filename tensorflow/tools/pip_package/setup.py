@@ -59,6 +59,7 @@ else:
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'tensorboard = tensorflow.tensorboard.tensorboard:main',
+    'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
 ]
 # pylint: enable=line-too-long
 
