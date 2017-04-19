@@ -7,4 +7,12 @@ tf_class {
     name: "__init__"
     argspec: "args=[\'self\', \'minval\', \'maxval\', \'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\', \"<dtype: \'float32\'>\"], "
   }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
 }

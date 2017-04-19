@@ -1054,6 +1054,25 @@ tf_cuda_cc_test(
 )
 
 tf_cc_test(
+    name = "dequantize_op_test",
+    size = "small",
+    srcs = ["dequantize_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "reverse_op_test",
     size = "small",
     srcs = ["reverse_op_test.cc"],
@@ -3037,6 +3056,18 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "stateless_random_ops",
+    prefix = "stateless_random_ops",
+    deps = [
+        ":bounds_check",
+        ":random_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stateless_random_ops_op_lib",
+    ],
+)
+
 cc_library(
     name = "required",
     deps = [
@@ -4675,6 +4706,38 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_fused_batch_norm_op",
+    srcs = ["mkl_fused_batch_norm_op.cc"],
+    deps = NN_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_concat_op",
+    prefix = "mkl_concat_op",
+    deps = ARRAY_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_reshape_op",
+    prefix = "mkl_reshape_op",
+    deps = ARRAY_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_lrn_op",
+    prefix = "mkl_lrn_op",
+    deps = NN_DEPS + [
         "//third_party/mkl:intel_binary_blob",
     ],
 )

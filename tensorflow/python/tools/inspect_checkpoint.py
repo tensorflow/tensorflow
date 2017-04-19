@@ -46,7 +46,7 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors):
     reader = pywrap_tensorflow.NewCheckpointReader(file_name)
     if all_tensors:
       var_to_shape_map = reader.get_variable_to_shape_map()
-      for key in var_to_shape_map:
+      for key in sorted(var_to_shape_map):
         print("tensor_name: ", key)
         print(reader.get_tensor(key))
     elif not tensor_name:

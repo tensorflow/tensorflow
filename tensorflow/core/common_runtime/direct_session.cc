@@ -757,7 +757,8 @@ Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
 
   ResourceHandle resource_handle = resource_tensor.scalar<ResourceHandle>()();
 
-  if (resource_handle.hash_code() == MakeTypeIndex<Tensor>().hash_code()) {
+  if (resource_handle.container() ==
+      SessionState::kTensorHandleResourceTypeName) {
     return session_state_.GetTensor(resource_handle.name(), retrieved_tensor);
   } else {
     return errors::InvalidArgument(strings::StrCat(

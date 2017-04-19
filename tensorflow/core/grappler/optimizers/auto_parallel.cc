@@ -227,7 +227,7 @@ void AutoParallel::BuildGraph(GraphDef* graph) {
     AddOneReplica(graph, i);
   }
   std::set<string> fetches;
-  for (int i = 0; i < item_->fetch.size(); i++) {
+  for (size_t i = 0; i < item_->fetch.size(); i++) {
     for (int j = 0; j < num_replicas_; j++) {
       string prefix = strings::StrCat(kAutoParallelPrefix, "-Replica-", j);
       string fetch = AddPrefixToNodeName(item_->fetch[i], prefix);

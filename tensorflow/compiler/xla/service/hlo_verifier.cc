@@ -23,7 +23,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       TF_RET_CHECK(instruction->parent() == computation.get());
       if (instruction->opcode() == HloOpcode::kFusion) {
         for (const auto& fused : instruction->fused_instructions()) {
-          TF_RET_CHECK(fused->parent() == computation.get())
+          TF_RET_CHECK(fused->parent() ==
+                       instruction->fused_instructions_computation())
               << "Fused HLO was missing a parent: " << fused->ToString()
               << " parent: " << fused->parent()
               << " computation: " << computation.get();

@@ -489,21 +489,10 @@ Status GatherComputationsByAllocationType(
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     LogicalBuffer::SizeFunction buffer_size, int64 alignment,
-    bool colocate_related_buffers,
     const std::vector<const HloInstruction*>* hlos_to_allocate) {
-  BufferAssigner assigner(std::move(buffer_size), alignment,
-                          colocate_related_buffers);
+  BufferAssigner assigner(std::move(buffer_size), alignment);
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    hlos_to_allocate);
-}
-
-/* static */
-StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
-    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    LogicalBuffer::SizeFunction buffer_size, int64 alignment) {
-  return BufferAssigner::Run(module, std::move(hlo_ordering),
-                             std::move(buffer_size), alignment,
-                             /*colocate_related_buffers=*/true);
 }
 
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
@@ -1125,13 +1114,11 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   // buffers outside of the set) in AssignBuffersForComputation.
   FlatSet<const LogicalBuffer*> colocated_buffers;
   FlatSet<BufferAllocation::Index> colocated_allocations;
-  if (colocate_related_buffers_) {
-    std::vector<ColocatedBufferSet> colocated_buffer_sets;
-    BuildColocatedBufferSets(module, assignment->liveness(),
-                             &colocated_buffer_sets);
-    AssignColocatedBufferSets(colocated_buffer_sets, assignment.get(),
-                              &colocated_buffers, &colocated_allocations);
-  }
+  std::vector<ColocatedBufferSet> colocated_buffer_sets;
+  BuildColocatedBufferSets(module, assignment->liveness(),
+                           &colocated_buffer_sets);
+  AssignColocatedBufferSets(colocated_buffer_sets, assignment.get(),
+                            &colocated_buffers, &colocated_allocations);
 
   for (auto* computation : global_computations) {
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
