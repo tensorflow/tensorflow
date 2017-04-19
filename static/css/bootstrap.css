@@ -1371,6 +1371,16 @@ a.text-danger:hover,
 a.text-danger:focus {
   color: #843534;
 }
+.solid-border-primary {
+  border-width: 5px;
+  border-style: solid;
+  border-color: #74D117;
+}
+.solid-border-secondary {
+  border-width: 5px;
+  border-style: solid;
+  border-color: #C7E80E;
+}
 .bg-white {
   color: #000;
   background-color: #FFFFFF;
@@ -4740,7 +4750,7 @@ fieldset[disabled] .navbar-inverse .btn-link:focus {
   padding: 6px 12px;
   margin-left: -1px;
   line-height: 1.42857143;
-  color: #337ab7;
+  color: #74D117;
   text-decoration: none;
   background-color: #fff;
   border: 1px solid #ddd;
@@ -4761,7 +4771,7 @@ fieldset[disabled] .navbar-inverse .btn-link:focus {
 .pagination > li > a:focus,
 .pagination > li > span:focus {
   z-index: 2;
-  color: #23527c;
+  color: #0DDE2F;
   background-color: #eee;
   border-color: #ddd;
 }
@@ -4774,8 +4784,8 @@ fieldset[disabled] .navbar-inverse .btn-link:focus {
   z-index: 3;
   color: #fff;
   cursor: default;
-  background-color: #337ab7;
-  border-color: #337ab7;
+  background-color: #74D117;
+  border-color: #74D117;
 }
 .pagination > .disabled > span,
 .pagination > .disabled > span:hover,

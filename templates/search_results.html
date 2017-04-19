@@ -1,20 +1,127 @@
 {% extends "base.html" %}
 
 {% block title %}{{ super() }}{% endblock %}
+
+{% block imports %}
+<script src="/js/search_results.js"></script>
+{% endblock %}
+
 {% block header %}
-<h1 class="text-center">{{search}} Results</h1>
+<h1 class="text-center"><i>{{ search }}</i> Results</h1>
 {% endblock %}
 
 {% block content %}
+
+  {% if paginated and exist %}
+  <div class="row text-center">
+    <nav aria-label="Page navigation">
+      <ul class="pagination">
+
+        <li {% if page == 1 %}class="disabled"{% endif %}>
+          <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page=1" aria-label="First">
+            <span aria-hidden="true">&laquo;</span>
+          </a>
+        </li>
+
+        <li {% if page == 1 %}class="disabled"{% endif %}>
+          <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ page - 1 }}" aria-label="Previous">
+            <span aria-hidden="true">&lt;</span>
+          </a>
+        </li>
+
+        {% for x in range(page-3, page+4) %}
+          {% set offset = 0 %}
+          {% if page-3 < 1 %}
+            {% set offset = -(page-4) %}
+          {% elif page+3 > pages %}
+            {% set offset = pages - (page+3) %}
+          {% endif %}
+          {% set p = x + offset %}
+          <li {% if page == p %}class="active"{% endif %}>
+            {% if p > 0 and p <= pages %}
+              <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ p }}">{{ p }}</a>
+            {% endif %}
+          </li>
+        {% endfor %}
+
+        <li {% if page == pages %}class="disabled"{% endif %}>
+          <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ page + 1 }}" aria-label="Next">
+            <span aria-hidden="true">&gt;</span>
+          </a>
+        </li>
+
+        <li {% if page == pages %}class="disabled"{% endif %}>
+          <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ pages }}" aria-label="Last">
+            <span aria-hidden="true">&raquo;</span>
+          </a>
+        </li>
+
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+
   {% if not exist %}
   <p class="text-center">No images were found for {{search}}.</p>
   {% else %}
-  <div class="row">
-      {% for result in results %}
-      <div class="col-xs-2 col-sm-2 col-md-1 col-lg-1">
-          <img src="{{ result }}" ahref="{{ result }}" class="img-responsive"/>
-      </div>
-      {% endfor %}
+  <div class="row" id="image-grid">
+    {% for result in results %}
+    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-2">
+        <a href="{{ result }}"><img src="{{ result }}" class="img-responsive center-block" /></a>
+    </div>
+    {% endfor %}
+  </div>
   {% endif %}
+
+  {% if paginated and exist %}
+  <div class="row text-center">
+    <nav aria-label="Page navigation">
+      <ul class="pagination">
+
+        <li {% if page == 1 %}class="disabled"{% endif %}>
+          <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page=1" aria-label="First">
+            <span aria-hidden="true">&laquo;</span>
+          </a>
+        </li>
+
+        <li {% if page == 1 %}class="disabled"{% endif %}>
+          <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ page - 1 }}" aria-label="Previous">
+            <span aria-hidden="true">&lt;</span>
+          </a>
+        </li>
+
+        {% for x in range(page-3, page+4) %}
+          {% set offset = 0 %}
+          {% if page-3 < 1 %}
+            {% set offset = -(page-4) %}
+          {% elif page+3 > pages %}
+            {% set offset = pages - (page+3) %}
+          {% endif %}
+          {% set p = x + offset %}
+          <li {% if page == p %}class="active"{% endif %}>
+            {% if p > 0 and p <= pages %}
+              <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ p }}">{{ p }}</a>
+            {% endif %}
+          </li>
+        {% endfor %}
+
+        <li {% if page == pages %}class="disabled"{% endif %}>
+          <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ page + 1 }}" aria-label="Next">
+            <span aria-hidden="true">&gt;</span>
+          </a>
+        </li>
+
+        <li {% if page == pages %}class="disabled"{% endif %}>
+          <a href="/images/search?species={{ search|e }}&amp;entries={{ entries }}&amp;page={{ pages }}" aria-label="Last">
+            <span aria-hidden="true">&raquo;</span>
+          </a>
+        </li>
+
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+
 {% endblock %}
+
 {% block footer %}{{ super() }}{% endblock %}
