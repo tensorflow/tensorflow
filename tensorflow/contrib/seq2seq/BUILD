@@ -37,11 +37,14 @@ tf_custom_op_py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:rnn",
         "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -141,6 +144,27 @@ cuda_py_test(
     srcs = ["python/kernel_tests/decoder_test.py"],
     additional_deps = [
         ":seq2seq_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
+    name = "beam_search_decoder_test",
+    size = "small",
+    srcs = ["python/kernel_tests/beam_search_decoder_test.py"],
+    additional_deps = [
+        ":seq2seq_py",
+        "//third_party/py/numpy",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",

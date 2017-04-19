@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Seq2seq layer operations for use in neural networks.
-"""
+"""Seq2seq layer operations for use in neural networks."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import abc
-
 import six
 
 from tensorflow.python.framework import constant_op
@@ -35,6 +33,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
+
 
 __all__ = ["Decoder", "dynamic_decode"]
 
@@ -279,5 +278,8 @@ def dynamic_decode(decoder,
     final_outputs = nest.map_structure(lambda ta: ta.stack(), final_outputs_ta)
     if not output_time_major:
       final_outputs = nest.map_structure(_transpose_batch_time, final_outputs)
+
+  if hasattr(decoder, "finalize"):
+    final_outputs, final_state = decoder.finalize(final_outputs, final_state)
 
   return final_outputs, final_state
