@@ -75,7 +75,7 @@ class CopyOp : public OpKernel {
 #elif defined(TENSORFLOW_USE_SYCL)
       Device* device = static_cast<Device*>(context->device());
       // Determine if the input tensor is not on CPU (e.g., on GPU).
-      bool off_host_input = device->device_type() == DEVICE_SYCL &&
+      const bool off_host_input = device->device_type() == DEVICE_SYCL &&
                             !context->input_alloc_attr(0).on_host();
 
       if (off_host_input) {
