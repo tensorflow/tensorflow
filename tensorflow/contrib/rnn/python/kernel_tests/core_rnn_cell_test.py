@@ -27,6 +27,7 @@ import numpy as np
 
 from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear as linear
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -339,6 +340,34 @@ class RNNCellTest(test.TestCase):
           core_rnn_cell_impl.GRUCell(3), "/cpu:14159")
       outputs, _ = cell(x, m)
       self.assertTrue("cpu:14159" in outputs.device.lower())
+
+  def testDeviceWrapperDynamicExecutionNodesAreAllProperlyLocated(self):
+    if not test.is_gpu_available():
+      # Can't perform this test w/o a GPU
+      return
+
+    with self.test_session(use_gpu=True) as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 1, 3])
+        cell = core_rnn_cell_impl.DeviceWrapper(
+            core_rnn_cell_impl.GRUCell(3), "/gpu:0")
+        with ops.device("/cpu:0"):
+          outputs, _ = rnn.dynamic_rnn(
+              cell=cell, inputs=x, dtype=dtypes.float32)
+        run_metadata = config_pb2.RunMetadata()
+        opts = config_pb2.RunOptions(
+            trace_level=config_pb2.RunOptions.FULL_TRACE)
+
+        sess.run([variables_lib.global_variables_initializer()])
+        _ = sess.run(outputs, options=opts, run_metadata=run_metadata)
+
+      step_stats = run_metadata.step_stats
+      ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
+      gpu_stats = step_stats.dev_stats[ix].node_stats
+      cpu_stats = step_stats.dev_stats[1 - ix].node_stats
+      self.assertEmpty([s for s in cpu_stats if "gru_cell" in s.node_name])
+      self.assertNotEmpty([s for s in gpu_stats if "gru_cell" in s.node_name])
 
   def testUsingSecondCellInScopeWithExistingVariablesFails(self):
     # This test should go away when this behavior is no longer an
