@@ -244,6 +244,7 @@ class ResourceVariable(object):
       self._save_slice_info = None
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
+    self._graph_element = self.value()
 
   @property
   def dtype(self):
