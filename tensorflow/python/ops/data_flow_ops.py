@@ -506,6 +506,69 @@ class QueueBase(object):
 
     return self._dequeue_return_value(ret)
 
+  def requeue(self, name=None):
+    """Dequeues one element from this queue, returns the dequeued value, and
+    reenqueues it.
+
+    If the queue is empty when this operation executes, it will block
+    until there is an element to dequeue.
+
+    At runtime, this operation may raise an error if the queue is
+    @{tf.QueueBase.close} before or during its execution. If the
+    queue is closed, the queue is empty, and there are no pending
+    enqueue operations that can fulfill this request,
+    `tf.errors.OutOfRangeError` will be raised. If the session is
+    @{tf.Session.close},
+    `tf.errors.CancelledError` will be raised.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      The tuple of tensors that was dequeued.
+    """
+    if name is None:
+      name = "%s_Requeue" % self._name
+
+    dequeue = self.dequeue()
+    enqueue = self.enqueue(dequeue)
+    with ops.control_dependencies([enqueue]):
+      return array_ops.identity(dequeue, name)
+
+  def requeue_many(self, n, name=None):
+    """Dequeues and concatenates `n` elements from this queue, returns the
+    dequeued values, and reenqueues them.
+
+    This operation concatenates queue-element component tensors along
+    the 0th dimension to make a single component tensor.  All of the
+    components in the dequeued tuple will have size `n` in the 0th dimension.
+
+    If the queue is closed and there are less than `n` elements left, then an
+    `OutOfRange` exception is raised.
+
+    At runtime, this operation may raise an error if the queue is
+    @{tf.QueueBase.close} before or during its execution. If the
+    queue is closed, the queue contains fewer than `n` elements, and
+    there are no pending enqueue operations that can fulfill this
+    request, `tf.errors.OutOfRangeError` will be raised. If the
+    session is @{tf.Session.close},
+    `tf.errors.CancelledError` will be raised.
+
+    Args:
+      n: A scalar `Tensor` containing the number of elements to dequeue.
+      name: A name for the operation (optional).
+
+    Returns:
+      The tuple of concatenated tensors that was dequeued.
+    """
+    if name is None:
+      name = "%s_RequeueMany" % self._name
+
+    dequeue = self.dequeue_many(n)
+    enqueue = self.enqueue_many(dequeue)
+    with ops.control_dependencies([enqueue]):
+      return array_ops.identity(dequeue, name)
+
   def close(self, cancel_pending_enqueues=False, name=None):
     """Closes this queue.
 

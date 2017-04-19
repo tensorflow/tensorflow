@@ -1409,6 +1409,31 @@ class FIFOQueueTest(test.TestCase):
           lambda e: "Before enqueue" in str(e)):
         session.run([a, c])
 
+  def testRequeue(self):
+    with self.test_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
+      enqueue_op = q.enqueue((10.0,))
+      enqueue_op.run()
+
+      requeue_op = q.requeue()
+      value = sess.run(requeue_op)
+
+      self.assertEqual(value, 10.0)
+      self.assertEqual(sess.run(q.size()), 1)
+
+  def testRequeueMany(self):
+    with self.test_session() as sess:
+      q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, [()])
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many([elems])
+      enqueue_op.run()
+
+      requeue_op = q.requeue_many(4)
+      value = sess.run(requeue_op)
+
+      self.assertAllEqual(value, elems)
+      self.assertEqual(sess.run(q.size()), 4)
+
 
 class FIFOQueueDictTest(test.TestCase):
 
