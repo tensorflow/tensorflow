@@ -2905,6 +2905,7 @@ cuda_py_tests(
         "training/adagrad_da_test.py",
         "training/adagrad_test.py",
         "training/basic_loops_test.py",
+        "training/checkpoint_utils_test.py",
         "training/coordinator_test.py",
         "training/device_setter_test.py",
         "training/ftrl_test.py",
