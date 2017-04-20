@@ -42,7 +42,7 @@ def GetTestConfigs():
   test_configs = [("NHWC", False), ("NHWC", True)]
   # Currently not implemented for OpenCL
   if test_util.is_sycl_enabled():
-      test_configs = [("NHWC", False)]
+    test_configs = [("NHWC", False)]
   if test.is_gpu_available(cuda_only=True):
     # "NCHW" format is currently supported exclusively on CUDA GPUs.
     test_configs += [("NCHW", True)]

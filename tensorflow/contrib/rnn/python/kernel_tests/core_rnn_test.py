@@ -1015,7 +1015,8 @@ class LSTMTest(test.TestCase):
   def _testDynamicEquivalentToStaticRNN(self, use_gpu, use_sequence_length):
     # Currently not implemented for OpenCL
     if test_util.is_sycl_enabled():
-        return
+      return
+
     time_steps = 8
     num_units = 3
     num_proj = 4

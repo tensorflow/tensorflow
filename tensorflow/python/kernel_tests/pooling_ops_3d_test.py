@@ -229,7 +229,7 @@ class PoolingTest(test.TestCase):
     """
     # Currently not implemented for OpenCL
     if test_util.is_sycl_enabled():
-        return
+      return
 
     total_size = 1
     for s in input_sizes:
