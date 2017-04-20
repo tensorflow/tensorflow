@@ -56,7 +56,7 @@ struct MasterEnv {
   // `MasterSession`, which may not be null. Ownership of the
   // `MasterEnv*` is retained by the caller.
   std::function<MasterSession*(
-      const SessionOptions&, MasterEnv*,
+      SessionOptions, MasterEnv*,
       std::unique_ptr<std::vector<std::unique_ptr<Device>>>)>
       master_session_factory;
 };

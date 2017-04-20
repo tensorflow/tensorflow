@@ -421,6 +421,11 @@ class HloInstruction {
     return parameter_name_;
   }
 
+  void set_parameter_name(const string& str) {
+    CHECK_EQ(HloOpcode::kParameter, opcode_);
+    parameter_name_ = str;
+  }
+
   // Returns the dimension sizes or numbers associated with this instruction.
   //
   // Precondition: opcode() is one of: concatenate, reduce, broadcast, reshape,

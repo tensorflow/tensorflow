@@ -366,8 +366,8 @@ class RNNCellTest(test.TestCase):
       ix = 0 if "gpu" in step_stats.dev_stats[0].device else 1
       gpu_stats = step_stats.dev_stats[ix].node_stats
       cpu_stats = step_stats.dev_stats[1 - ix].node_stats
-      self.assertEmpty([s for s in cpu_stats if "gru_cell" in s.node_name])
-      self.assertNotEmpty([s for s in gpu_stats if "gru_cell" in s.node_name])
+      self.assertFalse([s for s in cpu_stats if "gru_cell" in s.node_name])
+      self.assertTrue([s for s in gpu_stats if "gru_cell" in s.node_name])
 
   def testUsingSecondCellInScopeWithExistingVariablesFails(self):
     # This test should go away when this behavior is no longer an
