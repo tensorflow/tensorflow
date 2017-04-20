@@ -4,9 +4,6 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.TargetApi;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.support.annotation.NonNull;
-import android.support.design.widget.Snackbar;
 import android.app.Activity;
 import android.app.LoaderManager.LoaderCallbacks;
 
@@ -20,21 +17,25 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.ContactsContract;
 import android.text.TextUtils;
-import android.view.KeyEvent;
+
 import android.view.View;
 import android.view.View.OnClickListener;
-import android.view.inputmethod.EditorInfo;
+
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.Button;
-import android.widget.EditText;
-import android.widget.TextView;
 
+import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
-
-import static android.Manifest.permission.READ_CONTACTS;
 
 /**
  * A login screen that offers login via email/password.
@@ -220,8 +221,77 @@ public class UploadActivity extends Activity implements LoaderCallbacks<Cursor> 
 
         @Override
         protected Boolean doInBackground(Void... params) {
+            String lineEnd = "\r\n";
+            String twoHyphens = "--";
+            String boundary = "*****";
 
-            // TODO: UPLOAD THE IMAGE
+            try {
+                URL url = new URL("http://doxy.developerarray.com:8181/images");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setDoOutput(true);
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Connection", "Keep-Alive");
+
+                conn.setRequestProperty("Content-Type", "multipart/form-data;boundary="+boundary);
+
+                DataOutputStream dos = new DataOutputStream(conn.getOutputStream());
+
+                dos.writeBytes(twoHyphens + boundary + lineEnd);
+                dos.writeBytes("Content-Disposition: form-data; name=\"species\""+ lineEnd);
+                dos.writeBytes(lineEnd);
+                dos.writeBytes(mLabel);
+                dos.writeBytes(lineEnd);
+                dos.writeBytes(twoHyphens + boundary + lineEnd);
+
+                dos.writeBytes("Content-Disposition: form-data; name=\"file\";filename=\"" + mFile.getName() +"\"" + lineEnd + "Content-Type: image/png" + lineEnd);
+                dos.writeBytes(lineEnd);
+
+                //Log.e(Tag,"Headers are written");
+
+                // create a buffer of maximum size
+                FileInputStream fileInputStream = new FileInputStream(mFile.getAbsolutePath());
+                int bytesAvailable = fileInputStream.available();
+
+                int maxBufferSize = 1024;
+                int bufferSize = Math.min(bytesAvailable, maxBufferSize);
+                byte[ ] buffer = new byte[bufferSize];
+
+                // read file and write it into form...
+                int bytesRead = fileInputStream.read(buffer, 0, bufferSize);
+
+                while (bytesRead > 0)
+                {
+                    dos.write(buffer, 0, bufferSize);
+                    bytesAvailable = fileInputStream.available();
+                    bufferSize = Math.min(bytesAvailable,maxBufferSize);
+                    bytesRead = fileInputStream.read(buffer, 0,bufferSize);
+                }
+                dos.writeBytes(lineEnd);
+                dos.writeBytes(twoHyphens + boundary + twoHyphens + lineEnd);
+
+                // close streams
+                fileInputStream.close();
+
+                dos.flush();
+
+                InputStream is = conn.getInputStream();
+
+                // retrieve the response from server
+                int ch;
+
+                StringBuffer b =new StringBuffer();
+                while( ( ch = is.read() ) != -1 ){ b.append( (char)ch ); }
+                String s=b.toString();
+                dos.close();
+            }
+            catch (MalformedURLException ex)
+            {
+                //Log.e(Tag, "URL error: " + ex.getMessage(), ex);
+            }
+            catch (IOException ioe)
+            {
+                //Log.e(Tag, "IO error: " + ioe.getMessage(), ioe);
+            }
 
             return true;
         }
