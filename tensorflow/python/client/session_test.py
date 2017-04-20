@@ -1703,6 +1703,10 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session(server.target) as sess:
       with CaptureStderr() as log:
         sess.run(c)
+      if test_util.is_sycl_enabled():
+        self.assertTrue('/job:local/replica:0/task:0/sycl:0' in str(log))
+        return
+
       # Ensure that we did log device placement.
       self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log))
 
