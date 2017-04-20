@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Seq2seq layer operations for use in neural networks.
-"""
+"""Seq2seq layer operations for use in neural networks."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import abc
-
 import six
 
 from tensorflow.python.framework import constant_op
@@ -36,6 +34,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 
+
 __all__ = ["Decoder", "dynamic_decode"]
 
 
@@ -44,11 +43,22 @@ _transpose_batch_time = rnn._transpose_batch_time  # pylint: disable=protected-a
 
 @six.add_metaclass(abc.ABCMeta)
 class Decoder(object):
-  """An RNN Decoder abstract interface object."""
+  """An RNN Decoder abstract interface object.
+
+  Concepts used by this interface:
+  - `inputs`: (structure of) tensors and TensorArrays that is passed as input to
+    the RNNCell composing the decoder, at each time step.
+  - `state`: (structure of) tensors and TensorArrays that is passed to the
+    RNNCell instance as the state.
+  - `finished`: boolean tensor telling whether each sequence in the batch is
+    finished.
+  - `outputs`: Instance of BasicDecoderOutput. Result of the decoding, at each
+    time step.
+  """
 
   @property
   def batch_size(self):
-    """The batch size of the inputs returned by `sample`."""
+    """The batch size of input values."""
     raise NotImplementedError
 
   @property
@@ -65,11 +75,14 @@ class Decoder(object):
   def initialize(self, name=None):
     """Called before any decoding iterations.
 
+    This methods must compute initial input values and initial state.
+
     Args:
       name: Name scope for any created operations.
 
     Returns:
-      `(finished, first_inputs, initial_state)`.
+      `(finished, initial_inputs, initial_state)`: initial values of
+      'finished' flags, inputs and state.
     """
     raise NotImplementedError
 
@@ -78,13 +91,19 @@ class Decoder(object):
     """Called per step of decoding (but only once for dynamic decoding).
 
     Args:
-      time: Scalar `int32` tensor.
-      inputs: Input (possibly nested tuple of) tensor[s] for this time step.
-      state: State (possibly nested tuple of) tensor[s] from previous time step.
+      time: Scalar `int32` tensor. Current step number.
+      inputs: RNNCell input (possibly nested tuple of) tensor[s] for this time
+        step.
+      state: RNNCell state (possibly nested tuple of) tensor[s] from previous
+        time step.
       name: Name scope for any created operations.
 
     Returns:
-      `(outputs, next_state, next_inputs, finished)`.
+      `(outputs, next_state, next_inputs, finished)`: `outputs` is an instance
+      of BasicDecoderOutput, `next_state` is a (structure of) state tensors and
+      TensorArrays, `next_inputs` is the tensor that should be used as input for
+      the next step, `finished` is a boolean tensor telling whether the sequence
+      is complete, for each sequence in the batch.
     """
     raise NotImplementedError
 
@@ -113,6 +132,8 @@ def dynamic_decode(decoder,
                    swap_memory=False,
                    scope=None):
   """Perform dynamic decoding with `decoder`.
+
+  Calls initialize() once and step() repeatedly on the Decoder object.
 
   Args:
     decoder: A `Decoder` instance.
@@ -257,5 +278,8 @@ def dynamic_decode(decoder,
     final_outputs = nest.map_structure(lambda ta: ta.stack(), final_outputs_ta)
     if not output_time_major:
       final_outputs = nest.map_structure(_transpose_batch_time, final_outputs)
+
+  if hasattr(decoder, "finalize"):
+    final_outputs, final_state = decoder.finalize(final_outputs, final_state)
 
   return final_outputs, final_state

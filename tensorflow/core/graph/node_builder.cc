@@ -21,14 +21,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-NodeBuilder::NodeOut::NodeOut(Node* n, int i)  // NOLINT(runtime/explicit)
+NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
     : node(n),
       error(false),
       name(node != nullptr ? node->name() : (error = true, "")),
       index(i),
       dt(SafeGetOutput(node, i, &error)) {}
 
-NodeBuilder::NodeOut::NodeOut(StringPiece n, int i, DataType t)
+NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
     : node(nullptr), error(false), name(n.ToString()), index(i), dt(t) {}
 
 NodeBuilder::NodeOut::NodeOut()

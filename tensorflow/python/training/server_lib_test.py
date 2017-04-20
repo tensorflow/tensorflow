@@ -34,6 +34,8 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import input as input_ops
+from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import server_lib
 
 
@@ -224,6 +226,20 @@ class GrpcServerTest(test.TestCase):
     with self.assertRaises(errors_impl.UnknownError):
       _ = server_lib.Server(
           {"local_2": [server.target[len("grpc://"):]]})
+
+  def testExtendAfterQueueRunners(self):
+    server = self._cached_server
+    with session.Session(server.target) as sess:
+      input_queue = input_ops.input_producer(constant_op.constant(
+          [0.], dtype=dtypes.float32))
+      self.assertIsNotNone(input_queue)
+
+      var = variables.Variable(1., dtype=dtypes.float32, trainable=False,
+                               name="var")
+
+      sess.run(variables.global_variables_initializer())
+      queue_runner_impl.start_queue_runners(sess)
+      sess.run(var.assign(3.0))
 
 
 class ServerDefTest(test.TestCase):

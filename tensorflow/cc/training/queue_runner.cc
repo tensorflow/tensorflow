@@ -49,7 +49,12 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
   enqueue_op_names_.insert(enqueue_op_names_.end(),
                            queue_runner_def.enqueue_op_name().begin(),
                            queue_runner_def.enqueue_op_name().end());
-  runs_ = enqueue_op_names_.size();
+  size_t op_names_size = enqueue_op_names_.size();
+  if (op_names_size > kint32max) {
+    return Status(error::INVALID_ARGUMENT,
+                  "Enqueue ops to run cannot exceed kint32max");
+  }
+  runs_ = static_cast<int>(op_names_size);
   if (runs_ == 0) {
     return Status(error::INVALID_ARGUMENT, "Empty enqueue ops to run.");
   }

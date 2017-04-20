@@ -330,16 +330,26 @@ std::list<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   return post_order;
 }
 
-string HloComputation::ToString() const {
+string HloComputation::ToString(int nested_level) const {
   std::ostringstream s;
+  for (int i = 0; i < nested_level; i++) {
+    s << "    ";
+  }
   s << name() << " " << ShapeUtil::HumanString(ComputeProgramShape())
     << " { \n";
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
+    for (int i = 0; i < nested_level; i++) {
+      s << "    ";
+    }
     s << "  " << instruction->ToString() << "\n";
     if (instruction->opcode() == HloOpcode::kFusion) {
-      s << "    " << instruction->fused_instructions_computation()->ToString()
+      s << instruction->fused_instructions_computation()->ToString(
+               nested_level + 1)
         << "\n";
     }
+  }
+  for (int i = 0; i < nested_level; i++) {
+    s << "    ";
   }
   s << "}";
   return s.str();

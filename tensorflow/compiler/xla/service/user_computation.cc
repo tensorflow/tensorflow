@@ -1510,6 +1510,7 @@ void ConstantVisitor(const SessionComputation& session_computation,
                       is_constant);
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
+      *is_constant = false;
       break;
     }
 

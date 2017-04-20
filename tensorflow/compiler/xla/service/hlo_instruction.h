@@ -733,9 +733,9 @@ class HloInstruction {
   // instruction to make it a bitcast.
   bool CouldBeBitcast() const;
 
-  // Sets param_no for this Parameter instruction.
+  // Sets the parent fusion instruction for this instruction.
   //
-  // Precondition: opcode() == HloOpcode::kParameter
+  // Precondition: opcode() == HloOpcode::kFusion
   void SetParentFusion(HloInstruction* fusion_instruction) {
     CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
     parent_fusion_instruction_ = fusion_instruction;

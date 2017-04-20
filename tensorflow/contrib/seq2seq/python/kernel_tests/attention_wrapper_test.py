@@ -91,7 +91,7 @@ class AttentionWrapperTest(test.TestCase):
         memory=encoder_outputs,
         memory_sequence_length=encoder_sequence_length)
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       with vs.variable_scope(
           "root",
           initializer=init_ops.random_normal_initializer(stddev=0.01, seed=3)):

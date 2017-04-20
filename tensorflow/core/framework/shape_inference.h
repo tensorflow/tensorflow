@@ -182,15 +182,12 @@ class InferenceContext {
     if (!s.ok()) {
       return AttachContext(s);
     }
-#if 0
-    // TODO(cwhipkey): enable this check
 #ifndef NDEBUG
     for (int i = 0; i < num_outputs(); ++i) {
       DCHECK(output(i).IsSet()) << i << " for " << node_def().name()
                                 << " of type " << node_def().op();
     }
 #endif  // NDEBUG
-#endif
     return s;
   }
 

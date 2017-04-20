@@ -73,13 +73,13 @@ class BincountTest(test_util.TensorFlowTestCase):
         else:
           weights = np.random.random(num_samples)
         self.assertAllEqual(
-            math_ops.bincount(arr, weights=weights).eval(),
+            math_ops.bincount(arr, weights).eval(),
             np.bincount(arr, weights))
 
   def test_zero_weights(self):
     with self.test_session():
       self.assertAllEqual(
-          math_ops.bincount(np.arange(1000), weights=np.zeros(1000)).eval(),
+          math_ops.bincount(np.arange(1000), np.zeros(1000)).eval(),
           np.zeros(1000))
 
   def test_negative(self):

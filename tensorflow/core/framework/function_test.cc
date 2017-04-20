@@ -83,10 +83,10 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
   InstantiationResult result;
   TF_ASSERT_OK(InstantiateFunction(fdef, {{"T", DT_FLOAT}}, GetOpSig, &result));
   const char* e2 = R"P(
-(n0:float) -> (n3:float) {
-  n1 = Square[T=float](n0)
-  n2 = One[T=float]()
-  n3 = Add[T=float](n1, n2)
+(x:float) -> (y:float) {
+  a = Square[T=float](x)
+  o = One[T=float]()
+  y = Add[T=float](a, o)
 }
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
@@ -128,10 +128,10 @@ ControlDep(x:int32) -> (y:int32) {
   InstantiationResult result;
   TF_ASSERT_OK(InstantiateFunction(fdef, {{"T", DT_FLOAT}}, GetOpSig, &result));
   const char* e2 = R"P(
-(n0:int32) -> (n3:int32) {
-  n1 = Identity[T=int32](n0)
-  n2 = NoOp() @ n1
-  n3 = Identity[T=int32](n1) @ n2
+(x:int32) -> (y:int32) {
+  a = Identity[T=int32](x)
+  o = NoOp() @ a
+  y = Identity[T=int32](a) @ o
 }
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_INT32}));
@@ -175,8 +175,8 @@ BackCompat() -> (y:float) {
       InstantiateFunction(fdef, InstantiateAttrValueMap{}, GetOpSig, &result));
   // Should get T=float from Op's default.
   const char* e2 = R"P(
-() -> (n0:float) {
-  n0 = HasDefaultType[T=float]()
+() -> (a:float) {
+  a = HasDefaultType[T=float]()
 }
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector());
@@ -211,8 +211,8 @@ NTimesT(x:float, y:float) -> (z:float) {
   InstantiationResult result;
   TF_ASSERT_OK(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result));
   const char* e2 = R"P(
-(n0:float, n1:float) -> (n2:float) {
-  n2 = AddN[N=2, T=float](n0, n1)
+(x:float, y:float) -> (a:float) {
+  a = AddN[N=2, T=float](x, y)
 }
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT, DT_FLOAT}));
@@ -275,9 +275,9 @@ AddSquared[N:int, T:{float, double, int32, int64}](x:N*T) -> (y:T) {
   TF_ASSERT_OK(InstantiateFunction(fdef, {{"N", 3}, {"T", DT_FLOAT}}, GetOpSig,
                                    &result));
   const char* e2 = R"P(
-(n0:float, n1:float, n2:float) -> (n4:float) {
-  n3 = Map[N=3, T=float, U=float, func=Square[T=float]](n0, n1, n2)
-  n4 = AddN[N=3, T=float](n3, n3:1, n3:2)
+(x_0:float, x_1:float, x_2:float) -> (y:float) {
+  a = Map[N=3, T=float, U=float, func=Square[T=float]](x_0, x_1, x_2)
+  y = AddN[N=3, T=float](a, a:1, a:2)
 }
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT, DT_FLOAT, DT_FLOAT}));
@@ -317,12 +317,12 @@ ControlDeps(x:float) -> () {
   InstantiationResult result;
   TF_ASSERT_OK(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result));
   const char* e2 = R"P(
-(n0:float) -> () {
-  n1 = One[T=float]() @ n0
-  n2 = NoOp() @ n1
-  n3 = One[T=float]() @ n2
-  n4 = NoOp() @ n3
-  n5 = One[T=float]() @ n1, n4
+(x:float) -> () {
+  a = One[T=float]() @ x
+  u = NoOp() @ a
+  b = One[T=float]() @ u
+  v = NoOp() @ b
+  c = One[T=float]() @ a, v
 }
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
@@ -397,13 +397,13 @@ Test(i:float) -> (o:float) {
   InstantiationResult result;
   TF_ASSERT_OK(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result));
   const char* e2 = R"P(
-(n0:float) -> (n6:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n2 = Split[T=float, num_split=4](n1, n0)
-  n3 = Mul[T=float](n2, n2:1)
-  n4 = Mul[T=float](n2:2, n2:3)
-  n5 = _ListToArray[N=2, T=float, Tin={float, float}](n3, n4)
-  n6 = AddN[N=2, T=float](n5, n5:1)
+(i:float) -> (o:float) {
+  zero = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  s = Split[T=float, num_split=4](zero, i)
+  l = Mul[T=float](s, s:1)
+  r = Mul[T=float](s:2, s:3)
+  x = _ListToArray[N=2, T=float, Tin={float, float}](l, r)
+  o = AddN[N=2, T=float](x, x:1)
 }
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
@@ -469,9 +469,9 @@ MySelect(x:float) -> (z:float) {
   InstantiationResult result;
   TF_ASSERT_OK(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result));
   const char* e2 = R"P(
-(n0:float) -> (n2:float) {
-  n1 = Cond[Tin={float}, cond=MyCond, else_branch=MyElse, out_types={float}, then_branch=MyThen](n0)
-  n2 = Cond[Tin={float, float}, cond=MyCond2, else_branch=MyElse2, out_types={float}, then_branch=MyThen2](n1, n1)
+(x:float) -> (z:float) {
+  y = Cond[Tin={float}, cond=MyCond, else_branch=MyElse, out_types={float}, then_branch=MyThen](x)
+  z = Cond[Tin={float, float}, cond=MyCond2, else_branch=MyElse2, out_types={float}, then_branch=MyThen2](y, y)
 }
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));

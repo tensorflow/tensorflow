@@ -136,7 +136,7 @@ class HloComputation {
   void set_name(const string& name) { name_ = name; }
 
   // Return a string representation of the computation.
-  string ToString() const;
+  string ToString(int nested_level = 0) const;
 
   const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
     return instructions_;
