@@ -25,29 +25,15 @@ namespace tensorflow {
 std::mutex GSYCLInterface::mutex_;
 GSYCLInterface *GSYCLInterface::s_instance = 0;
 
-static std::unordered_set<SYCLDevice *> live_devices;
-static bool first_time = true;
-
 void ShutdownSycl() {
-  live_devices.clear();
-  if(GSYCLInterface::instance())
-  {
-    GSYCLInterface::instance()->destroy();
-  }
+  GSYCLInterface::Reset();
 }
 
 void SYCLDevice::RegisterDevice() {
-  if (first_time) {
-    first_time = false;
     atexit(ShutdownSycl);
-  }
-  live_devices.insert(this);
 }
 
-SYCLDevice::~SYCLDevice() {
-  device_context_->Unref();
-  live_devices.erase(this);
-}
+SYCLDevice::~SYCLDevice() {}
 
 void SYCLDevice::Compute(OpKernel *op_kernel, OpKernelContext *context) {
   assert(context);

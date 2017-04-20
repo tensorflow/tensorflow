@@ -26,7 +26,6 @@ class SYCLDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions &options, const string &name_prefix,
                        std::vector<Device *> *devices) override {
-    string name = strings::StrCat(name_prefix, "/sycl:", 0);
 
     auto syclInterface = GSYCLInterface::instance();
 
@@ -37,11 +36,14 @@ class SYCLDeviceFactory : public DeviceFactory {
     }
 
     for (int i = 0; i < n; i++) {
+      string name = strings::StrCat(name_prefix, "/sycl:", i);
       devices->push_back(
           new SYCLDevice(options, name, Bytes(256 << 20), DeviceLocality()
                          , syclInterface->GetShortDeviceDescription(i)
                          , syclInterface->GetSYCLAllocator(i)
-                         , syclInterface->GetCPUAllocator(i)));
+                         , syclInterface->GetCPUAllocator(i)
+                         , syclInterface->GetSYCLContext(i))
+                       );
     }
 
     return Status::OK();

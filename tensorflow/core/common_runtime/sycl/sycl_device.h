@@ -30,9 +30,10 @@ namespace tensorflow {
 
 class GSYCLInterface
 {
-    std::vector<Eigen::QueueInterface*> m_queue_interface_;    // owned
-    std::vector<Allocator*>             m_cpu_allocator_;      // owned
-    std::vector<SYCLAllocator*>         m_sycl_allocator_;     // owned
+    std::vector<Eigen::QueueInterface*>     m_queue_interface_;    // owned
+    std::vector<Allocator*>                 m_cpu_allocator_;      // owned
+    std::vector<SYCLAllocator*>             m_sycl_allocator_;     // owned
+    std::vector<SYCLDeviceContext*>         m_sycl_context_;       // owned
 
     static std::mutex mutex_;
     static GSYCLInterface* s_instance;
@@ -67,10 +68,36 @@ class GSYCLInterface
       }
     }
 
+    ~GSYCLInterface() {
+        for (auto p : m_cpu_allocator_) {
+          delete p;
+        }
+        m_cpu_allocator_.clear();
+
+        for (auto p : m_sycl_allocator_) {
+          p->Synchronize();
+          delete p;
+        }
+        m_sycl_allocator_.clear();
+
+        for(auto p : m_sycl_context_) {
+          p->Unref();
+        }
+        m_sycl_context_.clear();
+
+        for (auto p : m_queue_interface_) {
+          p->deallocate_all();
+          delete p;
+          p = nullptr;
+        }
+        m_queue_interface_.clear();
+    }
+
     void AddDevice(const cl::sycl::device & d) {
       m_queue_interface_.push_back(new Eigen::QueueInterface(d));
       m_cpu_allocator_.push_back(cpu_allocator());
       m_sycl_allocator_.push_back(new SYCLAllocator(m_queue_interface_.back()));
+      m_sycl_context_.push_back(new SYCLDeviceContext());
     }
 
   public:
@@ -81,6 +108,12 @@ class GSYCLInterface
         s_instance = new GSYCLInterface();
       }
       return s_instance;
+    }
+
+    static void Reset()
+    {
+      delete s_instance;
+      s_instance = NULL;
     }
 
     Eigen::QueueInterface * GetQueueInterface(size_t i = 0) {
@@ -110,28 +143,17 @@ class GSYCLInterface
       }
     }
 
-    string GetShortDeviceDescription(int device_id = 0) {
-      return strings::StrCat("device: ", device_id, " ,name: SYCL");
+    SYCLDeviceContext * GetSYCLContext(size_t i = 0) {
+      if(!m_sycl_context_.empty()) {
+        return m_sycl_context_[i];
+      } else {
+        std::cerr << "No cl::sycl::device has been added" << std::endl;
+        return nullptr;
+      }
     }
 
-    void destroy()
-    {
-      for (auto p : m_cpu_allocator_) {
-        delete p;
-      }
-      m_cpu_allocator_.clear();
-      for (auto p : m_sycl_allocator_) {
-        delete p;
-      }
-      m_sycl_allocator_.clear();
-      for (auto p : m_queue_interface_) {
-        delete p;
-      }
-      m_queue_interface_.clear();
-
-      if(s_instance) {
-        delete s_instance;
-      }
+    string GetShortDeviceDescription(int device_id = 0) {
+      return strings::StrCat("device: ", device_id, " ,name: SYCL");
     }
 };
 
@@ -141,7 +163,7 @@ class SYCLDevice : public LocalDevice {
   SYCLDevice(const SessionOptions &options, const string &name,
              Bytes memory_limit, const DeviceLocality &locality,
              const string &physical_device_desc, SYCLAllocator * sycl_allocator,
-             Allocator *cpu_allocator)
+             Allocator *cpu_allocator, SYCLDeviceContext* ctx)
       : LocalDevice(
             options,
             Device::BuildDeviceAttributes(name, DEVICE_SYCL, memory_limit,
@@ -149,7 +171,7 @@ class SYCLDevice : public LocalDevice {
             sycl_allocator),
         cpu_allocator_(cpu_allocator),
         sycl_allocator_(sycl_allocator),
-        device_context_(new SYCLDeviceContext()) {
+        device_context_(ctx) {
     RegisterDevice();
     set_eigen_sycl_device(sycl_allocator->getSyclDevice());
   }
