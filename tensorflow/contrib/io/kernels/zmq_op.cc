@@ -52,7 +52,6 @@ class PollZmqOp : public OpKernel {
     }
   }
 
-  using OpKernel::OpKernel;
   void Compute(OpKernelContext* context) override {
     const Tensor* input;
     OP_REQUIRES_OK(context, context->input("request", &input));
@@ -66,7 +65,7 @@ class PollZmqOp : public OpKernel {
                                                       TensorShape({}), &output));
 
     // Get the message and response as string scalars
-    auto request = input->scalar<string>()();
+    const auto &request = input->scalar<string>()();
     auto &reply = output->scalar<string>()();
 
     // Lock for exclusive access (destructor releases)

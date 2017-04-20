@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,6 +47,13 @@ REGISTER_OP("PollZmq")
     .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Sends a message using ZeroMQ and returns the reply.
+
+request: The request to send.
+address: A string consisting of a 'transport'`://` followed by an 'address'. The
+  'transport' specifies the underlying protocol to use (usually 'tcp'). The
+  'address' specifies the transport-specific address to connect to.
+timeout: The timeout for receiving messages in milliseconds. The default (-1)
+  corresponds to an infinite timeout.
 )doc");
 
 }  // namespace tensorflow
