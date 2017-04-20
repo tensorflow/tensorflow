@@ -435,6 +435,7 @@ HloInstruction::CreateSelectAndScatter(
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
   instruction->fusion_kind_ = fusion_kind;
   instruction->set_parent(fused_root->parent());
+  instruction->set_metadata(fused_root->metadata());
   instruction->CloneAndFuseInternal(fused_root);
   instruction->CheckFusionInstruction();
   return instruction;
@@ -858,6 +859,7 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
       CloneWithNewOperands(shape_, operands_);
   clone->name_ = name() + "." + suffix;
   clone->set_parent(parent());
+  clone->set_metadata(metadata_);
   return clone;
 }
 

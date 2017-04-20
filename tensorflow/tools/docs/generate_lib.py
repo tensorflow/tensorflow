@@ -439,19 +439,6 @@ class DocGenerator(object):
   def set_py_modules(self, py_modules):
     self._py_modules = py_modules
 
-  def load_contrib(self):
-    """Access something in contrib so tf.contrib is properly loaded."""
-    # Without this, it ends up hidden behind lazy loading.  Requires
-    # that the caller has already called set_py_modules().
-    if self._py_modules is None:
-      raise RuntimeError(
-          'Must call set_py_modules() before running load_contrib().')
-    for name, module in self._py_modules:
-      if name == 'tf':
-        _ = module.contrib.__name__
-        return True
-    return False
-
   def py_module_names(self):
     if self._py_modules is None:
       raise RuntimeError(

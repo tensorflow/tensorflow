@@ -90,7 +90,7 @@ namespace functor {
 
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
-  static EIGEN_ALWAYS_INLINE void Compute(
+  static EIGEN_ALWAYS_INLINE Status Compute(
         const GPUDevice& d, typename TTypes<T>::Matrix out,
         typename TTypes<Tindices>::ConstMatrix a_indices,
         typename TTypes<T>::ConstVec a_values,
@@ -139,6 +139,8 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
             .broadcast(n_by_1)
             .generate(sparse_tensor_dense_matmul_generator)
             .sum(reduce_on_rows);
+
+    return Status::OK();
   }
 };
 

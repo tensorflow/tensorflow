@@ -684,8 +684,9 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
     for (const auto& input : inputs) {
       auto it = run_state->pending_inputs.find(input.first);
       if (it == run_state->pending_inputs.end()) {
-        return errors::InvalidArgument("The feed ", input.first,
-                                       " had already been fed.");
+        return errors::InvalidArgument(
+            "The feed ", input.first,
+            " has already been fed or was not specified in partial_run_setup.");
       }
     }
     // Check that this is a new set of fetches that are still pending.
@@ -693,7 +694,8 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
       auto it = run_state->pending_outputs.find(output);
       if (it == run_state->pending_outputs.end()) {
         return errors::InvalidArgument("The fetch ", output,
-                                       " had already been fetched.");
+                                       " has already been fetched or was not "
+                                       "specified in partial_run_setup.");
       }
     }
   }

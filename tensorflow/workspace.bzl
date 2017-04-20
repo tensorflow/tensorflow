@@ -477,11 +477,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/5d2b26453d4bca5a13b69b0130e4369d1fcd393d.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/5d2b26453d4bca5a13b69b0130e4369d1fcd393d.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/8a1f075c93565dd665a10ac38490f644b2c02037.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/8a1f075c93565dd665a10ac38490f644b2c02037.tar.gz",
       ],
-      sha256 = "3cecf39bf4b3854629d610bb321bb57e0e46bda9110bd51c3bae5a4171c82bab",
-      strip_prefix = "llvm-5d2b26453d4bca5a13b69b0130e4369d1fcd393d",
+      sha256 = "d9ebd0b49544f3b20ee2a412aac18ed8899b8eef376343a6ba8e179563cbfd86",
+      strip_prefix = "llvm-8a1f075c93565dd665a10ac38490f644b2c02037",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
@@ -569,14 +569,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "nccl_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
-          "https://github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/nvidia/nccl/archive/ccfc4567dc3e2a37fb42cfbc64d10eb526e7da7b.tar.gz",
+          "https://github.com/nvidia/nccl/archive/ccfc4567dc3e2a37fb42cfbc64d10eb526e7da7b.tar.gz",
       ],
-      sha256 = "6787f0eed88d52ee8e32956fa4947d92c139da469f1d8e311c307f27d641118e",
-      strip_prefix = "nccl-024d1e267845f2ed06f3e2e42476d50f04a00ee6",
-      build_file = str(Label("//third_party/nccl:nccl.BUILD")),
-      # TODO: Remove patching after the fix is merged into nccl(see https://github.com/NVIDIA/nccl/pull/78)
-      patch_file = str(Label("//third_party/nccl:fix_clang_compilation.patch")),
+      sha256 = "6c34a0862d9f8ed4ad5984c6a8206b351957bb14cf6ad7822720f285f4aada04",
+      strip_prefix = "nccl-ccfc4567dc3e2a37fb42cfbc64d10eb526e7da7b",
+      build_file = str(Label("//third_party:nccl.BUILD")),
       repository = tf_repo_name,
   )
 

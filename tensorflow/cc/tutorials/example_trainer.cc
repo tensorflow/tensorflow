@@ -227,7 +227,7 @@ int main(int argc, char* argv[]) {
     argv[dst++] = f;
   }
   argv[dst++] = nullptr;
-  argc = unknown_flags.size() + 1;
+  argc = static_cast<int>(unknown_flags.size() + 1);
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   tensorflow::example::ConcurrentSessions(opts);
 }

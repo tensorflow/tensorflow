@@ -58,6 +58,7 @@ py_library(
         "//tensorflow/contrib/solvers:solvers_py",
         "//tensorflow/contrib/sparsemax:sparsemax_py",
         "//tensorflow/contrib/specs",
+        "//tensorflow/contrib/staging",
         "//tensorflow/contrib/stat_summarizer:stat_summarizer_py",
         "//tensorflow/contrib/stateless",
         "//tensorflow/contrib/tensor_forest:init_py",
