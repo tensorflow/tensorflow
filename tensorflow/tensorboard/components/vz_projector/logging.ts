@@ -53,19 +53,22 @@ export function setModalMessage(
   dialog.querySelector('#notification-title').innerHTML = title;
   let msgsContainer = dialog.querySelector('#notify-msgs') as HTMLElement;
   if (isErrorMsg) {
-    d3.select(msgsContainer).html('');
+    msgsContainer.innerHTML = '';
   } else {
-    d3.select(msgsContainer).selectAll('.error').remove();
+    const errors = msgsContainer.querySelectorAll('.error');
+    for (let i = 0; i < errors.length; i++) {
+      msgsContainer.removeChild(errors[i]);
+    }
   }
   let divId = `notify-msg-${id}`;
-  let msgDiv = d3.select(dialog.querySelector('#' + divId));
-  let exists = msgDiv.size() > 0;
-  if (!exists) {
-    msgDiv = d3.select(msgsContainer)
-                 .insert('div', ':first-child')
-                 .attr('class', 'notify-msg')
-                 .classed('error', isErrorMsg)
-                 .attr('id', divId);
+  let msgDiv = dialog.querySelector('#' + divId) as HTMLDivElement;
+  if (msgDiv == null) {
+    msgDiv = document.createElement('div');
+    msgDiv.className = 'notify-msg ' + (isErrorMsg ? 'error' : '');
+    msgDiv.id = divId;
+
+    msgsContainer.insertBefore(msgDiv, msgsContainer.firstChild);
+
     if (!isErrorMsg) {
       numActiveMessages++;
     } else {
@@ -79,7 +82,7 @@ export function setModalMessage(
     }
     msgDiv.remove();
   } else {
-    msgDiv.text(msg);
+    msgDiv.innerText = msg;
     dialog.open();
   }
   return id;

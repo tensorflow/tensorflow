@@ -1431,6 +1431,14 @@ class SessionTest(test_util.TensorFlowTestCase):
                                  'You must feed a value for placeholder'):
       sess.partial_run(handle, fetches[0])
 
+  def testInvalidPartialRunSetup(self):
+    sess = session.Session()
+    x = array_ops.placeholder(dtypes.float32, shape=[])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        'specify at least one target to fetch or execute.'):
+      sess.partial_run_setup(fetches=[], feeds=[x])
+
   def testPartialRunDirect(self):
     self.runTestPartialRun(session.Session())
 
@@ -1705,6 +1713,49 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess.run(c)
       # Ensure that we did log device placement.
       self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log))
+
+  def testLocalMasterSessionTimeout(self):
+    # Test that the timeout passed in a config to the session works correctly.
+    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
+    server = server_lib.Server.create_local_server()
+    q = data_flow_ops.FIFOQueue(1, dtypes.float32)
+    dequeued_t = q.dequeue()
+
+    with session.Session(server.target, config=config) as sess:
+      # Intentionally do not run any enqueue_ops so that dequeue will block
+      # until operation_timeout_in_ms.
+      with self.assertRaises(errors.DeadlineExceededError):
+        sess.run(dequeued_t)
+
+  def testDefaultServerTimeout(self):
+    # Test that the default server config timeout gets used when no Session
+    # config is provided.
+    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
+    server = server_lib.Server.create_local_server(config=config)
+    q = data_flow_ops.FIFOQueue(1, dtypes.float32)
+    dequeued_t = q.dequeue()
+
+    with session.Session(server.target) as sess:
+      # Intentionally do not run any enqueue_ops so that dequeue will block
+      # until operation_timeout_in_ms.
+      with self.assertRaises(errors.DeadlineExceededError):
+        sess.run(dequeued_t)
+
+  def runTestBuildGraphError(self, sess):
+    # Ensure that errors from building the graph get propagated.
+    data = array_ops.placeholder(dtypes.float32, shape=[])
+    enter_1 = control_flow_ops.enter(data, 'foo_1', False)
+    enter_2 = control_flow_ops.enter(data, 'foo_2', False)
+    res = math_ops.add(enter_1, enter_2)
+    with self.assertRaisesOpError('has inputs from different frames'):
+      sess.run(res, feed_dict={data: 1.0})
+
+  def testBuildGraphErrorDirect(self):
+    self.runTestBuildGraphError(session.Session())
+
+  def testBuildGraphErrorDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestBuildGraphError(session.Session(server.target))
 
 
 if __name__ == '__main__':

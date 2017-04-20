@@ -2,6 +2,7 @@
 
 ## Major Features and Improvements
 * Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
+* Added ibverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
 
 
 # Release 1.1.0

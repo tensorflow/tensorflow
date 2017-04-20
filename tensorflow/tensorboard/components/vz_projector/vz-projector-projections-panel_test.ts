@@ -18,10 +18,26 @@ import {ProjectionsPanel} from './vz-projector-projections-panel';
 const assert = chai.assert;
 
 describe('restoreUIFromBookmark', () => {
-  it('sets the pcaX/Y properties when setting 2D component values', () => {
-    let projectionsPanel = document.createElement(
-        ProjectionsPanel.prototype.is) as ProjectionsPanel;
+  let projectionsPanel: ProjectionsPanel;
+  beforeEach(() => {
+    projectionsPanel = document.createElement(ProjectionsPanel.prototype.is) as
+        ProjectionsPanel;
 
+    // Set up some of the UI so the elements are found in the production code.
+    const tsnePerplexityContainer = document.createElement('div');
+    tsnePerplexityContainer.className = 'tsne-perplexity';
+    const tsnePerplexity = document.createElement('span');
+    tsnePerplexityContainer.appendChild(tsnePerplexity);
+    projectionsPanel.appendChild(tsnePerplexityContainer);
+
+    const tsneLearningRateContainer = document.createElement('div');
+    tsneLearningRateContainer.className = 'tsne-learning-rate';
+    const tsneLearningRate = document.createElement('span');
+    tsneLearningRateContainer.appendChild(tsneLearningRate);
+    projectionsPanel.appendChild(tsneLearningRateContainer);
+  });
+
+  it('sets the pcaX/Y properties when setting 2D component values', () => {
     spyOn(projectionsPanel, 'setZDropdownEnabled');
 
     const s = new State();
@@ -35,9 +51,6 @@ describe('restoreUIFromBookmark', () => {
   });
 
   it('sets the pcaX/Y properties when setting 3D component values', () => {
-    let projectionsPanel = document.createElement(
-        ProjectionsPanel.prototype.is) as ProjectionsPanel;
-
     spyOn(projectionsPanel, 'setZDropdownEnabled');
 
     const s = new State();
@@ -53,10 +66,27 @@ describe('restoreUIFromBookmark', () => {
 });
 
 describe('populateBookmarkFromUI', () => {
-  it('gets the PCA component UI values from a 2D PCA projection', () => {
-    let projectionsPanel = document.createElement(
-        ProjectionsPanel.prototype.is) as ProjectionsPanel;
+  let projectionsPanel: ProjectionsPanel;
 
+  beforeEach(() => {
+    projectionsPanel = document.createElement(ProjectionsPanel.prototype.is) as
+        ProjectionsPanel;
+
+    // Set up some of the UI so the elements are found in the production code.
+    const tsnePerplexityContainer = document.createElement('div');
+    tsnePerplexityContainer.className = 'tsne-perplexity';
+    const tsnePerplexity = document.createElement('span');
+    tsnePerplexityContainer.appendChild(tsnePerplexity);
+    projectionsPanel.appendChild(tsnePerplexityContainer);
+
+    const tsneLearningRateContainer = document.createElement('div');
+    tsneLearningRateContainer.className = 'tsne-learning-rate';
+    const tsneLearningRate = document.createElement('span');
+    tsneLearningRateContainer.appendChild(tsneLearningRate);
+    projectionsPanel.appendChild(tsneLearningRateContainer);
+  });
+
+  it('gets the PCA component UI values from a 2D PCA projection', () => {
     projectionsPanel.pcaX = 0;
     projectionsPanel.pcaY = 1;
     projectionsPanel.pcaIs3d = false;
@@ -67,9 +97,6 @@ describe('populateBookmarkFromUI', () => {
   });
 
   it('gets the PCA component UI values from a 3D PCA projection', () => {
-    let projectionsPanel = document.createElement(
-        ProjectionsPanel.prototype.is) as ProjectionsPanel;
-
     projectionsPanel.pcaX = 0;
     projectionsPanel.pcaY = 1;
     projectionsPanel.pcaZ = 2;

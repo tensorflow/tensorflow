@@ -46,6 +46,5 @@ if __name__ == '__main__':
 
   # tf_debug is not imported with tf, it's a separate module altogether
   doc_generator.set_py_modules([('tf', tf), ('tfdbg', tf_debug)])
-  doc_generator.load_contrib()
 
   sys.exit(doc_generator.build(flags))

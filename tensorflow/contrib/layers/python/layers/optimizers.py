@@ -107,13 +107,8 @@ def optimize_loss(loss,
     gradient_noise_scale: float or None, adds 0-mean normal noise scaled by this
                           value.
     gradient_multipliers: dict of variables or variable names to floats.
-                          Most often it should be an instance of
-                          collections.defaultdict(lambda: 1.0), so that
-                          unspecified variable would still be updated with
-                          normal rate. If a common dict is provided, only
-                          gradients for specified variables will be
-                          multiplied by given constant and unspecified
-                          gradients will be dropped.
+                          If present, gradients for specified
+                          variables will be multiplied by given constant.
     clip_gradients: float, callable or `None`. If float, is provided, a global
       clipping is applied to prevent the norm of the gradient to exceed this
       value. Alternatively, a callable can be provided e.g.: adaptive_clipping.

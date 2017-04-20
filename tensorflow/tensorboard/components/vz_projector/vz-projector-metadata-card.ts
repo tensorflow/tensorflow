@@ -28,8 +28,6 @@ export let MetadataCardPolymer = PolymerElement({
 });
 
 export class MetadataCard extends MetadataCardPolymer {
-  private dom: d3.Selection<any>;
-
   hasMetadata: boolean;
   metadata: Array<{key: string, value: string}>;
   label: string;
@@ -37,22 +35,28 @@ export class MetadataCard extends MetadataCardPolymer {
   private labelOption: string;
   private pointMetadata: PointMetadata;
 
-  ready() {
-    this.dom = d3.select(this);
-  }
+  private expandLessButton: HTMLButtonElement;
+  private expandMoreButton: HTMLButtonElement;
 
+  ready() {
+    this.expandLessButton =
+        this.querySelector('#expand-less') as HTMLButtonElement;
+    this.expandMoreButton =
+        this.querySelector('#expand-more') as HTMLButtonElement;
+  }
   /** Handles a click on the expand more icon. */
   _expandMore() {
     (this.$$('#metadata-container') as any).toggle();
-    this.dom.select('#expand-more').style('display', 'none');
-    this.dom.select('#expand-less').style('display', '');
+
+    this.expandMoreButton.style.display = 'none';
+    this.expandLessButton.style.display = '';
   }
 
   /** Handles a click on the expand less icon. */
   _expandLess() {
     (this.$$('#metadata-container') as any).toggle();
-    this.dom.select('#expand-more').style('display', '');
-    this.dom.select('#expand-less').style('display', 'none');
+    this.expandMoreButton.style.display = '';
+    this.expandLessButton.style.display = 'none';
   }
 
   updateMetadata(pointMetadata?: PointMetadata) {

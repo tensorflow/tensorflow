@@ -33,7 +33,8 @@ def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
       doc, instructions,
       'DEPRECATED FUNCTION',
       '(deprecated)', [
-          'THIS FUNCTION IS DEPRECATED. It will be removed after %s.' % date,
+          'THIS FUNCTION IS DEPRECATED. It will be removed %s.' % (
+              'in a future version' if date is None else ('after %s' % date)),
           'Instructions for updating:'])
 
 
@@ -44,14 +45,13 @@ def _add_deprecated_arg_notice_to_docstring(doc, date, instructions):
       'DEPRECATED FUNCTION ARGUMENTS',
       '(deprecated arguments)', [
           'SOME ARGUMENTS ARE DEPRECATED. '
-          'They will be removed after %s.' % date,
+          'They will be removed %s.' % (
+              'in a future version' if date is None else ('after %s' % date)),
           'Instructions for updating:'])
 
 
 def _validate_deprecation_args(date, instructions):
-  if not date:
-    raise ValueError('Tell us what date this will be deprecated!')
-  if not re.match(r'20\d\d-[01]\d-[0123]\d', date):
+  if date is not None and not re.match(r'20\d\d-[01]\d-[0123]\d', date):
     raise ValueError('Date must be YYYY-MM-DD.')
   if not instructions:
     raise ValueError('Don\'t deprecate things without conversion instructions!')
@@ -84,6 +84,7 @@ def deprecated(date, instructions):
     Instructions for updating:
     <instructions>
 
+  If `date` is None, 'after <date>' is replaced with 'in a future version'.
   <function> will include the class name if it is a method.
 
   It also edits the docstring of the function: ' (deprecated)' is appended
@@ -91,8 +92,8 @@ def deprecated(date, instructions):
   to the rest of the docstring.
 
   Args:
-    date: String. The date the function is scheduled to be removed. Must be
-      ISO 8601 (YYYY-MM-DD).
+    date: String or None. The date the function is scheduled to be removed.
+      Must be ISO 8601 (YYYY-MM-DD), or None.
     instructions: String. Instructions on how to update code using the
       deprecated function.
 
@@ -100,7 +101,8 @@ def deprecated(date, instructions):
     Decorated function or method.
 
   Raises:
-    ValueError: If date is not in ISO 8601 format, or instructions are empty.
+    ValueError: If date is not None or in ISO 8601 format, or instructions are
+      empty.
   """
   _validate_deprecation_args(date, instructions)
 
@@ -110,11 +112,12 @@ def deprecated(date, instructions):
     @functools.wraps(func)
     def new_func(*args, **kwargs):
       logging.warning(
-          'From %s: %s (from %s) is deprecated and will be removed '
-          'after %s.\n'
+          'From %s: %s (from %s) is deprecated and will be removed %s.\n'
           'Instructions for updating:\n%s',
           _call_location(), decorator_utils.get_qualified_name(func),
-          func.__module__, date, instructions)
+          func.__module__,
+          'in a future version' if date is None else ('after %s' % date),
+          instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_function_notice_to_docstring(
         func.__doc__, date, instructions)
@@ -136,15 +139,16 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
     removed after <date>. Instructions for updating:
       <instructions>
 
-  <function> will include the class name if it is a method.
+  If `date` is None, 'after <date>' is replaced with 'in a future version'.
+  <function> includes the class name if it is a method.
 
   It also edits the docstring of the function: ' (deprecated arguments)' is
   appended to the first line of the docstring and a deprecation notice is
   prepended to the rest of the docstring.
 
   Args:
-    date: String. The date the function is scheduled to be removed. Must be
-      ISO 8601 (YYYY-MM-DD).
+    date: String or None. The date the function is scheduled to be removed.
+      Must be ISO 8601 (YYYY-MM-DD), or None.
     instructions: String. Instructions on how to update code using the
       deprecated function.
     *deprecated_arg_names_or_tuples: String. or 2-Tuple(String,
@@ -156,7 +160,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
     Decorated function or method.
 
   Raises:
-    ValueError: If date is not in ISO 8601 format, instructions are
+    ValueError: If date is not None or in ISO 8601 format, instructions are
       empty, the deprecated arguments are not present in the function
       signature, or the second element of a deprecated_tuple is not a
       list.
@@ -275,9 +279,11 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
       for arg_name in invalid_args:
         logging.warning(
             'From %s: calling %s (from %s) with %s is deprecated and will '
-            'be removed after %s.\nInstructions for updating:\n%s',
+            'be removed %s.\nInstructions for updating:\n%s',
             _call_location(), decorator_utils.get_qualified_name(func),
-            func.__module__, arg_name, date, instructions)
+            func.__module__, arg_name,
+            'in a future version' if date is None else ('after %s' % date),
+            instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
         func.__doc__, date, instructions)
@@ -295,6 +301,7 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
     will be removed after <date>. Instructions for updating:
       <instructions>
 
+  If `date` is None, 'after <date>' is replaced with 'in a future version'.
   <function> will include the class name if it is a method.
 
   It also edits the docstring of the function: ' (deprecated arguments)' is
@@ -302,8 +309,8 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
   prepended to the rest of the docstring.
 
   Args:
-    date: String. The date the function is scheduled to be removed. Must be
-      ISO 8601 (YYYY-MM-DD).
+    date: String or None. The date the function is scheduled to be removed.
+      Must be ISO 8601 (YYYY-MM-DD), or None
     instructions: String. Instructions on how to update code using the
       deprecated function.
     **deprecated_kwargs: The deprecated argument values.
@@ -312,7 +319,8 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
     Decorated function or method.
 
   Raises:
-    ValueError: If date is not in ISO 8601 format, or instructions are empty.
+    ValueError: If date is not None or in ISO 8601 format, or instructions are
+      empty.
   """
   _validate_deprecation_args(date, instructions)
   if not deprecated_kwargs:
@@ -329,9 +337,11 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
         if arg_name in named_args and named_args[arg_name] == arg_value:
           logging.warning(
               'From %s: calling %s (from %s) with %s=%s is deprecated and will '
-              'be removed after %s.\nInstructions for updating:\n%s',
+              'be removed %s.\nInstructions for updating:\n%s',
               _call_location(), decorator_utils.get_qualified_name(func),
-              func.__module__, arg_name, arg_value, date, instructions)
+              func.__module__, arg_name, arg_value,
+              'in a future version' if date is None else ('after %s' % date),
+              instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
         func.__doc__, date, instructions)

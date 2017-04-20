@@ -210,8 +210,8 @@ Status SymbolicGradientBuilder::Initialize() {
 
   {
     // Initialize backprop with `grad_inputs_`.
-    const int num_dy = grad_inputs_.size();
-    for (int i = 0; i < num_dy; ++i) {
+    const size_t num_dy = grad_inputs_.size();
+    for (size_t i = 0; i < num_dy; ++i) {
       TF_RETURN_IF_ERROR(BackpropAlongEdge(grad_inputs_[i], outputs_[i]));
     }
   }
@@ -308,7 +308,7 @@ Status SymbolicGradientBuilder::AddGradients() {
       continue;
     }
 
-    const int num_no_grad = no_grad_dy_indices.size();
+    const size_t num_no_grad = no_grad_dy_indices.size();
     if (IsPrimitiveOpWithNoGrad(n->type_string()) || num_no_grad == num_y) {
       // No grad defined for this op, or all outputs returned 'NoGradient':
       // Backprop 'NoGradient' along the in edges.

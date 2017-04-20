@@ -589,6 +589,14 @@ void TF_PRunSetup_wrapper(TF_DeprecatedSession* session,
       const_cast<const char**>(output_names.data()), output_names.size(),
       const_cast<const char**>(target_nodes.data()), target_nodes.size(),
       out_handle, out_status);
+  // TF_PRunSetup leaves out_handle undefined if it fails, but SWIG will call
+  // free(out_handle) on the returned handle regardless. Thus, must make sure it
+  // is valid.
+  if (TF_GetCode(out_status) != TF_OK) {
+    char* tmp = new char[1];
+    tmp[0] = '\0';
+    *out_handle = tmp;
+  }
   Py_END_ALLOW_THREADS;
 }
 

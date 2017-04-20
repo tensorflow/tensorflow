@@ -44,11 +44,6 @@ export interface ColorLegendThreshold {
 
 export class Legend extends LegendPolymer {
   renderInfo: ColorLegendRenderInfo;
-  dom: d3.Selection<HTMLElement>;
-
-  ready() {
-    this.dom = d3.select(this);
-  }
 
   _renderInfoChanged() {
     if (this.renderInfo == null) {
@@ -70,29 +65,32 @@ export class Legend extends LegendPolymer {
   }
 
   private getOffset(value: number): string {
-    let min = this.renderInfo.thresholds[0].value;
-    let max =
+    const min = this.renderInfo.thresholds[0].value;
+    const max =
         this.renderInfo.thresholds[this.renderInfo.thresholds.length - 1].value;
     return (100 * (value - min) / (max - min)).toFixed(2) + '%';
   }
 
   private setupLinearGradient() {
-    let linearGradient = this.dom.select('#gradient');
+    const linearGradient =
+        this.querySelector('#gradient') as SVGLinearGradientElement;
 
-    let width =
-        (this.dom.select('svg.gradient').node() as SVGElement).clientWidth;
+    const width =
+        (this.querySelector('svg.gradient') as SVGElement).clientWidth;
 
     // Set the svg <rect> to be the width of its <svg> parent.
-    this.dom.select('svg.gradient rect').attr('width', width);
+    (this.querySelector('svg.gradient rect') as SVGRectElement).style.width =
+        width + 'px';
 
     // Remove all <stop> children from before.
-    linearGradient.selectAll('*').remove();
+    linearGradient.innerHTML = '';
 
     // Add a <stop> child in <linearGradient> for each gradient threshold.
     this.renderInfo.thresholds.forEach(t => {
-      linearGradient.append('stop')
-          .attr('offset', this.getOffset(t.value))
-          .attr('stop-color', t.color);
+      const stopElement =
+          document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+      stopElement.setAttribute('offset', this.getOffset(t.value));
+      stopElement.setAttribute('stop-color', t.color);
     });
   }
 }

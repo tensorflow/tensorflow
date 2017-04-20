@@ -14,6 +14,7 @@ tf_kernel_library(
     name = "xla_ops",
     srcs = [
         "aggregate_ops.cc",
+        "arg_op.cc",
         "batch_matmul_op.cc",
         "batchtospace_op.cc",
         "bcast_ops.cc",
@@ -21,9 +22,9 @@ tf_kernel_library(
         "binary_ops.cc",
         "cast_op.cc",
         "concat_op.cc",
+        "const_op.cc",
         "conv_ops.cc",
         "cwise_ops.cc",
-        "declaration_op.cc",
         "depthwise_conv_ops.cc",
         "diag_op.cc",
         "dynamic_stitch_op.cc",

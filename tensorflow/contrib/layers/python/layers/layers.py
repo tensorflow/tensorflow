@@ -59,6 +59,7 @@ __all__ = ['avg_pool2d',
            'convolution2d_in_plane',
            'convolution2d_transpose',
            'dropout',
+           'elu',
            'flatten',
            'fully_connected',
            'layer_norm',
@@ -2233,6 +2234,7 @@ def legacy_fully_connected(x,
 
 # TODO(eiderm): Verify and fix autocomplete in colab (also relu6).
 # Simple aliases which remove the activation_fn parameter.
+elu = functools.partial(fully_connected, activation_fn=nn.elu)
 legacy_relu = functools.partial(legacy_fully_connected, activation_fn=nn.relu)
 legacy_linear = functools.partial(legacy_fully_connected, activation_fn=None)
 relu = functools.partial(fully_connected, activation_fn=nn.relu)
