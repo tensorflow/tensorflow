@@ -65,4 +65,4 @@ def frames(signal, frame_length, frame_step, name=None):
     indices_steps = array_ops.tile(array_ops.expand_dims(math_ops.range(num_frames) * frame_step, 1), [1, frame_length])
     indices = indices_frames + indices_steps
     
-    return array_ops.transpose(array_ops.gather(array_ops.transpose(pad_signal), indices), perm=[2, 0, 1], name=scope)
+    return array_ops.transpose(array_ops.gather(array_ops.transpose(pad_signal), indices), perm=[2, 0, 1])
