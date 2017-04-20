@@ -23,27 +23,28 @@ import numpy as np
 from tensorflow.contrib.signal.python.ops import shape_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 class FramesTest(test.TestCase):
   def test_mapping_of_indices_without_padding(self):
     with self.test_session():
-      tensor = constant_op.constant(np.arange(9152), dtypes.int32)
+      tensor = array_ops.expand_dims(constant_op.constant(np.arange(9152), dtypes.int32), 0)
       result = shape_ops.frames(tensor, 512, 180)
       
       expected = np.tile(np.arange(512), (49, 1)) + np.tile(np.arange(49) * 180, (512, 1)).T
-      expected = np.array(expected, dtype=np.int32)
+      expected = np.expand_dims(expected, axis=0)
       
       np.testing.assert_array_equal(expected, result.eval())
 
   def test_mapping_of_indices_with_padding(self):
     with self.test_session():
-      tensor = constant_op.constant(np.arange(10000), dtypes.int32)
+      tensor = array_ops.expand_dims(constant_op.constant(np.arange(10000), dtypes.int32), 0)
       result = shape_ops.frames(tensor, 512, 192)
       
       expected = np.tile(np.arange(512), (51, 1)) + np.tile(np.arange(51) * 192, (512, 1)).T
       expected[expected >= 10000] = 0
-      expected = np.array(expected, dtype=np.int32)
+      expected = np.expand_dims(expected, axis=0)
       
       np.testing.assert_array_equal(expected, result.eval())
 
