@@ -41,7 +41,6 @@ PoplarCallVisitor::PoplarCallVisitor(poplar::Graph* graph,
 }
 
 Status PoplarCallVisitor::HandleParameter(HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0,
                                      operands_[inst->parameter_number()]));
   return Status::OK();

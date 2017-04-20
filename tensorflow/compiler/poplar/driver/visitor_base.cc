@@ -67,7 +67,6 @@ Status PoplarBaseVisitor::HandleElementwiseUnary(
         HloInstruction* inst,
         HloOpcode opcode,
         HloInstruction* operand) {
-  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateUnaryElementwiseOp(*graph_,
@@ -83,7 +82,6 @@ Status PoplarBaseVisitor::HandleElementwiseBinary(
         HloOpcode opcode,
         HloInstruction* lhs,
         HloInstruction* rhs) {
-  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateBinaryElementwiseOp(*graph_,
@@ -96,7 +94,6 @@ Status PoplarBaseVisitor::HandleElementwiseBinary(
 
 Status PoplarBaseVisitor::HandleConvert(HloInstruction* inst,
                                         HloInstruction* operand) {
-  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateCastOp(*graph_,
@@ -112,7 +109,6 @@ Status PoplarBaseVisitor::HandleClamp(
         HloInstruction* min,
         HloInstruction* arg,
         HloInstruction* max) {
-  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateClampOp(*graph_,
@@ -128,7 +124,6 @@ Status PoplarBaseVisitor::HandleSelect(
         HloInstruction* pred,
         HloInstruction* on_true,
         HloInstruction* on_false) {
-  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateSelectOp(*graph_,
@@ -167,7 +162,6 @@ Status PoplarBaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
 Status PoplarBaseVisitor::HandleRng(
         HloInstruction* inst,
         RandomDistribution distribution) {
-  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateRandomOp(*graph_,
@@ -193,7 +187,6 @@ Status PoplarBaseVisitor::HandleSort(
 Status PoplarBaseVisitor::HandleConstant(
         HloInstruction* inst,
         const Literal& literal) {
-  VLOG(1) << inst->ToString();
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, AddConstantTensor(*graph_,
                                            inst->name(),
