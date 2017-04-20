@@ -114,6 +114,8 @@ def images():
 
                 # save the image in the directory
                 img.save(os.path.join(directory, filename))
+                print "File saved successfully:" + filename
+
 
         return make_response('file(s) uploaded successfully', 200)
 
