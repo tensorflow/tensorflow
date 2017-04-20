@@ -34,6 +34,7 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
       name = name + "_proto_srcs",
       srcs = srcs + tf_deps(protodeps, "_proto_srcs"),
       testonly = testonly,
+      visibility = visibility,
   )
 
   use_grpc_plugin = None
@@ -247,3 +248,9 @@ def tf_lib_proto_parsing_deps():
       ":protos_all_cc",
       "//tensorflow/core/platform/default/build_config:proto_parsing",
   ]
+
+def tf_additional_verbs_lib_defines():
+  return select({
+      "//tensorflow:with_verbs_support": ["TENSORFLOW_USE_VERBS"],
+      "//conditions:default": [],
+  })

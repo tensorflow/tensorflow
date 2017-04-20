@@ -22,6 +22,7 @@ import math
 
 import numpy as np
 from scipy import stats
+
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.distributions.python.ops import normal as normal_lib
 from tensorflow.python.framework import constant_op
@@ -275,6 +276,51 @@ class NormalTest(test.TestCase):
 
       self.assertAllEqual((3,), normal.mode().get_shape())
       self.assertAllEqual([7., 7, 7], normal.mode().eval())
+
+  def testNormalQuantile(self):
+    with self.test_session():
+      batch_size = 52
+      mu = self._rng.randn(batch_size)
+      sigma = self._rng.rand(batch_size) + 1.0
+      p = np.linspace(0., 1.0, batch_size - 2).astype(np.float64)
+      # Quantile performs piecewise rational approximation so adding some
+      # special input values to make sure we hit all the pieces.
+      p = np.hstack((p, np.exp(-33), 1. - np.exp(-33)))
+
+      normal = normal_lib.Normal(loc=mu, scale=sigma)
+      expected_x = stats.norm(mu, sigma).ppf(p)
+      x = normal.quantile(p)
+
+      self.assertAllClose(expected_x, x.eval(), atol=0.)
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), x.get_shape())
+      self.assertAllEqual(normal.batch_shape_tensor().eval(), x.eval().shape)
+      self.assertAllEqual(normal.batch_shape, x.get_shape())
+      self.assertAllEqual(normal.batch_shape, x.eval().shape)
+
+  def _baseQuantileFiniteGradientAtDifficultPoints(self, dtype):
+    g = ops.Graph()
+    with g.as_default():
+      mu = variables.Variable(dtype(0.0))
+      sigma = variables.Variable(dtype(1.0))
+      dist = normal_lib.Normal(loc=mu, scale=sigma)
+      p = variables.Variable(
+          np.array([0.,
+                    np.exp(-32.), np.exp(-2.),
+                    1. - np.exp(-2.), 1. - np.exp(-32.),
+                    1.]).astype(dtype))
+
+      value = dist.quantile(p)
+      grads = gradients_impl.gradients(value, [mu, p])
+      with self.test_session(graph=g):
+        variables.global_variables_initializer().run()
+        self.assertAllFinite(grads[0])
+        self.assertAllFinite(grads[1])
+
+  def testQuantileFiniteGradientAtDifficultPointsFloat32(self):
+    self._baseQuantileFiniteGradientAtDifficultPoints(np.float32)
+
+  def testQuantileFiniteGradientAtDifficultPointsFloat64(self):
+    self._baseQuantileFiniteGradientAtDifficultPoints(np.float64)
 
   def testNormalVariance(self):
     with self.test_session():

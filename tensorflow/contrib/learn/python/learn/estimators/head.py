@@ -44,7 +44,6 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training
 
@@ -1658,7 +1657,7 @@ def _compute_weighted_loss(loss_unweighted, weight, name="loss"):
     name: Optional name
 
   Returns:
-    A tuple of losses. First one for training and the second one for reproting.
+    A tuple of losses. First one for training and the second one for reporting.
   """
   with ops.name_scope(name, values=(loss_unweighted, weight)) as name_scope:
     if weight is None:
@@ -1666,11 +1665,10 @@ def _compute_weighted_loss(loss_unweighted, weight, name="loss"):
       return loss, loss
     with ops.name_scope(None, "weighted_loss",
                         (loss_unweighted, weight)) as name:
+      # TODO(ptucker): Support weight broadcasting, or switch to tf.losses.
       weighted_loss = math_ops.multiply(
           array_ops.reshape(loss_unweighted, shape=(-1,)),
           array_ops.reshape(weight, shape=(-1,)), name=name)
-    # TODO(ptucker): This might be wrong if weights are broadcast to loss shape.
-    # We should use tf.losses here.
     weighted_loss_mean = math_ops.reduce_mean(weighted_loss, name=name_scope)
     weighted_loss_normalized = math_ops.div(
         math_ops.reduce_sum(weighted_loss),
@@ -1735,7 +1733,7 @@ def _centered_bias(logits_dimension, head_name=None):
   # Do not create a variable with variable_scope.get_variable, because that may
   # create a PartitionedVariable, which does not support indexing, so
   # summary.scalar will not work.
-  centered_bias = variables.Variable(
+  centered_bias = variable_scope.variable(
       name="centered_bias_weight",
       initial_value=array_ops.zeros(shape=(logits_dimension,)),
       trainable=True)

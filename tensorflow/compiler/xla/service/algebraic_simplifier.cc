@@ -112,6 +112,10 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
+  Status HandleConcatenate(
+      HloInstruction* concatenate,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+
   Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
 
   Status HandleConvert(HloInstruction* convert,
@@ -294,6 +298,16 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy,
                                               HloInstruction* operand) {
   // All copies can be eliminated (assuming layout constraints are satisified).
   ReplaceInstructionIfSameShape(copy, operand);
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleConcatenate(
+    HloInstruction* concatenate,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  // Unary concatenates are useless.
+  if (operands.size() == 1) {
+    ReplaceInstructionIfSameShape(concatenate, operands[0]);
+  }
   return Status::OK();
 }
 

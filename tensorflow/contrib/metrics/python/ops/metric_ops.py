@@ -35,7 +35,6 @@ from tensorflow.python.ops import metrics_impl
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 
 
 def _safe_div(numerator, denominator, name):
@@ -73,7 +72,7 @@ def _create_local(name, shape, collections=None, validate_shape=True,
   # Make sure local variables are added to tf.GraphKeys.LOCAL_VARIABLES
   collections = list(collections or [])
   collections += [ops.GraphKeys.LOCAL_VARIABLES]
-  return variables.Variable(
+  return variable_scope.variable(
       initial_value=array_ops.zeros(shape, dtype=dtype),
       name=name,
       trainable=False,

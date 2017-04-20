@@ -16,7 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -25,6 +25,20 @@ limitations under the License.
 namespace tensorflow {
 
 class Scope::Impl {
+ public:
+  // A NameMap is used to keep track of suffixes for names used in a scope. A
+  // name that has not been used so far in a scope will get no suffix. Later
+  // uses of the same name will get suffixes _1, _2, _3, etc. Multiple scopes
+  // can share the same NameMap. For instance, a new scope created using
+  // WithControlDependencies() should would share the same NameMap with the
+  // parent.
+  typedef std::unordered_map<string, int> NameMap;
+
+  Impl(const std::shared_ptr<Graph>& graph,
+       const std::shared_ptr<Status>& status,
+       const std::shared_ptr<NameMap>& name_map,
+       const std::shared_ptr<ShapeRefiner>& refiner);
+
  private:
   friend class Scope;
 
@@ -39,14 +53,6 @@ class Scope::Impl {
     enum class KernelLabel;
     enum class Colocate;
   };
-
-  // A NameMap is used to keep track of suffixes for names used in a scope. A
-  // name that has not been used so far in a scope will get no suffix. Later
-  // uses of the same name will get suffixes _1, _2, _3, etc. Multiple scopes
-  // can share the same NameMap. For instance, a new scope created using
-  // WithControlDependencies() should would share the same NameMap with the
-  // parent.
-  typedef std::unordered_map<string, int> NameMap;
 
   Impl(Graph* graph, Status* status, NameMap* name_map, ShapeRefiner* refiner);
   Impl(const Scope& other, Tags::ScopeName, const string& name,
@@ -109,6 +115,17 @@ Scope& Scope::operator=(const Scope& other) {
 
 Scope::Impl::Impl(Graph* graph, Status* status, NameMap* name_map,
                   ShapeRefiner* refiner)
+    : graph_(graph),
+      status_(status),
+      name_map_(name_map),
+      refiner_(refiner),
+      scope_used_(nullptr),
+      colocation_constraints_() {}
+
+Scope::Impl::Impl(const std::shared_ptr<Graph>& graph,
+                  const std::shared_ptr<Status>& status,
+                  const std::shared_ptr<NameMap>& name_map,
+                  const std::shared_ptr<ShapeRefiner>& refiner)
     : graph_(graph),
       status_(status),
       name_map_(name_map),
@@ -277,7 +294,7 @@ std::shared_ptr<Graph> Scope::graph_as_shared_ptr() const {
   return impl()->graph_;
 }
 
-Status Scope::status() const { return *impl()->status_; };
+Status Scope::status() const { return *impl()->status_; }
 
 const std::vector<Operation>& Scope::control_deps() const {
   return impl()->control_deps_;
@@ -462,6 +479,28 @@ CompositeOpScopes Scope::GetCompositeOpScopes(
                            true /* copy_names */)),
             *this};
   }
+}
+
+class InternalScope {
+ public:
+  // NewScope doesn't take ownership of the inputs.
+  static Scope NewScope(Graph* graph, Status* status, ShapeRefiner* refiner) {
+    Scope::Impl::NameMap* name_map = new Scope::Impl::NameMap;
+    for (const Node* node : graph->nodes()) {
+      (*name_map)[node->name()] = 0;
+    }
+    // We provide null destructors for these shared ptrs (except for name_map)
+    // since the caller owns them and doesn't want the scope to destroy them.
+    return Scope(new Scope::Impl(
+        std::shared_ptr<Graph>(graph, [](Graph*) {}),
+        std::shared_ptr<Status>(status, [](Status*) {}),
+        std::shared_ptr<Scope::Impl::NameMap>(name_map),
+        std::shared_ptr<ShapeRefiner>(refiner, [](ShapeRefiner*) {})));
+  }
+};
+
+Scope NewInternalScope(Graph* graph, Status* status, ShapeRefiner* refiner) {
+  return InternalScope::NewScope(graph, status, refiner);
 }
 
 }  // namespace tensorflow

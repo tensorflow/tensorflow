@@ -61,14 +61,15 @@ class CallGraphTest : public HloTestBase {
   // Build and return a computation which takes a scalar and calls (kCall) the
   // given computation with value 'callsites' number of times.
   std::unique_ptr<HloComputation> MakeCallingComputation(
-      HloComputation* map_computation, int64 callsites) {
-    HloComputation::Builder builder(TestName() + ".CallingComputation");
+      HloComputation* callee_computation, int64 callsites,
+      const string& suffix = ".CallingComputation") {
+    HloComputation::Builder builder(TestName() + suffix);
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* last_value = param0;
     for (int64 i = 0; i < callsites; ++i) {
       last_value = builder.AddInstruction(HloInstruction::CreateCall(
-          kScalarShape, {last_value}, map_computation));
+          kScalarShape, {last_value}, callee_computation));
     }
     return builder.Build();
   }
@@ -137,7 +138,7 @@ TEST_F(CallGraphTest, ParallelComputation) {
   HloModule module(TestName());
   HloComputation* map_computation =
       module.AddEmbeddedComputation(MakeScalarComputation());
-  HloComputation* entry_computation = module.AddEmbeddedComputation(
+  HloComputation* entry_computation = module.AddEntryComputation(
       MakeMappingComputation(map_computation, /*callsites=*/5));
 
   TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
@@ -169,7 +170,7 @@ TEST_F(CallGraphTest, SequentialComputations) {
   HloModule module(TestName());
   HloComputation* called_computation =
       module.AddEmbeddedComputation(MakeScalarComputation());
-  HloComputation* entry_computation = module.AddEmbeddedComputation(
+  HloComputation* entry_computation = module.AddEntryComputation(
       MakeCallingComputation(called_computation, /*callsites=*/3));
 
   TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
@@ -210,7 +211,7 @@ TEST_F(CallGraphTest, ContextBothComputations) {
   HloInstruction* map = builder.AddInstruction(
       HloInstruction::CreateMap(kScalarShape, {call}, subcomputation));
   HloComputation* entry_computation =
-      module.AddEmbeddedComputation(builder.Build());
+      module.AddEntryComputation(builder.Build());
 
   TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
                          CallGraph::Build(&module));

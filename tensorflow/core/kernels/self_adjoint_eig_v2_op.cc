@@ -69,7 +69,7 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
         errors::InvalidArgument("Self Adjoint Eigen decomposition was not "
                                 "successful. The input might not be valid."));
 
-    outputs->at(0) = eig.eigenvalues();
+    outputs->at(0) = eig.eigenvalues().template cast<Scalar>();
     if (compute_v_) {
       outputs->at(1) = eig.eigenvectors();
     }

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
@@ -140,7 +141,6 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
                                         : TransposeFolding::OperandIndices{};
         },
         TransposeFolding::NeverFoldTranspose);
-    pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -181,6 +181,7 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   // instruction which materializes a value).
   pipeline.AddPass<GpuCopyInsertion>();
   pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 

@@ -19,17 +19,25 @@ limitations under the License.
 namespace tensorflow {
 
 // EXPERIMENTAL: tfdbg debugger-inserted ops.
+// These ops are used only internally by tfdbg. There is no API for users to
+// direct create them. Users can create them indirectly by using
+// RunOptions.debug_options during Session::Run() call. See tfdbg documentation
+// for more details.
 REGISTER_OP("Copy")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
+    .Attr("debug_ops_spec: list(string) = []")
     .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Copy Op.
 
 Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the
 device on which the tensor is allocated.
+N.B.: If the all downstream attached debug ops are disabled given the current
+gRPC gating status, the output will simply forward the input tensor without
+deep-copying. See the documentation of Debug* ops for more details.
 
 Unlike the CopyHost Op, this op does not have HostMemory constraint on its
 input or output.
@@ -37,6 +45,11 @@ input or output.
 input: Input tensor.
 output: Output tensor, deep-copied from input.
 tensor_name: The name of the input tensor.
+debug_ops_spec: A list of debug op spec (op, url, gated_grpc) for attached debug
+  ops. Each element of the list has the format
+  <debug_op>;<grpc_url>;<gated_grpc>, wherein gated_grpc is boolean represented
+  as 0/1. E.g., "DebugIdentity;grpc://foo:3333;1",
+  "DebugIdentity;file:///tmp/tfdbg_1;0".
 )doc");
 
 REGISTER_OP("CopyHost")
@@ -44,17 +57,26 @@ REGISTER_OP("CopyHost")
     .Output("output: T")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
+    .Attr("debug_ops_spec: list(string) = []")
     .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Copy Host Op.
 
 Performs CPU-to-CPU deep-copying of tensor.
+N.B.: If the all downstream attached debug ops are disabled given the current
+gRPC gating status, the output will simply forward the input tensor without
+deep-copying. See the documentation of Debug* ops for more details.
 
 Unlike the Copy Op, this op has HostMemory constraint on its input or output.
 
 input: Input tensor.
 output: Output tensor, deep-copied from input.
 tensor_name: The name of the input tensor.
+debug_ops_spec: A list of debug op spec (op, url, gated_grpc) for attached debug
+  ops. Each element of the list has the format
+  <debug_op>;<grpc_url>;<gated_grpc>, wherein gated_grpc is boolean represented
+  as 0/1. E.g., "DebugIdentity;grpc://foo:3333;1",
+  "DebugIdentity;file:///tmp/tfdbg_1;0".
 )doc");
 
 REGISTER_OP("DebugIdentity")

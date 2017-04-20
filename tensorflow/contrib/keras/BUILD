@@ -134,7 +134,7 @@ py_library(
 
 py_test(
     name = "integration_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/keras/integration_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
@@ -405,6 +405,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/simplernn_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         ":testing_utils",

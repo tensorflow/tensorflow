@@ -57,6 +57,7 @@ from tensorflow.contrib import slim
 from tensorflow.contrib import solvers
 from tensorflow.contrib import sparsemax
 from tensorflow.contrib import stat_summarizer
+from tensorflow.contrib import stateless
 from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard
 from tensorflow.contrib import testing

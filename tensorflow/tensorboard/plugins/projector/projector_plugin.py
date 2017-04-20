@@ -314,6 +314,7 @@ def _parse_positive_int_param(request, param_name):
 
 
 def _rel_to_abs_asset_path(fpath, config_fpath):
+  fpath = os.path.expanduser(fpath)
   if not os.path.isabs(fpath):
     return os.path.join(os.path.dirname(config_fpath), fpath)
   return fpath
@@ -502,7 +503,9 @@ class ProjectorPlugin(TBPlugin):
     return None
 
   def _append_plugin_asset_directories(self, run_path_pairs):
-    for run in self.multiplexer.PluginAssets(_PLUGIN_NAME):
+    for run, assets in self.multiplexer.PluginAssets(_PLUGIN_NAME).items():
+      if PROJECTOR_FILENAME not in assets:
+        continue
       assets_dir = os.path.join(self.run_paths[run], _PLUGINS_DIR, _PLUGIN_NAME)
       assets_path_pair = (run, os.path.abspath(assets_dir))
       run_path_pairs.append(assets_path_pair)

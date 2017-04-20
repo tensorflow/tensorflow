@@ -53,6 +53,7 @@ See the @{$python/contrib.framework} guide.
 @@get_or_create_global_step
 @@get_local_variables
 @@get_model_variables
+@@get_name_scope
 @@get_trainable_variables
 @@get_unique_variable
 @@get_variables_by_name

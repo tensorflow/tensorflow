@@ -108,6 +108,7 @@ load(
     "tf_additional_cloud_op_deps",
     "tf_additional_cloud_kernel_deps",
     "tf_lib_proto_parsing_deps",
+    "tf_additional_verbs_lib_defines",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -520,6 +521,7 @@ tf_gen_op_libs(
         "sparse_ops",
         "spectral_ops",
         "state_ops",
+        "stateless_random_ops",
         "string_ops",
         "training_ops",
     ],
@@ -593,6 +595,7 @@ cc_library(
         ":sparse_ops_op_lib",
         ":spectral_ops_op_lib",
         ":state_ops_op_lib",
+        ":stateless_random_ops_op_lib",
         ":string_ops_op_lib",
         ":training_ops_op_lib",
         ":user_ops_op_lib",
@@ -720,6 +723,7 @@ cc_library(
         "//tensorflow/core/kernels:set_kernels",
         "//tensorflow/core/kernels:sparse",
         "//tensorflow/core/kernels:state",
+        "//tensorflow/core/kernels:stateless_random_ops",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:word2vec_kernels",
@@ -1273,7 +1277,9 @@ cc_library(
         "platform/tracing.h",
     ],
     copts = tf_copts(),
-    defines = tf_additional_lib_defines() + ["SNAPPY"],
+    defines = tf_additional_lib_defines() + [
+        "SNAPPY",
+    ] + tf_additional_verbs_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],

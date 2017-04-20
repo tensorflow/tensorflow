@@ -753,6 +753,44 @@ class HingeLossTest(test.TestCase):
       self.assertAllClose(loss.eval(), 0.875, atol=1e-3)
 
 
+class HuberLossTest(test.TestCase):
+
+  def testIncompatibleShapes(self):
+    with self.test_session():
+      predictions = constant_op.constant([[-1.0], [2.1]])
+      labels = constant_op.constant([0.0, 1.0])
+      with self.assertRaises(ValueError):
+        _ = losses.huber_loss(labels, predictions).eval()
+
+  def testAllQuadratic(self):
+    with self.test_session():
+      predictions = constant_op.constant([1.5, -1.4, -1.0, 0.0])
+      labels = constant_op.constant([1.0, -1.0, 0.0, 0.5])
+      loss = losses.huber_loss(labels, predictions)
+      self.assertAllClose(loss.eval(),
+                          0.5 * (0.25 + 0.16 + 1.0 + 0.25) / 4., atol=1e-5)
+
+  def testAllLinear(self):
+    with self.test_session():
+      predictions = constant_op.constant([1.5, -1.4, -1.0, 0.0])
+      labels = constant_op.constant([0.0, 1.0, 0.0, 1.5])
+      loss = losses.huber_loss(labels, predictions)
+      self.assertAllClose(loss.eval(),
+                          (1.5 + 2.4 + 1.0 + 1.5) / 4. - 0.5, atol=1e-5)
+
+  def testMixedQuadraticLinear(self):
+    with self.test_session():
+      predictions = constant_op.constant([[1.5, -1.4, -1.0, 0.0],
+                                          [1.5, -1.4, -1.0, 0.0]])
+      labels = constant_op.constant([[1.0, -1.0, 0.0, 0.5],
+                                     [0.0, 1.0, 0.0, 1.5]])
+      loss = losses.huber_loss(labels, predictions)
+      quadratic = 0.5 * (0.25 + 0.16 + 1.0 + 0.25) / 4.
+      linear = (1.5 + 2.4 + 1.0 + 1.5) / 4. - 0.5
+      expected_loss = (quadratic + linear) / 2.
+      self.assertAllClose(loss.eval(), expected_loss, atol=1e-5)
+
+
 class MeanSquaredErrorTest(test.TestCase):
 
   def setUp(self):
