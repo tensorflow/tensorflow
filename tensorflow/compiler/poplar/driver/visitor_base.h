@@ -101,9 +101,7 @@ public:
 
   Status HandleFusion(HloInstruction* inst) override;
 
-  Status HandleCall(HloInstruction* inst,
-                    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                    HloComputation* computation) override;
+  Status HandleCall(HloInstruction* inst) override;
 
   Status HandleCustomCall(HloInstruction* inst,
                           tensorflow::gtl::ArraySlice<HloInstruction*> operands,
@@ -135,10 +133,7 @@ public:
 
   Status HandleSelectAndScatter(HloInstruction* inst) override;
 
-  Status HandleWhile(HloInstruction* inst,
-                     HloInstruction* init,
-                     HloComputation* condition,
-                     HloComputation* body) override;
+  Status HandleWhile(HloInstruction* inst) override;
 
   Status HandlePad(HloInstruction* inst) override;
 

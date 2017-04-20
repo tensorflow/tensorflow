@@ -324,9 +324,7 @@ Status PoplarBaseVisitor::HandleFusion(HloInstruction* inst) {
 }
 
 Status PoplarBaseVisitor::HandleCall(
-        HloInstruction* inst,
-        tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-        HloComputation* computation) {
+        HloInstruction* inst) {
   VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
@@ -467,11 +465,7 @@ Status PoplarBaseVisitor::HandleSelectAndScatter(HloInstruction* inst) {
                                    " not implemented"));
 }
 
-Status PoplarBaseVisitor::HandleWhile(
-        HloInstruction* inst,
-        HloInstruction* init,
-        HloComputation* condition,
-        HloComputation* body) {
+Status PoplarBaseVisitor::HandleWhile(HloInstruction* inst) {
   VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
