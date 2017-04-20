@@ -26,9 +26,10 @@ limitations under the License.
 namespace tensorflow {
 
 // Create a spectrogram frequency visualization from audio data.
-class SpectrogramOp : public OpKernel {
+class AudioSpectrogramOp : public OpKernel {
  public:
-  explicit SpectrogramOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit AudioSpectrogramOp(OpKernelConstruction* context)
+      : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("window_size", &window_size_));
     OP_REQUIRES_OK(context, context->GetAttr("stride", &stride_));
     OP_REQUIRES_OK(context,
@@ -115,6 +116,6 @@ class SpectrogramOp : public OpKernel {
   bool magnitude_squared_;
 };
 REGISTER_KERNEL_BUILDER(Name("AudioSpectrogram").Device(DEVICE_CPU),
-                        SpectrogramOp);
+                        AudioSpectrogramOp);
 
 }  // namespace tensorflow
