@@ -5,6 +5,7 @@ load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles_external")
+load("//third_party/py:python_configure.bzl", "python_configure")
 
 
 # Parse the bazel version string from `native.bazel_version`.
@@ -119,6 +120,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   check_version("0.4.5")
   cuda_configure(name="local_config_cuda")
   sycl_configure(name="local_config_sycl")
+  python_configure(name="local_config_python")
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used " +
           "and will be removed in the future.")
