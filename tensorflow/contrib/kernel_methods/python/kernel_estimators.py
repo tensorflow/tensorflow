@@ -59,7 +59,7 @@ def _update_features_and_columns(features, feature_columns,
                                  kernel_mappers_dict):
   """Updates features and feature_columns based on provided kernel mappers.
 
-  Currently supports the update of RealValuedColumns only.
+  Currently supports the update of `RealValuedColumn`s only.
 
   Args:
     features: Initial features dict. The key is a `string` (feature column name)
@@ -196,8 +196,10 @@ class KernelLinearClassifier(_KernelEstimator):
   The user can provide a list of kernel mappers to be applied to all or a subset
   of existing feature_columns. This way, the user can effectively provide 2
   types of feature columns:
-  - those passed as elements of feature_columns in the classifier's constructor
-  - those appearing as a key of the kernel_mappers dict.
+
+  * those passed as elements of feature_columns in the classifier's constructor
+  * those appearing as a key of the kernel_mappers dict.
+
   If a column appears in feature_columns only, no mapping is applied to it. If
   it appears as a key in kernel_mappers, the corresponding kernel mappers are
   applied to it. Note that it is possible that a column appears in both places.
@@ -237,8 +239,9 @@ class KernelLinearClassifier(_KernelEstimator):
   kernel_classifier.predict(...)
   ```
 
-  Input of `fit` and `evaluate` should have following features,
-    otherwise there will be a `KeyError`:
+  Input of `fit` and `evaluate` should have following features, otherwise there
+  will be a `KeyError`:
+
   * if `weight_column_name` is not `None`, a feature with
     `key=weight_column_name` whose value is a `Tensor`.
   * for each `column` in `feature_columns`:

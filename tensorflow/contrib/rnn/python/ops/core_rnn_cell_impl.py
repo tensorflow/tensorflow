@@ -811,7 +811,8 @@ class DeviceWrapper(RNNCell):
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      return self._cell.zero_state(batch_size, dtype)
+      with ops.device(self._device):
+        return self._cell.zero_state(batch_size, dtype)
 
   def __call__(self, inputs, state, scope=None):
     """Run the cell on specified device."""

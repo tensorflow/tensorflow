@@ -19,6 +19,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -27,7 +28,7 @@ namespace functor {
 template <typename Device, typename T, typename Tindices, bool ADJ_A,   \
           bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor {
-  static EIGEN_ALWAYS_INLINE void Compute(
+  static EIGEN_ALWAYS_INLINE Status Compute(
       const Device& d,
       typename TTypes<T>::Matrix out,
       typename TTypes<Tindices>::ConstMatrix a_indices,

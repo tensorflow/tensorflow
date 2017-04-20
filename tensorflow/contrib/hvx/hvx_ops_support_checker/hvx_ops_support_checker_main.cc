@@ -37,7 +37,7 @@ static int ParseFlags(int argc, char* argv[], string* in_graph) {
   };
   CHECK(Flags::Parse(&argc, argv, flag_list));
   string usage = Flags::Usage(argv[0], flag_list);
-  CHECK(in_graph->empty()) << "in_graph graph can't be empty.\n" << usage;
+  CHECK(!in_graph->empty()) << "in_graph graph can't be empty.\n" << usage;
 
   return 0;
 }

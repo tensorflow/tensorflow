@@ -121,6 +121,10 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
   attrs["type"].set_s(
       xla::PrimitiveType_Name(instruction->shape().element_type()));
 
+  // Set the framework op (e.g. Tensorflow op) that generated this XLA op.
+  attrs["tf_op_type"].set_s(instruction->metadata().op_type());
+  attrs["tf_op_name"].set_s(instruction->metadata().op_name());
+
   // Set the shape of the output tensor. "_output_shapes" is a special attribute
   // name used by Tensorboard for shapes of output tensors.
   tensorflow::AttrValue shapes;

@@ -43,7 +43,7 @@ class BasicDecoderTest(test.TestCase):
     cell_depth = 10
     output_layer_depth = 3
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
       cell = core_rnn_cell.LSTMCell(cell_depth)
@@ -127,7 +127,7 @@ class BasicDecoderTest(test.TestCase):
     start_tokens = [0] * batch_size
     end_token = 1
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       embeddings = np.random.randn(vocabulary_size,
                                    input_depth).astype(np.float32)
       cell = core_rnn_cell.LSTMCell(vocabulary_size)
@@ -196,7 +196,7 @@ class BasicDecoderTest(test.TestCase):
     input_depth = 7
     vocabulary_size = 10
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       inputs = np.random.randn(
           batch_size, max_time, input_depth).astype(np.float32)
       embeddings = np.random.randn(
@@ -290,7 +290,7 @@ class BasicDecoderTest(test.TestCase):
     else:
       auxiliary_inputs = None
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
       cell = core_rnn_cell.LSTMCell(cell_depth)

@@ -81,6 +81,6 @@ cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DI
 cd ${DIR}
 zip -j libtensorflow-cpu-windows-$(uname -m).zip \
   lib/tensorflow.dll \
-  include/c/c_api.h \
-  include/c/LICENSE
+  include/tensorflow/c/c_api.h \
+  include/tensorflow/c/LICENSE
 rm -rf lib include

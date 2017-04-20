@@ -172,9 +172,8 @@ Status GrpcServer::Init(ServiceInitFunction service_func,
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
   master_impl_ = CreateMaster(&master_env_);
-  // TODO(suharshs): Pass the default operation timeout to this, to ensure
-  // timeouts are propagated to GrpcMasterService.
-  master_service_ = NewGrpcMasterService(master_impl_.get(), &builder);
+  master_service_ = NewGrpcMasterService(
+      master_impl_.get(), config.operation_timeout_in_ms(), &builder);
   worker_impl_ = NewGrpcWorker(&worker_env_);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
@@ -216,10 +215,9 @@ Status GrpcServer::Init(ServiceInitFunction service_func,
                                  CreateNoOpStatsPublisher);
       };
 
-  // TODO(suharshs): Pass the default operation timeout to this, to ensure
-  // timeouts are propagated to LocalMaster.
   // Provide direct access to the master from in-process clients.
-  LocalMaster::Register(target(), master_impl_.get());
+  LocalMaster::Register(target(), master_impl_.get(),
+                        config.operation_timeout_in_ms());
 
   return Status::OK();
 }
@@ -346,7 +344,9 @@ std::shared_ptr<::grpc::ServerCredentials> GrpcServer::GetServerCredentials(
 
 ChannelCreationFunction GrpcServer::GetChannelCreationFunction(
     const ServerDef& server_def) const {
-  return NewHostPortGrpcChannel;
+  // We can do this because SparseGrpcChannelCache is robust to nullptr being
+  // returned by the channel creation function
+  return ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
 }
 
 std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {

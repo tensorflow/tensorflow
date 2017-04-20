@@ -23,58 +23,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// This OpKernel implements the Constant Op for XLA JIT
-// devices. It extracts the constant Tensor from the Proto at kernel
-// construction time, and then every time the Constant Op is executed
-// an expression containing the constant is compiled.
-class ConstantDeclarationOp : public XlaOpKernel {
- public:
-  explicit ConstantDeclarationOp(OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx), tensor_(ctx->output_type(0)) {
-    const TensorProto* proto = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
-    // MakeTensorFromProto uses the cpu_allocator, so tensor_ is a
-    // "real" tensor backed by CPU memory, holding the value of the
-    // constant.
-    OP_REQUIRES_OK(ctx, MakeTensorFromProto(*proto, &tensor_));
-    OP_REQUIRES(
-        ctx, ctx->output_type(0) == tensor_.dtype(),
-        errors::InvalidArgument(
-            "Type mismatch between value (", DataTypeString(tensor_.dtype()),
-            ") and dtype (", DataTypeString(ctx->output_type(0)), ")"));
-  }
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    ctx->SetConstantOutput(0, tensor_);
-  }
-
- private:
-  // Extract the value of the constant from the Proto during Op kernel
-  // construction. The constant must be stored in a Tensor allocated
-  // using the cpu_allocator so that it is backed by real memory. The
-  // OpKernelConstruction's default allocator is the JITAllocator
-  // which only allocates enough space for metadata for each Tensor.
-  static Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                                    Tensor* tensor) {
-    Tensor parsed(tensor_proto.dtype());
-    if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                     tensor_proto.DebugString());
-    }
-    *tensor = parsed;
-    return Status::OK();
-  }
-
-  // This is a "real" tensor backed by CPU memory, containing the
-  // constant values.
-  Tensor tensor_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ConstantDeclarationOp);
-};
-
-// XLA_* devices also register a "real" Identity operator so we suppress the
-// dummy operator using CompilationOnly().
-REGISTER_XLA_OP(Name("Const").CompilationOnly(), ConstantDeclarationOp);
-
 // This OpKernel implements the _Arg Op for XLA JIT devices. It
 // associates its output with one of the arguments to a
 // subcomputation.
