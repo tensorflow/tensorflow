@@ -86,9 +86,6 @@ while true; do
   PYTHON_BIN_PATH=""
   # Retry
 done
-export PYTHON_BIN_PATH
-write_action_env_to_bazelrc "PYTHON_BIN_PATH" "$PYTHON_BIN_PATH"
-# TODO(ngiraldo): allow the user to optionally set PYTHON_INCLUDE_PATH and NUMPY_INCLUDE_PATH
 
 ## Set up MKL related environment settings
 if false; then # Disable building with MKL for now
@@ -246,7 +243,7 @@ fi
 
 
 # Invoke python_config and set up symlinks to python includes
-./util/python/python_config.sh "$PYTHON_BIN_PATH"
+./util/python/python_config.sh --setup "$PYTHON_BIN_PATH"
 
 # Append CC optimization flags to bazel.rc
 echo >> tools/bazel.rc

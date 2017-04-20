@@ -8,9 +8,11 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
-alias(
+cc_library(
     name = "headers",
-    actual = "@local_config_python//:numpy_headers",
+    hdrs = glob(["numpy_include/**/*.h"]),
+    data = ["//util/python:python_checked"],
+    includes = ["numpy_include"],
 )
 
 genrule(
