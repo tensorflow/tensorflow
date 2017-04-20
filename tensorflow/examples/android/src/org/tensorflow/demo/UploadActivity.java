@@ -226,7 +226,7 @@ public class UploadActivity extends Activity implements LoaderCallbacks<Cursor> 
             String boundary = "*****";
 
             try {
-                URL url = new URL("http://doxy.developerarray.com:8181/images");
+                URL url = new URL("http://192.168.43.164:8181/images");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setDoOutput(true);
                 conn.setRequestMethod("POST");
