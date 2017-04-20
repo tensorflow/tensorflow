@@ -33,7 +33,7 @@ __global__ void GatherTreeOpKernel(const int32 batch_size, const int32 max_time,
   CUDA_1D_KERNEL_LOOP(i, batch_size * beam_width) {
     const int32 batch = i / beam_width;
     const int32 beam = i % beam_width;
-    const int32 seq_len_b = ldg(sequence_length + batch);
+    const int32 seq_len_b = ldg(sequence_length + batch * beam_width + beam);
 #define GET_IX(time_ix, beam_ix) \
   (batch_size * beam_width * (time_ix) + beam_width * batch + (beam_ix))
     const int32 initial_beam_ix = GET_IX(seq_len_b - 1, beam);
@@ -59,7 +59,7 @@ struct GatherTree<GPUDevice, T> {
   void operator()(OpKernelContext* ctx, const GPUDevice& d,
                   typename TTypes<T, 3>::ConstTensor step_ids,
                   typename TTypes<T, 3>::ConstTensor parent_ids,
-                  typename TTypes<T>::ConstVec sequence_length,
+                  typename TTypes<T>::ConstMatrix sequence_length,
                   typename TTypes<T, 3>::Tensor beams) {
     const int32 max_time = parent_ids.dimension(0);
     const int32 batch_size = parent_ids.dimension(1);

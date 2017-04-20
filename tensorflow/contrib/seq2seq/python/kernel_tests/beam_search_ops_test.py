@@ -38,7 +38,7 @@ class GatherTreeTest(test.TestCase):
         [[[1, 2, 3], [4, 5, 6], [7, 8, 9], [-1, -1, -1]]])
     parent_ids = _transpose_batch_time(
         [[[0, 0, 0], [0, 1, 1], [2, 1, 2], [-1, -1, -1]]])
-    sequence_length = [3]
+    sequence_length = [[3, 3, 3]]
     expected_result = _transpose_batch_time(
         [[[2, 2, 2], [6, 5, 6], [7, 8, 9], [-1, -1, -1]]])
     beams = beam_search_ops.gather_tree(
@@ -54,7 +54,7 @@ class GatherTreeTest(test.TestCase):
         [[[1, 2, 3], [4, 5, 6], [7, 8, 9], [-1, -1, -1]]])
     parent_ids = _transpose_batch_time(
         [[[0, 0, 0], [0, -1, 1], [2, 1, 2], [-1, -1, -1]]])
-    sequence_length = [3]
+    sequence_length = [[3, 3, 3]]
     with ops.device("/cpu:0"):
       beams = beam_search_ops.gather_tree(
           step_ids=step_ids, parent_ids=parent_ids,
@@ -73,7 +73,7 @@ class GatherTreeTest(test.TestCase):
         [[[1, 2, 3], [4, 5, 6], [7, 8, 9], [-1, -1, -1]]])
     parent_ids = _transpose_batch_time(
         [[[0, 0, 0], [0, -1, 1], [2, 1, 2], [-1, -1, -1]]])
-    sequence_length = [3]
+    sequence_length = [[3, 3, 3]]
     expected_result = _transpose_batch_time(
         [[[2, -1, 2], [6, 5, 6], [7, 8, 9], [-1, -1, -1]]])
     with ops.device("/gpu:0"):
@@ -84,7 +84,8 @@ class GatherTreeTest(test.TestCase):
       self.assertAllEqual(expected_result, beams.eval())
 
   def testGatherTreeBatch(self):
-    sequence_length = [0, 1, 2, 3]
+    # sequence_length is [batch_size, beam_width] = [4, 5]
+    sequence_length = [[0] * 5, [1] * 5, [2] * 5, [3] * 5]
 
     with self.test_session(use_gpu=True):
       # (max_time = 4, batch_size = 4, beam_width = 5)

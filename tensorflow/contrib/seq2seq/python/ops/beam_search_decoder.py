@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import numpy as np
 
 from tensorflow.contrib.rnn import core_rnn_cell
+from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -33,7 +33,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import script_ops
 from tensorflow.python.util import nest
 
 
@@ -202,20 +201,24 @@ class BeamSearchDecoder(decoder.Decoder):
 
     return (finished, start_inputs, initial_state)
 
-  def finalize(self, outputs, final_state):
+  def finalize(self, outputs, final_state, sequence_lengths):
     """Finalize and return the predicted_ids.
 
     Args:
       outputs: An instance of BeamSearchDecoderOutput.
       final_state: An instance of BeamSearchDecoderState. Passed through to the
         output.
+      sequence_lengths: An `int32` tensor shaped `[batch_size, beam_width]`.
+        The sequence lengths determined for each beam during decode.
 
     Returns:
       outputs: An instance of FinalBeamSearchDecoderOutput where the
         predicted_ids are the result of calling _gather_tree.
       final_state: The same input instance of BeamSearchDecoderState.
     """
-    predicted_ids = _gather_tree(outputs.predicted_ids, outputs.parent_ids)
+    predicted_ids = beam_search_ops.gather_tree(
+        outputs.predicted_ids, outputs.parent_ids,
+        sequence_length=sequence_lengths)
     outputs = FinalBeamSearchDecoderOutput(
         beam_search_decoder_output=outputs, predicted_ids=predicted_ids)
     return outputs, final_state
@@ -534,42 +537,6 @@ def _mask_probs(probs, eos_token, finished):
       off_value=dtypes.float32.min)
   finished_examples = (1. - finished_mask) * finished_row
   return finished_examples + non_finished_examples
-
-
-def _gather_tree_py(values, parents):
-  """Gathers path through a tree backwards from the leave nodes.
-
-  Used to reconstruct beams given their parents.
-
-  Args:
-    values: A [T, batch_size, beam_width] tensor of indices.
-    parents: A [T, batch_size, beam_width] tensor of parent beam ids.
-
-  Returns:
-    The [T, batch_size, beam_width] numpy array of paths. For a given batch
-      entry b, the best path is given by ret[:, b, 0].
-  """
-  num_timesteps = values.shape[0]
-  num_beams = values.shape[2]
-  batch_size = values.shape[1]
-  ret = np.zeros_like(values)  # [T, MB, BW]
-  ret[-1, :, :] = values[-1, :, :]
-  for beam_id in range(num_beams):
-    for batch in range(batch_size):
-      parent = parents[-1][batch][beam_id]
-      for timestep in reversed(range(num_timesteps - 1)):
-        ret[timestep, batch, beam_id] = values[timestep][batch][parent]
-        parent = parents[timestep][batch][parent]
-  # now we are going to return ret as a [ts, mb, bw] tensor
-  return np.array(ret).astype(values.dtype)
-
-
-def _gather_tree(values, parents):
-  """Tensor version of _gather_tree_py."""
-  ret = script_ops.py_func(
-      func=_gather_tree_py, inp=[values, parents], Tout=values.dtype)
-  ret.set_shape(values.get_shape().as_list())
-  return ret
 
 
 def _tensor_gather_helper(gather_indices, gather_from, range_input, range_size,
