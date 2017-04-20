@@ -468,7 +468,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     if probability_fn is None:
       probability_fn = nn_ops.softmax
     else:
-      if not callable(cell_input_fn):
+      if not callable(probability_fn):
         raise TypeError(
             "probability_fn must be callable, saw type: %s"
             % type(probability_fn).__name__)
