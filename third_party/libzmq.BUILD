@@ -5,7 +5,7 @@ licenses(["notice"])  # LGPL license with exception for static linking (for libz
 genrule(
     name = "configure",
     outs = ["platform.hpp"],
-    cmd = "cd external/libzmq && ./configure && cd ../..; cp external/libzmq/src/platform.hpp $@",
+    cmd = "cd external/libzmq && ./configure && cp src/platform.hpp $@",
 )
 
 cc_library(
