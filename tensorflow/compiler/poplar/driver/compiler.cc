@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/poplar/driver/executable.h"
 #include "tensorflow/compiler/poplar/driver/ops.h"
 #include "tensorflow/compiler/poplar/driver/tensor.h"
-#include "tensorflow/compiler/poplar/driver/visitor_base.h"
+#include "tensorflow/compiler/poplar/driver/visitor_full.h"
 #include "tensorflow/compiler/poplar/stream_executor/executor.h"
 //
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -56,10 +56,10 @@ namespace sep = ::perftools::gputools::poplarplugin;
 namespace xla {
 namespace poplarplugin {
 
-class PoplarMainVisitor : public PoplarBaseVisitor {
+class PoplarMainVisitor : public PoplarFullVisitor {
 public:
   PoplarMainVisitor(poplar::Graph* graph, uint64 num_parameters)
-          : PoplarBaseVisitor(graph),
+          : PoplarFullVisitor(graph),
             all_outputs_are_parameters(false) {}
 
   Status HandleInfeed(HloInstruction* inst) {

@@ -57,6 +57,12 @@ PoplarBaseVisitor::GetOutputShape(HloInstruction* inst) const {
   return inst->shape();
 }
 
+Status PoplarBaseVisitor::Unimplemented(HloInstruction* inst) {
+  return port::Status(port::error::UNIMPLEMENTED,
+                      port::StrCat(inst->name(),
+                                   " not implemented"));
+}
+
 Status PoplarBaseVisitor::HandleElementwiseUnary(
         HloInstruction* inst,
         HloOpcode opcode,
@@ -136,33 +142,14 @@ Status PoplarBaseVisitor::HandleSelect(
 Status PoplarBaseVisitor::HandleConcatenate(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  VLOG(1) << inst->ToString();
-  int64 dimension(inst->concatenate_dimension());
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
-  out = out.slice(0, 0, dimension);
-  for (auto op : operands) {
-    poplar::Tensor t;
-    TF_ASSIGN_OR_RETURN(t, FindInstructionOutput(tensor_map, op, 0));
-    out = poplar::concat(out, t, dimension);
-  }
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleDot(
         HloInstruction* inst,
         HloInstruction* lhs,
         HloInstruction* rhs) {
-  VLOG(1) << inst->ToString();
-  poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(prog,
-                      CreateMatMulOp(*graph_,
-                                     inst,
-                                     GetOutputShape(inst),
-                                     tensor_map));
-  sequence.add(prog);
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleConvolution(
@@ -170,22 +157,11 @@ Status PoplarBaseVisitor::HandleConvolution(
         HloInstruction* lhs,
         HloInstruction* rhs,
         const Window& window) {
-  VLOG(1) << inst->ToString();
-  poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(prog,
-                      CreateConv2D(*graph_,
-                                   inst,
-                                   GetOutputShape(inst),
-                                   tensor_map));
-  sequence.add(prog);
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleRng(
@@ -205,21 +181,13 @@ Status PoplarBaseVisitor::HandleRng(
 Status PoplarBaseVisitor::HandleReverse(
         HloInstruction* inst,
         HloInstruction* operand) {
-  VLOG(1) << inst->ToString();
-  poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0, 0));
-  TF_ASSIGN_OR_RETURN(t, ReverseTensor(t, inst->dimensions()));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, t));
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleSort(
         HloInstruction* inst,
         HloInstruction* operand) {
-  VLOG(1) << inst->ToString();
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleConstant(
@@ -238,14 +206,7 @@ Status PoplarBaseVisitor::HandleConstant(
 Status PoplarBaseVisitor::HandleGetTupleElement(
         HloInstruction* inst,
         HloInstruction* operand) {
-  VLOG(1) << inst->ToString();
-  poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map,
-                                              inst,
-                                              0,
-                                              inst->tuple_index()));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, t));
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleReduce(
@@ -254,120 +215,51 @@ Status PoplarBaseVisitor::HandleReduce(
         HloInstruction* init_value,
         tensorflow::gtl::ArraySlice<int64> dimensions,
         HloComputation* function) {
-  VLOG(1) << inst->ToString();
-  bool simple_reduction;
-  TF_ASSIGN_OR_RETURN(simple_reduction,
-                      IsComputationReducableArtithmetic(function));
-  if (simple_reduction) {
-    poplar::program::Program prog;
-    TF_ASSIGN_OR_RETURN(prog,
-                        CreateSimpleReduction(*graph_,
-                                              inst,
-                                              GetOutputShape(inst),
-                                              tensor_map));
-    sequence.add(prog);
-    return Status::OK();
-  }
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleBitcast(HloInstruction* inst) {
-  if (LayoutUtil::LayoutsInShapesEqual(inst->operand(0)->shape(),
-                                       GetOutputShape(inst))) {
-    return HandleReshape(inst);
-  } else {
-    return HandleTranspose(inst);
-  }
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleBroadcast(HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
-  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out,
-                                           GetOutputShape(inst),
-                                           inst->dimensions()));
-  std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
-  out = out.reshape(dims);
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleReshape(HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
-  std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
-  out = out.reshape(dims);
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleTranspose(HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
-  std::vector<unsigned> permutation(
-          convert_array<std::vector<unsigned>>(inst->dimensions()));
-  out = out.dimShuffle(permutation);
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleFusion(HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleCall(
         HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
-  poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(prog,
-                      CreateCallOp(*graph_,
-                                   inst,
-                                   GetOutputShape(inst),
-                                   tensor_map));
-  sequence.add(prog);
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleCustomCall(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands,
         tensorflow::StringPiece custom_call_target) {
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
-
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleSlice(
         HloInstruction* inst,
         HloInstruction* operand) {
-  VLOG(1) << inst->ToString();
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
-  std::vector<std::size_t> begin(
-          convert_array<std::vector<std::size_t>>(inst->slice_starts()));
-  std::vector<std::size_t> end(
-          convert_array<std::vector<std::size_t>>(inst->slice_limits()));
-  out = out.slice(begin, end);
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleDynamicSlice(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  VLOG(1) << inst->ToString();
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleDynamicUpdateSlice(
@@ -375,23 +267,13 @@ Status PoplarBaseVisitor::HandleDynamicUpdateSlice(
         HloInstruction* operand,
         HloInstruction* update,
         HloInstruction* start_indices) {
-  VLOG(1) << inst->ToString();
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleTuple(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  VLOG(1) << inst->ToString();
-  uint64 operand_count(inst->operand_count());
-  for (uint64 i=0; i<operand_count; i++) {
-    poplar::Tensor t;
-    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, t));
-  }
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleMap(
@@ -399,23 +281,7 @@ Status PoplarBaseVisitor::HandleMap(
         tensorflow::gtl::ArraySlice<HloInstruction*> operands,
         HloComputation* function,
         tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) {
-  VLOG(1) << inst->ToString();
-  bool simple_parallel;
-  TF_ASSIGN_OR_RETURN(simple_parallel,
-                      IsComputationParallelMap(function));
-  if (simple_parallel) {
-    poplar::program::Program prog;
-    TF_ASSIGN_OR_RETURN(prog,
-                        CreateParallelMap(*graph_,
-                                          inst,
-                                          GetOutputShape(inst),
-                                          tensor_map));
-    sequence.add(prog);
-    return Status::OK();
-  }
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not supported by poplar"));
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleReduceWindow(
@@ -423,69 +289,35 @@ Status PoplarBaseVisitor::HandleReduceWindow(
         HloInstruction* operand,
         const Window& window,
         HloComputation* function) {
-  VLOG(1) << inst->ToString();
-  bool simple_reduction;
-  TF_ASSIGN_OR_RETURN(simple_reduction,
-                      IsComputationReducableArtithmetic(function));
-  if (simple_reduction) {
-    poplar::program::Program prog;
-    TF_ASSIGN_OR_RETURN(prog,
-                        CreateSimpleWindowReduction(*graph_,
-                                                    inst,
-                                                    GetOutputShape(inst),
-                                                    tensor_map));
-    sequence.add(prog);
-    return Status::OK();
-  }
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleSelectAndScatter(HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
-  bool simple_selection;
-  TF_ASSIGN_OR_RETURN(simple_selection,
-                      IsComputationSimpleSelection(inst->select()));
-  bool simple_reduction;
-  TF_ASSIGN_OR_RETURN(simple_reduction,
-                      IsComputationReducableArtithmetic(inst->scatter()));
-  if (simple_selection && simple_reduction) {
-    poplar::program::Program prog;
-    TF_ASSIGN_OR_RETURN(prog,
-                        CreateSimpleSelectAndScatter(*graph_,
-                                                     inst,
-                                                     GetOutputShape(inst),
-                                                     tensor_map));
-    sequence.add(prog);
-    return Status::OK();
-  }
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not implemented"));
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandleWhile(HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
-  poplar::program::Program prog;
-  TF_ASSIGN_OR_RETURN(prog,
-                      CreateWhileOp(*graph_,
-                                    inst,
-                                    GetOutputShape(inst),
-                                    tensor_map));
-  sequence.add(prog);
-  return Status::OK();
+  return Unimplemented(inst);
 }
 
 Status PoplarBaseVisitor::HandlePad(HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
-  poplar::Tensor out;
-  poplar::Tensor pad;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
-  TF_ASSIGN_OR_RETURN(pad, FindInstructionInput(tensor_map, inst, 1, 0));
-  TF_ASSIGN_OR_RETURN(out, PadTensor(inst->padding_config(), out, pad));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  return Status::OK();
+  return Unimplemented(inst);
+}
+
+Status PoplarBaseVisitor::HandleInfeed(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status PoplarBaseVisitor::HandleOutfeed(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status PoplarBaseVisitor::HandleSend(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status PoplarBaseVisitor::HandleRecv(HloInstruction* inst) {
+  return Unimplemented(inst);
 }
 
 

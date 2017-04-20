@@ -16,10 +16,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_CALL_VISITOR_H_
-#define TENSORFLOW_COMPILER_POPLAR_DRIVER_CALL_VISITOR_H_
+#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_CALL_H_
+#define TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_CALL_H_
 
-#include "tensorflow/compiler/poplar/driver/visitor_base.h"
+#include "tensorflow/compiler/poplar/driver/visitor_full.h"
 
 namespace poplar {
 class Graph;
@@ -29,39 +29,24 @@ class Tensor;
 namespace xla {
 namespace poplarplugin {
 
-class PoplarCallVisitor : public PoplarBaseVisitor {
+class PoplarCallVisitor : public PoplarFullVisitor {
 public:
   PoplarCallVisitor(poplar::Graph* graph,
                     const std::vector<poplar::Tensor>& inputs);
 
-  Status HandleInfeed(HloInstruction* inst) override;
-  Status HandleOutfeed(HloInstruction* inst) override;
   Status HandleParameter(HloInstruction* inst) override;
-  Status HandleSend(HloInstruction* inst) override;
-  Status HandleRecv(HloInstruction* inst) override;
   Status FinishVisit(HloInstruction* inst) override;
 
-  std::vector<poplar::Tensor> operands;
-  std::vector<poplar::Tensor> output;
-};
-
-class PoplarMapVisitor : public PoplarCallVisitor {
-public:
-  PoplarMapVisitor(poplar::Graph* graph,
-                   const std::vector<poplar::Tensor>& inputs,
-                   const xla::Shape& shape) :
-          PoplarCallVisitor(graph, inputs),
-          shape(shape) {}
-
-  const Shape& GetOutputShape(HloInstruction*) const override {
-    return shape;
+  const std::vector<poplar::Tensor>& output() {
+    return output_;
   }
 
 private:
-  xla::Shape shape;
+  std::vector<poplar::Tensor> operands_;
+  std::vector<poplar::Tensor> output_;
 };
 
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_CALL_VISITOR_H_
+#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_CALL_H_

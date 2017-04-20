@@ -16,48 +16,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_BASE_H_
-#define TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_BASE_H_
+#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_FULL_H_
+#define TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_FULL_H_
 
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/poplar/driver/visitor_base.h"
 #include "tensorflow/compiler/poplar/driver/ops.h"
 
 namespace xla {
 namespace poplarplugin {
 
 /*
- * The base visitor handles all operations that are element-wise.
- * This includes all explicitly element-wise ops, and also operations
- * Select, Convert, Clamp, Rng, Constant.  All of these have no element
- * to element dependencies.
+ * The full visitor is an extension of the base visitor
+ * that adds other operations which do element to element
+ * mixing, for instance convolution.  It also adds ops
+ * that change the shape of the tensor, for instance Reverse
+ * or Concatinate.
  */
-class PoplarBaseVisitor : public DfsHloVisitor {
+class PoplarFullVisitor : public PoplarBaseVisitor {
 public:
-  PoplarBaseVisitor(poplar::Graph* graph);
-
-  virtual const Shape& GetOutputShape(HloInstruction*) const;
-
-  Status HandleElementwiseUnary(HloInstruction* inst,
-                                HloOpcode opcode,
-                                HloInstruction* operand) override;
-
-  Status HandleElementwiseBinary(HloInstruction* inst,
-                                 HloOpcode opcode,
-                                 HloInstruction* lhs,
-                                 HloInstruction* rhs) override;
-
-  Status HandleConvert(HloInstruction* inst,
-                       HloInstruction* operand) override;
-
-  Status HandleClamp(HloInstruction* inst,
-                     HloInstruction* min,
-                     HloInstruction* arg,
-                     HloInstruction* max) override;
-
-  Status HandleSelect(HloInstruction* inst,
-                      HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
+  PoplarFullVisitor(poplar::Graph* graph);
 
   Status HandleConcatenate(
           HloInstruction* inst,
@@ -74,17 +51,11 @@ public:
 
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
 
-  Status HandleRng(HloInstruction* inst,
-                   RandomDistribution distribution) override;
-
   Status HandleReverse(HloInstruction* inst,
                        HloInstruction* operand) override;
 
   Status HandleSort(HloInstruction* inst,
                     HloInstruction* operand) override;
-
-  Status HandleConstant(HloInstruction* inst,
-                        const Literal& literal) override;
 
   Status HandleGetTupleElement(HloInstruction* inst,
                                HloInstruction* operand) override;
@@ -141,26 +112,9 @@ public:
 
   Status HandlePad(HloInstruction* inst) override;
 
-  Status HandleInfeed(HloInstruction* inst) override;
-
-  Status HandleOutfeed(HloInstruction* inst) override;
-
-  Status HandleSend(HloInstruction* inst) override;
-
-  Status HandleRecv(HloInstruction* inst) override;
-
-  TensorMap tensor_map;
-
-  poplar::program::Sequence sequence;
-
-protected:
-  Status Unimplemented(HloInstruction* inst);
-
-  poplar::Graph* graph_;
-
 };
 
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_BASE_H_
+#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_FULL_H_

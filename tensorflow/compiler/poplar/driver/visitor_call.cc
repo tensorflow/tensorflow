@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/poplar/driver/ops.h"
 #include "tensorflow/compiler/poplar/driver/tensor.h"
-#include "tensorflow/compiler/poplar/driver/call_visitor.h"
+#include "tensorflow/compiler/poplar/driver/visitor_call.h"
 
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -36,30 +36,14 @@ namespace poplarplugin {
 
 PoplarCallVisitor::PoplarCallVisitor(poplar::Graph* graph,
                                      const std::vector<poplar::Tensor>& inputs)
-        : PoplarBaseVisitor(graph),
-          operands(std::move(inputs)) {
-}
-
-Status PoplarCallVisitor::HandleInfeed(HloInstruction* inst) {
-  return port::Status(port::error::INTERNAL, "Sub-computation contains infeed");
-}
-
-Status PoplarCallVisitor::HandleOutfeed(HloInstruction* inst) {
-  return port::Status(port::error::INTERNAL, "Sub-computation contains outfeed");
-}
-
-Status PoplarCallVisitor::HandleSend(HloInstruction* inst) {
-  return port::Status(port::error::INTERNAL, "Sub-computation contains send");
-}
-
-Status PoplarCallVisitor::HandleRecv(HloInstruction* inst) {
-  return port::Status(port::error::INTERNAL, "Sub-computation contains recv");
+        : PoplarFullVisitor(graph),
+          operands_(std::move(inputs)) {
 }
 
 Status PoplarCallVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << inst->ToString();
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0,
-                                     operands[inst->parameter_number()]));
+                                     operands_[inst->parameter_number()]));
   return Status::OK();
 }
 
@@ -72,7 +56,7 @@ Status PoplarCallVisitor::FinishVisit(HloInstruction* inst) {
   for (int64 i=0; i<c; i++) {
     poplar::Tensor out;
     TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, i));
-    output.push_back(out);
+    output_.push_back(out);
   }
 
   return Status::OK();

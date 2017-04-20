@@ -3,7 +3,8 @@
 #include "tensorflow/compiler/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/poplar/driver/ops.h"
 #include "tensorflow/compiler/poplar/driver/tensor.h"
-#include "tensorflow/compiler/poplar/driver/call_visitor.h"
+#include "tensorflow/compiler/poplar/driver/visitor_map.h"
+#include "tensorflow/compiler/poplar/driver/visitor_call.h"
 
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -95,8 +96,8 @@ CreateParallelMap(poplar::Graph &graph,
   PoplarMapVisitor visitor(&graph, inputs, output);
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
-  for (size_t i=0; i<visitor.output.size(); i++) {
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, visitor.output[i]));
+  for (size_t i=0; i<visitor.output().size(); i++) {
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, visitor.output()[i]));
   }
 
   return visitor.sequence;
@@ -120,8 +121,8 @@ CreateCallOp(poplar::Graph &graph,
   PoplarCallVisitor visitor(&graph, inputs);
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
-  for (size_t i=0; i<visitor.output.size(); i++) {
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, visitor.output[i]));
+  for (size_t i=0; i<visitor.output().size(); i++) {
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, visitor.output()[i]));
   }
 
   return visitor.sequence;
@@ -156,11 +157,10 @@ CreateWhileOp(poplar::Graph &graph,
   PoplarCallVisitor body_visitor(&graph, body_inputs);
   TF_RETURN_IF_ERROR(inst->while_body()->Accept(&body_visitor));
 
-  body_visitor.sequence.add(poplar::program::Copy(body_visitor.output[0],
+  body_visitor.sequence.add(poplar::program::Copy(body_visitor.output()[0],
                                                   body_input));
-  //body_visitor.sequence.add(poplar::program::PrintTensor(body_visitor.output[0]));
-  //body_visitor.sequence.add(poplar::program::PrintTensor(body_input));
-  poplar::Tensor body_output = body_visitor.output[0];
+
+  poplar::Tensor body_output = body_visitor.output()[0];
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, body_output));
 
   // Condition
