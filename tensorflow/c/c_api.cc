@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #endif
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -96,9 +97,6 @@ size_t TF_DataTypeSize(TF_DataType dt) {
 }
 
 // --------------------------------------------------------------------------
-struct TF_Status {
-  Status status;
-};
 
 TF_Status* TF_NewStatus() { return new TF_Status; }
 
@@ -181,12 +179,6 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
 }
 
 }  // namespace
-
-struct TF_Tensor {
-  TF_DataType dtype;
-  TensorShape shape;
-  TensorBuffer* buffer;
-};
 
 TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
                              int num_dims, size_t len) {
@@ -292,9 +284,6 @@ size_t TF_StringEncodedSize(size_t len) {
 }
 
 // --------------------------------------------------------------------------
-struct TF_SessionOptions {
-  SessionOptions options;
-};
 TF_SessionOptions* TF_NewSessionOptions() { return new TF_SessionOptions; }
 void TF_DeleteSessionOptions(TF_SessionOptions* opt) { delete opt; }
 
@@ -335,9 +324,6 @@ void TF_DeleteBuffer(TF_Buffer* buffer) {
 TF_Buffer TF_GetBuffer(TF_Buffer* buffer) { return *buffer; }
 
 // --------------------------------------------------------------------------
-struct TF_DeprecatedSession {
-  Session* session;
-};
 
 TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions* opt,
                                               TF_Status* status) {
@@ -701,11 +687,6 @@ void TF_PRun(TF_DeprecatedSession* s, const char* handle,
                 c_outputs, target_oper_names, nullptr, status);
 }
 
-struct TF_Library {
-  void* lib_handle;
-  TF_Buffer op_list;
-};
-
 TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
   TF_Library* lib_handle = new TF_Library;
   status->status = tensorflow::LoadLibrary(
@@ -741,66 +722,6 @@ TF_Buffer* TF_GetAllOpList() {
 
 // --------------------------------------------------------------------------
 // New Graph and Session API
-
-// Structures -----------------------------------------------------------------
-
-extern "C" {
-
-struct TF_Graph {
-  TF_Graph()
-      : graph(OpRegistry::Global()),
-        refiner(graph.versions().producer(), graph.op_registry()),
-        num_sessions(0),
-        delete_requested(false),
-        parent(nullptr),
-        parent_inputs(nullptr) {}
-  mutex mu;
-  Graph graph GUARDED_BY(mu);
-
-  // Runs shape inference.
-  tensorflow::ShapeRefiner refiner GUARDED_BY(mu);
-
-  // Maps from name of an operation to the Node* in 'graph'.
-  std::unordered_map<tensorflow::string, Node*> name_map GUARDED_BY(mu);
-
-  // TF_Graph may only / must be deleted when
-  //   num_sessions == 0 && delete_requested == true
-
-  // num_sessions incremented by TF_NewSession, and decremented by
-  // TF_DeleteSession.
-  int num_sessions GUARDED_BY(mu);
-  bool delete_requested GUARDED_BY(mu);  // set true by TF_DeleteGraph
-
-  // Used to link graphs contained in TF_WhileParams to the parent graph that
-  // will eventually contain the full while loop.
-  TF_Graph* parent;
-  TF_Output* parent_inputs;
-};
-
-struct TF_OperationDescription {
-  TF_OperationDescription(TF_Graph* g, const char* op_type,
-                          const char* node_name)
-      : node_builder(node_name, op_type, g->graph.op_registry()), graph(g) {}
-
-  NodeBuilder node_builder;
-  TF_Graph* graph;
-  std::vector<tensorflow::string> colocation_constraints;
-};
-
-struct TF_Operation {
-  Node node;
-};
-
-struct TF_Session {
-  TF_Session(Session* s, TF_Graph* g)
-      : session(s), graph(g), last_num_graph_nodes(0) {}
-  Session* session;
-  TF_Graph* graph;
-  mutex mu;
-  int last_num_graph_nodes;
-};
-
-}  // end extern "C"
 
 // Helper functions -----------------------------------------------------------
 
@@ -1690,10 +1611,6 @@ void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,
   }
   status->status = MessageToBuffer(def, output_graph_def);
 }
-
-struct TF_ImportGraphDefOptions {
-  tensorflow::ImportGraphDefOptions opts;
-};
 
 TF_ImportGraphDefOptions* TF_NewImportGraphDefOptions() {
   return new TF_ImportGraphDefOptions;
