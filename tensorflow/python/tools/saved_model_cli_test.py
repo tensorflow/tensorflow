@@ -28,6 +28,7 @@ import sys
 import numpy as np
 from six import StringIO
 
+from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.platform import test
 from tensorflow.python.tools import saved_model_cli
 
@@ -299,9 +300,9 @@ Method name is: tensorflow/serving/predict"""
         test.get_temp_dir()
     ])
     saved_model_cli.run(args)
-    y = np.load(output_file)
-    y_exp = np.array([[3.5], [4.0]])
-    self.assertTrue(np.allclose(y, y_exp))
+    y_actual = np.load(output_file)
+    y_expected = np.array([[3.5], [4.0]])
+    self.assertAllClose(y_expected, y_actual)
 
   def testRunCommandNewOutdir(self):
     self.parser = saved_model_cli.create_parser()
@@ -320,9 +321,9 @@ Method name is: tensorflow/serving/predict"""
         output_dir
     ])
     saved_model_cli.run(args)
-    y = np.load(os.path.join(output_dir, 'y.npy'))
-    y_exp = np.array([[2.5], [3.0]])
-    self.assertTrue(np.allclose(y, y_exp))
+    y_actual = np.load(os.path.join(output_dir, 'y.npy'))
+    y_expected = np.array([[2.5], [3.0]])
+    self.assertAllClose(y_expected, y_actual)
 
   def testRunCommandOutOverwrite(self):
     self.parser = saved_model_cli.create_parser()
@@ -340,9 +341,9 @@ Method name is: tensorflow/serving/predict"""
         test.get_temp_dir(), '--overwrite'
     ])
     saved_model_cli.run(args)
-    y = np.load(output_file)
-    y_exp = np.array([[2.5], [3.0]])
-    self.assertTrue(np.allclose(y, y_exp))
+    y_actual = np.load(output_file)
+    y_expected = np.array([[2.5], [3.0]])
+    self.assertAllClose(y_expected, y_actual)
 
   def testRunCommandOutputFileExistError(self):
     self.parser = saved_model_cli.create_parser()
@@ -361,6 +362,37 @@ Method name is: tensorflow/serving/predict"""
     ])
     with self.assertRaises(RuntimeError):
       saved_model_cli.run(args)
+
+  def testRunCommandWithDebuggerEnabled(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    x = np.array([[1], [2]])
+    x_notused = np.zeros((6, 3))
+    input_path = os.path.join(test.get_temp_dir(),
+                              'testRunCommandNewOutdir_inputs.npz')
+    output_dir = os.path.join(test.get_temp_dir(), 'new_dir')
+    if os.path.isdir(output_dir):
+      shutil.rmtree(output_dir)
+    np.savez(input_path, x0=x, x1=x_notused)
+    args = self.parser.parse_args([
+        'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
+        'serving_default', '--inputs', 'x=' + input_path + '[x0]', '--outdir',
+        output_dir, '--tf_debug'
+    ])
+
+    def fake_wrapper_session(sess):
+      return sess
+
+    with test.mock.patch.object(local_cli_wrapper,
+                                'LocalCLIDebugWrapperSession',
+                                side_effect=fake_wrapper_session,
+                                autospec=True) as fake:
+      saved_model_cli.run(args)
+      fake.assert_called_with(test.mock.ANY)
+
+    y_actual = np.load(os.path.join(output_dir, 'y.npy'))
+    y_expected = np.array([[2.5], [3.0]])
+    self.assertAllClose(y_expected, y_actual)
 
 
 if __name__ == '__main__':
