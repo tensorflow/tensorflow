@@ -14,6 +14,8 @@
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
 
+#include <poplin/MatMul.hpp>
+
 namespace xla {
 namespace poplarplugin {
 
@@ -273,9 +275,6 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
   return poplar::program::Execute(cs);
 }
 
-// TODO - extend this to the semantics of XLA matmul
-// TODO - which is that the last dimension of in0 is done 'dot'
-// TODO - with the last but one of in1.
 port::StatusOr<poplar::program::Program>
 CreateMatMulOp(poplar::Graph &graph,
                const HloInstruction *inst,
@@ -289,38 +288,24 @@ CreateMatMulOp(poplar::Graph &graph,
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1, 0));
 
-  const std::string& poplar_data_type(graph.getTensorElementType(in0));
-
-  // Allocate the output tensor
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  poplar::program::Sequence seq;
 
-  uint64 dims = out.rank();
-  auto num_rows = out.dim(dims-2);
-  auto num_cols = out.dim(dims-1);
-
-  poplar::ComputeSet cs = graph.addComputeSet(inst->name());
-  const auto &device_info = graph.getDevice().getDeviceInfo();
-  unsigned num_tiles = device_info.getNumTiles();
-
-  poplar::Tensor a = in0;
-  poplar::Tensor b = in1.dimShuffle({1,0});
-
-  std::string vertex_name = templateVertex("Dot", poplar_data_type);
-
-  for (unsigned r = 0; r < num_rows; ++r) {
-    for (unsigned c = 0; c < num_cols; ++c) {
-      auto v = graph.addVertex(cs, vertex_name,
-                               {{a_conn, a[r]},
-                                {b_conn, b[c]},
-                                {out_conn, out[r].slice(c,c+1)}});
-
-      graph.setTileMapping(v, (r + c * num_rows)  % num_tiles);
-    }
+  if (in0.rank() > 2 || in1.rank() > 2) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        port::StrCat("Unsupported Dot operation on ",
+                                     inst->name()));
   }
 
-  return poplar::program::Execute(cs);
+  if (in0.rank() == 1) {
+    in0 = in0.reshape({1, in0.dim(0)});
+  }
+
+  out = poplin::matMul(graph, in0, in1, seq);
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return seq;
 }
 
 // TODO - select needs to support scalars

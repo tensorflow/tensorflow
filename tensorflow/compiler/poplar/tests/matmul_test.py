@@ -70,5 +70,35 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
                                      [[[42900, 79200], [429, 792]],
                                       [[250800, 299200], [2508, 2992]]]])
 
+    def testMatMulBatch2(self):
+      with tf.device("/device:XLA_IPU:0"):
+        with tf.Session() as sess:
+          pa = tf.placeholder(tf.float32, [6,2,2], name="a")
+          pb = tf.placeholder(tf.float32, [6,2,2], name="b")
+          output = math_ops.matmul(pa, pb)
+
+          fd = {
+            pa: [[[1, 0], [0, 1]],
+                 [[2, 0], [0, 2]],
+                 [[3, 0], [0, 3]],
+                 [[4, 0], [0, 4]],
+                 [[5, 0], [0, 5]],
+                 [[6, 0], [0, 6]]],
+            pb: [[[1, 1], [1, 1]],
+                 [[2, 2], [2, 2]],
+                 [[3, 3], [3, 3]],
+                 [[0, 2], [0, 2]],
+                 [[0, 1], [0, 1]],
+                 [[1, 0], [1, 0]]],
+          }
+          result = sess.run(output, fd)
+          self.assertAllClose(result,
+                              [[[1, 1], [1, 1]],
+                               [[4, 4], [4, 4]],
+                               [[9, 9], [9, 9]],
+                               [[0, 8], [0, 8]],
+                               [[0, 5], [0, 5]],
+                               [[6, 0], [6, 0]]])
+
 if __name__ == "__main__":
     googletest.main()
