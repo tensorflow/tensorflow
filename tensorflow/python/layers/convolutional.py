@@ -1094,7 +1094,6 @@ class Conv2DTranspose(Conv2D):
       if padding == 'valid' and dim_size is not None:
         dim_size += max(kernel_size - stride_size, 0)
       return dim_size
-
     if self.output_shape is None:
       # Infer the dynamic output shape:
       out_height = get_deconv_dim(height, stride_h, kernel_h, self.padding)
@@ -1121,14 +1120,20 @@ class Conv2DTranspose(Conv2D):
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = self.filters
-
-    if self.output_shape is None or isinstance(self.output_shape, ops.Tensor):
+    if (self.output_shape is None or
+        isinstance(self.output_shape[0], ops.Tensor)):
       out_shape[h_axis] = get_deconv_dim(
           out_shape[h_axis], stride_h, kernel_h, self.padding)
+    else:
+      out_shape[h_axis] = self.output_shape[0]
+
+    if (self.output_shape is None or
+        isinstance(self.output_shape[1], ops.Tensor)):
       out_shape[w_axis] = get_deconv_dim(
           out_shape[w_axis], stride_w, kernel_w, self.padding)
     else:
-      out_shape[h_axis], out_shape[w_axis] = self.output_shape
+      out_shape[w_axis] = self.output_shape[1]
+
     outputs.set_shape(out_shape)
 
     if self.bias:
