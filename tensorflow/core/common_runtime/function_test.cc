@@ -44,7 +44,7 @@ Status GetOpSig(const string& op, const OpDef** sig) {
 void FunctionTestSchedClosure(std::function<void()> fn) {
   static thread::ThreadPool* w =
       new thread::ThreadPool(Env::Default(), "Test", 8);
-  w->Schedule(fn);
+  w->Schedule(std::move(fn));
 }
 
 void HasError(const Status& s, const string& substr) {
@@ -654,7 +654,8 @@ namespace {
 
 bool DoNothing(Graph* g) { return false; }
 
-string Optimize(std::function<bool(Graph* g)> pass, const FunctionDef& fdef) {
+string Optimize(const std::function<bool(Graph* g)>& pass,
+                const FunctionDef& fdef) {
   InstantiationResult result;
   InstantiateAttrValueMap empty;
   TF_CHECK_OK(InstantiateFunction(fdef, empty, GetOpSig, &result));
