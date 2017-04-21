@@ -44,6 +44,7 @@ py_library(
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/seq2seq:seq2seq_py",
+        "//tensorflow/contrib/shuffle:init_py",
         "//tensorflow/contrib/slim",
         "//tensorflow/contrib/slim:nets",
         "//tensorflow/contrib/solvers:solvers_py",
