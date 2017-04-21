@@ -172,14 +172,17 @@ REGISTER_OP("SparseTensorDenseMatMul")
     })
     .Doc(R"doc(
 Multiply SparseTensor "A" by dense Tensor "B".
+
 No validity checking is performed on the indices of A.  However, the following
 input format is recommended for optimal behavior:
+
 if adjoint_a == false:
   A should be sorted in lexicographically increasing order.  Use SparseReorder
   if you're not sure.
 if adjoint_a == true:
   A should be sorted in order of increasing dimension -1 (i.e., "column major"
   order instead of "row major" order).
+
 a_indices: 2-D.  The `indices` of the `SparseTensor`, size `[nnz, ndim]` Matrix.
 a_values: 1-D.  The `values` of the `SparseTensor`, size `[nnz]` Vector.
 a_shape: 1-D.  The `shape` of the `SparseTensor`, size `[ndim]` Vector.
