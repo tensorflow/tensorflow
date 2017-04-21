@@ -48,9 +48,10 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace poplarplugin {
 
-PoplarBaseVisitor::PoplarBaseVisitor(poplar::Graph* graph) {
-  graph_ = graph;
-}
+PoplarBaseVisitor::PoplarBaseVisitor(poplar::Graph* graph,
+                                     CompilerResources& res)
+        : graph_(graph),
+          resources_(res) {}
 
 const Shape&
 PoplarBaseVisitor::GetOutputShape(HloInstruction* inst) const {
@@ -70,6 +71,7 @@ Status PoplarBaseVisitor::HandleElementwiseUnary(
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateUnaryElementwiseOp(*graph_,
+                                               resources_,
                                                inst,
                                                GetOutputShape(inst),
                                                tensor_map));
@@ -85,6 +87,7 @@ Status PoplarBaseVisitor::HandleElementwiseBinary(
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateBinaryElementwiseOp(*graph_,
+                                                resources_,
                                                 inst,
                                                 GetOutputShape(inst),
                                                 tensor_map));
@@ -97,6 +100,7 @@ Status PoplarBaseVisitor::HandleConvert(HloInstruction* inst,
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateCastOp(*graph_,
+                                   resources_,
                                    inst,
                                    GetOutputShape(inst),
                                    tensor_map));
@@ -112,6 +116,7 @@ Status PoplarBaseVisitor::HandleClamp(
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateClampOp(*graph_,
+                                    resources_,
                                     inst,
                                     GetOutputShape(inst),
                                     tensor_map));
@@ -127,6 +132,7 @@ Status PoplarBaseVisitor::HandleSelect(
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateSelectOp(*graph_,
+                                     resources_,
                                      inst,
                                      GetOutputShape(inst),
                                      tensor_map));
@@ -165,6 +171,7 @@ Status PoplarBaseVisitor::HandleRng(
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateRandomOp(*graph_,
+                                     resources_,
                                      inst,
                                      GetOutputShape(inst),
                                      tensor_map));

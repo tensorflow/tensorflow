@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/poplar/driver/ops.h"
 #include "tensorflow/compiler/poplar/driver/tensor.h"
 #include "tensorflow/compiler/poplar/driver/visitor_full.h"
+#include "tensorflow/compiler/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/poplar/stream_executor/executor.h"
 //
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -58,8 +59,10 @@ namespace poplarplugin {
 
 class PoplarMainVisitor : public PoplarFullVisitor {
 public:
-  PoplarMainVisitor(poplar::Graph* graph, uint64 num_parameters)
-          : PoplarFullVisitor(graph),
+  PoplarMainVisitor(poplar::Graph* graph,
+                    CompilerResources& resources,
+                    uint64 num_parameters)
+          : PoplarFullVisitor(graph, resources),
             all_outputs_are_parameters(false) {}
 
   Status HandleParameter(HloInstruction* inst) {
@@ -99,6 +102,8 @@ public:
 
   std::map<int64,int64> output_map;
   bool all_outputs_are_parameters;
+
+
 };
 
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
@@ -149,9 +154,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   popreduce::addCodelets(*graph);
   popstd::addCodelets(*graph);
 
+  CompilerResources resources;
+
   // Visit the graph, building up a poplar equivalent
   HloComputation* entry = hlo_module->entry_computation();
-  PoplarMainVisitor visitor(graph, entry->num_parameters());
+  PoplarMainVisitor visitor(graph, resources, entry->num_parameters());
   try {
     TF_RETURN_IF_ERROR(entry->Accept(&visitor));
   }

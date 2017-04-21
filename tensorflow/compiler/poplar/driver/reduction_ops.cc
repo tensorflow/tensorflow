@@ -154,6 +154,7 @@ GetOverlapLayerNum(const Tpos& pos,
 
 port::StatusOr<poplar::program::Program>
 CreateSimpleReduction(poplar::Graph &graph,
+                      CompilerResources& res,
                       const HloInstruction *inst,
                       const xla::Shape& output_shape,
                       TensorMap& tensor_map) {
@@ -228,6 +229,7 @@ CreateSimpleReduction(poplar::Graph &graph,
 
 port::StatusOr<poplar::program::Program>
 CreateSimpleWindowReduction(poplar::Graph &graph,
+                            CompilerResources& res,
                             const HloInstruction *inst,
                             const xla::Shape& output_shape,
                             TensorMap& tensor_map) {
@@ -307,6 +309,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
 
 port::StatusOr<poplar::program::Program>
 CreateSimpleSelectAndScatter(poplar::Graph &graph,
+                             CompilerResources& res,
                              const HloInstruction *inst,
                              const xla::Shape& output_shape,
                              TensorMap& tensor_map) {

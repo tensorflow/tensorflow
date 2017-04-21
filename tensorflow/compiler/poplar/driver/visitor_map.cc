@@ -35,9 +35,10 @@ namespace xla {
 namespace poplarplugin {
 
 PoplarMapVisitor::PoplarMapVisitor(poplar::Graph* graph,
+                                   CompilerResources& res,
                                    const std::vector<poplar::Tensor>& inputs,
                                    const xla::Shape& shape)
-        : PoplarBaseVisitor(graph),
+        : PoplarBaseVisitor(graph, res),
           operands_(std::move(inputs)),
           shape_(shape) {
 }

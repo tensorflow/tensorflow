@@ -48,8 +48,9 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace poplarplugin {
 
-PoplarFullVisitor::PoplarFullVisitor(poplar::Graph* graph)
-        : PoplarBaseVisitor(graph) {}
+PoplarFullVisitor::PoplarFullVisitor(poplar::Graph* graph,
+                                     CompilerResources& res)
+        : PoplarBaseVisitor(graph, res) {}
 
 Status PoplarFullVisitor::HandleConcatenate(
         HloInstruction* inst,
@@ -76,6 +77,7 @@ Status PoplarFullVisitor::HandleDot(
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateMatMulOp(*graph_,
+                                     resources_,
                                      inst,
                                      GetOutputShape(inst),
                                      tensor_map));
@@ -92,6 +94,7 @@ Status PoplarFullVisitor::HandleConvolution(
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateConv2D(*graph_,
+                                   resources_,
                                    inst,
                                    GetOutputShape(inst),
                                    tensor_map));
@@ -145,6 +148,7 @@ Status PoplarFullVisitor::HandleReduce(
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleReduction(*graph_,
+                                              resources_,
                                               inst,
                                               GetOutputShape(inst),
                                               tensor_map));
@@ -203,6 +207,7 @@ Status PoplarFullVisitor::HandleCall(
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateCallOp(*graph_,
+                                   resources_,
                                    inst,
                                    GetOutputShape(inst),
                                    tensor_map));
@@ -270,6 +275,7 @@ Status PoplarFullVisitor::HandleMap(
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateParallelMap(*graph_,
+                                          resources_,
                                           inst,
                                           GetOutputShape(inst),
                                           tensor_map));
@@ -293,6 +299,7 @@ Status PoplarFullVisitor::HandleReduceWindow(
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleWindowReduction(*graph_,
+                                                    resources_,
                                                     inst,
                                                     GetOutputShape(inst),
                                                     tensor_map));
@@ -313,6 +320,7 @@ Status PoplarFullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleSelectAndScatter(*graph_,
+                                                     resources_,
                                                      inst,
                                                      GetOutputShape(inst),
                                                      tensor_map));
@@ -326,6 +334,7 @@ Status PoplarFullVisitor::HandleWhile(HloInstruction* inst) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateWhileOp(*graph_,
+                                    resources_,
                                     inst,
                                     GetOutputShape(inst),
                                     tensor_map));

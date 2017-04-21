@@ -16,40 +16,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_CALL_H_
-#define TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_CALL_H_
+#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
+#define TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
 
-#include "tensorflow/compiler/poplar/driver/visitor_full.h"
-
-namespace poplar {
-class Graph;
-class Tensor;
-}
+#include <popconv/Convolution.hpp>
 
 namespace xla {
 namespace poplarplugin {
 
-class CompilerResources;
-
-class PoplarCallVisitor : public PoplarFullVisitor {
-public:
-  PoplarCallVisitor(poplar::Graph* graph,
-                    CompilerResources& res,
-                    const std::vector<poplar::Tensor>& inputs);
-
-  Status HandleParameter(HloInstruction* inst) override;
-  Status FinishVisit(HloInstruction* inst) override;
-
-  const std::vector<poplar::Tensor>& output() {
-    return output_;
-  }
-
-private:
-  std::vector<poplar::Tensor> operands_;
-  std::vector<poplar::Tensor> output_;
+class CompilerResources {
+  popconv::PlanningCache convCache;
 };
 
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_CALL_H_
+#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_

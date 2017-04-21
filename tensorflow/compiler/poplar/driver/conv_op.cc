@@ -23,6 +23,7 @@ namespace poplarplugin {
 
 port::StatusOr <poplar::program::Program>
 CreateConv2D(poplar::Graph &graph,
+             CompilerResources& res,
              const HloInstruction *inst,
              const xla::Shape &output_shape,
              TensorMap &tensor_map) {

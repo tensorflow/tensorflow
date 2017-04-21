@@ -35,8 +35,9 @@ namespace xla {
 namespace poplarplugin {
 
 PoplarCallVisitor::PoplarCallVisitor(poplar::Graph* graph,
+                                     CompilerResources& res,
                                      const std::vector<poplar::Tensor>& inputs)
-        : PoplarFullVisitor(graph),
+        : PoplarFullVisitor(graph, res),
           operands_(std::move(inputs)) {
 }
 

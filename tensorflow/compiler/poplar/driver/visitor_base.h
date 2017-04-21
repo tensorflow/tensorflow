@@ -25,6 +25,8 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+class CompilerResources;
+
 /*
  * The base visitor handles all operations that are element-wise.
  * This includes all explicitly element-wise ops, and also operations
@@ -33,7 +35,7 @@ namespace poplarplugin {
  */
 class PoplarBaseVisitor : public DfsHloVisitor {
 public:
-  PoplarBaseVisitor(poplar::Graph* graph);
+  PoplarBaseVisitor(poplar::Graph* graph, CompilerResources&);
 
   virtual const Shape& GetOutputShape(HloInstruction*) const;
 
@@ -157,6 +159,8 @@ protected:
   Status Unimplemented(HloInstruction* inst);
 
   poplar::Graph* graph_;
+
+  CompilerResources& resources_;
 
 };
 

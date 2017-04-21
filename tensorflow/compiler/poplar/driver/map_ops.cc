@@ -80,6 +80,7 @@ IsComputationParallelMap(HloComputation* computation) {
 
 port::StatusOr<poplar::program::Program>
 CreateParallelMap(poplar::Graph &graph,
+                  CompilerResources& res,
                   const HloInstruction *inst,
                   const xla::Shape& output,
                   TensorMap& tensor_map) {
@@ -93,7 +94,7 @@ CreateParallelMap(poplar::Graph &graph,
     inputs.push_back(t);
   }
 
-  PoplarMapVisitor visitor(&graph, inputs, output);
+  PoplarMapVisitor visitor(&graph, res, inputs, output);
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
   for (size_t i=0; i<visitor.output().size(); i++) {
@@ -105,6 +106,7 @@ CreateParallelMap(poplar::Graph &graph,
 
 port::StatusOr<poplar::program::Program>
 CreateCallOp(poplar::Graph &graph,
+             CompilerResources& res,
              const HloInstruction *inst,
              const xla::Shape& output,
              TensorMap& tensor_map) {
@@ -118,7 +120,7 @@ CreateCallOp(poplar::Graph &graph,
     inputs.push_back(t);
   }
 
-  PoplarCallVisitor visitor(&graph, inputs);
+  PoplarCallVisitor visitor(&graph, res, inputs);
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
   for (size_t i=0; i<visitor.output().size(); i++) {
@@ -130,6 +132,7 @@ CreateCallOp(poplar::Graph &graph,
 
 port::StatusOr<poplar::program::Program>
 CreateWhileOp(poplar::Graph &graph,
+              CompilerResources& res,
               const HloInstruction *inst,
               const xla::Shape& output,
               TensorMap& tensor_map) {
@@ -154,7 +157,7 @@ CreateWhileOp(poplar::Graph &graph,
 
   // Body
   std::vector<poplar::Tensor> body_inputs(1, body_input);
-  PoplarCallVisitor body_visitor(&graph, body_inputs);
+  PoplarCallVisitor body_visitor(&graph, res, body_inputs);
   TF_RETURN_IF_ERROR(inst->while_body()->Accept(&body_visitor));
 
   body_visitor.sequence.add(poplar::program::Copy(body_visitor.output()[0],
@@ -165,7 +168,7 @@ CreateWhileOp(poplar::Graph &graph,
 
   // Condition
   std::vector<poplar::Tensor> condition_inputs(1, body_output);
-  PoplarCallVisitor condition_visitor(&graph, condition_inputs);
+  PoplarCallVisitor condition_visitor(&graph, res, condition_inputs);
   TF_RETURN_IF_ERROR(inst->while_condition()->Accept(&condition_visitor));
 
   poplar::program::RepeatWhileTrue repeat_while_true(condition_visitor.sequence,

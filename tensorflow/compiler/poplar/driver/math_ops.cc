@@ -145,6 +145,7 @@ IsInPlaceUpdate(const HloInstruction *inst) {
 
 port::StatusOr<poplar::program::Program>
 CreateUnaryElementwiseOp(poplar::Graph &graph,
+                         CompilerResources& res,
                          const HloInstruction *inst,
                          const xla::Shape& output_shape,
                          TensorMap& tensor_map){
@@ -188,6 +189,7 @@ CreateUnaryElementwiseOp(poplar::Graph &graph,
 
 port::StatusOr<poplar::program::Program>
 CreateBinaryElementwiseOp(poplar::Graph &graph,
+                          CompilerResources& res,
                           const HloInstruction *inst,
                           const xla::Shape& output_shape,
                           TensorMap& tensor_map) {
@@ -277,6 +279,7 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
 
 port::StatusOr<poplar::program::Program>
 CreateMatMulOp(poplar::Graph &graph,
+               CompilerResources& res,
                const HloInstruction *inst,
                const xla::Shape& output_shape,
                TensorMap& tensor_map) {
@@ -308,9 +311,9 @@ CreateMatMulOp(poplar::Graph &graph,
   return seq;
 }
 
-// TODO - select needs to support scalars
 port::StatusOr<poplar::program::Program>
 CreateSelectOp(poplar::Graph &graph,
+               CompilerResources& res,
                const HloInstruction *inst,
                const xla::Shape& output_shape,
                TensorMap& tensor_map) {
@@ -378,6 +381,7 @@ CreateSelectOp(poplar::Graph &graph,
 
 port::StatusOr<poplar::program::Program>
 CreateCastOp(poplar::Graph &graph,
+             CompilerResources& res,
              const HloInstruction *inst,
              const xla::Shape& output_shape,
              TensorMap& tensor_map){
@@ -422,6 +426,7 @@ CreateCastOp(poplar::Graph &graph,
 
 port::StatusOr<poplar::program::Program>
 CreateClampOp(poplar::Graph &graph,
+              CompilerResources& res,
               const HloInstruction *inst,
               const xla::Shape& output_shape,
               TensorMap& tensor_map) {

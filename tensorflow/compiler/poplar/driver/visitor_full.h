@@ -25,6 +25,8 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+class CompilerResources;
+
 /*
  * The full visitor is an extension of the base visitor
  * that adds other operations which do element to element
@@ -34,7 +36,7 @@ namespace poplarplugin {
  */
 class PoplarFullVisitor : public PoplarBaseVisitor {
 public:
-  PoplarFullVisitor(poplar::Graph* graph);
+  PoplarFullVisitor(poplar::Graph* graph, CompilerResources&);
 
   Status HandleConcatenate(
           HloInstruction* inst,

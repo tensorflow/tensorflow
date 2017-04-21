@@ -17,6 +17,7 @@ namespace poplarplugin {
 
 static port::StatusOr<poplar::program::Program>
 CreateRandomUniformOp(poplar::Graph &graph,
+                      CompilerResources& res,
                       const HloInstruction *inst,
                       const xla::Shape& output_shape,
                       TensorMap& tensor_map) {
@@ -62,6 +63,7 @@ CreateRandomUniformOp(poplar::Graph &graph,
 
 static port::StatusOr<poplar::program::Program>
 CreateRandomNormalOp(poplar::Graph &graph,
+                     CompilerResources& res,
                      const HloInstruction *inst,
                      const xla::Shape& output_shape,
                      TensorMap& tensor_map) {
@@ -107,6 +109,7 @@ CreateRandomNormalOp(poplar::Graph &graph,
 
 static port::StatusOr<poplar::program::Program>
 CreateRandomBernoulliOp(poplar::Graph &graph,
+                        CompilerResources& res,
                         const HloInstruction *inst,
                         const xla::Shape& output_shape,
                         TensorMap& tensor_map) {
@@ -148,17 +151,18 @@ CreateRandomBernoulliOp(poplar::Graph &graph,
 
 port::StatusOr<poplar::program::Program>
 CreateRandomOp(poplar::Graph &graph,
+               CompilerResources& res,
                const HloInstruction *inst,
                const xla::Shape& output_shape,
                TensorMap& tensor_map) {
 
   switch (inst->random_distribution()) {
     case RandomDistribution::RNG_UNIFORM:
-      return CreateRandomUniformOp(graph, inst, output_shape, tensor_map);
+      return CreateRandomUniformOp(graph, res, inst, output_shape, tensor_map);
     case RandomDistribution::RNG_NORMAL:
-      return CreateRandomNormalOp(graph, inst, output_shape, tensor_map);
+      return CreateRandomNormalOp(graph, res, inst, output_shape, tensor_map);
     case RandomDistribution::RNG_BERNOULLI:
-      return CreateRandomBernoulliOp(graph, inst, output_shape, tensor_map);
+      return CreateRandomBernoulliOp(graph, res, inst, output_shape, tensor_map);
     default:
       return port::Status(port::error::FAILED_PRECONDITION,
                           port::StrCat("Invalid random distribution on ",
