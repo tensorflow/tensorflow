@@ -119,7 +119,7 @@ CreateConv2D(poplar::Graph &graph,
   kernel = kernel.dimShuffle({4, 2, 0, 1, 5, 3});
 
   popstd::mapActivations(graph, in);
-  popconv::mapWeights(kernel, graph, in, s_y, s_x, p_y, p_x, false, {});
+  popconv::mapWeights(kernel, graph, in, s_y, s_x, p_y, p_x, false, opts);
 
   // Add the convolution
   poplar::program::Sequence prog;
@@ -132,9 +132,6 @@ CreateConv2D(poplar::Graph &graph,
   unsigned int o_y = output_dims[2];
   unsigned int o_x = output_dims[3];
 
-
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-
   out = out.dimShuffle({0, 1, 4, 2, 3});
   out = out.reshape({n_b, n_o, o_y, o_x});
 
@@ -144,6 +141,8 @@ CreateConv2D(poplar::Graph &graph,
   shuffle[dims.spatial_dimensions(0)] = 2;
   shuffle[dims.spatial_dimensions(1)] = 3;
   out = out.dimShuffle(shuffle);
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   return prog;
 }
