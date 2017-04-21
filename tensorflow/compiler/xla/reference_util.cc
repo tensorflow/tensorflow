@@ -649,4 +649,39 @@ ReferenceUtil::ReduceToRowArray2D(
   return result;
 }
 
+/* static */ Array4D<float> ReferenceUtil::PadArray4D(
+    const Array4D<float>& operand, const PaddingConfig& padding,
+    const float pad) {
+  CHECK_EQ(padding.dimensions_size(), 4);
+
+  const std::vector<int64> input_bounds = {operand.n1(), operand.n2(),
+                                           operand.n3(), operand.n4()};
+  std::vector<int64> pad_low(4);
+  std::vector<int64> pad_high(4);
+  std::vector<int64> output_bounds(4);
+  for (int64 i = 0; i < 4; ++i) {
+    pad_low[i] = padding.dimensions(i).edge_padding_low();
+    pad_high[i] = padding.dimensions(i).edge_padding_high();
+    CHECK_EQ(padding.dimensions(i).interior_padding(), 0) << "not implemented";
+
+    output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i];
+  }
+
+  Array4D<float> result(output_bounds[0], output_bounds[1], output_bounds[2],
+                        output_bounds[3]);
+  result.Each([&](tensorflow::gtl::ArraySlice<int64> indices, float* value) {
+    for (int i = 0; i < 4; ++i) {
+      bool in_low_padding = indices[i] < pad_low[i];
+      bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
+      if (in_low_padding || in_high_padding) {
+        *value = pad;
+        return;
+      }
+    }
+    *value = operand(indices[0] - pad_low[0], indices[1] - pad_low[1],
+                     indices[2] - pad_low[2], indices[3] - pad_low[3]);
+  });
+  return result;
+}
+
 }  // namespace xla
