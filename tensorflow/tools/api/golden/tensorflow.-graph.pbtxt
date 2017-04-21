@@ -52,11 +52,11 @@ tf_class {
   }
   member_method {
     name: "colocate_with"
-    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+    argspec: "args=[\'self\', \'op\', \'ignore_existing\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "container"
-    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+    argspec: "args=[\'self\', \'container_name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "control_dependencies"
@@ -68,7 +68,7 @@ tf_class {
   }
   member_method {
     name: "device"
-    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+    argspec: "args=[\'self\', \'device_name_or_function\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "finalize"
@@ -104,7 +104,7 @@ tf_class {
   }
   member_method {
     name: "gradient_override_map"
-    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+    argspec: "args=[\'self\', \'op_type_map\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "is_feedable"
@@ -116,7 +116,7 @@ tf_class {
   }
   member_method {
     name: "name_scope"
-    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "prevent_feeding"

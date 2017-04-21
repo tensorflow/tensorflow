@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import inspect
 
 import six
 
@@ -46,6 +45,8 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 class Head(object):
@@ -1697,9 +1698,10 @@ def _check_mode_valid(mode):
 
 def _get_arguments(func):
   """Returns a spec of given func."""
+  _, func = tf_decorator.unwrap(func)
   if hasattr(func, "__code__"):
     # Regular function.
-    return inspect.getargspec(func)
+    return tf_inspect.getargspec(func)
   elif hasattr(func, "__call__"):
     # Callable object.
     return _get_arguments(func.__call__)

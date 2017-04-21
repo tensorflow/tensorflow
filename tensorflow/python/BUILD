@@ -2379,6 +2379,39 @@ py_test(
     ],
 )
 
+py_test(
+    name = "tf_contextlib_test",
+    size = "small",
+    srcs = ["util/tf_contextlib_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+    ],
+)
+
+py_test(
+    name = "tf_decorator_test",
+    size = "small",
+    srcs = ["util/tf_decorator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+    ],
+)
+
+py_test(
+    name = "tf_inspect_test",
+    size = "small",
+    srcs = ["util/tf_inspect_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+    ],
+)
+
 py_library(
     name = "util_example_parser_configuration",
     srcs = ["util/example_parser_configuration.py"],
