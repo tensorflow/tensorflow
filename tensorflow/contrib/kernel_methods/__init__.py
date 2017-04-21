@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for evaluation metrics and summary statistics.
+"""Ops and estimators that enable explicit kernel methods in TensorFlow.
 
 @@KernelLinearClassifier
 @@RandomFourierFeatureMapper

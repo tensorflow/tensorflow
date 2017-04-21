@@ -62,7 +62,7 @@ TEST(HloMatchersTest, Test) {
          "doesn't match expected:\n\t"
          "multiply(add, add), \n"
          "operand 0:\n\t"
-         "%param = f32[1]{0} parameter()\n"
+         "%param = f32[1]{0} parameter(0)\n"
          "doesn't match expected:\n\t"
          "add"));
 }

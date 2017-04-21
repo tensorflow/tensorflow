@@ -59,13 +59,19 @@ TF.Dashboard.VzProjectorDashboard = Polymer({
     if (this._initialized) {
       return;
     }
+    let xhr = new XMLHttpRequest();
+    xhr.open('GET', this.routePrefix + '/runs');
+    xhr.onload = () => {
+      // Set this to true so we only initialize once.
+      this._initialized = true;
 
-    // Set this to true so we only initialize once.
-    this._initialized = true;
-
-    d3.json(this.routePrefix + '/runs', (err, runs) => {
+      let runs = JSON.parse(xhr.responseText);
       this.set('dataNotFound', runs.length === 0);
-    });
+    };
+    xhr.onerror = () => {
+      this.set('dataNotFound', false);
+    };
+    xhr.send();
   },
 });
 })();

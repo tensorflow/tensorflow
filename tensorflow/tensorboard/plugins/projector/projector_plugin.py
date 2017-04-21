@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import imghdr
 import math
 import os
@@ -48,6 +49,9 @@ PROJECTOR_FILENAME = 'projector_config.pbtxt'
 _PLUGIN_NAME = 'org_tensorflow_tensorboard_projector'
 _PLUGINS_DIR = 'plugins'
 
+# Number of tensors in the LRU cache.
+_TENSOR_CACHE_CAPACITY = 1
+
 # HTTP routes.
 CONFIG_ROUTE = '/info'
 TENSOR_ROUTE = '/tensor'
@@ -63,6 +67,34 @@ _IMGHDR_TO_MIMETYPE = {
     'png': 'image/png'
 }
 _DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
+
+
+class LRUCache(object):
+  """LRU cache. Used for storing the last used tensor."""
+
+  def __init__(self, size):
+    if size < 1:
+      raise ValueError('The cache size must be >=1')
+    self._size = size
+    self._dict = collections.OrderedDict()
+
+  def get(self, key):
+    try:
+      value = self._dict.pop(key)
+      self._dict[key] = value
+      return value
+    except KeyError:
+      return None
+
+  def set(self, key, value):
+    if value is None:
+      raise ValueError('value must be != None')
+    try:
+      self._dict.pop(key)
+    except KeyError:
+      if len(self._dict) >= self._size:
+        self._dict.popitem(last=False)
+    self._dict[key] = value
 
 
 class EmbeddingMetadata(object):
@@ -252,7 +284,7 @@ class ProjectorPluginAsset(plugin_asset.PluginAsset):
     return self._assets
 
 
-def _read_tensor_file(fpath):
+def _read_tensor_tsv_file(fpath):
   with file_io.FileIO(fpath, 'r') as f:
     tensor = []
     for line in f:
@@ -333,6 +365,7 @@ class ProjectorPlugin(TBPlugin):
     self._configs = None
     self.old_num_run_paths = None
     self.multiplexer = None
+    self.tensor_cache = LRUCache(_TENSOR_CACHE_CAPACITY)
 
   def get_plugin_apps(self, multiplexer, logdir):
     self.multiplexer = multiplexer
@@ -392,7 +425,10 @@ class ProjectorPlugin(TBPlugin):
         if embedding.tensor_path and not embedding.tensor_shape:
           fpath = _rel_to_abs_asset_path(embedding.tensor_path,
                                          self.config_fpaths[run])
-          tensor = _read_tensor_file(fpath)
+          tensor = self.tensor_cache.get(embedding.tensor_name)
+          if tensor is None:
+            tensor = _read_tensor_tsv_file(fpath)
+            self.tensor_cache.set(embedding.tensor_name, tensor)
           embedding.tensor_shape.extend([len(tensor), len(tensor[0])])
 
       reader = self._get_reader_for_run(run)
@@ -439,6 +475,8 @@ class ProjectorPlugin(TBPlugin):
       has_tensor_files = False
       for embedding in config.embeddings:
         if embedding.tensor_path:
+          if not embedding.tensor_name:
+            embedding.tensor_name = os.path.basename(embedding.tensor_path)
           has_tensor_files = True
           break
 
@@ -595,29 +633,35 @@ class ProjectorPlugin(TBPlugin):
 
     config = self.configs[run]
 
-    # See if there is a tensor file in the config.
-    embedding = self._get_embedding(name, config)
-    if embedding and embedding.tensor_path:
-      fpath = _rel_to_abs_asset_path(embedding.tensor_path,
-                                     self.config_fpaths[run])
-      if not file_io.file_exists(fpath):
-        return Respond(request,
-                       'Tensor file "%s" does not exist' % fpath,
-                       'text/plain', 400)
-      tensor = _read_tensor_file(fpath)
-    else:
-      reader = self._get_reader_for_run(run)
-      if not reader or not reader.has_tensor(name):
-        return Respond(request, 'Tensor "%s" not found in checkpoint dir "%s"' %
-                       (name, config.model_checkpoint_path), 'text/plain', 400)
-      try:
-        tensor = reader.get_tensor(name)
-      except errors.InvalidArgumentError as e:
-        return Respond(request, str(e), 'text/plain', 400)
+    tensor = self.tensor_cache.get(name)
+    if tensor is None:
+      # See if there is a tensor file in the config.
+      embedding = self._get_embedding(name, config)
+
+      if embedding and embedding.tensor_path:
+        fpath = _rel_to_abs_asset_path(embedding.tensor_path,
+                                       self.config_fpaths[run])
+        if not file_io.file_exists(fpath):
+          return Respond(request,
+                         'Tensor file "%s" does not exist' % fpath,
+                         'text/plain', 400)
+        tensor = _read_tensor_tsv_file(fpath)
+      else:
+        reader = self._get_reader_for_run(run)
+        if not reader or not reader.has_tensor(name):
+          return Respond(request,
+                         'Tensor "%s" not found in checkpoint dir "%s"' %
+                         (name, config.model_checkpoint_path), 'text/plain',
+                         400)
+        try:
+          tensor = reader.get_tensor(name)
+        except errors.InvalidArgumentError as e:
+          return Respond(request, str(e), 'text/plain', 400)
+
+      self.tensor_cache.set(name, tensor)
 
     if num_rows:
       tensor = tensor[:num_rows]
-
     if tensor.dtype != 'float32':
       tensor = tensor.astype(dtype='float32', copy=False)
     data_bytes = tensor.tobytes()

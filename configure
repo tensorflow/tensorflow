@@ -241,6 +241,24 @@ if [[ "$TF_ENABLE_XLA" == "1" ]]; then
   write_to_bazelrc 'build --define with_xla_support=true'
 fi
 
+# Verbs configuration
+while [ "$TF_NEED_VERBS" == "" ]; do
+  read -p "Do you wish to build TensorFlow with "\
+"VERBS support? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "VERBS support will be enabled for "\
+"TensorFlow"; TF_NEED_VERBS=1;;
+    [Nn]* ) echo "No VERBS support will be enabled for "\
+"TensorFlow"; TF_NEED_VERBS=0;;
+    "" ) echo "No VERBS support will be enabled for "\
+"TensorFlow"; TF_NEED_VERBS=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+if [[ "$TF_NEED_VERBS" == "1" ]]; then
+  write_to_bazelrc 'build --define with_verbs_support=true'
+fi
 
 # Invoke python_config and set up symlinks to python includes
 ./util/python/python_config.sh --setup "$PYTHON_BIN_PATH"

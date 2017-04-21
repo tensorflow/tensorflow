@@ -25,6 +25,7 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
 
 py_library(
     name = "python",
@@ -2576,7 +2577,9 @@ tf_py_wrap_cc(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
-    ] + tf_additional_lib_deps() + tf_additional_plugin_deps(),
+    ] + (tf_additional_lib_deps() +
+         tf_additional_plugin_deps() +
+         tf_additional_verbs_deps()),
 )
 
 py_library(
@@ -2905,6 +2908,7 @@ cuda_py_tests(
         "training/adagrad_da_test.py",
         "training/adagrad_test.py",
         "training/basic_loops_test.py",
+        "training/checkpoint_utils_test.py",
         "training/coordinator_test.py",
         "training/device_setter_test.py",
         "training/ftrl_test.py",

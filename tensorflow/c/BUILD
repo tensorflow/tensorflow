@@ -27,6 +27,22 @@ filegroup(
 )
 
 tf_cuda_library(
+    name = "c_api_internal",
+    srcs = ["c_api.h"],
+    hdrs = ["c_api_internal.h"],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
+)
+
+tf_cuda_library(
     name = "c_api",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
@@ -34,9 +50,11 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
+            ":c_api_internal",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            ":c_api_internal",
             "//tensorflow/cc/saved_model:loader",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",

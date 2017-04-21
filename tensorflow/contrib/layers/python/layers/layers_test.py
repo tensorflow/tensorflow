@@ -3117,6 +3117,15 @@ class StackTests(test.TestCase):
       self.assertEqual(output.op.name, 'Stack/fully_connected_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 30])
 
+  def testStackElu(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = random_ops.random_uniform(
+          (5, height * width * 3), seed=1, name='images')
+      output = _layers.stack(images, layers_lib.elu, [10, 20, 30])
+      self.assertEqual(output.op.name, 'Stack/fully_connected_3/Elu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
   def testStackConvolution2d(self):
     height, width = 3, 3
     with self.test_session():

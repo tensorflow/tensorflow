@@ -70,6 +70,7 @@ cmake_vars = {
 
     # Features
     "HAVE_BACKTRACE": 1,
+    "BACKTRACE_HEADER": "execinfo.h",
     "HAVE_DLOPEN": 1,
     "HAVE_FUTIMES": 1,
     "HAVE_GETCWD": 1,
@@ -883,6 +884,7 @@ cc_library(
         ":analysis",
         ":config",
         ":core",
+        ":mc",
         ":support",
     ],
 )
@@ -908,6 +910,7 @@ cc_library(
         ":config",
         ":core",
         ":mc",
+        ":profile_data",
         ":scalar",
         ":support",
         ":target",

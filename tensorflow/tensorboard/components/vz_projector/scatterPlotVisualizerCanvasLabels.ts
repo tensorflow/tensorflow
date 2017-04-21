@@ -33,10 +33,14 @@ export class ScatterPlotVisualizerCanvasLabels implements
   private canvas: HTMLCanvasElement;
   private labelsActive: boolean = true;
 
-  constructor(container: d3.Selection<any>) {
-    this.canvas = container.append('canvas').node() as HTMLCanvasElement;
+  constructor(container: HTMLElement) {
+    this.canvas = document.createElement('canvas');
+    container.appendChild(this.canvas);
+
     this.gc = this.canvas.getContext('2d');
-    d3.select(this.canvas).style({position: 'absolute', left: 0, top: 0});
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.left = '0';
+    this.canvas.style.top = '0';
     this.canvas.style.pointerEvents = 'none';
   }
 
@@ -151,10 +155,10 @@ export class ScatterPlotVisualizerCanvasLabels implements
 
   onResize(newWidth: number, newHeight: number) {
     let dpr = window.devicePixelRatio;
-    d3.select(this.canvas)
-        .attr('width', newWidth * dpr)
-        .attr('height', newHeight * dpr)
-        .style({width: newWidth + 'px', height: newHeight + 'px'});
+    this.canvas.width = newWidth * dpr;
+    this.canvas.height = newHeight * dpr;
+    this.canvas.style.width = newWidth + 'px';
+    this.canvas.style.height = newHeight + 'px';
   }
 
   dispose() {

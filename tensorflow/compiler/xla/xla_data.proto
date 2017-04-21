@@ -408,7 +408,7 @@ message InfeedRequest {
   Shape shape = 2;
 
   // Additional infeed configuration for the backend.
-  string config = 3;
+  bytes config = 3;
 }
 
 message OutfeedRequest {
@@ -419,7 +419,7 @@ message OutfeedRequest {
   ComputationDataHandle operand = 2;
 
   // Backend-specific information for how to perform the outfeed.
-  string outfeed_config = 3;
+  bytes outfeed_config = 3;
 }
 
 message CallRequest {

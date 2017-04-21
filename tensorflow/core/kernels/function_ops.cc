@@ -84,8 +84,8 @@ class RetvalOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
-REGISTER_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER(type)     \

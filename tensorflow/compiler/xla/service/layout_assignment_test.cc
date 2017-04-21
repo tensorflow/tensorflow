@@ -421,8 +421,8 @@ TEST_F(LayoutAssignmentTest, BroadcastAndTranspose) {
       ShapeLayout(output_shape_with_layout);
   AssignLayouts(&module, &computation_layout);
 
-  EXPECT_TRUE(ContainersEqual(broadcast->shape().layout().minor_to_major(),
-                              tensorflow::gtl::ArraySlice<int64>{0, 1, 2}));
+  EXPECT_TRUE(
+      ContainersEqual(broadcast->shape().layout().minor_to_major(), {0, 1, 2}));
 }
 
 TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
@@ -474,12 +474,11 @@ TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
           {transpose_shape_with_layout, broadcast2_shape_with_layout}));
   AssignLayouts(&module, &computation_layout);
 
-  EXPECT_TRUE(ContainersEqual(broadcast->shape().layout().minor_to_major(),
-                              tensorflow::gtl::ArraySlice<int64>{0, 1}));
-  EXPECT_TRUE(ContainersEqual(transpose->shape().layout().minor_to_major(),
-                              tensorflow::gtl::ArraySlice<int64>{1, 0}));
-  EXPECT_TRUE(ContainersEqual(tanh->shape().layout().minor_to_major(),
-                              tensorflow::gtl::ArraySlice<int64>{0, 1}));
+  EXPECT_TRUE(
+      ContainersEqual(broadcast->shape().layout().minor_to_major(), {0, 1}));
+  EXPECT_TRUE(
+      ContainersEqual(transpose->shape().layout().minor_to_major(), {1, 0}));
+  EXPECT_TRUE(ContainersEqual(tanh->shape().layout().minor_to_major(), {0, 1}));
 }
 
 // Add test which fails due to copy tuple.
