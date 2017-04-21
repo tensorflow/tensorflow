@@ -128,6 +128,14 @@ struct ScatterFunctor {
   Index operator()(OpKernelContext* c, const Device& d,
                    typename TTypes<T>::Matrix params,
                    typename TTypes<T>::ConstMatrix updates,
+                   typename TTypes<Index>::ConstFlat indices);
+};
+
+template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
+struct ScatterFunctorBase {
+  Index operator()(OpKernelContext* c, const Device& d,
+                   typename TTypes<T>::Matrix params,
+                   typename TTypes<T>::ConstMatrix updates,
                    typename TTypes<Index>::ConstFlat indices) {
     // indices and params sizes were validated in DoCompute().
     const Index N = static_cast<Index>(indices.size());
@@ -146,8 +154,33 @@ struct ScatterFunctor {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T, typename Index, scatter_op::UpdateOp op>
+struct ScatterFunctorBase <SYCLDevice, T, Index, op> {
+  Index operator()(OpKernelContext* c, const SYCLDevice& d,
+                   typename TTypes<T>::Matrix params,
+                   typename TTypes<T>::ConstMatrix updates,
+                   typename TTypes<Index>::ConstFlat indices) {
+    // indices and params sizes were validated in DoCompute().
+    const Index N = static_cast<Index>(indices.size());
+    const Index limit = static_cast<Index>(params.dimension(0));
+    for (Index i = 0; i < N; i++) {
+      // Grab the index and check its validity.  An earlier version of the
+      // code checked it and then grabbed it from memory a second time, which
+      // was a security risk since it could have changed in between.
+      const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
+      if (!FastBoundsCheck(index, limit)) return i;
+      // Copy last Ndim-1 dimensions of updates[i] to params[index]
+      scatter_op::internal::AssignSYCL<op>::Run(d, params.template chip<0>(index),
+                                            updates.template chip<0>(i));
+    }
+    return -1;
+  }
+};
+#endif // TENSORFLOW_USE_SYCL
+
 template <typename T, typename Index>
-struct ScatterFunctor<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
+struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
   Index operator()(OpKernelContext* c, const CPUDevice& d,
                    typename TTypes<T>::Matrix params,
                    typename TTypes<T>::ConstMatrix updates,
@@ -181,6 +214,10 @@ struct ScatterFunctor<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
     return -1;
   }
 };
+
+template <typename T, typename Index, scatter_op::UpdateOp op>
+struct ScatterFunctor<CPUDevice, T, Index, op>
+        : ScatterFunctorBase<CPUDevice, T, Index, op>{};
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T, typename Index, scatter_op::UpdateOp op>
