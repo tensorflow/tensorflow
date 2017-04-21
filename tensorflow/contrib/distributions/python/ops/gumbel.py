@@ -44,7 +44,7 @@ class _Gumbel(distribution.Distribution):
 
   where `loc = mu` and `scale = sigma`.
 
-  The cumulative densifyt function of this distribution is,
+  The cumulative density function of this distribution is,
 
   ```cdf(x; mu, sigma) = exp(-exp(-(x - mu) / sigma))```
 
