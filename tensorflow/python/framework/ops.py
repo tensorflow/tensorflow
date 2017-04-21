@@ -2240,7 +2240,7 @@ class Graph(object):
 
   @property
   def building_function(self):
-    """Returns True iff this graph represents a function."""
+    """Returns True if this graph represents a function."""
     return self._building_function
 
   # Helper functions to create operations.
