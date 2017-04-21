@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-class CompilerResources {
+struct CompilerResources {
   popconv::PlanningCache convCache;
 };
 

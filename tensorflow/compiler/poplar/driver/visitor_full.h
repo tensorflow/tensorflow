@@ -25,8 +25,6 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-class CompilerResources;
-
 /*
  * The full visitor is an extension of the base visitor
  * that adds other operations which do element to element

@@ -3,6 +3,7 @@
 #include "tensorflow/compiler/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/poplar/driver/ops.h"
 #include "tensorflow/compiler/poplar/driver/tensor.h"
+#include "tensorflow/compiler/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -35,6 +36,9 @@ CreateConv2D(poplar::Graph &graph,
   // Find the input tensor
   poplar::Tensor kernel;
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1, 0));
+
+  popconv::ConvOptions opts;
+  opts.cache = &res.convCache;
 
   const Window& window(inst->window());
 
@@ -88,7 +92,7 @@ CreateConv2D(poplar::Graph &graph,
                                         {f_y, f_x, n_o},
                                         {s_y, s_x},
                                         {p_y, p_x},
-                                        false, {});
+                                        false, opts);
 
   const unsigned in_chan_groups = n_i / plan.inChansPerGroup;
   const unsigned out_chan_groups = n_o / plan.partialChansPerGroup;
@@ -122,7 +126,7 @@ CreateConv2D(poplar::Graph &graph,
   poplar::Tensor out = popconv::convolution(graph,
                                             {s_y, s_x}, {p_y, p_x},
                                             n_o, in, kernel, dtype,
-                                            false, false, prog);
+                                            false, false, prog, "", opts);
 
   const std::vector<size_t> &output_dims = out.shape();
   unsigned int o_y = output_dims[2];

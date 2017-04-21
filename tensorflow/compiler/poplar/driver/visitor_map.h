@@ -29,8 +29,6 @@ class Tensor;
 namespace xla {
 namespace poplarplugin {
 
-class CompilerResources;
-
 class PoplarMapVisitor : public PoplarBaseVisitor {
 public:
   PoplarMapVisitor(poplar::Graph* graph,

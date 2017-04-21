@@ -24,7 +24,7 @@ class HloComputation;
 
 namespace poplarplugin {
 
-class CompilerResources;
+struct CompilerResources;
 
 using TensorMap = std::map<std::pair<std::string, int64>, poplar::Tensor>;
 

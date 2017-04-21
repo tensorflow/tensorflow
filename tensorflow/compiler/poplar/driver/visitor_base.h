@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-class CompilerResources;
+struct CompilerResources;
 
 /*
  * The base visitor handles all operations that are element-wise.
