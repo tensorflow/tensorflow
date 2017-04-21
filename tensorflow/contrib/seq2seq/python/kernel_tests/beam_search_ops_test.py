@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
+from tensorflow.python.framework import test_util
 
 
 def _transpose_batch_time(x):
@@ -65,7 +66,7 @@ class GatherTreeTest(test.TestCase):
         _ = beams.eval()
 
   def testBadParentValuesOnGPU(self):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available() or test_util.is_sycl_enabled():
       return
     # (max_time = 4, batch_size = 1, beams = 3)
     # bad parent in beam 1 time 1; appears as a negative index at time 0
