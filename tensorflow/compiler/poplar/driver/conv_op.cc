@@ -82,7 +82,16 @@ CreateConv2D(poplar::Graph &graph,
 
   unsigned int p_y = window.dimensions(0).padding_low();
   unsigned int p_x = window.dimensions(1).padding_low();
-  
+
+  if (window.dimensions(0).padding_low() !=
+      window.dimensions(0).padding_high() ||
+      window.dimensions(1).padding_low() !=
+      window.dimensions(1).padding_high()) {
+    return port::Status(
+            port::error::FAILED_PRECONDITION,
+            port::StrCat("Unequal paddings not supported on ", inst->name()));
+  }
+
   popconv::Plan plan = popconv::getPlan(graph,
                                         dtype,
                                         n_b,
