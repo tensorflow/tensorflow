@@ -31,7 +31,6 @@ from tensorflow.python.ops import sets
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.ops import weights_broadcast_ops
 
 
@@ -45,7 +44,7 @@ def _local_variable(initial_value, validate_shape=True, name=None):
   Returns:
     New variable.
   """
-  return variables.Variable(
+  return variable_scope.variable(
       initial_value, trainable=False,
       collections=[ops.GraphKeys.LOCAL_VARIABLES],
       validate_shape=validate_shape, name=name)
@@ -189,8 +188,8 @@ def _create_local(name, shape, collections=None, validate_shape=True,
   # Make sure local variables are added to tf.GraphKeys.LOCAL_VARIABLES
   collections = list(collections or [])
   collections += [ops.GraphKeys.LOCAL_VARIABLES]
-  return variables.Variable(
-      initial_value=array_ops.zeros(shape, dtype=dtype),
+  return variable_scope.variable(
+      array_ops.zeros(shape, dtype=dtype),
       name=name,
       trainable=False,
       collections=collections,

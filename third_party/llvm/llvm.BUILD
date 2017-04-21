@@ -70,6 +70,7 @@ cmake_vars = {
 
     # Features
     "HAVE_BACKTRACE": 1,
+    "BACKTRACE_HEADER": "execinfo.h",
     "HAVE_DLOPEN": 1,
     "HAVE_FUTIMES": 1,
     "HAVE_GETCWD": 1,
@@ -150,6 +151,11 @@ all_cmake_vars = select({
     "@%ws%//tensorflow:darwin": cmake_var_string(
         cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
         darwin_cmake_vars,
+    ),
+    "@%ws%//tensorflow:linux_ppc64le": cmake_var_string(
+        cmake_vars +
+        llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
+        linux_cmake_vars,
     ),
     "//conditions:default": cmake_var_string(
         cmake_vars +
@@ -878,6 +884,7 @@ cc_library(
         ":analysis",
         ":config",
         ":core",
+        ":mc",
         ":support",
     ],
 )
@@ -903,6 +910,7 @@ cc_library(
         ":config",
         ":core",
         ":mc",
+        ":profile_data",
         ":scalar",
         ":support",
         ":target",

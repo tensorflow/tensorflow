@@ -113,7 +113,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
                is_self_adjoint=None,
                is_positive_definite=None,
                name=None):
-    """Initialize a `LinearOperatorComposition`.
+    r"""Initialize a `LinearOperatorComposition`.
 
     `LinearOperatorComposition` is initialized with a list of operators
     `[op_1,...,op_J]`.  For the `apply` method to be well defined, the
@@ -127,9 +127,10 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
       is_positive_definite:  Expect that this operator is positive definite,
-        meaning the real part of all eigenvalues is positive.  We do not require
-        the operator to be self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       name: A name for this `LinearOperator`.  Default is the individual
         operators names joined with `_o_`.
@@ -224,7 +225,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
     return array_ops.concat((batch_shape, matrix_shape), 0)
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
     # If self.operators = [A, B], and not adjoint, then
     # apply_order_list = [B, A].
     # As a result, we return A.apply(B.apply(x))
@@ -233,8 +234,9 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     else:
       apply_order_list = list(reversed(self.operators))
 
-    result = x
-    for operator in apply_order_list:
+    result = apply_order_list[0].apply(
+        x, adjoint=adjoint, adjoint_arg=adjoint_arg)
+    for operator in apply_order_list[1:]:
       result = operator.apply(result, adjoint=adjoint)
     return result
 
@@ -250,7 +252,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
       result += operator.log_abs_determinant()
     return result
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     # TODO(langmore) Implement solve using solve_ls if some intermediate
     # operator maps to a high dimensional space.
     # In that case, an exact solve may still be possible.
@@ -263,8 +265,9 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     else:
       solve_order_list = self.operators
 
-    solution = rhs
-    for operator in solve_order_list:
+    solution = solve_order_list[0].solve(
+        rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
+    for operator in solve_order_list[1:]:
       solution = operator.solve(solution, adjoint=adjoint)
     return solution
 

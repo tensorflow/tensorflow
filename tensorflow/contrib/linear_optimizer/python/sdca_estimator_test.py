@@ -21,8 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
-from tensorflow.contrib.linear_optimizer.python.sdca_estimator import SDCALogisticClassifier
-from tensorflow.contrib.linear_optimizer.python.sdca_estimator import SDCARegressor
+from tensorflow.contrib.linear_optimizer.python import sdca_estimator
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.platform import test
@@ -43,7 +42,7 @@ class SDCALogisticClassifierTest(test.TestCase):
 
     maintenance_cost = feature_column_lib.real_valued_column('maintenance_cost')
     sq_footage = feature_column_lib.real_valued_column('sq_footage')
-    classifier = SDCALogisticClassifier(
+    classifier = sdca_estimator.SDCALogisticClassifier(
         example_id_column='example_id',
         feature_columns=[maintenance_cost, sq_footage],
         weight_column_name='weights')
@@ -66,7 +65,7 @@ class SDCALogisticClassifierTest(test.TestCase):
 
     dense_feature = feature_column_lib.real_valued_column(
         'dense_feature', dimension=2)
-    classifier = SDCALogisticClassifier(
+    classifier = sdca_estimator.SDCALogisticClassifier(
         example_id_column='example_id', feature_columns=[dense_feature])
     classifier.fit(input_fn=input_fn, steps=100)
     loss = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
@@ -88,7 +87,7 @@ class SDCALogisticClassifierTest(test.TestCase):
         boundaries=[500.0, 700.0])
     sq_footage_bucket = feature_column_lib.bucketized_column(
         feature_column_lib.real_valued_column('sq_footage'), boundaries=[650.0])
-    classifier = SDCALogisticClassifier(
+    classifier = sdca_estimator.SDCALogisticClassifier(
         example_id_column='example_id',
         feature_columns=[price_bucket, sq_footage_bucket],
         weight_column_name='weights',
@@ -118,7 +117,7 @@ class SDCALogisticClassifierTest(test.TestCase):
     price = feature_column_lib.real_valued_column('price')
     country = feature_column_lib.sparse_column_with_hash_bucket(
         'country', hash_bucket_size=5)
-    classifier = SDCALogisticClassifier(
+    classifier = sdca_estimator.SDCALogisticClassifier(
         example_id_column='example_id',
         feature_columns=[price, country],
         weight_column_name='weights')
@@ -149,7 +148,7 @@ class SDCALogisticClassifierTest(test.TestCase):
         'country', hash_bucket_size=5)
     country_weighted_by_price = feature_column_lib.weighted_sparse_column(
         country, 'price')
-    classifier = SDCALogisticClassifier(
+    classifier = sdca_estimator.SDCALogisticClassifier(
         example_id_column='example_id',
         feature_columns=[country_weighted_by_price])
     classifier.fit(input_fn=input_fn, steps=50)
@@ -181,7 +180,7 @@ class SDCALogisticClassifierTest(test.TestCase):
         'country', hash_bucket_size=5)
     country_language = feature_column_lib.crossed_column(
         [language, country], hash_bucket_size=10)
-    classifier = SDCALogisticClassifier(
+    classifier = sdca_estimator.SDCALogisticClassifier(
         example_id_column='example_id', feature_columns=[country_language])
     classifier.fit(input_fn=input_fn, steps=10)
     metrics = classifier.evaluate(input_fn=input_fn, steps=1)
@@ -215,7 +214,7 @@ class SDCALogisticClassifierTest(test.TestCase):
         'country', hash_bucket_size=5)
     sq_footage_country = feature_column_lib.crossed_column(
         [sq_footage_bucket, country], hash_bucket_size=10)
-    classifier = SDCALogisticClassifier(
+    classifier = sdca_estimator.SDCALogisticClassifier(
         example_id_column='example_id',
         feature_columns=[price, sq_footage_bucket, country, sq_footage_country],
         weight_column_name='weights')
@@ -224,10 +223,10 @@ class SDCALogisticClassifierTest(test.TestCase):
     self.assertGreater(metrics['accuracy'], 0.9)
 
 
-class SDCARegressorTest(test.TestCase):
+class SDCALinearRegressorTest(test.TestCase):
 
   def testRealValuedLinearFeatures(self):
-    """Tests SDCARegressor works with real valued features."""
+    """Tests SDCALinearRegressor works with real valued features."""
     x = [[1.2, 2.0, -1.5], [-2.0, 3.0, -0.5], [1.0, -0.5, 4.0]]
     weights = [[3.0], [-1.2], [0.5]]
     y = np.dot(x, weights)
@@ -240,7 +239,7 @@ class SDCARegressorTest(test.TestCase):
       }, constant_op.constant(y)
 
     x_column = feature_column_lib.real_valued_column('x', dimension=3)
-    regressor = SDCARegressor(
+    regressor = sdca_estimator.SDCALinearRegressor(
         example_id_column='example_id',
         feature_columns=[x_column],
         weight_column_name='weights')
@@ -253,7 +252,7 @@ class SDCARegressorTest(test.TestCase):
         [w[0] for w in weights], regressor_weights.flatten(), rtol=0.1)
 
   def testMixedFeaturesArbitraryWeights(self):
-    """Tests SDCARegressor works with a mix of features."""
+    """Tests SDCALinearRegressor works with a mix of features."""
 
     def input_fn():
       return {
@@ -280,7 +279,7 @@ class SDCARegressorTest(test.TestCase):
         'country', hash_bucket_size=5)
     sq_footage_country = feature_column_lib.crossed_column(
         [sq_footage_bucket, country], hash_bucket_size=10)
-    regressor = SDCARegressor(
+    regressor = sdca_estimator.SDCALinearRegressor(
         example_id_column='example_id',
         feature_columns=[price, sq_footage_bucket, country, sq_footage_country],
         l2_regularization=1.0,
@@ -290,7 +289,7 @@ class SDCARegressorTest(test.TestCase):
     self.assertLess(loss, 0.05)
 
   def testSdcaOptimizerSparseFeaturesWithL1Reg(self):
-    """Tests SDCARegressor works with sparse features and L1 regularization."""
+    """SDCALinearRegressor works with sparse features and L1 regularization."""
 
     def input_fn():
       return {
@@ -311,7 +310,7 @@ class SDCARegressorTest(test.TestCase):
     country = feature_column_lib.sparse_column_with_hash_bucket(
         'country', hash_bucket_size=5)
     # Regressor with no L1 regularization.
-    regressor = SDCARegressor(
+    regressor = sdca_estimator.SDCALinearRegressor(
         example_id_column='example_id',
         feature_columns=[price, country],
         weight_column_name='weights')
@@ -328,7 +327,7 @@ class SDCARegressorTest(test.TestCase):
     }
 
     # Regressor with L1 regularization.
-    regressor = SDCARegressor(
+    regressor = sdca_estimator.SDCALinearRegressor(
         example_id_column='example_id',
         feature_columns=[price, country],
         l1_regularization=1.0,
@@ -359,7 +358,7 @@ class SDCARegressorTest(test.TestCase):
     self.assertLess(l1_reg_weights_norm, no_l1_reg_weights_norm)
 
   def testBiasOnly(self):
-    """Tests SDCARegressor has a valid bias weight."""
+    """Tests SDCALinearRegressor has a valid bias weight."""
 
     def input_fn():
       """Testing the bias weight when it's the only feature present.
@@ -382,14 +381,14 @@ class SDCARegressorTest(test.TestCase):
                                for i in range(num_examples)])
 
     place_holder = feature_column_lib.real_valued_column('place_holder')
-    regressor = SDCARegressor(
+    regressor = sdca_estimator.SDCALinearRegressor(
         example_id_column='example_id', feature_columns=[place_holder])
     regressor.fit(input_fn=input_fn, steps=100)
     self.assertNear(
         regressor.get_variable_value('linear/bias_weight')[0], 0.25, err=0.1)
 
   def testBiasAndOtherColumns(self):
-    """SDCARegressor has valid bias weight when other columns are present."""
+    """SDCALinearRegressor has valid bias weight with other columns present."""
 
     def input_fn():
       """Testing the bias weight when there are other features present.
@@ -427,7 +426,7 @@ class SDCARegressorTest(test.TestCase):
            for x in [1, 0, 0, 1, 1, 0, 0, 0, 1, 0] * int(half / 10) +
            [0, 1, 0, 0, 0, 0, 0, 0, 1, 0] * int(half / 10)])
 
-    regressor = SDCARegressor(
+    regressor = sdca_estimator.SDCALinearRegressor(
         example_id_column='example_id',
         feature_columns=[
             feature_column_lib.real_valued_column('a'),
@@ -449,7 +448,7 @@ class SDCARegressorTest(test.TestCase):
         regressor.get_variable_value('linear/b/weight')[0], 0.0, err=0.05)
 
   def testBiasAndOtherColumnsFabricatedCentered(self):
-    """SDCARegressor has valid bias weight when instances are centered."""
+    """SDCALinearRegressor has valid bias weight when instances are centered."""
 
     def input_fn():
       """Testing the bias weight when there are other features present.
@@ -477,7 +476,7 @@ class SDCARegressorTest(test.TestCase):
       }, constant_op.constant([[1 if x % 10 == 0 else 0] for x in range(half)] +
                               [[-1 if x % 10 == 0 else 0] for x in range(half)])
 
-    regressor = SDCARegressor(
+    regressor = sdca_estimator.SDCALinearRegressor(
         example_id_column='example_id',
         feature_columns=[
             feature_column_lib.real_valued_column('a'),

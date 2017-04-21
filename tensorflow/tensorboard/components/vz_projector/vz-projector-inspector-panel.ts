@@ -17,6 +17,7 @@ import {DistanceFunction, SpriteAndMetadataInfo, State} from './data';
 import * as knn from './knn';
 import {ProjectorEventContext} from './projectorEventContext';
 import * as adapter from './projectorScatterPlotAdapter';
+import * as util from './util';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
 import {ProjectorInput} from './vz-projector-input';
@@ -40,23 +41,24 @@ export class InspectorPanel extends PolymerClass {
 
   private selectedMetadataField: string;
   private metadataFields: string[];
-  private dom: d3.Selection<HTMLElement>;
   private projector: Projector;
   private selectedPointIndices: number[];
   private neighborsOfFirstPoint: knn.NearestEntry[];
   private searchBox: ProjectorInput;
 
-  private resetFilterButton: d3.Selection<HTMLElement>;
-  private setFilterButton: d3.Selection<HTMLElement>;
-  private clearSelectionButton: d3.Selection<HTMLElement>;
-  private limitMessage: d3.Selection<HTMLElement>;
+  private resetFilterButton: HTMLButtonElement;
+  private setFilterButton: HTMLButtonElement;
+  private clearSelectionButton: HTMLButtonElement;
+  private limitMessage: HTMLDivElement;
 
   ready() {
-    this.dom = d3.select(this);
-    this.resetFilterButton = this.dom.select('.reset-filter');
-    this.setFilterButton = this.dom.select('.set-filter');
-    this.clearSelectionButton = this.dom.select('.clear-selection');
-    this.limitMessage = this.dom.select('.limit-msg');
+    this.resetFilterButton =
+        this.querySelector('.reset-filter') as HTMLButtonElement;
+    this.setFilterButton =
+        this.querySelector('.set-filter') as HTMLButtonElement;
+    this.clearSelectionButton =
+        this.querySelector('.clear-selection') as HTMLButtonElement;
+    this.limitMessage = this.querySelector('.limit-msg') as HTMLDivElement;
     this.searchBox = this.querySelector('#search-box') as ProjectorInput;
     // https://www.polymer-project.org/1.0/docs/devguide/styling#scope-subtree
     this.scopeSubtree(this, true);
@@ -88,7 +90,7 @@ export class InspectorPanel extends PolymerClass {
   }
 
   private enableResetFilterButton(enabled: boolean) {
-    this.resetFilterButton.attr('disabled', enabled ? null : true);
+    this.resetFilterButton.disabled = !enabled;
   }
 
   restoreUIFromBookmark(bookmark: State) {
@@ -113,143 +115,178 @@ export class InspectorPanel extends PolymerClass {
   }
 
   private updateSearchResults(indices: number[]) {
-    let container = this.dom.select('.matches-list');
-    container.style('display', indices.length ? null : 'none');
-    let list = container.select('.list');
-    list.html('');
+    const container = this.querySelector('.matches-list') as HTMLDivElement;
+    container.style.display = indices.length ? null : 'none';
+    const list = container.querySelector('.list') as HTMLDivElement;
+    list.innerHTML = '';
     if (indices.length === 0) {
       return;
     }
-    this.limitMessage.style(
-        'display', indices.length <= LIMIT_RESULTS ? 'none' : null);
+
+    this.limitMessage.style.display =
+        indices.length <= LIMIT_RESULTS ? 'none' : null;
     indices = indices.slice(0, LIMIT_RESULTS);
-    let rows = list.selectAll('.row').data(indices).enter().append('div').attr(
-        'class', 'row');
-    rows.append('a')
-        .attr('class', 'label')
-        .attr('title', index => this.getLabelFromIndex(index))
-        .text(index => this.getLabelFromIndex(index));
-    rows.on('mouseenter', index => {
-      this.projectorEventContext.notifyHoverOverPoint(index);
-    });
-    rows.on('mouseleave', () => {
-      this.projectorEventContext.notifyHoverOverPoint(null);
-    });
-    rows.on('click', index => {
-      this.projectorEventContext.notifySelectionChanged([index]);
-    });
+
+    for (let i = 0; i < indices.length; i++) {
+      const index = indices[i];
+
+      const row = document.createElement('div');
+      row.className = 'row';
+
+      const label = this.getLabelFromIndex(index);
+      const rowLink = document.createElement('a');
+      rowLink.className = 'label';
+      rowLink.title = label;
+      rowLink.innerText = label;
+
+      rowLink.onmouseenter = () => {
+        this.projectorEventContext.notifyHoverOverPoint(index);
+      };
+      rowLink.onmouseleave = () => {
+        this.projectorEventContext.notifyHoverOverPoint(null);
+      };
+      rowLink.onclick = () => {
+        this.projectorEventContext.notifySelectionChanged([index]);
+      };
+
+      row.appendChild(rowLink);
+      list.appendChild(row);
+    }
   }
 
   private getLabelFromIndex(pointIndex: number): string {
-    let point = this.projector.dataSet.points[pointIndex];
+    const point = this.projector.dataSet.points[pointIndex];
     return point.metadata[this.selectedMetadataField].toString();
   }
 
   private updateNeighborsList(neighbors: knn.NearestEntry[]) {
-    let nnlist = this.dom.select('.nn-list');
-    nnlist.html('');
-    this.dom.select('.nn').style('display', neighbors.length ? null : 'none');
+    const nnlist = this.querySelector('.nn-list') as HTMLDivElement;
+    nnlist.innerHTML = '';
+
+    (this.querySelector('.nn') as HTMLDivElement).style.display =
+        neighbors.length ? null : 'none';
 
     if (neighbors.length === 0) {
       return;
     }
 
     this.searchBox.message = '';
-    let minDist = neighbors.length > 0 ? neighbors[0].dist : 0;
-    let n = nnlist.selectAll('.neighbor')
-                .data(neighbors)
-                .enter()
-                .append('div')
-                .attr('class', 'neighbor')
-                .append('a')
-                .attr('class', 'neighbor-link')
-                .attr('title', d => this.getLabelFromIndex(d.index));
+    const minDist = neighbors.length > 0 ? neighbors[0].dist : 0;
 
+    for (let i = 0; i < neighbors.length; i++) {
+      const neighbor = neighbors[i];
 
-    let labelValue = n.append('div').attr('class', 'label-and-value');
-    labelValue.append('div')
-        .attr('class', 'label')
-        .style('color', d => adapter.dist2color(this.distFunc, d.dist, minDist))
-        .text(d => this.getLabelFromIndex(d.index));
+      const neighborElement = document.createElement('div');
+      neighborElement.className = 'neighbor';
 
-    labelValue.append('div')
-        .attr('class', 'value')
-        .text(d => d.dist.toFixed(3));
+      const neighborElementLink = document.createElement('a');
+      neighborElementLink.className = 'neighbor-link';
+      neighborElementLink.title = this.getLabelFromIndex(neighbor.index);
 
-    let bar = n.append('div').attr('class', 'bar');
+      const labelValueElement = document.createElement('div');
+      labelValueElement.className = 'label-and-value';
 
-    bar.append('div')
-        .attr('class', 'fill')
-        .style(
-            'border-top-color',
-            d => {
-              return adapter.dist2color(this.distFunc, d.dist, minDist);
-            })
-        .style(
-            'width',
-            d => adapter.normalizeDist(this.distFunc, d.dist, minDist) * 100 +
-                '%');
+      const labelElement = document.createElement('div');
+      labelElement.className = 'label';
+      labelElement.style.color =
+          adapter.dist2color(this.distFunc, neighbor.dist, minDist);
+      labelElement.innerText = this.getLabelFromIndex(neighbor.index);
 
-    bar.selectAll('.tick')
-        .data(d3.range(1, 4))
-        .enter()
-        .append('div')
-        .attr('class', 'tick')
-        .style('left', d => d * 100 / 4 + '%');
-    n.on('mouseenter', d => {
-      this.projectorEventContext.notifyHoverOverPoint(d.index);
-    });
-    n.on('mouseleave', () => {
-      this.projectorEventContext.notifyHoverOverPoint(null);
-    });
-    n.on('click', d => {
-      this.projectorEventContext.notifySelectionChanged([d.index]);
-    });
+      const valueElement = document.createElement('div');
+      valueElement.className = 'value';
+      valueElement.innerText = neighbor.dist.toFixed(3);
+
+      labelValueElement.appendChild(labelElement);
+      labelValueElement.appendChild(valueElement);
+
+      const barElement = document.createElement('div');
+      barElement.className = 'bar';
+
+      const barFillElement = document.createElement('div');
+      barFillElement.className = 'fill';
+      barFillElement.style.borderTopColor =
+          adapter.dist2color(this.distFunc, neighbor.dist, minDist);
+      barFillElement.style.width =
+          adapter.normalizeDist(this.distFunc, neighbor.dist, minDist) * 100 +
+          '%';
+      barElement.appendChild(barFillElement);
+
+      for (let j = 1; j < 4; j++) {
+        const tickElement = document.createElement('div');
+        tickElement.className = 'tick';
+        tickElement.style.left = j * 100 / 4 + '%';
+        barElement.appendChild(tickElement);
+      }
+
+      neighborElementLink.appendChild(labelValueElement);
+      neighborElementLink.appendChild(barElement);
+      neighborElement.appendChild(neighborElementLink);
+      nnlist.appendChild(neighborElement);
+
+      neighborElementLink.onmouseenter = () => {
+        this.projectorEventContext.notifyHoverOverPoint(neighbor.index);
+      };
+      neighborElementLink.onmouseleave = () => {
+        this.projectorEventContext.notifyHoverOverPoint(null);
+      };
+      neighborElementLink.onclick = () => {
+        this.projectorEventContext.notifySelectionChanged([neighbor.index]);
+      };
+    }
   }
 
   private updateFilterButtons(numPoints: number) {
     if (numPoints > 1) {
-      this.setFilterButton.text(`Isolate ${numPoints} points`)
-          .attr('disabled', null);
-      this.clearSelectionButton.attr('disabled', null);
+      this.setFilterButton.innerText = `Isolate ${numPoints} points`;
+      this.setFilterButton.disabled = null;
+      this.clearSelectionButton.disabled = null;
     } else {
-      this.setFilterButton.attr('disabled', true);
-      this.clearSelectionButton.attr('disabled', true);
+      this.setFilterButton.disabled = true;
+      this.clearSelectionButton.disabled = true;
     }
   }
 
   private setupUI(projector: Projector) {
     this.distFunc = vector.cosDist;
-    let eucDist = this.dom.select('.distance a.euclidean');
-    eucDist.on('click', () => {
-      this.dom.selectAll('.distance a').classed('selected', false);
-      eucDist.classed('selected', true);
+    const eucDist =
+        this.querySelector('.distance a.euclidean') as HTMLLinkElement;
+    eucDist.onclick = () => {
+      const links = this.querySelectorAll('.distance a');
+      for (let i = 0; i < links.length; i++) {
+        util.classed(links[i] as HTMLElement, 'selected', false);
+      }
+      util.classed(eucDist as HTMLElement, 'selected', true);
+
       this.distFunc = vector.dist;
       this.projectorEventContext.notifyDistanceMetricChanged(this.distFunc);
-      let neighbors = projector.dataSet.findNeighbors(
+      const neighbors = projector.dataSet.findNeighbors(
           this.selectedPointIndices[0], this.distFunc, this.numNN);
       this.updateNeighborsList(neighbors);
-    });
+    };
 
-    let cosDist = this.dom.select('.distance a.cosine');
-    cosDist.on('click', () => {
-      this.dom.selectAll('.distance a').classed('selected', false);
-      cosDist.classed('selected', true);
+    const cosDist = this.querySelector('.distance a.cosine') as HTMLLinkElement;
+    cosDist.onclick = () => {
+      const links = this.querySelectorAll('.distance a');
+      for (let i = 0; i < links.length; i++) {
+        util.classed(links[i] as HTMLElement, 'selected', false);
+      }
+      util.classed(cosDist, 'selected', true);
+
       this.distFunc = vector.cosDist;
       this.projectorEventContext.notifyDistanceMetricChanged(this.distFunc);
-      let neighbors = projector.dataSet.findNeighbors(
+      const neighbors = projector.dataSet.findNeighbors(
           this.selectedPointIndices[0], this.distFunc, this.numNN);
       this.updateNeighborsList(neighbors);
-    });
+    };
 
     // Called whenever the search text input changes.
-    let updateInput = (value: string, inRegexMode: boolean) => {
+    const updateInput = (value: string, inRegexMode: boolean) => {
       if (value == null || value.trim() === '') {
         this.searchBox.message = '';
         this.projectorEventContext.notifySelectionChanged([]);
         return;
       }
-      let indices = projector.dataSet.query(
+      const indices = projector.dataSet.query(
           value, inRegexMode, this.selectedMetadataField);
       if (indices.length === 0) {
         this.searchBox.message = '0 matches.';
@@ -263,10 +300,11 @@ export class InspectorPanel extends PolymerClass {
     });
 
     // Nearest neighbors controls.
-    let numNNInput = this.$$('#nn-slider') as HTMLInputElement;
-    let updateNumNN = () => {
+    const numNNInput = this.$$('#nn-slider') as HTMLInputElement;
+    const updateNumNN = () => {
       this.numNN = +numNNInput.value;
-      this.dom.select('.num-nn .nn-count').text(this.numNN);
+      (this.querySelector('.num-nn .nn-count') as HTMLSpanElement).innerText =
+          '' + this.numNN;
       if (this.selectedPointIndices != null) {
         this.projectorEventContext.notifySelectionChanged(
             [this.selectedPointIndices[0]]);
@@ -276,22 +314,22 @@ export class InspectorPanel extends PolymerClass {
     updateNumNN();
 
     // Filtering dataset.
-    this.setFilterButton.on('click', () => {
+    this.setFilterButton.onclick = () => {
       const indices = this.selectedPointIndices.concat(
           this.neighborsOfFirstPoint.map(n => n.index));
       projector.filterDataset(indices);
       this.enableResetFilterButton(true);
       this.updateFilterButtons(0);
-    });
+    };
 
-    this.resetFilterButton.on('click', () => {
+    this.resetFilterButton.onclick = () => {
       projector.resetFilterDataset();
       this.enableResetFilterButton(false);
-    });
+    };
 
-    this.clearSelectionButton.on('click', () => {
+    this.clearSelectionButton.onclick = () => {
       projector.adjustSelectionAndHover([]);
-    });
+    };
     this.enableResetFilterButton(false);
   }
 }

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import device_setter
@@ -45,6 +46,12 @@ class DeviceSetterTest(test.TestCase):
       self.assertDeviceEqual("/job:ps/task:1", w.device)
       self.assertDeviceEqual("/job:ps/task:1", w.initializer.device)
       self.assertDeviceEqual("/job:worker/cpu:0", a.device)
+
+  def testResource(self):
+    with ops.device(
+        device_setter.replica_device_setter(cluster=self._cluster_spec)):
+      v = resource_variable_ops.ResourceVariable([1, 2])
+      self.assertDeviceEqual("/job:ps/task:0", v.device)
 
   def testPS2TasksWithClusterSpecClass(self):
     with ops.device(

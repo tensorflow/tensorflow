@@ -32,29 +32,35 @@ std::vector<char *> CharPointerVectorFromStrings(
   }
   return result;
 }
-}
+}  // namespace
 
 TEST(CommandLineFlagsTest, BasicUsage) {
   int some_int = 10;
   int64 some_int64 = 21474836470;  // max int32 is 2147483647
   bool some_switch = false;
   string some_name = "something";
-  int argc = 5;
-  std::vector<string> argv_strings = {
-      "program_name", "--some_int=20", "--some_int64=214748364700",
-      "--some_switch", "--some_name=somethingelse"};
+  float some_float = -23.23f;
+  int argc = 6;
+  std::vector<string> argv_strings = {"program_name",
+                                      "--some_int=20",
+                                      "--some_int64=214748364700",
+                                      "--some_switch",
+                                      "--some_name=somethingelse",
+                                      "--some_float=42.0"};
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok =
       Flags::Parse(&argc, argv_array.data(),
                    {Flag("some_int", &some_int, "some int"),
                     Flag("some_int64", &some_int64, "some int64"),
                     Flag("some_switch", &some_switch, "some switch"),
-                    Flag("some_name", &some_name, "some name")});
+                    Flag("some_name", &some_name, "some name"),
+                    Flag("some_float", &some_float, "some float")});
   EXPECT_EQ(true, parsed_ok);
   EXPECT_EQ(20, some_int);
   EXPECT_EQ(214748364700, some_int64);
   EXPECT_EQ(true, some_switch);
   EXPECT_EQ("somethingelse", some_name);
+  EXPECT_NEAR(42.0f, some_float, 1e-5f);
   EXPECT_EQ(argc, 1);
 }
 
@@ -85,6 +91,21 @@ TEST(CommandLineFlagsTest, BadBoolValue) {
   EXPECT_EQ(argc, 1);
 }
 
+TEST(CommandLineFlagsTest, BadFloatValue) {
+  float some_float = -23.23f;
+  int argc = 2;
+  std::vector<string> argv_strings = {"program_name",
+                                      "--some_float=notanumber"};
+  std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
+  bool parsed_ok =
+      Flags::Parse(&argc, argv_array.data(),
+                   {Flag("some_float", &some_float, "some float")});
+
+  EXPECT_EQ(false, parsed_ok);
+  EXPECT_NEAR(-23.23f, some_float, 1e-5f);
+  EXPECT_EQ(argc, 1);
+}
+
 // Return whether str==pat, but allowing any whitespace in pat
 // to match zero or more whitespace characters in str.
 static bool MatchWithAnyWhitespace(const string &str, const string &pat) {
@@ -111,6 +132,8 @@ TEST(CommandLineFlagsTest, UsageString) {
   int64 some_int64 = 21474836470;  // max int32 is 2147483647
   bool some_switch = false;
   string some_name = "something";
+  // Don't test float in this case, because precision is hard to predict and
+  // match against, and we don't want a flakey test.
   const string tool_name = "some_tool_name";
   string usage = Flags::Usage(tool_name + "<flags>",
                               {Flag("some_int", &some_int, "some int"),

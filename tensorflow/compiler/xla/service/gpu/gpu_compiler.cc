@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
@@ -121,6 +123,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
                                      const se::DeviceDescription& device_desc) {
   {
     HloPassPipeline pipeline("optimization", dump_hlo);
+    pipeline.AddInvariantChecker<HloVerifier>();
     {
       auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
           "simplification", dump_hlo);
@@ -131,8 +134,13 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
       pass.AddPass<HloConstantFolding>();
     }
     pipeline.AddPass<ConvolutionFolding>();
-    pipeline.AddPass<TransposeFolding>(ImplementedAsGemm);
-    pipeline.AddPass<HloSubcomputationUnification>();
+    pipeline.AddPass<TransposeFolding>(
+        [](const HloInstruction& dot,
+           const TransposeFolding::OperandIndices& candidate_operands) {
+          return ImplementedAsGemm(dot) ? candidate_operands
+                                        : TransposeFolding::OperandIndices{};
+        },
+        TransposeFolding::NeverFoldTranspose);
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -157,6 +165,7 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare", dump_hlo);
+  pipeline.AddInvariantChecker<HloVerifier>();
   pipeline.AddPass<PadInsertion>();
   pipeline.AddPass<GpuLayoutAssignment>(
       module_config->mutable_entry_computation_layout());
@@ -172,6 +181,7 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   // instruction which materializes a value).
   pipeline.AddPass<GpuCopyInsertion>();
   pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 

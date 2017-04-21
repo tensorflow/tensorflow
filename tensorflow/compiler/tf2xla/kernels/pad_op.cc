@@ -74,7 +74,7 @@ class PadOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Pad", PadOp);
+REGISTER_XLA_OP(Name("Pad"), PadOp);
 
 }  // namespace
 }  // namespace tensorflow

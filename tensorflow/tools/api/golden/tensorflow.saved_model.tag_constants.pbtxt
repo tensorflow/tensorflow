@@ -1,0 +1,11 @@
+path: "tensorflow.saved_model.tag_constants"
+tf_module {
+  member {
+    name: "SERVING"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "TRAINING"
+    mtype: "<type \'str\'>"
+  }
+}

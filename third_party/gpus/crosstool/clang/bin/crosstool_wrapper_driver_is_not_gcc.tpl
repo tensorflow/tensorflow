@@ -51,7 +51,6 @@ GCC_HOST_COMPILER_PATH = ('%{gcc_host_compiler_path}')
 
 CURRENT_DIR = os.path.dirname(sys.argv[0])
 NVCC_PATH = CURRENT_DIR + '/../../../cuda/bin/nvcc'
-LLVM_HOST_COMPILER_PATH = ('/usr/bin/gcc')
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
 NVCC_VERSION = '%{cuda_version}'
 

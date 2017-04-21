@@ -19,14 +19,40 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 
-#include <stdio.h>
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 
 using GPUDevice = Eigen::GpuDevice;
+
+// Helper for UnusortedSegmentSumCustomKernel that adds value into dest
+// atomically.
+template <typename T>
+static __device__ __forceinline__ void AccumulateInto(T* dest, const T& value) {
+  CudaAtomicAdd(dest, value);
+}
+
+// Specializations of AccumulateInto for complex types, which CudaAtomicAdd does
+// not support. We treat a std::complex<T>* as a T* (the C++ standard section
+// 26.4.4 allows this explicitly) and atomic add the real and imaginary
+// components individually. The operation as a whole is not atomic, but we can
+// safely treat the components independently for the purpose of accumulating.
+template <>
+__device__ __forceinline__ void AccumulateInto(
+    std::complex<float>* dest, const std::complex<float>& value) {
+  auto dest_scalar = reinterpret_cast<float*>(dest);
+  CudaAtomicAdd(dest_scalar, value.real());
+  CudaAtomicAdd(dest_scalar + 1, value.imag());
+}
+
+template <>
+__device__ __forceinline__ void AccumulateInto(
+    std::complex<double>* dest, const std::complex<double>& value) {
+  auto dest_scalar = reinterpret_cast<double*>(dest);
+  CudaAtomicAdd(dest_scalar, value.real());
+  CudaAtomicAdd(dest_scalar + 1, value.imag());
+}
 
 // UnsortedSegmentSumFunctor kernel processes 'input_total_size' elements.
 // Each element is mapped from input to output by a combination of its
@@ -48,7 +74,7 @@ __global__ void UnsortedSegmentSumCustomKernel(
     }
     const Index output_index =
         output_segment_index * inner_dim_size + segment_offset;
-    CudaAtomicAdd(output + output_index, ldg(input + input_index));
+    AccumulateInto<T>(output + output_index, ldg(input + input_index));
   }
 }
 
@@ -99,6 +125,8 @@ struct UnsortedSegmentSumFunctor<GPUDevice, T, Index>: UnsortedSegmentBaseFuncto
   DEFINE_GPU_SPECS_INDEX(T, int64);
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_complex64(DEFINE_GPU_SPECS);
+TF_CALL_complex128(DEFINE_GPU_SPECS);
 
 #undef DEFINE_GPU_SPECS
 #undef DEFINE_GPU_SPECS_INDEX

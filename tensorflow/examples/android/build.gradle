@@ -67,7 +67,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 23
-    buildToolsVersion "25.0.1"
+    buildToolsVersion "25.0.2"
 
     lintOptions {
         abortOnError false
@@ -138,10 +138,14 @@ task copyNativeLibs(type: Copy) {
     fileMode 0644
 }
 
-assemble.dependsOn copyNativeLibs
-afterEvaluate {
-    assembleDebug.dependsOn copyNativeLibs
-    assembleRelease.dependsOn copyNativeLibs
+
+tasks.whenTaskAdded { task ->
+    if (task.name == 'assembleDebug') {
+        task.dependsOn 'copyNativeLibs'
+    }
+    if (task.name == 'assembleRelease') {
+        task.dependsOn 'copyNativeLibs'
+    }
 }
 
 // Download default models; if you wish to use your own models then

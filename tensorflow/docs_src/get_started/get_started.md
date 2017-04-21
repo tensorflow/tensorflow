@@ -1,4 +1,3 @@
-
 # Getting Started With TensorFlow
 
 This guide gets you started programming in TensorFlow. Before using this guide,
@@ -50,7 +49,6 @@ The canonical import statement for TensorFlow programs is as follows:
 
 ```python
 import tensorflow as tf
-
 ```
 This gives Python access to all of TensorFlow's classes, methods, and symbols.
 Most of the documentation assumes you have already done this.
@@ -70,12 +68,15 @@ or more tensors as inputs and produces a tensor as an output. One type of node
 is a constant. Like all TensorFlow constants, it takes no inputs, and it outputs
 a value it stores internally. We can create two floating point Tensors `node1`
 and `node2` as follows:
+
 ```python
-node1 = tf.constant(3.0, tf.float32)
+node1 = tf.constant(3.0, dtype=tf.float32)
 node2 = tf.constant(4.0) # also tf.float32 implicitly
 print(node1, node2)
 ```
+
 The final print statement produces
+
 ```
 Tensor("Const:0", shape=(), dtype=float32) Tensor("Const_1:0", shape=(), dtype=float32)
 ```
@@ -94,7 +95,9 @@ running the computational graph in a session as follows:
 sess = tf.Session()
 print(sess.run([node1, node2]))
 ```
+
 we see the expected values of 3.0 and 4.0:
+
 ```
 [3.0, 4.0]
 ```
@@ -108,9 +111,11 @@ node3 = tf.add(node1, node2)
 print("node3: ", node3)
 print("sess.run(node3): ",sess.run(node3))
 ```
+
 The last two print statements produce
+
 ```
-node3:  Tensor("Add_2:0", shape=(), dtype=float32)
+node3:  Tensor("Add:0", shape=(), dtype=float32)
 sess.run(node3):  7.0
 ```
 
@@ -141,10 +146,12 @@ print(sess.run(adder_node, {a: 3, b:4.5}))
 print(sess.run(adder_node, {a: [1,3], b: [2, 4]}))
 ```
 resulting in the output
+
 ```
 7.5
 [ 3.  7.]
 ```
+
 In TensorBoard, the graph looks like this:
 
 ![TensorBoard screenshot](../images/getting_started_adder.png)
@@ -173,8 +180,8 @@ initial value:
 
 
 ```python
-W = tf.Variable([.3], tf.float32)
-b = tf.Variable([-.3], tf.float32)
+W = tf.Variable([.3], dtype=tf.float32)
+b = tf.Variable([-.3], dtype=tf.float32)
 x = tf.placeholder(tf.float32)
 linear_model = W * x + b
 ```
@@ -294,8 +301,8 @@ import numpy as np
 import tensorflow as tf
 
 # Model parameters
-W = tf.Variable([.3], tf.float32)
-b = tf.Variable([-.3], tf.float32)
+W = tf.Variable([.3], dtype=tf.float32)
+b = tf.Variable([-.3], dtype=tf.float32)
 # Model input and output
 x = tf.placeholder(tf.float32)
 linear_model = W * x + b
@@ -316,13 +323,17 @@ for i in range(1000):
   sess.run(train, {x:x_train, y:y_train})
 
 # evaluate training accuracy
-curr_W, curr_b, curr_loss  = sess.run([W, b, loss], {x:x_train, y:y_train})
+curr_W, curr_b, curr_loss = sess.run([W, b, loss], {x:x_train, y:y_train})
 print("W: %s b: %s loss: %s"%(curr_W, curr_b, curr_loss))
 ```
 When run, it produces
 ```
 W: [-0.9999969] b: [ 0.99999082] loss: 5.69997e-11
 ```
+
+Notice that the loss is a very small number (close to zero). If you run this
+program your loss will not be exactly the same, because the model is initialized
+with random values.
 
 This more complicated program can still be visualized in TensorBoard
 ![TensorBoard final model visualization](../images/getting_started_final.png)

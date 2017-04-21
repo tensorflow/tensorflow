@@ -66,6 +66,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:inputs",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:loader",
@@ -832,6 +833,19 @@ py_test(
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "model_fn_test",
+    size = "small",
+    srcs = ["python/learn/estimators/model_fn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
     ],
 )
 

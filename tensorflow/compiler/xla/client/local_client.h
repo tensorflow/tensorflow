@@ -224,6 +224,10 @@ class LocalClient : public Client {
   // capability).
   bool device_ordinal_supported(int device_ordinal) const;
 
+  // Returns the backend used to execute computations.
+  const Backend& backend() const;
+  Backend* mutable_backend();
+
  private:
   LocalService* local_service_;
 };

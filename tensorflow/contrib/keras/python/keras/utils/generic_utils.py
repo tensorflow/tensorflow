@@ -155,8 +155,8 @@ def deserialize_keras_object(identifier,
         return cls.from_config(
             config['config'],
             custom_objects=dict(
-                list(_GLOBAL_CUSTOM_OBJECTS.items()) + list(
-                    custom_objects.items())))
+                list(_GLOBAL_CUSTOM_OBJECTS.items()) +
+                list(custom_objects.items())))
       return cls.from_config(config['config'])
     else:
       # Then `cls` may be a function returning a class.
@@ -172,7 +172,8 @@ def deserialize_keras_object(identifier,
     else:
       fn = module_objects.get(function_name)
       if fn is None:
-        raise ValueError('Unknown ' + printable_module_name, ':' + class_name)
+        raise ValueError('Unknown ' + printable_module_name,
+                         ':' + function_name)
     return fn
   else:
     raise ValueError('Could not interpret serialized ' + printable_module_name +
@@ -215,6 +216,8 @@ def func_load(code, defaults=None, closure=None, globs=None):
   """
   if isinstance(code, (tuple, list)):  # unpack previous dump
     code, defaults, closure = code
+    if isinstance(defaults, list):
+      defaults = tuple(defaults)
   code = marshal.loads(code.encode('raw_unicode_escape'))
   if globs is None:
     globs = globals()

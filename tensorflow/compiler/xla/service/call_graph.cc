@@ -51,6 +51,22 @@ std::ostream& operator<<(std::ostream& out, const CallContext& context) {
   return out;
 }
 
+CallContext GetInstructionCallContext(const HloInstruction* instruction) {
+  switch (instruction->opcode()) {
+    case HloOpcode::kCall:
+    case HloOpcode::kWhile:
+      return CallContext::kSequential;
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kFusion:
+      return CallContext::kParallel;
+    default:
+      return CallContext::kNone;
+  }
+}
+
 string CallSite::ToString() const {
   return StrCat(instruction()->name(), " calls in context ",
                 CallContextToString(context()), ": ",
@@ -82,32 +98,10 @@ void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
   }
 }
 
-namespace {
-
-CallContext GetInstructionCallContext(const HloInstruction* instruction) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kCall:
-    case HloOpcode::kWhile:
-      return CallContext::kSequential;
-    case HloOpcode::kMap:
-    case HloOpcode::kReduce:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kFusion:
-      return CallContext::kParallel;
-    default:
-      return CallContext::kNone;
-  }
-}
-
-}  // namespace
-
 Status CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == computation());
-  CallContext context = GetInstructionCallContext(instruction);
-  if (instruction->called_computations().empty()) {
-    TF_RET_CHECK(context == CallContext::kNone);
-  } else {
+  const CallContext context = GetInstructionCallContext(instruction);
+  if (!instruction->called_computations().empty()) {
     TF_RET_CHECK(context == CallContext::kSequential ||
                  context == CallContext::kParallel);
     callsite_instructions_.insert({instruction, callsites_.size()});
@@ -217,12 +211,15 @@ StatusOr<std::unique_ptr<CallGraph>> CallGraph::Build(const HloModule* module) {
   // Constructor for CallGraph is private so MakeUnique can't be used.
   auto call_graph = WrapUnique<CallGraph>(new CallGraph(module));
 
+  VLOG(2) << "Building call graph for:";
+  XLA_VLOG_LINES(2, module->ToString());
+
   // Construct nodes of the call graph and populate the callsites.
   for (const std::unique_ptr<HloComputation>& computation :
        module->computations()) {
     auto it_added = call_graph->node_indices_.insert(
         {computation.get(), call_graph->nodes_.size()});
-    // All computation should be unique, so the computation should not already
+    // All computations should be unique, so the computation should not already
     // exist in the map.
     TF_RET_CHECK(it_added.second);
     call_graph->nodes_.emplace_back(computation.get());

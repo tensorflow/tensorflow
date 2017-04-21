@@ -177,7 +177,7 @@ string CleanPath(StringPiece unclean_path) {
   }
 
   // Calculate and check the length of the cleaned path.
-  int path_length = dst - path.begin();
+  string::difference_type path_length = dst - path.begin();
   if (path_length != 0) {
     // Remove trailing '/' except if it is root path ("/" ==> path_length := 1)
     if (path_length > 1 && path[path_length - 1] == '/') {

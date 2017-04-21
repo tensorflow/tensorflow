@@ -33,12 +33,12 @@ class FakeAuthProvider : public AuthProvider {
 TEST(GcsFileSystemTest, NewRandomAccessFile_NoReadAhead) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 0-5\n",
            "012345"),
        new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 6-11\n",
            "6789")});
@@ -67,12 +67,12 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoReadAhead) {
 TEST(GcsFileSystemTest, NewRandomAccessFile_NoReadAhead_differentN) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 0-2\n",
            "012"),
        new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 3-12\n",
            "3456789")});
@@ -104,32 +104,32 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoReadAhead_differentN) {
 TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 0-8\n",
            "012345678"),
        new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 6-14\n",
            "6789abcde"),
        new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 6-20\n",
            "6789abcd"),
        new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 7-21\n",
            "789abcdef"),
        new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 20-34\n",
            ""),
        new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 0-14\n",
            "01234567")});
@@ -446,7 +446,7 @@ TEST(GcsFileSystemTest, NewWritableFile_NoObjectName) {
 TEST(GcsFileSystemTest, NewAppendableFile) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
-           "Uri: https://bucket.storage.googleapis.com/path%2Fappendable.txt\n"
+           "Uri: https://storage.googleapis.com/bucket/path%2Fappendable.txt\n"
            "Auth Token: fake_token\n"
            "Range: 0-1048575\n",
            "content1,"),
@@ -496,7 +496,7 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
            strings::StrCat("{\"size\": \"", content.size(),
                            "\", \"updated\": \"2016-04-29T23:15:24.896Z\"}")),
        new FakeHttpRequest(
-           strings::StrCat("Uri: https://bucket.storage.googleapis.com/"
+           strings::StrCat("Uri: https://storage.googleapis.com/bucket/"
                            "path%2Frandom_access.txt\n"
                            "Auth Token: fake_token\n"
                            "Range: 0-",

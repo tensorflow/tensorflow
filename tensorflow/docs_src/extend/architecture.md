@@ -7,7 +7,7 @@ learning models and system-level optimizations.
 This document describes the system architecture that makes possible this
 combination of scale and flexibility. It assumes that you have basic familiarity
 with TensorFlow programming concepts such as the computation graph, operations,
-and sessions. See @{$get_started$Getting Started}
+and sessions. See @{$get_started/get_started$Getting Started}
 for an introduction to these topics. Some familiarity
 with @{$distributed$distributed TensorFlow}
 will also be helpful.

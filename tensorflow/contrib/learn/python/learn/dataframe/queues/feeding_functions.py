@@ -22,6 +22,8 @@ from __future__ import print_function
 # pylint: disable=unused-import
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _ArrayFeedFn
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _enqueue_data as enqueue_data
+from tensorflow.python.estimator.inputs.queues.feeding_functions import _GeneratorFeedFn
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _OrderedDictNumpyFeedFn
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _PandasFeedFn
+from tensorflow.python.estimator.inputs.queues.feeding_functions import _GeneratorFeedFn
 # pylint: enable=unused-import

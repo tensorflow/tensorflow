@@ -38,7 +38,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
@@ -112,7 +111,9 @@ class Estimator(object):
           `EstimatorSpec`
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model.
+        continue training a previously saved model. If `None`, the model_dir in
+        `config` will be used if set. If both are set, they must be same. If
+        both are `None`, a temporary directory will be used.
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
@@ -123,12 +124,6 @@ class Estimator(object):
         a member of `Estimator`.
     """
     Estimator._assert_members_are_not_overridden(self)
-    # Model directory.
-    self._model_dir = model_dir
-    if self._model_dir is None:
-      self._model_dir = tempfile.mkdtemp()
-      logging.warning('Using temporary folder as model directory: %s',
-                      self._model_dir)
 
     if config is None:
       self._config = run_config.RunConfig()
@@ -140,7 +135,27 @@ class Estimator(object):
             config)
       self._config = config
 
+    # Model directory.
+    if (model_dir is not None) and (self._config.model_dir is not None):
+      if model_dir != self._config.model_dir:
+        # pylint: disable=g-doc-exception
+        raise ValueError(
+            "model_dir are set both in constructor and RunConfig, but with "
+            "different values. In constructor: '{}', in RunConfig: "
+            "'{}' ".format(model_dir, self._config.model_dir))
+        # pylint: enable=g-doc-exception
+
+    self._model_dir = model_dir or self._config.model_dir
+    if self._model_dir is None:
+      self._model_dir = tempfile.mkdtemp()
+      logging.warning('Using temporary folder as model directory: %s',
+                      self._model_dir)
     logging.info('Using config: %s', str(vars(self._config)))
+
+    if self._config.session_config is None:
+      self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    else:
+      self._session_config = self._config.session_config
 
     self._device_fn = _get_replica_device_setter(self._config)
 
@@ -199,10 +214,10 @@ class Estimator(object):
     if (steps is not None) and (max_steps is not None):
       raise ValueError('Can not provide both steps and max_steps.')
     if steps is not None and steps <= 0:
-      raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+      raise ValueError('Must specify steps > 0, given: {}'.format(steps))
     if max_steps is not None and max_steps <= 0:
       raise ValueError(
-          'Must specify max_steps >= 0, given: {}'.format(max_steps))
+          'Must specify max_steps > 0, given: {}'.format(max_steps))
 
     if max_steps is not None:
       start_step = _load_global_step_from_checkpoint_dir(self._model_dir)
@@ -257,7 +272,7 @@ class Estimator(object):
     hooks = _check_hooks_type(hooks)
     if steps is not None:
       if steps <= 0:
-        raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+        raise ValueError('Must specify steps > 0, given: {}'.format(steps))
       hooks.append(evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
           num_evals=steps))
 
@@ -267,7 +282,11 @@ class Estimator(object):
         checkpoint_path=checkpoint_path,
         name=name)
 
-  def predict(self, input_fn, predict_keys=None, hooks=None):
+  def predict(self,
+              input_fn,
+              predict_keys=None,
+              hooks=None,
+              checkpoint_path=None):
     """Returns predictions for given features.
 
     Args:
@@ -282,6 +301,8 @@ class Estimator(object):
         `None`, returns all.
       hooks: List of `SessionRunHook` subclass instances. Used for callbacks
         inside the prediction call.
+      checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
+        latest checkpoint in `model_dir` is used.
 
     Yields:
       Evaluated values of `predictions` tensors.
@@ -295,7 +316,8 @@ class Estimator(object):
     """
     hooks = _check_hooks_type(hooks)
     # Check that model has been trained.
-    checkpoint_path = saver.latest_checkpoint(self._model_dir)
+    if not checkpoint_path:
+      checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:
       raise ValueError('Could not find trained model in model_dir: {}.'.format(
           self._model_dir))
@@ -311,7 +333,7 @@ class Estimator(object):
           session_creator=training.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
               scaffold=estimator_spec.scaffold,
-              config=config_pb2.ConfigProto(allow_soft_placement=True)),
+              config=self._session_config),
           hooks=hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
@@ -418,7 +440,6 @@ class Estimator(object):
       with tf_session.Session() as session:
 
         saver_for_restore = estimator_spec.scaffold.saver or saver.Saver(
-            variables._all_saveable_objects(),  # pylint: disable=protected-access
             sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
 
@@ -547,7 +568,8 @@ class Estimator(object):
                               training.Saver(
                                   sharded=True,
                                   max_to_keep=self._config.keep_checkpoint_max,
-                                  defer_build=True))
+                                  defer_build=True,
+                                  save_relative_paths=True))
 
       chief_hooks = []
       if (self._config.save_checkpoints_secs or
@@ -574,7 +596,7 @@ class Estimator(object):
           chief_only_hooks=chief_hooks + estimator_spec.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=config_pb2.ConfigProto(allow_soft_placement=True)) as mon_sess:
+          config=self._session_config) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([estimator_spec.train_op, estimator_spec.loss])
@@ -629,7 +651,7 @@ class Estimator(object):
           eval_ops=update_op,
           final_ops=eval_dict,
           hooks=hooks,
-          config=config_pb2.ConfigProto(allow_soft_placement=True))
+          config=self._session_config)
 
       _write_dict_to_summary(
           output_dir=eval_dir,
@@ -637,12 +659,6 @@ class Estimator(object):
           current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
 
     return eval_results
-
-  def _verify_default_metric_key(self, metric_key, eval_dict):
-    if metric_key in six.iterkeys(eval_dict):
-      raise ValueError(
-          'Metric with name `%s` is not allowed, because Estimator '
-          'already defines a default metric with the same name.' % metric_key)
 
 
 def _check_hooks_type(hooks):

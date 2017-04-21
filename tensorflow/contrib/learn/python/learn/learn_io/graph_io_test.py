@@ -114,6 +114,18 @@ class GraphIOTest(test.TestCase):
         name=name)
     self.assertRaisesRegexp(
         ValueError,
+        "Invalid batch_size",
+        graph_io.read_batch_examples,
+        _VALID_FILE_PATTERN,
+        default_batch_size,
+        io_ops.TFRecordReader,
+        False,
+        num_epochs=None,
+        queue_capacity=default_batch_size,
+        num_threads=num_threads,
+        name=name)
+    self.assertRaisesRegexp(
+        ValueError,
         "Invalid queue_capacity",
         graph_io.read_batch_examples,
         _VALID_FILE_PATTERN,
@@ -356,7 +368,7 @@ class GraphIOTest(test.TestCase):
     ]
     filename = self._create_temp_file("".join(json_lines))
     batch_size = 10000
-    queue_capacity = 10000
+    queue_capacity = 100000
     name = "my_large_batch"
 
     features = {"sequence": parsing_ops.FixedLenFeature([], dtypes_lib.string)}

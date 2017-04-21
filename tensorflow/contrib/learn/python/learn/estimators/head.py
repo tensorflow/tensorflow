@@ -42,8 +42,8 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training
 
@@ -611,7 +611,7 @@ def _create_model_fn_ops(features,
   if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
     weight_tensor = _weight_tensor(features, weight_column_name)
     loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
-    logging_ops.scalar_summary(
+    summary.scalar(
         _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
     if mode == model_fn.ModeKeys.TRAIN:
@@ -816,7 +816,8 @@ class _BinaryLogisticHead(_SingleHead):
           loss_fn=self._loss_fn,
           logits_to_predictions_fn=self._logits_to_predictions,
           metrics_fn=self._metrics,
-          create_output_alternatives_fn=self._create_output_alternatives,
+          create_output_alternatives_fn=_classification_output_alternatives(
+              self.head_name, self._problem_type),
           labels=labels,
           train_op_fn=train_op_fn,
           logits=logits,
@@ -885,6 +886,8 @@ class _BinaryLogisticHead(_SingleHead):
           _indicator_labels_streaming_mean(labels, weights))
       metrics[_summary_key(self.head_name, mkey.AUC)] = (
           _streaming_auc(logistic, labels, weights))
+      metrics[_summary_key(self.head_name, mkey.AUC_PR)] = (
+          _streaming_auc(logistic, labels, weights, curve="PR"))
 
       for threshold in self._thresholds:
         metrics[_summary_key(
@@ -1009,7 +1012,8 @@ class _MultiClassHead(_SingleHead):
           loss_fn=self._wrapped_loss_fn,
           logits_to_predictions_fn=self._logits_to_predictions,
           metrics_fn=self._metrics,
-          create_output_alternatives_fn=self._create_output_alternatives,
+          create_output_alternatives_fn=_classification_output_alternatives(
+              self.head_name, self._problem_type, self._label_keys),
           labels=labels,
           train_op_fn=train_op_fn,
           logits=logits,
@@ -1113,25 +1117,6 @@ class _MultiClassHead(_SingleHead):
 
     return metrics
 
-  def _create_output_alternatives(self, predictions):
-    """See superclass."""
-    probabilities = predictions[prediction_key.PredictionKey.PROBABILITIES]
-    batch_size = array_ops.shape(probabilities)[0]
-    if self._label_keys:
-      classes = array_ops.tile(
-          input=array_ops.expand_dims(input=self._label_keys, axis=0),
-          multiples=[batch_size, 1])
-    else:
-      classes = array_ops.tile(
-          input=array_ops.expand_dims(
-              input=math_ops.range(self.logits_dimension), axis=0),
-          multiples=[batch_size, 1])
-    predictions_for_serving = {
-        prediction_key.PredictionKey.CLASSES: classes,
-        prediction_key.PredictionKey.PROBABILITIES: probabilities,
-    }
-    return {self._head_name: (self._problem_type, predictions_for_serving)}
-
 
 def _to_labels_tensor(labels, label_name):
   """Returns label as a tensor.
@@ -1226,6 +1211,7 @@ class _BinarySvmHead(_SingleHead):
           loss_fn=self._loss_fn,
           logits_to_predictions_fn=self._logits_to_predictions,
           metrics_fn=self._metrics,
+          # TODO(zakaria): Handle labels for export.
           create_output_alternatives_fn=self._create_output_alternatives,
           labels=labels,
           train_op_fn=train_op_fn,
@@ -1325,7 +1311,8 @@ class _MultiLabelHead(_SingleHead):
           loss_fn=self._loss_fn,
           logits_to_predictions_fn=self._logits_to_predictions,
           metrics_fn=self._metrics,
-          create_output_alternatives_fn=self._create_output_alternatives,
+          create_output_alternatives_fn=_classification_output_alternatives(
+              self.head_name, self._problem_type),
           labels=labels,
           train_op_fn=train_op_fn,
           logits=logits,
@@ -1374,6 +1361,8 @@ class _MultiLabelHead(_SingleHead):
           metrics_lib.streaming_accuracy(classes, labels, weights))
       metrics[_summary_key(self.head_name, mkey.AUC)] = _streaming_auc(
           probabilities, labels, weights)
+      metrics[_summary_key(self.head_name, mkey.AUC_PR)] = _streaming_auc(
+          probabilities, labels, weights, curve="PR")
 
       for class_id in self._metric_class_ids:
         # TODO(ptucker): Add per-class accuracy, precision, recall.
@@ -1391,6 +1380,9 @@ class _MultiLabelHead(_SingleHead):
                 _predictions_streaming_mean(logits, weights, class_id))
         metrics[_summary_key(self.head_name, mkey.CLASS_AUC % class_id)] = (
             _streaming_auc(probabilities, labels, weights, class_id))
+        metrics[_summary_key(self.head_name, mkey.CLASS_AUC_PR % class_id)] = (
+            _streaming_auc(probabilities, labels, weights, class_id,
+                           curve="PR"))
 
     return metrics
 
@@ -1665,7 +1657,7 @@ def _compute_weighted_loss(loss_unweighted, weight, name="loss"):
     name: Optional name
 
   Returns:
-    A tuple of losses. First one for training and the second one for reproting.
+    A tuple of losses. First one for training and the second one for reporting.
   """
   with ops.name_scope(name, values=(loss_unweighted, weight)) as name_scope:
     if weight is None:
@@ -1673,11 +1665,10 @@ def _compute_weighted_loss(loss_unweighted, weight, name="loss"):
       return loss, loss
     with ops.name_scope(None, "weighted_loss",
                         (loss_unweighted, weight)) as name:
+      # TODO(ptucker): Support weight broadcasting, or switch to tf.losses.
       weighted_loss = math_ops.multiply(
           array_ops.reshape(loss_unweighted, shape=(-1,)),
           array_ops.reshape(weight, shape=(-1,)), name=name)
-    # TODO(ptucker): This might be wrong if weights are broadcast to loss shape.
-    # We should use tf.losses here.
     weighted_loss_mean = math_ops.reduce_mean(weighted_loss, name=name_scope)
     weighted_loss_normalized = math_ops.div(
         math_ops.reduce_sum(weighted_loss),
@@ -1742,7 +1733,7 @@ def _centered_bias(logits_dimension, head_name=None):
   # Do not create a variable with variable_scope.get_variable, because that may
   # create a PartitionedVariable, which does not support indexing, so
   # summary.scalar will not work.
-  centered_bias = variables.Variable(
+  centered_bias = variable_scope.variable(
       name="centered_bias_weight",
       initial_value=array_ops.zeros(shape=(logits_dimension,)),
       trainable=True)
@@ -1857,7 +1848,8 @@ def _class_labels_streaming_mean(labels, weights, class_id):
       weights=weights)
 
 
-def _streaming_auc(predictions, labels, weights=None, class_id=None):
+def _streaming_auc(predictions, labels, weights=None, class_id=None,
+                   curve="ROC"):
   predictions = ops.convert_to_tensor(predictions)
   labels = ops.convert_to_tensor(labels)
   if class_id is not None:
@@ -1866,7 +1858,8 @@ def _streaming_auc(predictions, labels, weights=None, class_id=None):
   return metrics_lib.streaming_auc(
       predictions,
       math_ops.cast(labels, dtypes.bool),
-      weights=_float_weights_or_none(weights))
+      weights=_float_weights_or_none(weights),
+      curve=curve)
 
 
 def _assert_class_id(class_id, num_classes=None):
@@ -1900,6 +1893,71 @@ def _streaming_recall_at_threshold(predictions, labels, weights, threshold):
       weights=_float_weights_or_none(weights))
   return array_ops.squeeze(precision_tensor), array_ops.squeeze(update_op)
 
+
+def _classification_output_alternatives(head_name, problem_type,
+                                        label_keys=None):
+  """Creates a func to generate output alternatives for classification.
+
+  Servo expects classes to be a string tensor, and have the same dimensions
+  as the probabilities tensor. It should contain the labels of the corresponding
+  entries in probabilities. This function creates a new classes tensor that
+  satisfies these conditions and can be exported.
+
+  Args:
+    head_name: Name of the head.
+    problem_type: `ProblemType`
+    label_keys: Optional label keys
+
+  Returns:
+    A function to generate output alternatives.
+  """
+  def _create_output_alternatives(predictions):
+    """Creates output alternative for the Head.
+
+    Args:
+      predictions: a dict of {tensor_name: Tensor}, where 'tensor_name' is a
+        symbolic name for an output Tensor possibly but not necessarily taken
+        from `PredictionKey`, and 'Tensor' is the corresponding output Tensor
+        itself.
+
+    Returns:
+      `dict` of {submodel_name: (problem_type, {tensor_name: Tensor})}, where
+      'submodel_name' is a submodel identifier that should be consistent across
+      the pipeline (here likely taken from the head_name),
+      'problem_type' is a `ProblemType`,
+      'tensor_name' is a symbolic name for an output Tensor possibly but not
+       necessarily taken from `PredictionKey`, and
+      'Tensor' is the corresponding output Tensor itself.
+
+    Raises:
+      ValueError: if predictions does not have PredictionKey.PROBABILITIES key.
+    """
+    probabilities = predictions.get(prediction_key.PredictionKey.PROBABILITIES)
+    if probabilities is None:
+      raise ValueError("%s missing in predictions" %
+                       prediction_key.PredictionKey.PROBABILITIES)
+
+    with ops.name_scope(None, "_classification_output_alternatives",
+                        (probabilities,)):
+      batch_size = array_ops.shape(probabilities)[0]
+      if label_keys:
+        classes = array_ops.tile(
+            input=array_ops.expand_dims(input=label_keys, axis=0),
+            multiples=[batch_size, 1],
+            name="classes_tensor")
+      else:
+        n = array_ops.shape(probabilities)[1]
+        classes = array_ops.tile(
+            input=array_ops.expand_dims(input=math_ops.range(n), axis=0),
+            multiples=[batch_size, 1])
+        classes = string_ops.as_string(classes, name="classes_tensor")
+
+    exported_predictions = {
+        prediction_key.PredictionKey.PROBABILITIES: probabilities,
+        prediction_key.PredictionKey.CLASSES: classes}
+    return {head_name: (problem_type, exported_predictions)}
+
+  return _create_output_alternatives
 
 # Aliases
 # TODO(zakaria): Remove these aliases, See b/34751732

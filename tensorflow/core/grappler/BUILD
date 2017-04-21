@@ -1,6 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 filegroup(
     name = "all_files",
@@ -17,7 +17,12 @@ filegroup(
 filegroup(
     name = "android_srcs",
     srcs = [
+        "devices.cc",
+        "devices.h",
+        "grappler_item.cc",
         "grappler_item.h",
+        "op_types.cc",
+        "op_types.h",
         "utils.cc",
         "utils.h",
         "//tensorflow/core/grappler/clusters:android_srcs",
@@ -28,6 +33,16 @@ filegroup(
 )
 
 cc_library(
+    name = "op_types",
+    srcs = ["op_types.cc"],
+    hdrs = ["op_types.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
@@ -35,6 +50,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -49,13 +65,13 @@ cc_test(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "devices",
     srcs = ["devices.cc"],
     hdrs = ["devices.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:gpu_runtime",
+        "//tensorflow/core:gpu_init",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor",
@@ -70,6 +86,7 @@ cc_library(
     hdrs = ["grappler_item.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_types",
         ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -85,6 +102,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":grappler_item",
+        ":op_types",
         ":utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",

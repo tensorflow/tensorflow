@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
@@ -241,6 +242,13 @@ DirectSession::DirectSession(const SessionOptions& options,
   } else {
     thread_pools_.push_back(GlobalThreadPool(options));
     owns_thread_pools_ = false;
+  }
+  // The default value of sync_on_finish will be flipped soon and this
+  // environment variable will be removed as well.
+  Status status =
+      ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
+  if (!status.ok()) {
+    LOG(ERROR) << status.error_message();
   }
   // NOTE(mrry): We do not need to use a unique string for the session
   // handle, because DirectSession owns its devices. This may change
@@ -427,7 +435,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   TF_RETURN_IF_ERROR(SendInputs(inputs, executors_and_keys, run_state.rendez));
 
   // Start parallel Executors.
-  const int num_executors = executors_and_keys->items.size();
+  const size_t num_executors = executors_and_keys->items.size();
   ExecutorBarrier* barrier = new ExecutorBarrier(
       num_executors, run_state.rendez, [&run_state](const Status& ret) {
         {
@@ -448,7 +456,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
-  args.sync_on_finish = true;
+  args.sync_on_finish = sync_on_finish_;
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 
@@ -458,7 +466,7 @@ Status DirectSession::Run(const RunOptions& run_options,
         options_.config.graph_options().build_cost_model();
     const int64 build_cost_model_after =
         options_.config.graph_options().build_cost_model_after();
-    int measure_step_count = executor_step_count - build_cost_model_after;
+    int64 measure_step_count = executor_step_count - build_cost_model_after;
     if (measure_step_count >= 0) {
       update_cost_model =
           ((measure_step_count + 1) % build_cost_model_every == 0);
@@ -611,7 +619,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   }
 
   // Start parallel Executors.
-  const int num_executors = executors_and_keys->items.size();
+  const size_t num_executors = executors_and_keys->items.size();
   ExecutorBarrier* barrier = new ExecutorBarrier(
       num_executors, run_state->rendez, [run_state](const Status& ret) {
         if (!ret.ok()) {
@@ -632,7 +640,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
-  args.sync_on_finish = true;
+  args.sync_on_finish = sync_on_finish_;
 
   if (options_.config.graph_options().build_cost_model()) {
     run_state->collector.reset(new StepStatsCollector(nullptr));
@@ -676,8 +684,9 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
     for (const auto& input : inputs) {
       auto it = run_state->pending_inputs.find(input.first);
       if (it == run_state->pending_inputs.end()) {
-        return errors::InvalidArgument("The feed ", input.first,
-                                       " had already been fed.");
+        return errors::InvalidArgument(
+            "The feed ", input.first,
+            " has already been fed or was not specified in partial_run_setup.");
       }
     }
     // Check that this is a new set of fetches that are still pending.
@@ -685,7 +694,8 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
       auto it = run_state->pending_outputs.find(output);
       if (it == run_state->pending_outputs.end()) {
         return errors::InvalidArgument("The fetch ", output,
-                                       " had already been fetched.");
+                                       " has already been fetched or was not "
+                                       "specified in partial_run_setup.");
       }
     }
   }
@@ -749,7 +759,8 @@ Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
 
   ResourceHandle resource_handle = resource_tensor.scalar<ResourceHandle>()();
 
-  if (resource_handle.hash_code() == MakeTypeIndex<Tensor>().hash_code()) {
+  if (resource_handle.container() ==
+      SessionState::kTensorHandleResourceTypeName) {
     return session_state_.GetTensor(resource_handle.name(), retrieved_tensor);
   } else {
     return errors::InvalidArgument(strings::StrCat(

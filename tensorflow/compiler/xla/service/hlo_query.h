@@ -31,6 +31,9 @@ bool IsConstantR0F32(HloInstruction* instruction, float* out);
 // Returns whether all of an instruction's operands are parameters.
 bool AllOperandsAreParameters(const HloInstruction& instruction);
 
+// Returns whether all of an instruction's operands are constants.
+bool AllOperandsAreConstants(const HloInstruction& instruction);
+
 // Returns whether the instruction is a scalar constant.
 bool IsScalarConstant(const HloInstruction* instruction);
 

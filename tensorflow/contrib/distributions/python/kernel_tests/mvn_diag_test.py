@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 from scipy import stats
 from tensorflow.contrib import distributions
+from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
@@ -49,6 +50,22 @@ class MultivariateNormalDiagTest(test.TestCase):
     with self.test_session():
       dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       self.assertAllEqual([3, 1], dist.sample(3).get_shape())
+
+  def testDistWithBatchShapeOneThenTransformedThroughSoftplus(self):
+    # This complex combination of events resulted in a loss of static shape
+    # information when tensor_util.constant_value(self._needs_rotation) was
+    # being used incorrectly (resulting in always rotating).
+    # Batch shape = [1], event shape = [3]
+    mu = array_ops.zeros((1, 3))
+    diag = array_ops.ones((1, 3))
+    with self.test_session():
+      base_dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
+      dist = ds.TransformedDistribution(
+          base_dist,
+          validate_args=True,
+          bijector=bijectors.Softplus(event_ndims=1))
+      samps = dist.sample(5)  # Shape [5, 1, 3].
+      self.assertAllEqual([5, 1], dist.log_prob(samps).get_shape())
 
   def testMean(self):
     mu = [-1., 1]
@@ -85,6 +102,31 @@ class MultivariateNormalDiagTest(test.TestCase):
                           atol=0., rtol=0.05)
       self.assertAllClose(cov_mat, np.cov(samps.T),
                           atol=0.05, rtol=0.05)
+
+  def testSampleWithBroadcastScale(self):
+    # mu corresponds to a 2-batch of 3-variate normals
+    mu = np.zeros([2, 3])
+
+    # diag corresponds to no batches of 3-variate normals
+    diag = np.ones([3])
+
+    with self.test_session():
+      dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
+
+      mean = dist.mean()
+      self.assertAllEqual([2, 3], mean.get_shape())
+      self.assertAllClose(mu, mean.eval())
+
+      n = int(1e3)
+      samps = dist.sample(n, seed=0).eval()
+      cov_mat = array_ops.matrix_diag(diag).eval()**2
+      sample_cov = np.matmul(samps.transpose([1, 2, 0]),
+                             samps.transpose([1, 0, 2])) / n
+
+      self.assertAllClose(mu, samps.mean(axis=0),
+                          atol=0.10, rtol=0.05)
+      self.assertAllClose([cov_mat, cov_mat], sample_cov,
+                          atol=0.10, rtol=0.05)
 
   def testCovariance(self):
     with self.test_session():

@@ -299,6 +299,7 @@ class _FuncGraph(ops.Graph):
              shape=None,
              dtype=None,
              initializer=None,
+             reuse=None,
              trainable=True,
              collections=None,  # pylint: disable=redefined-outer-name
              use_resource=None,
@@ -319,6 +320,7 @@ class _FuncGraph(ops.Graph):
           shape=shape,
           dtype=dtype,
           initializer=initializer,
+          reuse=reuse,
           trainable=trainable,
           collections=collections,
           use_resource=use_resource)
@@ -342,6 +344,10 @@ class _FuncGraph(ops.Graph):
           # Substitute with a placeholder.
           self.extra_inputs.append(x)
           ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
+          # pylint: disable=protected-access
+          ph._handle_shape = x._handle_shape
+          ph._handle_dtype = x._handle_dtype
+          # pylint: enable=protected-access
           inputs[i] = ph
           self._captured[x] = ph
           self.extra_args.append(ph)
@@ -881,6 +887,11 @@ class Defun(object):
   default graph and adds the definition of the function into the
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
+
+  Any variables created inside of the function are hoisted into the outer graph.
+  Note that the variables are created in the variable scope that was active
+  during the first call to the function. Subsequent function calls will refer to
+  the same set of variables.
 
   Definitions of functions are frozen in a graph as soon as the graph is used to
   create a session. Therefore, nodes using the function must be created in the

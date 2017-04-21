@@ -1,0 +1,18 @@
+path: "tensorflow.estimator.export.PredictOutput"
+tf_class {
+  is_instance: "<class \'tensorflow.python.estimator.export.export_output.PredictOutput\'>"
+  is_instance: "<class \'tensorflow.python.estimator.export.export_output.ExportOutput\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "outputs"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'outputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_signature_def"
+    argspec: "args=[\'self\', \'receiver_tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+}

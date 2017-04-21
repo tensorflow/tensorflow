@@ -57,8 +57,8 @@ def _get_single_cell(cell_type, num_units):
   """Constructs and return a single `RNNCell`.
 
   Args:
-    cell_type: Either a string identifying the `RNNCell` type, a subclass of
-      `RNNCell` or an instance of an `RNNCell`.
+    cell_type: Either a string identifying the `RNNCell` type or a subclass of
+      `RNNCell`.
     num_units: The number of units in the `RNNCell`.
   Returns:
     An initialized `RNNCell`.
@@ -66,17 +66,10 @@ def _get_single_cell(cell_type, num_units):
     ValueError: `cell_type` is an invalid `RNNCell` name.
     TypeError: `cell_type` is not a string or a subclass of `RNNCell`.
   """
-  if isinstance(cell_type, contrib_rnn.RNNCell):
-    return cell_type
-  if isinstance(cell_type, str):
-    cell_type = _CELL_TYPES.get(cell_type)
-    if cell_type is None:
-      raise ValueError('The supported cell types are {}; got {}'.format(
-          list(_CELL_TYPES.keys()), cell_type))
-  if not issubclass(cell_type, contrib_rnn.RNNCell):
-    raise TypeError(
-        'cell_type must be a subclass of RNNCell or one of {}.'.format(
-            list(_CELL_TYPES.keys())))
+  cell_type = _CELL_TYPES.get(cell_type, cell_type)
+  if not cell_type or not issubclass(cell_type, contrib_rnn.RNNCell):
+    raise ValueError('The supported cell types are {}; got {}'.format(
+        list(_CELL_TYPES.keys()), cell_type))
   return cell_type(num_units=num_units)
 
 
@@ -90,8 +83,8 @@ def construct_rnn_cell(num_units, cell_type='basic_rnn',
   Args:
     num_units: A single `int` or a list/tuple of `int`s. The size of the
       `RNNCell`s.
-    cell_type: A string identifying the `RNNCell` type, a subclass of
-      `RNNCell` or an instance of an `RNNCell`.
+    cell_type: A string identifying the `RNNCell` type or a subclass of
+      `RNNCell`.
     dropout_keep_probabilities: a list of dropout probabilities or `None`. If a
       list is given, it must have length `len(cell_type) + 1`.
 

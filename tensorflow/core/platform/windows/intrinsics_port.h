@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_INTRINSICS_PORT_H_
 #define TENSORFLOW_CORE_PLATFORM_WINDOWS_INTRINSICS_PORT_H_
 
-
 #ifdef _MSC_VER
 // the following avx intrinsics are not defined on windows
 // in immintrin.h so we define them here.
@@ -25,17 +24,14 @@ limitations under the License.
 
 #define _mm_load_pd1 _mm_load1_pd
 
-// only define these intrinsics if immintrin.h doesn't have them (VS2015 and earlier)
+// only define these intrinsics if immintrin.h doesn't have them (VS2015 and
+// earlier)
 #if _MSC_VER < 1910
-static inline int
-_mm256_extract_epi32(__m256i a, const int i)
-{
+static inline int _mm256_extract_epi32(__m256i a, const int i) {
   return a.m256i_i32[i & 7];
 }
 
-static inline __m256i
-_mm256_insert_epi32(__m256i a, int b, const int i)
-{
+static inline __m256i _mm256_insert_epi32(__m256i a, int b, const int i) {
   __m256i c = a;
   c.m256i_i32[i & 7] = b;
   return c;

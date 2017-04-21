@@ -247,6 +247,8 @@ class DirectSession : public Session {
   std::vector<thread::ThreadPool*> thread_pools_;
   bool owns_thread_pools_ = false;
 
+  // If true, blocks until device has finished all queued operations in a step.
+  bool sync_on_finish_ = true;
   // Schedules 'c' for execution on pool.
   void SchedClosure(thread::ThreadPool* pool, std::function<void()> c);
 

@@ -114,12 +114,12 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      environment. To install the CPU-only version of TensorFlow, enter the
      following command:
 
-     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-1.0.1-cp35-cp35m-win_amd64.whl</b> </pre>
+     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-1.1.0rc2-cp35-cp35m-win_amd64.whl</b> </pre>
 
      To install the GPU version of TensorFlow, enter the following command
      (on a single line):
 
-     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-1.0.1-cp35-cp35m-win_amd64.whl</b> </pre>
+     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-1.1.0rc2-cp35-cp35m-win_amd64.whl</b> </pre>
 
 ## Validate your installation
 
@@ -145,7 +145,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started$Getting Started with
+If you are new to TensorFlow, see @{$get_started/get_started$Getting Started with
 TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see [Common
@@ -193,5 +193,5 @@ ImportError: cannot import name 'descriptor'</pre>
   <td><pre>No module named "pywrap_tensorflow"</pre></td>
 </tr>
 
-<table>
+</table>
 

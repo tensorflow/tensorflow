@@ -36,10 +36,14 @@ static std::once_flag flags_init;
 static void AllocateFlags() {
   flags = new HloGraphDumperFlags;
   flags->xla_hlo_dump_graph_path = "/tmp/";
+  flags->xla_hlo_dump_as_graphdef = false;
   flag_list = new std::vector<tensorflow::Flag>({
       tensorflow::Flag("xla_hlo_dump_graph_path",
                        &flags->xla_hlo_dump_graph_path,
                        "Path to write dumped HLO graphs to"),
+      tensorflow::Flag("xla_hlo_dump_as_graphdef",
+                       &flags->xla_hlo_dump_as_graphdef,
+                       "Dumps HLO graphs as tensorflow GraphDefs"),
   });
   ParseFlagsFromEnv(*flag_list);
 }

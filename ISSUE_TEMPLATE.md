@@ -1,36 +1,33 @@
-NOTE: Only file GitHub issues for bugs and feature requests.  All other topics will be closed.
+Please go to Stack Overflow for help and support. http://stackoverflow.com/questions/tagged/tensorflow
+If you open a GitHub issue, here is our policy:
 
-For general support from the community, see [StackOverflow](https://stackoverflow.com/questions/tagged/tensorflow).
-To make bugs and feature requests more easy to find and organize, we close issues that are deemed
-out of scope for GitHub Issues and point people to StackOverflow.
+1. It must be a bug or feature request.
+2. The form below must be filled out.
 
-For bugs or installation issues, please provide the following information.
-The more information you provide, the more easily we will be able to offer
-help and advice.
+**Here's why we have that policy**: TensorFlow developers respond to issues. We want to focus on work that benefits the whole community, e.g. fixing bugs and adding features. Support only helps individuals. GitHub also notifies thousands of people when issues are filed. We want them to see you communicating an interesting problem, rather than being redirected to Stack Overflow.
 
-### What related GitHub issues or StackOverflow threads have you found by searching the web for your problem?
+------------------------
 
-### Environment info
-Operating System:
+Describe the problem clearly here. Be sure to convey here why it's a bug in TensorFlow or a feature request.
 
-Installed version of CUDA and cuDNN: 
-(please attach the output of `ls -l /path/to/cuda/lib/libcud*`):
+### System Information
+- *Have I written custom code (as opposed to using a stock example script provided in TensorFlow)?*:
+- *OS Platform and Distribution (i.e. Linux Ubuntu 16.0)*:
+- *TensorFlow installed from (source or binary)?*:
+- *TensorFlow version* (use command below):
+- *Bazel version (if compiling from source)*:
+- *CUDA/cuDNN version*:
+- *GPU Model and Memory*:
+- *Exact command to reproduce*:
 
-If installed from binary pip package, provide:
-
-1. A link to the pip package you installed:
-2. The output from `python -c "import tensorflow; print(tensorflow.__version__)"`.
-
-If installed from source, provide 
-
-1. The commit hash (`git rev-parse HEAD`)
-2. The output of `bazel version`
-
-### If possible, provide a minimal reproducible example (We usually don't have time to read hundreds of lines of your code)
+You can collect some of this information using our environment capture script https://github.com/tensorflow/tensorflow/blob/master/tools/
+You can collect the TensorFlow version with
+```sh
+python -c "import tensorflow as tf; print (tf.GIT_VERSION, tf.VERSION)"
+```
 
 
-### What other attempted solutions have you tried?
+### Describe the problem clearly
 
-
-### Logs or other output that would be helpful
-(If logs are large, please upload as attachment or provide link).
+### Source Code / Logs
+Include any logs or source code that would be helpful to diagnose the problem. If including tracebacks, please include the full-traceback. Large logs and files should be attached. Try to reproducible test-case code the bare-minimum necessary to generate the problem

@@ -41,7 +41,10 @@ SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
   }
   CHECK_GE(num_cpu_cores, 1);
   options_.config.set_intra_op_parallelism_threads(num_cpu_cores);
-  options_.config.set_inter_op_parallelism_threads(num_cpu_cores);
+  // Create a session specific thread pool to ensure the threads are reset when
+  // the session is reset.
+  options_.config.add_session_inter_op_thread_pool()->set_num_threads(
+      num_cpu_cores);
   if (timeout_s > 0) {
     options_.config.set_operation_timeout_in_ms(timeout_s * 1000);
   }
@@ -90,8 +93,6 @@ Status SingleMachine::Run(const GraphDef& graph_def,
                           const std::vector<std::pair<string, Tensor>>& feed,
                           const std::vector<string>& fetch,
                           RunMetadata* metadata) {
-  // Interface idea: What about having Initialize(item, graph_def), which
-  // initializes the graph, and then Run(feed, fetch, metadata).
   {
     mutex_lock l(this->last_graph_mu_);
     if (last_graph_ != &graph_def) {
@@ -106,30 +107,37 @@ Status SingleMachine::Run(const GraphDef& graph_def,
         for (auto node : *init_metadata_.mutable_cost_graph()->mutable_node()) {
           node.clear_compute_cost();
         }
-        metadata->MergeFrom(init_metadata_);
       }
       for (int i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
         TF_RETURN_IF_ERROR(QueueRunner::New(queue_runner_defs_[i],
                                             coordinator_.get(), &queue_runner));
-        TF_RETURN_IF_ERROR(queue_runner->StartAndCollectRunMetadata(
+        TF_RETURN_IF_ERROR(queue_runner->StartAndCollectCostGraph(
             session_.get(), &run_options_));
         TF_RETURN_IF_ERROR(
             coordinator_->RegisterRunner(std::move(queue_runner)));
         TF_RETURN_IF_ERROR(coordinator_->GetStatus());
       }
-      last_graph_ = &graph_def;
 
       // Warmup TensorFlow if needed
       for (int i = 0;
            i < options_.config.graph_options().build_cost_model_after(); ++i) {
         TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, nullptr));
       }
+
+      last_graph_ = &graph_def;
     }
   }
 
   TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
-  return coordinator_->ExportCostGraph(metadata->mutable_cost_graph());
+
+  if (metadata) {
+    // Add the costs of initialization and the queue runners.
+    metadata->MergeFrom(init_metadata_);
+    return coordinator_->ExportCostGraph(metadata->mutable_cost_graph());
+  } else {
+    return Status::OK();
+  }
 }
 
 Status SingleMachine::RunWithTimeout(
@@ -149,8 +157,6 @@ Status SingleMachine::RunWithTimeout(
       },
       timeout_s_ * 1000, thread_pool_.get());
   if (!executed_in_time) {
-    mutex_lock l(last_graph_mu_);
-    last_graph_ = nullptr;
     return errors::DeadlineExceeded("Failed to run the graph after ",
                                     timeout_s_, " seconds, aborting");
   } else if (run_metadata && status->ok()) {

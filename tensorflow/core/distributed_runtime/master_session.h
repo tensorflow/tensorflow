@@ -116,7 +116,7 @@ class MasterSession : public core::RefCounted {
   std::atomic<int64> partial_run_handle_counter_ = {0};
 
   mutex mu_;
-  std::unique_ptr<SimpleGraphExecutionState> execution_state_;
+  std::unique_ptr<SimpleGraphExecutionState> execution_state_ GUARDED_BY(mu_);
   int64 graph_version_;
 
   // We keep a map from a signature of a run request to the
@@ -173,7 +173,7 @@ class MasterSession : public core::RefCounted {
   int64 next_node_id_ GUARDED_BY(mu_) = 0;
 
   // Used to cancel running steps on Close().
-  CancellationManager* cancellation_manager_;
+  CancellationManager cancellation_manager_;
 
   // Private dtor. The client must call Close().
   virtual ~MasterSession();

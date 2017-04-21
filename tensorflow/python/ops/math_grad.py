@@ -429,7 +429,7 @@ def _DigammaGrad(op, grad):
 
 @ops.RegisterGradient("Igamma")
 def _IgammaGrad(op, grad):
-  """Returns gradient of igamma(a, x) with respect to a and x."""
+  """Returns gradient of igamma(a, x) with respect to x."""
   # TODO(ebrevdo): Perhaps add the derivative w.r.t. a
   a = op.inputs[0]
   x = op.inputs[1]
@@ -440,14 +440,43 @@ def _IgammaGrad(op, grad):
   # Perform operations in log space before summing, because Gamma(a)
   # and Gamma'(a) can grow large.
   partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x) - math_ops.lgamma(a))
+  # TODO(b/36815900): Mark None return values as NotImplemented
   return (None,
           array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Igammac")
 def _IgammacGrad(op, grad):
-  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. a and x."""
-  return [-1 * g if g is not None else None for g in _IgammaGrad(op, grad)]
+  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. x."""
+  _, igamma_grad_x = _IgammaGrad(op, grad)
+  return None, -igamma_grad_x
+
+
+@ops.RegisterGradient("Betainc")
+def _BetaincGrad(op, grad):
+  """Returns gradient of betainc(a, b, x) with respect to x."""
+  # TODO(ebrevdo): Perhaps add the derivative w.r.t. a, b
+  a, b, x = op.inputs
+
+  # two cases: x is a scalar and a/b are same-shaped tensors, or vice
+  # versa; so its sufficient to check against shape(a).
+  sa = array_ops.shape(a)
+  sx = array_ops.shape(x)
+  # pylint: disable=protected-access
+  _, rx = gen_array_ops._broadcast_gradient_args(sa, sx)
+  # pylint: enable=protected-access
+
+  # Perform operations in log space before summing, because terms
+  # can grow large.
+  log_beta = (gen_math_ops.lgamma(a) + gen_math_ops.lgamma(b)
+              - gen_math_ops.lgamma(a + b))
+  partial_x = math_ops.exp(
+      (b - 1) * math_ops.log(1 - x) + (a - 1) * math_ops.log(x) - log_beta)
+
+  # TODO(b/36815900): Mark None return values as NotImplemented
+  return (None,  # da
+          None,  # db
+          array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Zeta")
@@ -465,6 +494,7 @@ def _ZetaGrad(op, grad):
     x = math_ops.conj(x)
     q = math_ops.conj(q)
     partial_q = -x * math_ops.zeta(x + 1, q)
+    # TODO(b/36815900): Mark None return values as NotImplemented
     return (None,
             array_ops.reshape(math_ops.reduce_sum(partial_q * grad, rq), sq))
 
@@ -484,6 +514,7 @@ def _PolygammaGrad(op, grad):
     n = math_ops.conj(n)
     x = math_ops.conj(x)
     partial_x = math_ops.polygamma(n + 1, x)
+    # TODO(b/36815900): Mark None return values as NotImplemented
     return (None,
             array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 

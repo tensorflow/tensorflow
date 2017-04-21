@@ -110,8 +110,7 @@ class Compiler {
   // The compiler may optionally specialize to the individual device
   // (not just type of device) indicated by the executor.
   //
-  // TODO(leary) will need to update this API when a single computation can run
-  // across multiple devices simultaneously.
+  // Use the overload below to compile computations that run in parallel.
   virtual StatusOr<std::unique_ptr<Executable>> Compile(
       std::unique_ptr<HloModule> module,
       std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,

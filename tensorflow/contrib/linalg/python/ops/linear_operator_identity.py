@@ -200,7 +200,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
                is_positive_definite=True,
                assert_proper_shapes=False,
                name="LinearOperatorIdentity"):
-    """Initialize a `LinearOperatorIdentity`.
+    r"""Initialize a `LinearOperatorIdentity`.
 
     The `LinearOperatorIdentity` is initialized with arguments defining `dtype`
     and shape.
@@ -218,7 +218,12 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
-      is_positive_definite:  Expect that this operator is positive definite.
+      is_positive_definite:  Expect that this operator is positive definite,
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
+            #Extension_for_non_symmetric_matrices
       assert_proper_shapes:  Python `bool`.  If `False`, only perform static
         checks that initialization and method arguments have proper shape.
         If `True`, and static checks are inconclusive, add asserts to the graph.
@@ -324,8 +329,9 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     zeros = array_ops.zeros(shape=special_shape, dtype=self.dtype)
     return x + zeros
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
     # Note that adjoint has no effect since this matrix is self-adjoint.
+    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     if self._assert_proper_shapes:
       aps = linear_operator_util.assert_compatible_matrix_dimensions(
           self, x)
@@ -338,8 +344,8 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
   def _log_abs_determinant(self):
     return array_ops.zeros(shape=self.batch_shape_tensor(), dtype=self.dtype)
 
-  def _solve(self, rhs, adjoint=False):
-    return self._apply(rhs)
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    return self._apply(rhs, adjoint_arg=adjoint_arg)
 
   def _diag_part(self):
     return self._ones_diag()
@@ -523,7 +529,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
                is_positive_definite=None,
                assert_proper_shapes=False,
                name="LinearOperatorScaledIdentity"):
-    """Initialize a `LinearOperatorScaledIdentity`.
+    r"""Initialize a `LinearOperatorScaledIdentity`.
 
     The `LinearOperatorScaledIdentity` is initialized with `num_rows`, which
     determines the size of each identity matrix, and a `multiplier`,
@@ -538,7 +544,12 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
-      is_positive_definite:  Expect that this operator is positive definite.
+      is_positive_definite:  Expect that this operator is positive definite,
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
+            #Extension_for_non_symmetric_matrices
       assert_proper_shapes:  Python `bool`.  If `False`, only perform static
         checks that initialization and method arguments have proper shape.
         If `True`, and static checks are inconclusive, add asserts to the graph.
@@ -606,7 +617,8 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         imag_multiplier,
         message="LinearOperator was not self-adjoint")
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
+    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     if adjoint:
       matrix = self._multiplier_matrix_conj
     else:
@@ -624,7 +636,8 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     return self._num_rows_cast_to_real_dtype * math_ops.log(
         self._abs_multiplier)
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
     if adjoint:
       matrix = self._multiplier_matrix_conj
     else:

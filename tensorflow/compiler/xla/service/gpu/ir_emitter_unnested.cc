@@ -283,14 +283,7 @@ bool CanUpdateDynamicSliceInPlace(const BufferAssignment& assignment,
     return false;
   }
   auto* operand = fusion->operand(fusion_operand->parameter_number());
-
-  BufferAllocation::Slice operand_slice =
-      assignment.GetUniqueSlice(operand, index).ConsumeValueOrDie();
-
-  BufferAllocation::Slice fusion_slice =
-      assignment.GetUniqueTopLevelSlice(fusion).ConsumeValueOrDie();
-
-  return operand_slice == fusion_slice;
+  return assignment.SharesSliceAtIndex(fusion, {}, operand, index);
 }
 
 }  // namespace
@@ -387,9 +380,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     TF_RETURN_IF_ERROR(root->Accept(&fused_emitter));
 
     // Recursively lookup 'fusion_operand' for DynamicUpdateSlice operand 0.
-    ShapeIndex index_unused;
-    auto* fusion_operand =
-        LatestNonGteAncestorAndIndex(root->operand(0), &index_unused);
+    auto* fusion_operand = LatestNonGteAncestor(root->operand(0));
     CHECK_EQ(HloOpcode::kParameter, fusion_operand->opcode());
 
     // Operand(0) the input array which shares an allocation with the output.
@@ -1549,10 +1540,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
       .EmitLoop();
 }
 
-Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while,
-                                      HloInstruction* init,
-                                      HloComputation* condition,
-                                      HloComputation* body) {
+Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
+  HloComputation* condition = xla_while->while_condition();
   TF_RET_CHECK(ShapeUtil::IsScalar(condition->root_instruction()->shape()) &&
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";

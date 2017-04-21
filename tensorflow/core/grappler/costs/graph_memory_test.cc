@@ -32,7 +32,11 @@ TEST_F(GraphMemoryTest, Basic) {
   GraphMemory memory(item);
   Status s = memory.InferStatically();
   TF_CHECK_OK(s);
-  EXPECT_EQ(240, memory.GetWorstCaseMemoryUsage());
+  // 5 AddN + 1 random op each generating 10 values -> 240 bytes
+  // 4 more bytes for the mean of the distribution and 4 more for the stddev.
+  EXPECT_EQ(248, memory.GetWorstCaseMemoryUsage());
+  // If at most one op executes at a time, it needs 10 inputs values and 10
+  // output values, or 8 bytes.
   EXPECT_EQ(80, memory.GetBestCaseMemoryUsage());
 }
 
@@ -44,8 +48,10 @@ TEST_F(GraphMemoryTest, UnknownBatchSize) {
   GraphMemory memory(item);
   Status s = memory.InferStatically();
   TF_CHECK_OK(s);
-  EXPECT_EQ(24, memory.GetWorstCaseMemoryUsage());
-  EXPECT_EQ(8, memory.GetBestCaseMemoryUsage());
+  // Same maths as before, except that batch size is unknown and therefore
+  // assumed to be one.
+  EXPECT_EQ(32, memory.GetWorstCaseMemoryUsage());
+  EXPECT_EQ(12, memory.GetBestCaseMemoryUsage());
 }
 
 }  // namespace

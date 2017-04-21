@@ -387,14 +387,14 @@ class DynamicRnnEstimatorTest(test.TestCase):
 
     seq_columns = [feature_column.real_valued_column('inputs', dimension=1)]
     config = run_config.RunConfig(tf_random_seed=21212)
-    cell = core_rnn_cell_impl.MultiRNNCell(
-        [core_rnn_cell_impl.BasicLSTMCell(size) for size in cell_sizes])
+    cell_type = 'lstm'
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.CLASSIFICATION,
         prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         num_classes=2,
+        num_units=cell_sizes,
         sequence_feature_columns=seq_columns,
-        cell_type=cell,
+        cell_type=cell_type,
         learning_rate=learning_rate,
         config=config,
         predict_probabilities=True)

@@ -107,6 +107,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/tensorboard:projector",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -133,9 +134,10 @@ py_library(
 
 py_test(
     name = "integration_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/keras/integration_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         ":testing_utils",
@@ -193,6 +195,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/optimizers_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         ":testing_utils",
@@ -306,6 +309,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/convolutional_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         ":testing_utils",
@@ -401,6 +405,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/simplernn_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         ":testing_utils",
@@ -459,6 +464,7 @@ py_test(
     size = "small",
     srcs = ["python/keras/wrappers/scikit_learn_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         ":testing_utils",
@@ -504,6 +510,7 @@ py_test(
     size = "small",
     srcs = ["python/keras/callbacks_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         ":testing_utils",
@@ -516,6 +523,7 @@ py_test(
     size = "small",
     srcs = ["python/keras/engine/training_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         ":testing_utils",

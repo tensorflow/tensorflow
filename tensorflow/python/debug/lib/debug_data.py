@@ -199,7 +199,7 @@ def _get_tensor_watch_key(node_name, output_slot, debug_op):
   return "%s:%s" % (_get_tensor_name(node_name, output_slot), debug_op)
 
 
-def _is_copy_node(node_name):
+def is_copy_node(node_name):
   """Determine whether a node name is that of a debug Copy node.
 
   Such nodes are inserted by TensorFlow core upon request in
@@ -820,7 +820,7 @@ class DebugDumpDir(object):
     self._node_op_types[node.name] = node.op
 
     for inp in node.input:
-      if _is_copy_node(inp) and node.op == "_Send":
+      if is_copy_node(inp) and node.op == "_Send":
         self._copy_send_nodes.append(node.name)
 
       if inp.startswith("^"):
@@ -855,14 +855,14 @@ class DebugDumpDir(object):
       if node in self._copy_send_nodes:
         continue
 
-      if _is_copy_node(node):
+      if is_copy_node(node):
         copy_nodes.append(node)
 
       inputs = self._node_inputs[node]
 
       for i in xrange(len(inputs)):
         inp = inputs[i]
-        if _is_copy_node(inp):
+        if is_copy_node(inp):
           # Find the input to the Copy node, which should be the original
           # input to the node.
           orig_inp = self._node_inputs[inp][0]
@@ -934,8 +934,12 @@ class DebugDumpDir(object):
       for inp in inputs:
         inp_node = get_node_name(inp)
         inp_output_slot = get_output_slot(inp)
+        # Inputs from Enter and NextIteration nodes are not validated because
+        # DebugNodeInserter::InsertNodes() in the debugger core skips creating
+        # control edges from debug ops watching these types of nodes.
         if (inp_node in self._debug_watches and
             inp_output_slot in self._debug_watches[inp_node] and
+            self._node_op_types.get(inp) not in ("Enter", "NextIteration") and
             (inp_node, inp_output_slot) not in pending_inputs[node]):
           pending_inputs[node].append((inp_node, inp_output_slot))
 

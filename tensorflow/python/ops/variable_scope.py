@@ -904,6 +904,7 @@ class VariableScope(object):
                    dtype=None,
                    initializer=None,
                    regularizer=None,
+                   reuse=None,
                    trainable=True,
                    collections=None,
                    caching_device=None,
@@ -920,6 +921,8 @@ class VariableScope(object):
       partitioner = self._partitioner
     if custom_getter is None:
       custom_getter = self._custom_getter
+    if reuse is None:
+      reuse = self._reuse
 
     full_name = self.name + "/" + name if self.name else name
     # Variable names only depend on variable_scope (full_name here),
@@ -942,7 +945,7 @@ class VariableScope(object):
 
       return var_store.get_variable(
           full_name, shape=shape, dtype=dtype, initializer=initializer,
-          regularizer=regularizer, reuse=self.reuse, trainable=trainable,
+          regularizer=regularizer, reuse=reuse, trainable=trainable,
           collections=collections, caching_device=caching_device,
           partitioner=partitioner, validate_shape=validate_shape,
           use_resource=use_resource, custom_getter=custom_getter)
@@ -971,6 +974,8 @@ class VariableScope(object):
       partitioner = self._partitioner
     if dtype is None:
       dtype = self._dtype
+    if use_resource is None:
+      use_resource = self._use_resource
 
     if self._custom_getter is not None:
       raise ValueError(
@@ -1129,7 +1134,7 @@ get_variable.__doc__ = get_variable_or_local_docstring % (
     "Gets an existing variable with these parameters or create a new one.",
     "",
     "trainable: If `True` also add the variable to the graph collection\n"
-    "    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).\n",
+    "    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).\n  ",
     "GraphKeys.GLOBAL_VARIABLES")
 
 
@@ -1634,3 +1639,22 @@ def _compute_slice_dim_and_shape(full_shape, slicing):
   if slice_dim is None:
     slice_dim = 0
   return slice_dim, slice_shape
+
+
+def variable(initial_value=None,
+             trainable=True,
+             collections=None,
+             validate_shape=True,
+             caching_device=None,
+             name=None,
+             dtype=None):
+  if get_variable_scope().use_resource:
+    return resource_variable_ops.ResourceVariable(
+        initial_value=initial_value, trainable=trainable,
+        collections=collections, validate_shape=validate_shape,
+        caching_device=caching_device, name=name, dtype=dtype)
+  else:
+    return variables.Variable(
+        initial_value=initial_value, trainable=trainable,
+        collections=collections, validate_shape=validate_shape,
+        caching_device=caching_device, name=name, dtype=dtype)
