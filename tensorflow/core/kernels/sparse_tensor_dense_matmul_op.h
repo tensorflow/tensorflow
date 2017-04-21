@@ -19,31 +19,42 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
 namespace functor {
 
-template <typename Device, typename T, bool ADJ_A, bool ADJ_B>
+template <typename Device, typename T, typename Tindices, bool ADJ_A,   \
+          bool ADJ_B, int NDIM>
 struct SparseTensorDenseMatMulFunctor {
-  static EIGEN_ALWAYS_INLINE void Compute(const Device& d,
-                                          typename TTypes<T>::Matrix out,
-                                          TTypes<int64>::ConstMatrix a_indices,
-                                          typename TTypes<T>::ConstVec a_values,
-                                          typename TTypes<T>::ConstMatrix b,
-                                          typename TTypes<T>::Vec scratch);
+  static EIGEN_ALWAYS_INLINE Status Compute(
+      const Device& d,
+      typename TTypes<T, NDIM>::Tensor out,
+      typename TTypes<Tindices>::ConstMatrix a_indices,
+      typename TTypes<T>::ConstVec a_values,
+      typename TTypes<T, NDIM>::ConstTensor b,
+      typename TTypes<T>::Vec scratch);
 };
 
-template <typename MATRIX, bool ADJ>
+template <typename MATRIX, bool ADJ, int NDIM>
 class MaybeAdjoint;
 
-template <typename MATRIX>
-class MaybeAdjoint<MATRIX, false> {
+template <typename MATRIX, int NDIM>
+class MaybeAdjoint<MATRIX, false, NDIM> {
  public:
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE MaybeAdjoint(MATRIX m) : m_(m) {}
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE typename MATRIX::Scalar operator()(
       const typename MATRIX::Index i, const typename MATRIX::Index j) const {
     return m_(i, j);
+  }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE typename MATRIX::Scalar operator()(
+      const Eigen::array<Eigen::Index, NDIM> indices) const {
+    return m_(indices);
+  }
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE typename MATRIX::Scalar operator()(
+      const Eigen::array<int, NDIM> indices) const {
+    return m_(indices);
   }
 
  private:
@@ -55,13 +66,29 @@ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T MaybeConj(T v) {
   return v;
 }
 
-template <typename MATRIX>
-class MaybeAdjoint<MATRIX, true> {
+template <typename MATRIX, int NDIM>
+class MaybeAdjoint<MATRIX, true, NDIM> {
  public:
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE MaybeAdjoint(MATRIX m) : m_(m) {}
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE typename MATRIX::Scalar operator()(
       const typename MATRIX::Index i, const typename MATRIX::Index j) const {
     return Eigen::numext::conj(m_(j, i));
+  }
+  typename MATRIX::Scalar operator()(
+      const Eigen::array<Eigen::Index, NDIM> indices) const {
+    Eigen::array<Eigen::Index, NDIM> swapped(indices);
+    Eigen::Index tmp = swapped[NDIM - 2];
+    swapped[NDIM - 2] = swapped[NDIM - 1];
+    swapped[NDIM - 1] = tmp;
+    return Eigen::numext::conj(m_(swapped));
+  }
+  typename MATRIX::Scalar operator()(
+      const Eigen::array<int, NDIM> indices) const {
+    Eigen::array<int, NDIM> swapped(indices);
+    Eigen::Index tmp = swapped[NDIM - 2];
+    swapped[NDIM - 2] = swapped[NDIM - 1];
+    swapped[NDIM - 1] = tmp;
+    return Eigen::numext::conj(m_(swapped));
   }
 
  private:
