@@ -297,6 +297,7 @@ filegroup(
         "//tensorflow/tensorboard/components/vz_line_chart:all_files",
         "//tensorflow/tensorboard/components/vz_line_chart/demo:all_files",
         "//tensorflow/tensorboard/components/vz_projector:all_files",
+        "//tensorflow/tensorboard/components/vz_projector_d3v4:all_files",
         "//tensorflow/tensorboard/components/vz_sorting:all_files",
         "//tensorflow/tensorboard/components/vz_sorting/test:all_files",
         "//tensorflow/tensorboard/lib:all_files",
