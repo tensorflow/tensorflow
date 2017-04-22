@@ -30,6 +30,11 @@ struct BuildGraphOptions {
   // the former via "ref" fetch_endpoints.
   std::vector<string> target_nodes;
 
+  // If `true`, uses Arg/Retval to implement feeds/fetches; otherwise
+  // uses Recv/Send to implement feeds/fetches.
+  // TODO(mrry): Remove this when the distributed runtime supports Arg/Retval.
+  bool use_function_convention = false;
+
   string DebugString() const;
 };
 

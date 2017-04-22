@@ -32,17 +32,20 @@ REGISTER_OP("GatherTree")
       ShapeHandle step_ids, parent_ids, sequence_length;
 
       // step_ids, parent_ids, and output are all shaped:
-      //   [batch_size, max_time, beam_width].
-      // sequence_length is shaped [batch_size].
+      //   [max_time, batch_size, beam_width].
+      // sequence_length is shaped [batch_size, beam_width].
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &step_ids));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &parent_ids));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &sequence_length));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &sequence_length));
 
       DimensionHandle batch_size = c->Dim(step_ids, 1);
+      DimensionHandle beam_width = c->Dim(step_ids, 2);
 
       TF_RETURN_IF_ERROR(c->Merge(step_ids, parent_ids, &step_ids));
       TF_RETURN_IF_ERROR(
           c->Merge(batch_size, c->Dim(sequence_length, 0), &batch_size));
+      TF_RETURN_IF_ERROR(
+          c->Merge(beam_width, c->Dim(sequence_length, 1), &beam_width));
 
       c->set_output(0, step_ids);
       return tensorflow::Status::OK();
@@ -58,7 +61,7 @@ TODO(ebrevdo): fill in
 
 step_ids: `[max_time, batch_size, beam_width]`.
 parent_ids: `[max_time, batch_size, beam_width]`.
-sequence_length: `[batch_size]`.
+sequence_length: `[batch_size, beam_width]`.
 beams: `[max_time, batch_size, beam_width]`.
 )doc");
 

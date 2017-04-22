@@ -66,6 +66,12 @@ tensors to files:
   --signature_def serving_default --inputs x:0=/tmp/124.npz,x2=/tmp/123.npy
   --outdir /tmp/out
 
+To observe the intermediate Tensor values in the runtime graph, use the
+--tf_debug flag, e.g.:
+  $saved_model_cli run --dir /tmp/saved_model --tag_set serve
+  --signature_def serving_default --inputs x:0=/tmp/124.npz,x2=/tmp/123.npy
+  --outdir /tmp/out --tf_debug
+
 To build this tool from source, run:
   $bazel build tensorflow/python/tools:saved_model_cli
 
@@ -87,6 +93,7 @@ from tensorflow.contrib.saved_model.python.saved_model import reader
 from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
+from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.platform import app
 from tensorflow.python.saved_model import loader
@@ -282,7 +289,7 @@ def get_signature_def_map(saved_model_dir, tag_set):
 
 def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
                                    input_tensor_key_feed_dict, outdir,
-                                   overwrite_flag):
+                                   overwrite_flag, tf_debug=False):
   """Runs SavedModel and fetch all outputs.
 
   Runs the input dictionary through the MetaGraphDef within a SavedModel
@@ -300,6 +307,9 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
         it will be created.
     overwrite_flag: A boolean flag to allow overwrite output file if file with
         the same name exists.
+    tf_debug: A boolean flag to use TensorFlow Debugger (TFDBG) to observe the
+        intermediate Tensor values and runtime GraphDefs while running the
+        SavedModel.
 
   Raises:
     RuntimeError: An error when output file already exists and overwrite is not
@@ -328,6 +338,9 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
 
   with session.Session(graph=ops_lib.Graph()) as sess:
     loader.load(sess, tag_set.split(','), saved_model_dir)
+
+    if tf_debug:
+      sess = local_cli_wrapper.LocalCLIDebugWrapperSession(sess)
 
     outputs = sess.run(output_tensor_names_sorted, feed_dict=inputs_feed_dict)
 
@@ -520,7 +533,7 @@ def run(args):
   tensor_key_feed_dict = load_inputs_from_input_arg_string(args.inputs)
   run_saved_model_with_feed_dict(args.dir, args.tag_set, args.signature_def,
                                  tensor_key_feed_dict, args.outdir,
-                                 args.overwrite)
+                                 args.overwrite, tf_debug=args.tf_debug)
 
 
 def create_parser():
@@ -620,6 +633,12 @@ def create_parser():
       '--overwrite',
       action='store_true',
       help='if set, output file will be overwritten if it already exists.')
+  parser_run.add_argument(
+      '--tf_debug',
+      action='store_true',
+      help='if set, will use TensorFlow Debugger (tfdbg) to watch the '
+           'intermediate Tensors and runtime GraphDefs while running the '
+           'SavedModel.')
   parser_run.set_defaults(func=run)
 
   return parser

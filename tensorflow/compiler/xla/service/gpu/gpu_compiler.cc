@@ -187,8 +187,8 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
 
 // Invokes the ptxas tool on the given PTX string, and dumps its output.
 void DumpPtxasInfo(const string& ptx) {
-  legacy_flags::GpuCompilerFlags* flags = legacy_flags::GetGpuCompilerFlags();
-  const string ptxas_path = flags->xla_ptxas_path;
+  const string ptxas_path =
+      tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin/ptxas");
   // Do not log PTX stats if ptxas is not found at the given path.
   if (!tensorflow::Env::Default()->FileExists(ptxas_path).ok()) {
     LOG(WARNING)

@@ -482,13 +482,13 @@ class MklMaxPoolingGradOp : public OpKernel {
   bool workspace_enabled_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("MklMaxPool")
+REGISTER_KERNEL_BUILDER(Name("_MklMaxPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
                             .Label(mkl_op_registry::kMklOpLabel),
                         MklMaxPoolingOp<CPUDevice, float>);
 
-REGISTER_KERNEL_BUILDER(Name("MklMaxPoolGrad")
+REGISTER_KERNEL_BUILDER(Name("_MklMaxPoolGrad")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
                             .Label(mkl_op_registry::kMklOpLabel),

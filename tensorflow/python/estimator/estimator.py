@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import inspect
 import os
 import tempfile
 
@@ -48,6 +47,9 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
+
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'config'])
@@ -524,7 +526,7 @@ class Estimator(object):
     Raises:
       ValueError: if model_fn returns invalid objects.
     """
-    model_fn_args = _get_arguments(self._model_fn).args
+    model_fn_args = _model_fn_args(self._model_fn)
     kwargs = {}
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode
@@ -704,35 +706,45 @@ def _get_replica_device_setter(config):
     return None
 
 
-def _get_arguments(func):
-  """Returns a spec of given func."""
-  if hasattr(func, '__code__'):
-    # Regular function.
-    return inspect.getargspec(func)
-  elif hasattr(func, '__call__'):
-    # Callable object.
-    return _get_arguments(func.__call__)
-  elif hasattr(func, 'func'):
-    # Partial function.
-    return _get_arguments(func.func)
+def _model_fn_args(fn):
+  """Get argument names for function-like object.
+
+  Args:
+    fn: Function, or function-like object (e.g., result of `functools.partial`).
+
+  Returns:
+    `tuple` of string argument names.
+
+  Raises:
+    ValueError: if partial function has positionally bound arguments
+  """
+  _, fn = tf_decorator.unwrap(fn)
+  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
+    # Handle functools.partial and similar objects.
+    return tuple([
+        arg for arg in tf_inspect.getargspec(fn.func).args[len(fn.args):]
+        if arg not in set(fn.keywords.keys())
+    ])
+  # Handle function.
+  return tuple(tf_inspect.getargspec(fn).args)
 
 
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  fn_spec = _get_arguments(model_fn)
-  if 'features' not in fn_spec.args:
+  args = _model_fn_args(model_fn)
+  if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
-  if 'labels' not in fn_spec.args:
+  if 'labels' not in args:
     raise ValueError('model_fn (%s) must include labels argument.' % model_fn)
-  if params is not None and 'params' not in fn_spec.args:
+  if params is not None and 'params' not in args:
     raise ValueError('model_fn (%s) does not include params argument, '
                      'but params (%s) is passed to Estimator.' % (model_fn,
                                                                   params))
-  if params is None and 'params' in fn_spec.args:
+  if params is None and 'params' in args:
     logging.warning('Estimator\'s model_fn (%s) includes params '
                     'argument, but params are not passed to Estimator.',
                     model_fn)
-  non_valid_args = list(set(fn_spec.args) - _VALID_MODEL_FN_ARGS)
+  non_valid_args = list(set(args) - _VALID_MODEL_FN_ARGS)
   if non_valid_args:
     raise ValueError('model_fn (%s) has following not expected args: %s' %
                      (model_fn, non_valid_args))

@@ -86,15 +86,18 @@ while true; do
   PYTHON_BIN_PATH=""
   # Retry
 done
+export PYTHON_BIN_PATH
+write_action_env_to_bazelrc "PYTHON_BIN_PATH" "$PYTHON_BIN_PATH"
+# TODO(ngiraldo): allow the user to optionally set PYTHON_INCLUDE_PATH and NUMPY_INCLUDE_PATH
 
 ## Set up MKL related environment settings
 if false; then # Disable building with MKL for now
   while [ "$TF_NEED_MKL" == "" ]; do
     fromuser=""
-    read -p "Do you wish to build TensorFlow with MKL support? [y/N] " INPUT
+    read -p "Do you wish to build TensorFlow with MKL support (experimental)? [y/N] " INPUT
     fromuser="1"
     case $INPUT in
-      [Yy]* ) echo "MKL support will be enabled for TensorFlow"; TF_NEED_MKL=1;;
+      [Yy]* ) echo "MKL support (experimental) (will be enabled for TensorFlow"; TF_NEED_MKL=1;;
       [Nn]* ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
       "" ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
       * ) echo "Invalid selection: " $INPUT;;
@@ -261,7 +264,7 @@ if [[ "$TF_NEED_VERBS" == "1" ]]; then
 fi
 
 # Invoke python_config and set up symlinks to python includes
-./util/python/python_config.sh --setup "$PYTHON_BIN_PATH"
+./util/python/python_config.sh "$PYTHON_BIN_PATH"
 
 # Append CC optimization flags to bazel.rc
 echo >> tools/bazel.rc

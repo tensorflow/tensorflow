@@ -26,10 +26,8 @@ import tensorflow as tf
 
 import ctypes
 import importlib
-import inspect
 import sys
 import traceback
-
 
 # TODO(drpng): write up instructions for editing this file in a doc and point to
 # the doc instead.
@@ -170,7 +168,7 @@ _allowed_symbols.extend([
     'parse_single_sequence_example',
     'serialize_many_sparse',
     'serialize_sparse',
-    'sparse_matmul',   ## use tf.matmul instead.
+    'sparse_matmul',  ## use tf.matmul instead.
 ])
 
 # This is needed temporarily because we import it explicitly.

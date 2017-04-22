@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import inspect
 import os
 import sys
 
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import tf_inspect
 from tensorflow.tools.docs import parser
 
 
@@ -152,7 +152,7 @@ class ParserTest(googletest.TestCase):
 
     # Make sure the brief docstring is present
     self.assertEqual(
-        inspect.getdoc(TestClass).split('\n')[0], page_info.doc.brief)
+        tf_inspect.getdoc(TestClass).split('\n')[0], page_info.doc.brief)
 
     # Make sure the method is present
     self.assertEqual(TestClass.a_method, page_info.methods[0].obj)
@@ -204,7 +204,8 @@ class ParserTest(googletest.TestCase):
         full_name='TestModule', py_object=module, parser_config=parser_config)
 
     # Make sure the brief docstring is present
-    self.assertEqual(inspect.getdoc(module).split('\n')[0], page_info.doc.brief)
+    self.assertEqual(tf_inspect.getdoc(module).split('\n')[0],
+                     page_info.doc.brief)
 
     # Make sure that the members are there
     funcs = {f_info.obj for f_info in page_info.functions}
@@ -246,7 +247,7 @@ class ParserTest(googletest.TestCase):
 
     # Make sure the brief docstring is present
     self.assertEqual(
-        inspect.getdoc(test_function).split('\n')[0], page_info.doc.brief)
+        tf_inspect.getdoc(test_function).split('\n')[0], page_info.doc.brief)
 
     # Make sure the extracted signature is good.
     self.assertEqual(['unused_arg', "unused_kwarg='default'"],
@@ -285,7 +286,7 @@ class ParserTest(googletest.TestCase):
 
     # Make sure the brief docstring is present
     self.assertEqual(
-        inspect.getdoc(test_function_with_args_kwargs).split('\n')[0],
+        tf_inspect.getdoc(test_function_with_args_kwargs).split('\n')[0],
         page_info.doc.brief)
 
     # Make sure the extracted signature is good.
@@ -402,41 +403,42 @@ class ParserTest(googletest.TestCase):
 
     # pylint: disable=protected-access
     # Make sure everything works for regular functions.
-    expected = inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None, None,
-                               (1, 2))
+    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None,
+                                  None, (1, 2))
     self.assertEqual(expected, parser._get_arg_spec(test_function_for_partial1))
 
     # Make sure doing nothing works.
-    expected = inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None, None,
-                               (1, 2))
+    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None,
+                                  None, (1, 2))
     partial = functools.partial(test_function_for_partial1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure setting args from the front works.
-    expected = inspect.ArgSpec(['arg2', 'kwarg1', 'kwarg2'], None, None, (1, 2))
+    expected = tf_inspect.ArgSpec(['arg2', 'kwarg1', 'kwarg2'], None, None,
+                                  (1, 2))
     partial = functools.partial(test_function_for_partial1, 1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = inspect.ArgSpec(['kwarg2',], None, None, (2,))
+    expected = tf_inspect.ArgSpec(['kwarg2',], None, None, (2,))
     partial = functools.partial(test_function_for_partial1, 1, 2, 3)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure setting kwargs works.
-    expected = inspect.ArgSpec(['arg1', 'arg2', 'kwarg2'], None, None, (2,))
+    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg2'], None, None, (2,))
     partial = functools.partial(test_function_for_partial1, kwarg1=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = inspect.ArgSpec(['arg1', 'arg2', 'kwarg1'], None, None, (1,))
+    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1'], None, None, (1,))
     partial = functools.partial(test_function_for_partial1, kwarg2=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = inspect.ArgSpec(['arg1'], None, None, ())
+    expected = tf_inspect.ArgSpec(['arg1'], None, None, ())
     partial = functools.partial(test_function_for_partial1,
                                 arg2=0, kwarg1=0, kwarg2=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure *args, *kwargs is accounted for.
-    expected = inspect.ArgSpec([], 'my_args', 'my_kwargs', ())
+    expected = tf_inspect.ArgSpec([], 'my_args', 'my_kwargs', ())
     partial = functools.partial(test_function_for_partial2, 0, 1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 

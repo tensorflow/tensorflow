@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import inspect
 import json
 import os
 import re
@@ -35,6 +34,7 @@ from tensorflow.contrib.keras.python.keras.utils import conv_utils
 from tensorflow.contrib.keras.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.contrib.keras.python.keras.utils.layer_utils import print_summary as print_layer_summary
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util import tf_inspect
 
 
 # pylint: disable=g-import-not-at-top
@@ -584,7 +584,7 @@ class Layer(object):
       user_kwargs = copy.copy(kwargs)
       if not _is_all_none(previous_mask):
         # The previous layer generated a mask.
-        if 'mask' in inspect.getargspec(self.call).args:
+        if 'mask' in tf_inspect.getargspec(self.call).args:
           if 'mask' not in kwargs:
             # If mask is explicitly passed to __call__,
             # we should override the default mask.
@@ -2166,7 +2166,7 @@ class Container(Layer):
               kwargs = {}
             if len(computed_data) == 1:
               computed_tensor, computed_mask = computed_data[0]
-              if 'mask' in inspect.getargspec(layer.call).args:
+              if 'mask' in tf_inspect.getargspec(layer.call).args:
                 if 'mask' not in kwargs:
                   kwargs['mask'] = computed_mask
               output_tensors = _to_list(layer.call(computed_tensor, **kwargs))
@@ -2177,7 +2177,7 @@ class Container(Layer):
             else:
               computed_tensors = [x[0] for x in computed_data]
               computed_masks = [x[1] for x in computed_data]
-              if 'mask' in inspect.getargspec(layer.call).args:
+              if 'mask' in tf_inspect.getargspec(layer.call).args:
                 if 'mask' not in kwargs:
                   kwargs['mask'] = computed_masks
               output_tensors = _to_list(layer.call(computed_tensors, **kwargs))

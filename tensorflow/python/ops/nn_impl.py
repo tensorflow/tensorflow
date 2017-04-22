@@ -640,9 +640,10 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     else:
       shift = math_ops.cast(shift, y.dtype)
     shifted_mean = math_ops.reduce_mean(
-      math_ops.subtract(y, shift), axes, keep_dims=True, name="shifted_mean")
+        math_ops.subtract(y, shift), axes, keep_dims=True, name="shifted_mean")
     variance = math_ops.subtract(
-        math_ops.reduce_mean(math_ops.squared_difference(y, shift), axes, keep_dims=True),
+        math_ops.reduce_mean(
+            math_ops.squared_difference(y, shift), axes, keep_dims=True),
         math_ops.square(shifted_mean),
         name="variance")
     mean = math_ops.add(shifted_mean, shift, name="mean")
@@ -650,10 +651,11 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)
     if x.dtype == dtypes.float16:
-      return (math_ops.cast(mean, dtypes.float16),
-              math_ops.cast(variance, dtypes.float16))
+      return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
+          variance, dtypes.float16))
     else:
       return (mean, variance)
+
 
 def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
   """Returns the frequency-weighted mean and variance of `x`.

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Resource management library.
 
 @@get_data_files_path
@@ -25,10 +24,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect as _inspect
 import os as _os
 import sys as _sys
 
+from tensorflow.python.util import tf_inspect as _inspect
 from tensorflow.python.util.all_util import remove_undocumented
 
 
@@ -44,9 +43,8 @@ def load_resource(path):
   Raises:
     IOError: If the path is not found, or the resource can't be opened.
   """
-  tensorflow_root = (
-      _os.path.join(
-          _os.path.dirname(__file__), _os.pardir, _os.pardir))
+  tensorflow_root = (_os.path.join(
+      _os.path.dirname(__file__), _os.pardir, _os.pardir))
   path = _os.path.join(tensorflow_root, path)
   path = _os.path.abspath(path)
   with open(path, 'rb') as f:

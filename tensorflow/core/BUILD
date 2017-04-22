@@ -1570,6 +1570,7 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
+        "//tensorflow/core/kernels:function_ops",
     ],
     alwayslink = 1,
 )
