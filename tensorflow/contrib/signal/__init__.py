@@ -13,9 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
+"""
+@@frames
+"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+from tensorflow.contrib.signal.python.ops.shape_ops import frames
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__)
