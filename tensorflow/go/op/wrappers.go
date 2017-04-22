@@ -11265,6 +11265,8 @@ func QuantizedRelu6(scope *Scope, features tf.Output, min_features tf.Output, ma
 type FixedLengthRecordReaderV2Attr func(optionalAttr)
 
 // FixedLengthRecordReaderV2HeaderBytes sets the optional header_bytes attribute to value.
+//
+// value: Number of bytes in the header, defaults to 0.
 // If not specified, defaults to 0
 func FixedLengthRecordReaderV2HeaderBytes(value int64) FixedLengthRecordReaderV2Attr {
 	return func(m optionalAttr) {
@@ -11273,10 +11275,23 @@ func FixedLengthRecordReaderV2HeaderBytes(value int64) FixedLengthRecordReaderV2
 }
 
 // FixedLengthRecordReaderV2FooterBytes sets the optional footer_bytes attribute to value.
+//
+// value: Number of bytes in the footer, defaults to 0.
 // If not specified, defaults to 0
 func FixedLengthRecordReaderV2FooterBytes(value int64) FixedLengthRecordReaderV2Attr {
 	return func(m optionalAttr) {
 		m["footer_bytes"] = value
+	}
+}
+
+// FixedLengthRecordReaderV2HopBytes sets the optional hop_bytes attribute to value.
+//
+// value: Number of bytes to hop before each read. Default of 0 means using
+// record_bytes.
+// If not specified, defaults to 0
+func FixedLengthRecordReaderV2HopBytes(value int64) FixedLengthRecordReaderV2Attr {
+	return func(m optionalAttr) {
+		m["hop_bytes"] = value
 	}
 }
 
@@ -11303,6 +11318,9 @@ func FixedLengthRecordReaderV2SharedName(value string) FixedLengthRecordReaderV2
 }
 
 // A Reader that outputs fixed-length records from a file.
+//
+// Arguments:
+//	record_bytes: Number of bytes in the record.
 //
 // Returns The handle to reference the Reader.
 func FixedLengthRecordReaderV2(scope *Scope, record_bytes int64, optional ...FixedLengthRecordReaderV2Attr) (reader_handle tf.Output) {
