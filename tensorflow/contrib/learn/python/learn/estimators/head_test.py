@@ -36,7 +36,6 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses as losses_lib
 from tensorflow.python.platform import test
-# pylint: enable=g-bad-todo,g-import-not-at-top
 
 
 def _assert_variables(test_case,
@@ -260,8 +259,10 @@ class RegressionHeadTest(test.TestCase):
           ),
           expected_trainable=("regression_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
-      _assert_summary_tags(
-          self, ["regression_head/loss", "regression_head/centered_bias/bias_0"])
+      _assert_summary_tags(self, [
+          "regression_head/loss",
+          "regression_head/centered_bias/bias_0"
+      ])
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
   def testRegressionErrorInSparseTensorLabels(self):
@@ -541,7 +542,26 @@ class MultiLabelHeadTest(test.TestCase):
       _assert_no_variables(self)
       _assert_summary_tags(self, ["multi_label_head/loss"])
       _assert_metrics(self, .089985214,
-                      self._expected_eval_metrics(2.69956), model_fn_ops)
+                      self._expected_eval_metrics(.89985214), model_fn_ops)
+
+  def testMultiLabelWithMultiDimensionalWeight(self):
+    n_classes = 3
+    head = head_lib.multi_label_head(
+        n_classes=n_classes,
+        weight_column_name="label_weight",
+        metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": ((.1, .1, .1),)},
+          labels=self._labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["multi_label_head/loss"])
+      _assert_metrics(self, .089985214,
+                      self._expected_eval_metrics(.89985214), model_fn_ops)
 
   def testMultiLabelWithCustomLoss(self):
     n_classes = 3
@@ -560,8 +580,9 @@ class MultiLabelHeadTest(test.TestCase):
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["multi_label_head/loss"])
-      _assert_metrics(self, 0.089985214,
-                      self._expected_eval_metrics(0.089985214), model_fn_ops)
+      expected_loss = .089985214
+      _assert_metrics(self, expected_loss,
+                      self._expected_eval_metrics(expected_loss), model_fn_ops)
 
   def testMultiLabelWithCenteredBias(self):
     n_classes = 3
@@ -910,9 +931,10 @@ class BinaryClassificationHeadTest(test.TestCase):
                "Adagrad:0"),),
           expected_trainable=("binary_logistic_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
-      _assert_summary_tags(
-          self, ["binary_logistic_head/loss",
-		 "binary_logistic_head/centered_bias/bias_0"])
+      _assert_summary_tags(self, [
+          "binary_logistic_head/loss",
+          "binary_logistic_head/centered_bias/bias_0"
+      ])
       expected_loss = .81326175
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
@@ -1416,7 +1438,8 @@ class BinarySvmHeadTest(test.TestCase):
     with ops.Graph().as_default(), session.Session():
       weights = (7., 11.)
       model_fn_ops = head.create_model_fn_ops(
-          features={"weights": weights},
+          # We have to add an extra dim here for weights broadcasting to work.
+          features={"weights": tuple([(w,) for w in weights])},
           mode=model_fn.ModeKeys.TRAIN,
           labels=self._labels,
           train_op_fn=head_lib.no_op_train_fn,
@@ -1424,11 +1447,10 @@ class BinarySvmHeadTest(test.TestCase):
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["binary_svm_head/loss"])
-      expected_weighted_sum = np.sum(
-          np.multiply(weights, self._expected_losses))
-      _assert_metrics(self, expected_weighted_sum / len(weights), {
+      expected_weighted_losses = np.multiply(weights, self._expected_losses)
+      _assert_metrics(self, np.mean(expected_weighted_losses), {
           "accuracy": 1.,
-          "loss": expected_weighted_sum / np.sum(weights),
+          "loss": np.sum(expected_weighted_losses) / np.sum(weights),
       }, model_fn_ops)
 
   def testBinarySVMWithCenteredBias(self):
@@ -1450,9 +1472,10 @@ class BinarySvmHeadTest(test.TestCase):
           ),
           expected_trainable=("binary_svm_head/centered_bias_weight:0",))
       variables.global_variables_initializer().run()
-      _assert_summary_tags(
-          self, ["binary_svm_head/loss",
-		 "binary_svm_head/centered_bias/bias_0"])
+      _assert_summary_tags(self, [
+          "binary_svm_head/loss",
+          "binary_svm_head/centered_bias/bias_0"
+      ])
       expected_loss = np.average(self._expected_losses)
       _assert_metrics(self, expected_loss, {
           "accuracy": 1.,

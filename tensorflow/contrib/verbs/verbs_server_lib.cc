@@ -27,8 +27,9 @@ namespace tensorflow {
 
 namespace {
 // static utility function
-RendezvousMgrInterface* NewRdmaRendezvousMgr(const WorkerEnv* env, 
-    const string& worker_name, WorkerCacheInterface* worker_cache) {
+RendezvousMgrInterface* NewRdmaRendezvousMgr(
+    const WorkerEnv* env, const string& worker_name,
+    WorkerCacheInterface* worker_cache) {
   return new RdmaRendezvousMgr(env, worker_name, worker_cache);
 }
 
@@ -46,7 +47,7 @@ VerbsServer::~VerbsServer() {
 }
 
 Status VerbsServer::ChannelCacheFactory(const ServerDef& server_def,
-                                      GrpcChannelCache** channel_cache) {
+                                        GrpcChannelCache** channel_cache) {
   string name_prefix =
       strings::StrCat("/job:", server_def.job_name(), "/replica:0",
                       "/task:", server_def.task_index());
@@ -54,41 +55,43 @@ Status VerbsServer::ChannelCacheFactory(const ServerDef& server_def,
   GrpcChannelSpec channel_spec;
   TF_RETURN_IF_ERROR(ParseChannelSpec(server_def, &channel_spec));
 
-  *channel_cache = NewGrpcChannelCache(channel_spec, 
-          GetChannelCreationFunction(server_def));
-  
+  *channel_cache =
+      NewGrpcChannelCache(channel_spec, GetChannelCreationFunction(server_def));
+
   const string host_port = (*channel_cache)->TranslateTask(name_prefix);
   int requested_port;
 
   if (!strings::safe_strto32(str_util::Split(host_port, ':')[1],
                              &requested_port)) {
     return errors::Internal("Could not parse port for local server from \"",
-                            (*channel_cache)->TranslateTask(name_prefix), "\".");
+                            (*channel_cache)->TranslateTask(name_prefix),
+                            "\".");
   }
   if (requested_port != bound_port()) {
     return errors::InvalidArgument("Requested port ", requested_port,
-                                   " differs from expected port ", bound_port());
+                                   " differs from expected port ",
+                                   bound_port());
   }
-  
+
   return Status::OK();
 }
 
 Status VerbsServer::Init(ServiceInitFunction service_func,
-              RendezvousMgrCreationFunction rendezvous_mgr_func) {
+                         RendezvousMgrCreationFunction rendezvous_mgr_func) {
   Status s = GrpcServer::Init(service_func, rendezvous_mgr_func);
   {
     mutex_lock l(mu_);
     CHECK_EQ(verbs_state_, DISCONNECTED);
     CHECK(ChannelCacheFactory(server_def(), &channel_cache_).ok());
     rdma_mgr_ = new RdmaMgr(worker_env(), channel_cache_);
-    // set rdma_mgr for verbs_service and rdma_rendezvous_mgr 
+    // set rdma_mgr for verbs_service and rdma_rendezvous_mgr
     verbs_service_->SetRdmaMgr(rdma_mgr_);
     // hardcoded to default session (legacy_session_)
     // TODO: use WorkerSessionForSession
     // need to pass in session handle
-    dynamic_cast<RdmaRendezvousMgr*>(worker_env()->session_mgr->
-            LegacySession()->rendezvous_mgr.get())
-            ->SetRdmaMgr(rdma_mgr_);
+    dynamic_cast<RdmaRendezvousMgr*>(
+        worker_env()->session_mgr->LegacySession()->rendezvous_mgr.get())
+        ->SetRdmaMgr(rdma_mgr_);
   }
   return s;
 }
@@ -100,9 +103,9 @@ Status VerbsServer::Start() {
     if (verbs_state_ == DISCONNECTED) {
       // verbs_thread needs to be initiated
       // before rdma_mgr sets up the rdma channels.
-      verbs_thread_.reset(
-        worker_env()->env->StartThread(ThreadOptions(), "TF_verbs_service",
-                            [this] { verbs_service_->HandleRPCsLoop(); }));
+      verbs_thread_.reset(worker_env()->env->StartThread(
+          ThreadOptions(), "TF_verbs_service",
+          [this] { verbs_service_->HandleRPCsLoop(); }));
       rdma_mgr_->SetupChannels();
       verbs_state_ = CONNECTED;
     }
@@ -124,10 +127,10 @@ Status VerbsServer::Join() {
 
 /* static */
 Status VerbsServer::Create(const ServerDef& server_def, Env* env,
-                          std::unique_ptr<ServerInterface>* out_server) {
+                           std::unique_ptr<ServerInterface>* out_server) {
   std::unique_ptr<VerbsServer> ret(new VerbsServer(server_def, Env::Default()));
   ServiceInitFunction service_func = [&ret](const WorkerEnv* worker_env,
-      ::grpc::ServerBuilder* builder) {
+                                            ::grpc::ServerBuilder* builder) {
     return SetNewVerbsService(&ret->verbs_service_, worker_env, builder);
   };
   TF_RETURN_IF_ERROR(ret->Init(service_func, NewRdmaRendezvousMgr));

@@ -259,6 +259,7 @@ class FunctionCallFrame {
   // Caller methods.
   Status SetArgs(gtl::ArraySlice<Tensor> args);
   Status GetRetvals(std::vector<Tensor>* rets) const;
+  Status ConsumeRetvals(std::vector<Tensor>* rets);
 
   // Callee methods.
   Status GetArg(int index, Tensor* val) const;

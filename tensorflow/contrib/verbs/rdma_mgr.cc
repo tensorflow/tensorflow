@@ -15,8 +15,8 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_VERBS
 
-#include<vector>
 #include "tensorflow/contrib/verbs/rdma_mgr.h"
+#include <vector>
 #include "tensorflow/contrib/verbs/grpc_verbs_client.h"
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-RdmaMgr::RdmaMgr(const WorkerEnv* const worker_env, 
+RdmaMgr::RdmaMgr(const WorkerEnv* const worker_env,
                  GrpcChannelCache* const channel_cache)
     : worker_env_(worker_env), channel_cache_(channel_cache) {
   rdma_adapter_ = new RdmaAdapter(worker_env_);
@@ -34,14 +34,15 @@ RdmaMgr::RdmaMgr(const WorkerEnv* const worker_env,
   // need to pass in session handle
   local_worker_ = worker_env_->session_mgr->LegacySession()->worker_name;
   std::vector<string> workers;
-  worker_env_->session_mgr->LegacySession()->
-      worker_cache->ListWorkers(&workers);
-  num_remote_workers_ = workers.size()-1; 
+  worker_env_->session_mgr->LegacySession()->worker_cache->ListWorkers(
+      &workers);
+  num_remote_workers_ = workers.size() - 1;
   VLOG(2) << "rmda_mgr on local worker: " << local_worker_;
   for (size_t i = 0; i < workers.size(); i++) {
     if (local_worker_.compare(workers[i]) != 0) {
-      channel_table_.insert({workers[i], new RdmaChannel(rdma_adapter_, 
-                             local_worker_, workers[i])});
+      channel_table_.insert(
+          {workers[i],
+           new RdmaChannel(rdma_adapter_, local_worker_, workers[i])});
     }
   }
 }
@@ -49,16 +50,16 @@ RdmaMgr::RdmaMgr(const WorkerEnv* const worker_env,
 // Setup Rdma channels between peers.
 // This is done at the beginning of the server setup.
 
-void RdmaMgr::SetupChannels() { 
+void RdmaMgr::SetupChannels() {
   for (const auto& p : channel_table_) {
     string worker_name = p.first;
     LOG(INFO) << "connecting to remote node " << worker_name;
     RdmaChannel* rc = p.second;
     GetRemoteAddressRequest req;
-    GetRemoteAddressResponse resp;   
+    GetRemoteAddressResponse resp;
     // get the channel cache
-    SharedGrpcChannelPtr client_channel = channel_cache_
-            ->FindWorkerChannel(worker_name);
+    SharedGrpcChannelPtr client_channel =
+        channel_cache_->FindWorkerChannel(worker_name);
     GrpcVerbsClient* client = new GrpcVerbsClient(client_channel);
     CHECK(client != nullptr) << "No worker known as " << worker_name;
 
@@ -70,8 +71,8 @@ void RdmaMgr::SetupChannels() {
     channel_info->set_psn(rc->self_.psn);
     for (int i = 0; i < RdmaChannel::kNumMessageBuffers; i++) {
       MemoryRegion* mr = req.add_mr();
-      mr->set_remote_addr(reinterpret_cast<uint64_t>(
-                           rc->message_buffers_[i]->buffer_));
+      mr->set_remote_addr(
+          reinterpret_cast<uint64_t>(rc->message_buffers_[i]->buffer_));
       mr->set_rkey(rc->message_buffers_[i]->self_->rkey);
     }
     // synchronous call
@@ -79,10 +80,10 @@ void RdmaMgr::SetupChannels() {
     // save obtained remote addresses
     // connect to the remote channel
     if (s.ok()) {
-      CHECK(worker_name.compare(resp.host_name())==0);
+      CHECK(worker_name.compare(resp.host_name()) == 0);
       RdmaAddress ra;
       ra.lid = resp.channel().lid();
-      ra.qpn = resp.channel().qpn(); 
+      ra.qpn = resp.channel().qpn();
       ra.psn = resp.channel().psn();
       rc->SetRemoteAddress(ra, false);
       rc->Connect();
@@ -112,7 +113,7 @@ void RdmaMgr::SetupChannels() {
 
 RdmaMgr::~RdmaMgr() {
   for (const auto& p : channel_table_) delete p.second;
-  channel_table_.clear();  
+  channel_table_.clear();
   delete rdma_adapter_;
 }
 

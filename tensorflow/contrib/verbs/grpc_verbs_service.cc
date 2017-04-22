@@ -26,10 +26,10 @@ limitations under the License.
 namespace tensorflow {
 
 GrpcVerbsService::GrpcVerbsService(const WorkerEnv* worker_env,
-      ::grpc::ServerBuilder* builder)
-      : is_shutdown_(false), worker_env_(worker_env) {
-    builder->RegisterService(&verbs_service_);
-    cq_ = builder->AddCompletionQueue().release();
+                                   ::grpc::ServerBuilder* builder)
+    : is_shutdown_(false), worker_env_(worker_env) {
+  builder->RegisterService(&verbs_service_);
+  cq_ = builder->AddCompletionQueue().release();
 }
 
 GrpcVerbsService::~GrpcVerbsService() {
@@ -52,7 +52,7 @@ void GrpcVerbsService::Shutdown() {
         new ::grpc::Alarm(cq_, gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
   }
 }
-  
+
 // This macro creates a new request for the given RPC method name
 // (e.g., `ENQUEUE_REQUEST(GetRemoteAddress, false);`), and enqueues it on
 // `this->cq_`.
@@ -64,17 +64,17 @@ void GrpcVerbsService::Shutdown() {
 // The implementation of the request handler for each RPC method
 // must ensure that it calls ENQUEUE_REQUEST() for that RPC method,
 // to keep accepting new requests.
-#define ENQUEUE_REQUEST(method, supports_cancel)                              \
-  do {                                                                        \
-    mutex_lock l(shutdown_mu_);                                               \
-    if (!is_shutdown_) {                                                      \
-      Call<GrpcVerbsService, grpc::VerbsService::AsyncService,                \
-           method##Request, method##Response>::                               \
-          EnqueueRequest(&verbs_service_, cq_,                                \
-                         &grpc::VerbsService::AsyncService::Request##method,  \
-                         &GrpcVerbsService::method##Handler,                  \
-                         (supports_cancel));                                  \
-    }                                                                         \
+#define ENQUEUE_REQUEST(method, supports_cancel)                             \
+  do {                                                                       \
+    mutex_lock l(shutdown_mu_);                                              \
+    if (!is_shutdown_) {                                                     \
+      Call<GrpcVerbsService, grpc::VerbsService::AsyncService,               \
+           method##Request, method##Response>::                              \
+          EnqueueRequest(&verbs_service_, cq_,                               \
+                         &grpc::VerbsService::AsyncService::Request##method, \
+                         &GrpcVerbsService::method##Handler,                 \
+                         (supports_cancel));                                 \
+    }                                                                        \
   } while (0)
 
 // This method blocks forever handling requests from the completion queue.
@@ -97,8 +97,8 @@ void GrpcVerbsService::HandleRPCsLoop() {
   }
 }
 
-void GrpcVerbsService::GetRemoteAddressHandler(WorkerCall
-     <GetRemoteAddressRequest, GetRemoteAddressResponse>* call) {
+void GrpcVerbsService::GetRemoteAddressHandler(
+    WorkerCall<GetRemoteAddressRequest, GetRemoteAddressResponse>* call) {
   Status s = GetRemoteAddressSync(&call->request, &call->response);
   call->SendResponse(ToGrpcStatus(s));
   ENQUEUE_REQUEST(GetRemoteAddress, false);
@@ -106,8 +106,8 @@ void GrpcVerbsService::GetRemoteAddressHandler(WorkerCall
 
 // synchronous method
 Status GrpcVerbsService::GetRemoteAddressSync(
-                        const GetRemoteAddressRequest* request,
-                        GetRemoteAddressResponse* response) {
+    const GetRemoteAddressRequest* request,
+    GetRemoteAddressResponse* response) {
   // analyzing request
   // the channel setting part is redundant.
   const string remote_host_name = request->host_name();
@@ -115,7 +115,7 @@ Status GrpcVerbsService::GetRemoteAddressSync(
   CHECK(rc);
   RdmaAddress ra;
   ra.lid = request->channel().lid();
-  ra.qpn = request->channel().qpn(); 
+  ra.qpn = request->channel().qpn();
   ra.psn = request->channel().psn();
   rc->SetRemoteAddress(ra, false);
   rc->Connect();
@@ -140,8 +140,8 @@ Status GrpcVerbsService::GetRemoteAddressSync(
   CHECK(i == RdmaChannel::kNumMessageBuffers);
 
   // setting up response
-  response->set_host_name(worker_env_->session_mgr->
-      LegacySession()->worker_name);
+  response->set_host_name(
+      worker_env_->session_mgr->LegacySession()->worker_name);
   Channel* channel_info = response->mutable_channel();
   channel_info->set_lid(rc->self().lid);
   channel_info->set_qpn(rc->self().qpn);
@@ -151,12 +151,12 @@ Status GrpcVerbsService::GetRemoteAddressSync(
     mr->set_remote_addr(reinterpret_cast<uint64>(mb[i]->buffer()));
     mr->set_rkey(mb[i]->self()->rkey);
   }
-  return Status::OK();     
+  return Status::OK();
 }
 
 // Create a GrpcVerbsService, then assign it to a given handle.
 void SetNewVerbsService(GrpcVerbsService** handle, const WorkerEnv* worker_env,
-     ::grpc::ServerBuilder* builder) {
+                        ::grpc::ServerBuilder* builder) {
   *handle = new GrpcVerbsService(worker_env, builder);
 }
 

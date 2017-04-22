@@ -86,7 +86,7 @@ class FixedLengthRecordReader : public ReaderBase {
     ++record_number_;
 
     if (hop_bytes_ > 0) {
-        input_buffer_->Seek(pos_before_read + hop_bytes_);
+      input_buffer_->Seek(pos_before_read + hop_bytes_).IgnoreError();
     }
 
     return Status::OK();
@@ -118,7 +118,8 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
  public:
   explicit FixedLengthRecordReaderOp(OpKernelConstruction* context)
       : ReaderOpKernel(context) {
-    int64 header_bytes = -1, record_bytes = -1, footer_bytes = -1, hop_bytes = -1;
+    int64 header_bytes = -1, record_bytes = -1, footer_bytes = -1,
+          hop_bytes = -1;
     OP_REQUIRES_OK(context, context->GetAttr("header_bytes", &header_bytes));
     OP_REQUIRES_OK(context, context->GetAttr("record_bytes", &record_bytes));
     OP_REQUIRES_OK(context, context->GetAttr("footer_bytes", &footer_bytes));
@@ -132,15 +133,15 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
     OP_REQUIRES(context, footer_bytes >= 0,
                 errors::InvalidArgument("footer_bytes must be >= 0 not ",
                                         footer_bytes));
-    OP_REQUIRES(context, hop_bytes >= 0,
-                errors::InvalidArgument("hop_bytes must be >= 0 not ",
-                                        hop_bytes));
+    OP_REQUIRES(
+        context, hop_bytes >= 0,
+        errors::InvalidArgument("hop_bytes must be >= 0 not ", hop_bytes));
     Env* env = context->env();
-    SetReaderFactory([this, header_bytes, record_bytes, footer_bytes,
-                      hop_bytes, env]() {
-      return new FixedLengthRecordReader(name(), header_bytes, record_bytes,
-                                         footer_bytes, hop_bytes, env);
-    });
+    SetReaderFactory(
+        [this, header_bytes, record_bytes, footer_bytes, hop_bytes, env]() {
+          return new FixedLengthRecordReader(name(), header_bytes, record_bytes,
+                                             footer_bytes, hop_bytes, env);
+        });
   }
 };
 

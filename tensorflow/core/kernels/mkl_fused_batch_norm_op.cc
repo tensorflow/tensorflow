@@ -14,16 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#include "tensorflow/core/util/mkl_util.h"
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 // TODO(inteltf) Address comments from PR 8968.
 
@@ -325,11 +325,11 @@ class MklFusedBatchNormOp : public OpKernel {
   } MklFusedBatchNormOpContext;
 };
 
-#define REGISTER_MKL_CPU(T)                                               \
-  REGISTER_KERNEL_BUILDER(Name("MklFusedBatchNorm")                       \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
+#define REGISTER_MKL_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("_MklFusedBatchNorm")                 \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklFusedBatchNormOp<CPUDevice, T>);
 TF_CALL_float(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
@@ -676,11 +676,11 @@ class MklFusedBatchNormGradOp : public OpKernel {
   } MklFusedBatchNormGradOpContext;
 };
 
-#define REGISTER_MKL_CPU(T)                                               \
-  REGISTER_KERNEL_BUILDER(Name("MklFusedBatchNormGrad")                   \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
+#define REGISTER_MKL_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("_MklFusedBatchNormGrad")             \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklFusedBatchNormGradOp<CPUDevice, T>);
 TF_CALL_float(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU

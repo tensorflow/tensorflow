@@ -109,7 +109,7 @@ class AttentionWrapperTest(test.TestCase):
             initial_state=cell.zero_state(
                 dtype=dtypes.float32, batch_size=batch_size))
 
-        final_outputs, final_state = decoder.dynamic_decode(my_decoder)
+        final_outputs, final_state, _ = decoder.dynamic_decode(my_decoder)
 
       self.assertTrue(
           isinstance(final_outputs, basic_decoder.BasicDecoderOutput))

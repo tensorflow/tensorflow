@@ -90,11 +90,11 @@ namespace functor {
 
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
-  static EIGEN_ALWAYS_INLINE Status Compute(
-        const GPUDevice& d, typename TTypes<T>::Matrix out,
-        typename TTypes<Tindices>::ConstMatrix a_indices,
-        typename TTypes<T>::ConstVec a_values,
-        typename TTypes<T>::ConstMatrix b, typename TTypes<T>::Vec scratch) {
+  static EIGEN_ALWAYS_INLINE Status
+  Compute(const GPUDevice& d, typename TTypes<T>::Matrix out,
+          typename TTypes<Tindices>::ConstMatrix a_indices,
+          typename TTypes<T>::ConstVec a_values,
+          typename TTypes<T>::ConstMatrix b, typename TTypes<T>::Vec scratch) {
     generator::SparseTensorDenseMatMulGPUGenerator<T, Tindices, ADJ_A, ADJ_B>
         sparse_tensor_dense_matmul_generator(To32Bit(out), To32Bit(a_indices),
                                              To32Bit(a_values), To32Bit(b));
@@ -146,14 +146,14 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
 
 }  // namespace functor
 
-#define DEFINE(T, Tindices)                                                    \
-  template struct functor::SparseTensorDenseMatMulFunctor<                     \
-      GPUDevice, T, Tindices, false, false>;                                   \
-  template struct functor::SparseTensorDenseMatMulFunctor<                     \
-      GPUDevice, T, Tindices, false, true>;                                    \
-  template struct functor::SparseTensorDenseMatMulFunctor<                     \
-      GPUDevice, T, Tindices, true, false>;                                    \
-  template struct functor::SparseTensorDenseMatMulFunctor<                     \
+#define DEFINE(T, Tindices)                                \
+  template struct functor::SparseTensorDenseMatMulFunctor< \
+      GPUDevice, T, Tindices, false, false>;               \
+  template struct functor::SparseTensorDenseMatMulFunctor< \
+      GPUDevice, T, Tindices, false, true>;                \
+  template struct functor::SparseTensorDenseMatMulFunctor< \
+      GPUDevice, T, Tindices, true, false>;                \
+  template struct functor::SparseTensorDenseMatMulFunctor< \
       GPUDevice, T, Tindices, true, true>;
 
 DEFINE(float, int32);

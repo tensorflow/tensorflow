@@ -22,6 +22,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include <vector>
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "third_party/mkl/include/mkl_dnn.h"
+#include "third_party/mkl/include/mkl_dnn_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,9 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/util/work_sharder.h"
@@ -66,10 +66,11 @@ class MklLRNOp : public OpKernel {
   explicit MklLRNOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                " larger than int max"));
     depth_radius_ = static_cast<size_t>(depth_radius64);
 
     OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
@@ -92,9 +93,10 @@ class MklLRNOp : public OpKernel {
                               : input.dims();
     OP_REQUIRES(context, mkl_context.in_dims == 4,
                 errors::InvalidArgument("input must be 4-dimensional"));
-    OP_REQUIRES(context, FastBoundsCheck(input.NumElements(),
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("argument to LRN too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input.NumElements(), std::numeric_limits<int>::max()),
+        errors::InvalidArgument("argument to LRN too large"));
 
     if (!input_in_mkl_format) {
       mkl_context.MklDefaultToEigen(context, depth_radius_, bias_, alpha_,
@@ -334,10 +336,11 @@ class MklLRNGradOp : public OpKernel {
   explicit MklLRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
@@ -701,12 +704,12 @@ class MklLRNGradOp : public OpKernel {
 };
 
 #define REGISTER_MKL_LRN_CPU(T)                                     \
-  REGISTER_KERNEL_BUILDER(Name("MklLRN")                            \
+  REGISTER_KERNEL_BUILDER(Name("_MklLRN")                            \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklLRNOp<T>);                             \
-  REGISTER_KERNEL_BUILDER(Name("MklLRNGrad")                        \
+  REGISTER_KERNEL_BUILDER(Name("_MklLRNGrad")                        \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \

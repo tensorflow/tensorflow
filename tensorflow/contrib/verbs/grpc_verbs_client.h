@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_GRPC_VERBS_CLIENT_H_
 #define THIRD_PARTY_TENSORFLOW_CONTRIB_GRPC_VERBS_CLIENT_H_
 
+#include "tensorflow/contrib/verbs/grpc_verbs_service_impl.h"
+#include "tensorflow/contrib/verbs/verbs_service.pb.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/contrib/verbs/grpc_verbs_service_impl.h"
-#include "tensorflow/contrib/verbs/verbs_service.pb.h"
 
 namespace tensorflow {
 
@@ -28,24 +28,23 @@ namespace tensorflow {
 class GrpcVerbsClient {
  public:
   explicit GrpcVerbsClient(SharedGrpcChannelPtr client_channel)
-             : stub_(grpc::VerbsService::NewStub(client_channel)) {}
+      : stub_(grpc::VerbsService::NewStub(client_channel)) {}
   ~GrpcVerbsClient() {}
 
   Status GetRemoteAddress(CallOptions* call_options,
-                       const GetRemoteAddressRequest* request,
-                       GetRemoteAddressResponse* response);
+                          const GetRemoteAddressRequest* request,
+                          GetRemoteAddressResponse* response);
   Status GetRemoteAddress(const GetRemoteAddressRequest* request,
-                       GetRemoteAddressResponse* response);
-  
+                          GetRemoteAddressResponse* response);
+
  private:
   std::unique_ptr<grpc::VerbsService::Stub> stub_;
 
   void SetDeadline(::grpc::ClientContext* ctx, int64 time_in_ms);
-  
+
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcVerbsClient);
 };
 
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_GRPC_VERBS_CLIENT_H_
-

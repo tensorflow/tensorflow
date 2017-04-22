@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import re
+
+from tensorflow.python.util import tf_inspect
 
 
 class PublicAPIVisitor(object):
@@ -93,7 +94,7 @@ class PublicAPIVisitor(object):
     """Visitor interface, see `traverse` for details."""
 
     # Avoid long waits in cases of pretty unambiguous failure.
-    if inspect.ismodule(parent) and len(path.split('.')) > 10:
+    if tf_inspect.ismodule(parent) and len(path.split('.')) > 10:
       raise RuntimeError('Modules nested too deep:\n%s\n\nThis is likely a '
                          'problem with an accidental public import.' % path)
 

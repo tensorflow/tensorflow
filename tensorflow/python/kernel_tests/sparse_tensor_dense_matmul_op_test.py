@@ -45,7 +45,11 @@ def _maybe_complex(x):
 
 class SparseTensorDenseMatMulTest(test.TestCase):
 
-  def _testMatmul(self, x, y, adjoint_a=False, adjoint_b=False,
+  def _testMatmul(self,
+                  x,
+                  y,
+                  adjoint_a=False,
+                  adjoint_b=False,
                   indices_dtype=np.int64):
     x_mat = np.matrix(x)
     if adjoint_a:

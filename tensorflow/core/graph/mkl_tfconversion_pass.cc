@@ -123,22 +123,24 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   TF_CHECK_OK(GetNodeAttr(src->def(), "T", &src_datatype));
   TF_CHECK_OK(GetNodeAttr(dst->def(), "T", &dst_datatype));
   if (src_datatype != dst_datatype) {
-    string err_msg = "T attribute of " + src->name() + " and " +
-                      dst->name() + " do not match. Will not insert" +
+    string err_msg = "T attribute of " + src->name() + " and " + dst->name() +
+                     " do not match. Will not insert" +
                      " MklToTf node in such case.";
     return Status(error::Code::INVALID_ARGUMENT, err_msg.c_str());
   }
 
   // Build the conversion node and specify src as input.
-  TF_CHECK_OK(NodeBuilder((*g)->NewName("Mkl2Tf"), "MklToTf")
-        .Input(src, e->src_output())
-        .Input(src, DataIndexToMetaDataIndex(
-            e->src_output(), src->num_outputs()))  // Get an Mkl tensor slot
-                                                   // from the Tf tensor slot.
-        .Device(src->def().device())  // We want to get conversion node
-                                      // on same device as source node.
-        .Attr("T", src_datatype)
-        .Finalize(&**g, &conversion_node));
+  TF_CHECK_OK(
+      NodeBuilder((*g)->NewName("Mkl2Tf"), "_MklToTf")
+          .Input(src, e->src_output())
+          .Input(src, DataIndexToMetaDataIndex(
+                          e->src_output(),
+                          src->num_outputs()))  // Get an Mkl tensor slot
+                                                // from the Tf tensor slot.
+          .Device(src->def().device())  // We want to get conversion node
+                                        // on same device as source node.
+          .Attr("T", src_datatype)
+          .Finalize(&**g, &conversion_node));
 
   CHECK_NOTNULL(conversion_node);
   if (GetNodeAttr(src->def(), "data_format", &data_format) == Status::OK()) {
@@ -191,8 +193,8 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
 
     // We skip adding MklToTf on an edge between X->MklToTf or
     // MklToTf->X, where X is any node.
-    if (src->type_string().compare("MklToTf") == 0 ||
-        dst->type_string().compare("MklToTf") == 0) {
+    if (src->type_string().compare("_MklToTf") == 0 ||
+        dst->type_string().compare("_MklToTf") == 0) {
       continue;
     }
 
@@ -246,8 +248,7 @@ bool InsertMklToTfConversionNodes(std::unique_ptr<Graph>* g) {
   return MklToTfConversionPass().RunPass(g);
 }
 
-Status MklToTfConversionPass::Run(
-  const GraphOptimizationPassOptions& options) {
+Status MklToTfConversionPass::Run(const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
     return Status::OK();
   }

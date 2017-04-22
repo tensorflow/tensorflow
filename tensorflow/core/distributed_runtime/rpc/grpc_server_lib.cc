@@ -63,8 +63,9 @@ class NoReusePortOption : public ::grpc::ServerBuilderOption {
 };
 
 // static utility function
-RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env,
-    const string& worker_name, WorkerCacheInterface* worker_cache) {
+RendezvousMgrInterface* NewRpcRendezvousMgr(
+    const WorkerEnv* env, const string& worker_name,
+    WorkerCacheInterface* worker_cache) {
   return new RpcRendezvousMgr(env, worker_name, worker_cache);
 }
 
@@ -76,7 +77,7 @@ GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
 GrpcServer::~GrpcServer() {
   TF_CHECK_OK(Stop());
   TF_CHECK_OK(Join());
- 
+
   delete master_service_;
   delete worker_service_;
 
@@ -100,7 +101,7 @@ GrpcServer::~GrpcServer() {
 }
 
 Status GrpcServer::Init(ServiceInitFunction service_func,
-    RendezvousMgrCreationFunction rendevous_mgr_func) {
+                        RendezvousMgrCreationFunction rendevous_mgr_func) {
   mutex_lock l(mu_);
   CHECK_EQ(state_, NEW);
   master_env_.env = env_;
@@ -193,6 +194,8 @@ Status GrpcServer::Init(ServiceInitFunction service_func,
 
   // Set up worker environment.
   std::unique_ptr<RendezvousMgrInterface> rendezvous_mgr(
+      rendevous_mgr_func == nullptr ?
+      new RpcRendezvousMgr(&worker_env_, name_prefix, worker_cache) :
       rendevous_mgr_func(&worker_env_, name_prefix, worker_cache));
   worker_env_.session_mgr = new SessionMgr(
       &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
@@ -220,6 +223,10 @@ Status GrpcServer::Init(ServiceInitFunction service_func,
                         config.operation_timeout_in_ms());
 
   return Status::OK();
+}
+
+Status GrpcServer::Init() {
+  return Init(nullptr, nullptr);
 }
 
 Status GrpcServer::ParseChannelSpec(const ServerDef& server_def,

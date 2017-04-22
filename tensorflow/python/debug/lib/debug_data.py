@@ -820,7 +820,7 @@ class DebugDumpDir(object):
     self._node_op_types[node.name] = node.op
 
     for inp in node.input:
-      if is_copy_node(inp) and node.op == "_Send":
+      if is_copy_node(inp) and (node.op == "_Send" or node.op == "_Retval"):
         self._copy_send_nodes.append(node.name)
 
       if inp.startswith("^"):

@@ -20,11 +20,12 @@ from __future__ import print_function
 
 import collections
 import functools
-import inspect
 import re
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
@@ -59,7 +60,7 @@ def _validate_deprecation_args(date, instructions):
 
 def _call_location():
   """Returns call location given level up from current call."""
-  frame = inspect.currentframe()
+  frame = tf_inspect.currentframe()
   if frame:
     # CPython internals are available, use them for performance.
     # walk back two frames to get to deprecated function caller.
@@ -69,7 +70,7 @@ def _call_location():
     return '%s:%d' % (frame.f_code.co_filename, frame.f_lineno)
   else:
     # Slow fallback path
-    stack = inspect.stack(0)  # 0 avoids generating unused context
+    stack = tf_inspect.stack(0)  # 0 avoids generating unused context
     entry = stack[2]
     return '%s:%d' % (entry[1], entry[2])
 
@@ -119,9 +120,10 @@ def deprecated(date, instructions):
           'in a future version' if date is None else ('after %s' % date),
           instructions)
       return func(*args, **kwargs)
-    new_func.__doc__ = _add_deprecated_function_notice_to_docstring(
-        func.__doc__, date, instructions)
-    return new_func
+    return tf_decorator.make_decorator(
+        func, new_func, 'deprecated',
+        _add_deprecated_function_notice_to_docstring(func.__doc__, date,
+                                                     instructions))
   return deprecated_wrapper
 
 
@@ -193,7 +195,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
     Args:
       names_to_ok_vals: dict from string arg_name to a list of values,
         possibly empty, which should not elicit a warning.
-      arg_spec: Output from inspect.getargspec on the called function.
+      arg_spec: Output from tf_inspect.getargspec on the called function.
 
     Returns:
       Dictionary from arg_name to DeprecatedArgSpec.
@@ -213,7 +215,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
     decorator_utils.validate_callable(func, 'deprecated_args')
     deprecated_arg_names = _get_arg_names_to_ok_vals()
 
-    arg_spec = inspect.getargspec(func)
+    arg_spec = tf_inspect.getargspec(func)
     deprecated_positions = _get_deprecated_positional_arguments(
         deprecated_arg_names, arg_spec)
 
@@ -260,7 +262,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
     def new_func(*args, **kwargs):
       """Deprecation wrapper."""
       invalid_args = []
-      named_args = inspect.getcallargs(func, *args, **kwargs)
+      named_args = tf_inspect.getcallargs(func, *args, **kwargs)
       for arg_name, spec in iter(deprecated_positions.items()):
         if (spec.position < len(args) and
             not (spec.has_ok_value and
@@ -285,9 +287,9 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
             'in a future version' if date is None else ('after %s' % date),
             instructions)
       return func(*args, **kwargs)
-    new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
-        func.__doc__, date, instructions)
-    return new_func
+    return tf_decorator.make_decorator(func, new_func, 'deprecated',
+                                       _add_deprecated_arg_notice_to_docstring(
+                                           func.__doc__, date, instructions))
   return deprecated_wrapper
 
 
@@ -332,7 +334,7 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
     @functools.wraps(func)
     def new_func(*args, **kwargs):
       """Deprecation wrapper."""
-      named_args = inspect.getcallargs(func, *args, **kwargs)
+      named_args = tf_inspect.getcallargs(func, *args, **kwargs)
       for arg_name, arg_value in deprecated_kwargs.items():
         if arg_name in named_args and named_args[arg_name] == arg_value:
           logging.warning(
@@ -343,9 +345,9 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
               'in a future version' if date is None else ('after %s' % date),
               instructions)
       return func(*args, **kwargs)
-    new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
-        func.__doc__, date, instructions)
-    return new_func
+    return tf_decorator.make_decorator(func, new_func, 'deprecated',
+                                       _add_deprecated_arg_notice_to_docstring(
+                                           func.__doc__, date, instructions))
   return deprecated_wrapper
 
 

@@ -361,7 +361,6 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
   return Status::OK();
 }
 
-// TODO(yuanbyu): Simplify by treating Run() as "PRunSetup(); PRun()".
 Status DirectSession::Run(const NamedTensorList& inputs,
                           const std::vector<string>& output_names,
                           const std::vector<string>& target_nodes,
@@ -426,13 +425,34 @@ Status DirectSession::Run(const RunOptions& run_options,
         executor_step_count, input_tensor_names, output_names, target_nodes));
   }
 
+  // Configure a call frame for the step, which we use to feed and
+  // fetch values to and from the executors.
+  FunctionCallFrame call_frame(executors_and_keys->input_types,
+                               executors_and_keys->output_types);
+  gtl::InlinedVector<Tensor, 4> feed_args(inputs.size());
+  for (const auto& it : inputs) {
+    if (it.second.dtype() == DT_RESOURCE) {
+      Tensor tensor_from_handle;
+      TF_RETURN_IF_ERROR(
+          ResourceHandleToInputTensor(it.second, &tensor_from_handle));
+      feed_args[executors_and_keys->input_name_to_index[it.first]] =
+          tensor_from_handle;
+    } else {
+      feed_args[executors_and_keys->input_name_to_index[it.first]] = it.second;
+    }
+  }
+  Status s = call_frame.SetArgs(feed_args);
+  if (errors::IsInternal(s)) {
+    return errors::InvalidArgument(s.error_message());
+  } else if (!s.ok()) {
+    return s;
+  }
+
   // Create a run state and start execution.
   RunState run_state(args.step_id, &devices_);
   run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
   CancellationManager step_cancellation_manager;
-
-  // Send inputs.
-  TF_RETURN_IF_ERROR(SendInputs(inputs, executors_and_keys, run_state.rendez));
+  args.call_frame = &call_frame;
 
   // Start parallel Executors.
   const size_t num_executors = executors_and_keys->items.size();
@@ -535,8 +555,22 @@ Status DirectSession::Run(const RunOptions& run_options,
   }
 
   // Receive outputs.
-  TF_RETURN_IF_ERROR(
-      RecvOutputs(output_names, executors_and_keys, &run_state, outputs));
+  if (outputs) {
+    std::vector<Tensor> sorted_outputs;
+    Status s = call_frame.ConsumeRetvals(&sorted_outputs);
+    if (errors::IsInternal(s)) {
+      return errors::InvalidArgument(s.error_message());
+    } else if (!s.ok()) {
+      return s;
+    }
+    outputs->clear();
+    outputs->reserve(sorted_outputs.size());
+    for (const string& output_name : output_names) {
+      outputs->emplace_back(
+          std::move(sorted_outputs[executors_and_keys
+                                       ->output_name_to_index[output_name]]));
+    }
+  }
 
   // Save the output tensors of this run we choose to keep.
   TF_RETURN_IF_ERROR(
@@ -706,11 +740,11 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
       CheckFetch(inputs, output_names, executors_and_keys, run_state));
 
   // Send inputs.
-  Status s = SendInputs(inputs, executors_and_keys, run_state->rendez);
+  Status s = SendPRunInputs(inputs, executors_and_keys, run_state->rendez);
 
   // Receive outputs.
   if (s.ok()) {
-    s = RecvOutputs(output_names, executors_and_keys, run_state, outputs);
+    s = RecvPRunOutputs(output_names, executors_and_keys, run_state, outputs);
   }
 
   // Save the output tensors of this run we choose to keep.
@@ -770,16 +804,17 @@ Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
   }
 }
 
-Status DirectSession::SendInputs(const NamedTensorList& inputs,
-                                 const ExecutorsAndKeys* executors_and_keys,
-                                 IntraProcessRendezvous* rendez) {
+Status DirectSession::SendPRunInputs(const NamedTensorList& inputs,
+                                     const ExecutorsAndKeys* executors_and_keys,
+                                     IntraProcessRendezvous* rendez) {
   Status s;
   Rendezvous::ParsedKey parsed;
   // Insert the input tensors into the local rendezvous by their
   // rendezvous key.
   for (const auto& input : inputs) {
-    auto it = executors_and_keys->input_keys.find(input.first);
-    if (it == executors_and_keys->input_keys.end()) {
+    auto it =
+        executors_and_keys->input_name_to_rendezvous_key.find(input.first);
+    if (it == executors_and_keys->input_name_to_rendezvous_key.end()) {
       return errors::Internal("'", input.first, "' is not a pre-defined feed.");
     }
     const string& input_key = it->second;
@@ -808,10 +843,10 @@ Status DirectSession::SendInputs(const NamedTensorList& inputs,
   return Status::OK();
 }
 
-Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
-                                  const ExecutorsAndKeys* executors_and_keys,
-                                  RunState* run_state,
-                                  std::vector<Tensor>* outputs) {
+Status DirectSession::RecvPRunOutputs(
+    const std::vector<string>& output_names,
+    const ExecutorsAndKeys* executors_and_keys, RunState* run_state,
+    std::vector<Tensor>* outputs) {
   Status s;
   if (!output_names.empty()) {
     outputs->resize(output_names.size());
@@ -822,8 +857,9 @@ Status DirectSession::RecvOutputs(const std::vector<string>& output_names,
   for (size_t output_offset = 0; output_offset < output_names.size();
        ++output_offset) {
     const string& output_name = output_names[output_offset];
-    auto it = executors_and_keys->output_keys.find(output_name);
-    if (it == executors_and_keys->output_keys.end()) {
+    auto it =
+        executors_and_keys->output_name_to_rendezvous_key.find(output_name);
+    if (it == executors_and_keys->output_name_to_rendezvous_key.end()) {
       return errors::Internal("'", output_name,
                               "' is not a pre-defined fetch.");
     }
@@ -987,14 +1023,16 @@ Status DirectSession::GetOrCreateExecutors(
   options.feed_endpoints = inputs_sorted;
   options.fetch_endpoints = outputs_sorted;
   options.target_nodes = tn_sorted;
+  options.use_function_convention = !run_state_args->is_partial_run;
 
   std::shared_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
 
   // The executor_lock_ is intentionally released while executor is
   // being created.
   std::unordered_map<string, std::unique_ptr<Graph>> graphs;
-  TF_RETURN_IF_ERROR(
-      CreateGraphs(options, &graphs, &ek->flib_def, run_state_args));
+  TF_RETURN_IF_ERROR(CreateGraphs(options, &graphs, &ek->flib_def,
+                                  run_state_args, &ek->input_types,
+                                  &ek->output_types));
 
   if (run_state_args->is_partial_run) {
     ek->graph = std::move(run_state_args->graph);
@@ -1079,17 +1117,37 @@ Status DirectSession::GetOrCreateExecutors(
     item->executor.reset(executor);
   }
 
-  // Compute the rendezvous keys to avoid recomputing them every time.
-  //
-  // We always use the first device as the device name portion of the
-  // key, even if we're feeding another graph.
-  for (const string& input : inputs) {
-    ek->input_keys[input] = GetRendezvousKey(
-        input, device_set_.client_device()->attributes(), FrameAndIter(0, 0));
-  }
-  for (const string& output : outputs) {
-    ek->output_keys[output] = GetRendezvousKey(
-        output, device_set_.client_device()->attributes(), FrameAndIter(0, 0));
+  // Cache the mapping from input/output names to graph elements to
+  // avoid recomputing it every time.
+  if (!run_state_args->is_partial_run) {
+    // For regular `Run()`, we use the function calling convention, and so
+    // maintain a mapping from input/output names to
+    // argument/return-value ordinal index.
+    for (size_t i = 0; i < inputs_sorted.size(); ++i) {
+      const string& input = inputs_sorted[i];
+      ek->input_name_to_index[input] = i;
+    }
+    for (size_t i = 0; i < outputs_sorted.size(); ++i) {
+      const string& output = outputs_sorted[i];
+      ek->output_name_to_index[output] = i;
+    }
+  } else {
+    // For `PRun()`, we use the rendezvous calling convention, and so
+    // maintain a mapping from input/output names to rendezvous keys.
+    //
+    // We always use the first device as the device name portion of the
+    // key, even if we're feeding another graph.
+    for (size_t i = 0; i < inputs_sorted.size(); ++i) {
+      const string& input = inputs_sorted[i];
+      ek->input_name_to_rendezvous_key[input] = GetRendezvousKey(
+          input, device_set_.client_device()->attributes(), FrameAndIter(0, 0));
+    }
+    for (size_t i = 0; i < outputs_sorted.size(); ++i) {
+      const string& output = outputs_sorted[i];
+      ek->output_name_to_rendezvous_key[output] =
+          GetRendezvousKey(output, device_set_.client_device()->attributes(),
+                           FrameAndIter(0, 0));
+    }
   }
 
   // Reacquire the lock, try to insert into the map.
@@ -1110,7 +1168,8 @@ Status DirectSession::CreateGraphs(
     const BuildGraphOptions& subgraph_options,
     std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
-    RunStateArgs* run_state_args) {
+    RunStateArgs* run_state_args, DataTypeVector* input_types,
+    DataTypeVector* output_types) {
   mutex_lock l(graph_def_lock_);
   std::unique_ptr<SimpleClientGraph> client_graph;
 
@@ -1133,6 +1192,23 @@ Status DirectSession::CreateGraphs(
     execution_state = execution_state_.get();
     TF_RETURN_IF_ERROR(
         execution_state->BuildGraph(subgraph_options, &client_graph));
+  }
+
+  if (subgraph_options.feed_endpoints.size() !=
+      client_graph->feed_types.size()) {
+    return errors::Internal(
+        "Graph pruning failed: requested number of feed endpoints = ",
+        subgraph_options.feed_endpoints.size(),
+        " versus number of pruned feed endpoints = ",
+        client_graph->feed_types.size());
+  }
+  if (subgraph_options.fetch_endpoints.size() !=
+      client_graph->fetch_types.size()) {
+    return errors::Internal(
+        "Graph pruning failed: requested number of fetch endpoints = ",
+        subgraph_options.fetch_endpoints.size(),
+        " versus number of pruned fetch endpoints = ",
+        client_graph->fetch_types.size());
   }
 
   auto current_stateful_placements = execution_state->GetStatefulPlacements();
@@ -1240,6 +1316,8 @@ Status DirectSession::CreateGraphs(
     }
   }
   *flib_def = std::move(client_graph->flib_def);
+  std::swap(*input_types, client_graph->feed_types);
+  std::swap(*output_types, client_graph->fetch_types);
   return s;
 }
 

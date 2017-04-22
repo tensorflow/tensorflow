@@ -26,6 +26,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
 
@@ -74,7 +75,7 @@ def _zero_state_tensors(state_size, batch_size, dtype):
   return zeros
 
 
-class _RNNCell(object):
+class _RNNCell(base_layer._Layer):  # pylint: disable=protected-access
   """Abstract object representing an RNN cell.
 
   Every `RNNCell` must have the properties below and implement `__call__` with
@@ -111,7 +112,7 @@ class _RNNCell(object):
       - New state: Either a single `2-D` tensor, or a tuple of tensors matching
         the arity and shapes of `state`.
     """
-    raise NotImplementedError("Abstract method")
+    return super(_RNNCell, self).__call__(inputs, state, scope=scope)
 
   @property
   def state_size(self):
