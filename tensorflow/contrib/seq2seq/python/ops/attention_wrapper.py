@@ -454,6 +454,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         up to the next cell in an RNN stack or to the top RNN output.
       name: Name to use when creating ops.
     """
+    super(AttentionWrapper, self).__init__()
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError(
           "cell must be an RNNCell, saw type: %s" % type(cell).__name__)
@@ -515,7 +516,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
                                         dtype),
           alignment_history=alignment_history)
 
-  def __call__(self, inputs, state, tiling_factor=1, scope=None):
+  def __call__(self, inputs, state, tiling_factor=1):
     """Perform a step of attention-wrapped RNN.
 
     - Step 1: Mix the `inputs` and previous step's `attention` output via
@@ -536,7 +537,6 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         tensors from the previous time step.
       tiling_factor: An integer factor for which to tile the batch dimension.
         Used with BeamSearchDecoder.
-      scope: Must be `None`.
 
     Returns:
       A tuple `(attention_or_cell_output, next_state)`, where:
@@ -548,50 +548,46 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     Raises:
       NotImplementedError: if `scope` is not `None`.
     """
-    if scope is not None:
-      raise NotImplementedError("scope not None is not supported")
+    # Step 1: Calculate the true inputs to the cell based on the
+    # previous attention value.
+    cell_inputs = self._cell_input_fn(inputs, state.attention)
+    cell_state = state.cell_state
+    cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
 
-    with variable_scope.variable_scope("attention"):
-      # Step 1: Calculate the true inputs to the cell based on the
-      # previous attention value.
-      cell_inputs = self._cell_input_fn(inputs, state.attention)
-      cell_state = state.cell_state
-      cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
+    score = self._attention_mechanism(cell_output, tiling_factor)
+    alignments = self._probability_fn(score)
 
-      score = self._attention_mechanism(cell_output, tiling_factor)
-      alignments = self._probability_fn(score)
+    # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
+    expanded_alignments = array_ops.expand_dims(alignments, 1)
+    # Context is the inner product of alignments and values along the
+    # memory time dimension.
+    # alignments shape is
+    #   [batch_size, 1, memory_time]
+    # attention_mechanism.values shape is
+    #   [batch_size, memory_time, attention_mechanism.num_units]
+    # the batched matmul is over memory_time, so the output shape is
+    #   [batch_size, 1, attention_mechanism.num_units].
+    # we then squeeze out the singleton dim.
+    attention_mechanism_values = _maybe_tile_batch(
+        self._attention_mechanism.values, tiling_factor)
 
-      # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
-      expanded_alignments = array_ops.expand_dims(alignments, 1)
-      # Context is the inner product of alignments and values along the
-      # memory time dimension.
-      # alignments shape is
-      #   [batch_size, 1, memory_time]
-      # attention_mechanism.values shape is
-      #   [batch_size, memory_time, attention_mechanism.num_units]
-      # the batched matmul is over memory_time, so the output shape is
-      #   [batch_size, 1, attention_mechanism.num_units].
-      # we then squeeze out the singleton dim.
-      attention_mechanism_values = _maybe_tile_batch(
-          self._attention_mechanism.values, tiling_factor)
+    context = math_ops.matmul(expanded_alignments, attention_mechanism_values)
+    context = array_ops.squeeze(context, [1])
 
-      context = math_ops.matmul(expanded_alignments, attention_mechanism_values)
-      context = array_ops.squeeze(context, [1])
+    attention = self._attention_layer(
+        array_ops.concat([cell_output, context], 1))
 
-      attention = self._attention_layer(
-          array_ops.concat([cell_output, context], 1))
+    if self._alignment_history:
+      alignment_history = state.alignment_history.write(
+          state.time, alignments)
+    else:
+      alignment_history = ()
 
-      if self._alignment_history:
-        alignment_history = state.alignment_history.write(
-            state.time, alignments)
-      else:
-        alignment_history = ()
-
-      next_state = AttentionWrapperState(
-          time=state.time + 1,
-          cell_state=next_cell_state,
-          attention=attention,
-          alignment_history=alignment_history)
+    next_state = AttentionWrapperState(
+        time=state.time + 1,
+        cell_state=next_cell_state,
+        attention=attention,
+        alignment_history=alignment_history)
 
     if self._output_attention:
       return attention, next_state

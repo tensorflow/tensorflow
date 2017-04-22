@@ -437,16 +437,16 @@ class MklConv2DOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-#define REGISTER_MKL_CPU(T)                                               \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2D")                               \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
-                          MklConv2DOp<CPUDevice, T, false>);              \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2DWithBias")                       \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
+#define REGISTER_MKL_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                         \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklConv2DOp<CPUDevice, T, false>);        \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")                 \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklConv2DOp<CPUDevice, T, true>);
 
 TF_CALL_float(REGISTER_MKL_CPU);

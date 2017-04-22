@@ -205,6 +205,7 @@ py_binary(
     deps = [
         "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/python",
+        "//tensorflow/python/debug:local_cli_wrapper",
     ],
 )
 

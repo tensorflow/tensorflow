@@ -408,11 +408,11 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-#define REGISTER_MKL_FILTER_KERNELS(T)                                    \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2DBackpropFilter")                 \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
+#define REGISTER_MKL_FILTER_KERNELS(T)                              \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilter")           \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklConv2DCustomBackpropFilterOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);

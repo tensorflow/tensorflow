@@ -22,30 +22,27 @@ namespace tensorflow {
 
 // static sync wrapper:
 Status VerbsUtil::SetProtoFromGPUSync(const Tensor& tensor, Device* dev,
-                              const DeviceContext* device_context,
-                              TensorProto* proto, bool is_dead) {
+                                      const DeviceContext* device_context,
+                                      TensorProto* proto, bool is_dead) {
   Notification n;
   Status status;
-  GPUUtil::SetProtoFromGPU(tensor, dev,
-                  device_context,
-                  proto, is_dead,
-                  [&n, &status](const Status& s) {
-                     status = s;
-                     n.Notify();
-                 });
+  GPUUtil::SetProtoFromGPU(tensor, dev, device_context, proto, is_dead,
+                           [&n, &status](const Status& s) {
+                             status = s;
+                             n.Notify();
+                           });
   n.WaitForNotification();
   return status;
 }
 
-//static
-string VerbsUtil::AppendStepidToKey(const string& key, 
-        int64 step_id) {
+// static
+string VerbsUtil::AppendStepidToKey(const string& key, int64 step_id) {
   return strings::StrCat(key, ";", step_id);
 }
 
 // static
-void VerbsUtil::GetKeyAndStepId(const string& key_with_step_id, 
-        string& key, int64& step_id) {
+void VerbsUtil::GetKeyAndStepId(const string& key_with_step_id, string& key,
+                                int64& step_id) {
   StringPiece s(key_with_step_id);
   // a key (with step_id) has exact 6 parts if split by ";"
   // part 1: src_device;
@@ -55,10 +52,10 @@ void VerbsUtil::GetKeyAndStepId(const string& key_with_step_id,
   // part 5: frame_iter.frame_id:frame_iter.iter_id
   // part 6: step_id
   std::vector<string> parts = str_util::Split(s, ';');
-  CHECK(parts.size()==6) << "Key with step_id must have 6 parts";
+  CHECK(parts.size() == 6) << "Key with step_id must have 6 parts";
   strings::safe_strto64(parts[5], &step_id);
-  parts.pop_back(); // remove step_id
-  key.assign(str_util::Join(parts, ";")); // stitch them together
+  parts.pop_back();                        // remove step_id
+  key.assign(str_util::Join(parts, ";"));  // stitch them together
 }
 
 }  // namespace tensorflow

@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import os
 import tempfile
 
 import numpy as np
+import six
 
 from google.protobuf import text_format
 
@@ -38,6 +40,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import layers
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import init_ops
@@ -262,7 +265,119 @@ def model_fn_global_step_incrementer(features, labels, mode):
       train_op=state_ops.assign_add(global_step, 1))
 
 
+def _estimator_spec(
+    expected_features, expected_labels, actual_features, actual_labels, mode):
+  assert_ops = tuple([
+      check_ops.assert_equal(
+          expected_features[k], actual_features[k], name='assert_%s' % k)
+      for k in expected_features
+  ] + [
+      check_ops.assert_equal(
+          expected_labels, actual_labels, name='assert_labels')
+  ])
+  with ops.control_dependencies(assert_ops):
+    return model_fn_lib.EstimatorSpec(
+        mode=mode,
+        predictions=constant_op.constant(0.),
+        loss=constant_op.constant(0.),
+        train_op=constant_op.constant(0.))
+
+
+def _make_input_fn(features, labels):
+  def _input_fn():
+    return {
+        k: constant_op.constant(v)
+        for k, v in six.iteritems(features)
+    }, constant_op.constant(labels)
+  return _input_fn
+
+
 class EstimatorTrainTest(test.TestCase):
+
+  def test_minimal_model_fn_args(self):
+    expected_features = {'x': 42., 'y': 43.}
+    expected_labels = 44.
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    def _model_fn(features, labels):
+      model_fn_call_count[0] += 1
+      self.assertItemsEqual(expected_features.keys(), features.keys())
+      return _estimator_spec(
+          expected_features, expected_labels, features, labels,
+          model_fn_lib.ModeKeys.TRAIN)
+
+    with self.assertRaisesRegexp(ValueError, 'does not include params'):
+      estimator.Estimator(model_fn=_model_fn, params={'a': 'b'})
+    est = estimator.Estimator(model_fn=_model_fn, config=run_config.RunConfig())
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(
+        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
+
+  def test_all_model_fn_args(self):
+    expected_features = {'x': 42., 'y': 43.}
+    expected_labels = 44.
+    expected_params = {'some_param': 'some_value'}
+    expected_config = run_config.RunConfig()
+    expected_config.i_am_test = True
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    # Note that args are all passed by keyword, so can be in any order.
+    def _model_fn(mode, params, features, labels, config):
+      model_fn_call_count[0] += 1
+      self.assertItemsEqual(expected_features.keys(), features.keys())
+      self.assertEqual(model_fn_lib.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_params, params)
+      self.assertTrue(config.i_am_test)
+      return _estimator_spec(
+          expected_features, expected_labels, features, labels, mode)
+
+    est = estimator.Estimator(
+        model_fn=_model_fn, params=expected_params, config=expected_config)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(
+        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
+
+  def test_partial_model_fn_args(self):
+    expected_features = {'x': 42., 'y': 43.}
+    expected_labels = 44.
+    expected_params = {'some_param': 'some_value'}
+    expected_config = run_config.RunConfig()
+    expected_config.i_am_test = True
+    expected_foo = 45.
+    expected_bar = 46.
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    def _model_fn(features, labels, foo, mode, params, config, bar):
+      model_fn_call_count[0] += 1
+      self.assertEqual(expected_foo, foo)
+      self.assertEqual(expected_bar, bar)
+      self.assertItemsEqual(expected_features.keys(), features.keys())
+      self.assertEqual(model_fn_lib.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_params, params)
+      self.assertTrue(config.i_am_test)
+      return _estimator_spec(
+          expected_features, expected_labels, features, labels, mode)
+    partial_model_fn = functools.partial(
+        _model_fn, foo=expected_foo, bar=expected_bar)
+
+    est = estimator.Estimator(
+        model_fn=partial_model_fn, params=expected_params,
+        config=expected_config)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(
+        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
 
   def test_model_fn_must_return_estimator_spec(self):
 

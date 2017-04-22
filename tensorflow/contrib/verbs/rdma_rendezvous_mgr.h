@@ -47,12 +47,12 @@ class RdmaRendezvousMgr : public BaseRendezvousMgr {
  public:
   explicit RdmaRendezvousMgr(const WorkerEnv* env, const string& worker_name,
                              WorkerCacheInterface* worker_cache);
-  void SetRdmaMgr(RdmaMgr* rdma_mgr) {
-      rdma_mgr_ = rdma_mgr;
-  }
+  void SetRdmaMgr(RdmaMgr* rdma_mgr) { rdma_mgr_ = rdma_mgr; }
+
  protected:
   BaseRemoteRendezvous* Create(int64 step_id, const WorkerEnv* worker_env,
-                                const string& worker_name) override;
+                               const string& worker_name) override;
+
  private:
   RdmaMgr* rdma_mgr_;
   TF_DISALLOW_COPY_AND_ASSIGN(RdmaRendezvousMgr);
@@ -60,5 +60,5 @@ class RdmaRendezvousMgr : public BaseRendezvousMgr {
 
 }  // end namespace tensorflow
 
-#endif // TENSORFLOW_USE_VERBS
+#endif  // TENSORFLOW_USE_VERBS
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_RENDEZVOUS_MGR_H_
