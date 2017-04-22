@@ -2394,16 +2394,33 @@ REGISTER_OP("PartialSum")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically sum over the first dimension of a tensor according to start and end
-indices specified at "index". For example if input is
-[[1,1,1],[10,10,10],[100,100,100],[1000,1000,1000]] and index is [[0,1],[1,1],[0,2]],
-the the output will be [[1,1,1],[0,0,0],[11,11,11]]. The data must be at least rank
-one. The indices must be of shape (?,2) where the first column is start indices and
-the second column is end indices. The end index is not included in the sum, which
-means, if you want to do a sum over 0,1,2, the you should have start index 0 and end
-index 3. If end index is smaller than or equal to start, the result will be zero.
-If end index is out of bounds, then the sum will automatically stop at the bound,
-so feel free to put a large number as your end of your index if you want to sum until
-the bound.
+indices specified at 'index'.
+
+For example:
+
+```prettyprint
+# if 'data' is [[   1,   2,   3]
+                [  40,  50,  60]
+                [ 700, 800, 900]
+                [1000,2000,3000]],
+
+and 'indices' is [[0,1]
+                  [1,1]
+                  [0,2]],
+
+the the output will be [[ 1, 2, 3]
+                        [ 0, 0, 0]
+                        [41,52,63]].
+```
+
+The data must be at least rank 1. The indices must be of shape (?,2) where the
+first column is start indices and the second column is end indices. The end indices
+are not included in the reduce operation, which means, if you want to do a reduce
+over indices 0,1,2, then you should have start index 0 and end index 3. If end
+index is smaller than or equal to start, the result will be zero. If end index is
+out of bounds, then the reduce operation will automatically stop at the bound, so
+feel free to put a large number as your end of your index if you want to do the
+reduction until the bound.
 
 data: The source of data where the computation will be taken from.
 indices: start, end indices that controls which part to be included.
@@ -2421,16 +2438,33 @@ REGISTER_OP("PartialProd")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically compute the product over the first dimension of a tensor according
-to start and end indices specified at "index". For example if input is
-[[1,2,3],[10,20,30],[100,200,300],[10,10,10]] and index is [[0,1],[1,1],[0,2]],
-the the output will be [[1,2,3],[1,1,1],[10,40,90]]. The data must be at least rank
-one. The indices must be of shape (?,2) where the first column is start indices and
-the second column is end indices. The end index is not included in the product, which
-means, if you want to do a product over 0,1,2, the you should have start index 0 and end
-index 3. If end index is smaller than or equal to start, the result will be one.
-If end index is out of bounds, then the sum will automatically stop at the bound,
-so feel free to put a large number as your end of your index if you want to multiply until
-the bound.
+to start and end indices specified at 'indices'.
+
+For example:
+
+```prettyprint
+# if 'data' is [[   1,   2,   3]
+                [  40,  50,  60]
+                [ 700, 800, 900]
+                [1000,2000,3000]],
+
+and 'indices' is [[0,1]
+                  [1,1]
+                  [0,2]],
+
+the the output will be [[ 1,  2,  3]
+                        [ 1,  1,  1]
+                        [40,100,180]].
+```
+
+he data must be at least rank 1. The indices must be of shape (?,2) where the
+first column is start indices and the second column is end indices. The end indices
+are not included in the reduce operation, which means, if you want to do a reduce
+over indices 0,1,2, then you should have start index 0 and end index 3. If end
+index is smaller than or equal to start, the result will be 1. If end index is
+out of bounds, then the reduce operation will automatically stop at the bound, so
+feel free to put a large number as your end of your index if you want to do the
+reduction until the bound.
 
 data: The source of data where the computation will be taken from.
 indices: start, end indices that controls which part to be included.
@@ -2448,16 +2482,33 @@ REGISTER_OP("PartialMax")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically compute the maximum over the first dimension of a tensor according
-to start and end indices specified at "index". For example if input is
-[[1,2,3],[10,20,30],[100,200,300],[10,10,10]] and index is [[0,1],[1,1],[0,2]],
-the the output will be [[1,2,3],[-BIG_VALUE,-BIG_VALUE,-BIG_VALUE],[10,20,30]].
-The data must be at least rank one. The indices must be of shape (?,2) where the
-first column is start indices and the second column is end indices. The end index
-is not included in the maximum, which means, if you want to compute a maximum over
-0,1,2, the you should have start index 0 and end index 3. If end index is smaller
-than or equal to start, the result will be -BIG_VALUE or -inf if exist. If end index
-is out of bounds, then the maximum will automatically stop at the bound, so feel free to
-put a large number as your end of your index if you want to multiply until the bound.
+to start and end indices specified at "indices".
+
+For example:
+
+```prettyprint
+# if 'data' is [[   1,  20,   3]
+                [ 400,   5,  60]
+                [  70,   8, 900]
+                [1000,2000,3000]],
+
+and 'indices' is [[0,1]
+                  [1,1]
+                  [0,2]],
+
+the the output will be [[          1,         20,          3]
+                        [ -BIG_VALUE, -BIG_VALUE, -BIG_VALUE]
+                        [        400,         20,         60]].
+```
+
+he data must be at least rank 1. The indices must be of shape (?,2) where the
+first column is start indices and the second column is end indices. The end indices
+are not included in the reduce operation, which means, if you want to do a reduce
+over indices 0,1,2, then you should have start index 0 and end index 3. If end
+index is smaller than or equal to start, the result will be -BIG_VALUE or -inf
+if exist. If end index is out of bounds, then the reduce operation will automatically
+stop at the bound, so feel free to put a large number as your end of your index
+if you want to do the reduction until the bound.
 
 data: The source of data where the computation will be taken from.
 indices: start, end indices that controls which part to be included.
@@ -2475,16 +2526,33 @@ REGISTER_OP("PartialMin")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically compute the minimum over the first dimension of a tensor according
-to start and end indices specified at "index". For example if input is
-[[1,2,3],[10,20,30],[100,200,300],[10,10,10]] and index is [[0,1],[1,1],[0,2]],
-the the output will be [[1,2,3],[+BIG_VALUE,+BIG_VALUE,+BIG_VALUE],[1,2,3]].
-The data must be at least rank one. The indices must be of shape (?,2) where the
-first column is start indices and the second column is end indices. The end index
-is not included in the minimum, which means, if you want to compute a minimum over
-0,1,2, the you should have start index 0 and end index 3. If end index is smaller
-than or equal to start, the result will be +BIG_VALUE or +inf if exist. If end index is out
-of bounds, then the minimum will automatically stop at the bound, so feel free to
-put a large number as your end of your index if you want to multiply until the bound.
+to start and end indices specified at 'indices'.
+
+For example:
+
+```prettyprint
+# if 'data' is [[   1,  20,   3]
+                [ 400,   5,  60]
+                [  70,   8, 900]
+                [1000,2000,3000]],
+
+and 'indices' is [[0,1]
+                  [1,1]
+                  [0,2]],
+
+the the output will be [[          1,         20,          3]
+                        [ +BIG_VALUE, +BIG_VALUE, +BIG_VALUE]
+                        [          1,          5,          3]].
+```
+
+he data must be at least rank 1. The indices must be of shape (?,2) where the
+first column is start indices and the second column is end indices. The end indices
+are not included in the reduce operation, which means, if you want to do a reduce
+over indices 0,1,2, then you should have start index 0 and end index 3. If end
+index is smaller than or equal to start, the result will be +BIG_VALUE or +inf
+if exist. If end index is out of bounds, then the reduce operation will automatically
+stop at the bound, so feel free to put a large number as your end of your index
+if you want to do the reduction until the bound.
 
 data: The source of data where the computation will be taken from.
 indices: start, end indices that controls which part to be included.
