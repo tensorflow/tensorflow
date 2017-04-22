@@ -40,16 +40,16 @@ namespace tensorflow {
 
 // This pass inserts Mkl to Tf tensor conversion nodes (represented by C)
 // in the graph in between A and B, where A and B match any one
-// of the following
-// cases:
-//  1) A = layer/Op that generates output in Mkl format and,
-//     B = layer/Op that does not accept input in Mkl format and,
+// of the following cases:
+//
+//  1) A = a node that generates output in the Mkl format and,
+//     B = a node that does not accept input in the Mkl format and,
 //     A -> B (there is a direct edge between A and B, then
 //     We will insert C such that A->C->B.
 //
-//  2) A = layer/Op that generates output in Mkl format and,
-//     B = NULL (in other words, A is the last layer in the graph), then
-//     We will insert C such that A->C->B. (C will be the last layer.)
+//  2) A = a node that generates output in the Mkl format and,
+//     B = NULL (in other words, A is the last node in the graph), then
+//     We will insert C such that A->C->B. (C will be the last node.)
 //
 //  Note that case 1 applies to all outputs of A that are input to B.
 //  In other words, the conversions will be required for every output
@@ -59,9 +59,9 @@ namespace tensorflow {
 //  do the conversion for A1 and A2 only. We do not need to do any conversion
 //  for A3.
 //
-// This pass relies on layers registering themselves about their Mkl compliant.
-// Mkl compliant layer can accept inputs in Mkl format, and produce output in
-// Mkl format. Non-compliant layer accepts inputs and outputs in
+// This pass relies on ops registering themselves about their Mkl compliance.
+// An Mkl-compliant op can accept inputs in the Mkl format, and produce outputs
+// in the Mkl format. Non-compliant ops accept inputs and outputs in the
 // TensorFlow format.
 //
 class MklToTfConversionPass : public GraphOptimizationPass {
@@ -84,7 +84,7 @@ class MklToTfConversionPass : public GraphOptimizationPass {
   // @input T Datatype to use for checking input op
   // @return true if op is Mkl supported; false, otherwise.
   inline bool IsMklSupportedOp(const string& op_name, DataType T) const {
-    return mkl_layer_registry::IsMklLayer(op_name, T);
+    return mkl_op_registry::IsMklOp(op_name, T);
   }
 
   // Insert layout conversion node on the edge pointed by 'e' from graph 'g'.
@@ -129,14 +129,16 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
     return Status(error::Code::INVALID_ARGUMENT, err_msg.c_str());
   }
 
-  // Lets build the conversion node and specify src as input.
+  // Build the conversion node and specify src as input.
   TF_CHECK_OK(
-      NodeBuilder((*g)->NewName("Mkl2Tf"), "MklToTf")
+      NodeBuilder((*g)->NewName("Mkl2Tf"), "_MklToTf")
           .Input(src, e->src_output())
-          .Input(src, e->src_output() + 1)  // Mkl tensor immediately
-                                            // follows Tf tensor.
-          .Device(src->def().device())      // We want to get conversion node
-                                            // on same device as source node.
+          .Input(src, DataIndexToMetaDataIndex(
+                          e->src_output(),
+                          src->num_outputs()))  // Get an Mkl tensor slot
+                                                // from the Tf tensor slot.
+          .Device(src->def().device())  // We want to get conversion node
+                                        // on same device as source node.
           .Attr("T", src_datatype)
           .Finalize(&**g, &conversion_node));
 
@@ -149,8 +151,8 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   // We want conversion node to be on the same device as the source node.
   conversion_node->set_assigned_device_name(src->assigned_device_name());
 
-  // Set the Mkl layer label for this op.
-  conversion_node->AddAttr("_kernel", mkl_layer_registry::kMklLayerLabel);
+  // Set the Mkl op label for this op.
+  conversion_node->AddAttr("_kernel", mkl_op_registry::kMklOpLabel);
 
   // Now that we have added edge from src->conversion_node, let's add edge from
   // output of conversion_node to the dest node. Since conversion_node
@@ -173,11 +175,11 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
 
   DumpGraph("Before MklToTfConversionPass", &**g);
 
-  // Since we are looking for mkl-supported op node immediately
-  // followed by non-mkl op node, we will just iterate over edge
+  // Since we are looking for an Mkl-supported op node immediately
+  // followed by a non-Mkl op node, we will just iterate over edge
   // set of the graph.
-  // vector to maintain candiadate edges whose source and destination
-  // are candidate for inserting conversion node
+  // edge set whose source and destination are candidates for
+  // inserting conversion node
   std::vector<Edge*> candidate_edges;
 
   for (const Edge* e : (*g)->edges()) {
@@ -190,9 +192,9 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
     }
 
     // We skip adding MklToTf on an edge between X->MklToTf or
-    // MklToTf->X, where X is any layer.
-    if (src->type_string().compare("MklToTf") == 0 ||
-        dst->type_string().compare("MklToTf") == 0) {
+    // MklToTf->X, where X is any node.
+    if (src->type_string().compare("_MklToTf") == 0 ||
+        dst->type_string().compare("_MklToTf") == 0) {
       continue;
     }
 
@@ -210,7 +212,6 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
     GetNodeAttr(dst->def(), "T", &dst_datatype);
 
     // Check if src with is Mkl-compliant, while dst is not Mkl-compliant.
-
     if (IsMklSupportedOp(src->type_string(), src_datatype) &&
         !IsMklSupportedOp(dst->type_string(), dst_datatype)) {
       VLOG(1) << "MklToTfConversionPass: Scheduled nodes " << src->name()

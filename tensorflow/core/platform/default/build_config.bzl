@@ -194,13 +194,15 @@ def tf_kernel_tests_linkstatic():
 
 def tf_additional_lib_defines():
   return select({
-      "//tensorflow:with_jemalloc": ["TENSORFLOW_USE_JEMALLOC"],
+      "//tensorflow:with_jemalloc_linux_x86_64": ["TENSORFLOW_USE_JEMALLOC"],
+      "//tensorflow:with_jemalloc_linux_ppc64le":["TENSORFLOW_USE_JEMALLOC"],
       "//conditions:default": [],
   })
 
 def tf_additional_lib_deps():
   return select({
-      "//tensorflow:with_jemalloc": ["@jemalloc"],
+      "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc"],
+      "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc"],
       "//conditions:default": [],
   })
 
@@ -246,3 +248,9 @@ def tf_lib_proto_parsing_deps():
       ":protos_all_cc",
       "//tensorflow/core/platform/default/build_config:proto_parsing",
   ]
+
+def tf_additional_verbs_lib_defines():
+  return select({
+      "//tensorflow:with_verbs_support": ["TENSORFLOW_USE_VERBS"],
+      "//conditions:default": [],
+  })

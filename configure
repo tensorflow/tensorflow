@@ -94,10 +94,10 @@ write_action_env_to_bazelrc "PYTHON_BIN_PATH" "$PYTHON_BIN_PATH"
 if false; then # Disable building with MKL for now
   while [ "$TF_NEED_MKL" == "" ]; do
     fromuser=""
-    read -p "Do you wish to build TensorFlow with MKL support? [y/N] " INPUT
+    read -p "Do you wish to build TensorFlow with MKL support (experimental)? [y/N] " INPUT
     fromuser="1"
     case $INPUT in
-      [Yy]* ) echo "MKL support will be enabled for TensorFlow"; TF_NEED_MKL=1;;
+      [Yy]* ) echo "MKL support (experimental) (will be enabled for TensorFlow"; TF_NEED_MKL=1;;
       [Nn]* ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
       "" ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
       * ) echo "Invalid selection: " $INPUT;;
@@ -244,6 +244,24 @@ if [[ "$TF_ENABLE_XLA" == "1" ]]; then
   write_to_bazelrc 'build --define with_xla_support=true'
 fi
 
+# Verbs configuration
+while [ "$TF_NEED_VERBS" == "" ]; do
+  read -p "Do you wish to build TensorFlow with "\
+"VERBS support? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "VERBS support will be enabled for "\
+"TensorFlow"; TF_NEED_VERBS=1;;
+    [Nn]* ) echo "No VERBS support will be enabled for "\
+"TensorFlow"; TF_NEED_VERBS=0;;
+    "" ) echo "No VERBS support will be enabled for "\
+"TensorFlow"; TF_NEED_VERBS=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+if [[ "$TF_NEED_VERBS" == "1" ]]; then
+  write_to_bazelrc 'build --define with_verbs_support=true'
+fi
 
 # Invoke python_config and set up symlinks to python includes
 ./util/python/python_config.sh "$PYTHON_BIN_PATH"

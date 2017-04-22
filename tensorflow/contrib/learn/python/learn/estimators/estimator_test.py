@@ -52,7 +52,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -63,7 +62,6 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import compat
@@ -79,18 +77,6 @@ def boston_input_fn(num_epochs=None):
           constant_op.constant(boston.data), [-1, _BOSTON_INPUT_DIM]),
       num_epochs=num_epochs)
   labels = array_ops.reshape(constant_op.constant(boston.target), [-1, 1])
-  return features, labels
-
-
-def boston_input_fn_with_queue(num_epochs=None):
-  features, labels = boston_input_fn(num_epochs=num_epochs)
-
-  # Create a minimal queue runner.
-  fake_queue = data_flow_ops.FIFOQueue(30, dtypes.int32)
-  queue_runner = queue_runner_impl.QueueRunner(fake_queue,
-                                               [constant_op.constant(0)])
-  queue_runner_impl.add_queue_runner(queue_runner)
-
   return features, labels
 
 

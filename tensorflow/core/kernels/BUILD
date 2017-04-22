@@ -4828,6 +4828,38 @@ tf_mkl_kernel_library(
     ],
 )
 
+tf_mkl_kernel_library(
+    name = "mkl_fused_batch_norm_op",
+    srcs = ["mkl_fused_batch_norm_op.cc"],
+    deps = NN_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_concat_op",
+    prefix = "mkl_concat_op",
+    deps = ARRAY_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_reshape_op",
+    prefix = "mkl_reshape_op",
+    deps = ARRAY_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_lrn_op",
+    prefix = "mkl_lrn_op",
+    deps = NN_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
 

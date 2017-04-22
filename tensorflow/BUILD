@@ -85,6 +85,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_ppc64le",
+    values = {"cpu": "ppc"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "debug",
     values = {
         "compilation_mode": "dbg",
@@ -108,9 +114,18 @@ config_setting(
 
 # TODO(jhseu): Enable on other platforms other than Linux.
 config_setting(
-    name = "with_jemalloc",
+    name = "with_jemalloc_linux_x86_64",
     values = {
         "cpu": "k8",
+        "define": "with_jemalloc=true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_jemalloc_linux_ppc64le",
+    values = {
+        "cpu": "ppc",
         "define": "with_jemalloc=true",
     },
     visibility = ["//visibility:public"],
@@ -131,6 +146,12 @@ config_setting(
 config_setting(
     name = "with_xla_support",
     values = {"define": "with_xla_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_verbs_support",
+    values = {"define": "with_verbs_support=true"},
     visibility = ["//visibility:public"],
 )
 
@@ -249,6 +270,7 @@ filegroup(
         "//tensorflow/contrib/tfprof/python/tools/tfprof:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
+        "//tensorflow/contrib/verbs:all_files",
         "//tensorflow/contrib/xla_tf_graph:all_files",
         "//tensorflow/core:all_files",
         "//tensorflow/core/debug:all_files",

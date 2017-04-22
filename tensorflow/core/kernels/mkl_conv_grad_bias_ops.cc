@@ -87,7 +87,7 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
     Tensor* bias_backprop = nullptr;
     MklShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(false);
-    AllocateOutputSetMklshape(context, 0, &bias_backprop, output_shape,
+    AllocateOutputSetMklShape(context, 0, &bias_backprop, output_shape,
                               output_mkl_shape);
 
     mkl_context.in_dims = 4;
@@ -251,11 +251,11 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(MklConv2DCustomBackpropBiasOp);
 };
 
-#define REGISTER_CPU_KERNELS(T)                                           \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2DWithBiasBackpropBias")           \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+#define REGISTER_CPU_KERNELS(T)                                     \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBiasBackpropBias")     \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklConv2DCustomBackpropBiasOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_CPU_KERNELS);

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-var gulp = require('gulp');
-var bower = require('gulp-bower');
+const gulp = require('gulp');
+const bower = require('gulp-bower');
 
 module.exports = function() {
   return function() {

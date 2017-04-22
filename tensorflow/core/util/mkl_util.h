@@ -75,7 +75,6 @@ class MklShape {
   void SetTfLayout(const size_t dimension, const size_t* sizes,
                    const size_t* strides) {
     dimension_ = dimension;
-
     if (dimension > 0) {  // MKl doesn't support zero dimension tensors
       sizes_ = new size_t[dimension];
       strides_ = new size_t[dimension];
@@ -140,6 +139,39 @@ class MklShape {
   const size_t* GetTfToMklDimMap() const { return tf_to_mkl_dim_map_; }
   size_t tf_dim_idx(int index) const { return tf_to_mkl_dim_map_[index]; }
 
+  // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
+  // corresponds to MKL's Channel dimension.
+  bool IsMklChannelDim(int d) const { return tf_dim_idx(d) == MklDims::C; }
+  // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
+  // corresponds to MKL's Batch dimension.
+  bool IsMklBatchDim(int d) const { return tf_dim_idx(d) == MklDims::N; }
+  // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
+  // corresponds to MKL's Width dimension.
+  bool IsMklWidthDim(int d) const { return tf_dim_idx(d) == MklDims::W; }
+  // Query TF-MKL dimension ordering map and check if Tensorflow dimension 'd'
+  // corresponds to MKL's Height dimension.
+  bool IsMklHeightDim(int d) const { return tf_dim_idx(d) == MklDims::H; }
+
+  // Check if the TF-Mkl dimension ordering map specifies if the input
+  // tensor is in NCHW format.
+  bool IsTensorInNCHWFormat() const {
+    TensorFormat data_format = FORMAT_NCHW;
+    return (IsMklBatchDim(GetTensorDimIndex<2>(data_format, 'N')) &&
+            IsMklChannelDim(GetTensorDimIndex<2>(data_format, 'C')) &&
+            IsMklHeightDim(GetTensorDimIndex<2>(data_format, 'H')) &&
+            IsMklWidthDim(GetTensorDimIndex<2>(data_format, 'W')));
+  }
+
+  // Check if the TF-Mkl dimension ordering map specifies if the input
+  // tensor is in NHWC format.
+  bool IsTensorInNHWCFormat() const {
+    TensorFormat data_format = FORMAT_NHWC;
+    return (IsMklBatchDim(GetTensorDimIndex<2>(data_format, 'N')) &&
+            IsMklChannelDim(GetTensorDimIndex<2>(data_format, 'C')) &&
+            IsMklHeightDim(GetTensorDimIndex<2>(data_format, 'H')) &&
+            IsMklWidthDim(GetTensorDimIndex<2>(data_format, 'W')));
+  }
+
   void GetConvertedFlatData(dnnLayout_t targetLayout, void* input,
                             void* output) const {
     dnnLayout_t curLayout;
@@ -194,9 +226,9 @@ class MklShape {
   (STRIDES_OFFSET(dims) + dims * sizeof(size_t))  // Location of mklLayout_
 #define TF_LAYOUT_OFFSET(dims) \
   (MKL_LAYOUT_OFFSET(dims) + SIZE_OF_MKL_DNN_BUF)  // Location of tfLayout_
-// Location of tf_to_mkl_dim_map_
 #define TF_TO_MKL_DIM_MAP_OFFSET(dims) \
-  (TF_LAYOUT_OFFSET(dims) + SIZE_OF_MKL_DNN_BUF)
+  (TF_LAYOUT_OFFSET(dims) +            \
+   SIZE_OF_MKL_DNN_BUF)  // Location of tf_to_mkl_dim_map_
 
   // TODO(agramesh1) make sure to create a const to share with rewrite pass
   // for min size of MKL metadata tensor.
@@ -265,45 +297,166 @@ class MklShape {
   size_t dimension_ = 0;
   size_t* sizes_ = nullptr;    // Required by MKL for conversions
   size_t* strides_ = nullptr;  // Required by MKL for conversions
-  // TF dimension corresponding to this MKL dimension
-  size_t* tf_to_mkl_dim_map_ = nullptr;
+  size_t* tf_to_mkl_dim_map_ =
+      nullptr;  // TF dimension corresponding to this MKL dimension
 };
 
-int inline GetTensorDataIndex(int n) {
-  return 2 * n;  // index corresponding to nth input/output tensor
+// List of MklShape objects. Used in Concat/Split layers.
+typedef std::vector<MklShape> MklShapeList;
+
+// Check if all tensors specified by MklShapes are MKL tensors.
+inline bool AreAllMklTensors(const MklShapeList& shapes) {
+  for (auto& s : shapes) {
+    if (!s.IsMklTensor()) {
+      return false;
+    }
+  }
+  return true;
 }
 
-int inline GetTensorMetaDataIndex(int n) {
-  // index corresponding to meta data of nth input/output tensor
-  return 2 * n + 1;
+template <typename T>
+inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
+                             const MklShape& mkl_shape) {
+  Tensor output_tensor;
+  TensorShape output_shape;
+
+  for (size_t j = 0; j < mkl_shape.GetDimension(); j++) {
+    // Outermost to innermost dimension
+    output_shape.AddDim(mkl_shape.GetSizes()[mkl_shape.tf_dim_idx(j)]);
+  }
+
+  // Allocate output tensor.
+  context->allocate_temp(DataTypeToEnum<T>::v(), output_shape, &output_tensor);
+
+  dnnLayout_t output_layout = static_cast<dnnLayout_t>(mkl_shape.GetTfLayout());
+  void* input_buffer = const_cast<T*>(mkl_tensor.flat<T>().data());
+  void* output_buffer = const_cast<T*>(output_tensor.flat<T>().data());
+
+  if (mkl_tensor.NumElements() != 0) {
+    mkl_shape.GetConvertedFlatData(output_layout, input_buffer, output_buffer);
+  }
+
+  return output_tensor;
 }
+
+// Since our ops are going to produce and also consume N addition tensors
+// (Mkl) for N Tensorflow tensors, we can have following different
+// orderings among these 2N tensors.
+//
+// E.g., for Tensorflow tensors A, B, and C, our ops will produce and
+// consume A_m, B_m, and C_m additionally.
+//
+// INTERLEAVED: in this case 2N tensors are interleaved. So for above
+//              example, the ordering looks like: A, A_m, B, B_m, C, C_m.
+//
+// CONTIGUOUS: in thi case N Tensorflow tensors are contiguous followed
+//             by N Mkl tensors. So for above example, the ordering looks
+//             like: A, B, C, A_m, B_m, C_m
+//
+// Following APIs map index of original Tensorflow tensors to their appropriate
+// position based on selected ordering. For contiguous ordering, we need to know
+// the total number of tensors (parameter total).
+//
+typedef enum { TENSORS_INTERLEAVED, TENSORS_CONTIGUOUS } MklTfTensorOrdering;
+// NOTE: Currently, we use contiguous ordering. If you change this, then you
+// would need to change Mkl op definitions in nn_ops.cc.
+static MklTfTensorOrdering kTensorOrdering = TENSORS_CONTIGUOUS;
+
+// Get index of MetaData tensor from index 'n' of Data tensor.
+inline int DataIndexToMetaDataIndex(int n, int total_tensors) {
+  if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
+    // For interleaved ordering, Mkl tensor follows immediately after
+    // Tensorflow tensor.
+    return n + 1;
+  } else {
+    CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+    // For contiguous ordering, Mkl tensor is n+total_tensors / 2 away.
+    return n + total_tensors / 2;
+  }
+}
+
+int inline GetTensorDataIndex(int n, int total_tensors) {
+  if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
+    return 2 * n;  // index corresponding to nth input/output tensor
+  } else {
+    CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+    return n;
+  }
+}
+
+int inline GetTensorMetaDataIndex(int n, int total_tensors) {
+  // Get index for TensorData first and then use mapping function
+  // to get TensorMetaData index from TensorData index.
+  int tidx = GetTensorDataIndex(n, total_tensors);
+  return DataIndexToMetaDataIndex(tidx, total_tensors);
+}
+
 // Get the MKL shape from the second string tensor
 inline void GetMklShape(OpKernelContext* ctext, int n, MklShape* mklshape) {
   mklshape->DeSerializeMklShape(
-      ctext->input(GetTensorMetaDataIndex(n)).flat<uint8>().data(),
-      ctext->input(GetTensorMetaDataIndex(n)).flat<uint8>().size() *
+      ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
+          .flat<uint8>()
+          .data(),
+      ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
+              .flat<uint8>()
+              .size() *
           sizeof(uint8));
 }
 
 // Gets the actual input
 inline const Tensor& MklGetInput(OpKernelContext* ctext, int n) {
-  return ctext->input(GetTensorDataIndex(n));
+  return ctext->input(GetTensorDataIndex(n, ctext->num_inputs()));
+}
+
+inline void GetMklInputList(OpKernelContext* ctext, StringPiece name,
+                            OpInputList* input_tensors) {
+  CHECK_NOTNULL(input_tensors);
+  ctext->input_list(name, input_tensors);
+}
+
+inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
+                            MklShapeList* mkl_shapes) {
+  OpInputList input_mkl_tensors;
+  GetMklInputList(ctext, strings::StrCat("mkl_", name), &input_mkl_tensors);
+
+  for (int i = 0; i < input_mkl_tensors.size(); i++) {
+    (*mkl_shapes)[i].DeSerializeMklShape(
+        input_mkl_tensors[i].flat<uint8>().data(),
+        input_mkl_tensors[i].flat<uint8>().size() * sizeof(uint8));
+  }
+}
+
+// Allocate the second output tensor that will contain
+// the MKL shape serialized
+inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
+                                      const MklShape& mkl_shape) {
+  Tensor* second_tensor = nullptr;
+  TensorShape second_shape;
+  second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mkl_shape.GetDimension()));
+  OP_REQUIRES_OK(ctext, ctext->allocate_output(
+                            GetTensorMetaDataIndex(n, ctext->num_outputs()),
+                            second_shape, &second_tensor));
+  mkl_shape.SerializeMklShape(
+      second_tensor->flat<uint8>().data(),
+      second_tensor->flat<uint8>().size() * sizeof(uint8));
 }
 
 // Allocate the output tensor, create a second output tensor that will contain
 // the MKL shape serialized
-inline void AllocateOutputSetMklshape(OpKernelContext* ctext, int n,
+inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
                                       Tensor** output,
-                                      const TensorShape& tfshape,
-                                      const MklShape& mklshape) {
+                                      const TensorShape& tf_shape,
+                                      const MklShape& mkl_shape) {
   Tensor* second_tensor = nullptr;
   TensorShape second_shape;
-  second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mklshape.GetDimension()));
+  second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mkl_shape.GetDimension()));
   OP_REQUIRES_OK(
-      ctext, ctext->allocate_output(GetTensorDataIndex(n), tfshape, output));
-  OP_REQUIRES_OK(ctext, ctext->allocate_output(GetTensorMetaDataIndex(n),
-                                               second_shape, &second_tensor));
-  mklshape.SerializeMklShape(
+      ctext, ctext->allocate_output(GetTensorDataIndex(n, ctext->num_outputs()),
+                                    tf_shape, output));
+  OP_REQUIRES_OK(ctext, ctext->allocate_output(
+                            GetTensorMetaDataIndex(n, ctext->num_outputs()),
+                            second_shape, &second_tensor));
+  mkl_shape.SerializeMklShape(
       second_tensor->flat<uint8>().data(),
       second_tensor->flat<uint8>().size() * sizeof(uint8));
 }
@@ -342,12 +495,11 @@ inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
 
 inline void MklSizesToTFSizes(OpKernelContext* context,
                               TensorFormat data_format_,
-                              const MklShape& mklshape, TensorShape* tfshape) {
-  size_t tf_dim = mklshape.GetDimension();
-  const size_t* tf_sizes = mklshape.GetSizes();
+                              const MklShape& mkl_shape,
+                              TensorShape* tf_shape) {
+  size_t tf_dim = mkl_shape.GetDimension();
+  const size_t* tf_sizes = mkl_shape.GetSizes();
 
-  // TODO(agramesh1): check if this constraint is applicable in other cases
-  // (besides BackpropInput, BackpropFilter).
   OP_REQUIRES(context, tf_dim == 4,
               errors::InvalidArgument("MKLSizesToTFSizes: size must be 4-dim"));
   std::vector<int32> sizes;
@@ -364,7 +516,7 @@ inline void MklSizesToTFSizes(OpKernelContext* context,
     sizes.push_back(tf_sizes[0]);
   }
 
-  OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(sizes, tfshape));
+  OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(sizes, tf_shape));
 }
 
 inline int32 GetMklTensorDimIndex(char dimension) {
@@ -383,38 +535,71 @@ inline int32 GetMklTensorDimIndex(char dimension) {
   }
 }
 
-inline int64 GetMklTensorDim(const MklShape& mklshape, char dimension) {
+inline int64 GetMklTensorDim(const MklShape& mkl_shape, char dimension) {
   int index = GetMklTensorDimIndex(dimension);
-  CHECK(index >= 0 && index < mklshape.GetDimension())
+  CHECK(index >= 0 && index < mkl_shape.GetDimension())
       << "Invalid index from the dimension: " << index << ", " << dimension;
-  return mklshape.dim_size(index);
+  return mkl_shape.dim_size(index);
 }
 
-namespace mkl_layer_registry {
+inline void CopyMklTensorInToOut(OpKernelContext* context, int idx_in,
+                                 int idx_out) {
+  int num_inputs = context->num_inputs();
+  int num_outputs = context->num_outputs();
+  int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
+  int idx_meta_in = GetTensorMetaDataIndex(idx_in, num_inputs);
+  int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
+  int idx_meta_out = GetTensorMetaDataIndex(idx_out, num_outputs);
 
-static const char* kMklLayerLabel = "MklLayer";
-static const char* kMklLayerLabelPattern = "label='MklLayer'";
+  const Tensor& data = context->input(idx_data_in);
+  const Tensor& meta = context->input(idx_meta_in);
+  Tensor output(data.dtype());
+  Tensor meta_output(meta.dtype());
+
+  // TODO(intel_tf): alternatively, call forward_input_to_output_with_shape(...)
+  CHECK(output.CopyFrom(data, data.shape()));
+  CHECK(meta_output.CopyFrom(meta, meta.shape()));
+  context->set_output(idx_data_out, output);
+  context->set_output(idx_meta_out, meta_output);
+}
+
+inline void CopyTFTensorInToOut(OpKernelContext* context, int idx_in,
+                                int idx_out, const TensorShape& shape) {
+  int num_inputs = context->num_inputs();
+  int num_outputs = context->num_outputs();
+  int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
+  int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
+
+  const Tensor& data = context->input(idx_data_in);
+  MklShape mkl_shape_output;
+  mkl_shape_output.SetMklTensor(false);
+  AllocateOutputSetMklShape(context, idx_out, mkl_shape_output);
+  Tensor output(data.dtype());
+  // TODO(intel_tf): alternatively, call forward_input_to_output_with_shape(...)
+  CHECK(output.CopyFrom(data, shape));
+  context->set_output(idx_data_out, output);
+}
+
+namespace mkl_op_registry {
+static const char* kMklOpLabel = "MklOp";
+static const char* kMklOpLabelPattern = "label='MklOp'";
 
 // Check whether opname with type T is registered as MKL-compliant.
 //
 // @input: name of the op
 // @input: T datatype to be used for checking op
-// @return: true if opname is registered as Mkl layer op
-static inline bool IsMklLayer(const std::string& op_name, DataType T) {
+// @return: true if opname is registered as Mkl op
+static inline bool IsMklOp(const std::string& op_name, DataType T) {
   string kernel = KernelsRegisteredForOp(op_name);
-  // Currently, MKL only supports float type for ops. So we check if
-  // the type is float. Actually, we should query kernel registration and
-  // find out if op is supported for type T. But there is no API to query
-  // kernel registration using name and type.
   bool result =
-      (kernel.find(kMklLayerLabelPattern) != string::npos) && (T == DT_FLOAT);
-  if (result == true) {
-    VLOG(1) << "mkl_layer_registry::" << op_name << " is " << kMklLayerLabel;
+      kernel.find(kMklOpLabelPattern) != string::npos && (T == DT_FLOAT);
+  if (result) {
+    VLOG(1) << "mkl_op_registry::" << op_name << " is " << kMklOpLabel;
   }
   return result;
 }
 
-}  // namespace mkl_layer_registry
+}  // namespace mkl_op_registry
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
