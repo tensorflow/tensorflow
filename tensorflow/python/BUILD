@@ -1669,6 +1669,7 @@ py_library(
     deps = [
         ":array_ops",
         ":framework_for_generated_wrappers",
+        ":layers_base",
         ":util",
     ],
 )
@@ -3240,16 +3241,34 @@ py_tests(
 )
 
 py_library(
-    name = "layers",
+    name = "layers_base",
     srcs = [
         "layers/__init__.py",
         "layers/base.py",
+        "layers/utils.py",
+    ],
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":init_ops",
+        ":util",
+        ":variable_scope",
+        ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "layers",
+    srcs = [
         "layers/convolutional.py",
         "layers/core.py",
         "layers/layers.py",
         "layers/normalization.py",
         "layers/pooling.py",
-        "layers/utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -3258,6 +3277,7 @@ py_library(
         ":framework",
         ":framework_for_generated_wrappers",
         ":init_ops",
+        ":layers_base",
         ":math_ops",
         ":nn",
         ":standard_ops",
