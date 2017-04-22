@@ -7623,10 +7623,12 @@ op {
     default_value {
       i: 0
     }
+    description: "Number of bytes in the header, defaults to 0."
   }
   attr {
     name: "record_bytes"
     type: "int"
+    description: "Number of bytes in the record."
   }
   attr {
     name: "footer_bytes"
@@ -7634,6 +7636,15 @@ op {
     default_value {
       i: 0
     }
+    description: "Number of bytes in the footer, defaults to 0."
+  }
+  attr {
+    name: "hop_bytes"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Number of bytes to hop before each read. Default of 0 means using\nrecord_bytes."
   }
   attr {
     name: "container"
@@ -7667,10 +7678,12 @@ op {
     default_value {
       i: 0
     }
+    description: "Number of bytes in the header, defaults to 0."
   }
   attr {
     name: "record_bytes"
     type: "int"
+    description: "Number of bytes in the record."
   }
   attr {
     name: "footer_bytes"
@@ -7678,6 +7691,15 @@ op {
     default_value {
       i: 0
     }
+    description: "Number of bytes in the footer, defaults to 0."
+  }
+  attr {
+    name: "hop_bytes"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Number of bytes to hop before each read. Default of 0 means using\nrecord_bytes."
   }
   attr {
     name: "container"
@@ -23120,7 +23142,7 @@ op {
   input_arg {
     name: "a_indices"
     description: "2-D.  The `indices` of the `SparseTensor`, size `[nnz, 2]` Matrix."
-    type: DT_INT64
+    type_attr: "Tindices"
   }
   input_arg {
     name: "a_values"
@@ -23144,6 +23166,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   attr {
     name: "adjoint_a"
@@ -26415,59 +26450,6 @@ op {
   }
   summary: "Computes the sum along segments of a tensor."
   description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nComputes a tensor such that\n`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such\nthat `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`\nneed not be sorted and need not cover all values in the full\nrange of valid values.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n`num_segments` should equal the number of distinct segment IDs.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/UnsortedSegmentSum.png\" alt>\n</div>"
-}
-op {
-  name: "UnsortedSegmentSum"
-  input_arg {
-    name: "data"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "segment_ids"
-    description: "A tensor whose shape is a prefix of `data.shape`."
-    type_attr: "Tindices"
-  }
-  input_arg {
-    name: "num_segments"
-    type: DT_INT32
-  }
-  output_arg {
-    name: "output"
-    description: "Has same shape as data, except for the first `segment_ids.rank`\ndimensions, which are replaced with a single dimension which has size\n`num_segments`."
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT64
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_UINT16
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
-        type: DT_HALF
-      }
-    }
-  }
-  attr {
-    name: "Tindices"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_INT32
-        type: DT_INT64
-      }
-    }
-  }
-  summary: "Computes the max along segments of a tensor."
-  description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nComputes a tensor such that\n\\\\(output_i = \\sum_j data_j\\\\) where sum is over `j` such\nthat `segment_ids[j] == i`. Unlike `SegmentSum`, `segment_ids`\nneed not be sorted and need not cover all values in the full\n  range of valid values.\n\nIf the sum is empty for a given segment ID `i`, `output[i] = 0`.\n\n`num_segments` should equal the number of distinct segment IDs.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/UnsortedSegmentSum.png\" alt>\n</div>"
 }
 op {
   name: "Unstage"
