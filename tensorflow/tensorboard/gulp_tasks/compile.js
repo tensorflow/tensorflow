@@ -27,7 +27,7 @@ const concat = require('gulp-concat');
 
 const tsProject = ts.createProject('./tsconfig.json', {
   typescript: typescript,
-  noExternalResolve: true, // opt-in for faster compilation!
+  noExternalResolve: true,  // opt-in for faster compilation!
 });
 
 /** List of components (and their external deps) that are using es6 modules. */

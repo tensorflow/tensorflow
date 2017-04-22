@@ -56,14 +56,19 @@ class GatherTreeOp : public OpKernel {
         errors::InvalidArgument("step_ids must be a 3-tensor, saw shape: ",
                                 step_ids_shape.DebugString()));
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(sequence_length.shape()),
-        errors::InvalidArgument("sequence_length must be a vector, saw shape: ",
+        ctx, TensorShapeUtils::IsMatrix(sequence_length.shape()),
+        errors::InvalidArgument("sequence_length must be a matrix, saw shape: ",
                                 sequence_length.shape().DebugString()));
     OP_REQUIRES(ctx, sequence_length.dim_size(0) == step_ids_shape.dim_size(1),
                 errors::InvalidArgument(
-                    "Inconsistent batch sizes: sequence_length.shape[1] (",
+                    "Inconsistent batch sizes: sequence_length.shape[0] (",
                     sequence_length.dim_size(0), ") != ", "step_ids.shape[1] (",
-                    step_ids_shape.dim_size(0), ")"));
+                    step_ids_shape.dim_size(1), ")"));
+    OP_REQUIRES(ctx, sequence_length.dim_size(1) == step_ids_shape.dim_size(2),
+                errors::InvalidArgument(
+                    "Inconsistent batch sizes: sequence_length.shape[1] (",
+                    sequence_length.dim_size(1), ") != ", "step_ids.shape[2] (",
+                    step_ids_shape.dim_size(2), ")"));
     OP_REQUIRES(
         ctx, step_ids_shape == parent_ids.shape(),
         errors::InvalidArgument(
@@ -74,7 +79,7 @@ class GatherTreeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, step_ids_shape, &beams));
     typename TTypes<T, 3>::ConstTensor step_ids_t = step_ids.tensor<T, 3>();
     typename TTypes<T, 3>::ConstTensor parent_ids_t = parent_ids.tensor<T, 3>();
-    typename TTypes<T>::ConstVec seq_len_t = sequence_length.vec<T>();
+    typename TTypes<T>::ConstMatrix seq_len_t = sequence_length.matrix<T>();
     typename TTypes<T, 3>::Tensor beams_t = beams->tensor<T, 3>();
     functor::GatherTree<Device, T>()(ctx, device, step_ids_t, parent_ids_t,
                                      seq_len_t, beams_t);
@@ -96,7 +101,7 @@ struct GatherTree<CPUDevice, int32> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d,
                   typename TTypes<int32, 3>::ConstTensor step_ids,
                   typename TTypes<int32, 3>::ConstTensor parent_ids,
-                  typename TTypes<int32>::ConstVec sequence_length,
+                  typename TTypes<int32>::ConstMatrix sequence_length,
                   typename TTypes<int32, 3>::Tensor beams) {
     const int64 max_time = parent_ids.dimension(0);
     const int64 batch_size = parent_ids.dimension(1);
@@ -104,15 +109,10 @@ struct GatherTree<CPUDevice, int32> {
     beams.setConstant(-1);
 
     auto DoWork = [&, ctx](int start_batch_beam, int limit_batch_beam) {
-      int32 seq_len_b = -1;
-      int32 old_batch = -1;
       for (int32 i = start_batch_beam; i < limit_batch_beam; ++i) {
         const int32 batch = i / beam_width;
         const int32 beam = i % beam_width;
-        if (batch != old_batch) {
-          seq_len_b = sequence_length(batch);
-          old_batch = batch;
-        }
+        int32 seq_len_b = sequence_length(batch, beam);
         if (seq_len_b == 0) {
           continue;
         }
@@ -148,14 +148,14 @@ struct GatherTree<CPUDevice, int32> {
 
 #if GOOGLE_CUDA
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                          \
-  template <>                                        \
-  void GatherTree<GPUDevice, T>::operator()(         \
-      OpKernelContext* ctx, const GPUDevice& d,      \
-      typename TTypes<T, 3>::ConstTensor step_ids,   \
-      typename TTypes<T, 3>::ConstTensor parent_ids, \
-      typename TTypes<T>::ConstVec sequence_length,  \
-      typename TTypes<T, 3>::Tensor beams);          \
+#define DECLARE_GPU_SPEC(T)                            \
+  template <>                                          \
+  void GatherTree<GPUDevice, T>::operator()(           \
+      OpKernelContext* ctx, const GPUDevice& d,        \
+      typename TTypes<T, 3>::ConstTensor step_ids,     \
+      typename TTypes<T, 3>::ConstTensor parent_ids,   \
+      typename TTypes<T>::ConstMatrix sequence_length, \
+      typename TTypes<T, 3>::Tensor beams);            \
   extern template struct GatherTree<GPUDevice, T>;
 
 DECLARE_GPU_SPEC(int32);

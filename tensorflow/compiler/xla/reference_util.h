@@ -395,6 +395,11 @@ class ReferenceUtil {
       const Array2D<float>& operand, const PaddingConfig& padding,
       const float pad);
 
+  // Returns the result of a 4D pad on an input array.
+  static Array4D<float> PadArray4D(const Array4D<float>& operand,
+                                   const PaddingConfig& padding,
+                                   const float pad);
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(ReferenceUtil);
 };

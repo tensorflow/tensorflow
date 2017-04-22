@@ -27,21 +27,31 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
+from tensorflow.python.platform import tf_logging as logging
 
 
-# TODO(ptucker): Per-example? Divided by batch_size? Divided by sum of weights?
 class Reduction(object):
   """Types of loss reduction."""
 
-  # Batch sum of weighted losses.
-  WEIGHTED_SUM = "weighted_sum"
+  # Un-reduced weighted losses with the same shape as input.
+  NONE = "none"
 
-  # `WEIGHTED_SUM` divided by number of non-zero weights.
-  WEIGHTED_SUM_BY_NONZERO_WEIGHTS = "weighted_sum_by_nonzero_weights"
+  # Scalar sum of `NONE`.
+  SUM = "weighted_sum"
+
+  # Scalar `SUM` divided by sum of weights.
+  MEAN = "weighted_mean"
+
+  # Scalar `SUM` divided by number of non-zero weights.
+  SUM_BY_NONZERO_WEIGHTS = "weighted_sum_by_nonzero_weights"
 
   @classmethod
   def all(cls):
-    return (cls.WEIGHTED_SUM, cls.WEIGHTED_SUM_BY_NONZERO_WEIGHTS)
+    return (
+        cls.NONE,
+        cls.SUM,
+        cls.MEAN,
+        cls.SUM_BY_NONZERO_WEIGHTS)
 
   @classmethod
   def validate(cls, key):
@@ -127,7 +137,7 @@ def _num_present(losses, weights, per_batch=False):
 
 def compute_weighted_loss(
     losses, weights=1.0, scope=None, loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Computes the weighted loss.
 
   Args:
@@ -140,7 +150,8 @@ def compute_weighted_loss(
     reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss `Tensor` of the same type as `losses`. If `reduction` is
+    `NONE`, this has the same shape as `losses`; otherwise, it is scalar.
 
   Raises:
     ValueError: If `weights` is `None` or the shape is not compatible with
@@ -156,9 +167,16 @@ def compute_weighted_loss(
       losses = math_ops.to_float(losses)
       weights = math_ops.to_float(weights)
       weighted_losses = math_ops.multiply(losses, weights)
-      loss = math_ops.reduce_sum(weighted_losses)
-      if reduction == Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS:
-        loss = _safe_mean(loss, _num_present(losses, weights))
+      if reduction == Reduction.NONE:
+        loss = weighted_losses
+      else:
+        loss = math_ops.reduce_sum(weighted_losses)
+        if reduction == Reduction.MEAN:
+          loss = _safe_mean(
+              loss,
+              math_ops.reduce_sum(array_ops.ones_like(losses) * weights))
+        elif reduction == Reduction.SUM_BY_NONZERO_WEIGHTS:
+          loss = _safe_mean(loss, _num_present(losses, weights))
 
       # Convert the result back to the input type.
       loss = math_ops.cast(loss, input_dtype)
@@ -169,7 +187,7 @@ def compute_weighted_loss(
 def absolute_difference(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Adds an Absolute Difference loss to the training procedure.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
@@ -191,7 +209,8 @@ def absolute_difference(
     reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
+    shape as `labels`; otherwise, it is scalar.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -210,7 +229,7 @@ def absolute_difference(
 def cosine_distance(
     labels, predictions, dim=None, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Adds a cosine-distance loss to the training procedure.
 
   Note that the function assumes that `predictions` and `labels` are already
@@ -228,7 +247,8 @@ def cosine_distance(
     reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
+    shape as `labels`; otherwise, it is scalar.
 
   Raises:
     ValueError: If `predictions` shape doesn't match `labels` shape, or
@@ -250,7 +270,7 @@ def cosine_distance(
 
 def hinge_loss(labels, logits, weights=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
-               reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+               reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Adds a hinge loss to the training procedure.
 
   Args:
@@ -265,7 +285,8 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
     reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
+    shape as `labels`; otherwise, it is scalar.
 
   Raises:
     ValueError: If the shapes of `logits` and `labels` don't match.
@@ -285,7 +306,7 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
 
 def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
-               reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+               reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Adds a Huber Loss term to the training procedure.
 
   For each value x in `error=labels-predictions`, the following is calculated:
@@ -320,7 +341,8 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
     reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
+    shape as `labels`; otherwise, it is scalar.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -347,7 +369,7 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
 
 def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
              loss_collection=ops.GraphKeys.LOSSES,
-             reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+             reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Adds a Log Loss term to the training procedure.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
@@ -370,7 +392,8 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
     reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
+    shape as `labels`; otherwise, it is scalar.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -474,7 +497,7 @@ def mean_pairwise_squared_error(
 def mean_squared_error(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Adds a Sum-of-Squares loss to the training procedure.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
@@ -496,7 +519,8 @@ def mean_squared_error(
     reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
+    shape as `labels`; otherwise, it is scalar.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -515,7 +539,7 @@ def mean_squared_error(
 def sigmoid_cross_entropy(
     multi_class_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Creates a cross-entropy loss using tf.nn.sigmoid_cross_entropy_with_logits.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
@@ -531,7 +555,7 @@ def sigmoid_cross_entropy(
   Args:
     multi_class_labels: `[batch_size, num_classes]` target integer labels in
       `(0, 1)`.
-    logits: `[batch_size, num_classes]` logits outputs of the network.
+    logits: Float `[batch_size, num_classes]` logits outputs of the network.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `losses` dimension).
@@ -541,7 +565,8 @@ def sigmoid_cross_entropy(
     reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss `Tensor` of the same type as `logits`. If `reduction` is
+    `NONE`, this has the same shape as `logits`; otherwise, it is scalar.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of
@@ -551,7 +576,9 @@ def sigmoid_cross_entropy(
   with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
                       (logits, multi_class_labels, weights)) as scope:
     logits = ops.convert_to_tensor(logits)
+    logging.info("logits.dtype=%s.", logits.dtype)
     multi_class_labels = math_ops.cast(multi_class_labels, logits.dtype)
+    logging.info("multi_class_labels.dtype=%s.", multi_class_labels.dtype)
     logits.get_shape().assert_is_compatible_with(multi_class_labels.get_shape())
 
     if label_smoothing > 0:
@@ -561,6 +588,7 @@ def sigmoid_cross_entropy(
     losses = nn.sigmoid_cross_entropy_with_logits(labels=multi_class_labels,
                                                   logits=logits,
                                                   name="xentropy")
+    logging.info("losses.dtype=%s.", losses.dtype)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
@@ -568,7 +596,7 @@ def sigmoid_cross_entropy(
 def softmax_cross_entropy(
     onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
@@ -593,7 +621,8 @@ def softmax_cross_entropy(
     reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss `Tensor` of the same type as `logits`. If `reduction` is
+    `NONE`, this has shape `[batch_size]`; otherwise, it is scalar.
 
   Raises:
     ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
@@ -673,7 +702,7 @@ def _remove_squeezable_dimensions(
 def sparse_softmax_cross_entropy(
     labels, logits, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Cross-entropy loss using `tf.nn.sparse_softmax_cross_entropy_with_logits`.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
@@ -696,7 +725,8 @@ def sparse_softmax_cross_entropy(
     reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss `Tensor` of the same type as `logits`. If `reduction` is
+    `NONE`, this has the same shape as `labels`; otherwise, it is scalar.
 
   Raises:
     ValueError: If the shapes of logits, labels, and weight are incompatible, or

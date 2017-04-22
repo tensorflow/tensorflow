@@ -20,8 +20,8 @@ const util = require('./gulp_tasks/util');
 
 const options = minimist(process.argv.slice(2), {
   default: {
-    p: 8000,  // port for gulp server
-    h: '0.0.0.0', // host to serve on
+    p: 8000,       // port for gulp server
+    h: '0.0.0.0',  // host to serve on
   }
 });
 

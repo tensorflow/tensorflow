@@ -379,16 +379,16 @@ void MklReluGradOp<Device, T>::Compute(OpKernelContext* context) {
 
 /* Register DNN kernels for supported operations and supported types - right now
  * it is only Relu and f32*/
-#define REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES(type)                   \
-  REGISTER_KERNEL_BUILDER(Name("MklRelu")                                 \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<type>("T")                  \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
-                          MklReluOp<CPUDevice, type>);                    \
-  REGISTER_KERNEL_BUILDER(Name("MklReluGrad")                             \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<type>("T")                  \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
+#define REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES(type)             \
+  REGISTER_KERNEL_BUILDER(Name("_MklRelu")                           \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklReluOp<CPUDevice, type>);              \
+  REGISTER_KERNEL_BUILDER(Name("_MklReluGrad")                       \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklReluGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES);
 

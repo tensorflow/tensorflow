@@ -19,11 +19,11 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_VERBS
 
 #include <infiniband/verbs.h>
-#include <memory> // for shared_ptr
-#include <cstring> // for memset
+#include <cstring>  // for memset
+#include <functional>
+#include <memory>  // for shared_ptr
 #include <queue>
 #include <string>
-#include <functional>
 #include <unordered_map>
 #include <vector>
 
@@ -37,43 +37,46 @@ namespace tensorflow {
 
 // structure to save the address of remote channels.
 struct RdmaAddress {
-      uint32_t lid;
-      uint32_t qpn;
-      uint32_t psn;
+  uint32_t lid;
+  uint32_t qpn;
+  uint32_t psn;
 };
 // structure to save information for remote memory regions.
-struct RemoteMR{
-    uint64_t remote_addr;
-    uint32_t rkey;
+struct RemoteMR {
+  uint64_t remote_addr;
+  uint32_t rkey;
 };
-enum BufferStatus {none, idle, busy};
-enum Location {local, remote};
-enum BufferType {ACK, MESSAGE, TENSOR};
-enum RdmaMessageType {RDMA_MESSAGE_ACK, 
-                      RDMA_MESSAGE_BUFFER_IDLE,
-                      RDMA_MESSAGE_BUFFER_REQUEST,
-                      RDMA_MESSAGE_BUFFER_RESPONSE,
-                      RDMA_MESSAGE_TENSOR_REQUEST,
-                      RDMA_MESSAGE_TENSOR_WRITE}; 
+enum BufferStatus { none, idle, busy };
+enum Location { local, remote };
+enum BufferType { ACK, MESSAGE, TENSOR };
+enum RdmaMessageType {
+  RDMA_MESSAGE_ACK,
+  RDMA_MESSAGE_BUFFER_IDLE,
+  RDMA_MESSAGE_BUFFER_REQUEST,
+  RDMA_MESSAGE_BUFFER_RESPONSE,
+  RDMA_MESSAGE_TENSOR_REQUEST,
+  RDMA_MESSAGE_TENSOR_WRITE
+};
 class RdmaBuffer;
 // Class that represents the Rdma Adapter.
 // Responsible for creation of the completion queue, and handling
-// of work completions. 
+// of work completions.
 class RdmaAdapter {
- friend class RdmaChannel;
- friend class RdmaBuffer;
- friend class RdmaAckBuffer;
- friend class RdmaMessageBuffer;
- friend class RdmaTensorBuffer;
- friend class RdmaMgr;
- friend class RdmaRemoteRendezvous;
+  friend class RdmaChannel;
+  friend class RdmaBuffer;
+  friend class RdmaAckBuffer;
+  friend class RdmaMessageBuffer;
+  friend class RdmaTensorBuffer;
+  friend class RdmaMgr;
+  friend class RdmaRemoteRendezvous;
+
  public:
   RdmaAdapter(const WorkerEnv* worker_env);
   ~RdmaAdapter();
   // Adapter name, e.g. mlx5_0.
   string name() const;
   void Process_CQ();
- 
+
  protected:
   static const int MAX_CONCURRENT_WRITES = 1000;
   ibv_context* context_;
@@ -94,36 +97,39 @@ class RdmaAdapter {
 // Class that represents a connection to a remote Rdma peer.
 // Responsible for connecting queue pairs.
 class RdmaChannel {
- friend class RdmaAdapter;    
- friend class RdmaBuffer;
- friend class RdmaAckBuffer;
- friend class RdmaMessageBuffer;
- friend class RdmaTensorBuffer;
- friend class RdmaMgr; 
- friend class RdmaRemoteRendezvous;
+  friend class RdmaAdapter;
+  friend class RdmaBuffer;
+  friend class RdmaAckBuffer;
+  friend class RdmaMessageBuffer;
+  friend class RdmaTensorBuffer;
+  friend class RdmaMgr;
+  friend class RdmaRemoteRendezvous;
+
  public:
-  explicit RdmaChannel(const RdmaAdapter* adapter, const string local_name, 
-          const string remote_name_);
+  explicit RdmaChannel(const RdmaAdapter* adapter, const string local_name,
+                       const string remote_name_);
   ~RdmaChannel();
   inline const RdmaAddress& self() { return self_; }
   RdmaAddress address() const;
   inline const std::vector<RdmaBuffer*>& message_buffers() const {
-      return message_buffers_;}
+    return message_buffers_;
+  }
   void Connect(const RdmaAddress& remoteAddr);
   void Connect();
   void Recv();
   RdmaBuffer* FindBuffer(const uint32_t index);
   RdmaBuffer* FindBuffer(const string& name);
-  RdmaBuffer* FindOrCreateBuffer(const string& name, 
+  RdmaBuffer* FindOrCreateBuffer(const string& name,
                                  BufferType buffer_type = TENSOR);
-  uint32_t LookupBufferIndex (const string& buffer_name);
+  uint32_t LookupBufferIndex(const string& buffer_name);
   void SetRemoteAddress(const RdmaAddress& ra, bool override);
   void InsertRecvCallback(const string& key, std::function<void()> recv_done);
   void RemoveRecvCallback(const string& key);
   void RunRecvCallback(const string& key);
   static const int kNumMessageBuffers = 4;
+
  protected:
-  const RdmaAdapter* adapter_;   
+  const RdmaAdapter* adapter_;
   RdmaAddress self_;
   string local_name_;
   string remote_name_;
@@ -151,10 +157,11 @@ class RdmaChannel {
 
 // Class that represents a buffer for Rdma writes and reads.
 class RdmaBuffer {
- friend class RdmaChannel;
- friend class RdmaAdapter;
- friend class RdmaMgr;
- friend class RdmaRemoteRendezvous;
+  friend class RdmaChannel;
+  friend class RdmaAdapter;
+  friend class RdmaMgr;
+  friend class RdmaRemoteRendezvous;
+
  public:
   explicit RdmaBuffer(RdmaChannel* channel, string name);
   virtual ~RdmaBuffer();
@@ -173,10 +180,11 @@ class RdmaBuffer {
   void FreeBuffer();
   void EnqueueItem(string Item);
   virtual void SendNextItem(){};
-  void CreateCPUBuffer(size_t size, bool lock=true);
+  void CreateCPUBuffer(size_t size, bool lock = true);
   void SetRemoteMR(RemoteMR rmi, bool override);
-  uint32_t LookupBufferIndex (const string& buffer_name) {
-    return const_cast<RdmaChannel*>(channel_)->LookupBufferIndex(buffer_name);}
+  uint32_t LookupBufferIndex(const string& buffer_name) {
+    return const_cast<RdmaChannel*>(channel_)->LookupBufferIndex(buffer_name);
+  }
   void Write(uint32_t imm_data, size_t buffer_size);
 
  protected:
@@ -188,7 +196,7 @@ class RdmaBuffer {
   ibv_mr* self_ = nullptr;
   mutex mu_;
   RemoteMR remote_;
-  std::queue <string> queue_ GUARDED_BY(mu_);
+  std::queue<string> queue_ GUARDED_BY(mu_);
   BufferStatus local_status_ GUARDED_BY(mu_) = none;
   BufferStatus remote_status_ GUARDED_BY(mu_) = none;
 };
@@ -201,8 +209,9 @@ class RdmaAckBuffer : public RdmaBuffer {
 };
 
 class RdmaMessageBuffer : public RdmaBuffer {
- friend class RdmaChannel;
- friend class RdmaAapater;
+  friend class RdmaChannel;
+  friend class RdmaAapater;
+
  public:
   explicit RdmaMessageBuffer(RdmaChannel* channel, string name);
   virtual ~RdmaMessageBuffer() override {}
@@ -228,40 +237,41 @@ struct RdmaMessage {
   DataType data_type_;
   TensorShape tensor_shape_;
   size_t tensor_bytes_;
-  
-// type|name_size|name|step_id|buffer_size|remote_addr|rkey|is_dead|...
-//   1B|    2B   | 512|  8B   |    8B     |       8B  | 4B |    1B |...
-// ...|data_type|tensor_shape|tensor_bytes|tensor_buffer
-// ...|   XB    |    XB      |    8B      |...
-// 
+
+  // type|name_size|name|step_id|buffer_size|remote_addr|rkey|is_dead|...
+  //   1B|    2B   | 512|  8B   |    8B     |       8B  | 4B |    1B |...
+  // ...|data_type|tensor_shape|tensor_bytes|tensor_buffer
+  // ...|   XB    |    XB      |    8B      |...
+  //
   static const size_t kNameCapacity = 512;
   static const size_t kTypeStartIndex = 0;
   static const size_t kNameSizeStartIndex = kTypeStartIndex + sizeof(type_);
-  static const size_t kNameStartIndex = kNameSizeStartIndex + sizeof(name_size_);
+  static const size_t kNameStartIndex =
+      kNameSizeStartIndex + sizeof(name_size_);
   static const size_t kStepIdStartIndex = kNameStartIndex + kNameCapacity;
-  static const size_t kBufferSizeStartIndex = kStepIdStartIndex 
-                                            + sizeof(step_id_);
-  static const size_t kRemoteAddrStartIndex = kBufferSizeStartIndex 
-                                            + sizeof(buffer_size_);
-  static const size_t kRkeyStartIndex = kRemoteAddrStartIndex 
-                                      + sizeof(remote_addr_);
+  static const size_t kBufferSizeStartIndex =
+      kStepIdStartIndex + sizeof(step_id_);
+  static const size_t kRemoteAddrStartIndex =
+      kBufferSizeStartIndex + sizeof(buffer_size_);
+  static const size_t kRkeyStartIndex =
+      kRemoteAddrStartIndex + sizeof(remote_addr_);
   static const size_t kIsDeadStartIndex = kRkeyStartIndex + sizeof(rkey_);
-  static const size_t kDataTypeStartIndex = kIsDeadStartIndex 
-                                          + sizeof(is_dead_);
-  static const size_t kTensorShapeStartIndex = kDataTypeStartIndex 
-                                            + sizeof(data_type_);
-  static const size_t kTensorBytesStartIndex = kTensorShapeStartIndex 
-                                             + sizeof(TensorShape);
-    static const size_t kTensorBufferStartIndex = kTensorBytesStartIndex 
-                                        + sizeof(tensor_bytes_);
+  static const size_t kDataTypeStartIndex =
+      kIsDeadStartIndex + sizeof(is_dead_);
+  static const size_t kTensorShapeStartIndex =
+      kDataTypeStartIndex + sizeof(data_type_);
+  static const size_t kTensorBytesStartIndex =
+      kTensorShapeStartIndex + sizeof(TensorShape);
+  static const size_t kTensorBufferStartIndex =
+      kTensorBytesStartIndex + sizeof(tensor_bytes_);
   static const size_t kMessageTotalBytes = kTensorBufferStartIndex;
   static const size_t kRdmaMessageBufferSize = kMessageTotalBytes;
   static const size_t kRdmaAckBufferSize = kMessageTotalBytes;
-  static string CreateMessage(const RdmaMessage & rm);
+  static string CreateMessage(const RdmaMessage& rm);
   static void ParseMessage(RdmaMessage& rm, void* buffer);
 };
 
-} // namespace tensorflow
+}  // namespace tensorflow
 
-#endif // TENSORFLOW_USE_VERBS
+#endif  // TENSORFLOW_USE_VERBS
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_H_

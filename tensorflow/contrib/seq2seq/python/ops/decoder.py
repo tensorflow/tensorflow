@@ -154,11 +154,11 @@ def dynamic_decode(decoder,
     scope: Optional variable scope to use.
 
   Returns:
-    `(final_outputs, final_state)`.
+    `(final_outputs, final_state, final_sequence_lengths)`.
 
   Raises:
     TypeError: if `decoder` is not an instance of `Decoder`.
-    ValueError: if maximum_iterations is provided but is not a scalar.
+    ValueError: if `maximum_iterations` is provided but is not a scalar.
   """
   if not isinstance(decoder, Decoder):
     raise TypeError("Expected decoder to be type Decoder, but saw: %s" %
@@ -184,6 +184,8 @@ def dynamic_decode(decoder,
     if maximum_iterations is not None:
       initial_finished = math_ops.logical_or(
           initial_finished, 0 >= maximum_iterations)
+    initial_sequence_lengths = array_ops.zeros_like(
+        initial_finished, dtype=dtypes.int32)
     initial_time = constant_op.constant(0, dtype=dtypes.int32)
 
     def _shape(batch_size, from_shape):
@@ -206,10 +208,10 @@ def dynamic_decode(decoder,
                                             decoder.output_dtype)
 
     def condition(unused_time, unused_outputs_ta, unused_state, unused_inputs,
-                  finished):
+                  finished, unused_sequence_lengths):
       return math_ops.logical_not(math_ops.reduce_all(finished))
 
-    def body(time, outputs_ta, state, inputs, finished):
+    def body(time, outputs_ta, state, inputs, finished, sequence_lengths):
       """Internal while_loop body.
 
       Args:
@@ -217,10 +219,13 @@ def dynamic_decode(decoder,
         outputs_ta: structure of TensorArray.
         state: (structure of) state tensors and TensorArrays.
         inputs: (structure of) input tensors.
-        finished: 1-D bool tensor.
+        finished: bool tensor (keeping track of what's finished).
+        sequence_lengths: int32 tensor (keeping track of time of finish).
 
       Returns:
-        `(time + 1, outputs_ta, next_state, next_inputs, next_finished)`.
+        `(time + 1, outputs_ta, next_state, next_inputs, next_finished,
+          next_sequence_lengths)`.
+        ```
       """
       (next_outputs, decoder_state, next_inputs,
        decoder_finished) = decoder.step(time, inputs, state)
@@ -228,6 +233,10 @@ def dynamic_decode(decoder,
       if maximum_iterations is not None:
         next_finished = math_ops.logical_or(
             next_finished, time + 1 >= maximum_iterations)
+      next_sequence_lengths = array_ops.where(
+          math_ops.logical_and(math_ops.logical_not(finished), next_finished),
+          array_ops.fill(array_ops.shape(sequence_lengths), time + 1),
+          sequence_lengths)
 
       nest.assert_same_structure(state, decoder_state)
       nest.assert_same_structure(outputs_ta, next_outputs)
@@ -260,26 +269,30 @@ def dynamic_decode(decoder,
 
       outputs_ta = nest.map_structure(lambda ta, out: ta.write(time, out),
                                       outputs_ta, emit)
-      return (time + 1, outputs_ta, next_state, next_inputs, next_finished)
+      return (time + 1, outputs_ta, next_state, next_inputs, next_finished,
+              next_sequence_lengths)
 
     res = control_flow_ops.while_loop(
         condition,
         body,
         loop_vars=[
             initial_time, initial_outputs_ta, initial_state, initial_inputs,
-            initial_finished
+            initial_finished, initial_sequence_lengths,
         ],
         parallel_iterations=parallel_iterations,
         swap_memory=swap_memory)
 
     final_outputs_ta = res[1]
     final_state = res[2]
+    final_sequence_lengths = res[5]
 
     final_outputs = nest.map_structure(lambda ta: ta.stack(), final_outputs_ta)
+
+    if hasattr(decoder, "finalize"):
+      final_outputs, final_state = decoder.finalize(
+          final_outputs, final_state, final_sequence_lengths)
+
     if not output_time_major:
       final_outputs = nest.map_structure(_transpose_batch_time, final_outputs)
 
-  if hasattr(decoder, "finalize"):
-    final_outputs, final_state = decoder.finalize(final_outputs, final_state)
-
-  return final_outputs, final_state
+  return final_outputs, final_state, final_sequence_lengths

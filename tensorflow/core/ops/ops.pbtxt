@@ -11540,6 +11540,57 @@ op {
   description: "result is one logical checkpoint, with one physical metadata file and renamed\ndata files.\n\nIntended for \"grouping\" multiple checkpoints in a sharded checkpoint setup.\n\nIf delete_old_dirs is true, attempts to delete recursively the dirname of each\npath in the input checkpoint_prefixes.  This is useful when those paths are non\nuser-facing temporary locations."
 }
 op {
+  name: "Mfcc"
+  input_arg {
+    name: "spectrogram"
+    description: "Typically produced by the Spectrogram op, with magnitude_squared\nset to true."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sample_rate"
+    description: "How many samples per second the source audio used."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "upper_frequency_limit"
+    type: "float"
+    default_value {
+      f: 4000
+    }
+    description: "The highest frequency to use when calculating the\nceptstrum."
+  }
+  attr {
+    name: "lower_frequency_limit"
+    type: "float"
+    default_value {
+      f: 20
+    }
+    description: "The lowest frequency to use when calculating the\nceptstrum."
+  }
+  attr {
+    name: "filterbank_channel_count"
+    type: "int"
+    default_value {
+      i: 40
+    }
+    description: "Resolution of the Mel bank used internally."
+  }
+  attr {
+    name: "dct_coefficient_count"
+    type: "int"
+    default_value {
+      i: 13
+    }
+    description: "How many output channels to produce per time slice."
+  }
+  summary: "Transforms a spectrogram into a form that\'s useful for speech recognition."
+  description: "Mel Frequency Cepstral Coefficients are a way of representing audio data that\'s\nbeen effective as an input feature for machine learning. They are created by\ntaking the spectrum of a spectrogram (a \'cepstrum\'), and discarding some of the\nhigher frequencies that are less significant to the human ear. They have a long\nhistory in the speech recognition world, and https://en.wikipedia.org/wiki/Mel-frequency_cepstrum\nis a good resource to learn more."
+}
+op {
   name: "Min"
   input_arg {
     name: "input"

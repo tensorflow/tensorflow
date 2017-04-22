@@ -38,7 +38,6 @@ static void AllocateFlags() {
   flags = new GpuCompilerFlags;
   flags->xla_gpu_embed_ir = false;
   flags->xla_cuda_data_dir = "./cuda_sdk_lib";
-  flags->xla_ptxas_path = "/usr/local/cuda/bin/ptxas";
   flag_list = new std::vector<tensorflow::Flag>({
       tensorflow::Flag(
           "xla_gpu_embed_ir", &flags->xla_gpu_embed_ir,
