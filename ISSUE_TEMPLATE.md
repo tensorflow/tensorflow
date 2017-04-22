@@ -14,15 +14,15 @@ an interesting problem, rather than being redirected to Stack Overflow.
 
 ------------------------
 
-### System Information
-- *Have I written custom code (as opposed to using a stock example script provided in TensorFlow)?*:
-- *OS Platform and Distribution (i.e. Linux Ubuntu 16.0)*:
-- *TensorFlow installed from (source or binary)?*:
-- *TensorFlow version* (use command below):
-- *Bazel version (if compiling from source)*:
-- *CUDA/cuDNN version*:
-- *GPU Model and Memory*:
-- *Exact command to reproduce*:
+### System information
+- **Have I written custom code (as opposed to using a stock example script provided in TensorFlow)**:
+- **OS Platform and Distribution (e.g., Linux Ubuntu 16.04)**:
+- **TensorFlow installed from (source or binary)**:
+- **TensorFlow version (use command below)**:
+- **Bazel version (if compiling from source)**:
+- **CUDA/cuDNN version**:
+- **GPU model and memory**:
+- **Exact command to reproduce**:
 
 You can collect some of this information using our environment capture script:
 https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh
