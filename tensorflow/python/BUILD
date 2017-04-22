@@ -3247,6 +3247,7 @@ py_library(
         "layers/base.py",
         "layers/utils.py",
     ],
+    srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
         ":control_flow_ops",
