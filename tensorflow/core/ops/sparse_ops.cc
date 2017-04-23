@@ -148,10 +148,11 @@ REGISTER_OP("SparseTensorDenseMatMul")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &a_shape));
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(a_shape, 2, &a_shape));
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(3), 2, &b));
-      TF_RETURN_IF_ERROR(c->WithRank(b, c->Rank(a_shape), &unused));
-      for (int32 i = 0; i < c->Rank(a_shape) - 2; ++i) {
-        TF_RETURN_IF_ERROR(c->Merge(c->Dim(b, i), c->Dim(a_shape, i), &unused_dim));
-      }
+      ShapeHandle a_pre;
+      ShapeHandle b_pre;
+      TF_RETURN_IF_ERROR(c->Subshape(a_shape, 0, -2, &a_pre));
+      TF_RETURN_IF_ERROR(c->Subshape(b, 0, -2, &b_pre));
+      TF_RETURN_IF_ERROR(c->Merge(a_pre, b_pre, &b_pre));
 
       bool adjoint_a;
       bool adjoint_b;
@@ -165,8 +166,8 @@ REGISTER_OP("SparseTensorDenseMatMul")
       TF_RETURN_IF_ERROR(c->Merge(inner_left, inner_right, &unused_dim));
       
       ShapeHandle output_shape;
-      TF_RETURN_IF_ERROR(c->ReplaceDim(a_shape, -2, output_left, &output_shape));
-      TF_RETURN_IF_ERROR(c->ReplaceDim(output_shape, -1, output_right, &output_shape));
+      ShapeHandle output_post = c->Matrix(output_left, output_right);
+      TF_RETURN_IF_ERROR(c->Concatenate(b_pre, output_post, &output_shape));
       c->set_output(0, output_shape);
       return Status::OK();
     })
