@@ -1,4 +1,6 @@
-Please go to Stack Overflow for help and support: http://stackoverflow.com/questions/tagged/tensorflow
+Please go to Stack Overflow for help and support:
+
+http://stackoverflow.com/questions/tagged/tensorflow
 
 If you open a GitHub issue, here is our policy:
 
@@ -19,7 +21,9 @@ If you open a GitHub issue, here is our policy:
 - **GPU model and memory**:
 - **Exact command to reproduce**:
 
-You can collect some of this information using our environment capture script: https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh
+You can collect some of this information using our environment capture script:
+
+https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh
 
 You can obtain the TensorFlow version with
 
