@@ -453,7 +453,7 @@ class GraphRewriter(object):
 
   def round_nodes_recursively(self, current_node):
     """The entry point for simple rounding quantization."""
-    if self.already_visited[current_node.name]:
+    if (current_node.name in self.already_visited) and self.already_visited[current_node.name]:
       return
     self.already_visited[current_node.name] = True
     for input_node_name in current_node.input:
@@ -1269,6 +1269,9 @@ def main(unused_args):
   graph = ops.Graph()
   with graph.as_default():
     importer.import_graph_def(tf_graph, input_map={}, name="")
+
+  for node in graph.as_graph_def().node:
+    print(node.name)
 
   quantized_input_range = None
   if FLAGS.quantized_input:
