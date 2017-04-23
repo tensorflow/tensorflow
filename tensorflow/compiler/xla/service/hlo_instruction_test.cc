@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -607,6 +608,25 @@ TEST_F(HloInstructionTest, ChainFusionOp) {
   EXPECT_THAT(fusion->operands(), ElementsAre(constant.get()));
   EXPECT_THAT(constant->users(),
               UnorderedElementsAre(fusion.get(), exp1.get()));
+}
+
+TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
+  // Create a chain of fused unary ops.
+  auto constant =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+  auto exp1 =
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant.get());
+  auto exp2 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1.get());
+  OpMetadata metadata;
+  metadata.set_op_name("tf_op");
+  exp1->set_metadata(metadata);
+  exp2->set_metadata(metadata);
+
+  auto fusion = HloInstruction::CreateFusion(
+      r0f32_, HloInstruction::FusionKind::kLoop, exp2.get());
+  auto* fused = fusion->FuseInstruction(exp1.get());
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fused->metadata()));
 }
 
 TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {

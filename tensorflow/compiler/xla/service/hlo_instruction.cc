@@ -435,6 +435,7 @@ HloInstruction::CreateSelectAndScatter(
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kFusion, shape));
   instruction->fusion_kind_ = fusion_kind;
   instruction->set_parent(fused_root->parent());
+  instruction->set_metadata(fused_root->metadata());
   instruction->CloneAndFuseInternal(fused_root);
   instruction->CheckFusionInstruction();
   return instruction;
@@ -576,8 +577,9 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       // instruction. Add it as an operand and add a corresponding fused
       // parameter instruction.
       int64 param_no = fused_parameters_.size();
-      std::unique_ptr<HloInstruction> param_instruction =
-          CreateParameter(param_no, operand->shape(), "fusion_param");
+      std::unique_ptr<HloInstruction> param_instruction = CreateParameter(
+          param_no, operand->shape(),
+          tensorflow::strings::StrCat("fusion_param.", param_no));
 
       param_instruction->parent_fusion_instruction_ = this;
       fused_param = fused_instructions_computation_->AddParameter(
@@ -858,6 +860,7 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
       CloneWithNewOperands(shape_, operands_);
   clone->name_ = name() + "." + suffix;
   clone->set_parent(parent());
+  clone->set_metadata(metadata_);
   return clone;
 }
 
@@ -1419,6 +1422,8 @@ string HloInstruction::ToString(bool compact_operands) const {
       // Do not show large constants.
       operands = "{...}";
     }
+  } else if (opcode() == HloOpcode::kParameter) {
+    operands = Printf("%lld", parameter_number_);
   } else {
     tensorflow::gtl::ArraySlice<HloInstruction*> slice(operands_);
     const int64 kMaxOperandsToShowIfCompact = 4;
@@ -1480,6 +1485,7 @@ string HloInstruction::ToString(bool compact_operands) const {
       !metadata_.source_file().empty()) {
     StrAppend(&extra, " # metadata=", metadata_.ShortDebugString());
   }
+
   return Printf("%s = %s %s(%s)%s", name().c_str(),
                 ShapeUtil::HumanStringWithLayout(shape()).c_str(),
                 ExtendedOpcodeStr().c_str(), operands.c_str(), extra.c_str());

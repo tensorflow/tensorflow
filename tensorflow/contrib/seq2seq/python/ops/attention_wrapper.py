@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A powerful dynamic attention wrapper object.
-"""
+"""A powerful dynamic attention wrapper object."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -214,12 +213,14 @@ class LuongAttention(_BaseAttentionMechanism):
     self._scale = scale
     self._name = name
 
-  def __call__(self, query):
+  def __call__(self, query, tiling_factor=1):
     """Score the query based on the keys and values.
 
     Args:
       query: Tensor of dtype matching `self.values` and shape
         `[batch_size, query_depth]`.
+      tiling_factor: An integer factor for which to tile the batch dimension.
+        Used with BeamSearchDecoder.
 
     Returns:
       score: Tensor of dtype matching `self.values` and shape
@@ -316,12 +317,14 @@ class BahdanauAttention(_BaseAttentionMechanism):
     self._normalize = normalize
     self._name = name
 
-  def __call__(self, query):
+  def __call__(self, query, tiling_factor=1):
     """Score the query based on the keys and values.
 
     Args:
       query: Tensor of dtype matching `self.values` and shape
         `[batch_size, query_depth]`.
+      tiling_factor: An integer factor for which to tile the batch dimension.
+        Used with BeamSearchDecoder.
 
     Returns:
       score: Tensor of dtype matching `self.values` and shape
@@ -332,6 +335,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
       dtype = processed_query.dtype
       # Reshape from [batch_size, ...] to [batch_size, 1, ...] for broadcasting.
       processed_query = array_ops.expand_dims(processed_query, 1)
+      keys = _maybe_tile_batch(self.keys, tiling_factor)
       v = variable_scope.get_variable(
           "attention_v", [self._num_units], dtype=dtype)
       if self._normalize:
@@ -347,10 +351,10 @@ class BahdanauAttention(_BaseAttentionMechanism):
         normed_v = g * v * math_ops.rsqrt(
             math_ops.reduce_sum(math_ops.square(v)))
         score = math_ops.reduce_sum(
-            normed_v * math_ops.tanh(self.keys + processed_query + b), [2])
+            normed_v * math_ops.tanh(keys + processed_query + b), [2])
       else:
-        score = math_ops.reduce_sum(
-            v * math_ops.tanh(self.keys + processed_query), [2])
+        score = math_ops.reduce_sum(v * math_ops.tanh(keys + processed_query),
+                                    [2])
 
     return score
 
@@ -450,6 +454,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         up to the next cell in an RNN stack or to the top RNN output.
       name: Name to use when creating ops.
     """
+    super(AttentionWrapper, self).__init__()
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError(
           "cell must be an RNNCell, saw type: %s" % type(cell).__name__)
@@ -511,7 +516,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
                                         dtype),
           alignment_history=alignment_history)
 
-  def __call__(self, inputs, state, scope=None):
+  def __call__(self, inputs, state, tiling_factor=1):
     """Perform a step of attention-wrapped RNN.
 
     - Step 1: Mix the `inputs` and previous step's `attention` output via
@@ -530,7 +535,8 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       inputs: (Possibly nested tuple of) Tensor, the input at this time step.
       state: An instance of `AttentionWrapperState` containing
         tensors from the previous time step.
-      scope: Must be `None`.
+      tiling_factor: An integer factor for which to tile the batch dimension.
+        Used with BeamSearchDecoder.
 
     Returns:
       A tuple `(attention_or_cell_output, next_state)`, where:
@@ -542,51 +548,74 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     Raises:
       NotImplementedError: if `scope` is not `None`.
     """
-    if scope is not None:
-      raise NotImplementedError("scope not None is not supported")
+    # Step 1: Calculate the true inputs to the cell based on the
+    # previous attention value.
+    cell_inputs = self._cell_input_fn(inputs, state.attention)
+    cell_state = state.cell_state
+    cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
 
-    with variable_scope.variable_scope("attention"):
-      # Step 1: Calculate the true inputs to the cell based on the
-      # previous attention value.
-      cell_inputs = self._cell_input_fn(inputs, state.attention)
-      cell_state = state.cell_state
+    score = self._attention_mechanism(cell_output, tiling_factor)
+    alignments = self._probability_fn(score)
 
-      cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
+    # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
+    expanded_alignments = array_ops.expand_dims(alignments, 1)
+    # Context is the inner product of alignments and values along the
+    # memory time dimension.
+    # alignments shape is
+    #   [batch_size, 1, memory_time]
+    # attention_mechanism.values shape is
+    #   [batch_size, memory_time, attention_mechanism.num_units]
+    # the batched matmul is over memory_time, so the output shape is
+    #   [batch_size, 1, attention_mechanism.num_units].
+    # we then squeeze out the singleton dim.
+    attention_mechanism_values = _maybe_tile_batch(
+        self._attention_mechanism.values, tiling_factor)
 
-      score = self._attention_mechanism(cell_output)
-      alignments = self._probability_fn(score)
+    context = math_ops.matmul(expanded_alignments, attention_mechanism_values)
+    context = array_ops.squeeze(context, [1])
 
-      # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
-      expanded_alignments = array_ops.expand_dims(alignments, 1)
-      # Context is the inner product of alignments and values along the
-      # memory time dimension.
-      # alignments shape is
-      #   [batch_size, 1, memory_time]
-      # attention_mechanism.values shape is
-      #   [batch_size, memory_time, attention_mechanism.num_units]
-      # the batched matmul is over memory_time, so the output shape is
-      #   [batch_size, 1, attention_mechanism.num_units].
-      # we then squeeze out the singleton dim.
-      context = math_ops.matmul(expanded_alignments,
-                                self._attention_mechanism.values)
-      context = array_ops.squeeze(context, [1])
+    attention = self._attention_layer(
+        array_ops.concat([cell_output, context], 1))
 
-      attention = self._attention_layer(
-          array_ops.concat([cell_output, context], 1))
+    if self._alignment_history:
+      alignment_history = state.alignment_history.write(
+          state.time, alignments)
+    else:
+      alignment_history = ()
 
-      if self._alignment_history:
-        alignment_history = state.alignment_history.write(
-            state.time, alignments)
-      else:
-        alignment_history = ()
-
-      next_state = AttentionWrapperState(
-          time=state.time + 1,
-          cell_state=next_cell_state,
-          attention=attention,
-          alignment_history=alignment_history)
+    next_state = AttentionWrapperState(
+        time=state.time + 1,
+        cell_state=next_cell_state,
+        attention=attention,
+        alignment_history=alignment_history)
 
     if self._output_attention:
       return attention, next_state
     else:
       return cell_output, next_state
+
+
+def _maybe_tile_batch(t, tiling_factor):
+  """Tile the tensor's batch by tiling_factor.
+
+  Here, we tile t such that it looks like [b1, b1, ..., ..., bN, bN, ...].
+
+  Args:
+    t: The tensor to tile.
+    tiling_factor: The amount to tile it.
+
+  Returns:
+    The tiled tensor.
+  """
+  if tiling_factor == 1:
+    return t
+
+  shape = t.get_shape().as_list()
+  shape = [shape[0] * tiling_factor] + shape[1:]
+  tile_values = len(shape)*[1]
+  tile_values.insert(1, tiling_factor)
+  t = array_ops.expand_dims(t, 1)
+  t = array_ops.tile(t, tile_values)
+  t = array_ops.reshape(t, shape)
+  t.set_shape(shape)
+  return t

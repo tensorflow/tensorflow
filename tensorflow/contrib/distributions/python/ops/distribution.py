@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import abc
 import contextlib
-import inspect
 import types
 
 import numpy as np
@@ -33,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import tf_inspect
 
 
 _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
@@ -154,12 +154,12 @@ class _DistributionMeta(abc.ABCMeta):
       if class_special_attr_value is None:
         # No _special method available, no need to update the docstring.
         continue
-      class_special_attr_docstring = inspect.getdoc(class_special_attr_value)
+      class_special_attr_docstring = tf_inspect.getdoc(class_special_attr_value)
       if not class_special_attr_docstring:
         # No docstring to append.
         continue
       class_attr_value = _copy_fn(base_attr_value)
-      class_attr_docstring = inspect.getdoc(base_attr_value)
+      class_attr_docstring = tf_inspect.getdoc(base_attr_value)
       if class_attr_docstring is None:
         raise ValueError(
             "Expected base class fn to contain a docstring: %s.%s"

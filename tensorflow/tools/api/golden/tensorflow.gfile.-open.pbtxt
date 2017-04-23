@@ -41,7 +41,7 @@ tf_class {
   }
   member_method {
     name: "seek"
-    argspec: "args=[\'self\', \'position\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'offset\', \'whence\', \'position\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\'], "
   }
   member_method {
     name: "size"

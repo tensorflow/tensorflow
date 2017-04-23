@@ -447,7 +447,8 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
                                      [-100.0, -100.0, 100.0]])
       labels = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
       loss = losses.sigmoid_cross_entropy(labels, logits)
-      self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
+      self.assertEquals(logits.dtype, loss.dtype)
+      self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
       self.assertAlmostEqual(0.0, loss.eval(), 3)
 
   def testLossWithSingleDimPlaceholderForLogitsAndWeights1(self):
@@ -456,6 +457,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
     weights = array_ops.ones_like(logits, dtype=dtypes.float32)
 
     loss = losses.sigmoid_cross_entropy(labels, logits, weights)
+    self.assertEquals(logits.dtype, loss.dtype)
 
     with self.test_session() as sess:
       loss = sess.run(loss,
@@ -471,6 +473,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
     weights = array_ops.ones_like(logits, dtype=dtypes.float32)
 
     loss = losses.sigmoid_cross_entropy(labels, logits, weights)
+    self.assertEquals(logits.dtype, loss.dtype)
 
     with self.test_session() as sess:
       loss = sess.run(loss,
@@ -487,7 +490,8 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
                                      [-100.0, -100.0, 100.0]])
       labels = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
       loss = losses.sigmoid_cross_entropy(labels, logits)
-      self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
+      self.assertEquals(logits.dtype, loss.dtype)
+      self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
       self.assertAlmostEqual(loss.eval(), 600.0 / 9.0, 3)
 
   def testAllWrongSigmoidWithMeasurementSpecificWeights(self):
@@ -498,7 +502,8 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       labels = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
       weights = constant_op.constant([[3, 4, 5], [2, 6, 0], [8, 0, 1]])
       loss = losses.sigmoid_cross_entropy(labels, logits, weights)
-      self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
+      self.assertEquals(logits.dtype, loss.dtype)
+      self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
       self.assertAlmostEqual(1700.0 / 7.0, loss.eval(), 3)
 
   def testMultiCorrectSigmoid(self):
@@ -507,10 +512,43 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
                                    [-100.0, 100.0, 100.0]])
     labels = constant_op.constant([[1, 0, 1], [1, 1, 0], [0, 1, 1]])
     loss = losses.sigmoid_cross_entropy(labels, logits)
-    self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
+    self.assertEquals(logits.dtype, loss.dtype)
+    self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
 
     with self.test_session():
-      self.assertAlmostEqual(loss.eval(), 0.0, 3)
+      self.assertAlmostEqual(0.0, loss.eval(), 3)
+
+  def testSigmoidFloat64(self):
+    logits = constant_op.constant((
+        (100.0, -100.0, 100.0),
+        (100.0, -100.0, 100.0),
+        (100.0, 100.0, -100.0)
+    ), dtype=dtypes.float64)
+    labels = constant_op.constant((
+        (1, 0, 1), (1, 1, 0), (0, 1, 1)
+    ), dtype=dtypes.int64)
+    loss = losses.sigmoid_cross_entropy(labels, logits)
+    self.assertEquals(logits.dtype, loss.dtype)
+
+    with self.test_session():
+      self.assertAlmostEqual(44.444, loss.eval(), 3)
+
+  def testSigmoidNoReduction(self):
+    logits = constant_op.constant((
+        (100.0, -100.0, 100.0),
+        (100.0, -100.0, 100.0),
+        (100.0, 100.0, -100.0)))
+    labels = constant_op.constant(((1, 0, 1), (1, 1, 0), (0, 1, 1)))
+    loss = losses.sigmoid_cross_entropy(
+        labels, logits, reduction=losses.Reduction.NONE)
+    self.assertEquals(logits.dtype, loss.dtype)
+
+    with self.test_session():
+      self.assertAllClose((
+          (0., 0., 0.),
+          (0., 100., 100.),
+          (100., 0., 100.)
+      ), loss.eval(), 3)
 
   def testSigmoidLabelSmoothingCorrect(self):
     with self.test_session():
@@ -530,7 +568,8 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       label_smoothing = 0.1
       loss = losses.sigmoid_cross_entropy(
           labels, logits, label_smoothing=label_smoothing)
-      self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
+      self.assertEquals(logits.dtype, loss.dtype)
+      self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
       expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
       self.assertAlmostEqual(loss.eval(), expected_value, 3)
 
@@ -541,6 +580,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       sigmoid_labels = constant_op.constant([[1, 0, 1]])
       sigmoid_loss = losses.sigmoid_cross_entropy(
           sigmoid_labels, sigmoid_logits, label_smoothing=label_smoothing)
+      self.assertEquals(sigmoid_logits.dtype, sigmoid_loss.dtype)
 
       softmax_logits = constant_op.constant(
           [[0.0, 100.0], [100.0, 0.0], [100.0, 0.0]])
@@ -1254,10 +1294,14 @@ class ComputeWeightedLossTest(test.TestCase):
         self.assertEqual(9, len(util.get_losses()))
         with self.test_session(g):
           for unweighted_loss in unweighted_losses:
-            if reduction == losses.Reduction.WEIGHTED_SUM:
+            if reduction == losses.Reduction.NONE:
+              self.assertAllClose(self._raw_losses, unweighted_loss.eval())
+            elif reduction == losses.Reduction.SUM:
               self.assertAllClose(
                   np.sum(self._raw_losses), unweighted_loss.eval())
-            else:  # losses.Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS
+            else:
+              # reduction one of losses.Reduction.MEAN and
+              # losses.Reduction.SUM_BY_NONZERO_WEIGHTS.
               self.assertAllClose(
                   np.mean(self._raw_losses), unweighted_loss.eval())
 
@@ -1341,13 +1385,20 @@ class ComputeWeightedLossTest(test.TestCase):
         with self.test_session(g):
           weighted_losses = weights * self._raw_losses
           weighted_sum = np.sum(weighted_losses)
-          if reduction == losses.Reduction.WEIGHTED_SUM:
+          if reduction == losses.Reduction.NONE:
+            self.assertAllClose(weighted_losses, weighted_loss.eval())
+          elif reduction == losses.Reduction.SUM:
             self.assertAllClose(weighted_sum, weighted_loss.eval())
-          else:  # losses.Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS
+          else:
             broadcast_weights = weights * np.ones_like(self._raw_losses)
-            self.assertAllClose(
-                weighted_sum / np.count_nonzero(broadcast_weights),
-                weighted_loss.eval())
+            if reduction == losses.Reduction.MEAN:
+              self.assertAllClose(
+                  weighted_sum / np.sum(broadcast_weights),
+                  weighted_loss.eval())
+            elif reduction == losses.Reduction.SUM_BY_NONZERO_WEIGHTS:
+              self.assertAllClose(
+                  weighted_sum / np.count_nonzero(broadcast_weights),
+                  weighted_loss.eval())
 
   def test1x1x1Weight(self):
     self._test_valid_weights((((17.0,),),))

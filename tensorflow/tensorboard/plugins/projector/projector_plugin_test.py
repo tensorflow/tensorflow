@@ -758,5 +758,43 @@ class ProjectorPluginAssetTest(test.TestCase):
         gfile.Exists(plugin_dir),
         'The projector plugin directory should not exist.')
 
+
+class LRUCacheTest(test.TestCase):
+
+  def testInvalidSize(self):
+    with self.assertRaises(ValueError):
+      projector_plugin.LRUCache(0)
+
+  def testSimpleGetAndSet(self):
+    cache = projector_plugin.LRUCache(1)
+    value = cache.get('a')
+    self.assertIsNone(value)
+    cache.set('a', 10)
+    self.assertEqual(cache.get('a'), 10)
+
+  def testErrorsWhenSettingNoneAsValue(self):
+    cache = projector_plugin.LRUCache(1)
+    with self.assertRaises(ValueError):
+      cache.set('a', None)
+
+  def testLRUReplacementPolicy(self):
+    cache = projector_plugin.LRUCache(2)
+    cache.set('a', 1)
+    cache.set('b', 2)
+    cache.set('c', 3)
+    self.assertIsNone(cache.get('a'))
+    self.assertEqual(cache.get('b'), 2)
+    self.assertEqual(cache.get('c'), 3)
+
+    # Make 'b' the most recently used.
+    cache.get('b')
+    cache.set('d', 4)
+
+    # Make sure 'c' got replaced with 'd'.
+    self.assertIsNone(cache.get('c'))
+    self.assertEqual(cache.get('b'), 2)
+    self.assertEqual(cache.get('d'), 4)
+
+
 if __name__ == '__main__':
   test.main()

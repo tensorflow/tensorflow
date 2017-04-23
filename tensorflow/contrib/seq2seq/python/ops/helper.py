@@ -57,11 +57,17 @@ def _unstack_ta(inp):
 
 @six.add_metaclass(abc.ABCMeta)
 class Helper(object):
-  """Helper interface.  Helper instances are used by SamplingDecoder."""
+  """Interface for implementing sampling in seq2seq decoders.
+
+  Helper instances are used by `BasicDecoder`.
+  """
 
   @abc.abstractproperty
   def batch_size(self):
-    """Returns a scalar int32 tensor."""
+    """Batch size of tensor returned by `sample`.
+
+    Returns a scalar int32 tensor.
+    """
     raise NotImplementedError("batch_size has not been implemented")
 
   @abc.abstractmethod

@@ -601,6 +601,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
 )

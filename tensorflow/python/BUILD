@@ -1670,6 +1670,7 @@ py_library(
     deps = [
         ":array_ops",
         ":framework_for_generated_wrappers",
+        ":layers_base",
         ":util",
     ],
 )
@@ -2380,6 +2381,39 @@ py_test(
     ],
 )
 
+py_test(
+    name = "tf_contextlib_test",
+    size = "small",
+    srcs = ["util/tf_contextlib_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+    ],
+)
+
+py_test(
+    name = "tf_decorator_test",
+    size = "small",
+    srcs = ["util/tf_decorator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+    ],
+)
+
+py_test(
+    name = "tf_inspect_test",
+    size = "small",
+    srcs = ["util/tf_inspect_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+    ],
+)
+
 py_library(
     name = "util_example_parser_configuration",
     srcs = ["util/example_parser_configuration.py"],
@@ -2908,6 +2942,7 @@ cuda_py_tests(
         "training/adagrad_da_test.py",
         "training/adagrad_test.py",
         "training/basic_loops_test.py",
+        "training/checkpoint_utils_test.py",
         "training/coordinator_test.py",
         "training/device_setter_test.py",
         "training/ftrl_test.py",
@@ -3209,15 +3244,10 @@ py_tests(
 )
 
 py_library(
-    name = "layers",
+    name = "layers_base",
     srcs = [
         "layers/__init__.py",
         "layers/base.py",
-        "layers/convolutional.py",
-        "layers/core.py",
-        "layers/layers.py",
-        "layers/normalization.py",
-        "layers/pooling.py",
         "layers/utils.py",
     ],
     srcs_version = "PY2AND3",
@@ -3227,6 +3257,31 @@ py_library(
         ":framework",
         ":framework_for_generated_wrappers",
         ":init_ops",
+        ":util",
+        ":variable_scope",
+        ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "layers",
+    srcs = [
+        "layers/convolutional.py",
+        "layers/core.py",
+        "layers/layers.py",
+        "layers/normalization.py",
+        "layers/pooling.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":control_flow_ops",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":init_ops",
+        ":layers_base",
         ":math_ops",
         ":nn",
         ":standard_ops",

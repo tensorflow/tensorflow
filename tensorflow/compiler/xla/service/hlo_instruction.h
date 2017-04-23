@@ -421,6 +421,11 @@ class HloInstruction {
     return parameter_name_;
   }
 
+  void set_parameter_name(const string& str) {
+    CHECK_EQ(HloOpcode::kParameter, opcode_);
+    parameter_name_ = str;
+  }
+
   // Returns the dimension sizes or numbers associated with this instruction.
   //
   // Precondition: opcode() is one of: concatenate, reduce, broadcast, reshape,
@@ -733,9 +738,9 @@ class HloInstruction {
   // instruction to make it a bitcast.
   bool CouldBeBitcast() const;
 
-  // Sets param_no for this Parameter instruction.
+  // Sets the parent fusion instruction for this instruction.
   //
-  // Precondition: opcode() == HloOpcode::kParameter
+  // Precondition: opcode() == HloOpcode::kFusion
   void SetParentFusion(HloInstruction* fusion_instruction) {
     CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
     parent_fusion_instruction_ = fusion_instruction;

@@ -25,7 +25,6 @@ from __future__ import print_function
 
 import copy
 import functools
-import inspect
 import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
@@ -36,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 
 
 class _Layer(object):
@@ -280,8 +280,7 @@ class _Layer(object):
       inputs: input tensor(s).
       *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.
-        **Note**, the kwarg 'scope' is reserved for use by the Layer.
-
+        **Note**: kwarg `scope` is reserved for use by the layer.
     Returns:
       Output tensor(s).
     """
@@ -329,6 +328,8 @@ class _Layer(object):
           else:
             self.build(input_shapes)
           self._built = True
+        if 'scope' in tf_inspect.getargspec(self.call).args:
+          kwargs['scope'] = scope
         outputs = self.call(inputs, *args, **kwargs)
 
         # Apply activity regularization.
@@ -366,19 +367,20 @@ class _Layer(object):
         setattr(result, k, copy.deepcopy(v, memo))
     return result
 
-  def apply(self, inputs, **kwargs):
+  def apply(self, inputs, *args, **kwargs):
     """Apply the layer on a input.
 
     This simply wraps `self.__call__`.
 
     Arguments:
       inputs: Input tensor(s).
+      *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.
 
     Returns:
       Output tensor(s).
     """
-    return self.__call__(inputs, **kwargs)
+    return self.__call__(inputs, *args, **kwargs)
 
 
 def _to_snake_case(name):

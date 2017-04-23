@@ -2612,7 +2612,7 @@ scale_after_normalization: A bool indicating whether the resulted tensor
 )doc");
 
 #ifdef INTEL_MKL
-REGISTER_OP("MklConv2D")
+REGISTER_OP("_MklConv2D")
     .Input("input: T")
     .Input("filter: T")
     .Input("mkl_input: uint8")
@@ -2632,7 +2632,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklConv2DWithBias")
+REGISTER_OP("_MklConv2DWithBias")
     .Input("input: T")
     .Input("filter: T")
     .Input("bias: T")
@@ -2654,7 +2654,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklConv2DBackpropFilter")
+REGISTER_OP("_MklConv2DBackpropFilter")
     .Input("input: T")
     .Input("filter_sizes: int32")
     .Input("out_backprop: T")
@@ -2679,7 +2679,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklConv2DWithBiasBackpropBias")
+REGISTER_OP("_MklConv2DWithBiasBackpropBias")
     .Input("out_backprop: T")
     .Input("mkl_out_backprop: uint8")
     .Output("output: T")
@@ -2695,7 +2695,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklConv2DBackpropInput")
+REGISTER_OP("_MklConv2DBackpropInput")
     .Input("input_sizes: int32")
     .Input("filter: T")
     .Input("out_backprop: T")
@@ -2720,7 +2720,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklRelu")
+REGISTER_OP("_MklRelu")
     .Input("features: T")
     .Input("mkl_features: uint8")
     .Output("activations: T")
@@ -2734,7 +2734,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklReluGrad")
+REGISTER_OP("_MklReluGrad")
     .Input("gradients: T")
     .Input("features: T")
     .Input("mkl_gradients: uint8")
@@ -2751,7 +2751,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklMaxPool")
+REGISTER_OP("_MklMaxPool")
     .Attr("T: {float, half} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -2773,7 +2773,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklMaxPoolGrad")
+REGISTER_OP("_MklMaxPoolGrad")
     .Attr("T: {float, half} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -2801,7 +2801,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklAvgPool")
+REGISTER_OP("_MklAvgPool")
     .Input("value: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
@@ -2820,7 +2820,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklAvgPoolGrad")
+REGISTER_OP("_MklAvgPoolGrad")
     .Input("orig_input_shape: int32")
     .Input("grad: T")
     .Input("mkl_orig_input: uint8")
@@ -2843,7 +2843,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklLRN")
+REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
@@ -2867,7 +2867,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklLRNGrad")
+REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
@@ -2900,7 +2900,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklFusedBatchNorm")
+REGISTER_OP("_MklFusedBatchNorm")
     .Input("x: T")
     .Input("scale: T")
     .Input("offset: T")
@@ -2966,7 +2966,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklFusedBatchNormGrad")
+REGISTER_OP("_MklFusedBatchNormGrad")
     .Input("y_backprop: T")
     .Input("x: T")
     .Input("scale: T")
@@ -3048,7 +3048,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklToTf")
+REGISTER_OP("_MklToTf")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")

@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
+
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
@@ -94,22 +97,22 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
     VLOG(2) << "Variable: " << var->name();
   }
 
-  std::set<string> apply_gradients_ops = {"ApplyGradientDescent",
-                                          "ApplyProximalGradientDescent",
-                                          "ApplyAdadelta",
-                                          "ApplyAdagrad",
-                                          "ApplyProximalAdagrad",
-                                          "ApplyAdagradDA",
-                                          "ApplyFtrl",
-                                          "ApplyMomentum",
-                                          "ApplyAdam",
-                                          "ApplyRMSProp",
-                                          "ApplyCenteredRMSProp"};
+  const std::set<string> apply_gradients_ops = {"ApplyGradientDescent",
+                                                "ApplyProximalGradientDescent",
+                                                "ApplyAdadelta",
+                                                "ApplyAdagrad",
+                                                "ApplyProximalAdagrad",
+                                                "ApplyAdagradDA",
+                                                "ApplyFtrl",
+                                                "ApplyMomentum",
+                                                "ApplyAdam",
+                                                "ApplyRMSProp",
+                                                "ApplyCenteredRMSProp"};
   const NodeDef* dequeue_node = nullptr;
   for (int i = 0; i < graph_.node_size(); i++) {
     all_nodes_.insert(
         std::make_pair(graph_.node(i).name(), graph_.mutable_node(i)));
-    if (graph_.node(i).op() == "QueueDequeueManyV2") {
+    if (IsDequeueOp(graph_.node(i))) {
       dequeue_node = graph_.mutable_node(i);
     }
     if (apply_gradients_ops.find(graph_.node(i).op()) !=
@@ -241,6 +244,7 @@ void AutoParallel::BuildGraph(GraphDef* graph) {
   for (const auto& fetch : item_->fetch) {
     AddNodeControl(fetch, {control->name()}, graph);
   }
+  *(graph->mutable_library()) = item_->graph.library();
   LOG(INFO) << "Parallelized graph size: " << graph->node_size();
 }
 

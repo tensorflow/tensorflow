@@ -18,12 +18,12 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_VERBS
 
-#include "tensorflow/contrib/verbs/rdma_mgr.h"
 #include "tensorflow/contrib/verbs/grpc_verbs_service_impl.h"
+#include "tensorflow/contrib/verbs/rdma_mgr.h"
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
-#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 namespace grpc {
 class ServerBuilder;
@@ -44,27 +44,27 @@ class GrpcVerbsService : public AsyncServiceInterface {
  private:
   template <class RequestMessage, class ResponseMessage>
   using WorkerCall = Call<GrpcVerbsService, grpc::VerbsService::AsyncService,
-                        RequestMessage, ResponseMessage>;
-  void GetRemoteAddressHandler(WorkerCall
-     <GetRemoteAddressRequest, GetRemoteAddressResponse>* call);
+                          RequestMessage, ResponseMessage>;
+  void GetRemoteAddressHandler(
+      WorkerCall<GetRemoteAddressRequest, GetRemoteAddressResponse>* call);
   Status GetRemoteAddressSync(const GetRemoteAddressRequest* request,
-                          GetRemoteAddressResponse* response);
-  
-  ::grpc::ServerCompletionQueue* cq_; 
+                              GetRemoteAddressResponse* response);
+
+  ::grpc::ServerCompletionQueue* cq_;
   grpc::VerbsService::AsyncService verbs_service_;
   mutex shutdown_mu_;
   bool is_shutdown_ GUARDED_BY(shutdown_mu_);
   ::grpc::Alarm* shutdown_alarm_;
   // not owned
   RdmaMgr* rdma_mgr_;
-  const WorkerEnv*  const worker_env_;
+  const WorkerEnv* const worker_env_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcVerbsService);
 };
 
 // Create a GrpcVerbsService, then assign it to a given handle.
 void SetNewVerbsService(GrpcVerbsService** handle, const WorkerEnv* worker_env,
-     ::grpc::ServerBuilder* builder);
+                        ::grpc::ServerBuilder* builder);
 
 }  // namespace tensorflow
 

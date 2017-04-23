@@ -141,7 +141,7 @@ export class DataSet {
   constructor(
       points: DataPoint[], spriteAndMetadataInfo?: SpriteAndMetadataInfo) {
     this.points = points;
-    this.shuffledDataIndices = util.shuffle(d3.range(this.points.length));
+    this.shuffledDataIndices = util.shuffle(util.range(this.points.length));
     this.sequences = this.computeSequences(points);
     this.dim = [this.points.length, this.points[0].vector.length];
     this.spriteAndMetadataInfo = spriteAndMetadataInfo;

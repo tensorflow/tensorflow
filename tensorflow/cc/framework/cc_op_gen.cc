@@ -730,7 +730,7 @@ void OpInfo::GetOutput(string* out) const {
     // One output, no need for NameRangeMap
     if (is_list_output[0]) {
       strings::StrAppend(out,
-                         "  for (int64 i = 0; i < ret->num_outputs(); ++i)\n");
+                         "  for (int32 i = 0; i < ret->num_outputs(); ++i)\n");
       strings::StrAppend(out, "    this->", output_names[0],
                          ".push_back(Output(ret, i));\n");
     } else {
@@ -753,7 +753,7 @@ void OpInfo::GetOutput(string* out) const {
     const string arg_range = strings::StrCat(
         "_outputs_range[\"", graph_op_def.output_arg(i).name(), "\"]");
     if (is_list_output[i]) {
-      strings::StrAppend(out, "  for (int64 i = ", arg_range, ".first; i < ",
+      strings::StrAppend(out, "  for (int32 i = ", arg_range, ".first; i < ",
                          arg_range, ".second; ++i)\n");
       strings::StrAppend(out, "    this->", output_names[i],
                          ".push_back(Output(ret, i));\n");

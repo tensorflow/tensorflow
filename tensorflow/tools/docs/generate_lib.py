@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import inspect
 import os
 
 import six
 
+from tensorflow.python.util import tf_inspect
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
 from tensorflow.tools.docs import doc_generator_visitor
@@ -32,18 +32,18 @@ from tensorflow.tools.docs import pretty_docs
 from tensorflow.tools.docs import py_guide_parser
 
 
-def  _is_free_function(py_object, full_name, index):
+def _is_free_function(py_object, full_name, index):
   """Check if input is a free function (and not a class- or static method)."""
-  if not inspect.isfunction(py_object):
+  if not tf_inspect.isfunction(py_object):
     return False
 
-  # Static methods are functions to inspect (in 2.7), so check if the parent
+  # Static methods are functions to tf_inspect (in 2.7), so check if the parent
   # is a class. If there is no parent, it's not a function.
   if '.' not in full_name:
     return False
 
   parent_name = full_name.rsplit('.', 1)[0]
-  if inspect.isclass(index[parent_name]):
+  if tf_inspect.isclass(index[parent_name]):
     return False
 
   return True
@@ -87,7 +87,7 @@ def write_docs(output_dir, parser_config, yaml_toc):
       continue
 
     # Methods and some routines are documented only as part of their class.
-    if not (inspect.ismodule(py_object) or inspect.isclass(py_object) or
+    if not (tf_inspect.ismodule(py_object) or tf_inspect.isclass(py_object) or
             _is_free_function(py_object, full_name, parser_config.index)):
       continue
 
@@ -99,7 +99,7 @@ def write_docs(output_dir, parser_config, yaml_toc):
     symbol_to_file[full_name] = sitepath
 
     # For a module, remember the module for the table-of-contents
-    if inspect.ismodule(py_object):
+    if tf_inspect.ismodule(py_object):
       if full_name in parser_config.tree:
         module_children.setdefault(full_name, [])
 
@@ -109,7 +109,7 @@ def write_docs(output_dir, parser_config, yaml_toc):
       subname = str(full_name)
       while True:
         subname = subname[:subname.rindex('.')]
-        if inspect.ismodule(parser_config.index[subname]):
+        if tf_inspect.ismodule(parser_config.index[subname]):
           module_children.setdefault(subname, []).append(full_name)
           break
 
@@ -143,23 +143,23 @@ def write_docs(output_dir, parser_config, yaml_toc):
       f.write('# Automatically generated file; please do not edit\ntoc:\n')
       for module in modules:
         f.write('  - title: ' + module + '\n'
-                '    section:\n' +
-                '    - title: Overview\n' +
-                '      path: /TARGET_DOC_ROOT/VERSION/' +
-                symbol_to_file[module] + '\n')
+                '    section:\n' + '    - title: Overview\n' +
+                '      path: /TARGET_DOC_ROOT/VERSION/' + symbol_to_file[module]
+                + '\n')
 
         symbols_in_module = module_children.get(module, [])
         symbols_in_module.sort(key=lambda a: a.upper())
 
         for full_name in symbols_in_module:
-          f.write('    - title: ' + full_name[len(module)+1:] + '\n'
+          f.write('    - title: ' + full_name[len(module) + 1:] + '\n'
                   '      path: /TARGET_DOC_ROOT/VERSION/' +
                   symbol_to_file[full_name] + '\n')
 
   # Write a global index containing all full names with links.
   with open(os.path.join(output_dir, 'index.md'), 'w') as f:
-    f.write(parser.generate_global_index('TensorFlow', parser_config.index,
-                                         parser_config.reference_resolver))
+    f.write(
+        parser.generate_global_index('TensorFlow', parser_config.index,
+                                     parser_config.reference_resolver))
 
 
 def add_dict_to_dict(add_from, add_to):
@@ -198,13 +198,7 @@ def _get_default_do_not_descend_map():
       ],
       'contrib.ffmpeg': ['ffmpeg_ops'],
       'contrib.graph_editor': [
-          'edit',
-          'match',
-          'reroute',
-          'subgraph',
-          'transform',
-          'select',
-          'util'
+          'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
       ],
       'contrib.keras': ['api', 'python'],
       'contrib.layers': ['feature_column', 'summaries'],
@@ -266,7 +260,8 @@ def build_doc_index(src_dir):
   for dirpath, _, filenames in os.walk(src_dir):
     suffix = os.path.relpath(path=dirpath, start=src_dir)
     for base_name in filenames:
-      if not base_name.endswith('.md'): continue
+      if not base_name.endswith('.md'):
+        continue
       title_parser = _GetMarkdownTitle()
       title_parser.process(os.path.join(dirpath, base_name))
       key_parts = os.path.join(suffix, base_name[:-3]).split('/')
@@ -283,8 +278,8 @@ def build_doc_index(src_dir):
 class _GuideRef(object):
 
   def __init__(self, base_name, title, section_title, section_tag):
-    self.url = 'api_guides/python/' + (
-        ('%s#%s' % (base_name, section_tag)) if section_tag else base_name)
+    self.url = 'api_guides/python/' + (('%s#%s' % (base_name, section_tag))
+                                       if section_tag else base_name)
     self.link_text = (('%s > %s' % (title, section_title))
                       if section_title else title)
 
@@ -320,8 +315,9 @@ class _GenerateGuideIndex(py_guide_parser.PyGuideParser):
     """Index @{symbol} references as in the current file & section."""
     for match in parser.SYMBOL_REFERENCE_RE.finditer(line):
       val = self.index.get(match.group(1), [])
-      val.append(_GuideRef(
-          self.base_name, self.title, self.section_title, self.section_tag))
+      val.append(
+          _GuideRef(self.base_name, self.title, self.section_title,
+                    self.section_tag))
       self.index[match.group(1)] = val
 
 
@@ -383,8 +379,8 @@ def _other_docs(src_dir, output_dir, reference_resolver):
         print('Processing doc %s...' % suffix)
         md_string = open(full_in_path).read()
 
-      output = reference_resolver.replace_references(
-          md_string, relative_path_to_root)
+      output = reference_resolver.replace_references(md_string,
+                                                     relative_path_to_root)
       with open(full_out_path, 'w') as f:
         f.write(header + output)
 
@@ -406,8 +402,7 @@ class DocGenerator(object):
         type=str,
         default=None,
         required=True,
-        help='Directory to write docs to.'
-    )
+        help='Directory to write docs to.')
 
   def add_src_dir_argument(self):
     self.argument_parser.add_argument(
@@ -415,16 +410,14 @@ class DocGenerator(object):
         type=str,
         default=None,
         required=True,
-        help='Directory with the source docs.'
-    )
+        help='Directory with the source docs.')
 
   def add_base_dir_argument(self, default_base_dir):
     self.argument_parser.add_argument(
         '--base_dir',
         type=str,
         default=default_base_dir,
-        help='Base directory to to strip from file names referenced in docs.'
-    )
+        help='Base directory to to strip from file names referenced in docs.')
 
   def parse_known_args(self):
     flags, _ = self.argument_parser.parse_known_args()
@@ -438,19 +431,6 @@ class DocGenerator(object):
 
   def set_py_modules(self, py_modules):
     self._py_modules = py_modules
-
-  def load_contrib(self):
-    """Access something in contrib so tf.contrib is properly loaded."""
-    # Without this, it ends up hidden behind lazy loading.  Requires
-    # that the caller has already called set_py_modules().
-    if self._py_modules is None:
-      raise RuntimeError(
-          'Must call set_py_modules() before running load_contrib().')
-    for name, module in self._py_modules:
-      if name == 'tf':
-        _ = module.contrib.__name__
-        return True
-    return False
 
   def py_module_names(self):
     if self._py_modules is None:

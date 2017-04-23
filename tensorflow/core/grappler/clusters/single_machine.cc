@@ -41,7 +41,10 @@ SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
   }
   CHECK_GE(num_cpu_cores, 1);
   options_.config.set_intra_op_parallelism_threads(num_cpu_cores);
-  options_.config.set_inter_op_parallelism_threads(num_cpu_cores);
+  // Create a session specific thread pool to ensure the threads are reset when
+  // the session is reset.
+  options_.config.add_session_inter_op_thread_pool()->set_num_threads(
+      num_cpu_cores);
   if (timeout_s > 0) {
     options_.config.set_operation_timeout_in_ms(timeout_s * 1000);
   }
@@ -104,7 +107,6 @@ Status SingleMachine::Run(const GraphDef& graph_def,
         for (auto node : *init_metadata_.mutable_cost_graph()->mutable_node()) {
           node.clear_compute_cost();
         }
-        metadata->MergeFrom(init_metadata_);
       }
       for (int i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
@@ -128,7 +130,10 @@ Status SingleMachine::Run(const GraphDef& graph_def,
   }
 
   TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
+
   if (metadata) {
+    // Add the costs of initialization and the queue runners.
+    metadata->MergeFrom(init_metadata_);
     return coordinator_->ExportCostGraph(metadata->mutable_cost_graph());
   } else {
     return Status::OK();

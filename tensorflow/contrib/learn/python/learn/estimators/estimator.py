@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import abc
 import copy
-import inspect
 import os
 import tempfile
 
@@ -70,6 +69,8 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import summary_io
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 AS_ITERABLE_DATE = '2016-09-15'
@@ -185,14 +186,15 @@ def _model_fn_args(fn):
   Raises:
     ValueError: if partial function has positionally bound arguments
   """
+  _, fn = tf_decorator.unwrap(fn)
   if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
     # Handle functools.partial and similar objects.
     return tuple([
-        arg for arg in inspect.getargspec(fn.func).args[len(fn.args):]
+        arg for arg in tf_inspect.getargspec(fn.func).args[len(fn.args):]
         if arg not in set(fn.keywords.keys())
     ])
   # Handle function.
-  return tuple(inspect.getargspec(fn).args)
+  return tuple(tf_inspect.getargspec(fn).args)
 
 
 def _get_replica_device_setter(config):

@@ -176,6 +176,10 @@ const std::unordered_map<string, SupportedOpType> OP_NAME_TO_SOC_OP_TYPE_MAP{
     {"RequantizationRange", SupportedOpType::REQUANTIZATION_RANGE_32},
     {"Requantize", SupportedOpType::REQUANTIZE_32_TO_8},
     {"QuantizedReshape", SupportedOpType::QUANTIZED_RESHAPE},
+    {"Add", SupportedOpType::ADD_F},
+    {"Sub", SupportedOpType::SUB_F},
+    {"Reshape", SupportedOpType::RESHAPE},
+    {"Identity", SupportedOpType::NOP},
 };
 
 /* static */ const IGraphTransferOpsDefinitions&

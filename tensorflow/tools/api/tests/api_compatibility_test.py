@@ -196,7 +196,11 @@ class ApiCompatibilityTest(test.TestCase):
   def testAPIBackwardsCompatibility(self):
     # Extract all API stuff.
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
-    traverse.traverse(tf, public_api.PublicAPIVisitor(visitor))
+
+    public_api_visitor = public_api.PublicAPIVisitor(visitor)
+    public_api_visitor.do_not_descend_map[''].append('contrib')
+    traverse.traverse(tf, public_api_visitor)
+
     proto_dict = visitor.GetProtos()
 
     # Read all golden files.
