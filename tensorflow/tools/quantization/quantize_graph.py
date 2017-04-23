@@ -1270,9 +1270,6 @@ def main(unused_args):
   with graph.as_default():
     importer.import_graph_def(tf_graph, input_map={}, name="")
 
-  for node in graph.as_graph_def().node:
-    print(node.name)
-
   quantized_input_range = None
   if FLAGS.quantized_input:
     quantized_input_range = [
