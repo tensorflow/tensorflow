@@ -64,7 +64,7 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
   EXPECT_EQ(5, output.node_size());
 
   const NodeDef& new_c = output.node(0);
-  EXPECT_EQ("ConstantFolding-c", new_c.name());
+  EXPECT_EQ("ConstantFolding/c", new_c.name());
   EXPECT_EQ("Const", new_c.op());
 
   const NodeDef& new_a = output.node(1);
@@ -78,7 +78,7 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
 
   const NodeDef& new_d = output.node(4);
   EXPECT_EQ("d", new_d.name());
-  EXPECT_EQ("ConstantFolding-c", new_d.input(1));
+  EXPECT_EQ("ConstantFolding/c", new_d.input(1));
 
   std::vector<string> fetch = {"a", "b", "c", "d"};
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
@@ -112,11 +112,11 @@ TEST_F(ConstantFoldingTest, FoldingNodeWithTwoOutputs) {
   EXPECT_EQ(6, output.node_size());
 
   const NodeDef& new_b_0 = output.node(0);
-  EXPECT_EQ("ConstantFolding-b-0", new_b_0.name());
+  EXPECT_EQ("ConstantFolding/b-0", new_b_0.name());
   EXPECT_EQ("Const", new_b_0.op());
 
   const NodeDef& new_b_1 = output.node(1);
-  EXPECT_EQ("ConstantFolding-b-1", new_b_1.name());
+  EXPECT_EQ("ConstantFolding/b-1", new_b_1.name());
   EXPECT_EQ("Const", new_b_1.op());
 
   const NodeDef& new_a = output.node(2);
@@ -127,11 +127,11 @@ TEST_F(ConstantFoldingTest, FoldingNodeWithTwoOutputs) {
 
   const NodeDef& new_c = output.node(4);
   EXPECT_EQ("c", new_c.name());
-  EXPECT_EQ("ConstantFolding-b-0", new_c.input(0));
+  EXPECT_EQ("ConstantFolding/b-0", new_c.input(0));
 
   const NodeDef& new_d = output.node(5);
   EXPECT_EQ("d", new_d.name());
-  EXPECT_EQ("ConstantFolding-b-1", new_d.input(0));
+  EXPECT_EQ("ConstantFolding/b-1", new_d.input(0));
 
   std::vector<string> fetch = {"a", "b", "c", "d"};
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
