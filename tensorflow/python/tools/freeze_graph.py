@@ -39,6 +39,7 @@ from __future__ import print_function
 
 import argparse
 import sys
+import six
 
 from google.protobuf import text_format
 
@@ -94,7 +95,7 @@ def freeze_graph(input_graph,
       input_graph_def.ParseFromString(f.read())
     else:
       text = f.read()
-      if sys.version_info > (3, 0):
+      if six.PY3:
         # The Merge function in the text_format module applies split('\n') upon its
         # first argument, which has type 'bytes' in Python3 and not compatible with
         # the '\n' in split('\n'). Thus decode() is required to transform text into
