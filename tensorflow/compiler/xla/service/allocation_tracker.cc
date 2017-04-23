@@ -125,9 +125,7 @@ tensorflow::Status AllocationTracker::DeallocateShape(
     handle_map.erase(device_memory->opaque());
   }
 
-  // TODO(b/36256956) Ideally tuple elements could always be distinct buffers.
-  if (ShapeUtil::IsTuple(shape) &&
-      backend->transfer_manager()->TupleElementsAreDistinctBuffers()) {
+  if (ShapeUtil::IsTuple(shape)) {
     // Traverse into tuple recursively deallocating buffers.
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend->stream_executor(device_ordinal));

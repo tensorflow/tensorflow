@@ -22,6 +22,7 @@ namespace tensorflow {
 namespace grappler {
 
 bool IsPlaceholder(const NodeDef& node);
+bool IsVariable(const NodeDef& node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

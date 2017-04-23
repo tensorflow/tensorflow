@@ -17,11 +17,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
@@ -89,8 +93,7 @@ TEST_F(UserComputationTest, SimpleComputation) {
     EXPECT_EQ(3, hlo_computation->instruction_count());
     // The root of the instruction should be the parameter instruction (not the
     // outfeed).
-    EXPECT_EQ(HloOpcode::kParameter,
-              hlo_computation->root_instruction()->opcode());
+    EXPECT_THAT(hlo_computation->root_instruction(), op::Parameter());
   }
 
   {
@@ -114,8 +117,7 @@ TEST_F(UserComputationTest, SimpleComputation) {
                            computation.BuildHloComputation(
                                version_at_param.version, hlo_resolver));
     EXPECT_EQ(2, hlo_computation->instruction_count());
-    EXPECT_EQ(HloOpcode::kParameter,
-              hlo_computation->root_instruction()->opcode());
+    EXPECT_THAT(hlo_computation->root_instruction(), op::Parameter());
   }
   {
     // Test the computation at the latest version, but lowered with
@@ -132,8 +134,7 @@ TEST_F(UserComputationTest, SimpleComputation) {
     EXPECT_EQ(1, hlo_computation->instruction_count());
     // The root of the instruction should be the parameter instruction (not the
     // outfeed).
-    EXPECT_EQ(HloOpcode::kParameter,
-              hlo_computation->root_instruction()->opcode());
+    EXPECT_THAT(hlo_computation->root_instruction(), op::Parameter());
   }
 }
 

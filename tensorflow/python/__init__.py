@@ -80,7 +80,6 @@ from tensorflow.python.layers import layers
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import spectral_ops as spectral
 from tensorflow.python.ops.losses import losses
@@ -225,7 +224,6 @@ _allowed_symbols.extend([
     'python_io',
     'resource_loader',
     'saved_model',
-    'sdca',
     'sets',
     'spectral',
     'summary',

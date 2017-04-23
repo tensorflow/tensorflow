@@ -100,7 +100,8 @@ Status GrpcServer::Init() {
   worker_env_.env = env_;
 
   SessionOptions sess_opts;
-  sess_opts.config = server_def_.default_session_config();
+  ConfigProto config = server_def_.default_session_config();
+  sess_opts.config = config;
 
   // Configure shared devices between master and worker.
   string name_prefix =
@@ -164,6 +165,8 @@ Status GrpcServer::Init() {
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
   master_impl_ = CreateMaster(&master_env_);
+  // TODO(suharshs): Pass the default operation timeout to this, to ensure
+  // timeouts are propagated to GrpcMasterService.
   master_service_ = NewGrpcMasterService(master_impl_.get(), &builder);
   worker_impl_ = NewGrpcWorker(&worker_env_);
   worker_service_ =
@@ -194,12 +197,16 @@ Status GrpcServer::Init() {
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
   master_env_.master_session_factory =
-      [](const SessionOptions& options, const MasterEnv* env,
-         std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs) {
+      [config](
+          SessionOptions options, const MasterEnv* env,
+          std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs) {
+        options.config.MergeFrom(config);
         return new MasterSession(options, env, std::move(remote_devs),
                                  CreateNoOpStatsPublisher);
       };
 
+  // TODO(suharshs): Pass the default operation timeout to this, to ensure
+  // timeouts are propagated to LocalMaster.
   // Provide direct access to the master from in-process clients.
   LocalMaster::Register(target(), master_impl_.get());
 

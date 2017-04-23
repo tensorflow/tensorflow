@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#if defined(PLATFORM_GOOGLE)
 #include "grpc++/create_channel.h"
+#endif
 
 #if defined(PLATFORM_WINDOWS)
 // winsock2.h is used in grpc, so Ws2_32.lib is needed
@@ -323,11 +325,32 @@ Status DebugIO::PublishGraph(const Graph& graph,
 }
 
 // static
+bool DebugIO::IsCopyNodeGateOpen(
+    const std::vector<DebugWatchAndURLSpec>& specs) {
+#if defined(PLATFORM_GOOGLE)
+  for (const DebugWatchAndURLSpec& spec : specs) {
+    if (!spec.gated_grpc || spec.url.compare(0, strlen(DebugIO::kGrpcURLScheme),
+                                             DebugIO::kGrpcURLScheme)) {
+      return true;
+    } else {
+      if (DebugGrpcIO::IsGateOpen(spec.watch_key, spec.url)) {
+        return true;
+      }
+    }
+  }
+  return false;
+#else
+  return true;
+#endif
+}
+
+// static
 bool DebugIO::IsDebugNodeGateOpen(const string& watch_key,
                                   const std::vector<string>& debug_urls) {
 #if defined(PLATFORM_GOOGLE)
   for (const string& debug_url : debug_urls) {
-    if (debug_url.find(DebugIO::kGrpcURLScheme) != 0) {
+    if (debug_url.compare(0, strlen(DebugIO::kGrpcURLScheme),
+                          DebugIO::kGrpcURLScheme)) {
       return true;
     } else {
       if (DebugGrpcIO::IsGateOpen(watch_key, debug_url)) {

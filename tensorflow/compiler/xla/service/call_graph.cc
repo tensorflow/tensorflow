@@ -51,6 +51,22 @@ std::ostream& operator<<(std::ostream& out, const CallContext& context) {
   return out;
 }
 
+CallContext GetInstructionCallContext(const HloInstruction* instruction) {
+  switch (instruction->opcode()) {
+    case HloOpcode::kCall:
+    case HloOpcode::kWhile:
+      return CallContext::kSequential;
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kFusion:
+      return CallContext::kParallel;
+    default:
+      return CallContext::kNone;
+  }
+}
+
 string CallSite::ToString() const {
   return StrCat(instruction()->name(), " calls in context ",
                 CallContextToString(context()), ": ",
@@ -81,26 +97,6 @@ void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
     caller_set_.insert(caller);
   }
 }
-
-namespace {
-
-CallContext GetInstructionCallContext(const HloInstruction* instruction) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kCall:
-    case HloOpcode::kWhile:
-      return CallContext::kSequential;
-    case HloOpcode::kMap:
-    case HloOpcode::kReduce:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kFusion:
-      return CallContext::kParallel;
-    default:
-      return CallContext::kNone;
-  }
-}
-
-}  // namespace
 
 Status CallGraphNode::AddCallSiteForInstruction(HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == computation());
@@ -223,7 +219,7 @@ StatusOr<std::unique_ptr<CallGraph>> CallGraph::Build(const HloModule* module) {
        module->computations()) {
     auto it_added = call_graph->node_indices_.insert(
         {computation.get(), call_graph->nodes_.size()});
-    // All computation should be unique, so the computation should not already
+    // All computations should be unique, so the computation should not already
     // exist in the map.
     TF_RET_CHECK(it_added.second);
     call_graph->nodes_.emplace_back(computation.get());

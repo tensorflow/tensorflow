@@ -654,11 +654,16 @@ def strided_slice(input_,
       new_axis_mask=new_axis_mask,
       shrink_axis_mask=shrink_axis_mask)
 
-  def assign(val):
+  parent_name = name
+
+  def assign(val, name=None):
     """Closure that holds all the arguments to create an assignment."""
 
     if var is None:
       raise ValueError("Sliced assignment is only supported for variables")
+
+    if name is None:
+      name = parent_name + "_assign"
 
     return gen_array_ops.strided_slice_assign(
         ref=var,
@@ -666,7 +671,7 @@ def strided_slice(input_,
         end=end,
         strides=strides,
         value=val,
-        name=name + "_assign",
+        name=name,
         begin_mask=begin_mask,
         end_mask=end_mask,
         ellipsis_mask=ellipsis_mask,
@@ -1402,10 +1407,15 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
-    if dtype is not None and tensor.dtype != dtype:
-      ret = zeros(shape_internal(tensor, optimize=optimize), dtype, name=name)
-      ret.set_shape(tensor.get_shape())
-      return ret
+
+    if tensor.shape.is_fully_defined():
+      # We can produce a zeros tensor independent of the value of 'tensor',
+      # since the shape is known statically.
+      return zeros(tensor.shape, dtype=dtype or tensor.dtype, name=name)
+
+    if dtype is not None and dtype != tensor.dtype:
+      return zeros(shape_internal(tensor, optimize=optimize), dtype=dtype,
+                   name=name)
     else:
       return gen_array_ops._zeros_like(tensor, name=name)
 
@@ -1866,7 +1876,8 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
 @ops.RegisterGradient("FakeQuantWithMinMaxArgs")
 def _FakeQuantWithMinMaxArgsGradient(op, grad):
   """Gradient for FakeQuantWithMinMaxArgs op."""
-  return fake_quant_with_min_max_args_gradient(grad, op.inputs[0])
+  return fake_quant_with_min_max_args_gradient(
+      grad, op.inputs[0], min=op.get_attr("min"), max=op.get_attr("max"))
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxVars")

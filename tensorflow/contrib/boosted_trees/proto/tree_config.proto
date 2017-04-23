@@ -13,6 +13,8 @@ message TreeNode {
     SparseFloatBinarySplitDefaultRight sparse_float_binary_split_default_right =
         4;
     CategoricalIdBinarySplit categorical_id_binary_split = 5;
+    CategoricalIdSetMembershipBinarySplit
+        categorical_id_set_membership_binary_split = 6;
   }
   TreeNodeMetadata node_metadata = 777;
 }
@@ -74,6 +76,20 @@ message CategoricalIdBinarySplit {
   // the rule feature == Id.
   int32 feature_column = 1;
   int64 feature_id = 2;
+
+  // Node children indexing into a contiguous
+  // vector of nodes starting from the root.
+  int32 left_id = 3;
+  int32 right_id = 4;
+}
+
+// Split rule for categorical features with a set of feature Ids.
+message CategoricalIdSetMembershipBinarySplit {
+  // Categorical feature column and Id describing
+  // the rule feature ∈ feature_ids.
+  int32 feature_column = 1;
+  // Sorted list of Ids in the set.
+  repeated int64 feature_ids = 2;
 
   // Node children indexing into a contiguous
   // vector of nodes starting from the root.

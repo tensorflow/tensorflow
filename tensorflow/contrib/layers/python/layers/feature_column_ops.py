@@ -34,11 +34,18 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+
+
+def _is_variable(v):
+  """Returns true if `v` is a variable."""
+  return isinstance(v, (variables.Variable,
+                        resource_variable_ops.ResourceVariable))
 
 
 def _embeddings_from_arguments(column,
@@ -123,7 +130,7 @@ def _embeddings_from_arguments(column,
         trainable=(trainable and args.trainable),
         collections=weight_collections)
 
-  if isinstance(embeddings, variables.Variable):
+  if _is_variable(embeddings):
     embeddings = [embeddings]
   else:
     embeddings = embeddings._get_variable_list()  # pylint: disable=protected-access
@@ -386,7 +393,7 @@ def _create_embedding_lookup(column,
         initializer=embedding_lookup_arguments.initializer,
         trainable=trainable,
         collections=weight_collections)
-    if isinstance(variable, variables.Variable):
+    if _is_variable(variable):
       variable = [variable]
     else:
       variable = variable._get_variable_list()  # pylint: disable=protected-access
@@ -444,7 +451,7 @@ def _create_joint_embedding_lookup(columns_to_tensors,
         initializer=init_ops.zeros_initializer(),
         trainable=trainable,
         collections=weight_collections)
-    if isinstance(variable, variables.Variable):
+    if _is_variable(variable):
       variable = [variable]
     else:
       variable = variable._get_variable_list()  # pylint: disable=protected-access
@@ -820,10 +827,10 @@ def parse_feature_columns_from_sequence_examples(
 def _log_variable(variable):
   if isinstance(variable, list):
     for var in variable:
-      if isinstance(variable, variables.Variable):
+      if _is_variable(variable):
         logging.info('Created variable %s, with device=%s', var.name,
                      var.device)
-  elif isinstance(variable, variables.Variable):
+  elif _is_variable(variable):
     logging.info('Created variable %s, with device=%s', variable.name,
                  variable.device)
 

@@ -110,7 +110,7 @@ Status SingleMachine::Run(const GraphDef& graph_def,
         std::unique_ptr<QueueRunner> queue_runner;
         TF_RETURN_IF_ERROR(QueueRunner::New(queue_runner_defs_[i],
                                             coordinator_.get(), &queue_runner));
-        TF_RETURN_IF_ERROR(queue_runner->StartAndCollectRunMetadata(
+        TF_RETURN_IF_ERROR(queue_runner->StartAndCollectCostGraph(
             session_.get(), &run_options_));
         TF_RETURN_IF_ERROR(
             coordinator_->RegisterRunner(std::move(queue_runner)));

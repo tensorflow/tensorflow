@@ -469,6 +469,7 @@ add_python_module("tensorflow/contrib/sparsemax/python/ops")
 add_python_module("tensorflow/contrib/specs")
 add_python_module("tensorflow/contrib/specs/python")
 add_python_module("tensorflow/contrib/stat_summarizer")
+add_python_module("tensorflow/contrib/stateless")
 add_python_module("tensorflow/contrib/tensorboard")
 add_python_module("tensorflow/contrib/tensorboard/plugins")
 add_python_module("tensorflow/contrib/tensorboard/plugins/projector")
@@ -634,6 +635,8 @@ GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_hybrid_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/hybrid/ops/gen_training_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_bigquery_reader_ops.py)
+GENERATE_PYTHON_OP_LIB("stateless_random_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/stateless/gen_stateless_random_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
@@ -683,6 +686,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_writer.cc"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.h"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/ops.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/scope.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc"
 )
 
@@ -702,6 +707,8 @@ if(WIN32)
         $<TARGET_OBJECTS:tf_core_lib>
         $<TARGET_OBJECTS:tf_core_cpu>
         $<TARGET_OBJECTS:tf_core_framework>
+        $<TARGET_OBJECTS:tf_cc>
+        $<TARGET_OBJECTS:tf_cc_ops>
         $<TARGET_OBJECTS:tf_core_ops>
         $<TARGET_OBJECTS:tf_core_direct_session>
         $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
@@ -715,7 +722,10 @@ if(WIN32)
         ${PYTHON_INCLUDE_DIR}
         ${NUMPY_INCLUDE_DIR}
     )
-    
+    #target_link_libraries(pywrap_tensorflow_internal_static
+    #	tf_protos_cc
+    #	tf_python_protos_cc
+    #)  
     add_dependencies(pywrap_tensorflow_internal_static tf_protos_cc tf_python_protos_cc)
     set(pywrap_tensorflow_internal_static_dependencies
         $<TARGET_FILE:pywrap_tensorflow_internal_static>
@@ -743,6 +753,8 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>
+    $<TARGET_OBJECTS:tf_cc>
+    $<TARGET_OBJECTS:tf_cc_ops>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>

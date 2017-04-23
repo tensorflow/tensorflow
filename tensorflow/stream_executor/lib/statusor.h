@@ -202,13 +202,13 @@ StatusOr<T>::StatusOr(const T& value)
 
 template <typename T>
 const T& StatusOr<T>::ValueOrDie() const {
-  assert(status_.ok());
+  TF_CHECK_OK(status_);
   return value_;
 }
 
 template <typename T>
 T StatusOr<T>::ConsumeValueOrDie() {
-  assert(status_.ok());
+  TF_CHECK_OK(status_);
   return std::move(value_);
 }
 

@@ -233,9 +233,9 @@ class Im2ColConvFunctor {
     int filter_top_offset;
     if (padding == VALID) {
       filter_left_offset =
-          ((output_width - 1) * stride + filter_width - input_width) / 2;
+          ((output_width - 1) * stride + filter_width - input_width + 1) / 2;
       filter_top_offset =
-          ((output_height - 1) * stride + filter_height - input_height) / 2;
+          ((output_height - 1) * stride + filter_height - input_height + 1) / 2;
     } else {
       filter_left_offset =
           ((output_width - 1) * stride + filter_width - input_width) / 2;

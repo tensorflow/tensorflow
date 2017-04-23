@@ -2154,7 +2154,13 @@ REGISTER_OP("GetSessionHandle")
     .Output("handle: string")
     .Attr("T: type")
     .SetShapeFn(shape_inference::ScalarShape)
-    .Deprecated(23, "Use GetSessionHandleV2");
+    .Doc(R"doc(
+Store the input tensor in the state of the current session.
+
+value: The tensor to be stored.
+handle: The handle for the tensor stored in the session state, represented
+  as a string.
+)doc");
 
 REGISTER_OP("GetSessionHandleV2")
     .Input("value: T")

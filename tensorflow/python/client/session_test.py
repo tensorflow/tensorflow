@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import os
+import sys
 import threading
 import time
 
@@ -1656,6 +1658,53 @@ class SessionTest(test_util.TensorFlowTestCase):
       partial_run = sess.partial_run_setup([squared_tensor], [])
       squared_eval = sess.partial_run(partial_run, squared_tensor)
       self.assertAllClose(np2 * np2, squared_eval)
+
+  def testDefaultLogDevicePlacement(self):
+    class CaptureStderr(str):
+      """Class to capture stderr from C++ shared library."""
+
+      def __enter__(self):
+        self._esc = compat.as_str('\b')
+        self._output = compat.as_str('')
+        self._stderr = sys.stderr
+        self._fd = self._stderr.fileno()
+        self._out_pipe, in_pipe = os.pipe()
+        # Save the original io stream.
+        self._dup_fd = os.dup(self._fd)
+        # Replace the original io stream with in pipe.
+        os.dup2(in_pipe, self._fd)
+        return self
+
+      def __exit__(self, *args):
+        self._stderr.write(self._esc)
+        self._stderr.flush()
+        self.read()
+        os.close(self._out_pipe)
+        # Restore the original io stream.
+        os.dup2(self._dup_fd, self._fd)
+
+      def read(self):
+        while True:
+          data = os.read(self._out_pipe, 1)
+          if not data or compat.as_str(data) == self._esc:
+            break
+          self._output += compat.as_str(data)
+
+      def __str__(self):
+        return self._output
+
+    # Passing the config to the server, but not the session should still result
+    # in logging device placement.
+    config = config_pb2.ConfigProto(log_device_placement=True)
+    server = server_lib.Server.create_local_server(config=config)
+    a = constant_op.constant(1)
+    b = constant_op.constant(2)
+    c = a + b
+    with session.Session(server.target) as sess:
+      with CaptureStderr() as log:
+        sess.run(c)
+      # Ensure that we did log device placement.
+      self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log))
 
 
 if __name__ == '__main__':

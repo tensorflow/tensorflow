@@ -282,6 +282,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_conv2d_with_bias_backprop_bias =
                                    "MklConv2DWithBiasBackpropBias";
     csinfo_.relu                  = "Relu";
+    csinfo_.reshape               = "Reshape";
     csinfo_.relu_grad             = "ReluGrad";
     csinfo_.split                 = "Split";
 
@@ -328,6 +329,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.relu,
                       GetMklOpName(csinfo_.relu),
                       1, CopyAttrsRelu, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.reshape, GetMklOpName(csinfo_.reshape), 2,
+                      CopyAttrsReshape, AlwaysRewrite});
 
     // TODO(inteltf): we do not support ReluGrad and BiasAddGrad yet.
 
@@ -433,6 +436,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string relu;
     string relu_grad;
     string split;
+    string reshape;
   } csinfo_;
 
   /// Maintain info about nodes to rewrite
@@ -683,6 +687,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsRelu(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
@@ -1299,6 +1304,20 @@ void MklLayoutRewritePass::CopyAttrsFusedBatchNorm(const Node* orig_node,
   nb->Attr("epsilon", epsilon);
   nb->Attr("data_format", data_format);
   nb->Attr("is_training", is_training);
+}
+
+void MklLayoutRewritePass::CopyAttrsReshape(const Node* orig_node,
+                                           NodeBuilder* nb) {
+  DataType T;
+  DataType Tshape;
+  
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tshape", &Tshape));
+  
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("Tshape", Tshape);
 }
 
 //////////////////////////////////////////////////////////////////////////

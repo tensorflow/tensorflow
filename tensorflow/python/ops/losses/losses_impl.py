@@ -283,6 +283,68 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
+def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
+               loss_collection=ops.GraphKeys.LOSSES,
+               reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
+  """Adds a Huber Loss term to the training procedure.
+
+  For each value x in `error=labels-predictions`, the following is calculated:
+
+  ```
+    0.5 * x^2                  if |x| <= d
+    0.5 * d^2 + d * (|x| - d)  if |x| > d
+  ```
+
+  where d is `delta`.
+
+  See: https://en.wikipedia.org/wiki/Huber_loss
+
+  `weights` acts as a coefficient for the loss. If a scalar is provided, then
+  the loss is simply scaled by the given value. If `weights` is a tensor of size
+  [batch_size], then the total loss for each sample of the batch is rescaled
+  by the corresponding element in the `weights` vector. If the shape of
+  `weights` matches the shape of `predictions`, then the loss of each
+  measurable element of `predictions` is scaled by the corresponding value of
+  `weights`.
+
+  Args:
+    labels: The ground truth output tensor, same dimensions as 'predictions'.
+    predictions: The predicted outputs.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `losses` dimension).
+    delta: `float`, the point where the huber loss function
+      changes from a quadratic to linear.
+    scope: The scope for the operations performed in computing the loss.
+    loss_collection: collection to which the loss will be added.
+    reduction: Type of reduction to apply to loss.
+
+  Returns:
+    A scalar `Tensor` that returns the weighted loss.
+
+  Raises:
+    ValueError: If the shape of `predictions` doesn't match that of `labels` or
+      if the shape of `weights` is invalid.
+  """
+  with ops.name_scope(scope, "huber_loss",
+                      (predictions, labels, weights)) as scope:
+    predictions = math_ops.to_float(predictions)
+    labels = math_ops.to_float(labels)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    error = math_ops.subtract(predictions, labels)
+    abs_error = math_ops.abs(error)
+    quadratic = math_ops.minimum(abs_error, delta)
+    # The following expression is the same in value as
+    # tf.maximum(abs_error - delta, 0), but importantly the gradient for the
+    # expression when abs_error == delta is 0 (for tf.maximum it would be 1).
+    # This is necessary to avoid doubling the gradient, since there is already a
+    # nonzero contribution to the gradient from the quadratic term.
+    linear = (abs_error - quadratic)
+    losses = 0.5 * quadratic**2 + delta * linear
+    return compute_weighted_loss(
+        losses, weights, scope, loss_collection, reduction=reduction)
+
+
 def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
              loss_collection=ops.GraphKeys.LOSSES,
              reduction=Reduction.WEIGHTED_SUM_BY_NONZERO_WEIGHTS):
