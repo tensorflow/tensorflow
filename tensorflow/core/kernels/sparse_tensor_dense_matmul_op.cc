@@ -361,10 +361,12 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
         b_offsets[NDIM - 1] = ADJ_B ? k : 0;
         b_extends[NDIM - 2] = ADJ_B ? rhs_right : 1;
         b_extends[NDIM - 1] = ADJ_B ? 1 : rhs_right;
-        out.slice(out_offsets, out_extends) +=
+        Eigen::array<Eigen::Index, 1> vector_size;
+        vector_size[0] = rhs_right;
+        out.slice(out_offsets, out_extends).reshape(vector_size) +=
             (ADJ_B ?
                 b.slice(b_offsets, b_extends).conjugate() :
-                b.slice(b_offsets, b_extends)) 
+                b.slice(b_offsets, b_extends)).reshape(vector_size)
             * a_value;
       }
     }
