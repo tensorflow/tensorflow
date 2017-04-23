@@ -73,6 +73,7 @@ def freeze_graph(input_graph,
   if not gfile.Exists(input_graph):
     print("Input graph file '" + input_graph + "' does not exist!")
     return -1
+  print(gfile.Exists(input_graph))
 
   if input_saver and not gfile.Exists(input_saver):
     print("Input saver file '" + input_saver + "' does not exist!")
@@ -93,7 +94,14 @@ def freeze_graph(input_graph,
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
-      text_format.Merge(f.read().decode(), input_graph_def)
+      text = f.read()
+      if sys.version_info > (3, 0):
+        # The Merge function in the text_format module applies split('\n') upon its
+        # first argument, which has type 'bytes' in Python3 and not compatible with
+        # the '\n' in split('\n'). Thus decode() is required to transform text into
+        # a 'str' type object.
+        text = text.decode()
+      text_format.Merge(text, input_graph_def)
   # Remove all the explicit device specifications for this node. This helps to
   # make the graph more portable.
   if clear_devices:
