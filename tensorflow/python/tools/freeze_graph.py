@@ -117,7 +117,10 @@ def freeze_graph(input_graph,
         if input_binary:
           saver_def.ParseFromString(f.read())
         else:
-          text_format.Merge(f.read(), saver_def)
+          text = f.read()
+          if six.PY3:
+            text = text.decode()
+          text_format.Merge(text, saver_def)
         saver = saver_lib.Saver(saver_def=saver_def)
         saver.restore(sess, input_checkpoint)
     else:
