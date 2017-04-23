@@ -73,7 +73,6 @@ def freeze_graph(input_graph,
   if not gfile.Exists(input_graph):
     print("Input graph file '" + input_graph + "' does not exist!")
     return -1
-  print(gfile.Exists(input_graph))
 
   if input_saver and not gfile.Exists(input_saver):
     print("Input saver file '" + input_saver + "' does not exist!")
