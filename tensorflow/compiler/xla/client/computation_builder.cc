@@ -106,9 +106,7 @@ bool ComputationBuilder::MakeWindow(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation, Window* window) {
-  const auto verify_size = [&](const tensorflow::gtl::ArraySlice<
-                                   int64>::size_type x,
-                               const char* x_name) {
+  const auto verify_size = [&](const size_t x, const char* x_name) {
     if (x == 0 || x == window_dimensions.size()) {
       return true;
     } else {
@@ -1231,8 +1229,7 @@ StatusOr<bool> ComputationBuilder::IsConstant(
   VLOG(2) << "done with request";
 
   if (!s.ok()) {
-    NoteError(s);
-    return first_error_;
+    return s;
   }
   return response.is_constant();
 }
@@ -1257,8 +1254,7 @@ StatusOr<std::unique_ptr<GlobalData>> ComputationBuilder::ComputeConstant(
   VLOG(2) << "done with request";
 
   if (!s.ok()) {
-    NoteError(s);
-    return first_error_;
+    return s;
   }
 
   TF_RET_CHECK(response.output().handle() != 0);

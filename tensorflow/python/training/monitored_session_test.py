@@ -224,7 +224,8 @@ class MonitoredTrainingSessionTest(test.TestCase):
       with monitored_session.MonitoredTrainingSession(
           is_chief=True,
           checkpoint_dir=logdir,
-          save_summaries_steps=100) as session:
+          save_summaries_steps=100,
+          log_step_count_steps=10) as session:
         for _ in range(101):
           session.run(new_gstep)
     summaries = util_test.latest_summaries(logdir)
@@ -242,7 +243,8 @@ class MonitoredTrainingSessionTest(test.TestCase):
           is_chief=True,
           checkpoint_dir=logdir,
           save_summaries_steps=None,
-          save_summaries_secs=0.1) as session:
+          save_summaries_secs=0.1,
+          log_step_count_steps=10) as session:
         session.run(new_gstep)
         time.sleep(0.2)
         for _ in range(101):

@@ -29,7 +29,8 @@ limitations under the License.
 
 namespace xla {
 
-bool IsExpensive(const HloInstruction& instruction) {
+/*static*/ bool InstructionFusion::IsExpensive(
+    const HloInstruction& instruction) {
   switch (instruction.opcode()) {
     // Cheap instructions.
     case HloOpcode::kAbs:
@@ -105,9 +106,14 @@ bool IsExpensive(const HloInstruction& instruction) {
   return false;
 }
 
-bool FusionWouldDuplicate(HloInstruction* producer, HloInstruction* consumer) {
-  return !(producer->users().size() == 1 && consumer->IsUserOf(producer));
+namespace {
+// Returns true if fusing producer into consumer would cause producer to be
+// duplicated. This is the case if producer has uses other than consumer.
+bool FusionWouldDuplicate(const HloInstruction& producer,
+                          const HloInstruction& consumer) {
+  return !(producer.users().size() == 1 && consumer.IsUserOf(&producer));
 }
+}  // namespace
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool changed = false;
@@ -125,8 +131,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     std::vector<HloInstruction*> post_order(post_order_list.begin(),
                                             post_order_list.end());
     tensorflow::gtl::FlatMap<HloInstruction*, int> post_order_index;
-    for (std::vector<HloInstruction*>::size_type i = 0; i < post_order.size();
-         ++i) {
+    for (size_t i = 0; i < post_order.size(); ++i) {
       InsertOrDie(&post_order_index, post_order[i], i);
     }
 
@@ -263,8 +268,8 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                    int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
   // Cost condition: don't duplicate expensive instructions.
-  if (FusionWouldDuplicate(producer, consumer) &&
-      (IsExpensive(*producer) || !may_duplicate_)) {
+  if (FusionWouldDuplicate(*producer, *consumer) &&
+      (is_expensive_(*producer) || !may_duplicate_)) {
     return false;
   }
 
@@ -277,7 +282,7 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
   // Cost condition: not fuse (expensive producers) and (consumers who reuse
   // operand elements).
   if (consumer->ReusesOperandElements(operand_index) &&
-      IsExpensive(*producer)) {
+      is_expensive_(*producer)) {
     return false;
   }
 

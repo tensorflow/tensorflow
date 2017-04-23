@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+import numbers
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -28,6 +31,26 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+
+# The maximum input rank to test.
+_MAX_RANK = 5
+
+
+def _powerset(iterable):
+  """Helper for generating all possible reduction_axes arguments.
+
+  Example:
+  powerset([0,1,2]): () (0,) (1,) (2,) (0,1) (0,2) (1,2) (0,1,2)
+
+  Args:
+    iterable: An iterable of items to generate the powerset of.
+
+  Returns:
+    The powerset of all items in iterable.
+  """
+  s = list(iterable)
+  return itertools.chain.from_iterable(
+      itertools.combinations(s, r) for r in range(len(s)+1))
 
 
 class ReducedShapeTest(test.TestCase):
@@ -68,23 +91,30 @@ class ReducedShapeTest(test.TestCase):
       self._check([10, 10, 10], [-3], [1, 10, 10])
 
 
-class SumReductionTest(test.TestCase):
+class BaseReductionTest(test.TestCase):
 
-  def _compare(self,
-               x,
-               reduction_axes,
-               keep_dims,
-               use_gpu=False,
-               feed_dict=None):
-    np_ans = x
-    if reduction_axes is None:
-      np_ans = np.sum(np_ans, keepdims=keep_dims)
-    else:
-      reduction_axes = np.array(reduction_axes).astype(np.int32)
-      for ra in reduction_axes.ravel()[::-1]:
-        np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
-    with self.test_session(use_gpu=use_gpu) as sess:
-      tf_ans = math_ops.reduce_sum(x, reduction_axes, keep_dims)
+  def _tf_reduce(self, x, reduction_axes, keep_dims):
+    raise NotImplementedError()
+
+  def _np_reduce(self, x, reduction_axes, keep_dims):
+    raise NotImplementedError()
+
+  def _makeIncremental(self, shape, dtype):
+    data = np.arange(np.prod(shape)).reshape(shape).astype(dtype.as_numpy_dtype)
+    if dtype.is_complex:
+      data -= 2j * data
+    return data
+
+  def _makeRandom(self, shape, dtype):
+    data = np.random.rand(*shape).astype(dtype.as_numpy_dtype)
+    if dtype.is_complex:
+      data -= 2j * data
+    return data
+
+  def _compare(self, x, reduction_axes, keep_dims, feed_dict=None):
+    np_ans = self._np_reduce(x, reduction_axes, keep_dims)
+    with self.test_session(use_gpu=True) as sess:
+      tf_ans = self._tf_reduce(x, reduction_axes, keep_dims)
       out = sess.run(tf_ans, feed_dict)
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
@@ -93,10 +123,45 @@ class SumReductionTest(test.TestCase):
     if reduction_axes is not None and np.shape(reduction_axes) == (1,):
       # Test scalar reduction_axes argument
       self._compareAll(x, reduction_axes[0])
-    self._compare(x, reduction_axes, False, use_gpu=True, feed_dict=feed_dict)
-    self._compare(x, reduction_axes, False, use_gpu=False, feed_dict=feed_dict)
-    self._compare(x, reduction_axes, True, use_gpu=True, feed_dict=feed_dict)
-    self._compare(x, reduction_axes, True, use_gpu=False, feed_dict=feed_dict)
+    self._compare(x, reduction_axes, keep_dims=False, feed_dict=feed_dict)
+    self._compare(x, reduction_axes, keep_dims=True, feed_dict=feed_dict)
+
+  def _compareAllAxes(self, x, feed_dict=None):
+    self._compareAll(x, None)
+    for axes in _powerset(range(x.ndim)):
+      self._compareAll(x, axes, feed_dict)
+
+  def _compareGradient(self, x, reduction_axes, rtol=1e-8, atol=1e-8):
+    if reduction_axes is not None and np.shape(reduction_axes) == (1,):
+      # Test scalar reduction_axes argument
+      self._compareGradient(x, reduction_axes[0], rtol=rtol, atol=atol)
+    with self.test_session(use_gpu=True):
+      t = ops.convert_to_tensor(x)
+      su = self._tf_reduce(t, reduction_axes, False)
+      jacob_t, jacob_n = gradient_checker.compute_gradient(
+          t, x.shape, su, su.get_shape().as_list(), x_init_value=x, delta=1)
+    self.assertAllClose(jacob_t, jacob_n, rtol=rtol, atol=atol)
+
+  def _compareGradientAxes(self, x, rtol=1e-8, atol=1e-8):
+    self._compareGradient(x, None, rtol=rtol, atol=atol)
+    self._compareGradient(x, [], rtol=rtol, atol=atol)
+    self._compareGradient(x, 0, rtol=rtol, atol=atol)
+    self._compareGradient(x, [1], rtol=rtol, atol=atol)
+    self._compareGradient(x, [2], rtol=rtol, atol=atol)
+    self._compareGradient(x, [1, 2], rtol=rtol, atol=atol)
+    self._compareGradient(x, [0, 1, 2, 3], rtol=rtol, atol=atol)
+
+
+class SumReductionTest(BaseReductionTest):
+
+  def _tf_reduce(self, x, reduction_axes, keep_dims):
+    return math_ops.reduce_sum(x, reduction_axes, keep_dims)
+
+  def _np_reduce(self, x, reduction_axes, keep_dims):
+    if isinstance(reduction_axes, list) or isinstance(reduction_axes,
+                                                      np.ndarray):
+      reduction_axes = tuple(reduction_axes)
+    return np.sum(x, axis=reduction_axes, keepdims=keep_dims)
 
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
@@ -105,95 +170,30 @@ class SumReductionTest(test.TestCase):
           np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
           self._compareAll(np_arr, None)
 
-  def testFloatReduce1D(self):
-    # Create a 1D array of floats
-    np_arr = np.arange(1, 6).reshape([5]).astype(np.float32)
-    self._compareAll(np_arr, [0])
+  def testInt32(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.int32)
+      self._compareAllAxes(np_arr)
 
-  def testFloatReduce2D(self):
-    # Create a 2D array of floats and reduce across all possible
-    # dimensions
-    np_arr = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
-    self._compareAll(np_arr, None)
-    self._compareAll(np_arr, [])
-    self._compareAll(np_arr, [0])
-    self._compareAll(np_arr, [1])
-    self._compareAll(np_arr, [0, 1])
+  def testFloat32(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
+      self._compareAllAxes(np_arr)
 
-  def testFloatReduce3D(self):
-    # Create a 3D array of floats and reduce across all possible
-    # dimensions
-    np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float32)
-    self._compareAll(np_arr, None)
-    self._compareAll(np_arr, [])
-    self._compareAll(np_arr, [0])
-    self._compareAll(np_arr, [1])
-    self._compareAll(np_arr, [2])
-    self._compareAll(np_arr, [0, 1])
-    self._compareAll(np_arr, [1, 2])
-    self._compareAll(np_arr, [0, 2])
-    self._compareAll(np_arr, [0, 1, 2])
-    self._compareAll(np_arr, [-1])
-    self._compareAll(np_arr, [-1, -3])
-    self._compareAll(np_arr, [-1, 1])
+  def testFloat64(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.float64)
+      self._compareAllAxes(np_arr)
 
-  def testFloatReduce4D(self):
-    # Create a 4D array of floats and reduce across some
-    # dimensions
-    np_arr = np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.float32)
-    self._compareAll(np_arr, None)
-    self._compareAll(np_arr, [])
-    self._compareAll(np_arr, [0])
-    self._compareAll(np_arr, [1])
-    self._compareAll(np_arr, [2])
-    self._compareAll(np_arr, [0, 1])
-    self._compareAll(np_arr, [1, 2])
-    # Need specialization for reduce(4D, [0, 2])
-    # self._compareAll(np_arr, [0, 2])
-    self._compareAll(np_arr, [0, 1, 2])
-    self._compareAll(np_arr, [1, 2, 3])
-    self._compareAll(np_arr, [0, 1, 2, 3])
+  def testComplex64(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.complex64)
+      self._compareAllAxes(np_arr)
 
-  def testFloatReduce5D(self):
-    # Create a 5D array of floats and reduce across some dimensions
-    np_arr = np.arange(0, 840).reshape([2, 3, 5, 7, 4]).astype(np.float32)
-    self._compareAll(np_arr, None)
-    self._compareAll(np_arr, [])
-    self._compareAll(np_arr, [0])
-    self._compareAll(np_arr, [1])
-    self._compareAll(np_arr, [2])
-    self._compareAll(np_arr, [0, 1])
-    self._compareAll(np_arr, [1, 2])
-    # Need specialization for reduce(4D, [0, 2])
-    # self._compareAll(np_arr, [0, 2])
-    self._compareAll(np_arr, [0, 1, 2])
-    self._compareAll(np_arr, [1, 2, 3])
-    self._compareAll(np_arr, [0, 1, 2, 3])
-    self._compareAll(np_arr, [1, 2, 3, 4])
-    self._compareAll(np_arr, [0, 1, 2, 3, 4])
-
-  # Simple tests for various types.
-  def testDoubleReduce1D(self):
-    np_arr = np.arange(1, 6).reshape([5]).astype(np.float64)
-    self._compareAll(np_arr, None)
-    self._compareAll(np_arr, [])
-    self._compareAll(np_arr, [0])
-
-  def testInt32Reduce1D(self):
-    np_arr = np.arange(1, 6).reshape([5]).astype(np.int32)
-    self._compareAll(np_arr, None)
-    self._compareAll(np_arr, [])
-    self._compareAll(np_arr, [0])
-
-  def testComplex64Reduce1D(self):
-    np_arr = np.arange(1, 6).reshape([5]).astype(np.complex64)
-    self._compare(np_arr, [], False)
-    self._compare(np_arr, [0], False)
-
-  def testComplex128Reduce1D(self):
-    np_arr = np.arange(1, 6).reshape([5]).astype(np.complex128)
-    self._compare(np_arr, [], False)
-    self._compare(np_arr, [0], False)
+  def testComplex128(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.complex128)
+      self._compareAllAxes(np_arr)
 
   def testInvalidIndex(self):
     np_arr = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
@@ -250,32 +250,11 @@ class SumReductionTest(test.TestCase):
 
   # Int64??
 
-  def _compareGradient(self, shape, sum_shape, reduction_axes):
-    if reduction_axes is not None and np.shape(reduction_axes) == (1,):
-      # Test scalar reduction_axes argument
-      self._compareGradient(shape, sum_shape, reduction_axes[0])
-    x = np.arange(1.0, 49.0).reshape(shape).astype(np.float64)
-    with self.test_session():
-      t = ops.convert_to_tensor(x)
-      su = math_ops.reduce_sum(t, reduction_axes)
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          t, shape, su, sum_shape, x_init_value=x, delta=1)
-    self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
-
   def testGradient(self):
-    self._compareGradient([2, 3, 4, 2], [2, 2], [1, 2])
-
-  def testGradient2(self):
-    self._compareGradient([2, 3, 4, 2], [2, 4, 2], [1])
-
-  def testGradient3(self):
-    self._compareGradient([2, 3, 4, 2], [2, 3, 2], [2])
-
-  def testGradient4(self):
-    self._compareGradient([2, 3, 4, 2], [], None)
-
-  def testGradient5(self):
-    self._compareGradient([2, 3, 4, 2], [3, 4, 2], 0)
+    for dtype in [dtypes.float32, dtypes.float64, dtypes.complex64,
+                  dtypes.complex128]:
+      x = self._makeIncremental([2, 3, 4, 2], dtype)
+      self._compareGradientAxes(x)
 
   def testHighRank(self):
     # Do a bunch of random high dimensional reductions
@@ -300,61 +279,45 @@ class SumReductionTest(test.TestCase):
     self._compareAll(x, [1])
 
   def testEmptyGradients(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = array_ops.zeros([0, 3])
       y = math_ops.reduce_sum(x, [1])
       error = gradient_checker.compute_gradient_error(x, [0, 3], y, [0])
       self.assertEqual(error, 0)
 
   def testDegenerate(self):
-    for use_gpu in False, True:
-      with self.test_session(use_gpu=use_gpu):
-        for dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
-                      dtypes.complex64, dtypes.complex128):
-          # A large number is needed to get Eigen to die
-          x = array_ops.zeros((0, 9938), dtype=dtype)
-          y = math_ops.reduce_sum(x, [0])
-          self.assertAllEqual(y.eval(), np.zeros(9938))
+    with self.test_session(use_gpu=True):
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
+                    dtypes.complex64, dtypes.complex128):
+        # A large number is needed to get Eigen to die
+        x = array_ops.zeros((0, 9938), dtype=dtype)
+        y = math_ops.reduce_sum(x, [0])
+        self.assertAllEqual(y.eval(), np.zeros(9938))
 
 
-class MeanReductionTest(test.TestCase):
+class MeanReductionTest(BaseReductionTest):
 
-  def _compare(self, x, reduction_axes, keep_dims, use_gpu=False):
-    np_ans = x
+  def _tf_reduce(self, x, reduction_axes, keep_dims):
+    return math_ops.reduce_mean(x, reduction_axes, keep_dims)
+
+  def _np_reduce(self, x, reduction_axes, keep_dims):
+    if isinstance(reduction_axes, list) or isinstance(reduction_axes,
+                                                      np.ndarray):
+      reduction_axes = tuple(reduction_axes)
+    elif isinstance(reduction_axes, numbers.Integral):
+      reduction_axes = (reduction_axes,)
+
     if reduction_axes is None:
-      np_ans = np.mean(np_ans, keepdims=keep_dims)
+      count = np.prod(x.shape)
     else:
-      reduction_axes = np.array(reduction_axes).astype(np.int32)
-      count = 1
-      for ra in reduction_axes.ravel()[::-1]:
-        np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
-        count *= x.shape[ra]
-      np_ans /= count
-    with self.test_session(use_gpu=use_gpu):
-      tf_ans = math_ops.reduce_mean(x, reduction_axes, keep_dims)
-      out = tf_ans.eval()
-    self.assertAllClose(np_ans, out)
-    self.assertShapeEqual(np_ans, tf_ans)
-
-  def _compareAll(self, x, reduction_axes):
-    self._compare(x, reduction_axes, False, use_gpu=True)
-    self._compare(x, reduction_axes, True, use_gpu=True)
-    self._compare(x, reduction_axes, False, use_gpu=False)
-    self._compare(x, reduction_axes, True, use_gpu=False)
-
-  def testFloatReduce3D(self):
-    # Create a 3D array of floats and reduce across all possible
-    # dimensions
-    np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float32)
-    self._compareAll(np_arr, None)
-    self._compareAll(np_arr, [])
-    self._compareAll(np_arr, [0])
-    self._compareAll(np_arr, [1])
-    self._compareAll(np_arr, [2])
-    self._compareAll(np_arr, [0, 1])
-    self._compareAll(np_arr, [1, 2])
-    self._compareAll(np_arr, [0, 2])
-    self._compareAll(np_arr, [0, 1, 2])
+      count = np.prod([x.shape[ax] for ax in reduction_axes])
+    # np.mean automatically converts integer inputs to float, while TensorFlow's
+    # reduce_mean does not. For integer inputs, we emulate TensorFlow's behavior
+    # using np.sum and truncating division.
+    np_sum = np.sum(x, axis=reduction_axes, keepdims=keep_dims)
+    if np.issubdtype(x.dtype, np.integer):
+      return np_sum // count
+    return np_sum / count
 
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
@@ -363,83 +326,64 @@ class MeanReductionTest(test.TestCase):
           np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
           self._compareAll(np_arr, None)
 
-  def testDoubleReduce3D(self):
-    # Create a 3D array of doubles and reduce across all possible
-    # dimensions
-    np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float64)
-    self._compareAll(np_arr, None)
-    self._compareAll(np_arr, [])
-    self._compareAll(np_arr, [0])
-    self._compareAll(np_arr, [1])
-    self._compareAll(np_arr, [2])
-    self._compareAll(np_arr, [0, 1])
-    self._compareAll(np_arr, [1, 2])
-    self._compareAll(np_arr, [0, 2])
-    self._compareAll(np_arr, [0, 1, 2])
+  def testInt32(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.int32)
+      self._compareAllAxes(np_arr)
+
+  def testFloat32(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
+      self._compareAllAxes(np_arr)
+
+  def testFloat64(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.float64)
+      self._compareAllAxes(np_arr)
+
+  def testComplex64(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.complex64)
+      self._compareAllAxes(np_arr)
+
+  def testComplex128(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.complex128)
+      self._compareAllAxes(np_arr)
 
   def testGradient(self):
     s = [2, 3, 4, 2]
-    x = np.arange(1.0, 49.0).reshape(s).astype(np.float32)
-    with self.test_session():
-      t = ops.convert_to_tensor(x)
-      su = math_ops.reduce_mean(t, [1, 2])
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          t, s, su, [2, 2], x_init_value=x, delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-
-      su = math_ops.reduce_mean(t, [0, 1, 2, 3])
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          t, s, su, [1], x_init_value=x, delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-
-      su = math_ops.reduce_mean(t, [])
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          t, s, su, [2, 3, 4, 2], x_init_value=x, delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-
-      su = math_ops.reduce_mean(t, 0)
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          t, s, su, [3, 4, 2], x_init_value=x, delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = self._makeIncremental(s, dtype)
+      self._compareGradientAxes(x, rtol=1e-3, atol=1e-3)
 
   def testEmptyGradients(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = array_ops.zeros([0, 3])
       y = math_ops.reduce_mean(x, [1])
       error = gradient_checker.compute_gradient_error(x, [0, 3], y, [0])
       self.assertEqual(error, 0)
 
   def testDegenerate(self):
-    for use_gpu in False, True:
-      with self.test_session(use_gpu=use_gpu):
-        for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
-          # A large number is needed to get Eigen to die
-          x = array_ops.zeros((0, 9938), dtype=dtype)
-          y = math_ops.reduce_mean(x, [0]).eval()
-          self.assertEqual(y.shape, (9938,))
-          self.assertTrue(np.all(np.isnan(y)))
+    with self.test_session(use_gpu=True):
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+        # A large number is needed to get Eigen to die
+        x = array_ops.zeros((0, 9938), dtype=dtype)
+        y = math_ops.reduce_mean(x, [0]).eval()
+        self.assertEqual(y.shape, (9938,))
+        self.assertTrue(np.all(np.isnan(y)))
 
 
-class ProdReductionTest(test.TestCase):
+class ProdReductionTest(BaseReductionTest):
 
-  def _compare(self, x, reduction_axes, keep_dims):
-    np_ans = x
-    if reduction_axes is None:
-      np_ans = np.prod(np_ans, keepdims=keep_dims)
-    else:
-      for ra in reduction_axes[::-1]:
-        np_ans = np.prod(np_ans, axis=ra, keepdims=keep_dims)
-    with self.test_session():
-      if reduction_axes is not None:
-        reduction_axes = np.array(reduction_axes).astype(np.int32)
-      tf_ans = math_ops.reduce_prod(x, reduction_axes, keep_dims)
-      out = tf_ans.eval()
-    self.assertAllClose(np_ans, out)
-    self.assertShapeEqual(np_ans, tf_ans)
+  def _tf_reduce(self, x, reduction_axes, keep_dims):
+    return math_ops.reduce_prod(x, reduction_axes, keep_dims)
 
-  def _compareAll(self, x, reduction_axes):
-    self._compare(x, reduction_axes, False)
-    self._compare(x, reduction_axes, True)
+  def _np_reduce(self, x, reduction_axes, keep_dims):
+    if isinstance(reduction_axes, list) or isinstance(reduction_axes,
+                                                      np.ndarray):
+      reduction_axes = tuple(reduction_axes)
+    return np.prod(x, axis=reduction_axes, keepdims=keep_dims)
 
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
@@ -448,81 +392,70 @@ class ProdReductionTest(test.TestCase):
           np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
           self._compareAll(np_arr, None)
 
-  def testFloatReduce3D(self):
-    # Create a 3D array of floats and reduce across all possible
-    # dimensions
-    np_arr = np.arange(0, 30).reshape([2, 3, 5]).astype(np.float32)
-    self._compareAll(np_arr, None)
-    self._compareAll(np_arr, [])
-    self._compareAll(np_arr, [0])
-    self._compareAll(np_arr, [1])
-    self._compareAll(np_arr, [2])
-    self._compareAll(np_arr, [0, 1])
-    self._compareAll(np_arr, [1, 2])
-    self._compareAll(np_arr, [0, 2])
-    self._compareAll(np_arr, [0, 1, 2])
+  def testInt32(self):
+    # Numpy automatically upgrades the type of np.prod from int32 to int64, so
+    # Numpy does not overflow an int32 np.prod while TensorFlow does. To avoid
+    # overflow, divide the incremental int32 array by 2.
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.int32) / 2
+      self._compareAllAxes(np_arr)
 
-  def _compareGradient(self, x):
-    with self.test_session():
-      t = ops.convert_to_tensor(x)
+  def testFloat32(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
+      self._compareAllAxes(np_arr)
 
-      su = math_ops.reduce_prod(t, [])
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          t, x.shape, su, [2, 3, 4, 2], x_init_value=x, delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+  def testFloat64(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.float64)
+      self._compareAllAxes(np_arr)
 
-      su = math_ops.reduce_prod(t, [1, 2])
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          t, x.shape, su, [2, 2], x_init_value=x, delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+  def testComplex64(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.complex64)
+      self._compareAllAxes(np_arr)
 
-      su = math_ops.reduce_prod(t, [0, 1, 2, 3])
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          t, x.shape, su, [1], x_init_value=x, delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-
-      su = math_ops.reduce_prod(t, 0)
-      jacob_t, jacob_n = gradient_checker.compute_gradient(
-          t, x.shape, su, [3, 4, 2], x_init_value=x, delta=1)
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
+  def testComplex128(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.complex128)
+      self._compareAllAxes(np_arr)
 
   def testGradientWithZeros(self):
     s = [2, 3, 4, 2]
-    x = np.arange(1.0, 49.0).reshape(s).astype(np.float32) / 20.
+    x = self._makeIncremental(s, dtypes.float32) / 20.
     # No zeros in input
-    self._compareGradient(x)
+    self._compareGradientAxes(x, rtol=1e-3, atol=1e-3)
     # Zero at beginning
     x1 = x.copy()
     x1[:, :, 0, :] = 0
-    self._compareGradient(x1)
+    self._compareGradientAxes(x1, rtol=1e-3, atol=1e-3)
     # Zero at end
     x2 = x.copy()
     x2[:, :, -1, :] = 0
-    self._compareGradient(x2)
+    self._compareGradientAxes(x2, rtol=1e-3, atol=1e-3)
     # Zero in middle
     x3 = x.copy()
     x3[:, :, 2, :] = 0
-    self._compareGradient(x3)
+    self._compareGradientAxes(x3, rtol=1e-3, atol=1e-3)
     # All zeros
     x4 = x.copy()
     x4[:, :, :, :] = 0
-    self._compareGradient(x4)
+    self._compareGradientAxes(x4, rtol=1e-3, atol=1e-3)
 
   def testEmptyGradients(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       x = array_ops.zeros([0, 3])
       y = math_ops.reduce_prod(x, [1])
       error = gradient_checker.compute_gradient_error(x, [0, 3], y, [0])
       self.assertEqual(error, 0)
 
   def testDegenerate(self):
-    for use_gpu in False, True:
-      with self.test_session(use_gpu=use_gpu):
-        for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
-          # A large number is needed to get Eigen to die
-          x = array_ops.zeros((0, 9938), dtype=dtype)
-          y = math_ops.reduce_prod(x, [0])
-          self.assertAllEqual(y.eval(), np.ones(9938))
+    with self.test_session(use_gpu=True):
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+        # A large number is needed to get Eigen to die
+        x = array_ops.zeros((0, 9938), dtype=dtype)
+        y = math_ops.reduce_prod(x, [0])
+        self.assertAllEqual(y.eval(), np.ones(9938))
 
 
 class MinReductionTest(test.TestCase):

@@ -254,7 +254,7 @@ TEST(TopNTest, Iteration) {
   for (int i = 0; i < 8; ++i) top.push(i);
   std::vector<int> actual(top.unsorted_begin(), top.unsorted_end());
   // Check that we have 4,5,6,7 as the top 4 (in some order, so we sort)
-  sort(actual.begin(), actual.end());
+  std::sort(actual.begin(), actual.end());
   EXPECT_EQ(actual.size(), 4);
   EXPECT_EQ(actual[0], 4);
   EXPECT_EQ(actual[1], 5);

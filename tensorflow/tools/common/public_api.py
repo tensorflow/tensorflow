@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import re
+
+from tensorflow.python.util import tf_inspect
 
 
 class PublicAPIVisitor(object):
@@ -36,28 +37,35 @@ class PublicAPIVisitor(object):
     """
     self._visitor = visitor
 
-  # Modules/classes we do not want to descend into if we hit them. Usually,
-  # sytem modules exposed through platforms for compatibility reasons.
-  # Each entry maps a module path to a name to ignore in traversal.
-  _do_not_descend_map = {
-      '': [
-          'core',
-          'examples',
-          'flags',  # Don't add flags
-          'platform',  # TODO(drpng): This can be removed once sealed off.
-          'pywrap_tensorflow',  # TODO(drpng): This can be removed once sealed.
-          'user_ops',  # TODO(drpng): This can be removed once sealed.
-          'python',
-          'tools'
-      ],
+    # Modules/classes we do not want to descend into if we hit them. Usually,
+    # sytem modules exposed through platforms for compatibility reasons.
+    # Each entry maps a module path to a name to ignore in traversal.
+    self._do_not_descend_map = {
+        '': [
+            'core',
+            'examples',
+            'flags',  # Don't add flags
+            # TODO(drpng): This can be removed once sealed off.
+            'platform',
+            # TODO(drpng): This can be removed once sealed.
+            'pywrap_tensorflow',
+            # TODO(drpng): This can be removed once sealed.
+            'user_ops',
+            'python',
+            'tools',
+            'tensorboard',
+        ],
 
-      # Some implementations have this internal module that we shouldn't expose.
-      'flags': ['cpp_flags'],
+        # Some implementations have this internal module that we shouldn't
+        # expose.
+        'flags': ['cpp_flags'],
 
-      # Everything below here is legitimate.
-      'app': ['flags'],  # It'll stay, but it's not officially part of the API.
-      'test': ['mock'],  # Imported for compatibility between py2/3.
-  }
+        ## Everything below here is legitimate.
+        # It'll stay, but it's not officially part of the API.
+        'app': ['flags'],
+        # Imported for compatibility between py2/3.
+        'test': ['mock'],
+    }
 
   @property
   def do_not_descend_map(self):
@@ -86,7 +94,7 @@ class PublicAPIVisitor(object):
     """Visitor interface, see `traverse` for details."""
 
     # Avoid long waits in cases of pretty unambiguous failure.
-    if inspect.ismodule(parent) and len(path.split('.')) > 10:
+    if tf_inspect.ismodule(parent) and len(path.split('.')) > 10:
       raise RuntimeError('Modules nested too deep:\n%s\n\nThis is likely a '
                          'problem with an accidental public import.' % path)
 

@@ -119,15 +119,15 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
     if len(input_shape) != self.rank + 2:
       raise ValueError('Inputs should have rank ' +
                        str(self.rank + 2) +
-                       'Received input shape:', str(input_shape))
+                       '. Received input shape: ' + str(input_shape))
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis] is None:
+    if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis]
+    input_dim = input_shape[channel_axis].value
     kernel_shape = self.kernel_size + (input_dim, self.filters)
 
     self.kernel = vs.get_variable('kernel',

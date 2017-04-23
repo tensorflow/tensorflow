@@ -55,8 +55,13 @@ namespace {
 // state).
 static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
                          const gtl::ArraySlice<string>& fed_outputs,
-                         subgraph::NameIndex* name_index) {
-  for (const string& t : fed_outputs) {
+                         bool use_function_convention,
+                         subgraph::NameIndex* name_index,
+                         DataTypeVector* out_feed_types) {
+  out_feed_types->clear();
+  out_feed_types->reserve(fed_outputs.size());
+  for (size_t i = 0; i < fed_outputs.size(); ++i) {
+    const string& t = fed_outputs[i];
     TensorId id(ParseTensorName(t));
 
     auto iter = name_index->find(id.first);
@@ -71,17 +76,31 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
     }
 
     Node* recv_node;
-    TF_RETURN_IF_ERROR(
-        NodeBuilder(strings::StrCat("_recv_", id.first, "_", id.second),
-                    "_Recv")
-            .Attr("tensor_type", BaseType(n->output_type(id.second)))
-            .Attr("tensor_name", t)
-            .Attr("send_device", device_info.name())
-            .Attr("recv_device", device_info.name())
-            .Attr("send_device_incarnation",
-                  static_cast<int64>(device_info.incarnation()))
-            .Attr("client_terminated", true)
-            .Finalize(g, &recv_node));
+
+    if (!use_function_convention) {
+      TF_RETURN_IF_ERROR(
+          NodeBuilder(strings::StrCat("_recv_", id.first, "_", id.second),
+                      "_Recv")
+              .Attr("tensor_type", BaseType(n->output_type(id.second)))
+              .Attr("tensor_name", t)
+              .Attr("send_device", device_info.name())
+              .Attr("recv_device", device_info.name())
+              .Attr("send_device_incarnation",
+                    static_cast<int64>(device_info.incarnation()))
+              .Attr("client_terminated", true)
+              .Finalize(g, &recv_node));
+    } else {
+      // NOTE(mrry): We must include the index as part of the node
+      // name, because _Arg is a "stateful" kernel and therefore
+      // its name must uniquely identify a kernel instance across all
+      // graphs in the same session.
+      TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat("_arg_", id.first, "_",
+                                                     id.second, "_", i),
+                                     "_Arg")
+                             .Attr("T", BaseType(n->output_type(id.second)))
+                             .Attr("index", static_cast<int32>(i))
+                             .Finalize(g, &recv_node));
+    }
     recv_node->set_assigned_device_name(device_info.name());
 
     // Copy the _output_shapes from the original node to the feed node,
@@ -130,6 +149,7 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
       }
       g->RemoveEdge(e);
     }
+    out_feed_types->push_back(BaseType(n->output_type(id.second)));
   }
   return Status::OK();
 }
@@ -143,10 +163,7 @@ static bool AddNodeToTargets(const string& node_or_tensor_name,
     return false;
   }
   const Node* n = iter->second;
-  if (n->name() != node_or_tensor_name) {
-    return false;
-  }
-
+  CHECK_EQ(n->name(), id.first);
   targets->insert(n);
   return true;
 }
@@ -184,9 +201,14 @@ namespace subgraph {
 
 Status FetchOutputs(Graph* g, const DeviceAttributes& device_info,
                     const gtl::ArraySlice<string>& fetch_outputs,
-                    NameIndex* name_index, std::vector<Node*>* fetch_nodes) {
-  fetch_nodes->clear();
-  for (const string& t : fetch_outputs) {
+                    bool use_function_convention, NameIndex* name_index,
+                    std::vector<Node*>* out_fetch_nodes,
+                    DataTypeVector* out_fetch_types) {
+  out_fetch_nodes->clear();
+  out_fetch_nodes->reserve(fetch_outputs.size());
+  for (size_t i = 0; i < fetch_outputs.size(); ++i) {
+    const string& t = fetch_outputs[i];
+
     // Parse t into node_name and output_index.
     TensorId id(ParseTensorName(t));
 
@@ -216,25 +238,39 @@ Status FetchOutputs(Graph* g, const DeviceAttributes& device_info,
 
     // Create the fetch Node and connect it up
     Node* send_node;
-    TF_RETURN_IF_ERROR(
-        NodeBuilder(strings::StrCat("_send_", id.first, "_", id.second),
-                    "_Send")
-            .Input(n, id.second)
-            .Attr("tensor_name", t)
-            .Attr("send_device", device_info.name())
-            .Attr("recv_device", device_info.name())
-            .Attr("send_device_incarnation",
-                  static_cast<int64>(device_info.incarnation()))
-            .Attr("client_terminated", true)
-            .Finalize(g, &send_node));
+    if (!use_function_convention) {
+      TF_RETURN_IF_ERROR(
+          NodeBuilder(strings::StrCat("_send_", id.first, "_", id.second),
+                      "_Send")
+              .Input(n, id.second)
+              .Attr("tensor_name", t)
+              .Attr("send_device", device_info.name())
+              .Attr("recv_device", device_info.name())
+              .Attr("send_device_incarnation",
+                    static_cast<int64>(device_info.incarnation()))
+              .Attr("client_terminated", true)
+              .Finalize(g, &send_node));
+    } else {
+      // NOTE(mrry): We must include the index as part of the node
+      // name, because _Retval is a "stateful" kernel and therefore
+      // its name must uniquely identify a kernel instance across all
+      // graphs in the same session.
+      TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat("_retval_", id.first, "_",
+                                                     id.second, "_", i),
+                                     "_Retval")
+                             .Input(n, id.second)
+                             .Attr("T", BaseType(n->output_type(id.second)))
+                             .Attr("index", static_cast<int32>(i))
+                             .Finalize(g, &send_node));
+    }
     send_node->set_assigned_device_name(device_info.name());
-    VLOG(1) << "Created fetch node: " << SummarizeNodeDef(send_node->def());
 
     // Update the index.
     (*name_index)[send_node->name()] = send_node;
 
     g->AddControlEdge(send_node, g->sink_node());
-    fetch_nodes->push_back(send_node);
+    out_fetch_nodes->push_back(send_node);
+    out_fetch_types->push_back(BaseType(n->output_type(id.second)));
   }
 
   return Status::OK();
@@ -244,7 +280,8 @@ Status RewriteGraphForExecution(
     Graph* g, const gtl::ArraySlice<string>& fed_outputs,
     const gtl::ArraySlice<string>& fetch_outputs,
     const gtl::ArraySlice<string>& target_node_names,
-    const DeviceAttributes& device_info) {
+    const DeviceAttributes& device_info, bool use_function_convention,
+    RewriteGraphMetadata* out_metadata) {
   if (fetch_outputs.empty() && target_node_names.empty()) {
     return errors::InvalidArgument(
         "Must specify at least one target to fetch or execute.");
@@ -277,18 +314,21 @@ Status RewriteGraphForExecution(
   // currently listed in "fetch_nodes".  We pass "name_index" so the index is
   // kept up to date.
   if (!fed_outputs.empty()) {
-    TF_RETURN_IF_ERROR(FeedInputs(g, device_info, fed_outputs, &name_index));
+    TF_RETURN_IF_ERROR(FeedInputs(g, device_info, fed_outputs,
+                                  use_function_convention, &name_index,
+                                  &out_metadata->feed_types));
   }
 
   // Add the fetch nodes, also updating "name_index".
   std::vector<Node*> fetch_nodes;
   if (!fetch_outputs.empty()) {
-    TF_RETURN_IF_ERROR(
-        FetchOutputs(g, device_info, fetch_outputs, &name_index, &fetch_nodes));
+    TF_RETURN_IF_ERROR(FetchOutputs(g, device_info, fetch_outputs,
+                                    use_function_convention, &name_index,
+                                    &fetch_nodes, &out_metadata->fetch_types));
   }
 
   // Prune the graph to only compute what is needed for the fetch nodes and the
-  // targets nodes.
+  // target nodes.
   if (!fetch_nodes.empty() || !target_node_names.empty()) {
     TF_RETURN_IF_ERROR(
         PruneForTargets(g, name_index, fetch_nodes, target_node_names));

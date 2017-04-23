@@ -114,7 +114,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
                is_self_adjoint=None,
                is_positive_definite=None,
                name="LinearOperatorDiag"):
-    """Initialize a `LinearOperatorDiag`.
+    r"""Initialize a `LinearOperatorDiag`.
 
     Args:
       diag:  Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`.
@@ -124,9 +124,10 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `diag.dtype` is real, this is auto-set to `True`.
       is_positive_definite:  Expect that this operator is positive definite,
-        meaning the real part of all eigenvalues is positive.  We do not require
-        the operator to be self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       name: A name for this `LinearOperator`.
 
@@ -205,8 +206,9 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
             "This diagonal operator contained non-zero imaginary values.  "
             " Thus it was not self-adjoint."))
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag
+    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     diag_mat = array_ops.expand_dims(diag_term, -1)
     return diag_mat * x
 
@@ -217,8 +219,9 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     return math_ops.reduce_sum(
         math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
     inv_diag_mat = array_ops.expand_dims(1. / diag_term, -1)
     return rhs * inv_diag_mat
 

@@ -20,9 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
+from google.protobuf import text_format
+
+from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -226,6 +230,29 @@ class AsTensorTest(test.TestCase):
       self.assertEqual(dtypes_lib.int32, x.dtype)
       self.assertAllEqual([1, 2, 3], x.eval())
 
+      x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31-1, 2, 3]))
+      self.assertEqual(dtypes_lib.int32, x.dtype)
+      self.assertAllEqual([2**31-1, 2, 3], x.eval())
+
+      x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31-1, 2, 3]),
+                                dtype=dtypes_lib.int32)
+      self.assertEqual(dtypes_lib.int32, x.dtype)
+      self.assertAllEqual([2**31-1, 2, 3], x.eval())
+
+      x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3]))
+      self.assertEqual(dtypes_lib.int64, x.dtype)
+      self.assertAllEqual([2**31, 2, 3], x.eval())
+
+      x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3]),
+                                dtype=dtypes_lib.int64)
+      self.assertEqual(dtypes_lib.int64, x.dtype)
+      self.assertAllEqual([2**31, 2, 3], x.eval())
+
+      with self.assertRaisesRegexp(
+          ValueError, "a dimension is too large .2147483648."):
+        x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3]),
+                                  dtype=dtypes_lib.int32)
+
       x = ops.convert_to_tensor(
           tensor_shape.TensorShape([1, 2, 3]), dtype=dtypes_lib.int64)
       self.assertEqual(dtypes_lib.int64, x.dtype)
@@ -346,7 +373,7 @@ class ZerosTest(test.TestCase):
 
 class ZerosLikeTest(test.TestCase):
 
-  def _compareZeros(self, dtype, use_gpu):
+  def _compareZeros(self, dtype, fully_defined_shape, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       # Creates a tensor of non-zero values with shape 2 x 3.
       # NOTE(kearnes): The default numpy dtype associated with tf.string is
@@ -357,16 +384,24 @@ class ZerosLikeTest(test.TestCase):
         numpy_dtype = np.string_
       else:
         numpy_dtype = dtype.as_numpy_dtype
-      d = constant_op.constant(np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
+      if fully_defined_shape:
+        d = constant_op.constant(
+            np.ones((2, 3), dtype=numpy_dtype), dtype=dtype)
+      else:
+        d = array_ops.placeholder(dtype=dtype)
       # Constructs a tensor of zeros of the same dimensions and type as "d".
       z_var = array_ops.zeros_like(d)
       # Test that the type is correct
       self.assertEqual(z_var.dtype, dtype)
       # Test that the shape is correct
-      self.assertEqual([2, 3], z_var.get_shape())
+      if fully_defined_shape:
+        self.assertEqual([2, 3], z_var.get_shape())
 
       # Test that the value is correct
-      z_value = z_var.eval()
+      feed_dict = {}
+      if not fully_defined_shape:
+        feed_dict[d] = np.ones((2, 3), dtype=numpy_dtype)
+      z_value = z_var.eval(feed_dict=feed_dict)
       self.assertFalse(np.any(z_value))
       self.assertEqual((2, 3), z_value.shape)
 
@@ -377,14 +412,16 @@ class ZerosLikeTest(test.TestCase):
         dtypes_lib.complex64, dtypes_lib.complex128, dtypes_lib.int64,
         dtypes_lib.string
     ]:
-      self._compareZeros(dtype, False)
+      self._compareZeros(dtype, fully_defined_shape=False, use_gpu=False)
+      self._compareZeros(dtype, fully_defined_shape=True, use_gpu=False)
 
   def testZerosLikeGPU(self):
     for dtype in [
         dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
         dtypes_lib.bool, dtypes_lib.int64, dtypes_lib.string
     ]:
-      self._compareZeros(dtype, True)
+      self._compareZeros(dtype, fully_defined_shape=False, use_gpu=True)
+      self._compareZeros(dtype, fully_defined_shape=True, use_gpu=True)
 
   def testZerosLikePartialShape(self):
     d = array_ops.placeholder(dtypes_lib.float32, shape=[None, 4, None])
@@ -590,7 +627,7 @@ class PlaceholderTest(test.TestCase):
 
   def testDtype(self):
     with self.test_session():
-      p = array_ops.placeholder(dtypes_lib.float32, name="p")
+      p = array_ops.placeholder(dtypes_lib.float32, shape=(10, 10), name="p")
       p_identity = array_ops.identity(p)
       feed_array = np.random.rand(10, 10)
       self.assertAllClose(
@@ -617,6 +654,24 @@ class PlaceholderTest(test.TestCase):
           ValueError, lambda e: "Cannot feed value of shape" in str(e)):
         p_identity.eval(feed_dict={p: feed_array[:5, :5]})
 
+  def testUnknownShape(self):
+    with self.test_session():
+      p = array_ops.placeholder(dtypes_lib.float32, shape=None, name="p")
+      p_identity = array_ops.identity(p)
+      # can feed anything
+      feed_array = np.random.rand(10, 3)
+      self.assertAllClose(
+          p_identity.eval(feed_dict={p: feed_array}), feed_array)
+      feed_array = np.random.rand(4, 2, 5)
+      self.assertAllClose(
+          p_identity.eval(feed_dict={p: feed_array}), feed_array)
+
+  def testScalarShape(self):
+    with self.test_session():
+      p = array_ops.placeholder(dtypes_lib.float32, shape=[], name="p")
+      p_identity = array_ops.identity(p)
+      self.assertAllClose(p_identity.eval(feed_dict={p: 5}), 5)
+
   def testPartialShape(self):
     with self.test_session():
       p = array_ops.placeholder(dtypes_lib.float32, shape=[None, 3], name="p")
@@ -635,14 +690,15 @@ class PlaceholderTest(test.TestCase):
       with ops.control_dependencies([p]):
         c = constant_op.constant(5, dtypes_lib.int32)
       d = math_ops.multiply(p, c)
-      self.assertEqual(10, d.eval(feed_dict={p: 2}))
+      val = np.array(2).astype(np.int)
+      self.assertEqual(10, d.eval(feed_dict={p: val}))
 
   def testBadShape(self):
     with self.assertRaises(ValueError):
       array_ops.placeholder(dtypes_lib.float32, shape=(-1, 10))
 
   def testTensorStr(self):
-    a = array_ops.placeholder(dtypes_lib.float32, name="a")
+    a = array_ops.placeholder(dtypes_lib.float32, shape=None, name="a")
     self.assertEqual("<tf.Tensor 'a:0' shape=<unknown> dtype=float32>", repr(a))
 
     b = array_ops.placeholder(dtypes_lib.int32, shape=(32, 40), name="b")
@@ -651,92 +707,81 @@ class PlaceholderTest(test.TestCase):
     c = array_ops.placeholder(dtypes_lib.qint32, shape=(32, None, 2), name="c")
     self.assertEqual("<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>", repr(c))
 
-
-class PlaceholderV2Test(test.TestCase):
-
-  def testDtype(self):
+  def testOldGraph(self):
+    # Load graph generated from earlier version of TF where
+    # placeholder shape was not set.
+    #
+    # a = tf.placeholder(tf.float32)
+    # b = a + 1.0
+    #
+    # Older graph's default shape is 'shape {}', not 'shape {
+    # unknown_rank: true }'
+    graph = """
+node {
+  name: "Placeholder"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+}
+node {
+  name: "add/y"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1.0
+      }
+    }
+  }
+}
+node {
+  name: "add"
+  op: "Add"
+  input: "Placeholder"
+  input: "add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+versions {
+  producer: 21
+}
+"""
+    gdef = graph_pb2.GraphDef()
+    text_format.Merge(graph, gdef)
     with self.test_session():
-      p = array_ops.placeholder_v2(dtypes_lib.float32, shape=None, name="p")
-      p_identity = array_ops.identity(p)
-      feed_array = np.random.rand(10, 10)
-      self.assertAllClose(
-          p_identity.eval(feed_dict={p: feed_array}), feed_array)
+      p, ret = importer.import_graph_def(
+          gdef, return_elements=["Placeholder:0", "add:0"])
 
-      with self.assertRaisesOpError(
-          "must feed a value for placeholder tensor 'p' with dtype float"):
-        p_identity.eval()
-
-  def testShape(self):
-    with self.test_session():
-      p = array_ops.placeholder_v2(dtypes_lib.float32, shape=(10, 10), name="p")
-      p_identity = array_ops.identity(p)
-      feed_array = np.random.rand(10, 10)
-      self.assertAllClose(
-          p_identity.eval(feed_dict={p: feed_array}), feed_array)
-
-      with self.assertRaisesOpError(
-          "must feed a value for placeholder tensor 'p' with dtype float and "
-          r"shape \[10,10\]"):
-        p_identity.eval()
-
-      with self.assertRaisesWithPredicateMatch(
-          ValueError, lambda e: "Cannot feed value of shape" in str(e)):
-        p_identity.eval(feed_dict={p: feed_array[:5, :5]})
-
-  def testUnknownShape(self):
-    with self.test_session():
-      p = array_ops.placeholder_v2(dtypes_lib.float32, shape=None, name="p")
-      p_identity = array_ops.identity(p)
-      # can feed anything
-      feed_array = np.random.rand(10, 3)
-      self.assertAllClose(
-          p_identity.eval(feed_dict={p: feed_array}), feed_array)
-      feed_array = np.random.rand(4, 2, 5)
-      self.assertAllClose(
-          p_identity.eval(feed_dict={p: feed_array}), feed_array)
-
-  def testScalarShape(self):
-    with self.test_session():
-      p = array_ops.placeholder_v2(dtypes_lib.float32, shape=[], name="p")
-      p_identity = array_ops.identity(p)
-      self.assertAllClose(p_identity.eval(feed_dict={p: 5}), 5)
-
-  def testPartialShape(self):
-    with self.test_session():
-      p = array_ops.placeholder_v2(
-          dtypes_lib.float32, shape=[None, 3], name="p")
-      p_identity = array_ops.identity(p)
-      feed_array = np.random.rand(10, 3)
-      self.assertAllClose(
-          p_identity.eval(feed_dict={p: feed_array}), feed_array)
-
-      with self.assertRaisesWithPredicateMatch(
-          ValueError, lambda e: "Cannot feed value of shape" in str(e)):
-        p_identity.eval(feed_dict={p: feed_array[:5, :2]})
-
-  def testControlDependency(self):
-    with self.test_session():
-      p = array_ops.placeholder_v2(dtypes_lib.int32, shape=[], name="p")
-      with ops.control_dependencies([p]):
-        c = constant_op.constant(5, dtypes_lib.int32)
-      d = math_ops.multiply(p, c)
-      val = np.array(2).astype(np.int)
-      self.assertEqual(10, d.eval(feed_dict={p: val}))
-
-  def testBadShape(self):
-    with self.assertRaises(ValueError):
-      array_ops.placeholder_v2(dtypes_lib.float32, shape=(-1, 10))
-
-  def testTensorStr(self):
-    a = array_ops.placeholder_v2(dtypes_lib.float32, shape=None, name="a")
-    self.assertEqual("<tf.Tensor 'a:0' shape=<unknown> dtype=float32>", repr(a))
-
-    b = array_ops.placeholder_v2(dtypes_lib.int32, shape=(32, 40), name="b")
-    self.assertEqual("<tf.Tensor 'b:0' shape=(32, 40) dtype=int32>", repr(b))
-
-    c = array_ops.placeholder_v2(
-        dtypes_lib.qint32, shape=(32, None, 2), name="c")
-    self.assertEqual("<tf.Tensor 'c:0' shape=(32, ?, 2) dtype=qint32>", repr(c))
+      # Feed in a vector of two elements.  Since the producer version
+      # of 21, a shape of {} is interpreted as "any shape".  If
+      # producer version were 22, then we'd get a shape mismatch
+      # error.
+      self.assertAllEqual([2.0, 3.0], ret.eval(feed_dict={p: [1.0, 2.0]}))
 
 
 class PlaceholderWithDefaultTest(test.TestCase):

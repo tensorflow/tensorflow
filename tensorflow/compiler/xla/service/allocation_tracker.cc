@@ -125,9 +125,7 @@ tensorflow::Status AllocationTracker::DeallocateShape(
     handle_map.erase(device_memory->opaque());
   }
 
-  // TODO(b/36256956) Ideally tuple elements could always be distinct buffers.
-  if (ShapeUtil::IsTuple(shape) &&
-      backend->transfer_manager()->TupleElementsAreDistinctBuffers()) {
+  if (ShapeUtil::IsTuple(shape)) {
     // Traverse into tuple recursively deallocating buffers.
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend->stream_executor(device_ordinal));
@@ -138,8 +136,7 @@ tensorflow::Status AllocationTracker::DeallocateShape(
     TF_RET_CHECK(ShapeUtil::TupleElementCount(shape) == elements.size())
         << "tuple has unexpected number of elements: " << elements.size()
         << " != " << ShapeUtil::TupleElementCount(shape);
-    for (std::vector<se::DeviceMemoryBase>::size_type i = 0;
-         i < elements.size(); ++i) {
+    for (size_t i = 0; i < elements.size(); ++i) {
       VLOG(2) << "recursing onto the tuple elements";
       TF_RETURN_IF_ERROR(DeallocateShape(backend, device_ordinal, &elements[i],
                                          shape.tuple_shapes(i),

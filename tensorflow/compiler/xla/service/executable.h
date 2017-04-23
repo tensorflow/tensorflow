@@ -39,9 +39,6 @@ namespace xla {
 
 // A given platform's compiler will produce an Executable -- this is a uniform
 // interface that is used for launching compiled programs across platforms.
-//
-// TODO(leary) will need to extend this to support multiple streams/devices as
-// we begin to compile single programs to run on multiple devices.
 class Executable {
  public:
   explicit Executable(std::unique_ptr<HloModule> hlo_module,

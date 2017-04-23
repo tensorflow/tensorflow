@@ -24,13 +24,34 @@ namespace xla {
 
 namespace {
 
-// Finds the first operand of an instruction that is a reshape or transpose and
-// returns the operand if it is found or nullptr if not found.
-HloInstruction* FirstReshapeOrTransposeOperand(const HloInstruction* hlo) {
-  for (HloInstruction* op : hlo->operands()) {
-    if (op->opcode() == HloOpcode::kReshape ||
-        op->opcode() == HloOpcode::kTranspose) {
-      return op;
+// The general idea behind this pass is that we're converting from this:
+//   %param.A = OldShape
+//   %param.B = OldShape
+//   %reshape.A = NewShape reshape(%param.A)
+//   %reshape.B = NewShape reshape(%param.B)
+//   %instruction = NewShape instruction(%reshape.A, %reshape.B)
+// To this:
+//   %param.A = OldShape
+//   %param.B = OldShape
+//   %instruction = OldShape instruction(%param.A, %param.B)
+//   %reshape = NewShape reshape(%instruction)
+//
+// Where the instruction must be elementwise, and both reshapes and transposes
+// are moved.
+//
+// Most elementwise instructions support implicit broadcast of scalar operands,
+// but select is a special-case.  The signature is Select(Pred, A, B), and the
+// only implicit scalar broadcast is on Pred, not on A or B. Since reshapes or
+// transposes to a scalar should be cheap, we simply never move them.
+
+// Finds the first non-scalar operand of an instruction that is a reshape or
+// transpose and returns the operand if it is found or nullptr if not found.
+HloInstruction* FirstNonScalarReshapeOperand(const HloInstruction* hlo) {
+  for (HloInstruction* operand : hlo->operands()) {
+    if (!ShapeUtil::IsScalar(operand->shape()) &&
+        (operand->opcode() == HloOpcode::kReshape ||
+         operand->opcode() == HloOpcode::kTranspose)) {
+      return operand;
     }
   }
   return nullptr;
@@ -88,27 +109,26 @@ bool AreEquivalentReshapes(const HloInstruction* a, const HloInstruction* b) {
 bool IsElementwiseOfEquivalentReshapesOrTransposes(
     const HloInstruction* instruction) {
   const std::vector<HloInstruction*>& operands = instruction->operands();
-  HloInstruction* first_reshape_or_transpose =
-      FirstReshapeOrTransposeOperand(instruction);
+  HloInstruction* first_reshape_operand =
+      FirstNonScalarReshapeOperand(instruction);
   // If there are no reshapes or transposes, then there is nothing to sink below
-  // the elemntwise operation.
-  if (!first_reshape_or_transpose) {
+  // the elementwise operation.
+  if (!first_reshape_operand) {
     return false;
   }
   return (instruction->user_count() > 0 ||
           instruction == instruction->parent()->root_instruction()) &&
          instruction->IsElementwise() && !operands.empty() &&
          // Check whether all operands:
-         //    1. are a reshapes or transposes that has the same input and
+         //    1. are all reshapes or transposes that have the same input and
          //    output shapes as all other reshaped or transposed operands.
          //      or
          //    2. can be any shape like kConstant, kRng, and scalars.
          std::all_of(
              operands.begin(), operands.end(),
              [instruction,
-              first_reshape_or_transpose](const HloInstruction* operand) {
-               return AreEquivalentReshapes(first_reshape_or_transpose,
-                                            operand) ||
+              first_reshape_operand](const HloInstruction* operand) {
+               return AreEquivalentReshapes(first_reshape_operand, operand) ||
                       OperandCanTrivallyChangeShape(instruction, operand);
              });
 }
@@ -120,13 +140,14 @@ bool TrySinkReshapeOrTranspose(HloComputation* computation,
                                HloInstruction* instruction) {
   if (IsElementwiseOfEquivalentReshapesOrTransposes(instruction)) {
     std::vector<HloInstruction*> operands = instruction->operands();
-    HloInstruction* old_reshape = FirstReshapeOrTransposeOperand(instruction);
+    HloInstruction* old_reshape = FirstNonScalarReshapeOperand(instruction);
     CHECK(old_reshape != nullptr);
     Shape new_elementwise_shape = old_reshape->operand(0)->shape();
     for (size_t i = 0; i < operands.size(); ++i) {
-      if (ShapeUtil::IsScalar(operands[i]->shape()) &&
-          operands[i]->opcode() != HloOpcode::kReshape &&
-          operands[i]->opcode() != HloOpcode::kTranspose) {
+      // All scalar operands remain as-is, even if they're reshape or transpose,
+      // to simplify handling wrt special scalar broadcast rules for ops like
+      // Select. Scalar reshapes should be cheap anyways.
+      if (ShapeUtil::IsScalar(operands[i]->shape())) {
         continue;
       }
       auto element_type = operands[i]->shape().element_type();
@@ -213,17 +234,15 @@ bool TrySinkReshapeOrTranspose(HloComputation* computation,
 }  // namespace
 
 StatusOr<bool> ReshapeMover::Run(HloModule* module) {
-  return std::any_of(
-      module->computations().begin(), module->computations().end(),
-      [](const std::unique_ptr<HloComputation>& computation) {
-        std::list<HloInstruction*> postorder =
-            computation->MakeInstructionPostOrder();
-        return std::any_of(postorder.begin(), postorder.end(),
-                           [&computation](HloInstruction* instruction) {
-                             return TrySinkReshapeOrTranspose(computation.get(),
-                                                              instruction);
-                           });
-      });
+  bool changed = false;
+  for (const auto& comp : module->computations()) {
+    for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
+      if (TrySinkReshapeOrTranspose(comp.get(), instruction)) {
+        changed = true;
+      }
+    }
+  }
+  return changed;
 }
 
 }  // namespace xla

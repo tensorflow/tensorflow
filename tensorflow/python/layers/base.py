@@ -23,8 +23,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import functools
-import inspect
 import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 
 
 class _Layer(object):
@@ -86,10 +87,14 @@ class _Layer(object):
     self._updates = []
     self._losses = []
     self._reuse = kwargs.get('_reuse')
+    self._graph = ops.get_default_graph()
     self.dtype = dtype
 
     # Determine base name (non-unique).
-    base_name = name
+    if isinstance(name, vs.VariableScope):
+      base_name = name.name
+    else:
+      base_name = name
     if not name:
       base_name = _to_snake_case(self.__class__.__name__)
     self._base_name = base_name
@@ -275,12 +280,11 @@ class _Layer(object):
       inputs: input tensor(s).
       *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.
-        **Note**, the kwarg 'scope' is reserved for use by the Layer.
-
+        **Note**: kwarg `scope` is reserved for use by the layer.
     Returns:
       Output tensor(s).
     """
-    scope = kwargs.get('scope', None)
+    scope = kwargs.pop('scope', None)
 
     # Define a custom getter to override tf.get_variable when creating layer
     # variables. The current custom getter is nested by the variable scope.
@@ -292,14 +296,11 @@ class _Layer(object):
           variable_getter=functools.partial(getter, **getter_kwargs))
 
     if not self._built and self._scope is None:
-      # If constructed with _scope=None
+      # If constructed with _scope=None, lazy setting of scope.
       if self._reuse:
-        # If reuse=True, use the scope argument (if any), or the current
-        # variable scope.
-        self._scope = scope or vs.get_variable_scope()
+        self._scope = next(vs.variable_scope(
+            scope if scope is not None else self._base_name).gen)
       else:
-        # Otherwise, if reuse=False, create a new scope now.  We may
-        # end up using the scope passed in via the scope argument.
         self._scope = next(vs.variable_scope(
             scope, default_name=self._base_name).gen)
       self._name = self._scope.name
@@ -309,6 +310,13 @@ class _Layer(object):
     with vs.variable_scope(self._scope,
                            reuse=True if self._built else self._reuse,
                            custom_getter=variable_getter) as scope:
+      # Ensure the Layer, if being reused, is working with inputs from
+      # the same graph as where it was created.
+      try:
+        ops._get_graph_from_inputs(nest.flatten(inputs), graph=self.graph)  # pylint: disable=protected-access
+      except ValueError as e:
+        raise ValueError("Inputs' and Layer's graphs are not the same: %s" % e)
+
       with ops.name_scope(scope.original_name_scope):
         if not self.built:
           input_list = [
@@ -320,6 +328,8 @@ class _Layer(object):
           else:
             self.build(input_shapes)
           self._built = True
+        if 'scope' in tf_inspect.getargspec(self.call).args:
+          kwargs['scope'] = scope
         outputs = self.call(inputs, *args, **kwargs)
 
         # Apply activity regularization.
@@ -338,19 +348,39 @@ class _Layer(object):
     _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
     return outputs
 
-  def apply(self, inputs, **kwargs):
+  @property
+  def graph(self):
+    return self._graph
+
+  def __deepcopy__(self, memo):
+    no_copy = set(['_graph'])
+    shallow_copy = set(['_scope'])
+    cls = self.__class__
+    result = cls.__new__(cls)
+    memo[id(self)] = result
+    for k, v in self.__dict__.items():
+      if k in no_copy:
+        setattr(result, k, v)
+      elif k in shallow_copy:
+        setattr(result, k, copy.copy(v))
+      else:
+        setattr(result, k, copy.deepcopy(v, memo))
+    return result
+
+  def apply(self, inputs, *args, **kwargs):
     """Apply the layer on a input.
 
     This simply wraps `self.__call__`.
 
     Arguments:
       inputs: Input tensor(s).
+      *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.
 
     Returns:
       Output tensor(s).
     """
-    return self.__call__(inputs, **kwargs)
+    return self.__call__(inputs, *args, **kwargs)
 
 
 def _to_snake_case(name):

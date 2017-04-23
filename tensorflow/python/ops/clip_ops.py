@@ -49,6 +49,10 @@ def clip_by_value(t, clip_value_min, clip_value_max,
 
   Returns:
     A clipped `Tensor`.
+
+  Raises:
+    ValueError: if the clip tensors would trigger array broadcasting
+      that would make the returned tensor larger than the input.
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
@@ -56,7 +60,12 @@ def clip_by_value(t, clip_value_min, clip_value_max,
 
     # Go through list of tensors, for each value in each tensor clip
     t_min = math_ops.minimum(t, clip_value_max)
+    # Assert that the shape is compatible with the initial shape,
+    # to prevent unintentional broadcasting.
+    _ = t.shape.merge_with(t_min.shape)
+
     t_max = math_ops.maximum(t_min, clip_value_min, name=name)
+    _ = t.shape.merge_with(t_max.shape)
 
   return t_max
 
@@ -100,7 +109,11 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     l2norm_inv = math_ops.rsqrt(
         math_ops.reduce_sum(t * t, axes, keep_dims=True))
-    tclip = array_ops.identity(t * clip_norm * math_ops.minimum(
+    intermediate = t * clip_norm
+    # Assert that the shape is compatible with the initial shape,
+    # to prevent unintentional broadcasting.
+    _ = t.shape.merge_with(intermediate.shape)
+    tclip = array_ops.identity(intermediate * math_ops.minimum(
         l2norm_inv, constant_op.constant(1.0, dtype=t.dtype) / clip_norm),
                                name=name)
 

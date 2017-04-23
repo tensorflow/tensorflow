@@ -23,7 +23,6 @@ package(
 cc_library(
     name = "xla_compiler",
     srcs = [
-        "op_registrations.cc",
         "xla_compilation_device.cc",
         "xla_compiler.cc",
         "xla_context.cc",
@@ -57,6 +56,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
     alwayslink = 1,

@@ -21,6 +21,8 @@ from __future__ import print_function
 import contextlib
 
 import numpy as np
+from scipy import stats
+
 from tensorflow.contrib import distributions
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -522,6 +524,104 @@ class MixtureTest(test.TestCase):
             [c_p * m for (c_p, m) in zip(cat_probs_value, dist_entropy_value)])
 
         self.assertAllClose(true_entropy_lower_bound, entropy_lower_bound_value)
+
+  def testCdfScalarUnivariate(self):
+    """Tests CDF against scipy for a mixture of seven gaussians."""
+    # Construct a mixture of gaussians with seven components.
+    n_components = 7
+
+    # pre-softmax mixture probabilities.
+    mixture_weight_logits = np.random.uniform(
+        low=-1, high=1, size=(n_components,)).astype(np.float32)
+
+    def _scalar_univariate_softmax(x):
+      e_x = np.exp(x - np.max(x))
+      return e_x / e_x.sum()
+
+    # Construct the distributions_py.Mixture object.
+    mixture_weights = _scalar_univariate_softmax(mixture_weight_logits)
+    means = [np.random.uniform(low=-10, high=10, size=()).astype(np.float32)
+             for _ in range(n_components)]
+    sigmas = [np.ones(shape=(), dtype=np.float32) for _ in range(n_components)]
+    cat_tf = distributions_py.Categorical(probs=mixture_weights)
+    components_tf = [distributions_py.Normal(loc=mu, scale=sigma)
+                     for (mu, sigma) in zip(means, sigmas)]
+    mixture_tf = distributions_py.Mixture(cat=cat_tf, components=components_tf)
+
+    x_tensor = array_ops.placeholder(shape=(), dtype=dtypes.float32)
+
+    # These are two test cases to verify.
+    xs_to_check = [
+        np.array(1.0, dtype=np.float32),
+        np.array(np.random.randn()).astype(np.float32)
+    ]
+
+    # Carry out the test for both d.cdf and exp(d.log_cdf).
+    x_cdf_tf = mixture_tf.cdf(x_tensor)
+    x_log_cdf_tf = mixture_tf.log_cdf(x_tensor)
+
+    with self.test_session() as sess:
+      for x_feed in xs_to_check:
+        x_cdf_tf_result, x_log_cdf_tf_result = sess.run(
+            [x_cdf_tf, x_log_cdf_tf], feed_dict={x_tensor: x_feed})
+
+        # Compute the cdf with scipy.
+        scipy_component_cdfs = [stats.norm.cdf(x=x_feed, loc=mu, scale=sigma)
+                                for (mu, sigma) in zip(means, sigmas)]
+        scipy_cdf_result = np.dot(mixture_weights,
+                                  np.array(scipy_component_cdfs))
+        self.assertAllClose(x_cdf_tf_result, scipy_cdf_result)
+        self.assertAllClose(np.exp(x_log_cdf_tf_result), scipy_cdf_result)
+
+  def testCdfBatchUnivariate(self):
+    """Tests against scipy for a (batch of) mixture(s) of seven gaussians."""
+    n_components = 7
+    batch_size = 5
+    mixture_weight_logits = np.random.uniform(
+        low=-1, high=1, size=(batch_size, n_components)).astype(np.float32)
+
+    def _batch_univariate_softmax(x):
+      e_x = np.exp(x)
+      e_x_sum = np.expand_dims(np.sum(e_x, axis=1), axis=1)
+      return e_x / np.tile(e_x_sum, reps=[1, x.shape[1]])
+
+    psize = (batch_size,)
+    mixture_weights = _batch_univariate_softmax(mixture_weight_logits)
+    means = [np.random.uniform(low=-10, high=10, size=psize).astype(np.float32)
+             for _ in range(n_components)]
+    sigmas = [np.ones(shape=psize, dtype=np.float32)
+              for _ in range(n_components)]
+    cat_tf = distributions_py.Categorical(probs=mixture_weights)
+    components_tf = [distributions_py.Normal(loc=mu, scale=sigma)
+                     for (mu, sigma) in zip(means, sigmas)]
+    mixture_tf = distributions_py.Mixture(cat=cat_tf, components=components_tf)
+
+    x_tensor = array_ops.placeholder(shape=psize, dtype=dtypes.float32)
+    xs_to_check = [
+        np.array([1.0, 5.9, -3, 0.0, 0.0], dtype=np.float32),
+        np.random.randn(batch_size).astype(np.float32)
+    ]
+
+    x_cdf_tf = mixture_tf.cdf(x_tensor)
+    x_log_cdf_tf = mixture_tf.log_cdf(x_tensor)
+
+    with self.test_session() as sess:
+      for x_feed in xs_to_check:
+        x_cdf_tf_result, x_log_cdf_tf_result = sess.run(
+            [x_cdf_tf, x_log_cdf_tf],
+            feed_dict={x_tensor: x_feed})
+
+        # Compute the cdf with scipy.
+        scipy_component_cdfs = [stats.norm.cdf(x=x_feed, loc=mu, scale=sigma)
+                                for (mu, sigma) in zip(means, sigmas)]
+        weights_and_cdfs = zip(np.transpose(mixture_weights, axes=[1, 0]),
+                               scipy_component_cdfs)
+        final_cdf_probs_per_component = [
+            np.multiply(c_p_value, d_cdf_value)
+            for (c_p_value, d_cdf_value) in weights_and_cdfs]
+        scipy_cdf_result = np.sum(final_cdf_probs_per_component, axis=0)
+        self.assertAllClose(x_cdf_tf_result, scipy_cdf_result)
+        self.assertAllClose(np.exp(x_log_cdf_tf_result), scipy_cdf_result)
 
 
 class MixtureBenchmark(test.Benchmark):

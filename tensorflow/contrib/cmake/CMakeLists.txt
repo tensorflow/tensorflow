@@ -22,13 +22,16 @@ option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
 option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" OFF)
 option(tensorflow_ENABLE_GRPC_SUPPORT "Enable gRPC support" ON)
 option(tensorflow_ENABLE_HDFS_SUPPORT "Enable HDFS support" OFF)
+option(tensorflow_ENABLE_JEMALLOC_SUPPORT "Enable jemalloc support" OFF)
 option(tensorflow_BUILD_CC_EXAMPLE "Build the C++ tutorial example" ON)
 option(tensorflow_BUILD_PYTHON_BINDINGS "Build the Python bindings" ON)
 option(tensorflow_BUILD_ALL_KERNELS "Build all OpKernels" ON)
 option(tensorflow_BUILD_CONTRIB_KERNELS "Build OpKernels from tensorflow/contrib/..." ON)
 option(tensorflow_BUILD_CC_TESTS "Build cc unit tests " OFF)
 option(tensorflow_BUILD_PYTHON_TESTS "Build python unit tests " OFF)
+option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
+option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 
 if (NOT WIN32)
   # Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option
@@ -81,6 +84,22 @@ if (tensorflow_OPTIMIZE_FOR_NATIVE_ARCH)
   endif()
 endif()
 
+# MSVC SIMD instructions
+if (tensorflow_WIN_CPU_SIMD_OPTIONS)
+  if (WIN32)
+    CHECK_CXX_COMPILER_FLAG("${tensorflow_WIN_CPU_SIMD_OPTIONS}" COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+    if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
+    else()
+      message(FATAL_ERROR "${tensorflow_WIN_CPU_SIMD_OPTIONS} not supported")
+    endif()
+  endif()
+endif()
+
+if (tensorflow_ENABLE_JEMALLOC_SUPPORT)
+  add_definitions(-DTENSORFLOW_USE_JEMALLOC -DJEMALLOC_EXPORT=)
+endif()
+
 # External dependencies
 include(zlib)
 include(gif)
@@ -90,6 +109,7 @@ include(eigen)
 include(gemmlowp)
 include(jsoncpp)
 include(farmhash)
+include(fft2d)
 include(highwayhash)
 include(protobuf)
 if (tensorflow_BUILD_CC_TESTS)
@@ -103,6 +123,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${jpeg_STATIC_LIBRARIES}
     ${jsoncpp_STATIC_LIBRARIES}
     ${farmhash_STATIC_LIBRARIES}
+    ${fft2d_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
 )
@@ -117,6 +138,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     protobuf
     eigen
     gemmlowp
+    fft2d
 )
 
 include_directories(
@@ -148,6 +170,12 @@ if(tensorflow_ENABLE_GRPC_SUPPORT)
   list(APPEND tensorflow_EXTERNAL_DEPENDENCIES grpc)
   include_directories(${GRPC_INCLUDE_DIRS})
 endif()
+if(tensorflow_ENABLE_JEMALLOC_SUPPORT)
+  include(jemalloc)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${jemalloc_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES jemalloc)
+  include_directories(${jemalloc_INCLUDE_DIRS})
+endif()
 if(WIN32)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES wsock32 ws2_32 shlwapi)
 endif()
@@ -171,7 +199,7 @@ if (tensorflow_ENABLE_GPU)
     # add cudnn
     include_directories(${CUDNN_HOME})
     set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_CUFFT_LIBRARIES}
-      ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
+      ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDA_cusolver_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
 
     # create cuda_config.h
     FILE(WRITE ${tensorflow_source_dir}/third_party/gpus/cuda/cuda_config.h
@@ -192,6 +220,7 @@ if (tensorflow_ENABLE_GPU)
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h ${CUDNN_HOME}/include/cudnn.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
+      ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
       DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
     )
     include_directories(${tensorflow_source_dir}/third_party/gpus)
@@ -202,7 +231,6 @@ endif()
 
 # Let's get to work!
 include(tf_core_framework.cmake)
-include(tf_tools.cmake)
 # NOTE: Disabled until issue #3996 is fixed.
 # include(tf_stream_executor.cmake)
 if (tensorflow_ENABLE_GPU)
@@ -218,15 +246,21 @@ include(tf_core_kernels.cmake)
 if(tensorflow_ENABLE_GRPC_SUPPORT)
   include(tf_core_distributed_runtime.cmake)
 endif()
+# We include tf_cc_ops first, because tf_c depends on tf_cc.
 include(tf_cc_ops.cmake)
+include(tf_c.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)
 endif()
+include(tf_tools.cmake)
 if(tensorflow_BUILD_PYTHON_BINDINGS)
   include(tensorboard)
   include(tf_python.cmake)
 endif()
-if (tensorflow_BUILD_CC_TESTS OR tensorflow_BUILD_PYTHON_TESTS)
+if(tensorflow_BUILD_SHARED_LIB)
+  include(tf_shared_lib.cmake)
+endif()
+if(tensorflow_BUILD_CC_TESTS OR tensorflow_BUILD_PYTHON_TESTS)
   include(tf_tests.cmake)
 endif()

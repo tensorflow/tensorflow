@@ -23,9 +23,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {

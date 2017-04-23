@@ -348,6 +348,16 @@ class TileTest(test.TestCase):
     self.assertEqual([4, 4], tiled.get_shape())
     self.assertTrue((result == np.tile(inp, (1, 4))).all())
 
+  def testIdentityTileAndGrad(self):
+    with self.test_session():
+      inp = np.random.rand(4, 1).astype(np.float32)
+      a = constant_op.constant(inp)
+      tiled = array_ops.tile(a, [1, 1])
+      result = tiled.eval()
+    self.assertEqual(result.shape, (4, 1))
+    self.assertEqual([4, 1], tiled.get_shape())
+    self.assertTrue((result == np.tile(inp, (1, 1))).all())
+
   def testEmpty(self):
     with self.test_session():
       inp = np.random.rand(2, 3).astype(np.float32)
@@ -528,6 +538,7 @@ class TileTest(test.TestCase):
     self._RunAndVerifyGradientResult([], [])
 
   def testGradientRandom(self):
+    self._RunAndVerifyGradientResult([2, 2, 1, 1, 3], [1, 1, 1, 1, 1])
     self._RunAndVerifyGradientResult([2, 2, 1, 1, 3], [1, 2, 1, 3, 1])
     self._RunAndVerifyGradientResult([2, 3, 1, 1, 3], [3, 1, 1, 2, 2])
     self._RunAndVerifyGradientResult([2, 1, 3, 3, 2], [1, 3, 3, 1, 2])

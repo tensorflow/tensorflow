@@ -30,7 +30,7 @@ ShowNode::ShowNode(TFNode* node) : node(node), account(true) {
   if (!node->device().empty()) {
     mutable_proto()->set_device(node->device());
   }
-  mutable_proto()->set_exec_micros(node->op_exec_micros());
+  mutable_proto()->set_exec_micros(node->kernel_compute_micros());
   mutable_proto()->set_requested_bytes(node->requested_byptes());
   mutable_proto()->set_float_ops(node->float_ops());
 

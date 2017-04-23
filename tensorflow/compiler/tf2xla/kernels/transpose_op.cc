@@ -87,7 +87,7 @@ class TransposeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Transpose", TransposeOp);
+REGISTER_XLA_OP(Name("Transpose"), TransposeOp);
 
 // InvertPermutation frequently forms part of the gradient of Transpose.
 //
@@ -128,7 +128,8 @@ class InvertPermutationOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("InvertPermutation", InvertPermutationOp);
+REGISTER_XLA_OP(Name("InvertPermutation").TypeConstraint("T", DT_INT32),
+                InvertPermutationOp);
 
 }  // namespace
 }  // namespace tensorflow

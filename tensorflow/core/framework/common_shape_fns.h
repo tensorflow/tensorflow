@@ -199,6 +199,9 @@ Status ConcatV2Shape(shape_inference::InferenceContext* c);
 // Tested by ops/math_ops_test.cc.
 Status BroadcastBinaryOpShapeFn(InferenceContext* c);
 
+// Shape function for random operations.
+Status RandomShape(shape_inference::InferenceContext* c);
+
 // Validates the 3 component tensors of a sparse tensor have the proper
 // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
 Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,

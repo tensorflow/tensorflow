@@ -117,8 +117,8 @@ class ConcatV2Op : public ConcatBaseOp {
       : ConcatBaseOp(c, /* axis_index */ c->num_inputs() - 1) {}
 };
 
-REGISTER_XLA_OP("Concat", ConcatOp);
-REGISTER_XLA_OP("ConcatV2", ConcatV2Op);
+REGISTER_XLA_OP(Name("Concat"), ConcatOp);
+REGISTER_XLA_OP(Name("ConcatV2").TypeConstraint("Tidx", DT_INT32), ConcatV2Op);
 
 class ConcatOffsetOp : public XlaOpKernel {
  public:
@@ -204,7 +204,7 @@ class ConcatOffsetOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("ConcatOffset", ConcatOffsetOp);
+REGISTER_XLA_OP(Name("ConcatOffset"), ConcatOffsetOp);
 
 }  // namespace
 }  // namespace tensorflow

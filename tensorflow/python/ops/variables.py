@@ -163,8 +163,9 @@ class Variable(object):
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
       variable_def: `VariableDef` protocol buffer. If not `None`, recreates
-        the Variable object with its contents. `variable_def` and the other
-        arguments are mutually exclusive.
+        the Variable object with its contents, referencing the variable's nodes
+        in the graph, which must already exist. The graph is not changed.
+        `variable_def` and the other arguments are mutually exclusive.
       dtype: If set, initial_value will be converted to the given type.
         If `None`, either the datatype will be kept (if `initial_value` is
         a Tensor), or `convert_to_tensor` will decide.
@@ -320,10 +321,11 @@ class Variable(object):
     self._save_slice_info = None
 
   def _init_from_proto(self, variable_def, import_scope=None):
-    """Creates a new variable from `VariableDef` protocol buffer.
+    """Recreates the Variable object from a `VariableDef` protocol buffer.
 
     Args:
-      variable_def: `VariableDef` protocol buffer.
+      variable_def: `VariableDef` protocol buffer, describing a variable
+          whose nodes already exists in the graph.
       import_scope: Optional `string`. Name scope to add.
     """
     assert isinstance(variable_def, variable_pb2.VariableDef)
@@ -1159,7 +1161,7 @@ def initialize_variables(var_list, name="init"):
 def global_variables_initializer():
   """Returns an Op that initializes global variables.
 
-  This is just a shortcut for `variable_initializers(global_variables())`
+  This is just a shortcut for `variable_initializer(global_variables())`
 
   Returns:
     An Op that initializes global variables in the graph.
@@ -1176,7 +1178,7 @@ def initialize_all_variables():
 def local_variables_initializer():
   """Returns an Op that initializes all local variables.
 
-  This is just a shortcut for `variable_initializers(local_variables())`
+  This is just a shortcut for `variable_initializer(local_variables())`
 
   Returns:
     An Op that initializes all local variables in the graph.

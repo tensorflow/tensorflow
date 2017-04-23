@@ -195,17 +195,17 @@ class SparseTensorDenseMatMulOp : public OpKernel {
   bool adjoint_b_;
 };
 
-#define REGISTER_CPU(TypeT, TypeIndex)                                   \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("SparseTensorDenseMatMul")                                    \
-          .Device(DEVICE_CPU)                                            \
-          .TypeConstraint<TypeT>("T")                                    \
-          .TypeConstraint<TypeIndex>("Tindices")                         \
-          .HostMemory("a_shape"),                                        \
-      SparseTensorDenseMatMulOp<CPUDevice, TypeT, TypeIndex>);           \
+#define REGISTER_CPU(TypeT, TypeIndex)           \
+  REGISTER_KERNEL_BUILDER(                       \
+      Name("SparseTensorDenseMatMul")            \
+          .Device(DEVICE_CPU)                    \
+          .TypeConstraint<TypeT>("T")            \
+          .TypeConstraint<TypeIndex>("Tindices") \
+          .HostMemory("a_shape"),                \
+      SparseTensorDenseMatMulOp<CPUDevice, TypeT, TypeIndex>);
 
-#define REGISTER_KERNELS_CPU(T)       \
-  REGISTER_CPU(T, int64);             \
+#define REGISTER_KERNELS_CPU(T) \
+  REGISTER_CPU(T, int64);       \
   REGISTER_CPU(T, int32)
 
 REGISTER_KERNELS_CPU(float);
@@ -258,8 +258,8 @@ DECLARE_ADJOINT_GPU_SPEC(float, 5);
           .HostMemory("a_shape"),                \
       SparseTensorDenseMatMulOp<GPUDevice, TypeT, TypeIndex>);
 
-#define REGISTER_KERNELS_GPU(T)    \
-  REGISTER_GPU(T, int64);          \
+#define REGISTER_KERNELS_GPU(T) \
+  REGISTER_GPU(T, int64);       \
   REGISTER_GPU(T, int32)
 
 REGISTER_KERNELS_GPU(float);

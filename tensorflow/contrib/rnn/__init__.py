@@ -42,6 +42,9 @@ See @{$python/contrib.rnn} guide.
 @@GridLSTMCell
 @@BidirectionalGridLSTMCell
 @@NASCell
+@@UGRNNCell
+@@IntersectionRNNCell
+@@PhasedLSTMCell
 
 ### RNNCell wrappers
 @@AttentionCellWrapper

@@ -109,8 +109,8 @@ class BatchNormalization(Layer):
     if dim is None:
       raise ValueError('Axis ' + str(self.axis) + ' of '
                        'input tensor should have a defined dimension '
-                       'but the layer received an input with shape ' + str(
-                           input_shape) + '.')
+                       'but the layer received an input with shape ' +
+                       str(input_shape) + '.')
     self.input_spec = InputSpec(ndim=len(input_shape), axes={self.axis: dim})
     shape = (dim,)
 
@@ -154,7 +154,7 @@ class BatchNormalization(Layer):
     broadcast_shape[self.axis] = input_shape[self.axis]
 
     # Determines whether broadcasting is needed.
-    needs_broadcasting = (sorted(reduction_axes) != range(ndim)[:-1])
+    needs_broadcasting = (sorted(reduction_axes) != list(range(ndim))[:-1])
 
     normed, mean, variance = K.normalize_batch_in_training(
         inputs, self.gamma, self.beta, reduction_axes, epsilon=self.epsilon)

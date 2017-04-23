@@ -382,7 +382,8 @@ def create_train_op(total_loss,
                     gate_gradients=tf_optimizer.Optimizer.GATE_OP,
                     aggregation_method=None,
                     colocate_gradients_with_ops=False,
-                    gradient_multipliers=None):
+                    gradient_multipliers=None,
+                    check_numerics=True):
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
@@ -408,6 +409,8 @@ def create_train_op(total_loss,
     gradient_multipliers: A dictionary of either `Variables` or `Variable` op
       names to the coefficient by which the associated gradient should be
       scaled.
+    check_numerics: Whether or not we apply check_numerics.
+
   Returns:
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
@@ -433,7 +436,8 @@ def create_train_op(total_loss,
       summarize_gradients=summarize_gradients,
       gate_gradients=gate_gradients,
       aggregation_method=aggregation_method,
-      colocate_gradients_with_ops=colocate_gradients_with_ops)
+      colocate_gradients_with_ops=colocate_gradients_with_ops,
+      check_numerics=check_numerics)
 
 
 def _wait_for_step(sess, global_step, step):
@@ -498,7 +502,7 @@ def train_step(sess, train_op, global_step, train_step_kwargs):
 
   if 'should_log' in train_step_kwargs:
     if sess.run(train_step_kwargs['should_log']):
-      logging.info('global step %d: loss = %.4f (%.2f sec/step)',
+      logging.info('global step %d: loss = %.4f (%.3f sec/step)',
                    np_global_step, total_loss, time_elapsed)
 
   # TODO(nsilberman): figure out why we can't put this into sess.run. The
@@ -574,8 +578,10 @@ def train(train_op,
       replica during replica training.
     global_step: The `Tensor` representing the global step. If left as `None`,
       then slim.variables.get_or_create_global_step() is used.
-    number_of_steps: The max number of gradient steps to take during training.
-      If the value is left as None, training proceeds indefinitely.
+    number_of_steps: The max number of gradient steps to take during training,
+      as measured by 'global_step': training will stop if global_step is
+      greater than 'number_of_steps'. If the value is left as None, training
+      proceeds indefinitely.
     init_op: The initialization operation. If left to its default value, then
       the session is initialized by calling `tf.global_variables_initializer()`.
     init_feed_dict: A feed dictionary to use when executing the `init_op`.

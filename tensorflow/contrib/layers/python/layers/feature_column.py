@@ -39,9 +39,13 @@ should choose depends on (1) the feature type and (2) the model type.
      age_column = real_valued_column("age")
 
    To feed sparse features into DNN models, wrap the column with
-   `embedding_column` or `one_hot_column`. `one_hot_column` is recommended for
-   features with only a few possible values. For features with many possible
-   values, `embedding_column` is recommended.
+   `embedding_column` or `one_hot_column`. `one_hot_column` will create a dense
+   boolean tensor with an entry for each possible value, and thus the
+   computation cost is linear in the number of possible values versus the number
+   of values that occur in the sparse tensor. Thus using a "one_hot_column" is
+   only recommended for features with only a few possible values. For features
+   with many possible values or for very sparse features, `embedding_column` is
+   recommended.
 
      embedded_dept_column = embedding_column(
        sparse_column_with_keys("department", ["math", "philosphy", ...]),
@@ -49,7 +53,9 @@ should choose depends on (1) the feature type and (2) the model type.
 
 * Wide (aka linear) models (`LinearClassifier`, `LinearRegressor`).
 
-   Sparse features can be fed directly into linear models.
+   Sparse features can be fed directly into linear models. When doing so
+   an embedding_lookups are used to efficiently perform the sparse matrix
+   multiplication.
 
      dept_column = sparse_column_with_keys("department",
        ["math", "philosophy", "english"])
@@ -623,7 +629,7 @@ class _SparseColumnVocabulary(_SparseColumn):
     else:
       sparse_string_tensor = st
 
-    table = lookup.string_to_index_table_from_file(
+    table = lookup.index_table_from_file(
         vocabulary_file=self.lookup_config.vocabulary_file,
         num_oov_buckets=self.lookup_config.num_oov_buckets,
         vocab_size=self.lookup_config.vocab_size,
@@ -791,9 +797,11 @@ def weighted_sparse_column(sparse_id_column,
       weight or value of the corresponding sparse id feature.
     dtype: Type of weights, such as `tf.float32`. Only floating and integer
       weights are supported.
+
   Returns:
     A _WeightedSparseColumn composed of two sparse features: one represents id,
     the other represents weight (value) of the id feature in that example.
+
   Raises:
     ValueError: if dtype is not convertible to float.
   """
@@ -854,7 +862,7 @@ class _OneHotColumn(_FeatureColumn,
       output_rank: the desired rank of the output `Tensor`.
 
     Returns:
-      A multihot Tensor to be fed into the first layer of neural network.
+      A multi-hot Tensor to be fed into the first layer of neural network.
 
     Raises:
       ValueError: When using one_hot_column with weighted_sparse_column.
@@ -1248,21 +1256,29 @@ def scattered_embedding_column(column_name,
                                initializer=None):
   """Creates an embedding column of a sparse feature using parameter hashing.
 
-  The i-th embedding component of a value v is found by retrieving an
-  embedding weight whose index is a fingerprint of the pair (v,i).
+  This is a useful shorthand when you have a sparse feature you want to use an
+  embedding for, but also want to hash the embedding's values in each dimension
+  to a variable based on a different hash.
+
+  Specifically, the i-th embedding component of a value v is found by retrieving
+  an embedding weight whose index is a fingerprint of the pair (v,i).
 
   An embedding column with sparse_column_with_hash_bucket such as
-    embedding_column(
+
+      embedding_column(
         sparse_column_with_hash_bucket(column_name, bucket_size),
         dimension)
 
   could be replaced by
-    scattered_embedding_column(
-        column_name, size=bucket_size * dimension, dimension=dimension,
+
+      scattered_embedding_column(
+        column_name,
+        size=bucket_size * dimension,
+        dimension=dimension,
         hash_key=tf.contrib.layers.SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY)
 
-  for the same number of embedding parameters and hopefully reduced impact of
-  collisions with a cost of slowing down training.
+  for the same number of embedding parameters. This should hopefully reduce the
+  impact of collisions, but adds the cost of slowing down training.
 
   Args:
     column_name: A string defining sparse column name.
@@ -2013,7 +2029,7 @@ def _get_feature_config(feature_column):
   if isinstance(feature_column, (_SparseColumn, _WeightedSparseColumn,
                                  _EmbeddingColumn, _RealValuedColumn,
                                  _BucketizedColumn, _CrossedColumn,
-                                 _OneHotColumn)):
+                                 _OneHotColumn, _ScatteredEmbeddingColumn)):
     return feature_column.config
 
   raise TypeError("Not supported _FeatureColumn type. "

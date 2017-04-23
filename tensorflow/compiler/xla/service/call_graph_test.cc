@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -28,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using testing::UnorderedMatcher;
+using ::testing::UnorderedElementsAre;
 
 class CallGraphTest : public HloTestBase {
  protected:
@@ -60,14 +61,15 @@ class CallGraphTest : public HloTestBase {
   // Build and return a computation which takes a scalar and calls (kCall) the
   // given computation with value 'callsites' number of times.
   std::unique_ptr<HloComputation> MakeCallingComputation(
-      HloComputation* map_computation, int64 callsites) {
-    HloComputation::Builder builder(TestName() + ".CallingComputation");
+      HloComputation* callee_computation, int64 callsites,
+      const string& suffix = ".CallingComputation") {
+    HloComputation::Builder builder(TestName() + suffix);
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* last_value = param0;
     for (int64 i = 0; i < callsites; ++i) {
       last_value = builder.AddInstruction(HloInstruction::CreateCall(
-          kScalarShape, {last_value}, map_computation));
+          kScalarShape, {last_value}, callee_computation));
     }
     return builder.Build();
   }
@@ -136,7 +138,7 @@ TEST_F(CallGraphTest, ParallelComputation) {
   HloModule module(TestName());
   HloComputation* map_computation =
       module.AddEmbeddedComputation(MakeScalarComputation());
-  HloComputation* entry_computation = module.AddEmbeddedComputation(
+  HloComputation* entry_computation = module.AddEntryComputation(
       MakeMappingComputation(map_computation, /*callsites=*/5));
 
   TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
@@ -168,7 +170,7 @@ TEST_F(CallGraphTest, SequentialComputations) {
   HloModule module(TestName());
   HloComputation* called_computation =
       module.AddEmbeddedComputation(MakeScalarComputation());
-  HloComputation* entry_computation = module.AddEmbeddedComputation(
+  HloComputation* entry_computation = module.AddEntryComputation(
       MakeCallingComputation(called_computation, /*callsites=*/3));
 
   TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
@@ -209,7 +211,7 @@ TEST_F(CallGraphTest, ContextBothComputations) {
   HloInstruction* map = builder.AddInstruction(
       HloInstruction::CreateMap(kScalarShape, {call}, subcomputation));
   HloComputation* entry_computation =
-      module.AddEmbeddedComputation(builder.Build());
+      module.AddEntryComputation(builder.Build());
 
   TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
                          CallGraph::Build(&module));
@@ -222,15 +224,15 @@ TEST_F(CallGraphTest, ContextBothComputations) {
 
   const CallSite& call_callsite = entry_node->callsites()[0];
   EXPECT_EQ(call, call_callsite.instruction());
-  EXPECT_MATCH(call_callsite.called_computations(),
-               UnorderedMatcher<HloComputation*>(subcomputation));
+  EXPECT_THAT(call_callsite.called_computations(),
+              UnorderedElementsAre(subcomputation));
   EXPECT_EQ(CallContext::kSequential, call_callsite.context());
   EXPECT_EQ(entry_node->GetCallSite(call), &call_callsite);
 
   const CallSite& map_callsite = entry_node->callsites()[1];
   EXPECT_EQ(map, map_callsite.instruction());
-  EXPECT_MATCH(map_callsite.called_computations(),
-               UnorderedMatcher(subcomputation));
+  EXPECT_THAT(map_callsite.called_computations(),
+              UnorderedElementsAre(subcomputation));
   EXPECT_EQ(CallContext::kParallel, map_callsite.context());
   EXPECT_EQ(entry_node->GetCallSite(map), &map_callsite);
 
@@ -293,15 +295,15 @@ TEST_F(CallGraphTest, ComplexGraph) {
   ASSERT_EQ(1, entry_node->callsites().size());
   const std::vector<HloComputation*>& called_computations =
       entry_node->callsites()[0].called_computations();
-  EXPECT_MATCH(called_computations,
-               UnorderedMatcher(cond_computation, a_computation));
+  EXPECT_THAT(called_computations,
+              UnorderedElementsAre(cond_computation, a_computation));
   EXPECT_EQ(CallContext::kSequential, entry_node->context());
 
   TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* c_node,
                          call_graph->GetNode(c_computation));
   EXPECT_TRUE(c_node->callsites().empty());
-  EXPECT_MATCH(c_node->callers(),
-               UnorderedMatcher(a_computation, b_computation));
+  EXPECT_THAT(c_node->callers(),
+              UnorderedElementsAre(a_computation, b_computation));
   EXPECT_EQ(CallContext::kBoth, c_node->context());
 
   // Visit the graph and verify nodes were visited in callee-before-caller
@@ -343,7 +345,7 @@ TEST_F(CallGraphTest, VisitSingletonComputation) {
     visited.push_back(node.computation());
     return Status::OK();
   }));
-  EXPECT_MATCH(visited, UnorderedMatcher(computation));
+  EXPECT_THAT(visited, UnorderedElementsAre(computation));
 }
 
 TEST_F(CallGraphTest, VisitUnreachableComputation) {
@@ -379,8 +381,8 @@ TEST_F(CallGraphTest, VisitUnreachableComputation) {
         },
         /*visit_unreachable_nodes=*/true));
     EXPECT_EQ(visited.size(), 2);
-    EXPECT_MATCH(visited,
-                 UnorderedMatcher(entry_computation, unreachable_computation));
+    EXPECT_THAT(visited, UnorderedElementsAre(entry_computation,
+                                              unreachable_computation));
   }
 }
 
@@ -396,7 +398,8 @@ TEST_F(CallGraphTest, VisitWithError) {
 
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.code(), tensorflow::error::INTERNAL);
-  ASSERT_MATCH(status.error_message(), testing::HasSubstr("Visitation failed"));
+  ASSERT_THAT(status.error_message(),
+              ::testing::HasSubstr("Visitation failed"));
 }
 
 }  // namespace

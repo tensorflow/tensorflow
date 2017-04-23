@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.contrib.distributions.python.ops import operator_pd_diag
 from tensorflow.contrib.distributions.python.ops import operator_pd_identity
@@ -27,6 +26,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors import bijector
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -359,7 +359,7 @@ class Affine(bijector.Bijector):
           event_ndims=event_ndims,
           graph_parents=(
               [event_ndims] +
-              [self._scale] if contrib_framework.is_tensor(self._scale)
+              [self._scale] if tensor_util.is_tensor(self._scale)
               else self._scale.inputs +
               [self._shift] if self._shift is not None else []),
           is_constant_jacobian=True,

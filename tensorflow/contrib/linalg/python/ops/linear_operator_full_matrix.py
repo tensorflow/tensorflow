@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.linalg.python.ops import linear_operator
+from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -109,7 +110,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
                is_self_adjoint=None,
                is_positive_definite=None,
                name="LinearOperatorFullMatrix"):
-    """Initialize a `LinearOperatorFullMatrix`.
+    r"""Initialize a `LinearOperatorFullMatrix`.
 
     Args:
       matrix:  Shape `[B1,...,Bb, M, N]` with `b >= 0`, `M, N >= 0`.
@@ -118,9 +119,10 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
       is_positive_definite:  Expect that this operator is positive definite,
-        meaning the real part of all eigenvalues is positive.  We do not require
-        the operator to be self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       name: A name for this `LinearOperator`.
 
@@ -171,8 +173,9 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   def _shape_tensor(self):
     return array_ops.shape(self._matrix)
 
-  def _apply(self, x, adjoint=False):
-    return math_ops.matmul(self._matrix, x, adjoint_a=adjoint)
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
+    return math_ops.matmul(
+        self._matrix, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
   def _determinant(self):
     if self._is_spd:
@@ -186,7 +189,8 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
     abs_det = math_ops.abs(self.determinant())
     return math_ops.log(abs_det)
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
     if self._is_spd:
       return linalg_ops.cholesky_solve(self._chol, rhs)
     return linalg_ops.matrix_solve(self._matrix, rhs, adjoint=adjoint)

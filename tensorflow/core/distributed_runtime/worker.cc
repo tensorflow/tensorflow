@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
+#include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
@@ -39,19 +40,37 @@ void Worker::GetStatusAsync(const GetStatusRequest* request,
   done(Status::OK());
 }
 
+void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
+                                      CreateWorkerSessionResponse* response,
+                                      StatusCallback done) {
+  Status s = env_->session_mgr->CreateSession(request->session_handle(),
+                                              request->server_def());
+  done(s);
+}
+
 void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
                                 RegisterGraphResponse* response,
                                 StatusCallback done) {
-  Status s = env_->graph_mgr->Register(
+  WorkerSession* session =
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
+  Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
       response->mutable_graph_handle());
+  if (s.ok()) {
+    env_->session_mgr->AssociateGraphWithSession(request->session_handle(),
+                                                 response->graph_handle());
+  }
   done(s);
 }
 
 void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
                                   DeregisterGraphResponse* response,
                                   StatusCallback done) {
-  Status s = env_->graph_mgr->Deregister(request->graph_handle());
+  WorkerSession* session =
+      env_->session_mgr->WorkerSessionForGraphHandle(request->graph_handle());
+  Status s = session->graph_mgr->Deregister(request->graph_handle());
+  env_->session_mgr->DisassociateGraphFromSession(request->graph_handle());
+
   done(s);
 }
 
@@ -98,9 +117,7 @@ void Worker::MaybeCallFinalCallback(const string& graph_handle, int step_id,
     }
   }
   if (done != nullptr) {
-    if (s.ok()) {
-      s = executor_status;
-    }
+    s.Update(executor_status);
     done(s);
   }
 }
@@ -124,7 +141,8 @@ void Worker::SetOrCallFinalCallback(const string& graph_handle, int step_id,
 }
 
 void Worker::AbortStep(int64 step_id) {
-  Rendezvous* rendez = env_->rendezvous_mgr->Find(step_id);
+  WorkerSession* session = env_->session_mgr->WorkerSessionForStepId(step_id);
+  Rendezvous* rendez = session->rendezvous_mgr->Find(step_id);
   SchedNonBlockingClosureAfter(1000000, [rendez, step_id]() {
     // Delay a bit before aborting the step. This way, the root
     // cause may return first back to the client instead of this
@@ -174,6 +192,9 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
                         StatusCallback done) {
   const int64 step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
+  WorkerSession* session =
+      env_->session_mgr->WorkerSessionForGraphHandle(request->graph_handle());
+  env_->session_mgr->AssociateStepIdWithGraph(request->graph_handle(), step_id);
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
@@ -209,12 +230,13 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     }
   }
   CostGraphDef* cost_graph = response->mutable_cost_graph();
-  env_->graph_mgr->ExecuteAsync(
+  session->graph_mgr->ExecuteAsync(
       request->graph_handle(), step_id, request->exec_opts(), collector,
-      cost_graph, cm, in, [this, step_id, response, cm, out, token, collector,
-                           opts, done](Status s) {
+      cost_graph, cm, in,
+      [this, step_id, response, session, cm, out, token, collector, opts,
+       done](Status s) {
         if (s.ok()) {
-          s = env_->graph_mgr->RecvOutputs(step_id, out);
+          s = session->graph_mgr->RecvOutputs(step_id, out);
         }
         opts->ClearCancelCallback();
         {
@@ -244,6 +266,9 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   const int64 step_id = request->step_id();
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
+  WorkerSession* session =
+      env_->session_mgr->WorkerSessionForGraphHandle(graph_handle);
+  env_->session_mgr->AssociateStepIdWithGraph(graph_handle, step_id);
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
@@ -289,7 +314,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
       cancellation_manager_->RegisterCallback(token,
                                               [cm]() { cm->StartCancel(); });
     }
-    env_->graph_mgr->ExecuteAsync(
+    session->graph_mgr->ExecuteAsync(
         graph_handle, step_id, request->exec_opts(), nullptr /* collector */,
         nullptr /* cost_graph */, cm, in,
         [this, token, graph_handle, step_id, cm](Status s) {
@@ -300,48 +325,48 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
           MaybeCallFinalCallback(graph_handle, step_id, s);
           delete cm;
         });
-    } else {
-      // Send the partial run's new inputs.
-      s = env_->graph_mgr->SendInputs(step_id, in);
-      if (!s.ok()) {
-        finish(s);
-        return;
-      }
+  } else {
+    // Send the partial run's new inputs.
+    s = session->graph_mgr->SendInputs(step_id, in);
+    if (!s.ok()) {
+      finish(s);
+      return;
     }
+  }
 
-    env_->graph_mgr->RecvOutputsAsync(
-        step_id, out,
-        [this, out, request, response, graph_handle, step_id,
-         finish](Status s) {
-          if (s.ok()) {
-            // Construct and return the resp.
-            for (const auto& p : *out) {
-              const string& key = p.first;
-              const Tensor& val = p.second;
-              response->AddRecv(key, val);
-            }
+  session->graph_mgr->RecvOutputsAsync(
+      step_id, out,
+      [this, out, request, response, graph_handle, step_id, finish](Status s) {
+        if (s.ok()) {
+          // Construct and return the resp.
+          for (const auto& p : *out) {
+            const string& key = p.first;
+            const Tensor& val = p.second;
+            response->AddRecv(key, val);
           }
-          if (request->is_last_partial_run()) {
-            SetOrCallFinalCallback(
-                graph_handle, step_id,
-                [this, graph_handle, step_id, finish](const Status& s) {
-                  finish(s);
-                  // We must wait to remove the partial_run_state until both the
-                  // executor and the RecvAsync are complete.
-                  RemovePartialRun(graph_handle, step_id);
-                },
-                s);
-          } else {
-            finish(s);
-          }
-        });
+        }
+        if (request->is_last_partial_run()) {
+          SetOrCallFinalCallback(
+              graph_handle, step_id,
+              [this, graph_handle, step_id, finish](const Status& s) {
+                finish(s);
+                // We must wait to remove the partial_run_state until both the
+                // executor and the RecvAsync are complete.
+                RemovePartialRun(graph_handle, step_id);
+              },
+              s);
+        } else {
+          finish(s);
+        }
+      });
 }
 
 void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
                                CleanupGraphResponse* response,
                                StatusCallback done) {
   const int64 step_id = request->step_id();
-  env_->rendezvous_mgr->Cleanup(step_id);
+  WorkerSession* session = env_->session_mgr->WorkerSessionForStepId(step_id);
+  session->rendezvous_mgr->Cleanup(step_id);
   done(Status::OK());
 }
 

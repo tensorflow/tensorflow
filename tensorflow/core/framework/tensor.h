@@ -446,6 +446,8 @@ class Tensor {
   template <typename Device, typename T>
   friend class CreateVariableOp;
   friend class OpKernelContext;  // For access to RefCountIsOne().
+  friend class NumpyTensorBuffer;  // For access to the private constructor
+                                   // taking the buffer.
 
   // Creates a tensor with the input datatype, shape and buf.
   //
@@ -500,6 +502,9 @@ class TensorBuffer : public core::RefCounted {
   T* base() const {
     return reinterpret_cast<T*>(data());
   }
+
+  // Whether this TensorBuffer owns the underlying memory.
+  virtual bool OwnsMemory() const { return true; }
 };
 
 template <typename T>

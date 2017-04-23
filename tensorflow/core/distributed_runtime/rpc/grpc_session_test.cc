@@ -814,7 +814,7 @@ TEST(SessionTest, ExtendValidation) {
 // Tests that Create() with "operation_timeout_in_ms" set times out.
 TEST(SessionTest, CreateTimeoutWithSessionOptions) {
   // Creates a RemoteSession with "operation_timeout_in_ms" set to 100.
-  SessionOptions options = Options("example.org", 1);
+  SessionOptions options = Options("example.org:2222", 1);
   options.config.set_operation_timeout_in_ms(100);
   std::unique_ptr<Session> session(NewRemote(options));
 
@@ -832,7 +832,7 @@ TEST(SessionTest, CreateTimeoutWithSessionOptions) {
 
 // Tests that Create() with "timeout_in_ms" in RunOptions set times out.
 TEST(SessionTest, CreateTimeoutWithRunOptions) {
-  SessionOptions options = Options("example.org", 1);
+  SessionOptions options = Options("example.org:2222", 1);
   std::unique_ptr<Session> session(NewRemote(options));
 
   // Creates a long running op.

@@ -109,7 +109,7 @@ class StridedSliceOp : public XlaOpKernel {
   DataType index_type_;
 };
 
-REGISTER_XLA_OP("StridedSlice", StridedSliceOp);
+REGISTER_XLA_OP(Name("StridedSlice"), StridedSliceOp);
 
 class StridedSliceGradOp : public XlaOpKernel {
  public:
@@ -217,7 +217,7 @@ class StridedSliceGradOp : public XlaOpKernel {
   DataType index_type_;
 };
 
-REGISTER_XLA_OP("StridedSliceGrad", StridedSliceGradOp);
+REGISTER_XLA_OP(Name("StridedSliceGrad"), StridedSliceGradOp);
 
 }  // namespace
 }  // namespace tensorflow

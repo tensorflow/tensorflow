@@ -32,6 +32,8 @@ See the @{$python/check_ops} guide.
 @@assert_type
 @@assert_integer
 @@assert_proper_iterable
+@@assert_same_float_dtype
+@@assert_scalar
 @@is_non_decreasing
 @@is_numeric_tensor
 @@is_strictly_increasing
@@ -73,6 +75,8 @@ __all__ = [
     'assert_rank',
     'assert_rank_at_least',
     'assert_rank_in',
+    'assert_same_float_dtype',
+    'assert_scalar',
     'assert_type',
     'is_non_decreasing',
     'is_numeric_tensor',
@@ -907,3 +911,72 @@ def is_strictly_increasing(x, name=None):
     # When len(x) = 1, diff = [], less = [], and reduce_all([]) = True.
     zero = ops.convert_to_tensor(0, dtype=diff.dtype)
     return math_ops.reduce_all(math_ops.less(zero, diff))
+
+
+def _assert_same_base_type(items, expected_type=None):
+  r"""Asserts all items are of the same base type.
+
+  Args:
+    items: List of graph items (e.g., `Variable`, `Tensor`, `SparseTensor`,
+        `Operation`, or `IndexedSlices`). Can include `None` elements, which
+        will be ignored.
+    expected_type: Expected type. If not specified, assert all items are
+        of the same base type.
+
+  Returns:
+    Validated type, or none if neither expected_type nor items provided.
+
+  Raises:
+    ValueError: If any types do not match.
+  """
+  original_item_str = None
+  for item in items:
+    if item is not None:
+      item_type = item.dtype.base_dtype
+      if not expected_type:
+        expected_type = item_type
+        original_item_str = item.name if hasattr(item, 'name') else str(item)
+      elif expected_type != item_type:
+        raise ValueError('%s, type=%s, must be of the same type (%s)%s.' % (
+            item.name if hasattr(item, 'name') else str(item),
+            item_type, expected_type,
+            (' as %s' % original_item_str) if original_item_str else ''))
+  return expected_type
+
+
+def assert_same_float_dtype(tensors=None, dtype=None):
+  """Validate and return float type based on `tensors` and `dtype`.
+
+  For ops such as matrix multiplication, inputs and weights must be of the
+  same float type. This function validates that all `tensors` are the same type,
+  validates that type is `dtype` (if supplied), and returns the type. Type must
+  be a floating point type. If neither `tensors` nor `dtype` is supplied,
+  the function will return `dtypes.float32`.
+
+  Args:
+    tensors: Tensors of input values. Can include `None` elements, which will be
+        ignored.
+    dtype: Expected type.
+  Returns:
+    Validated type.
+  Raises:
+    ValueError: if neither `tensors` nor `dtype` is supplied, or result is not
+        float, or the common type of the inputs is not a floating point type.
+  """
+  if tensors:
+    dtype = _assert_same_base_type(tensors, dtype)
+  if not dtype:
+    dtype = dtypes.float32
+  elif not dtype.is_floating:
+    raise ValueError('Expected floating point type, got %s.' % dtype)
+  return dtype
+
+
+def assert_scalar(tensor, name=None):
+  with ops.name_scope(name, 'assert_scalar', [tensor]) as name_scope:
+    tensor = ops.convert_to_tensor(tensor, name=name_scope)
+    shape = tensor.get_shape()
+    if shape.ndims != 0:
+      raise ValueError('Expected scalar shape for %s, saw shape: %s.'
+                       % (tensor.name, shape))
+    return tensor

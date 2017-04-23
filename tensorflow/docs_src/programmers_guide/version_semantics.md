@@ -54,9 +54,9 @@ patch versions.  The public APIs consist of
 Some API functions are explicitly marked as "experimental" and can change in
 backward incompatible ways between minor releases. These include:
 
-* **Experimental APIs**: The @{tf.contrib} module and its submodules in Python
-  and any functions in the C API or fields in protocol buffers that are
-  explicitly commented as being experimental.
+*   **Experimental APIs**: The @{tf.contrib} module and its submodules in Python
+    and any functions in the C API or fields in protocol buffers that are
+    explicitly commented as being experimental.
 
 *   **Other languages**: TensorFlow APIs in languages other than Python and C,
     such as:
@@ -92,6 +92,15 @@ backward incompatible ways between minor releases. These include:
 *   **Distributed Tensorflow:** Running 2 different versions of TensorFlow in a
     single cluster is unsupported. There are no guarantees about backwards
     compatibility of the wire protocol.
+
+*   **Bugs:** We reserve the right to make backwards incompatible behavior
+    (though not API) changes if the current implementation is clearly broken,
+    i.e., if it is contradicting the documentation, or if a well-known and
+    well-defined intended behavior is not properly implemented due to a bug.
+    For example, if an optimizer claims to implement a well-known optimization
+    algorithm but, due to a bug, does not match that algorithm we will fix the
+    optimizer. This may break code relying on the wrong behavior for
+    convergence. We will note such changes in the release notes.
 
 Furthermore, any API methods marked "deprecated" in the 1.0 release can
 be deleted in any subsequent minor release.

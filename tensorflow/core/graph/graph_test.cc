@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <set>
 #include <vector>
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -385,6 +386,61 @@ TEST_F(GraphTest, InputEdges) {
   EXPECT_EQ(error::INVALID_ARGUMENT, b->input_edges(&edges).code());
   graph_.AddEdge(a, 0, b, 1);
   TF_EXPECT_OK(b->input_edges(&edges));
+}
+
+TEST_F(GraphTest, AddFunctionLibrary) {
+  // Basic functionality
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  *proto.add_function() = test::function::XTimesFour();
+  TF_EXPECT_OK(graph_.AddFunctionLibrary(proto));
+  EXPECT_TRUE(graph_.flib_def().Find("XTimesTwo") != nullptr);
+  EXPECT_TRUE(graph_.flib_def().Find("XTimesFour") != nullptr);
+
+  // Duplicate functions are ignored
+  TF_EXPECT_OK(graph_.AddFunctionLibrary(proto));
+  EXPECT_TRUE(graph_.flib_def().Find("XTimesTwo") != nullptr);
+  EXPECT_TRUE(graph_.flib_def().Find("XTimesFour") != nullptr);
+
+  // Duplicate names corresponding to different functions trigger an error
+  FunctionDefLibrary error_proto = proto;
+  *error_proto.mutable_function(0)->add_node_def() =
+      error_proto.function(0).node_def(0);
+  Status s = graph_.AddFunctionLibrary(error_proto);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Cannot add function 'XTimesTwo' because a different function with "
+            "the same name already exists.");
+
+  // TODO(skyewm): reenable along with duplicate op check
+  // Function with same name as an existing op triggers an error
+  // error_proto = proto;
+  // error_proto.mutable_function(0)->mutable_signature()->set_name("Add");
+  // s = graph_.AddFunctionLibrary(error_proto);
+  // EXPECT_FALSE(s.ok());
+  // EXPECT_EQ(s.error_message(),
+  //           "Cannot add function 'Add' because an op with the same name "
+  //           "already exists.");
+
+  // Adding a gradient function to an existing function is ok
+  GradientDef* grad = proto.add_gradient();
+  grad->set_function_name("XTimesTwo");
+  grad->set_gradient_func("Undefined");  // undefined funcs in grads are ok
+  TF_EXPECT_OK(graph_.AddFunctionLibrary(proto));
+  EXPECT_EQ(graph_.flib_def().FindGradient("XTimesTwo"), "Undefined");
+
+  // Duplicate gradients are ignored
+  TF_EXPECT_OK(graph_.AddFunctionLibrary(proto));
+  EXPECT_EQ(graph_.flib_def().FindGradient("XTimesTwo"), "Undefined");
+
+  // Conflicting gradient triggers an error
+  error_proto = proto;
+  error_proto.mutable_gradient(0)->set_gradient_func("Undefined2");
+  s = graph_.AddFunctionLibrary(error_proto);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Cannot assign gradient function 'Undefined2' to 'XTimesTwo' "
+            "because it already has gradient function 'Undefined'");
 }
 
 REGISTER_OP("Input").Output("o: float");

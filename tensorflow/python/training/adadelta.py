@@ -37,6 +37,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
 
     Args:
       learning_rate: A `Tensor` or a floating point value. The learning rate.
+        To match the exact form in the original paper use 1.0.
       rho: A `Tensor` or a floating point value. The decay rate.
       epsilon: A `Tensor` or a floating point value.  A constant epsilon used
                to better conditioning the grad update.

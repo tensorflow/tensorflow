@@ -17,11 +17,31 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_OPTIMIZERS_META_OPTIMIZER_H_
 
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
+
+// Run the other grappler optimizers based on the specified rewriter config.
+class MetaOptimizer : public GraphOptimizer {
+ public:
+  MetaOptimizer(const RewriterConfig& cfg) : cfg_(cfg) {}
+  ~MetaOptimizer() override {}
+
+  string name() const override { return "meta_optimizer"; };
+
+  Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                  GraphDef* optimized_graph) override;
+
+  void Feedback(Cluster* cluster, const GrapplerItem& item,
+                const GraphDef& optimized_graph, double result) override;
+
+ private:
+  std::unique_ptr<GraphOptimizer> NewOptimizer(const string& optimizer);
+  RewriterConfig cfg_;
+};
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg);
 

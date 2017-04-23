@@ -654,7 +654,25 @@ class MutableHashTableOpTest(test.TestCase):
       output = table.lookup(input_string)
 
       result = output.eval()
-      self.assertAllClose([0, 1.1, -1.5], result)
+      self.assertAllClose([0, 1.1, default_val], result)
+
+  def testMutableHashTableIntFloat(self):
+    with self.test_session():
+      default_val = -1.0
+      keys = constant_op.constant([3, 7, 0], dtypes.int64)
+      values = constant_op.constant([7.5, -1.2, 9.9], dtypes.float32)
+      table = lookup.MutableHashTable(dtypes.int64, dtypes.float32,
+                                      default_val)
+      self.assertAllEqual(0, table.size().eval())
+
+      table.insert(keys, values).run()
+      self.assertAllEqual(3, table.size().eval())
+
+      input_string = constant_op.constant([7, 0, 11], dtypes.int64)
+      output = table.lookup(input_string)
+
+      result = output.eval()
+      self.assertAllClose([-1.2, 9.9, default_val], result)
 
   def testMutableHashTableInt64String(self):
     with self.test_session():

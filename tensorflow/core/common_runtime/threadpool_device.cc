@@ -38,14 +38,19 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                    const string& name, Bytes memory_limit,
                                    const DeviceLocality& locality,
                                    Allocator* allocator)
-    : LocalDevice(options, Device::BuildDeviceAttributes(
-                               name, DEVICE_CPU, memory_limit, locality),
+    : LocalDevice(options,
+                  Device::BuildDeviceAttributes(name, DEVICE_CPU, memory_limit,
+                                                locality),
                   allocator),
       allocator_(allocator) {}
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
 
 void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
+  // When TraceMe profiling is off (which is the default), the
+  // following TraceMe constructor is simply a conditional test of
+  // false value. Measurements show that its overhead is negligible.
+  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string());
   if (port::Tracing::IsActive()) {
     // TODO(pbar) We really need a useful identifier of the graph node.
     const uint64 id = Hash64(op_kernel->name());

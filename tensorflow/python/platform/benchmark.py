@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import numbers
 import os
 import re
@@ -33,6 +32,8 @@ from tensorflow.python.client import timeline
 from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_inspect
+
 
 # When a subclass of the Benchmark class is created, it is added to
 # the registry automatically
@@ -135,7 +136,7 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
     """Returns full name of class and method calling report_benchmark."""
 
     # Find the caller method (outermost Benchmark class)
-    stack = inspect.stack()
+    stack = tf_inspect.stack()
     calling_class = None
     name = None
     for frame in stack[::-1]:
