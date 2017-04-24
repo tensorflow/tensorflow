@@ -26,14 +26,17 @@ limitations under the License.
 #include "tensorflow/compiler/poplar/driver/visitor_full.h"
 #include "tensorflow/compiler/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/poplar/stream_executor/executor.h"
-//
+
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
+#include "tensorflow/compiler/xla/service/inliner.h"
+#include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -116,9 +119,12 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
 
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
           [](const Shape&, const Shape&) { return false; });
+  pipeline.AddPass<ReshapeMover>();
+  pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
 
   pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 
