@@ -44,9 +44,10 @@ limitations under the License.
 
 namespace xla {
 
-using ::tensorflow::strings::StrAppend;
 using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::Printf;
+using ::tensorflow::strings::StrAppend;
+using ::tensorflow::strings::StrCat;
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
     int64 parameter_number, const Shape& shape, const string& name) {
@@ -578,8 +579,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       // parameter instruction.
       int64 param_no = fused_parameters_.size();
       std::unique_ptr<HloInstruction> param_instruction = CreateParameter(
-          param_no, operand->shape(),
-          tensorflow::strings::StrCat("fusion_param.", param_no));
+          param_no, operand->shape(), StrCat("fusion_param.", param_no));
 
       param_instruction->parent_fusion_instruction_ = this;
       fused_param = fused_instructions_computation_->AddParameter(
@@ -858,7 +858,35 @@ HloInstruction::~HloInstruction() {}
 std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape_, operands_);
-  clone->name_ = name() + "." + suffix;
+  // If an instruction is cloned multiple times avoid names like
+  // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
+  // suffix. Specifically, the clone of foo.suffix is named foo.suffix2, the
+  // clone of foo.suffix2 is named foo.suffix3 and so on.
+  const string dot_suffix = "." + suffix;
+  size_t index = name().rfind(dot_suffix);
+  if (index == string::npos) {
+    // Existing name does not include ".suffix".
+    clone->name_ = name() + dot_suffix;
+  } else {
+    // Existing name includes ".suffix". Determine if substring after ".suffix"
+    // is numeric and should be replaced with an incremented number.
+    string after_suffix = name().substr(index + dot_suffix.size());
+    if (after_suffix.empty()) {
+      // Existing name ends in ".suffix". New name should end in ".suffix2".
+      clone->name_ = name() + "2";
+    } else {
+      // If names ends with .suffix[0-9]+ then replace with a suffix with the
+      // numeric value incremented.
+      int64 numeric_suffix;
+      if (tensorflow::strings::safe_strto64(after_suffix, &numeric_suffix)) {
+        clone->name_ =
+            StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
+      } else {
+        // Substring after ".suffix" is non-numeric.
+        clone->name_ = name() + dot_suffix;
+      }
+    }
+  }
   clone->set_parent(parent());
   clone->set_metadata(metadata_);
   return clone;
@@ -1387,8 +1415,7 @@ string HloInstruction::SignatureString() const {
       Join(operands_, ", ", [](string* out, HloInstruction* operand) {
         StrAppend(out, ShapeUtil::HumanString(operand->shape()));
       });
-  return tensorflow::strings::StrCat("(", operands, ") -> ",
-                                     ShapeUtil::HumanString(shape()));
+  return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
 string HloInstruction::ExtendedOpcodeStr() const {
@@ -1454,8 +1481,8 @@ string HloInstruction::ToString(bool compact_operands) const {
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
     for (int i = 0; i < slice_starts_.size(); ++i) {
-      bounds.push_back(tensorflow::strings::StrCat("[", slice_starts_[i], ":",
-                                                   slice_limits_[i], "]"));
+      bounds.push_back(
+          StrCat("[", slice_starts_[i], ":", slice_limits_[i], "]"));
     }
     StrAppend(&extra, ", slice={", Join(bounds, ", "), "}");
   }
@@ -1556,11 +1583,10 @@ string HloInstruction::ToCategory() const {
 
 string HloInstruction::FullyQualifiedName() const {
   if (IsFused()) {
-    return tensorflow::strings::StrCat(fusion_instruction()->parent()->name(),
-                                       "::", fusion_instruction()->name(),
-                                       "::", name_);
+    return StrCat(fusion_instruction()->parent()->name(),
+                  "::", fusion_instruction()->name(), "::", name_);
   }
-  return tensorflow::strings::StrCat(parent_->name(), "::", name_);
+  return StrCat(parent_->name(), "::", name_);
 }
 
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
@@ -2194,15 +2220,14 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
   lhs_dims[dnums.batch_dimension()] = 'b';
   lhs_dims[dnums.feature_dimension()] = 'f';
   for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
-    lhs_dims[dnums.spatial_dimensions(i)] = tensorflow::strings::StrCat(i);
+    lhs_dims[dnums.spatial_dimensions(i)] = StrCat(i);
   }
 
   std::vector<string> rhs_dims(2 + dnums.kernel_spatial_dimensions().size());
   rhs_dims[dnums.kernel_input_feature_dimension()] = "i";
   rhs_dims[dnums.kernel_output_feature_dimension()] = "o";
   for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
-    rhs_dims[dnums.kernel_spatial_dimensions(i)] =
-        tensorflow::strings::StrCat(i);
+    rhs_dims[dnums.kernel_spatial_dimensions(i)] = StrCat(i);
   }
 
   result += "dim_labels=";
