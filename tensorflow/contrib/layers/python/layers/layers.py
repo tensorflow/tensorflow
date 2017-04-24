@@ -867,8 +867,6 @@ def bias_add(inputs,
                                        sc.original_name_scope, outputs)
 
 
-# TODO(jbms): change `rate` parameter to `dilation_rate` for consistency with
-# underlying op.
 @add_arg_scope
 def convolution(inputs,
                 num_outputs,
