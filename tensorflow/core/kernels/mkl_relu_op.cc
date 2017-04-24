@@ -16,17 +16,17 @@ limitations under the License.
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
 #include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/mkl/include/mkl_dnn.h"
+#include "third_party/mkl/include/mkl_dnn_types.h"
 
 namespace tensorflow {
 
@@ -194,7 +194,30 @@ class MklReluGradOp : public OpKernel {
 
       void* user_i = static_cast<void*>(const_cast<T*>(a.flat<T>().data()));
       void* user_g = static_cast<void*>(const_cast<T*>(g.flat<T>().data()));
+      dnnPrimitive_t cv_input_to_grad = NULL;
+      Tensor mkl_tmp_buf_tensor;
+      void* mkl_buffer_convert = nullptr;
 
+      // if input and grad are not in the same layout, do a conversion between
+      // them.
+      if (!dnnLayoutCompare_F32(lt_input, lt_grad)) {
+        AllocTmpBuffer(context, &mkl_tmp_buf_tensor, lt_grad,
+                       &mkl_buffer_convert);
+        CHECK_EQ(dnnConversionCreate_F32(&cv_input_to_grad, lt_input, lt_grad),
+                 E_SUCCESS);
+
+        CHECK_EQ(dnnConversionExecute_F32(cv_input_to_grad, user_i,
+                                          mkl_buffer_convert),
+                 E_SUCCESS);
+        relu_res[dnnResourceSrc] = mkl_buffer_convert;
+        dnnDelete_F32(cv_input_to_grad);
+      } else {
+        relu_res[dnnResourceSrc] = user_i;
+      }
+
+      relu_res[dnnResourceDiffDst] = user_g;
+
+#if 0
       CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(
                    &mkl_lt_internal_grad, prim_relu_bwd, dnnResourceDiffDst),
                E_SUCCESS);
@@ -233,6 +256,7 @@ class MklReluGradOp : public OpKernel {
 
       dnnLayoutDelete_F32(mkl_lt_internal_input);
       dnnLayoutDelete_F32(mkl_lt_internal_grad);
+#endif
     }
 
     void MklCreateInputLayouts(OpKernelContext* context) {
@@ -379,16 +403,16 @@ void MklReluGradOp<Device, T>::Compute(OpKernelContext* context) {
 
 /* Register DNN kernels for supported operations and supported types - right now
  * it is only Relu and f32*/
-#define REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES(type)                   \
-  REGISTER_KERNEL_BUILDER(Name("MklRelu")                                 \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<type>("T")                  \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
-                          MklReluOp<CPUDevice, type>);                    \
-  REGISTER_KERNEL_BUILDER(Name("MklReluGrad")                             \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<type>("T")                  \
-                              .Label(mkl_op_registry::kMklOpLabel),       \
+#define REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES(type)             \
+  REGISTER_KERNEL_BUILDER(Name("MklRelu")                           \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklReluOp<CPUDevice, type>);              \
+  REGISTER_KERNEL_BUILDER(Name("MklReluGrad")                       \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklReluGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES);
 
