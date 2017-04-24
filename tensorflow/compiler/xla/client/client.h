@@ -119,6 +119,15 @@ class Client {
   Status TransferToInfeed(const Literal& literal, int64 replica_id = 0,
                           const DeviceHandle* device_handle = nullptr);
 
+  // Transfers from the Outfeed of the device.
+  //
+  // device_handle and replica_id together specify a particular device; a device
+  // assigned for the given replica_id among the replicas that the given device
+  // handle belongs to.
+  StatusOr<std::unique_ptr<Literal>> TransferFromOutfeed(
+      const Shape* shape_with_layout, int64 replica_id = 0,
+      const DeviceHandle* device_handle = nullptr);
+
   // Resets the device, clearing all existing state on the device.
   Status ResetDevice();
 

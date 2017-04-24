@@ -16,8 +16,8 @@ limitations under the License.
 // Native XLA implementations of simple unary Ops
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -28,10 +28,10 @@ namespace {
 // A subclass of a TlaUnaryOp must build the lambda computation that
 // describes the scalar->scalar function to apply to each element of
 // the input.
-#define XLAJIT_MAKE_UNARY(Name, COMPUTATION)                           \
-  class Name##Op : public XlaOpKernel {                                \
+#define XLAJIT_MAKE_UNARY(NAME, COMPUTATION)                           \
+  class NAME##Op : public XlaOpKernel {                                \
    public:                                                             \
-    explicit Name##Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {} \
+    explicit NAME##Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {} \
     void Compile(XlaOpKernelContext* ctx) {                            \
       xla::ComputationBuilder* b = ctx->builder();                     \
       xla::ComputationDataHandle x = ctx->Input(0);                    \
@@ -39,7 +39,7 @@ namespace {
       ctx->SetOutput(0, y);                                            \
     }                                                                  \
   };                                                                   \
-  REGISTER_XLA_OP(#Name, Name##Op);
+  REGISTER_XLA_OP(Name(#NAME), NAME##Op);
 
 // Return x if x>0, otherwise -x.
 XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
@@ -58,6 +58,27 @@ XLAJIT_MAKE_UNARY(Log1p, b->Log(b->Add(XlaHelpers::One(b, input_type(0)), x)));
 
 XLAJIT_MAKE_UNARY(LogicalNot, b->LogicalNot(x));
 XLAJIT_MAKE_UNARY(Neg, b->Neg(x));
+
+// Implements Banker's rounding: numbers that are equidistant between two
+// integers are rounded towards even.
+static xla::ComputationDataHandle Round(xla::ComputationBuilder* b,
+                                        DataType dtype,
+                                        const xla::ComputationDataHandle& x) {
+  auto half = XlaHelpers::FloatLiteral(b, dtype, 0.5);
+  auto one = XlaHelpers::FloatLiteral(b, dtype, 1.0);
+  auto two = XlaHelpers::FloatLiteral(b, dtype, 2.0);
+
+  auto round_val = b->Floor(x);
+  auto fraction = b->Sub(x, round_val);
+  auto nearest_even_int =
+      b->Sub(round_val, b->Mul(two, b->Floor(b->Mul(half, x))));
+  auto is_odd = b->Eq(nearest_even_int, one);
+  return b->Select(b->LogicalOr(b->Gt(fraction, half),
+                                b->LogicalAnd(b->Eq(fraction, half), is_odd)),
+                   b->Add(round_val, one), round_val);
+}
+XLAJIT_MAKE_UNARY(Round, Round(b, input_type(0), x));
+
 XLAJIT_MAKE_UNARY(Rsqrt,
                   b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), -0.5)));
 XLAJIT_MAKE_UNARY(Sigmoid,

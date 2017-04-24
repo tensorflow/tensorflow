@@ -100,6 +100,10 @@ extern const int kTensorBundleVersion;
 extern const char* const kHeaderEntryKey;
 
 // Builds a string-string table of tensor names to BundleEntryProto (metadata).
+//
+// On construction, attempts to create a directory given by the dirname of
+// "prefix", so "status()" must be checked before calling any member functions.
+//
 // All threads accessing the same BundleWriter must synchronize.
 class BundleWriter {
  public:
@@ -206,6 +210,12 @@ class BundleReader {
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok()
   Status Lookup(StringPiece key, Tensor* val) TF_MUST_USE_RESULT;
+
+  // Looks up the slices of the tensor keyed by "key".  On OK, "slices"
+  // is non-empty if and only if the tensor is a partitioned tensor.
+  // REQUIRES: status().ok()
+  Status LookupTensorSlices(StringPiece key, std::vector<TensorSlice>* slices)
+      TF_MUST_USE_RESULT;
 
   // Looks up a specific slice of a partitioned tensor.
   // It is only required that the stored slices cover the requested slice,

@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/no_op.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
 
-REGISTER_XLA_OP("NoOp", NoOp);
+// XLA_* devices also register a "real" NoOp operator so we suppress the
+// dummy operator using CompilationOnly().
+REGISTER_XLA_OP(Name("NoOp").CompilationOnly(), NoOp);
 
 }  // namespace tensorflow

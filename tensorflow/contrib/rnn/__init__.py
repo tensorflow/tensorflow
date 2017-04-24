@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""RNN Cells and additional RNN operations. See @{$python/contrib.rnn} guide.
+"""RNN Cells and additional RNN operations.
+
+See @{$python/contrib.rnn} guide.
 
 @@RNNCell
 @@BasicRNNCell
@@ -38,11 +40,20 @@
 @@CoupledInputForgetGateLSTMCell
 @@TimeFreqLSTMCell
 @@GridLSTMCell
+@@BidirectionalGridLSTMCell
+@@NASCell
+@@UGRNNCell
+@@IntersectionRNNCell
+@@PhasedLSTMCell
+
+### RNNCell wrappers
 @@AttentionCellWrapper
 @@CompiledWrapper
 @@static_rnn
 @@static_state_saving_rnn
 @@static_bidirectional_rnn
+@@stack_bidirectional_dynamic_rnn
+@@stack_bidirectional_rnn
 """
 
 from __future__ import absolute_import
@@ -55,6 +66,7 @@ from tensorflow.contrib.rnn.python.ops.core_rnn import static_state_saving_rnn
 
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import BasicLSTMCell
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import BasicRNNCell
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import DeviceWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import DropoutWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import EmbeddingWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import GRUCell
@@ -63,6 +75,7 @@ from tensorflow.contrib.rnn.python.ops.core_rnn_cell import LSTMCell
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import LSTMStateTuple
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import MultiRNNCell
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import OutputProjectionWrapper
+from tensorflow.contrib.rnn.python.ops.core_rnn_cell import ResidualWrapper
 from tensorflow.contrib.rnn.python.ops.core_rnn_cell import RNNCell
 
 # pylint: disable=unused-import,wildcard-import,line-too-long

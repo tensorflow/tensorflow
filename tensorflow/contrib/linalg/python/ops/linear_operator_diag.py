@@ -114,7 +114,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
                is_self_adjoint=None,
                is_positive_definite=None,
                name="LinearOperatorDiag"):
-    """Initialize a `LinearOperatorDiag`.
+    r"""Initialize a `LinearOperatorDiag`.
 
     Args:
       diag:  Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`.
@@ -124,9 +124,10 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `diag.dtype` is real, this is auto-set to `True`.
       is_positive_definite:  Expect that this operator is positive definite,
-        meaning the real part of all eigenvalues is positive.  We do not require
-        the operator to be self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       name: A name for this `LinearOperator`.
 
@@ -135,38 +136,46 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
       ValueError:  If `diag.dtype` is real, and `is_self_adjoint` is not `True`.
     """
 
-    allowed_dtypes = [
-        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
-
     with ops.name_scope(name, values=[diag]):
       self._diag = ops.convert_to_tensor(diag, name="diag")
-      dtype = self._diag.dtype
-      if dtype not in allowed_dtypes:
-        raise TypeError(
-            "Argument diag must have dtype in %s.  Found: %s"
-            % (allowed_dtypes, dtype))
+      self._check_diag(self._diag)
 
       # Check and auto-set hints.
-      if not dtype.is_complex:
+      if not self._diag.dtype.is_complex:
         if is_self_adjoint is False:
           raise ValueError("A real diagonal operator is always self adjoint.")
         else:
           is_self_adjoint = True
 
       super(LinearOperatorDiag, self).__init__(
-          dtype=dtype,
+          dtype=self._diag.dtype,
           graph_parents=[self._diag],
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           name=name)
 
+  def _check_diag(self, diag):
+    """Static check of diag."""
+    allowed_dtypes = [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+
+    dtype = diag.dtype
+    if dtype not in allowed_dtypes:
+      raise TypeError(
+          "Argument diag must have dtype in %s.  Found: %s"
+          % (allowed_dtypes, dtype))
+
+    if diag.get_shape().ndims is not None and diag.get_shape().ndims < 1:
+      raise ValueError("Argument diag must have at least 1 dimension.  "
+                       "Found: %s" % diag)
+
   def _shape(self):
     # If d_shape = [5, 3], we return [5, 3, 3].
     d_shape = self._diag.get_shape()
     return d_shape.concatenate(d_shape[-1:])
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     d_shape = array_ops.shape(self._diag)
     k = d_shape[-1]
     return array_ops.concat((d_shape, [k]), 0)
@@ -197,8 +206,9 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
             "This diagonal operator contained non-zero imaginary values.  "
             " Thus it was not self-adjoint."))
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag
+    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     diag_mat = array_ops.expand_dims(diag_term, -1)
     return diag_mat * x
 
@@ -209,15 +219,23 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     return math_ops.reduce_sum(
         math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
     inv_diag_mat = array_ops.expand_dims(1. / diag_term, -1)
     return rhs * inv_diag_mat
 
   def _to_dense(self):
     return array_ops.matrix_diag(self._diag)
 
+  def _diag_part(self):
+    return self.diag
+
   def _add_to_tensor(self, x):
     x_diag = array_ops.matrix_diag_part(x)
     new_diag = self._diag + x_diag
     return array_ops.matrix_set_diag(x, new_diag)
+
+  @property
+  def diag(self):
+    return self._diag

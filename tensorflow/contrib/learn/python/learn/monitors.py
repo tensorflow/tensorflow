@@ -35,14 +35,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import os
 import time
 
 import numpy as np
 import six
 
-from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
@@ -53,6 +52,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import summary_io
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import tf_inspect
 
 
 # TODO(ptucker): Split each monitor class into a separate file.
@@ -563,7 +563,8 @@ class ValidationMonitor(EveryN):
 
   def __init__(self, x=None, y=None, input_fn=None, batch_size=None,
                eval_steps=None,
-               every_n_steps=100, metrics=None, early_stopping_rounds=None,
+               every_n_steps=100, metrics=None, hooks=None,
+               early_stopping_rounds=None,
                early_stopping_metric="loss",
                early_stopping_metric_minimize=True, name=None):
     """Initializes a ValidationMonitor.
@@ -577,6 +578,8 @@ class ValidationMonitor(EveryN):
       every_n_steps: Check for new checkpoints to evaluate every N steps. If a
           new checkpoint is found, it is evaluated. See `EveryN`.
       metrics: See `BaseEstimator.evaluate`.
+      hooks: A list of `SessionRunHook` hooks to pass to the
+        `Estimator`'s `evaluate` function.
       early_stopping_rounds: `int`. If the metric indicated by
           `early_stopping_metric` does not change according to
           `early_stopping_metric_minimize` for this many steps, then training
@@ -605,6 +608,7 @@ class ValidationMonitor(EveryN):
     self.batch_size = batch_size
     self.eval_steps = eval_steps
     self.metrics = metrics
+    self.hooks = hooks
     self.early_stopping_rounds = early_stopping_rounds
     self.early_stopping_metric = early_stopping_metric
     self.early_stopping_metric_minimize = early_stopping_metric_minimize
@@ -654,7 +658,8 @@ class ValidationMonitor(EveryN):
     # Run evaluation and log it.
     validation_outputs = self._estimator.evaluate(
         x=self.x, y=self.y, input_fn=self.input_fn, batch_size=self.batch_size,
-        steps=self.eval_steps, metrics=self.metrics, name=self.name)
+        steps=self.eval_steps, metrics=self.metrics, hooks=self.hooks,
+        name=self.name)
     stats = []
     for name in validation_outputs:
       stats.append("%s = %s" % (name, str(validation_outputs[name])))
@@ -842,16 +847,9 @@ class GraphDump(BaseMonitor):
 class ExportMonitor(EveryN):
   """Monitor that exports Estimator every N steps."""
 
-  # TODO(philstahlfeld): Investigate switching export.export_estimator
-  # configuration values to **kwargs so that updates to the export_estimator
-  # function don't have to be reflected here.
-  @deprecated_arg_values(
-      "2016-09-23",
-      "The signature of the input_fn accepted by export is changing to be "
-      "consistent with what's used by tf.Learn Estimator's train/evaluate. "
-      "input_fn (and in most cases, input_feature_key) will both become "
-      "required args.",
-      input_fn=None)
+  @deprecated("2017-03-25",
+              "ExportMonitor is deprecated. Please pass an "
+              "ExportStrategy to Experiment instead.")
   def __init__(self,
                every_n_steps,
                export_dir,
@@ -1166,7 +1164,7 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
   def end(self, session):
     self._last_step = None
     for m in self._monitors:
-      if "session" in inspect.getargspec(m.end).args:
+      if "session" in tf_inspect.getargspec(m.end).args:
         m.end(session=session)
       else:
         m.end()

@@ -106,6 +106,10 @@ cc_binary(
             "-std=c99",
         ],
     }),
+    defines = select({
+        ":windows": [],
+        "//conditions:default": ["HAVE_SNPRINTF"],
+    }),
     visibility = ["@jpeg//:__pkg__"],
 )
 

@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_DEBUG_GRPC_TESTLIB_H_
 #define TENSORFLOW_DEBUG_GRPC_TESTLIB_H_
 
+#include <atomic>
+
 #include "grpc++/grpc++.h"
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 
@@ -26,40 +29,51 @@ namespace test {
 
 class TestEventListenerImpl final : public EventListener::Service {
  public:
-  TestEventListenerImpl(const string& dump_root) : dump_root(dump_root) {}
+  TestEventListenerImpl() : stop_requested_(false), stopped_(false) {}
+
+  void RunServer(const int server_port);
+  void StopServer();
 
   ::grpc::Status SendEvents(
       ::grpc::ServerContext* context,
       ::grpc::ServerReaderWriter< ::tensorflow::EventReply,
                                   ::tensorflow::Event>* stream);
 
-  string dump_root;
-};
+  // Clear debug data (e.g., Tensors) received so far.
+  void ClearReceivedDebugData();
 
-class GrpcTestServerClientPair {
- public:
-  GrpcTestServerClientPair(const int server_port);
-  virtual ~GrpcTestServerClientPair() {}
+  void RequestDebugOpStateChangeAtNextStream(bool to_enable,
+                                             const string& node_name,
+                                             const int32 output_slot,
+                                             const string& debug_op);
 
-  // Keep sending requests to the test server until the first success.
-  // This is necessary because the server may take a certain amount of time
-  // to start up and become responsive.
-  //
-  // Returns: A boolean indicating whether a successful response is obtained
-  //   within the limit of maximum number of attempts.
-  bool PollTillFirstRequestSucceeds();
-
-  string dump_root;
-
-  int server_port;
-  string test_server_url;
+  std::vector<string> node_names;
+  std::vector<int32> output_slots;
+  std::vector<string> debug_ops;
+  std::vector<Tensor> debug_tensors;
 
  private:
-  std::unique_ptr<Tensor> prep_tensor_;
+  std::atomic_bool stop_requested_;
+  std::atomic_bool stopped_;
 
-  const int kMaxAttempts = 100;
-  const int kSleepDurationMicros = 100 * 1000;
+  std::vector<bool> changes_to_enable_ GUARDED_BY(changes_mu_);
+  std::vector<string> changes_node_names_ GUARDED_BY(changes_mu_);
+  std::vector<int32> changes_output_slots_ GUARDED_BY(changes_mu_);
+  std::vector<string> changes_debug_ops_ GUARDED_BY(changes_mu_);
+
+  mutex changes_mu_;
 };
+
+// Poll a gRPC debug server by sending a small tensor repeatedly till success.
+//
+// Args:
+//   server_url: gRPC URL of the server to poll, e.g., "grpc://foo:3333".
+//   max_attempts: Maximum number of attempts.
+//
+// Returns:
+//   Whether the polling succeeded within max_attempts.
+bool PollTillFirstRequestSucceeds(const string& server_url,
+                                  const size_t max_attempts);
 
 }  // namespace test
 

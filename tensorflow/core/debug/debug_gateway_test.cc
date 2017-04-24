@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_gateway.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <unordered_map>
 
 #include "tensorflow/core/debug/debug_graph_utils.h"
@@ -336,6 +337,10 @@ TEST_F(SessionDebugMinusAXTest, RunSimpleNetworkWithTwoDebugNodesInserted) {
   ASSERT_EQ(1, debug_nan_count_tensor_vals[0].scalar<int64>()());
 }
 
+#ifndef GOOGLE_CUDA
+// TODO(cais): Reinstate the following test for concurrent debugged runs on
+//   a GPU once the root cause of the ~0.5% flakiness has been addressed.
+//   (b/34081273)
 TEST_F(SessionDebugMinusAXTest,
        RunSimpleNetworkConcurrentlyWithDifferentDebugTensorWatches) {
   // Test concurrent Run() calls on a graph with different debug watches.
@@ -442,11 +447,7 @@ TEST_F(SessionDebugMinusAXTest,
                             &outputs, &run_metadata);
     TF_ASSERT_OK(s);
 
-#if GOOGLE_CUDA
-    ASSERT_EQ(2, run_metadata.partition_graphs().size());
-#else
     ASSERT_EQ(1, run_metadata.partition_graphs().size());
-#endif
 
     ASSERT_EQ(1, outputs.size());
     ASSERT_TRUE(outputs[0].IsInitialized());
@@ -490,6 +491,7 @@ TEST_F(SessionDebugMinusAXTest,
     ASSERT_EQ(-1.0, y_mat_identity(1, 0));
   }
 }
+#endif
 
 class SessionDebugOutputSlotWithoutOngoingEdgeTest : public ::testing::Test {
  public:
@@ -756,6 +758,10 @@ TEST_F(SessionDebugVariableTest, VariableAssignWithDebugOps) {
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops(debug_identity);
   tensor_watch_opts->add_debug_ops(debug_nan_count);
+
+  char tempdir_template[] = "/tmp/tfdbg_XXXXXX";
+  string temp_dir(mkdtemp(tempdir_template));
+  tensor_watch_opts->add_debug_urls(strings::StrCat("file://", temp_dir));
 
   // Expected name of the inserted debug node
   string debug_identity_node_name = DebugNodeInserter::GetDebugNodeName(

@@ -20,8 +20,11 @@ from __future__ import print_function
 import argparse
 import sys
 
+import numpy as np
+
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
 
 FLAGS = None
 
@@ -43,7 +46,7 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors):
     reader = pywrap_tensorflow.NewCheckpointReader(file_name)
     if all_tensors:
       var_to_shape_map = reader.get_variable_to_shape_map()
-      for key in var_to_shape_map:
+      for key in sorted(var_to_shape_map):
         print("tensor_name: ", key)
         print(reader.get_tensor(key))
     elif not tensor_name:
@@ -56,6 +59,46 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors):
     if "corrupted compressed block contents" in str(e):
       print("It's likely that your checkpoint file has been compressed "
             "with SNAPPY.")
+    if ("Data loss" in str(e) and
+        (any([e in file_name for e in [".index", ".meta", ".data"]]))):
+      proposed_file = ".".join(file_name.split(".")[0:-1])
+      v2_file_error_template = """
+It's likely that this is a V2 checkpoint and you need to provide the filename
+*prefix*.  Try removing the '.' and extension.  Try:
+inspect checkpoint --file_name = {}"""
+      print(v2_file_error_template.format(proposed_file))
+
+
+def parse_numpy_printoption(kv_str):
+  """Sets a single numpy printoption from a string of the form 'x=y'.
+
+  See documentation on numpy.set_printoptions() for details about what values
+  x and y can take. x can be any option listed there other than 'formatter'.
+
+  Args:
+    kv_str: A string of the form 'x=y', such as 'threshold=100000'
+
+  Raises:
+    argparse.ArgumentTypeError: If the string couldn't be used to set any
+        nump printoption.
+  """
+  k_v_str = kv_str.split("=", 1)
+  if len(k_v_str) != 2 or not k_v_str[0]:
+    raise argparse.ArgumentTypeError("'%s' is not in the form k=v." % kv_str)
+  k, v_str = k_v_str
+  printoptions = np.get_printoptions()
+  if k not in printoptions:
+    raise argparse.ArgumentTypeError("'%s' is not a valid printoption." % k)
+  v_type = type(printoptions[k])
+  if v_type is type(None):
+    raise argparse.ArgumentTypeError(
+        "Setting '%s' from the command line is not supported." % k)
+  try:
+    v = (v_type(v_str) if v_type is not bool
+         else flags.BooleanParser().parse(v_str))
+  except ValueError as e:
+    raise argparse.ArgumentTypeError(e.message)
+  np.set_printoptions(**{k: v})
 
 
 def main(unused_argv):
@@ -87,5 +130,10 @@ if __name__ == "__main__":
       type="bool",
       default=False,
       help="If True, print the values of all the tensors.")
+  parser.add_argument(
+      "--printoptions",
+      nargs="*",
+      type=parse_numpy_printoption,
+      help="Argument for numpy.set_printoptions(), in the form 'k=v'.")
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -29,7 +29,7 @@ void TFNode::AddStepStat(const string& device, const NodeExecStats* step_stat) {
 
   op_start_micros_ = step_stat_->all_start_micros();
   if (step_stat_->op_end_rel_micros() && step_stat_->op_start_rel_micros()) {
-    op_exec_micros_ =
+    op_schedule_micros_ =
         step_stat_->op_end_rel_micros() - step_stat_->op_start_rel_micros();
   }
   all_spent_micros_ = step_stat_->all_end_rel_micros();
@@ -42,6 +42,10 @@ void TFNode::AddStepStat(const string& device, const NodeExecStats* step_stat) {
                               .requested_bytes();
     }
   }
+}
+
+void TFNode::AddNodeStat(const CostGraphDef::Node* cost_node) {
+  kernel_compute_micros_ = cost_node->compute_cost();
 }
 }  // namespace tfprof
 }  // namespace tensorflow

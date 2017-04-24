@@ -286,8 +286,8 @@ def add_gradients_summaries(grads_and_vars):
       summaries.append(
           summary.histogram(var.op.name + '_gradient', grad_values))
       summaries.append(
-          summary.histogram(var.op.name + '_gradient_norm',
-                            clip_ops.global_norm([grad_values])))
+          summary.scalar(var.op.name + '_gradient_norm',
+                         clip_ops.global_norm([grad_values])))
     else:
       logging.info('Var %s has no gradient', var.op.name)
 
@@ -368,7 +368,8 @@ def create_train_op(total_loss,
                     summarize_gradients=False,
                     gate_gradients=tf_optimizer.Optimizer.GATE_OP,
                     aggregation_method=None,
-                    colocate_gradients_with_ops=False):
+                    colocate_gradients_with_ops=False,
+                    check_numerics=True):
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
@@ -393,6 +394,7 @@ def create_train_op(total_loss,
       Valid values are defined in the class `AggregationMethod`.
     colocate_gradients_with_ops: Whether or not to try colocating the gradients
       with the ops that generated them.
+    check_numerics: Whether or not we apply check_numerics.
 
   Returns:
     A `Tensor` that when evaluated, computes the gradients and returns the total
@@ -449,11 +451,19 @@ def create_train_op(total_loss,
 
   with ops.name_scope('train_op'):
     # Make sure total_loss is valid.
-    total_loss = array_ops.check_numerics(total_loss,
-                                          'LossTensor is inf or nan')
+    if check_numerics:
+      total_loss = array_ops.check_numerics(total_loss,
+                                            'LossTensor is inf or nan')
 
     # Ensure the train_tensor computes grad_updates.
-    return control_flow_ops.with_dependencies([grad_updates], total_loss)
+    train_op = control_flow_ops.with_dependencies([grad_updates], total_loss)
+
+  # Add the operation used for training to the 'train_op' collection
+  train_ops = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+  if train_op not in train_ops:
+    train_ops.append(train_op)
+
+  return train_op
 
 
 def train(train_op,

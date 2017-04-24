@@ -39,7 +39,10 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
+from tensorflow.python.training import input
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training import session_run_hook
+
 
 FLAGS = flags.FLAGS
 
@@ -87,17 +90,33 @@ class EvaluationTest(test.TestCase):
                                                         self._labels)
     init_op = control_flow_ops.group(variables.global_variables_initializer(),
                                      variables.local_variables_initializer())
-    # Create Checkpoint and log directories
+    # Create checkpoint and log directories:
     chkpt_dir = os.path.join(self.get_temp_dir(), 'tmp_logs/')
     gfile.MakeDirs(chkpt_dir)
     logdir = os.path.join(self.get_temp_dir(), 'tmp_logs2/')
     gfile.MakeDirs(logdir)
 
-    # Save initialized variables to checkpoint directory
+    # Save initialized variables to a checkpoint directory:
     saver = saver_lib.Saver()
     with self.test_session() as sess:
       init_op.run()
       saver.save(sess, os.path.join(chkpt_dir, 'chkpt'))
+
+    class Object(object):
+
+      def __init__(self):
+        self.hook_was_run = False
+
+    obj = Object()
+
+    # Create a custom session run hook.
+    class CustomHook(session_run_hook.SessionRunHook):
+
+      def __init__(self, obj):
+        self.obj = obj
+
+      def end(self, session):
+        self.obj.hook_was_run = True
 
     # Now, run the evaluation loop:
     accuracy_value = evaluation.evaluation_loop(
@@ -106,8 +125,12 @@ class EvaluationTest(test.TestCase):
         logdir,
         eval_op=update_op,
         final_op=value_op,
+        hooks=[CustomHook(obj)],
         max_number_of_evaluations=1)
     self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
+
+    # Validate that custom hook ran.
+    self.assertTrue(obj.hook_was_run)
 
   def _create_names_to_metrics(self, predictions, labels):
     accuracy0, update_op0 = metric_ops.streaming_accuracy(predictions, labels)
@@ -156,6 +179,33 @@ class EvaluationTest(test.TestCase):
         evaluation_lib.checkpoints_iterator(
             '/non-existent-dir', timeout=0))
     self.assertEqual(ret, [])
+
+  def testWithEpochLimit(self):
+    predictions_limited = input.limit_epochs(self._predictions, num_epochs=1)
+    labels_limited = input.limit_epochs(self._labels, num_epochs=1)
+
+    value_op, update_op = metric_ops.streaming_accuracy(
+        predictions_limited, labels_limited)
+
+    init_op = control_flow_ops.group(variables.global_variables_initializer(),
+                                     variables.local_variables_initializer())
+    # Create checkpoint and log directories:
+    chkpt_dir = os.path.join(self.get_temp_dir(), 'tmp_logs/')
+    gfile.MakeDirs(chkpt_dir)
+    logdir = os.path.join(self.get_temp_dir(), 'tmp_logs2/')
+    gfile.MakeDirs(logdir)
+
+    # Save initialized variables to a checkpoint directory:
+    saver = saver_lib.Saver()
+    with self.test_session() as sess:
+      init_op.run()
+      saver.save(sess, os.path.join(chkpt_dir, 'chkpt'))
+
+    # Now, run the evaluation loop:
+    accuracy_value = evaluation.evaluation_loop(
+        '', chkpt_dir, logdir, eval_op=update_op, final_op=value_op,
+        max_number_of_evaluations=1, num_evals=10000)
+    self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
 
 
 class SingleEvaluationTest(test.TestCase):

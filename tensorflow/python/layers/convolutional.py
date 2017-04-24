@@ -48,21 +48,21 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
 
   Arguments:
     rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
-    kernel_size: an integer or tuple/list of n integers, specifying the
-      length of the 1D convolution window.
-    strides: an integer or tuple/list of n integers,
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: An integer or tuple/list of n integers, specifying the
+      length of the convolution window.
+    strides: An integer or tuple/list of n integers,
       specifying the stride length of the convolution.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: one of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, length, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, length)`.
-    dilation_rate: an integer or tuple/list of n integers, specifying
+      `(batch, ..., channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, ...)`.
+    dilation_rate: An integer or tuple/list of n integers, specifying
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
@@ -76,7 +76,7 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
   """
 
@@ -119,15 +119,15 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
     if len(input_shape) != self.rank + 2:
       raise ValueError('Inputs should have rank ' +
                        str(self.rank + 2) +
-                       'Received input shape:', str(input_shape))
+                       '. Received input shape: ' + str(input_shape))
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis] is None:
+    if input_shape[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis]
+    input_dim = input_shape[channel_axis].value
     kernel_shape = self.kernel_size + (input_dim, self.filters)
 
     self.kernel = vs.get_variable('kernel',
@@ -159,9 +159,21 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
         # bias_add does not support channels_first for non-4D inputs.
         if self.rank == 1:
           bias = array_ops.reshape(self.bias, (1, self.filters, 1))
-        if self.rank == 3:
-          bias = array_ops.reshape(self.bias, (1, self.filters, 1, 1))
-        outputs += bias
+          outputs += bias
+        elif self.rank == 3:
+          # As of Mar 2017, direct addition is significantly slower than
+          # bias_add when computing gradients. To use bias_add, we collapse Z
+          # and Y into a single dimension to obtain a 4D input tensor.
+          outputs_shape = outputs.shape.as_list()
+          outputs_4d = array_ops.reshape(outputs,
+                                         [outputs_shape[0], outputs_shape[1],
+                                          outputs_shape[2] * outputs_shape[3],
+                                          outputs_shape[4]])
+          outputs_4d = nn.bias_add(
+              outputs_4d,
+              self.bias,
+              data_format=utils.convert_data_format(self.data_format, 4))
+          outputs = array_ops.reshape(outputs_4d, outputs_shape)
       else:
         outputs = nn.bias_add(
             outputs,
@@ -185,21 +197,21 @@ class Conv1D(_Conv):
   `activation` is not `None`, it is applied to the outputs as well.
 
   Arguments:
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
     kernel_size: An integer or tuple/list of a single integer, specifying the
       length of the 1D convolution window.
-    strides: an integer or tuple/list of a single integer,
+    strides: An integer or tuple/list of a single integer,
       specifying the stride length of the convolution.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: one of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
       `(batch, length, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, length)`.
-    dilation_rate: an integer or tuple/list of a single integer, specifying
+    dilation_rate: An integer or tuple/list of a single integer, specifying
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
@@ -213,7 +225,7 @@ class Conv1D(_Conv):
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
   """
 
@@ -279,21 +291,21 @@ def conv1d(inputs,
 
   Arguments:
     inputs: Tensor input.
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
     kernel_size: An integer or tuple/list of a single integer, specifying the
       length of the 1D convolution window.
-    strides: an integer or tuple/list of a single integer,
+    strides: An integer or tuple/list of a single integer,
       specifying the stride length of the convolution.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: one of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
       `(batch, length, channels)` while `channels_first` corresponds to
       inputs with shape `(batch, channels, length)`.
-    dilation_rate: an integer or tuple/list of a single integer, specifying
+    dilation_rate: An integer or tuple/list of a single integer, specifying
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
@@ -307,7 +319,7 @@ def conv1d(inputs,
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
@@ -346,25 +358,26 @@ class Conv2D(_Conv):
   `activation` is not `None`, it is applied to the outputs as well.
 
   Arguments:
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
-    kernel_size: an integer or tuple/list of 2 integers, specifying the
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: An integer or tuple/list of 2 integers, specifying the
       width and height of the 2D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
-    strides: an integer or tuple/list of 2 integers,
-      specifying the strides of the convolution along the width and height.
+    strides: An integer or tuple/list of 2 integers,
+      specifying the strides of the convolution along the height and width.
       Can be a single integer to specify the same value for
       all spatial dimensions.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: one of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
-    dilation_rate: an integer or tuple/list of 2 integers, specifying
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
+
+    dilation_rate: An integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
       all spatial dimensions.
@@ -380,7 +393,7 @@ class Conv2D(_Conv):
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
   """
 
@@ -446,25 +459,26 @@ def conv2d(inputs,
 
   Arguments:
     inputs: Tensor input.
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
-    kernel_size: an integer or tuple/list of 2 integers, specifying the
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: An integer or tuple/list of 2 integers, specifying the
       width and height of the 2D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
-    strides: an integer or tuple/list of 2 integers,
-      specifying the strides of the convolution along the width and height.
+    strides: An integer or tuple/list of 2 integers,
+      specifying the strides of the convolution along the height and width.
       Can be a single integer to specify the same value for
       all spatial dimensions.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: one of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
-    dilation_rate: an integer or tuple/list of 2 integers, specifying
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
+
+    dilation_rate: An integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
       all spatial dimensions.
@@ -480,7 +494,7 @@ def conv2d(inputs,
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
@@ -519,25 +533,27 @@ class Conv3D(_Conv):
   `activation` is not `None`, it is applied to the outputs as well.
 
   Arguments:
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
-    kernel_size: an integer or tuple/list of 3 integers, specifying the
-      width and height of the 2D convolution window.
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: An integer or tuple/list of 3 integers, specifying the
+      depth, height and width of the 3D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
-    strides: an integer or tuple/list of 3 integers,
-      specifying the strides of the convolution along the width and height.
+    strides: An integer or tuple/list of 3 integers,
+      specifying the strides of the convolution along the depth,
+      height and width.
       Can be a single integer to specify the same value for
       all spatial dimensions.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: one of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
-    dilation_rate: an integer or tuple/list of 3 integers, specifying
+      `(batch, depth, height, width, channels)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, channels, depth, height, width)`.
+    dilation_rate: An integer or tuple/list of 3 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
       all spatial dimensions.
@@ -553,7 +569,7 @@ class Conv3D(_Conv):
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
   """
 
@@ -619,25 +635,27 @@ def conv3d(inputs,
 
   Arguments:
     inputs: Tensor input.
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
-    kernel_size: an integer or tuple/list of 3 integers, specifying the
-      width and height of the 2D convolution window.
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: An integer or tuple/list of 3 integers, specifying the
+      depth, height and width of the 3D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
-    strides: an integer or tuple/list of 3 integers,
-      specifying the strides of the convolution along the width and height.
+    strides: An integer or tuple/list of 3 integers,
+      specifying the strides of the convolution along the depth,
+      height and width.
       Can be a single integer to specify the same value for
       all spatial dimensions.
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: one of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
-    dilation_rate: an integer or tuple/list of 3 integers, specifying
+      `(batch, depth, height, width, channels)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, channels, depth, height, width)`.
+    dilation_rate: An integer or tuple/list of 3 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
       all spatial dimensions.
@@ -653,7 +671,7 @@ def conv3d(inputs,
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
@@ -692,23 +710,24 @@ class SeparableConv2D(Conv2D):
   It then optionally applies an activation function to produce the final output.
 
   Arguments:
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
-    kernel_size: a tuple or list of N positive integers specifying the spatial
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: A tuple or list of 2 integers specifying the spatial
       dimensions of of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
-    strides: a tuple or list of N positive integers specifying the strides
+    strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
       all spatial dimensions.
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: one of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shapedata_format = 'NWHC'
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
-    dilation_rate: an integer or tuple/list of 2 integers, specifying
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
+
+    dilation_rate: An integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
       all spatial dimensions.
@@ -731,7 +750,7 @@ class SeparableConv2D(Conv2D):
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
   """
 
@@ -837,7 +856,7 @@ class SeparableConv2D(Conv2D):
       # Reshape to channels first
       outputs = array_ops.transpose(outputs, (0, 3, 1, 2))
 
-    if self.bias:
+    if self.bias is not None:
       outputs = nn.bias_add(
           outputs,
           self.bias,
@@ -878,23 +897,24 @@ def separable_conv2d(inputs,
 
   Arguments:
     inputs: Input tensor.
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
-    kernel_size: a tuple or list of N positive integers specifying the spatial
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: A tuple or list of 2 integers specifying the spatial
       dimensions of of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
-    strides: a tuple or list of N positive integers specifying the strides
+    strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
       all spatial dimensions.
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
-    padding: one of `"valid"` or `"same"` (case-insensitive).
+    padding: One of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
-      `channels_last` corresponds to inputs with shapedata_format = 'NWHC'
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
-    dilation_rate: an integer or tuple/list of 2 integers, specifying
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
+
+    dilation_rate: An integer or tuple/list of 2 integers, specifying
       the dilation rate to use for dilated convolution.
       Can be a single integer to specify the same value for
       all spatial dimensions.
@@ -917,7 +937,7 @@ def separable_conv2d(inputs,
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
@@ -960,20 +980,20 @@ class Conv2DTranspose(Conv2D):
   said convolution.
 
   Arguments:
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
-    kernel_size: a tuple or list of 2 positive integers specifying the spatial
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: A tuple or list of 2 positive integers specifying the spatial
       dimensions of of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
-    strides: a tuple or list of 2 positive integers specifying the strides
+    strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
       all spatial dimensions.
     padding: one of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
@@ -984,7 +1004,7 @@ class Conv2DTranspose(Conv2D):
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
   """
 
@@ -1140,20 +1160,20 @@ def conv2d_transpose(inputs,
 
   Arguments:
     inputs: Input tensor.
-    filters: integer, the dimensionality of the output space (i.e. the number
-      output of filters in the convolution).
-    kernel_size: a tuple or list of 2 positive integers specifying the spatial
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: A tuple or list of 2 positive integers specifying the spatial
       dimensions of of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
-    strides: a tuple or list of 2 positive integers specifying the strides
+    strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
       all spatial dimensions.
     padding: one of `"valid"` or `"same"` (case-insensitive).
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, width, height, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, width, height)`.
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
@@ -1164,7 +1184,7 @@ def conv2d_transpose(inputs,
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
     trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
@@ -1204,3 +1224,4 @@ convolution2d = conv2d
 convolution3d = conv3d
 separable_convolution2d = separable_conv2d
 convolution2d_transpose = deconvolution2d = deconv2d = conv2d_transpose
+

@@ -16,9 +16,9 @@ limitations under the License.
 // XLA-specific Ops for split.
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -99,7 +99,7 @@ class SplitOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Split", SplitOp);
+REGISTER_XLA_OP(Name("Split"), SplitOp);
 
 class SplitVOp : public XlaOpKernel {
  public:
@@ -202,7 +202,7 @@ class SplitVOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("SplitV", SplitVOp);
+REGISTER_XLA_OP(Name("SplitV"), SplitVOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -110,8 +110,7 @@ class Compiler {
   // The compiler may optionally specialize to the individual device
   // (not just type of device) indicated by the executor.
   //
-  // TODO(leary) will need to update this API when a single computation can run
-  // across multiple devices simultaneously.
+  // Use the overload below to compile computations that run in parallel.
   virtual StatusOr<std::unique_ptr<Executable>> Compile(
       std::unique_ptr<HloModule> module,
       std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
@@ -152,6 +151,9 @@ class Compiler {
   // platform, or an error status if it is not.
   static StatusOr<Compiler*> GetForPlatform(
       const perftools::gputools::Platform* platform);
+
+  // Returns the size in bytes of the top-level buffer of a shape.
+  virtual int64 ShapeSizeBytes(const Shape& shape) const = 0;
 
  private:
   // Mutex that guards the platform-compiler map.

@@ -128,7 +128,7 @@ class QueueRunner(object):
                      for t in queue_closed_exception_types)):
         raise TypeError(
             "queue_closed_exception_types, when provided, "
-            "must be a non-empty list of tf.error types, but saw: %s"
+            "must be a tuple of tf.error types, but saw: %s"
             % queue_closed_exception_types)
     self._queue_closed_exception_types = queue_closed_exception_types
     # Close when no more will be produced, but pending enqueues should be
@@ -227,11 +227,14 @@ class QueueRunner(object):
     """
     decremented = False
     try:
+      # Make a cached callable from the `enqueue_op` to decrease the
+      # Python overhead in the queue-runner loop.
+      enqueue_callable = sess.make_callable(enqueue_op)
       while True:
         if coord and coord.should_stop():
           break
         try:
-          sess.run(enqueue_op)
+          enqueue_callable()
         except self._queue_closed_exception_types:  # pylint: disable=catching-non-exception
           # This exception indicates that a queue was closed.
           with self._lock:

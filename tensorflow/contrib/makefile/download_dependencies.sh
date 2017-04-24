@@ -44,6 +44,9 @@ download_and_extract() {
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   curl -Ls "${url}" | tar -C "${dir}" --strip-components=1 -xz
+
+  # Delete any potential BUILD files, which would interfere with Bazel builds.
+  find "${dir}" -type f -name '*BUILD' -delete
 }
 
 download_and_extract "${EIGEN_URL}" "${DOWNLOADS_DIR}/eigen"

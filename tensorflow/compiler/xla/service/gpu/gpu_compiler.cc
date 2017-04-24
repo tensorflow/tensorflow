@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
@@ -42,15 +43,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/temp_buffer_offsets.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
@@ -78,6 +80,13 @@ const char* kTargetTriple = "nvptx64-nvidia-cuda";
 // The data layout of the emitted module. Copied from computeDataLayout in
 // NVPTXTargetMachine.cpp.
 const char* kDataLayout = "e-i64:64-v16:16-v32:32-n16:32:64";
+
+// Any address of a variable residing in global memory or returned by one of the
+// memory allocation routines from the driver or runtime API is always aligned
+// to at least 256 bytes.
+//
+// http://docs.nvidia.com/cuda/cuda-c-programming-guide/#device-memory-accesses
+constexpr int64 kMemoryAlignment = 256;
 
 // Returns the directory containing nvvm libdevice files. This function is
 // called in GpuCompiler's constructor, so can't return an error. But
@@ -114,6 +123,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
                                      const se::DeviceDescription& device_desc) {
   {
     HloPassPipeline pipeline("optimization", dump_hlo);
+    pipeline.AddInvariantChecker<HloVerifier>();
     {
       auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
           "simplification", dump_hlo);
@@ -121,10 +131,16 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
       pass.AddPass<ReshapeMover>();
+      pass.AddPass<HloConstantFolding>();
     }
     pipeline.AddPass<ConvolutionFolding>();
-    pipeline.AddPass<TransposeFolding>(ImplementedAsGemm);
-    pipeline.AddPass<HloSubcomputationUnification>();
+    pipeline.AddPass<TransposeFolding>(
+        [](const HloInstruction& dot,
+           const TransposeFolding::OperandIndices& candidate_operands) {
+          return ImplementedAsGemm(dot) ? candidate_operands
+                                        : TransposeFolding::OperandIndices{};
+        },
+        TransposeFolding::NeverFoldTranspose);
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -149,6 +165,7 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare", dump_hlo);
+  pipeline.AddInvariantChecker<HloVerifier>();
   pipeline.AddPass<PadInsertion>();
   pipeline.AddPass<GpuLayoutAssignment>(
       module_config->mutable_entry_computation_layout());
@@ -164,13 +181,14 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   // instruction which materializes a value).
   pipeline.AddPass<GpuCopyInsertion>();
   pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 
 // Invokes the ptxas tool on the given PTX string, and dumps its output.
 void DumpPtxasInfo(const string& ptx) {
-  legacy_flags::GpuCompilerFlags* flags = legacy_flags::GetGpuCompilerFlags();
-  const string ptxas_path = flags->xla_ptxas_path;
+  const string ptxas_path =
+      tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin/ptxas");
   // Do not log PTX stats if ptxas is not found at the given path.
   if (!tensorflow::Env::Default()->FileExists(ptxas_path).ok()) {
     LOG(WARNING)
@@ -206,7 +224,9 @@ void DumpPtxasInfo(const string& ptx) {
 
 }  // namespace
 
-GpuCompiler::GpuCompiler() : libdevice_dir_(GetLibdeviceDir()) {}
+GpuCompiler::GpuCompiler()
+    : libdevice_dir_(GetLibdeviceDir()),
+      pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     std::unique_ptr<HloModule> hlo_module,
@@ -234,28 +254,29 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   // Set the target triple and the data layout.
   llvm_module.setTargetTriple(kTargetTriple);
   llvm_module.setDataLayout(kDataLayout);
-  const llvm::DataLayout& data_layout = llvm_module.getDataLayout();
-  int64 pointer_size = data_layout.getPointerSize();
 
   // Determine the HLO schedule, which is an ordering of HLO instructions.  This
   // is used by buffer assignment to enable buffer reuse, and the same ordering
   // must also be used to determine the thunk launch schedule.
   std::unique_ptr<StreamAssignment> stream_assignment =
       AssignStreams(*hlo_module);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloSchedule> hlo_schedule,
-                      HloSchedule::Build(*hlo_module, *stream_assignment));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloSchedule> hlo_schedule,
+      HloSchedule::Build(*hlo_module, *stream_assignment, pointer_size_));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(hlo_module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          pointer_size));
-  auto temp_buffer_offsets = MakeUnique<TempBufferOffsets>(*buffer_assignment);
+                          [this](const LogicalBuffer& buffer) {
+                            return ShapeSizeBytes(buffer.shape());
+                          },
+                          kMemoryAlignment));
 
-  IrEmitterContext ir_emitter_context(
-      hlo_module.get(), buffer_assignment.get(), temp_buffer_offsets.get(),
-      &stream_exec->GetDeviceDescription(), &llvm_module);
+  IrEmitterContext ir_emitter_context(hlo_module.get(), buffer_assignment.get(),
+                                      &stream_exec->GetDeviceDescription(),
+                                      &llvm_module);
 
   HloComputation* entry_computation = hlo_module->entry_computation();
   IrEmitterUnnested ir_emitter(*module_config, entry_computation,
@@ -279,8 +300,16 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     generated_ptxes_.emplace_back(MakeUnique<string>());
     ptx = generated_ptxes_.back().get();
   }
-  TF_ASSIGN_OR_RETURN(
-      *ptx, CompileToPtx(&llvm_module, *module_config, libdevice_dir_));
+  int cc_major, cc_minor;
+  if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                   &cc_minor)) {
+    LOG(WARNING)
+        << "Couldn't get compute capability for device; assuming sm_20.";
+    cc_major = 2;
+    cc_minor = 0;
+  }
+  TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
+                                         *module_config, libdevice_dir_));
 
   VLOG(2) << "LLVM module after optimizations:";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
@@ -298,8 +327,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   auto* gpu_executable =
       new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(hlo_module),
-                        std::move(module_config), std::move(buffer_assignment),
-                        std::move(temp_buffer_offsets));
+                        std::move(module_config), std::move(buffer_assignment));
   if (flags->xla_gpu_embed_ir) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -325,6 +353,10 @@ GpuCompiler::CompileAheadOfTime(
 
 se::Platform::Id GpuCompiler::PlatformId() const {
   return se::cuda::kCudaPlatformId;
+}
+
+int64 GpuCompiler::ShapeSizeBytes(const Shape& shape) const {
+  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
 }
 
 }  // namespace gpu

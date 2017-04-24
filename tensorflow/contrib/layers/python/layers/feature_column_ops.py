@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
@@ -32,10 +34,18 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
+
+
+def _is_variable(v):
+  """Returns true if `v` is a variable."""
+  return isinstance(v, (variables.Variable,
+                        resource_variable_ops.ResourceVariable))
 
 
 def _embeddings_from_arguments(column,
@@ -73,7 +83,7 @@ def _embeddings_from_arguments(column,
         shape=[args.vocab_size],
         dtype=dtypes.float32,
         initializer=args.initializer,
-        trainable=trainable,
+        trainable=(trainable and args.trainable),
         collections=weight_collections)
 
     return embedding_ops.scattered_embedding_lookup_sparse(
@@ -108,7 +118,7 @@ def _embeddings_from_arguments(column,
           shape=shape,
           dtype=dtypes.float32,
           initializer=args.initializer,
-          trainable=trainable,
+          trainable=(trainable and args.trainable),
           collections=weight_collections)
       graph.add_to_collection(shared_embedding_collection_name, embeddings)
   else:
@@ -117,10 +127,10 @@ def _embeddings_from_arguments(column,
         shape=[args.vocab_size, args.dimension],
         dtype=dtypes.float32,
         initializer=args.initializer,
-        trainable=trainable,
+        trainable=(trainable and args.trainable),
         collections=weight_collections)
 
-  if isinstance(embeddings, variables.Variable):
+  if _is_variable(embeddings):
     embeddings = [embeddings]
   else:
     embeddings = embeddings._get_variable_list()  # pylint: disable=protected-access
@@ -136,6 +146,58 @@ def _embeddings_from_arguments(column,
       max_norm=args.max_norm)
 
 
+def _maybe_reshape_input_tensor(tensor, column_name, output_rank):
+  """Reshape the input tensor by the following rule.
+
+  1. If `output_rank > input_rank + 1`, raise a `ValueError`.
+  2. If `output_rank == input_rank + 1`, expand the tensor by one dimension.
+  3. If `output_rank == input_rank`, do nothing.
+  4. If `output_rank < input_rank`, flatten the inner dimensions of the tensor.
+
+  Args:
+    tensor: A Tensor or SparseTensor to be reshaped.
+    column_name: A string name of the feature column for the tensor.
+    output_rank: the desired rank of the tensor.
+  Returns:
+    A reshaped Tensor or SparseTensor.
+  Raises:
+    ValueError: if `output_rank > input_rank + 1` for the input tensor.
+  """
+  input_rank = tensor.get_shape().ndims
+
+  if input_rank is None and isinstance(tensor, sparse_tensor_py.SparseTensor):
+    # Try to get the rank of a sparse tensor by its dense_shape's shape.
+    input_rank = tensor.dense_shape.get_shape().as_list()[0]
+
+  if input_rank is None:
+    raise ValueError('Error while processing column {}. Rank of input Tensor '
+                     'can not be None.'.format(column_name))
+
+  if output_rank > input_rank + 1:
+    raise ValueError('Error while processing column {}. Rank of input Tensor '
+                     '({}) should be the same as output_rank ({}). For '
+                     'example, sequence data should typically be 3 '
+                     'dimensional (rank 3) while non-sequence data is '
+                     'typically 2 dimensional (rank 2).'.format(
+                         column_name, input_rank, output_rank))
+  elif output_rank == input_rank + 1:
+    # Expand the tensor's shape by 1 dimension.
+    if isinstance(tensor, sparse_tensor_py.SparseTensor):
+      output_shape = array_ops.concat([tensor.dense_shape, [1]], 0)
+      return sparse_ops.sparse_reshape(tensor, output_shape)
+    else:
+      reshaped = array_ops.expand_dims(tensor, -1)
+      # Try to calculate the new shape.
+      static_shape = tensor.get_shape()
+      if static_shape is not None and static_shape.dims is not None:
+        reshaped.set_shape(static_shape.as_list() + [1])
+      return reshaped
+  elif output_rank < input_rank:
+    return layers._inner_flatten(tensor, output_rank)  # pylint: disable=protected-access
+  else:
+    return tensor
+
+
 def _input_from_feature_columns(columns_to_tensors,
                                 feature_columns,
                                 weight_collections,
@@ -144,6 +206,7 @@ def _input_from_feature_columns(columns_to_tensors,
                                 output_rank,
                                 default_name):
   """Implementation of `input_from(_sequence)_feature_columns`."""
+  columns_to_tensors = columns_to_tensors.copy()
   check_feature_columns(feature_columns)
   with variable_scope.variable_scope(scope,
                                      default_name=default_name,
@@ -159,6 +222,12 @@ def _input_from_feature_columns(columns_to_tensors,
                                          default_name=column.name,
                                          values=columns_to_tensors.values()):
         transformed_tensor = transformer.transform(column)
+        if output_rank == 3:
+          transformed_tensor = nest.map_structure(
+              functools.partial(
+                  _maybe_reshape_input_tensor,
+                  column_name=column.name,
+                  output_rank=output_rank), transformed_tensor)
         try:
           # pylint: disable=protected-access
           arguments = column._deep_embedding_lookup_arguments(
@@ -189,7 +258,7 @@ def input_from_feature_columns(columns_to_tensors,
                                weight_collections=None,
                                trainable=True,
                                scope=None):
-  """A tf.contrib.layer style input layer builder based on FeatureColumns.
+  """A tf.contrib.layers style input layer builder based on FeatureColumns.
 
   Generally a single example in training data is described with feature columns.
   At the first layer of the model, this column oriented data should be converted
@@ -226,7 +295,7 @@ def input_from_feature_columns(columns_to_tensors,
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
       means a base feature (not-transformed). It can have FeatureColumn as a
       key too. That means that FeatureColumn is already transformed by input
-      pipeline. For example, `inflow` may have handled transformations.
+      pipeline.
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived by FeatureColumn.
     weight_collections: List of graph collections to which weights are added.
@@ -268,7 +337,7 @@ def sequence_input_from_feature_columns(columns_to_tensors,
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
       means a base feature (not-transformed). It can have FeatureColumn as a
       key too. That means that FeatureColumn is already transformed by input
-      pipeline. For example, `inflow` may have handled transformations.
+      pipeline.
     feature_columns: A set containing all the feature columns. All items in the
       set should be instances of classes derived by FeatureColumn.
     weight_collections: List of graph collections to which weights are added.
@@ -324,7 +393,7 @@ def _create_embedding_lookup(column,
         initializer=embedding_lookup_arguments.initializer,
         trainable=trainable,
         collections=weight_collections)
-    if isinstance(variable, variables.Variable):
+    if _is_variable(variable):
       variable = [variable]
     else:
       variable = variable._get_variable_list()  # pylint: disable=protected-access
@@ -382,7 +451,7 @@ def _create_joint_embedding_lookup(columns_to_tensors,
         initializer=init_ops.zeros_initializer(),
         trainable=trainable,
         collections=weight_collections)
-    if isinstance(variable, variables.Variable):
+    if _is_variable(variable):
       variable = [variable]
     else:
       variable = variable._get_variable_list()  # pylint: disable=protected-access
@@ -422,14 +491,15 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
   Returns:
     A tuple containing:
 
-      * A Tensor which represents predictions of a linear model.
-      * A list of Variables storing the weights.
-      * A Variable which is used for bias.
+    * A Tensor which represents predictions of a linear model.
+    * A list of Variables storing the weights.
+    * A Variable which is used for bias.
 
   Raises:
     ValueError: if FeatureColumn cannot be used for linear predictions.
 
   """
+  columns_to_tensors = columns_to_tensors.copy()
   check_feature_columns(feature_columns)
   with variable_scope.variable_scope(
       scope,
@@ -471,7 +541,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
                                       weight_collections=None,
                                       trainable=True,
                                       scope=None):
-  """A tf.contrib.layer style linear prediction builder based on FeatureColumns.
+  """A tf.contrib.layers style linear prediction builder based on FeatureColumn.
 
   Generally a single example in training data is described with feature columns.
   This function generates weighted sum for each num_outputs. Weighted sum refers
@@ -518,6 +588,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
   Raises:
     ValueError: if FeatureColumn cannot be used for linear predictions.
   """
+  columns_to_tensors = columns_to_tensors.copy()
   check_feature_columns(feature_columns)
   with variable_scope.variable_scope(
       scope,
@@ -545,7 +616,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
             default_name=column.name,
             values=columns_to_tensors.values()):
           tensor = column._to_dense_tensor(transformed_tensor)
-          tensor = fc._reshape_real_valued_tensor(tensor, 2, column.name)
+          tensor = _maybe_reshape_input_tensor(
+              tensor, column.name, output_rank=2)
           variable = [
               contrib_variables.model_variable(
                   name='weight',
@@ -684,8 +756,8 @@ def transform_features(features, feature_columns):
   Returns:
     A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
   """
-  check_feature_columns(feature_columns)
   columns_to_tensor = features.copy()
+  check_feature_columns(feature_columns)
   transformer = _Transformer(columns_to_tensor)
   for column in sorted(set(feature_columns), key=lambda x: x.key):
     transformer.transform(column)
@@ -755,10 +827,10 @@ def parse_feature_columns_from_sequence_examples(
 def _log_variable(variable):
   if isinstance(variable, list):
     for var in variable:
-      if isinstance(variable, variables.Variable):
+      if _is_variable(variable):
         logging.info('Created variable %s, with device=%s', var.name,
                      var.device)
-  elif isinstance(variable, variables.Variable):
+  elif _is_variable(variable):
     logging.info('Created variable %s, with device=%s', variable.name,
                  variable.device)
 
@@ -798,11 +870,14 @@ def check_feature_columns(feature_columns):
   """Checks the validity of the set of FeatureColumns.
 
   Args:
-    feature_columns: A set of instances or subclasses of FeatureColumn.
+    feature_columns: An iterable of instances or subclasses of FeatureColumn.
 
   Raises:
+    ValueError: If `feature_columns` is a dict.
     ValueError: If there are duplicate feature column keys.
   """
+  if isinstance(feature_columns, dict):
+    raise ValueError('Expected feature_columns to be iterable, found dict.')
   seen_keys = set()
   for f in feature_columns:
     key = f.key

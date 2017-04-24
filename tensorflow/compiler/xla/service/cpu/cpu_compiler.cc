@@ -58,7 +58,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/parallel_cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -67,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
@@ -190,16 +193,16 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   }
   // It is important to recurse for "while" or else we risk overly coarse
   // profiling information.
-  Status HandleWhile(HloInstruction* xla_while, HloInstruction* /*init*/,
-                     HloComputation* condition, HloComputation* body) override {
+  Status HandleWhile(HloInstruction* xla_while) override {
     TF_RETURN_IF_ERROR(DefaultAction(xla_while));
 
     CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(
-        condition->root_instruction()->Accept(&candidates_for_condition));
+    TF_RETURN_IF_ERROR(xla_while->while_condition()->root_instruction()->Accept(
+        &candidates_for_condition));
 
     CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(body->root_instruction()->Accept(&candidates_for_body));
+    TF_RETURN_IF_ERROR(xla_while->while_body()->root_instruction()->Accept(
+        &candidates_for_body));
 
     return Status::OK();
   }
@@ -213,18 +216,31 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
                                  HloDumper dump_hlo) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU", dump_hlo);
-  pipeline.AddPass<Inliner>();
+  pipeline.AddInvariantChecker<HloVerifier>();
+
+  // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
+  // where we will take this pass in future.
+  // pipeline.AddPass<Inliner>();
+
   pipeline.AddPass<ConvCanonicalization>();
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification",
                                                                dump_hlo);
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
-        [](const Shape&, const Shape&) { return false; });
+        [](const Shape&, const Shape&) { return false; },
+        /*enable_dot_simplification=*/false);
     pass.AddPass<ReshapeMover>();
+    pass.AddPass<HloConstantFolding>();
   }
-  pipeline.AddPass<TransposeFolding>(PotentiallyImplementedAsEigenDot);
-  pipeline.AddPass<HloSubcomputationUnification>();
+  pipeline.AddPass<TransposeFolding>(
+      [](const HloInstruction& dot,
+         const TransposeFolding::OperandIndices& candidate_operands) {
+        return PotentiallyImplementedAsEigenDot(dot)
+                   ? candidate_operands
+                   : TransposeFolding::OperandIndices{};
+      },
+      TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
   pipeline.AddPass<CpuInstructionFusion>();
   pipeline.AddPass<CpuLayoutAssignment>(
@@ -233,7 +249,8 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
       /*is_layout_sensitive=*/true,
-      [](const Shape&, const Shape&) { return true; });
+      [](const Shape&, const Shape&) { return true; },
+      /*enable_dot_simplification=*/false);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   // Outline ops in the entry computation into calls to subcomputations.
   legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
@@ -251,10 +268,14 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
     pipeline.AddPass<ParallelizationPreparation>();
   }
   pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 
 namespace {
+
+// Align buffers to 16-byte boundaries.
+constexpr int64 kMemoryAlignment = 16;
 
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& execution_options) {
@@ -295,8 +316,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
                                       CodeGenOptLevel());
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
-  const llvm::DataLayout& data_layout = llvm_module->getDataLayout();
-  int64 pointer_size = data_layout.getPointerSize();
 
   TF_RETURN_IF_ERROR(
       RunHloPasses(hlo_module.get(), module_config.get(), dump_hlo));
@@ -322,7 +341,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(hlo_module.get(),
                             MakeUnique<DependencyHloOrdering>(hlo_module.get()),
-                            pointer_size));
+                            [this](const LogicalBuffer& buffer) {
+                              return ShapeSizeBytes(buffer.shape());
+                            },
+                            kMemoryAlignment));
 
     // If we are using the parallel CPU backend, we need to create map from
     // HloInstruction to the corresponding generated function name.
@@ -338,7 +360,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         // Copy the constant out of the ProtocolBuffer so that we can give it a
         // higher alignment.
         const void* data = LiteralUtil::InternalData(instruction->literal());
-        int64 size = llvm_ir::ByteSizeOf(instruction->shape(), data_layout);
+        int64 size = ShapeSizeBytes(instruction->shape());
         auto iter = aligned_constants.emplace(
             instruction, MakeUnique<unsigned char[]>(size));
         CHECK_EQ(iter.second, true);
@@ -348,7 +370,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       }
       // The parallel preparation should have ensured that the top-level
       // computation consists solely of Call instructions.
-      TF_RET_CHECK(instruction->opcode() == HloOpcode::kCall);
+      TF_RET_CHECK(instruction->opcode() == HloOpcode::kCall)
+          << hlo_module->ToString();
       HloComputation* to_apply = instruction->to_apply();
       parallel_computations.emplace(to_apply, instruction);
     }
@@ -402,10 +425,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // and reduced memory usage (as compared to using DependencyHloOrdering).
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
-        CreateMemoryMinimizingSequence(
-            *hlo_module, [&](const LogicalBuffer& buffer) {
-              return llvm_ir::ByteSizeOf(buffer.shape(), data_layout);
-            }));
+        CreateMemoryMinimizingSequence(*hlo_module,
+                                       [this](const LogicalBuffer& buffer) {
+                                         return ShapeSizeBytes(buffer.shape());
+                                       }));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
@@ -414,7 +437,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         BufferAssigner::Run(hlo_module.get(),
                             MakeUnique<SequentialHloOrdering>(hlo_module.get(),
                                                               module_sequence),
-                            pointer_size));
+                            [this](const LogicalBuffer& buffer) {
+                              return ShapeSizeBytes(buffer.shape());
+                            },
+                            kMemoryAlignment));
 
     // Each computation is a single function.  Emit all embedded computations
     // before the entry computation. The order of computations returned from
@@ -505,9 +531,9 @@ CpuCompiler::CompileAheadOfTime(
                          error.c_str());
   }
 
-  llvm::Reloc::Model reloc_model;
-  llvm::PICLevel::Level pic_level;
-  llvm::PIELevel::Level pie_level;
+  llvm::Reloc::Model reloc_model = llvm::Reloc::Static;
+  llvm::PICLevel::Level pic_level = llvm::PICLevel::NotPIC;
+  llvm::PIELevel::Level pie_level = llvm::PIELevel::Default;
   switch (options.relocation_model()) {
     case CpuAotCompilationOptions::RelocationModel::Static:
       reloc_model = llvm::Reloc::Static;
@@ -555,11 +581,9 @@ CpuCompiler::CompileAheadOfTime(
   if (pie_level != llvm::PIELevel::Default) {
     llvm_module.setPIELevel(pie_level);
   }
-  const llvm::DataLayout& data_layout = llvm_module.getDataLayout();
-  int64 pointer_size = data_layout.getPointerSize();
 
   std::vector<std::unique_ptr<AotCompilationResult>> results;
-  for (int i = 0; i < hlo_modules.size(); ++i) {
+  for (size_t i = 0; i < hlo_modules.size(); ++i) {
     HloModule* hlo_module = hlo_modules[i].get();
     HloModuleConfig* module_config = module_configs[i].get();
 
@@ -567,18 +591,22 @@ CpuCompiler::CompileAheadOfTime(
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
-        CreateMemoryMinimizingSequence(
-            *hlo_module, [&](const LogicalBuffer& buffer) {
-              return llvm_ir::ByteSizeOf(buffer.shape(), data_layout);
-            }));
+        CreateMemoryMinimizingSequence(*hlo_module,
+                                       [this](const LogicalBuffer& buffer) {
+                                         return ShapeSizeBytes(buffer.shape());
+                                       }));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
-        BufferAssigner::Run(hlo_module, MakeUnique<SequentialHloOrdering>(
-                                            hlo_module, module_sequence),
-                            pointer_size));
+        BufferAssigner::Run(
+            hlo_module,
+            MakeUnique<SequentialHloOrdering>(hlo_module, module_sequence),
+            [this](const LogicalBuffer& buffer) {
+              return ShapeSizeBytes(buffer.shape());
+            },
+            kMemoryAlignment));
 
     IrEmitter ir_emitter(*hlo_module, *module_config, *assignment, &llvm_module,
                          /*hlo_to_profile_idx=*/nullptr);
@@ -627,18 +655,26 @@ CpuCompiler::CompileAheadOfTime(
       buffer_sizes.push_back(allocation.size());
     }
 
-    TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
-                        assignment->GetUniqueTopLevelOutputAllocation());
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                        assignment->GetUniqueTopLevelOutputSlice());
 
     results.emplace_back(MakeUnique<CpuAotCompilationResult>(
         std::move(object_file_data), std::move(buffer_sizes),
-        result_allocation->index()));
+        result_slice.index()));
   }
   return std::move(results);
 }
 
 se::Platform::Id CpuCompiler::PlatformId() const {
   return se::host::kHostPlatformId;
+}
+
+int64 CpuCompiler::ShapeSizeBytes(const Shape& shape) const {
+  // On the cpu, opaques are pointers.
+  if (ShapeUtil::IsOpaque(shape)) {
+    return sizeof(void*);
+  }
+  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
 }  // namespace cpu

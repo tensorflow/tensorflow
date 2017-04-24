@@ -38,6 +38,7 @@ __all__ = [
 
 
 class BaseLinearOperatorIdentity(linear_operator.LinearOperator):
+  """Base class for Identity operators."""
 
   def _check_num_rows_possibly_add_asserts(self):
     """Static check of init arg `num_rows`, possibly add asserts."""
@@ -72,6 +73,18 @@ class BaseLinearOperatorIdentity(linear_operator.LinearOperator):
     if num_rows_static < 0:
       raise ValueError("Argument num_rows must be non-negative.  Found:"
                        " %s" % num_rows_static)
+
+  def _ones_diag(self):
+    """Returns the diagonal of this operator as all ones."""
+    if self.shape.is_fully_defined():
+      d_shape = self.batch_shape.concatenate(
+          [min(self.domain_dimension.value, self.range_dimension.value)])
+    else:
+      d_shape = array_ops.concat(
+          [self.batch_shape_tensor(),
+           [math_ops.reduce_min(self.shape_tensor()[-2:])]], axis=0)
+
+    return array_ops.ones(shape=d_shape, dtype=self.dtype)
 
 
 class LinearOperatorIdentity(BaseLinearOperatorIdentity):
@@ -187,7 +200,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
                is_positive_definite=True,
                assert_proper_shapes=False,
                name="LinearOperatorIdentity"):
-    """Initialize a `LinearOperatorIdentity`.
+    r"""Initialize a `LinearOperatorIdentity`.
 
     The `LinearOperatorIdentity` is initialized with arguments defining `dtype`
     and shape.
@@ -205,7 +218,12 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
-      is_positive_definite:  Expect that this operator is positive definite.
+      is_positive_definite:  Expect that this operator is positive definite,
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
+            #Extension_for_non_symmetric_matrices
       assert_proper_shapes:  Python `bool`.  If `False`, only perform static
         checks that initialization and method arguments have proper shape.
         If `True`, and static checks are inconclusive, add asserts to the graph.
@@ -261,7 +279,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     batch_shape = tensor_shape.TensorShape(self._batch_shape_static)
     return batch_shape.concatenate(matrix_shape)
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     matrix_shape = array_ops.stack(
         (self._num_rows, self._num_rows), axis=0)
     if self._batch_shape_arg is None:
@@ -307,12 +325,13 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     # Dynamic broadcast:
     #   Always add to an array of zeros, rather than using a "cond", since a
     #   cond would require copying data from GPU --> CPU.
-    special_shape = array_ops.concat((self.batch_shape_dynamic(), [1, 1]), 0)
+    special_shape = array_ops.concat((self.batch_shape_tensor(), [1, 1]), 0)
     zeros = array_ops.zeros(shape=special_shape, dtype=self.dtype)
     return x + zeros
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
     # Note that adjoint has no effect since this matrix is self-adjoint.
+    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     if self._assert_proper_shapes:
       aps = linear_operator_util.assert_compatible_matrix_dimensions(
           self, x)
@@ -320,13 +339,16 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     return self._possibly_broadcast_batch_shape(x)
 
   def _determinant(self):
-    return array_ops.ones(shape=self.batch_shape_dynamic(), dtype=self.dtype)
+    return array_ops.ones(shape=self.batch_shape_tensor(), dtype=self.dtype)
 
   def _log_abs_determinant(self):
-    return array_ops.zeros(shape=self.batch_shape_dynamic(), dtype=self.dtype)
+    return array_ops.zeros(shape=self.batch_shape_tensor(), dtype=self.dtype)
 
-  def _solve(self, rhs, adjoint=False):
-    return self._apply(rhs)
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    return self._apply(rhs, adjoint_arg=adjoint_arg)
+
+  def _diag_part(self):
+    return self._ones_diag()
 
   def add_to_tensor(self, mat, name="add_to_tensor"):
     """Add matrix represented by this operator to `mat`.  Equiv to `I + mat`.
@@ -507,7 +529,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
                is_positive_definite=None,
                assert_proper_shapes=False,
                name="LinearOperatorScaledIdentity"):
-    """Initialize a `LinearOperatorScaledIdentity`.
+    r"""Initialize a `LinearOperatorScaledIdentity`.
 
     The `LinearOperatorScaledIdentity` is initialized with `num_rows`, which
     determines the size of each identity matrix, and a `multiplier`,
@@ -522,7 +544,12 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
-      is_positive_definite:  Expect that this operator is positive definite.
+      is_positive_definite:  Expect that this operator is positive definite,
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
+            #Extension_for_non_symmetric_matrices
       assert_proper_shapes:  Python `bool`.  If `False`, only perform static
         checks that initialization and method arguments have proper shape.
         If `True`, and static checks are inconclusive, add asserts to the graph.
@@ -566,7 +593,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     batch_shape = self.multiplier.get_shape()
     return batch_shape.concatenate(matrix_shape)
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     matrix_shape = array_ops.stack(
         (self._num_rows, self._num_rows), axis=0)
 
@@ -590,7 +617,8 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         imag_multiplier,
         message="LinearOperator was not self-adjoint")
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
+    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     if adjoint:
       matrix = self._multiplier_matrix_conj
     else:
@@ -608,7 +636,8 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     return self._num_rows_cast_to_real_dtype * math_ops.log(
         self._abs_multiplier)
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
     if adjoint:
       matrix = self._multiplier_matrix_conj
     else:
@@ -618,6 +647,9 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
           self, rhs)
       rhs = control_flow_ops.with_dependencies([aps], rhs)
     return rhs / matrix
+
+  def _diag_part(self):
+    return self._ones_diag() * self.multiplier[..., array_ops.newaxis]
 
   def add_to_tensor(self, mat, name="add_to_tensor"):
     """Add matrix represented by this operator to `mat`.  Equiv to `I + mat`.

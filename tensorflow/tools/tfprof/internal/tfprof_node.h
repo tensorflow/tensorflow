@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
@@ -39,7 +40,8 @@ class TFNode {
       : node_(node),
         step_stat_(nullptr),
         op_start_micros_(0),
-        op_exec_micros_(0),
+        op_schedule_micros_(0),
+        kernel_compute_micros_(0),
         all_spent_micros_(0),
         requested_bytes_(0),
         float_ops_(0) {
@@ -53,8 +55,14 @@ class TFNode {
         continue;
       }
       std::vector<int64> shape_vec;
-      for (const auto& d : attr.second.shape().dim()) {
-        shape_vec.push_back(d.size());
+      if (attr.second.shape().dim_size() == 0 &&
+          !attr.second.shape().unknown_rank()) {
+        // Scalar parameter with empty shape but known rank.
+        shape_vec.push_back(1);
+      } else {
+        for (const auto& d : attr.second.shape().dim()) {
+          shape_vec.push_back(d.size());
+        }
       }
       update_shape(shape_vec);
     }
@@ -70,12 +78,19 @@ class TFNode {
 
   void AddStepStat(const string& device, const NodeExecStats* step_stat);
 
+  // Add CostGraphDef::Node.
+  void AddNodeStat(const CostGraphDef::Node* cost_node);
+
   void AddFloatOps(int64 float_ops) { float_ops_ = float_ops; }
 
   const NodeDef* node_def() { return node_; }
   const std::map<string, TFNode*>& inputs() { return inputs_; }
   int64 op_start_micros() { return op_start_micros_; }
-  int64 op_exec_micros() { return op_exec_micros_; }
+  // This is time spent in Op::Compute(), which is GPU kernel schedule time.
+  // Currently not used.
+  int64 op_schedule_micros() { return op_schedule_micros_; }
+  // This is time spent in kernel execution.
+  int64 kernel_compute_micros() { return kernel_compute_micros_; }
   int64 all_spent_micros() { return all_spent_micros_; }
   int64 requested_byptes() { return requested_bytes_; }
   int64 float_ops() { return float_ops_; }
@@ -83,9 +98,10 @@ class TFNode {
   const std::set<string>& op_types() { return op_types_; }
 
   const std::vector<int64>& shape() { return shape_; }
-  void update_shape(const std::vector<int64>& shape) { shape_ = shape; }
 
  private:
+  void update_shape(const std::vector<int64>& shape) { shape_ = shape; }
+
   std::map<string, TFNode*> inputs_;
   const NodeDef* node_;
   const NodeExecStats* step_stat_;
@@ -94,7 +110,8 @@ class TFNode {
   std::set<string> op_types_;
   string device_;
   int64 op_start_micros_;
-  int64 op_exec_micros_;
+  int64 op_schedule_micros_;
+  int64 kernel_compute_micros_;
   int64 all_spent_micros_;
   int64 requested_bytes_;
   int64 float_ops_;

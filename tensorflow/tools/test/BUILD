@@ -8,6 +8,7 @@ load(
     "tf_cc_logged_benchmark",
     "tf_py_logged_benchmark",
 )
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -80,7 +81,7 @@ py_binary(
 
 tf_cc_logged_benchmark(
     name = "cast_op_benchmark",
-    target = "//tensorflow/core/kernels:cast_op_test",
+    target = "//tensorflow/core/kernels:cast_op_test_gpu",
 )
 
 tf_py_logged_benchmark(

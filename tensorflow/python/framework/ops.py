@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import contextlib
 import copy
 import linecache
 import re
@@ -44,6 +43,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import tf_contextlib
 
 
 def _override_helper(clazz_object, operator, func):
@@ -265,7 +265,9 @@ class Tensor(_TensorLike):
       # Unary.
       "__invert__",
       "__neg__",
-      "__abs__"
+      "__abs__",
+      "__matmul__",
+      "__rmatmul__"
   }
 
   def __init__(self, op, value_index, dtype):
@@ -2114,7 +2116,7 @@ class Graph(object):
 
     The serialized `GraphDef` can be imported into another `Graph`
     (using @{tf.import_graph_def}) or used with the
-    [C++ Session API](../../api_docs/cc/index.md).
+    [C++ Session API](../../../../api_docs/cc/index.md).
 
     This method is thread-safe.
 
@@ -2302,6 +2304,13 @@ class Graph(object):
     # attributes.
     for key, value in self._attr_scope_map.items():
       if key not in node_def.attr:
+        if callable(value):
+          value = value(node_def)
+          if not isinstance(value, (type(None), attr_value_pb2.AttrValue)):
+            raise TypeError(
+                "Callable for scope map key '%s' must return either None or "
+                "an AttrValue protocol buffer; but it returned: %s" %
+                (key, value))
         node_def.attr[key].CopyFrom(value)
 
     # Apply a kernel label if one has been specified for this op_type.
@@ -2716,7 +2725,7 @@ class Graph(object):
       if name in self._collections:
         del self._collections[name]
 
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def _original_op(self, op):
     """Python 'with' handler to help annotate ops with their originator.
 
@@ -2742,7 +2751,7 @@ class Graph(object):
       self._default_original_op = old_original_op
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def name_scope(self, name):
     r"""Returns a context manager that creates hierarchical names for operations.
 
@@ -2824,7 +2833,8 @@ class Graph(object):
       A context manager that installs `name` as a new name scope.
 
     Raises:
-      ValueError: If `name` is not a valid scope name. The rules are the
+      ValueError: If `name` is not a valid scope name, according to the rules
+        above.
     """
     if name:
       if self._name_stack:
@@ -2897,7 +2907,24 @@ class Graph(object):
         self._names_in_use[name] = 1
     return name
 
-  @contextlib.contextmanager
+  def get_name_scope(self):
+    """Returns the current name scope.
+
+    For example:
+
+    ```python
+    with tf.name_scope('scope1'):
+      with tf.name_scope('scope2'):
+        print(tf.get_default_graph().get_name_scope())
+    ```
+    would print the string `scope1/scope2`.
+
+    Returns:
+      A string representing the current name scope.
+    """
+    return self._name_stack
+
+  @tf_contextlib.contextmanager
   def colocate_with(self, op, ignore_existing=False):
     """Returns a context manager that specifies an op to colocate with.
 
@@ -2972,7 +2999,7 @@ class Graph(object):
       if ignore_existing:
         self._colocation_stack = current_stack
 
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def device(self, device_name_or_function):
     """Returns a context manager that specifies the default device to use.
 
@@ -3054,7 +3081,7 @@ class Graph(object):
       op._set_device(device_function(op))
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def container(self, container_name):
     """Returns a context manager that specifies the resource container to use.
 
@@ -3322,7 +3349,7 @@ class Graph(object):
     return self._ControlDependenciesController(self, control_ops)
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def _attr_scope(self, attr_map):
     """EXPERIMENTAL: A context manager for setting attributes on operators.
 
@@ -3360,10 +3387,12 @@ class Graph(object):
     saved_attrs = {}
     # Install the given attribute
     for name, attr in attr_map.items():
-      if not (isinstance(name, six.string_types)
-              and isinstance(attr, (type(None), attr_value_pb2.AttrValue))):
+      if not (isinstance(name, six.string_types) and
+              (isinstance(attr, (type(None), attr_value_pb2.AttrValue)) or
+               callable(attr))):
         raise TypeError("attr_map must be a dictionary mapping "
-                        "strings to AttrValue protocol buffers")
+                        "strings to AttrValue protocol buffers or "
+                        "callables that emit AttrValue protocol buffers")
       try:
         saved_attrs[name] = self._attr_scope_map[name]
       except KeyError:
@@ -3385,7 +3414,7 @@ class Graph(object):
   # pylint: enable=g-doc-return-or-yield
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def _kernel_label_map(self, op_to_kernel_label_map):
     """EXPERIMENTAL: A context manager for setting kernel labels.
 
@@ -3447,7 +3476,7 @@ class Graph(object):
   # pylint: enable=g-doc-return-or-yield
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def gradient_override_map(self, op_type_map):
     """EXPERIMENTAL: A context manager for overriding gradient functions.
 
@@ -3605,7 +3634,7 @@ class _DefaultStack(threading.local):
   def enforce_nesting(self, value):
     self._enforce_nesting = value
 
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def get_controller(self, default):
     """A context manager for manipulating a default stack."""
     try:
@@ -4019,6 +4048,10 @@ class GraphKeys(object):
   COND_CONTEXT = "cond_context"
   WHILE_CONTEXT = "while_context"
 
+  # Key for streaming model ports.
+  # NOTE(yuanbyu): internal and experimental.
+  _STREAMING_MODEL_PORTS = "streaming_model_ports"
+
   @decorator_utils.classproperty
   def VARIABLES(cls):  # pylint: disable=no-self-argument
     logging.warning("VARIABLES collection name is deprecated, "
@@ -4104,7 +4137,7 @@ def get_all_collection_keys():
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def name_scope(name, default_name=None, values=None):
   """Returns a context manager for use when defining a Python op.
 
@@ -4194,7 +4227,7 @@ def prepend_name_scope(name, import_scope):
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def op_scope(values, name, default_name=None):
   """DEPRECATED. Same as name_scope above, just different argument order."""
   logging.warn("tf.op_scope(values, name, default_name) is deprecated,"

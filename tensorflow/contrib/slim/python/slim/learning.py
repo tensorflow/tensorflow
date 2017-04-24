@@ -18,9 +18,9 @@ This script contains various functions for training models. These include
 manipulating gradients, creating a `train_op` (an operation that computes the
 loss and applies the gradients) and a training loop function. The training loop
 allows the user to pass in the `train_op` and runs the optimization according
-to user-specified arguments. Note that the training loop uses the tf.Supervisor
-and its managed_session in its implementation to ensure the ability of worker
-processes to recover from failures.
+to user-specified arguments. Note that the training loop uses the
+tf.train.Supervisor and its managed_session in its implementation to ensure the
+ability of worker processes to recover from failures.
 
 ************************************
 * A simple working training script *
@@ -252,13 +252,13 @@ import sys
 import time
 
 from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.contrib.training.python.training import training
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import timeline
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -329,13 +329,15 @@ def multiply_gradients(grads_and_vars, gradient_multipliers):
       if grad is None:
         raise ValueError('Requested multiple of `None` gradient.')
 
+      multiplier = gradient_multipliers[key]
+      if not isinstance(multiplier, ops.Tensor):
+        multiplier = constant_op.constant(multiplier, dtype=grad.dtype)
+
       if isinstance(grad, ops.IndexedSlices):
-        tmp = grad.values * constant_op.constant(
-            gradient_multipliers[key], dtype=grad.dtype)
+        tmp = grad.values * multiplier
         grad = ops.IndexedSlices(tmp, grad.indices, grad.dense_shape)
       else:
-        grad *= constant_op.constant(
-            gradient_multipliers[key], dtype=grad.dtype)
+        grad *= multiplier
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars
 
@@ -359,8 +361,8 @@ def add_gradients_summaries(grads_and_vars):
       summaries.append(
           summary.histogram(var.op.name + '/gradient', grad_values))
       summaries.append(
-          summary.histogram(var.op.name + '/gradient_norm',
-                            clip_ops.global_norm([grad_values])))
+          summary.scalar(var.op.name + '/gradient_norm',
+                         clip_ops.global_norm([grad_values])))
     else:
       logging.info('Var %s has no gradient', var.op.name)
 
@@ -380,7 +382,8 @@ def create_train_op(total_loss,
                     gate_gradients=tf_optimizer.Optimizer.GATE_OP,
                     aggregation_method=None,
                     colocate_gradients_with_ops=False,
-                    gradient_multipliers=None):
+                    gradient_multipliers=None,
+                    check_numerics=True):
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
@@ -406,80 +409,35 @@ def create_train_op(total_loss,
     gradient_multipliers: A dictionary of either `Variables` or `Variable` op
       names to the coefficient by which the associated gradient should be
       scaled.
+    check_numerics: Whether or not we apply check_numerics.
+
   Returns:
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
   """
-  if global_step is _USE_GLOBAL_STEP:
-    global_step = variables.get_or_create_global_step()
+  def transform_grads_fn(grads):
+    if gradient_multipliers:
+      with ops.name_scope('multiply_grads'):
+        grads = multiply_gradients(grads, gradient_multipliers)
 
-  # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
-  global_update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
-  if update_ops is None:
-    update_ops = global_update_ops
-  else:
-    update_ops = set(update_ops)
-  if not global_update_ops.issubset(update_ops):
-    logging.warning('update_ops in create_train_op does not contain all the '
-                    ' update_ops in GraphKeys.UPDATE_OPS')
+    # Clip gradients.
+    if clip_gradient_norm > 0:
+      with ops.name_scope('clip_grads'):
+        grads = clip_gradient_norms(grads, clip_gradient_norm)
+    return grads
 
-  # Make sure update_ops are computed before total_loss.
-  if update_ops:
-    with ops.control_dependencies(update_ops):
-      barrier = control_flow_ops.no_op(name='update_barrier')
-    total_loss = control_flow_ops.with_dependencies([barrier], total_loss)
-
-  if variables_to_train is None:
-    # Default to tf.trainable_variables()
-    variables_to_train = tf_variables.trainable_variables()
-  else:
-    # Make sure that variables_to_train are in tf.trainable_variables()
-    for v in variables_to_train:
-      assert v in tf_variables.trainable_variables()
-
-  assert variables_to_train
-
-  # Create the gradients. Note that apply_gradients adds the gradient
-  # computation to the current graph.
-  grads = optimizer.compute_gradients(
-      total_loss,
-      variables_to_train,
+  return training.create_train_op(
+      total_loss=total_loss,
+      optimizer=optimizer,
+      global_step=global_step,
+      update_ops=update_ops,
+      variables_to_train=variables_to_train,
+      transform_grads_fn=transform_grads_fn,
+      summarize_gradients=summarize_gradients,
       gate_gradients=gate_gradients,
       aggregation_method=aggregation_method,
-      colocate_gradients_with_ops=colocate_gradients_with_ops)
-
-  # Scale gradients.
-  if gradient_multipliers:
-    with ops.name_scope('multiply_grads'):
-      grads = multiply_gradients(grads, gradient_multipliers)
-
-  # Clip gradients.
-  if clip_gradient_norm > 0:
-    with ops.name_scope('clip_grads'):
-      grads = clip_gradient_norms(grads, clip_gradient_norm)
-
-  # Summarize gradients.
-  if summarize_gradients:
-    with ops.name_scope('summarize_grads'):
-      add_gradients_summaries(grads)
-
-  # Create gradient updates.
-  grad_updates = optimizer.apply_gradients(grads, global_step=global_step)
-
-  with ops.name_scope('train_op'):
-    # Make sure total_loss is valid.
-    total_loss = array_ops.check_numerics(total_loss,
-                                          'LossTensor is inf or nan')
-
-    # Ensure the train_tensor computes grad_updates.
-    train_op = control_flow_ops.with_dependencies([grad_updates], total_loss)
-
-  # Add the operation used for training to the 'train_op' collection
-  train_ops = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-  if train_op not in train_ops:
-    train_ops.append(train_op)
-
-  return train_op
+      colocate_gradients_with_ops=colocate_gradients_with_ops,
+      check_numerics=check_numerics)
 
 
 def _wait_for_step(sess, global_step, step):
@@ -544,7 +502,7 @@ def train_step(sess, train_op, global_step, train_step_kwargs):
 
   if 'should_log' in train_step_kwargs:
     if sess.run(train_step_kwargs['should_log']):
-      logging.info('global step %d: loss = %.4f (%.2f sec/step)',
+      logging.info('global step %d: loss = %.4f (%.3f sec/step)',
                    np_global_step, total_loss, time_elapsed)
 
   # TODO(nsilberman): figure out why we can't put this into sess.run. The
@@ -620,8 +578,10 @@ def train(train_op,
       replica during replica training.
     global_step: The `Tensor` representing the global step. If left as `None`,
       then slim.variables.get_or_create_global_step() is used.
-    number_of_steps: The max number of gradient steps to take during training.
-      If the value is left as None, training proceeds indefinitely.
+    number_of_steps: The max number of gradient steps to take during training,
+      as measured by 'global_step': training will stop if global_step is
+      greater than 'number_of_steps'. If the value is left as None, training
+      proceeds indefinitely.
     init_op: The initialization operation. If left to its default value, then
       the session is initialized by calling `tf.global_variables_initializer()`.
     init_feed_dict: A feed dictionary to use when executing the `init_op`.
@@ -717,8 +677,6 @@ def train(train_op,
     if summary_writer == _USE_DEFAULT:
       summary_writer = supervisor.Supervisor.USE_DEFAULT
 
-    cleanup_op = None
-
     if is_chief and sync_optimizer is not None:
       if not isinstance(sync_optimizer,
                         (sync_replicas_optimizer.SyncReplicasOptimizer)):
@@ -728,9 +686,6 @@ def train(train_op,
       # Need to create these BEFORE the supervisor finalizes the graph:
       init_tokens_op = sync_optimizer.get_init_tokens_op()
       chief_queue_runner = sync_optimizer.get_chief_queue_runner()
-      if isinstance(sync_optimizer,
-                    sync_replicas_optimizer.SyncReplicasOptimizer):
-        cleanup_op = sync_optimizer.get_clean_up_op()
 
     if train_step_kwargs == _USE_DEFAULT:
       with ops.name_scope('train_step'):
@@ -789,19 +744,18 @@ def train(train_op,
           sess.run(init_tokens_op)
         try:
           while not sv.should_stop():
-            total_loss, should_stop = train_step_fn(sess, train_op, global_step,
-                                                    train_step_kwargs)
+            total_loss, should_stop = train_step_fn(
+                sess, train_op, global_step, train_step_kwargs)
             if should_stop:
               logging.info('Stopping Training.')
               break
-          if logdir and sv.is_chief:
-            logging.info('Finished training! Saving model to disk.')
-            sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
-        except:
-          if sv.is_chief and cleanup_op is not None:
-            logging.info('About to execute sync_clean_up_op!')
-            sess.run(cleanup_op)
-          raise
+        except errors.OutOfRangeError:
+          # OutOfRangeError is thrown when epoch limit per
+          # tf.train.limit_epochs is reached.
+          logging.info('Caught OutOfRangeError. Stopping Training.')
+        if logdir and sv.is_chief:
+          logging.info('Finished training! Saving model to disk.')
+          sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
 
     except errors.AbortedError:
       # Always re-run on AbortedError as it indicates a restart of one of the

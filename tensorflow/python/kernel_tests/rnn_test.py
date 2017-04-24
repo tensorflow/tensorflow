@@ -18,16 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
 import time
 import timeit
 
 import numpy as np
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.core.protobuf import config_pb2

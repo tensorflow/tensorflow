@@ -23,7 +23,6 @@ from __future__ import print_function
 # pylint: disable=unused-import,line-too-long
 from tensorflow.contrib.bayesflow.python.ops import entropy
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo
-from tensorflow.contrib.bayesflow.python.ops import special_math
 from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators
 from tensorflow.contrib.bayesflow.python.ops import stochastic_graph
 from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor

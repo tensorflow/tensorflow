@@ -84,11 +84,14 @@
 #                      support for Google Cloud Platform (GCP), which is
 #                      enabled by default.
 #   TF_BUILD_OPTIONS:
-#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2 | MAVX2_FMA |
-#                      MAVX_DBG | MAVX2_FMA_DBG)
+#                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2_FMA | MAVX_DBG |
+#                      MAVX2_FMA_DBG)
 #                     Use the specified configurations when building.
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
+#   TF_SKIP_CONTRIB_TESTS:
+#                     If set to any non-empty or non-0 value, will skipp running
+#                     contrib tests.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -145,6 +148,10 @@ if [[ -z $TF_BUILD_ENABLE_XLA ]] || [ $TF_BUILD_ENABLE_XLA == 0 ]; then
 else
   BAZEL_TARGET="//tensorflow/compiler/..."
   EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_BUILD_ENABLE_XLA=1"
+fi
+
+if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
+  BAZEL_TARGET="$BAZEL_TARGET -//tensorflow/contrib/..."
 fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
@@ -308,9 +315,6 @@ else
     MAVX_DBG)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-g --copt=-mavx"
       ;;
-    MAVX2)
-      OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2"
-      ;;
     MAVX2_FMA)
       OPT_FLAG="${OPT_FLAG} -c opt --copt=-mavx2 --copt=-mfma"
       ;;
@@ -340,6 +344,11 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
 else
   EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-benchmark-test"
 fi
+
+# For any "tool" dependencies in genrules, Bazel will build them for host
+# instead of the target configuration. We can save some build time by setting
+# this flag, and it only affects a few tests.
+EXTRA_ARGS="${EXTRA_ARGS} --distinct_host_configuration=false"
 
 # Process PIP install-test option
 if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
@@ -420,7 +429,8 @@ if [[ ${TF_BUILD_PYTHON_VERSION} == "python2" ]]; then
   :
 elif [[ ${TF_BUILD_PYTHON_VERSION} == "python3" || \
         ${TF_BUILD_PYTHON_VERSION} == "python3.4" || \
-        ${TF_BUILD_PYTHON_VERSION} == "python3.5" ]]; then
+        ${TF_BUILD_PYTHON_VERSION} == "python3.5" || \
+        ${TF_BUILD_PYTHON_VERSION} == "python3.6" ]]; then
   # Supply proper environment variable to select Python 3
   if [[ "${DO_DOCKER}" == "1" ]]; then
     EXTRA_PARAMS="${EXTRA_PARAMS} -e CI_BUILD_PYTHON=${TF_BUILD_PYTHON_VERSION}"

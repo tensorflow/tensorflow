@@ -162,6 +162,17 @@ class Service : public ServiceInterface {
       const TransferToInfeedRequest* arg,
       TransferToInfeedResponse* result) override;
 
+  // Transfers data from the Outfeed othe device to the literal provided by the
+  // client.
+  tensorflow::Status TransferFromOutfeed(
+      const TransferFromOutfeedRequest* arg,
+      TransferFromOutfeedResponse* result) override;
+
+  // Transfers data from a buffer provided by the client, into device memory.
+  tensorflow::Status TransferToServerInProcess(
+      const TransferToServerInProcessRequest* arg,
+      TransferToServerInProcessResponse* result) override;
+
   // Resets devices, clearing all existing state on all the devices associated
   // with this service (including memory allocated on the devices).
   //
@@ -173,11 +184,6 @@ class Service : public ServiceInterface {
   // state (e.g., architectural state) that the next Execution depends on.
   tensorflow::Status ResetDevice(const ResetDeviceRequest* arg,
                                  ResetDeviceResponse* result) override;
-
-  // Transfers data from a buffer provided by the client, into device memory.
-  tensorflow::Status TransferToServerInProcess(
-      const TransferToServerInProcessRequest* arg,
-      TransferToServerInProcessResponse* result) override;
 
   // Tests if an expression is a compile-time constant.
   tensorflow::Status IsConstant(const IsConstantRequest* arg,
@@ -243,6 +249,8 @@ class Service : public ServiceInterface {
   Backend* mutable_backend() { return execute_backend_.get(); }
 
  protected:
+  friend class LocalExecutable;
+
   // The constructor is private. Use the NewService factory to create new
   // service objects.
   Service(std::unique_ptr<Backend> backend,
@@ -354,11 +362,11 @@ class Service : public ServiceInterface {
   // arguments. The ExecuteOnStream overloads return different types so this
   // method is templated on return-type of the execute function.
   template <typename ReturnT>
-  ReturnT ExecuteOnStreamWrapper(
-      Executable* executable, const ExecutableRunOptions* run_options,
-      ExecutionProfile* profile,
+  static ReturnT ExecuteOnStreamWrapper(
+      Executable* executable, const ServiceExecutableRunOptions* run_options,
+      ExecutionProfile* profile, Backend* backend,
       std::function<ReturnT(Executable* executable,
-                            const ExecutableRunOptions* run_options,
+                            const ServiceExecutableRunOptions* run_options,
                             HloExecutionProfile* hlo_execution_profile)>
           execute_func);
 
@@ -393,10 +401,10 @@ class Service : public ServiceInterface {
 
 template <typename ReturnT>
 ReturnT Service::ExecuteOnStreamWrapper(
-    Executable* executable, const ExecutableRunOptions* run_options,
-    ExecutionProfile* profile,
+    Executable* executable, const ServiceExecutableRunOptions* run_options,
+    ExecutionProfile* profile, Backend* backend,
     std::function<ReturnT(Executable* executable,
-                          const ExecutableRunOptions* run_options,
+                          const ServiceExecutableRunOptions* run_options,
                           HloExecutionProfile* hlo_execution_profile)>
         execute_func) {
   perftools::gputools::Stream* stream = run_options->stream();
@@ -444,14 +452,24 @@ ReturnT Service::ExecuteOnStreamWrapper(
   }
 
   if (profile_ptr != nullptr) {
-    HloCostAnalysis analysis;
-    tensorflow::Status analysis_status =
-        executable->module().entry_computation()->root_instruction()->Accept(
-            &analysis);
-    if (analysis_status.ok()) {
-      XLA_LOG_LINES(tensorflow::INFO,
-                    profile_ptr->ToString(
-                        stream->parent()->GetDeviceDescription(), analysis));
+    HloCostAnalysis::ShapeSizeFunction shape_size =
+        [backend](const Shape& shape) {
+          return backend->compiler()->ShapeSizeBytes(shape);
+        };
+    std::unordered_set<const xla::HloComputation*> profiled_computations =
+        profile_ptr->profiled_computations();
+    // To ensure we have print the profiles in a stable order, iterate over the
+    // computations in post order.
+    std::list<xla::HloComputation*> all_computations =
+        executable->module().MakeComputationPostOrder();
+    for (xla::HloComputation* computation : all_computations) {
+      if (profiled_computations.count(computation) > 0) {
+        string profile_string = profile_ptr->ToString(
+            *computation, stream->parent()->GetDeviceDescription(), shape_size);
+        if (!profile_string.empty()) {
+          XLA_LOG_LINES(tensorflow::INFO, profile_string);
+        }
+      }
     }
     DumpExecutedHlo(executable->module(), "Service::Execute", profile_ptr);
   }

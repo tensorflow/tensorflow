@@ -14,9 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Script to produce a tarball release of the C-library and associated C API
-# header file.
-# Produces: lib_package/libtensorflow-gpu-darwin-x86_64.tar.gz
+# Script to produce binary release of libtensorflow (C API, Java jars etc.).
 
 set -ex
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,4 +31,4 @@ export TF_NEED_OPENCL=0
 export COMPUTECPP_PATH="/usr/local"
 
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-build_libtensorflow_tarball "-darwin-cpu-$(uname -m)"
+build_libtensorflow_tarball "-cpu-darwin-$(uname -m)"

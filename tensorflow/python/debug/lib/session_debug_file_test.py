@@ -18,6 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
+import tempfile
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -25,6 +27,7 @@ from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import session_debug_testlib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -107,6 +110,26 @@ class SessionDebugTest(session_debug_testlib.SessionDebugTestBase):
           self.assertGreaterEqual(
               dump.get_rel_timestamps("%s/read" % v_name, 0,
                                       "DebugIdentity")[0], 0)
+
+
+class SessionDebugConcurrentTest(
+    session_debug_testlib.DebugConcurrentRunCallsTest):
+
+  def setUp(self):
+    self._num_concurrent_runs = 3
+    self._dump_roots = []
+    for _ in range(self._num_concurrent_runs):
+      self._dump_roots.append(tempfile.mkdtemp())
+
+  def tearDown(self):
+    ops.reset_default_graph()
+    for dump_root in self._dump_roots:
+      if os.path.isdir(dump_root):
+        shutil.rmtree(dump_root)
+
+  def _get_concurrent_debug_urls(self):
+    return [("file://%s" % dump_root) for dump_root in self._dump_roots]
+
 
 if __name__ == "__main__":
   googletest.main()

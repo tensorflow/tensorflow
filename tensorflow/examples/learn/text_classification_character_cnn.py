@@ -11,7 +11,8 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-"""This is an example of using convolutional networks over characters for DBpedia dataset to predict class from description of an entity.
+"""This is an example of using convolutional networks over characters for
+   DBpedia dataset to predict class from description of an entity.
 
 This model is similar to one described in this paper:
    "Character-level Convolutional Networks for Text Classification"
@@ -49,12 +50,12 @@ def char_cnn_model(features, target):
   """Character level convolutional neural network model to predict classes."""
   target = tf.one_hot(target, 15, 1, 0)
   byte_list = tf.reshape(
-      tf.one_hot(features, 256, 1, 0), [-1, MAX_DOCUMENT_LENGTH, 256, 1])
+      tf.one_hot(features, 256), [-1, MAX_DOCUMENT_LENGTH, 256, 1])
   with tf.variable_scope('CNN_Layer1'):
     # Apply Convolution filtering on input sequence.
     conv1 = tf.contrib.layers.convolution2d(
         byte_list, N_FILTERS, FILTER_SHAPE1, padding='VALID')
-    # Add a RELU for non linearity.
+    # Add a ReLU for non linearity.
     conv1 = tf.nn.relu(conv1)
     # Max pooling across output of Convolution+Relu.
     pool1 = tf.nn.max_pool(
@@ -73,7 +74,7 @@ def char_cnn_model(features, target):
 
   # Apply regular WX + B and classification.
   logits = tf.contrib.layers.fully_connected(pool2, 15, activation_fn=None)
-  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
+  loss = tf.losses.softmax_cross_entropy(target, logits)
 
   train_op = tf.contrib.layers.optimize_loss(
       loss,

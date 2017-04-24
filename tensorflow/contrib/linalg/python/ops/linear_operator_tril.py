@@ -23,7 +23,6 @@ from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
@@ -108,7 +107,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
                is_self_adjoint=None,
                is_positive_definite=None,
                name="LinearOperatorTriL"):
-    """Initialize a `LinearOperatorTriL`.
+    r"""Initialize a `LinearOperatorTriL`.
 
     Args:
       tril:  Shape `[B1,...,Bb, N, N]` with `b >= 0`, `N >= 0`.
@@ -122,9 +121,10 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
         real-valued diagonal entries.  In this case it is advised to use
         `LinearOperatorDiag`.
       is_positive_definite:  Expect that this operator is positive definite,
-        meaning the real part of all eigenvalues is positive.  We do not require
-        the operator to be self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
       name: A name for this `LinearOperator`.
 
@@ -132,19 +132,11 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
       TypeError:  If `diag.dtype` is not an allowed type.
     """
 
-    # TODO(langmore) Add complex types once matrix_triangular_solve works for
-    # them.
-    allowed_dtypes = [dtypes.float32, dtypes.float64]
-
     with ops.name_scope(name, values=[tril]):
+      self._tril = ops.convert_to_tensor(tril, name="tril")
+      self._check_tril(self._tril)
       self._tril = array_ops.matrix_band_part(tril, -1, 0)
       self._diag = array_ops.matrix_diag_part(self._tril)
-
-      dtype = self._tril.dtype
-      if dtype not in allowed_dtypes:
-        raise TypeError(
-            "Argument tril must have dtype in %s.  Found: %s"
-            % (allowed_dtypes, dtype))
 
       super(LinearOperatorTriL, self).__init__(
           dtype=self._tril.dtype,
@@ -154,10 +146,26 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
           is_positive_definite=is_positive_definite,
           name=name)
 
+  def _check_tril(self, tril):
+    """Static check of the `tril` argument."""
+    # TODO(langmore) Add complex types once matrix_triangular_solve works for
+    # them.
+    allowed_dtypes = [dtypes.float32, dtypes.float64]
+    dtype = tril.dtype
+    if dtype not in allowed_dtypes:
+      raise TypeError(
+          "Argument tril must have dtype in %s.  Found: %s"
+          % (allowed_dtypes, dtype))
+
+    if tril.get_shape().ndims is not None and tril.get_shape().ndims < 2:
+      raise ValueError(
+          "Argument tril must have at least 2 dimensions.  Found: %s"
+          % tril)
+
   def _shape(self):
     return self._tril.get_shape()
 
-  def _shape_dynamic(self):
+  def _shape_tensor(self):
     return array_ops.shape(self._tril)
 
   def _assert_non_singular(self):
@@ -165,22 +173,9 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
         self._diag,
         message="Singular operator:  Diagonal contained zero values.")
 
-  def _assert_positive_definite(self):
-    if self.dtype.is_complex:
-      message = (
-          "Diagonal operator had diagonal entries with non-positive real part, "
-          "thus was not positive definite.")
-    else:
-      message = (
-          "Real diagonal operator had non-positive diagonal entries, "
-          "thus was not positive definite.")
-
-    return check_ops.assert_positive(
-        math_ops.real(self._diag),
-        message=message)
-
-  def _apply(self, x, adjoint=False):
-    return math_ops.matmul(self._tril, x, adjoint_a=adjoint)
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
+    return math_ops.matmul(
+        self._tril, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
   def _determinant(self):
     return math_ops.reduce_prod(self._diag, reduction_indices=[-1])
@@ -189,7 +184,8 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
     return math_ops.reduce_sum(
         math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
     return linalg_ops.matrix_triangular_solve(
         self._tril, rhs, lower=True, adjoint=adjoint)
 

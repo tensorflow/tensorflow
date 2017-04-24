@@ -134,6 +134,7 @@ TEST_F(ShapeInferenceTest, Run) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 6, &h));
       c->set_output(0, c->input(0));
+      c->set_output(1, c->input(0));
       return Status::OK();
     };
     TF_ASSERT_OK(c.Run(fn));
@@ -144,6 +145,7 @@ TEST_F(ShapeInferenceTest, Run) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
+      c->set_output(1, c->input(0));
       return Status::OK();
     };
     Status s = c.Run(fn);
@@ -153,6 +155,100 @@ TEST_F(ShapeInferenceTest, Run) {
                               "is rank 1 for 'foo' (op: "
                               "'foo_op')"))
         << s;
+  }
+}
+
+// Tests different context data added when Run returns error.
+TEST_F(ShapeInferenceTest, AttachContext) {
+  NodeDef def;
+  def.set_name("foo");
+  def.set_op("foo_op");
+  // Error when no constant tensors were requested.
+  {
+    InferenceContext c(kVersion, &def, MakeOpDef(1, 2), {S({1, 2, 3})}, {}, {},
+                       {}, {});
+    TF_ASSERT_OK(c.construction_status());
+    auto fn = [](InferenceContext* c) {
+      ShapeHandle h;
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    };
+    EXPECT_EQ(
+        "Invalid argument: Shape must be at most rank 0 but is rank 3 for "
+        "'foo' (op: 'foo_op') with input shapes: [1,2,3].",
+        c.Run(fn).ToString());
+  }
+
+  // Error when a constant tensor value was requested.
+  {
+    Tensor input_t =
+        ::tensorflow::test::AsTensor<float>({1.1, 2.2, 3.3, 4.4, 5.5});
+    InferenceContext c(kVersion, &def, MakeOpDef(2, 2),
+                       {S({1, 2, 3}), S({4, 5})}, {nullptr, &input_t}, {}, {},
+                       {});
+    TF_ASSERT_OK(c.construction_status());
+    auto fn = [](InferenceContext* c) {
+      c->input_tensor(0);  // get this one, but it's null - won't be in error.
+      c->input_tensor(1);  // get this one, will now be in error.
+      ShapeHandle h;
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    };
+    EXPECT_EQ(
+        "Invalid argument: Shape must be at most rank 0 but is rank 3 for "
+        "'foo' (op: 'foo_op') with input shapes: [1,2,3], [4,5] and with "
+        "computed input tensors: input[1] = <1.1 2.2 3.3 4.4 5.5>.",
+        c.Run(fn).ToString());
+  }
+
+  // Error when a constant tensor value as shape was requested, but no partial
+  // shapes provided.
+  {
+    Tensor input_t = ::tensorflow::test::AsTensor<int32>({1, 2, 3, 4, 5});
+    InferenceContext c(kVersion, &def, MakeOpDef(2, 2), {S({3}), S({4})},
+                       {nullptr, &input_t}, {}, {}, {});
+    TF_ASSERT_OK(c.construction_status());
+    auto fn = [](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
+      ShapeHandle h;
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    };
+    EXPECT_EQ(
+        "Invalid argument: Shape must be at most rank 0 but is rank 1 for "
+        "'foo' (op: 'foo_op') with input shapes: [3], [4] and with computed "
+        "input tensors: input[1] = <1 2 3 4 5>.",
+        c.Run(fn).ToString());
+  }
+
+  // Error when a constant tensor value as shape was requested, and a partial
+  // shape was provided.
+  {
+    Tensor input_t = ::tensorflow::test::AsTensor<int32>({1, 2, 3, 4, 5});
+    InferenceContext c(kVersion, &def, MakeOpDef(2, 2), {S({3}), S({4})},
+                       {nullptr, &input_t}, {S({10, -1, 5}), Unknown()}, {},
+                       {});
+    TF_ASSERT_OK(c.construction_status());
+    auto fn = [](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
+      ShapeHandle h;
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    };
+    EXPECT_EQ(
+        "Invalid argument: Shape must be at most rank 0 but is rank 1 for "
+        "'foo' (op: 'foo_op') with input shapes: [3], [4] and with computed "
+        "input tensors: input[1] = <1 2 3 4 5> and with input tensors computed "
+        "as partial shapes: input[0] = [10,?,5].",
+        c.Run(fn).ToString());
   }
 }
 
@@ -826,6 +922,39 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
     EXPECT_EQ("Shape must be rank 1 but is rank 2",
               c.MakeShapeFromShapeTensor(0, &out).error_message());
   }
+}
+
+TEST_F(ShapeInferenceTest, MakeShapeFromPartialTensorShape) {
+  NodeDef def;
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(kVersion, &def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
+
+  // With an unknown rank.
+  ShapeHandle out;
+  TF_ASSERT_OK(c.MakeShapeFromPartialTensorShape(PartialTensorShape(), &out));
+  EXPECT_EQ("?", c.DebugString(out));
+
+  // With a known rank.
+  TF_ASSERT_OK(
+      c.MakeShapeFromPartialTensorShape(PartialTensorShape({0}), &out));
+  EXPECT_EQ("[0]", c.DebugString(out));
+  TF_ASSERT_OK(c.MakeShapeFromPartialTensorShape(
+      PartialTensorShape({0, -1, 1000}), &out));
+  EXPECT_EQ("[0,?,1000]", c.DebugString(out));
+}
+
+TEST_F(ShapeInferenceTest, MakeShapeFromTensorShape) {
+  NodeDef def;
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(kVersion, &def, MakeOpDef(0, 2), empty, {}, {}, {}, {});
+
+  ShapeHandle out;
+  TF_ASSERT_OK(c.MakeShapeFromTensorShape(TensorShape(), &out));
+  EXPECT_EQ("[]", c.DebugString(out));
+  TF_ASSERT_OK(c.MakeShapeFromTensorShape(TensorShape({0}), &out));
+  EXPECT_EQ("[0]", c.DebugString(out));
+  TF_ASSERT_OK(c.MakeShapeFromTensorShape(TensorShape({0, 7, 1000}), &out));
+  EXPECT_EQ("[0,7,1000]", c.DebugString(out));
 }
 
 TEST_F(ShapeInferenceTest, MakeShapeFromShapeProto) {

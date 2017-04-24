@@ -22,15 +22,20 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-TEST(RetryingUtilsTest, RetryDelays) {
+TEST(RetryingUtilsTest, CallWithRetries_RetryDelays) {
   std::vector<double> requested_delays;  // requested delays in seconds
   std::function<void(int64)> sleep = [&requested_delays](int64 delay) {
     requested_delays.emplace_back(delay / 1000000.0);
   };
-  std::function<Status()> f = []() { return errors::Unavailable(""); };
+  std::function<Status()> f = []() { return errors::Unavailable("Failed."); };
 
-  EXPECT_EQ(errors::Code::UNAVAILABLE,
-            RetryingUtils::CallWithRetries(f, 500000L, sleep).code());
+  const auto& status = RetryingUtils::CallWithRetries(f, 500000L, sleep);
+  EXPECT_EQ(errors::Code::ABORTED, status.code());
+  EXPECT_TRUE(StringPiece(status.error_message())
+                  .contains("All 10 retry attempts "
+                            "failed. The last failure: "
+                            "Unavailable: Failed."))
+      << status;
 
   EXPECT_EQ(10, requested_delays.size());
   EXPECT_NEAR(0.5, requested_delays[0], 1.0);
@@ -47,8 +52,9 @@ TEST(RetryingUtilsTest, RetryDelays) {
   EXPECT_NEAR(32.0, requested_delays[9], 1.0);
 }
 
-TEST(RetryingUtilsTest, NotFoundIsNotRetried) {
-  std::vector<Status> results({errors::Unavailable(""), errors::NotFound("")});
+TEST(RetryingUtilsTest, CallWithRetries_NotFoundIsNotRetried) {
+  std::vector<Status> results(
+      {errors::Unavailable("Failed."), errors::NotFound("Not found.")});
   std::function<Status()> f = [&results]() {
     auto result = results[0];
     results.erase(results.begin());
@@ -58,15 +64,83 @@ TEST(RetryingUtilsTest, NotFoundIsNotRetried) {
             RetryingUtils::CallWithRetries(f, 0).code());
 }
 
-TEST(RetryingUtilsTest, EventualSuccess) {
-  std::vector<Status> results(
-      {errors::Unavailable(""), errors::Unavailable(""), Status::OK()});
+TEST(RetryingUtilsTest, CallWithRetries_ImmediateSuccess) {
+  std::vector<Status> results({Status::OK()});
+  std::function<void(int64)> sleep = [](int64 delay) {
+    ADD_FAILURE() << "Unexpected call to sleep.";
+  };
+  std::function<Status()> f = [&results]() {
+    auto result = results[0];
+    results.erase(results.begin());
+    return result;
+  };
+  TF_EXPECT_OK(RetryingUtils::CallWithRetries(f, 1.0, sleep));
+}
+
+TEST(RetryingUtilsTest, CallWithRetries_EventualSuccess) {
+  std::vector<Status> results({errors::Unavailable("Failed."),
+                               errors::Unavailable("Failed again."),
+                               Status::OK()});
   std::function<Status()> f = [&results]() {
     auto result = results[0];
     results.erase(results.begin());
     return result;
   };
   TF_EXPECT_OK(RetryingUtils::CallWithRetries(f, 0));
+}
+
+TEST(RetryingUtilsTest, DeleteWithRetries_ImmediateSuccess) {
+  std::vector<Status> delete_results({Status::OK()});
+  const auto delete_func = [&delete_results]() {
+    auto result = delete_results[0];
+    delete_results.erase(delete_results.begin());
+    return result;
+  };
+  TF_EXPECT_OK(RetryingUtils::DeleteWithRetries(delete_func, 0));
+}
+
+TEST(RetryingUtilsTest, DeleteWithRetries_EventualSuccess) {
+  std::vector<Status> delete_results({errors::Unavailable(""), Status::OK()});
+  const auto delete_func = [&delete_results]() {
+    auto result = delete_results[0];
+    delete_results.erase(delete_results.begin());
+    return result;
+  };
+  TF_EXPECT_OK(RetryingUtils::DeleteWithRetries(delete_func, 0));
+}
+
+TEST(RetryingUtilsTest, DeleteWithRetries_PermissionDeniedNotRetried) {
+  std::vector<Status> delete_results(
+      {errors::Unavailable(""), errors::PermissionDenied("")});
+  const auto delete_func = [&delete_results]() {
+    auto result = delete_results[0];
+    delete_results.erase(delete_results.begin());
+    return result;
+  };
+  EXPECT_EQ(errors::Code::PERMISSION_DENIED,
+            RetryingUtils::DeleteWithRetries(delete_func, 0).code());
+}
+
+TEST(RetryingUtilsTest, DeleteWithRetries_SuccessThroughFileNotFound) {
+  std::vector<Status> delete_results(
+      {errors::Unavailable(""), errors::NotFound("")});
+  const auto delete_func = [&delete_results]() {
+    auto result = delete_results[0];
+    delete_results.erase(delete_results.begin());
+    return result;
+  };
+  TF_EXPECT_OK(RetryingUtils::DeleteWithRetries(delete_func, 0));
+}
+
+TEST(RetryingUtilsTest, DeleteWithRetries_FirstNotFoundReturnedAsIs) {
+  std::vector<Status> delete_results({errors::NotFound("")});
+  const auto delete_func = [&delete_results]() {
+    auto result = delete_results[0];
+    delete_results.erase(delete_results.begin());
+    return result;
+  };
+  EXPECT_EQ(error::NOT_FOUND,
+            RetryingUtils::DeleteWithRetries(delete_func, 0).code());
 }
 
 }  // namespace

@@ -19,8 +19,8 @@ limitations under the License.
 <html>
   <head>
     <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
-    <link rel="stylesheet" type="text/css" href="../../../lib/css/global.css">
     <link rel="import" href="../tf-image-dashboard.html">
+    <link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
     <title>Image Dashboard Demo</title>
     <style>
       #container{
@@ -34,29 +34,33 @@ limitations under the License.
     </style>
   </head>
   <body>
-    <dom-module id="image-dash-demo">
+    <demo-snippet>
       <template>
-        <tf-image-dashboard id="demo" backend="[[backend]]">
-        </tf-image-dashboard>
-      </template>
-      <script>
-        Polymer({
-          is: "image-dash-demo",
-          properties: {
-            backend: {
-              type: Object,
-              value: function() {
-                var path = "/demo/data";
-                var router = new TF.Backend.router(path, true);
-                return new TF.Backend.Backend(router);
+        <dom-module id="image-dash-demo">
+          <template>
+            <tf-image-dashboard id="demo" backend="[[backend]]">
+            </tf-image-dashboard>
+          </template>
+          <script>
+            Polymer({
+              is: "image-dash-demo",
+              properties: {
+                backend: {
+                  type: Object,
+                  value: function() {
+                    var path = "data";
+                    var router = new TF.Backend.router(path, true);
+                    return new TF.Backend.Backend(router);
+                  },
+                },
               },
-            },
-          },
-        });
-      </script>
-    </dom-module>
-    <div id="container">
-      <image-dash-demo></image-dash-demo>
-    </div>
+            });
+          </script>
+        </dom-module>
+        <div id="container">
+          <image-dash-demo></image-dash-demo>
+        </div>
+      </template>
+    </demo-snippet>
   </body>
 </html>

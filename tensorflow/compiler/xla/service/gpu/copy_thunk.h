@@ -34,7 +34,7 @@ class CopyThunk : public Thunk {
   // device buffer `destination_buffer`. `mem_size` is the size of the data in
   // bytes.
   CopyThunk(const void* source_address,
-            BufferAllocation::Index destination_buffer, uint64 mem_size,
+            const BufferAllocation::Slice& destination_buffer, uint64 mem_size,
             const HloInstruction* hlo_instruction);
 
   CopyThunk(const CopyThunk&) = delete;
@@ -46,8 +46,8 @@ class CopyThunk : public Thunk {
 
  private:
   const void* source_address_;
-  BufferAllocation::Index destination_buffer_;
-  uint64 mem_size_;
+  const BufferAllocation::Slice destination_buffer_;
+  const uint64 mem_size_;
 };
 
 }  // namespace gpu

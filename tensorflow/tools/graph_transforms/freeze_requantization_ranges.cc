@@ -201,9 +201,8 @@ Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
       new_node->CopyFrom(node);
     }
   }
-  RenameNodeInputs(frozen_graph_def, inputs_to_rename,
-                   std::unordered_set<string>(), output_graph_def);
-  return Status::OK();
+  return RenameNodeInputs(frozen_graph_def, inputs_to_rename,
+                          std::unordered_set<string>(), output_graph_def);
 }
 
 REGISTER_GRAPH_TRANSFORM("freeze_requantization_ranges",

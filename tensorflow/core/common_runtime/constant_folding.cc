@@ -29,10 +29,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -40,9 +42,8 @@ namespace tensorflow {
 
 namespace {
 
-bool IsConstantFoldable(const FunctionLibraryDefinition* flib_def,
-                        const Node* n,
-                        std::function<bool(const Node*)> consider) {
+bool IsConstantFoldable(const Node* n,
+                        const std::function<bool(const Node*)>& consider) {
   if (n->op_def().is_stateful()) {
     return false;
   }
@@ -63,13 +64,17 @@ bool IsConstantFoldable(const FunctionLibraryDefinition* flib_def,
   if (n->IsSink()) {
     return false;
   }
-  // For now, don't try to constant-fold functions. (They may be inlined, in
-  // which case they will become subject to constant-folding again.)
-  // TODO(phawkins): support constant-folding for functions; functions may
+  // Since constant-folding runs on the CPU, do not attempt to constant-fold
+  // operators that have no CPU kernel. Also implies that we will not
+  // constant-fold functions.
+  // TODO(phawkins): allow constant-folding for functions; functions may
   // be arbitrarily expensive to execute.
-  if (flib_def && flib_def->Find(n->type_string())) {
+  if (!FindKernelDef(DeviceType(DEVICE_CPU), n->def(), /*def=*/nullptr,
+                     /*kernel_class_name=*/nullptr)
+           .ok()) {
     return false;
   }
+
   return true;
 }
 
@@ -93,7 +98,7 @@ void FindConstantFoldableNodes(const Graph* graph,
         node_set.insert(n);
         nodes.push_back(n);
       }
-    } else if (IsConstantFoldable(flib_def, n, opts.consider)) {
+    } else if (IsConstantFoldable(n, opts.consider)) {
       // Check whether the set of this node's in_nodes is completely
       // included in the set of constant foldable nodes. If true,
       // then this node is also constant foldable.
@@ -300,10 +305,18 @@ Status DoConstantFoldingWithStatus(const ConstantFoldingOptions& opts,
     tensors_to_replace.push_back({n.second, n.first.second});
   }
 
+  auto graph_runner = std::unique_ptr<GraphRunner>(new GraphRunner(env));
   // Evaluate the constant foldable nodes.
   std::vector<Tensor> outputs;
-  Status s = GraphRunner::Run(constant_graph.get(), function_library, env,
-                              {} /* inputs*/, tensors_to_fetch_names, &outputs);
+  auto delete_tensors = gtl::MakeCleanup([&graph_runner, &outputs] {
+    // Output tensors need to be cleared before the GraphRunner is deleted.
+    outputs.clear();
+    graph_runner.reset(nullptr);
+  });
+
+  Status s =
+      graph_runner->Run(constant_graph.get(), function_library, {} /* inputs*/,
+                        tensors_to_fetch_names, &outputs);
   if (!s.ok()) {
     VLOG(1) << "Could not fetch constants: " << s;
     *was_mutated = false;

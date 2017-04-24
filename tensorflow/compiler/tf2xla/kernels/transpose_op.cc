@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/transpose_op.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -87,7 +87,7 @@ class TransposeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Transpose", TransposeOp);
+REGISTER_XLA_OP(Name("Transpose"), TransposeOp);
 
 // InvertPermutation frequently forms part of the gradient of Transpose.
 //
@@ -128,7 +128,8 @@ class InvertPermutationOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("InvertPermutation", InvertPermutationOp);
+REGISTER_XLA_OP(Name("InvertPermutation").TypeConstraint("T", DT_INT32),
+                InvertPermutationOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -71,10 +72,8 @@ def random_normal(shape,
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._random_standard_normal(shape_tensor,
-                                                 dtype,
-                                                 seed=seed1,
-                                                 seed2=seed2)
+    rnd = gen_random_ops._random_standard_normal(
+        shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
     return value
@@ -125,13 +124,14 @@ def parameterized_truncated_normal(shape,
     minvals_tensor = ops.convert_to_tensor(minvals, dtype=dtype, name="minvals")
     maxvals_tensor = ops.convert_to_tensor(maxvals, dtype=dtype, name="maxvals")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._parameterized_truncated_normal(shape_tensor,
-                                                         means_tensor,
-                                                         stddevs_tensor,
-                                                         minvals_tensor,
-                                                         maxvals_tensor,
-                                                         seed=seed1,
-                                                         seed2=seed2)
+    rnd = gen_random_ops._parameterized_truncated_normal(
+        shape_tensor,
+        means_tensor,
+        stddevs_tensor,
+        minvals_tensor,
+        maxvals_tensor,
+        seed=seed1,
+        seed2=seed2)
     return rnd
 
 
@@ -168,10 +168,8 @@ def truncated_normal(shape,
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
     seed1, seed2 = random_seed.get_seed(seed)
-    rnd = gen_random_ops._truncated_normal(shape_tensor,
-                                           dtype,
-                                           seed=seed1,
-                                           seed2=seed2)
+    rnd = gen_random_ops._truncated_normal(
+        shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
     return value
@@ -231,17 +229,11 @@ def random_uniform(shape,
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     seed1, seed2 = random_seed.get_seed(seed)
     if dtype.is_integer:
-      return gen_random_ops._random_uniform_int(shape,
-                                                minval,
-                                                maxval,
-                                                seed=seed1,
-                                                seed2=seed2,
-                                                name=name)
+      return gen_random_ops._random_uniform_int(
+          shape, minval, maxval, seed=seed1, seed2=seed2, name=name)
     else:
-      rnd = gen_random_ops._random_uniform(shape,
-                                           dtype,
-                                           seed=seed1,
-                                           seed2=seed2)
+      rnd = gen_random_ops._random_uniform(
+          shape, dtype, seed=seed1, seed2=seed2)
       return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
 
@@ -274,10 +266,8 @@ def random_shuffle(value, seed=None, name=None):
     dimension.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_random_ops._random_shuffle(value,
-                                        seed=seed1,
-                                        seed2=seed2,
-                                        name=name)
+  return gen_random_ops._random_shuffle(
+      value, seed=seed1, seed2=seed2, name=name)
 
 
 def random_crop(value, size, seed=None, name=None):
@@ -348,10 +338,8 @@ def multinomial(logits, num_samples, seed=None, name=None):
   with ops.name_scope(name, "multinomial", [logits]):
     logits = ops.convert_to_tensor(logits, name="logits")
     seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops.multinomial(logits,
-                                      num_samples,
-                                      seed=seed1,
-                                      seed2=seed2)
+    return gen_random_ops.multinomial(
+        logits, num_samples, seed=seed1, seed2=seed2)
 
 
 ops.NotDifferentiable("Multinomial")
@@ -381,25 +369,12 @@ def random_gamma(shape,
     samples = tf.random_gamma([30], [[1.],[3.],[5.]], beta=[[3., 4.]])
     # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
 
-    Note that for small alpha values, there is a chance you will draw a value of
-    exactly 0, which gets worse for lower-precision dtypes, even though zero is
-    not in the support of the gamma distribution.
-
-    Relevant cdfs (~chance you will draw a exactly-0 value):
-    ```
-      stats.gamma(.01).cdf(np.finfo(np.float16).tiny)
-          0.91269738769897879
-      stats.gamma(.01).cdf(np.finfo(np.float32).tiny)
-          0.41992668622045726
-      stats.gamma(.01).cdf(np.finfo(np.float64).tiny)
-          0.00084322740680686662
-      stats.gamma(.35).cdf(np.finfo(np.float16).tiny)
-          0.037583276135263931
-      stats.gamma(.35).cdf(np.finfo(np.float32).tiny)
-          5.9514895726818067e-14
-      stats.gamma(.35).cdf(np.finfo(np.float64).tiny)
-          2.3529843400647272e-108
-    ```
+    Note: Because internal calculations are done using `float64` and casting has
+    `floor` semantics, we must manually map zero outcomes to the smallest
+    possible positive floating-point value, i.e., `np.finfo(dtype).tiny`.  This
+    means that `np.finfo(dtype).tiny` occurs more frequently than it otherwise
+    should.  This bias can only happen for small values of `alpha`, i.e.,
+    `alpha << 1` or large values of `beta`, i.e., `beta >> 1`.
 
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output samples
@@ -425,16 +400,14 @@ def random_gamma(shape,
   with ops.name_scope(name, "random_gamma", [shape, alpha, beta]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
     alpha = ops.convert_to_tensor(alpha, name="alpha", dtype=dtype)
-    beta = ops.convert_to_tensor(beta if beta is not None else 1,
-                                 name="beta",
-                                 dtype=dtype)
+    beta = ops.convert_to_tensor(
+        beta if beta is not None else 1, name="beta", dtype=dtype)
     alpha_broadcast = alpha + array_ops.zeros_like(beta)
     seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops._random_gamma(shape,
-                                        alpha_broadcast,
-                                        seed=seed1,
-                                        seed2=seed2) / beta
-
+    return math_ops.maximum(
+        np.finfo(dtype.as_numpy_dtype).tiny,
+        gen_random_ops._random_gamma(
+            shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
 
 ops.NotDifferentiable("RandomGamma")
 

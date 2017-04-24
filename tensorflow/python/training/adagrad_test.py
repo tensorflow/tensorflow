@@ -23,6 +23,9 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
@@ -30,11 +33,15 @@ from tensorflow.python.training import adagrad
 
 class AdagradOptimizerTest(test.TestCase):
 
-  def doTestBasic(self, use_locking=False):
+  def doTestBasic(self, use_locking=False, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():
-        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+          var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        else:
+          var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+          var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         ada_opt = adagrad.AdagradOptimizer(
@@ -57,8 +64,30 @@ class AdagradOptimizerTest(test.TestCase):
   def testBasic(self):
     self.doTestBasic(use_locking=False)
 
+  def testBasicResource(self):
+    self.doTestBasic(use_locking=False, use_resource=True)
+
   def testBasicLocked(self):
     self.doTestBasic(use_locking=True)
+
+  def testMinimizeSparseResourceVariable(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var0 = resource_variable_ops.ResourceVariable(
+            [[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
+        loss = pred * pred
+        sgd_op = adagrad.AdagradOptimizer(1.0).minimize(loss)
+        variables.global_variables_initializer().run()
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType(
+            [[1.0, 2.0], [3.0, 4.0]], var0.eval())
+        # Run 1 step of sgd
+        sgd_op.run()
+        # Validate updated params
+        self.assertAllCloseAccordingToType(
+            [[0, 1], [3, 4]], var0.eval(), atol=0.01)
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -144,6 +173,30 @@ class AdagradOptimizerTest(test.TestCase):
           aggregated_update.run()
           self.assertAllClose(aggregated_update_var.eval(),
                               repeated_index_update_var.eval())
+
+  def testSparseRepeatedIndicesResourceVariable(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      with self.test_session():
+        var_repeated = resource_variable_ops.ResourceVariable(
+            [1.0, 2.0], dtype=dtype)
+        loss_repeated = math_ops.reduce_sum(
+            embedding_ops.embedding_lookup(var_repeated, [0, 0]))
+        var_aggregated = resource_variable_ops.ResourceVariable(
+            [1.0, 2.0], dtype=dtype)
+        loss_aggregated = 2 * math_ops.reduce_sum(
+            embedding_ops.embedding_lookup(var_aggregated, [0]))
+        update_op_repeated = adagrad.AdagradOptimizer(
+            2.0).minimize(loss_repeated)
+        update_op_aggregated = adagrad.AdagradOptimizer(
+            2.0).minimize(loss_aggregated)
+        variables.global_variables_initializer().run()
+        self.assertAllCloseAccordingToType(
+            var_repeated.eval(), var_aggregated.eval())
+        for _ in range(3):
+          update_op_repeated.run()
+          update_op_aggregated.run()
+          self.assertAllCloseAccordingToType(
+              var_repeated.eval(), var_aggregated.eval())
 
   def testSparseStability(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:

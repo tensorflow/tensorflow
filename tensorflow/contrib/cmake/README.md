@@ -13,18 +13,18 @@ Linux.
 Current Status
 --------------
 
-CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/get_started/os_setup.html#pip-installation-on-windows)
+CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/install/install_windows)
 for instructions on how to install a pre-built TensorFlow package on Windows.
 
 ### Current known limitations
 * It is not possible to load a custom Op library.
-* GCS and HDFS file systems are not supported.
+* GCS file system is not supported.
 * The following Ops are not currently implemented:
  - Dequantize
  - QuantizeAndDequantize
  - QuantizedAvgPool
  - QuantizedBatchNomWithGlobalNormalization
- - QuantizedBiasAdd 
+ - QuantizedBiasAdd
  - QuantizedConcat
  - QuantizedConv2D
  - QuantizedMatmul
@@ -45,7 +45,7 @@ bindings.
 
 ### Pre-requisites
 
-* CMake version 3.5 up to 3.6
+* CMake version 3.5 or later.
 
 * [Git](http://git-scm.com)
 
@@ -68,10 +68,10 @@ bindings.
   - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.continuum.io/downloads)
   - [Git for Windows version 2.9.2.windows.1](https://git-scm.com/download/win)
   - [swigwin-3.0.10](http://www.swig.org/download.html)
-  - [NVidia CUDA Toolkit 8.0] (https://developer.nvidia.com/cuda-downloads)
-  - [NVidia CUDNN 5.1] (https://developer.nvidia.com/cudnn)
+  - [NVidia CUDA Toolkit 8.0](https://developer.nvidia.com/cuda-downloads)
+  - [NVidia CUDNN 5.1](https://developer.nvidia.com/cudnn)
   - [CMake 3.6](https://cmake.org/files/v3.6/cmake-3.6.3-win64-x64.msi)
-  
+
 * Ubuntu 14.04
   - Makefile generator
   - Docker 1.9.1 (for automated testing)
@@ -87,7 +87,7 @@ bindings.
 
   - The following Python APIs are not currently implemented:
     * Loading custom op libraries via `tf.load_op_library()`. In order to use your
-      custom op, please put the source code under the tensorflow/core/user_ops 
+      custom op, please put the source code under the tensorflow/core/user_ops
       directory, and a shape function is required (not optional) for each op.
     * Path manipulation functions (such as `tf.gfile.ListDirectory()`) are not
       functional.
@@ -132,12 +132,12 @@ Step-by-step Windows build
      D:\temp> "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\amd64\vcvarsall.bat"
      ```
 
-   * When building with GPU support after installing the CUDNN zip file from NVidia, append its 
+   * When building with GPU support after installing the CUDNN zip file from NVidia, append its
      bin directory to your PATH environment variable.
-     In case TensorFlow fails to find the CUDA dll's during initialization, check your PATH environment variable. 
+     In case TensorFlow fails to find the CUDA dll's during initialization, check your PATH environment variable.
      It should contain the directory of the CUDA dlls and the directory of the CUDNN dll.
      For example:
-     
+
      ```
      D:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v8.0\bin
      D:\local\cuda\bin
@@ -174,14 +174,18 @@ Step-by-step Windows build
    D:\...\build> cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release ^
    More? -DSWIG_EXECUTABLE=C:/tools/swigwin-3.0.10/swig.exe ^
    More? -DPYTHON_EXECUTABLE=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/python.exe ^
-   More? -DPYTHON_LIBRARIES=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/libs/python35.lib 
+   More? -DPYTHON_LIBRARIES=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/libs/python35.lib
    ```
    To build with GPU support add "^" at the end of the last line above following with:
    ```
    More? -Dtensorflow_ENABLE_GPU=ON ^
    More? -DCUDNN_HOME="D:\...\cudnn"
    ```
-    
+   To enable SIMD instructions with MSVC, as AVX and SSE, define it as follows:
+   ```
+   More? -Dtensorflow_WIN_CPU_SIMD_OPTIONS=/arch:AVX
+   ```
+
    Note that the `-DCMAKE_BUILD_TYPE=Release` flag must match the build
    configuration that you choose when invoking `msbuild`. The known-good
    values are `Release` and `RelWithDebInfo`. The `Debug` build type is
@@ -218,11 +222,11 @@ Step-by-step Windows build
      SSL support (for making secure HTTP requests) in the TensorFlow runtime.
      This support is incomplete, and will be used for Google Cloud Storage
      support.
-     
+
    * `-Dtensorflow_ENABLE_GPU=(ON|OFF)`. Defaults to `OFF`. Include
      GPU support. If GPU is enabled you need to install the CUDA 8.0 Toolkit and CUDNN 5.1.
      CMake will expect the location of CUDNN in -DCUDNN_HOME=path_you_unziped_cudnn.
- 
+
    * `-Dtensorflow_BUILD_CC_TESTS=(ON|OFF)`. Defaults to `OFF`. This builds cc unit tests.
      There are many of them and building will take a few hours.
      After cmake, build and execute the tests with
@@ -230,7 +234,7 @@ Step-by-step Windows build
      MSBuild /p:Configuration=RelWithDebInfo ALL_BUILD.vcxproj
      ctest -C RelWithDebInfo
      ```
- 
+
    * `-Dtensorflow_BUILD_PYTHON_TESTS=(ON|OFF)`. Defaults to `OFF`. This enables python kernel tests.
      After building the python wheel, you need to install the new wheel before running the tests.
      To execute the tests, use

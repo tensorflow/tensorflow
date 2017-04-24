@@ -336,14 +336,11 @@ void OptimizeControlFlowColocation(Graph* graph) {
         const Edge* data_edge = nullptr;
         for (const Edge* out_edge : node->out_edges()) {
           if (!out_edge->IsControlEdge()) {
-            if (data_edge) {
-              data_edge = nullptr;
-              return;
-            }
             data_edge = out_edge;
+            break;
           }
         }
-        // Colocate if there is only one downstream data node.
+        // Colocate with the first downstream data node.
         if (data_edge) {
           node->set_assigned_device_name(
               data_edge->dst()->assigned_device_name());
@@ -1031,9 +1028,10 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     }
   }
 
-  // Set versions
+  // Set versions and function library
   for (auto& it : *partitions) {
     it.second.mutable_versions()->CopyFrom(g->versions());
+    *it.second.mutable_library() = g->flib_def().ToProto();
   }
 
   // Set the start times for recvs at the very end.

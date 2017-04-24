@@ -29,10 +29,10 @@ static Graph* BM_AdjustContrast(int batches, int width, int height) {
   factor.flat<float>().setConstant(1.2);
 
   Node* ret;
-  NodeBuilder(g->NewName("n"), "AdjustContrastv2")
-      .Input(test::graph::Constant(g, in))
-      .Input(test::graph::Constant(g, factor))
-      .Finalize(g, &ret);
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "AdjustContrastv2")
+                  .Input(test::graph::Constant(g, in))
+                  .Input(test::graph::Constant(g, factor))
+                  .Finalize(g, &ret));
   return g;
 }
 

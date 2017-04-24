@@ -14,7 +14,9 @@
 # ==============================================================================
 
 # TODO(ptucker,ipolosukhin): Improve descriptions.
-"""High level API for learning. See the @{$python/contrib.learn} guide.
+"""High level API for learning.
+
+See the @{$python/contrib.learn} guide.
 
 @@BaseEstimator
 @@Estimator
@@ -26,12 +28,27 @@
 @@MetricSpec
 @@PredictionKey
 @@DNNClassifier
+@@DNNEstimator
 @@DNNRegressor
 @@DNNLinearCombinedRegressor
+@@DNNLinearCombinedEstimator
 @@DNNLinearCombinedClassifier
+@@DynamicRnnEstimator
 @@LinearClassifier
+@@LinearEstimator
 @@LinearRegressor
 @@LogisticRegressor
+@@SVM
+@@SKCompat
+
+@@Head
+@@multi_class_head
+@@multi_label_head
+@@binary_svm_head
+@@regression_head
+@@poisson_regression_head
+@@multi_head
+@@no_op_train_fn
 
 @@Experiment
 @@ExportStrategy
@@ -59,7 +76,7 @@
 @@InputFnOps
 @@ProblemType
 @@build_parsing_serving_input_fn
-@@ProblemType
+@@make_export_strategy
 """
 
 from __future__ import absolute_import

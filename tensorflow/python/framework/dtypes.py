@@ -458,6 +458,9 @@ _np_qint16 = np.dtype([("qint16", np.int16, 1)])
 _np_quint16 = np.dtype([("quint16", np.uint16, 1)])
 _np_qint32 = np.dtype([("qint32", np.int32, 1)])
 
+# Custom struct dtype for directly-fed ResourceHandles of supported type(s).
+np_resource = np.dtype([("resource", np.ubyte, 1)])
+
 # Standard mappings between types_pb2.DataType values and numpy.dtypes.
 _NP_TO_TF = frozenset([
     (np.float16, float16),

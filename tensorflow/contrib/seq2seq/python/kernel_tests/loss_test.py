@@ -21,35 +21,51 @@ from __future__ import print_function
 # pylint: enable=unused-import
 
 import numpy as np
-import tensorflow as tf
 
-class LossTest(tf.test.TestCase):
+from tensorflow.contrib.seq2seq.python.ops import loss
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import test
+
+
+class LossTest(test.TestCase):
 
   def testSequenceLoss(self):
-    with self.test_session() as sess:
-      with tf.variable_scope("root",
-          initializer=tf.constant_initializer(0.5)) as varscope:
+    with self.test_session(use_gpu=True) as sess:
+      with variable_scope.variable_scope(
+          'root', initializer=init_ops.constant_initializer(0.5)):
         batch_size = 2
         sequence_length = 3
         number_of_classes = 5
-        logits = [tf.constant(i + 0.5, shape=[batch_size, number_of_classes])
-                  for i in range(sequence_length)]
-        logits = tf.stack(logits, axis=1)
-        targets = [tf.constant(i, tf.int32, shape=[batch_size]) for i in
-                   range(sequence_length)]
-        targets = tf.stack(targets, axis=1)
-        weights = [tf.constant(1.0, shape=[batch_size]) for i in
-                   range(sequence_length)]
-        weights = tf.stack(weights, axis=1)
+        logits = [
+            constant_op.constant(
+                i + 0.5, shape=[batch_size, number_of_classes])
+            for i in range(sequence_length)
+        ]
+        logits = array_ops.stack(logits, axis=1)
+        targets = [
+            constant_op.constant(
+                i, dtypes.int32, shape=[batch_size])
+            for i in range(sequence_length)
+        ]
+        targets = array_ops.stack(targets, axis=1)
+        weights = [
+            constant_op.constant(
+                1.0, shape=[batch_size]) for i in range(sequence_length)
+        ]
+        weights = array_ops.stack(weights, axis=1)
 
-        average_loss_per_example = tf.contrib.seq2seq.sequence_loss(
+        average_loss_per_example = loss.sequence_loss(
             logits, targets, weights,
             average_across_timesteps=True,
             average_across_batch=True)
         res = sess.run(average_loss_per_example)
         self.assertAllClose(1.60944, res)
 
-        average_loss_per_sequence = tf.contrib.seq2seq.sequence_loss(
+        average_loss_per_sequence = loss.sequence_loss(
             logits, targets, weights,
             average_across_timesteps=False,
             average_across_batch=True)
@@ -57,7 +73,7 @@ class LossTest(tf.test.TestCase):
         compare_per_sequence = np.ones((sequence_length)) * 1.60944
         self.assertAllClose(compare_per_sequence, res)
 
-        average_loss_per_batch = tf.contrib.seq2seq.sequence_loss(
+        average_loss_per_batch = loss.sequence_loss(
             logits, targets, weights,
             average_across_timesteps=True,
             average_across_batch=False)
@@ -65,7 +81,7 @@ class LossTest(tf.test.TestCase):
         compare_per_batch = np.ones((batch_size)) * 1.60944
         self.assertAllClose(compare_per_batch, res)
 
-        total_loss = tf.contrib.seq2seq.sequence_loss(
+        total_loss = loss.sequence_loss(
             logits, targets, weights,
             average_across_timesteps=False,
             average_across_batch=False)
@@ -74,4 +90,4 @@ class LossTest(tf.test.TestCase):
         self.assertAllClose(compare_total, res)
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

@@ -60,6 +60,7 @@ FakeQueue
 FIFOQueue
 FIFOQueueV2
 GetSessionHandle
+GetSessionHandleV2
 GetSessionTensor
 HashTable
 InitializeTable
@@ -149,8 +150,6 @@ ScaleImageGrad
 # io_ops
 FixedLengthRecordReader
 IdentityReader
-ReaderClose
-ReaderEnqueueWork
 ReaderNumRecordsProduced
 ReaderNumWorkUnitsCompleted
 ReaderRead
@@ -161,8 +160,6 @@ ReaderSerializeState
 ReaderWorkQueueLength
 FixedLengthRecordReaderV2
 IdentityReaderV2
-ReaderCloseV2
-ReaderEnqueueWorkV2
 ReaderNumRecordsProducedV2
 ReaderNumWorkUnitsCompletedV2
 ReaderReadV2
@@ -204,7 +201,6 @@ Svd
 Assert
 AudioSummary
 AudioSummaryV2
-HistogramAccumulatorSummary
 HistogramSummary
 ImageSummary
 MergeSummary
@@ -256,6 +252,7 @@ TruncateMod
 
 # nn_ops
 AvgPoolGrad  # "*Grad" accessible through nn_grad instead of nn_ops.
+AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
 FusedBatchNorm
@@ -264,6 +261,10 @@ SparseSoftmaxCrossEntropyWithLogits
 LRNGrad
 MaxPoolGrad
 MaxPoolGradWithArgmax
+MaxPoolGradGrad
+MaxPoolGradGradWithArgmax
+MaxPool3DGrad
+MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad
@@ -287,6 +288,7 @@ ParseSingleSequenceExample
 
 # random_ops
 RandomGamma
+RandomPoisson
 RandomUniform
 RandomUniformInt
 RandomShuffle
@@ -299,9 +301,6 @@ PyFunc
 PyFuncStateless
 
 # sdca_ops
-SdcaFprint
-SdcaOptimizer
-SdcaShrinkL1
 
 # state_ops
 Variable

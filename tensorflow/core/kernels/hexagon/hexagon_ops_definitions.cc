@@ -38,6 +38,7 @@ enum class SupportedOpType {
   PPRINT_FLOAT,
   PREFREE,
   FLATTEN,
+  // With Reference
   QUANTIZEDCONV2D_8X8TO32,
   QUANTIZEDCONV2D_8X8TO32_REF,
   QUANTIZEDMATMUL_8X8TO32,
@@ -48,6 +49,10 @@ enum class SupportedOpType {
   QUANTIZEDRELU_8_REF,
   QUANTIZEDRELUX_8,
   QUANTIZEDRELUX_8_REF,
+  QUANTIZEDSIGMOID_8,
+  QUANTIZEDSIGMOID_8_REF,
+  QUANTIZEDTANH_8,
+  QUANTIZEDTANH_8_REF,
   QUANTIZEDMAXPOOL_8,
   QUANTIZEDMAXPOOL_8_REF,
   QUANTIZEDAVGPOOL_8,
@@ -56,6 +61,10 @@ enum class SupportedOpType {
   QUANTIZEDCONCAT_8_REF,
   QUANTIZEDBIASADD_8P8TO32,
   QUANTIZEDBIASADD_8P8TO32_REF,
+  QUANTIZEDSOFTMAX_8,
+  QUANTIZEDSOFTMAX_8_REF,
+  QUANTIZEDLRN_8,
+  QUANTIZEDLRN_8_REF,
   MIN_F,
   MIN_F_REF,
   MAX_F,
@@ -66,17 +75,88 @@ enum class SupportedOpType {
   DEQUANTIZE_REF,
   SUPERNODE_8X8P8TO8,
   SUPERNODE_8X8P8TO8_REF,
+
   QUANTIZEDFLATTEN,
-  SUPPORTED_OP_TYPE_COUNT,
+  SOFTMAX_F,
+  CONV2D_F,
+  MATMUL_F,
+  RELU_F,
+  RELUX_F,
+  AVGPOOL_F,
+  MAXPOOL_F,
+  CONCAT_F,
+  BIASADD_F,
+  LRN_F,
+
+  VARIABLE,
+  ASSIGN,
+  RESHAPE,
+  QUANTIZED_RESHAPE,
+  TANH_F,
+  SIGMOID_F,
+  SLICE_8,
+  SLICE_F,
+  QUANTIZED_SLICE_8,
+  ADD_F,
+  MUL_F,
+  MINIMUM_F,
+  MAXIMAM_F,
+
+  REQUANTIZE_32_TO_8,
+  REQUANTIZE_32_TO_8_REF,
+  REQUANTIZATION_RANGE_32,
+  REQUANTIZATION_RANGE_32_REF,
+
+  NEG_F,
+  SUB_F,
+  ADD_N_F,
+  RANGE_INT32,
+  RANK_INT32,
+  TRANSPOSE_INT32,
+  TRANSPOSE_F,
+  INSTANCE_NORM_F,
+  QUANTIZED_INSTANCENORM_8,
+  QUANTIZED_INSTANCENORM_8_REF,
+  SUB_INT32,
+  ADD_INT32,
+  SPLIT_F,
+  DEQUANTIZE_QINT32_F,
+  PRELU_F,
+  QUANTIZED_PRELU_8,
+  SUM_F,
+  PROD_F,
+  MUL_INT32,
+  LOGICAL_AND_INT32,
+  LOGICALOR_INT32,
+  LOGICAL_XOR_INT32,
+  SPAPE_INT32,
+  PACK_INT32,
+  MIRROR_PAD_F,
+  RESIZE_NEAREST_NEIGHBOR_F,
+  STRIDED_SLICE_INT32,
+  STRIDED_SLICE_F,
+  EXPAND_DIMS_INT32,
+  EXPAND_DIMS_F,
+
+  LOG_SOFTMAX_F,
+  SPLIT_INT32,
+  QUANTIZED_SPLIT_8,
+
+  DECONV_F,
+  QUANTIZED_DECONV_8X8TO32,
+  QUANTIZED_DECONV_8X8TO32_REF,
+
+  SUPPORTED_OP_TYPE_COUNT  // TERMINATOR. DO NOT REMOVE
 };
 
 const std::unordered_map<string, SupportedOpType> OP_NAME_TO_SOC_OP_TYPE_MAP{
     // Custom Op name
-    {IGraphTransferOpsDefinitions::INPUT_OP_NAME, SupportedOpType::INPUT},
-    {IGraphTransferOpsDefinitions::OUTPUT_OP_NAME, SupportedOpType::OUTPUT},
+    {"INPUT", SupportedOpType::INPUT},
+    {"OUTPUT", SupportedOpType::OUTPUT},
     {"NoOp", SupportedOpType::NOP},
     {IGraphTransferOpsDefinitions::FLATTEN_OP_NAME, SupportedOpType::FLATTEN},
     // Tensorflow op name
+    {"Const", SupportedOpType::OP_CONST},
     {"QuantizedConv2D", SupportedOpType::QUANTIZEDCONV2D_8X8TO32},
     {"QuantizedMatMul", SupportedOpType::QUANTIZEDMATMUL_8X8TO32},
     {"QuantizeDownAndShrinkRange",
@@ -91,6 +171,15 @@ const std::unordered_map<string, SupportedOpType> OP_NAME_TO_SOC_OP_TYPE_MAP{
     {"Max", SupportedOpType::MAX_F},
     {"QuantizeV2", SupportedOpType::QUANTIZE},
     {"Dequantize", SupportedOpType::DEQUANTIZE},
+    {"Softmax", SupportedOpType::SOFTMAX_F},
+    {"Placeholder", SupportedOpType::NOP},
+    {"RequantizationRange", SupportedOpType::REQUANTIZATION_RANGE_32},
+    {"Requantize", SupportedOpType::REQUANTIZE_32_TO_8},
+    {"QuantizedReshape", SupportedOpType::QUANTIZED_RESHAPE},
+    {"Add", SupportedOpType::ADD_F},
+    {"Sub", SupportedOpType::SUB_F},
+    {"Reshape", SupportedOpType::RESHAPE},
+    {"Identity", SupportedOpType::NOP},
 };
 
 /* static */ const IGraphTransferOpsDefinitions&
@@ -103,18 +192,15 @@ int HexagonOpsDefinitions::GetTotalOpsCount() const {
   return static_cast<int>(SupportedOpType::SUPPORTED_OP_TYPE_COUNT);
 }
 
-int HexagonOpsDefinitions::GetInputNodeOpId() const {
-  return static_cast<int>(SupportedOpType::INPUT);
-}
-
-int HexagonOpsDefinitions::GetOutputNodeOpId() const {
-  return static_cast<int>(SupportedOpType::OUTPUT);
-}
-
 int HexagonOpsDefinitions::GetOpIdFor(const string& op_type) const {
   if (OP_NAME_TO_SOC_OP_TYPE_MAP.count(op_type) > 0) {
     return static_cast<int>(OP_NAME_TO_SOC_OP_TYPE_MAP.at(op_type));
   }
   return IGraphTransferOpsDefinitions::INVALID_OP_ID;
+}
+
+GraphTransferInfo::Destination HexagonOpsDefinitions::GetTransferDestination()
+    const {
+  return GraphTransferInfo::HEXAGON;
 }
 };

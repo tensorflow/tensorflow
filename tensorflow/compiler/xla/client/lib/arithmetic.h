@@ -40,6 +40,18 @@ Computation CreateScalarMaxComputation(PrimitiveType type,
 Computation CreateScalarMinComputation(PrimitiveType type,
                                        ComputationBuilder* builder);
 
+// Creates a scalar logical AND computation and returns it.
+Computation CreateScalarLogicalAndComputation(ComputationBuilder* builder);
+
+// Creates a scalar logical OR computation and returns it.
+Computation CreateScalarLogicalOrComputation(ComputationBuilder* builder);
+
+// Returns whether any predicate in "predicates" is set.
+//
+// Note: if predicates is zero-sized, Any() vacuously returns false.
+StatusOr<ComputationDataHandle> Any(const ComputationDataHandle& predicates,
+                                    ComputationBuilder* builder);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_ARITHMETIC_H_

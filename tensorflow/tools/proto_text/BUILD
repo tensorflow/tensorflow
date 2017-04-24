@@ -48,6 +48,10 @@ cc_library(
             "-lm",
             "-lpthread",
         ],
+        "//tensorflow:ios": [
+            "-lm",
+            "-lpthread",
+        ],
         "//conditions:default": [
             "-lm",
             "-lpthread",

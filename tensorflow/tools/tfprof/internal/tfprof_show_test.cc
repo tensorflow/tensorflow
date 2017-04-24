@@ -72,7 +72,7 @@ class TFProfShowTest : public ::testing::Test {
 TEST_F(TFProfShowTest, DumpScopeMode) {
   string dump_file = io::JoinPath(testing::TmpDir(), "dump");
   Options opts(5, 0, 0, 0, 0, {".*"}, "name",
-               {"Variable"},  // accout_type_regexes
+               {"VariableV2"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
                false, dump_file);
@@ -81,9 +81,12 @@ TEST_F(TFProfShowTest, DumpScopeMode) {
   string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
   EXPECT_EQ(
-      "_TFProfRoot (--/450 params, --/0 flops, --/1.80KB, --/0us)\n  DW "
-      "(3x3x3x6, 162/162 params, 0/0 flops, 648B/648B, 0us/0us)\n  DW2 "
-      "(2x2x6x12, 288/288 params, 0/0 flops, 1.15KB/1.15KB, 0us/0us)\n",
+      "_TFProfRoot (--/370 params, --/0 flops, --/1.48KB, --/5us)\n  "
+      "conv2d/bias (5, 5/5 params, 0/0 flops, 20B/20B, 1us/1us)\n  "
+      "conv2d/kernel (3x3x3x5, 135/135 params, 0/0 flops, 540B/540B, "
+      "1us/1us)\n  conv2d_1/bias (5, 5/5 params, 0/0 flops, 20B/20B, "
+      "1us/1us)\n  conv2d_1/kernel (3x3x5x5, 225/225 params, 0/0 flops, "
+      "900B/900B, 2us/2us)\n",
       dump_str);
 }
 

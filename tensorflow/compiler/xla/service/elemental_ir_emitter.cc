@@ -195,6 +195,19 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
           ir_builder_->CreateSelect(olt, llvm::ConstantFP::get(type, -1.0),
                                     llvm::ConstantFP::get(type, 1.0)));
     }
+    case HloOpcode::kIsFinite: {
+      // (x == x) && abs(x) != inf
+      auto type = operand_value->getType();
+      auto equal_self =
+          ir_builder_->CreateFCmpOEQ(operand_value, operand_value);
+      auto abs_value = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::fabs, {operand_value}, {type}, ir_builder_);
+      auto infinity = llvm::ConstantFP::getInfinity(type);
+      auto not_infinite = ir_builder_->CreateFCmpONE(abs_value, infinity);
+      auto result_i1 = ir_builder_->CreateAnd(equal_self, not_infinite);
+      return ir_builder_->CreateZExt(
+          result_i1, llvm_ir::PrimitiveTypeToIrType(PRED, ir_builder_));
+    }
     case HloOpcode::kNegate:
       return ir_builder_->CreateFNeg(operand_value);
     default:
@@ -428,8 +441,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
 llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
     const llvm_ir::IrArray::Index& target_index, const HloInstruction& hlo,
     int64 operand_no) const {
-  CHECK(hlo.IsElementwise()) << "HLO " << hlo.ToString()
-                             << " is not elementwise.";
+  CHECK(hlo.IsElementwise())
+      << "HLO " << hlo.ToString() << " is not elementwise.";
 
   const Shape& operand_shape = hlo.operand(operand_no)->shape();
   // If the operand is scalar, the source index is always {}.
@@ -474,8 +487,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
       llvm::APInt(128, {0x14057B7EF767814F, 0x5851F42D4C957F2D}));
 
   auto random_value = [hlo]() {
-    CHECK(hlo->parent() != nullptr && hlo->parent()->parent() != nullptr);
-    const HloModule* module = hlo->parent()->parent();
+    const HloModule* module =
+        hlo->IsFused() ? hlo->fusion_instruction()->parent()->parent()
+                       : hlo->parent()->parent();
     return module->RandomNew64();
   };
 
@@ -631,6 +645,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCopy:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
+    case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
@@ -922,6 +937,68 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       };
     case HloOpcode::kRng:
       return MakeRngElementGenerator(hlo, operand_to_generator);
+    case HloOpcode::kPad:
+      return [=, &operand_to_generator](
+                 const IrArray::Index& padded_index) -> StatusOr<llvm::Value*> {
+        auto index = padded_index;
+        llvm::Value* in_bounds = ir_builder_->getTrue();
+        for (size_t i = 0; i < index.size(); ++i) {
+          auto index_typed_const = [=](int64 n) {
+            return llvm::ConstantInt::get(index[i]->getType(), n);
+          };
+          const auto& pad_dim = hlo->padding_config().dimensions(i);
+          index[i] = ir_builder_->CreateSub(
+              index[i], index_typed_const(pad_dim.edge_padding_low()));
+          in_bounds = ir_builder_->CreateAnd(
+              in_bounds,
+              ir_builder_->CreateICmpSGE(index[i], index_typed_const(0)),
+              "in_bounds");
+          in_bounds = ir_builder_->CreateAnd(
+              in_bounds,
+              ir_builder_->CreateICmpEQ(
+                  index_typed_const(0),
+                  ir_builder_->CreateURem(
+                      index[i],
+                      index_typed_const(pad_dim.interior_padding() + 1))),
+              "in_bounds");
+          index[i] = ir_builder_->CreateSDiv(
+              index[i], index_typed_const(pad_dim.interior_padding() + 1));
+          in_bounds = ir_builder_->CreateAnd(
+              in_bounds,
+              ir_builder_->CreateICmpSLT(
+                  index[i],
+                  index_typed_const(hlo->operand(0)->shape().dimensions(i))),
+              "in_bounds");
+        }
+
+        // if (in_bounds) {
+        //   ret_value = operand0[index];  // source
+        // } else {
+        //   ret_value = *operand1;        // padding
+        // }
+        llvm::Value* ret_value_addr = llvm_ir::EmitAllocaAtFunctionEntry(
+            llvm_ir::PrimitiveTypeToIrType(hlo->shape().element_type(),
+                                           ir_builder_),
+            "pad_result_addr", ir_builder_);
+        llvm_ir::LlvmIfData if_data =
+            llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", ir_builder_);
+        SetToFirstInsertPoint(if_data.true_block, ir_builder_);
+        TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
+                            operand_to_generator.at(hlo->operand(0))(index));
+        ir_builder_->CreateStore(operand_value, ret_value_addr);
+
+        SetToFirstInsertPoint(if_data.false_block, ir_builder_);
+        TF_ASSIGN_OR_RETURN(llvm::Value * padding_value,
+                            operand_to_generator.at(hlo->operand(1))({}));
+        ir_builder_->CreateStore(padding_value, ret_value_addr);
+
+        SetToFirstInsertPoint(if_data.after_block, ir_builder_);
+        // Don't create phi(operand_value, padding_value) here, because invoking
+        // operand_to_generator may create new basic blocks, making the parent
+        // of operand_value or padding_value no longer a predecessor of
+        // if_data.after_block.
+        return ir_builder_->CreateLoad(ret_value_addr);
+      };
     default:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         return Unimplemented("%s", HloOpcodeString(hlo->opcode()).c_str());

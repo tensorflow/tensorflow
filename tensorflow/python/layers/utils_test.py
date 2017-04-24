@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf.layers.core."""
+"""Tests for tf.layers.utils."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,6 +25,7 @@ from tensorflow.python.platform import test
 class ConvUtilsTest(test.TestCase):
 
   def testConvertDataFormat(self):
+    self.assertEqual(utils.convert_data_format('channels_first', 5), 'NCDHW')
     self.assertEqual(utils.convert_data_format('channels_first', 4), 'NCHW')
     self.assertEqual(utils.convert_data_format('channels_first', 3), 'NCW')
     self.assertEqual(utils.convert_data_format('channels_last', 4), 'NHWC')

@@ -40,6 +40,7 @@ from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.training.session_run_hook import SessionRunArgs
@@ -72,11 +73,11 @@ class SecondOrStepTimer(object):
       trigger exceeds `every_secs`, or if the difference between the current
       step and the last triggered step exceeds `every_steps`. False otherwise.
     """
-    if self._last_triggered_step == step:
-      return False
-
     if self._last_triggered_step is None:
       return True
+
+    if self._last_triggered_step == step:
+      return False
 
     if self._every_secs is not None:
       if time.time() >= self._last_triggered_time + self._every_secs:
@@ -122,8 +123,9 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
   The tensors will be printed to the log, with `INFO` severity.
   """
 
-  def __init__(self, tensors, every_n_iter=None, every_n_secs=None):
-    """Initializes a LoggingHook monitor.
+  def __init__(self, tensors, every_n_iter=None, every_n_secs=None,
+               formatter=None):
+    """Initializes a `LoggingTensorHook`.
 
     Args:
       tensors: `dict` that maps string-valued tags to tensors/tensor names,
@@ -133,6 +135,8 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
       every_n_secs: `int` or `float`, print the values of `tensors` once every N
           seconds. Exactly one of `every_n_iter` and `every_n_secs` should be
           provided.
+      formatter: function, takes dict of `tag`->`Tensor` and returns a string.
+          If `None` uses default printing all tensors.
 
     Raises:
       ValueError: if `every_n_iter` is non-positive.
@@ -143,8 +147,12 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
     if every_n_iter is not None and every_n_iter <= 0:
       raise ValueError("invalid every_n_iter=%s." % every_n_iter)
     if not isinstance(tensors, dict):
+      self._tag_order = tensors
       tensors = {item: item for item in tensors}
+    else:
+      self._tag_order = tensors.keys()
     self._tensors = tensors
+    self._formatter = formatter
     self._timer = SecondOrStepTimer(every_secs=every_n_secs,
                                     every_steps=every_n_iter)
 
@@ -164,26 +172,35 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
   def after_run(self, run_context, run_values):
     _ = run_context
     if self._should_trigger:
-      stats = []
-      for tag in self._current_tensors.keys():
-        stats.append("%s = %s" % (tag, run_values.results[tag]))
-      logging.info("%s", ", ".join(stats))
-      self._timer.update_last_triggered_step(self._iter_count)
+      original = np.get_printoptions()
+      np.set_printoptions(suppress=True)
+      elapsed_secs, _ = self._timer.update_last_triggered_step(self._iter_count)
+      if self._formatter:
+        logging.info(self._formatter(run_values.results))
+      else:
+        stats = []
+        for tag in self._tag_order:
+          stats.append("%s = %s" % (tag, run_values.results[tag]))
+        if elapsed_secs is not None:
+          logging.info("%s (%.3f sec)", ", ".join(stats), elapsed_secs)
+        else:
+          logging.info("%s", ", ".join(stats))
+      np.set_printoptions(**original)
     self._iter_count += 1
 
 
 class StopAtStepHook(session_run_hook.SessionRunHook):
-  """Monitor to request stop at a specified step."""
+  """Hook that requests stop at a specified step."""
 
   def __init__(self, num_steps=None, last_step=None):
-    """Create a StopAtStep Hook.
+    """Initializes a `StopAtStepHook`.
 
     This hook requests stop after either a number of steps have been
-    executed or a last step has been reached.  Only of the two options can be
+    executed or a last step has been reached. Only one of the two options can be
     specified.
 
     if `num_steps` is specified, it indicates the number of steps to execute
-    after `begin()` is called.  If instead `last_step` is specified, it
+    after `begin()` is called. If instead `last_step` is specified, it
     indicates the last step we want to execute, as passed to the `after_run()`
     call.
 
@@ -218,52 +235,48 @@ class StopAtStepHook(session_run_hook.SessionRunHook):
 
 
 class CheckpointSaverListener(object):
-  """An interface for event hooks that depend on a checkpoint.
+  """Interface for listeners that take action before or after checkpoint save.
 
-  CheckpointSaverListeners are similar to SessionRunHooks, and can be useful to
-  track training, report progress, and more.  The distinction is that
-  CheckpointSaverListeners run only in steps when CheckpointSaverHook is
-  triggered, and provide callbacks to run before or after the checkpoint is
-  generated.  This is in contrast to SessionRunHooks, which may run in steps
-  when no checkpoint is written, and which have no guaranteed execution order
-  in any case.  CheckpointSaverListeners use the observer pattern and notify at
-  the following points:
-   - when a session starts being used
+  `CheckpointSaverListener` triggers only in steps when `CheckpointSaverHook` is
+  triggered, and provides callbacks at the following points:
+   - before using the session
    - before each call to `Saver.save()`
    - after each call to `Saver.save()`
-   - when the session closed
+   - at the end of session
 
-  Custom CheckpointSaverListeners look like this:
-    class ExampleCheckpointSaverListerner(CheckpointSaverListener):
-      def begin(self):
-        # You can add ops to the graph here.
-        print('Starting the session.')
-        self.your_tensor = ...
+  To use a listener, implement a class and pass the listener to a
+  `CheckpointSaverHook`, as in this example:
 
-      def before_save(self, session, global_step_value):
-        print('About to write a checkpoint')
+  ```python
+  class ExampleCheckpointSaverListerner(CheckpointSaverListener):
+    def begin(self):
+      # You can add ops to the graph here.
+      print('Starting the session.')
+      self.your_tensor = ...
 
-      def after_save(self, session, global_step_value):
-        print('Done writing checkpoint.')
+    def before_save(self, session, global_step_value):
+      print('About to write a checkpoint')
 
-      def end(self, session, global_step_value):
-        print('Done with the session.')
+    def after_save(self, session, global_step_value):
+      print('Done writing checkpoint.')
 
-  A CheckpointSaverListener may simply take some action after every checkpoint.
-  It is also possible for the listener to use its own schedule to act less
-  frequently, based on wall clock time or on global_step_value.  In this case,
-  implementors must be careful about what happens at end().  When end is called,
-  The CheckpointSaverHook will have already triggered after_save() in the same
-  global_step, but the listener may or may not have actually acted on it.
-  The listener may want to be sure to act at end() if there is a fresh
-  checkpoint available, but should not act twice if after_save() already handled
-  it.  In this case, end() should have logic to detect the situation and do the
-  right thing, similar to what CheckpointSaverHook.end() does using
-  self._timer.last_triggered_step().
+    def end(self, session, global_step_value):
+      print('Done with the session.')
 
-  To use such listeners, pass them in the checkpoint_listeners argument to
-  graph_actions._monitored_train().  If using tf.Learn Estimators, create a
-  custom Estimator and override _get_checkpoint_listeners().
+  ...
+  listener = ExampleCheckpointSaverListerner()
+  saver_hook = tf.train.CheckpointSaverHook(
+      checkpoint_dir, listeners=[listener])
+  with tf.train.MonitoredTrainingSession(chief_only_hooks=[saver_hook]):
+    ...
+  ```
+
+  A `CheckpointSaverListener` may simply take some action after every
+  checkpoint save. It is also possible for the listener to use its own schedule
+  to act less frequently, e.g. based on global_step_value. In this case,
+  implementors should implement the `end()` method to handle actions related to
+  the last checkpoint save. But the listener should not act twice if
+  `after_save()` already handled this last checkpoint save.
   """
 
   def begin(self):
@@ -290,7 +303,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
                checkpoint_basename="model.ckpt",
                scaffold=None,
                listeners=None):
-    """Initialize CheckpointSaverHook monitor.
+    """Initializes a `CheckpointSaverHook`.
 
     Args:
       checkpoint_dir: `str`, base directory for the checkpoint files.
@@ -300,18 +313,18 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       checkpoint_basename: `str`, base name for the checkpoint files.
       scaffold: `Scaffold`, use to get saver object.
       listeners: List of `CheckpointSaverListener` subclass instances.
-        Used for callbacks that run immediately after the corresponding
-        CheckpointSaverHook callbacks, only in steps where the
-        CheckpointSaverHook was triggered.
+        Used for callbacks that run immediately before or after this hook saves
+        the checkpoint.
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
       ValueError: Exactly one of saver or scaffold should be set.
     """
     logging.info("Create CheckpointSaverHook.")
-    if ((saver is None and scaffold is None) or
-        (saver is not None and scaffold is not None)):
-      raise ValueError("Exactly one of saver or scaffold must be provided.")
+    if saver is not None and scaffold is not None:
+      raise ValueError("You cannot provide both saver and scaffold.")
+    if saver is None and scaffold is None:
+      saver = saver_lib._get_saver_or_default()  # pylint: disable=protected-access
     self._saver = saver
     self._checkpoint_dir = checkpoint_dir
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
@@ -386,7 +399,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
 
 class StepCounterHook(session_run_hook.SessionRunHook):
-  """Steps per second monitor."""
+  """Hook that counts steps per second."""
 
   def __init__(self,
                every_n_steps=100,
@@ -438,14 +451,13 @@ class NanLossDuringTrainingError(RuntimeError):
 
 
 class NanTensorHook(session_run_hook.SessionRunHook):
-  """NaN Loss monitor.
+  """Monitors the loss tensor and stops training if loss is NaN.
 
-  Monitors loss and stops training if loss is NaN.
   Can either fail with exception or just stop training.
   """
 
   def __init__(self, loss_tensor, fail_on_nan_loss=True):
-    """Initializes NanLoss monitor.
+    """Initializes a `NanTensorHook`.
 
     Args:
       loss_tensor: `Tensor`, the loss tensor.
@@ -479,7 +491,7 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
                summary_writer=None,
                scaffold=None,
                summary_op=None):
-    """Initializes a `SummarySaver` monitor.
+    """Initializes a `SummarySaverHook`.
 
     Args:
       save_steps: `int`, save summaries every N steps. Exactly one of
@@ -575,7 +587,7 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
 
 
 class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
-  """Delay execution until global step reaches to wait_until_step.
+  """Delays execution until global step reaches `wait_until_step`.
 
   This hook delays execution until global step reaches to `wait_until_step`. It
   is used to gradually start workers in distributed settings. One example usage
@@ -584,7 +596,7 @@ class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
   """
 
   def __init__(self, wait_until_step):
-    """Create a _GlobalStepWaiterHook.
+    """Initializes a `GlobalStepWaiterHook`.
 
     Args:
       wait_until_step: an `int` shows until which global step should we wait.
@@ -622,10 +634,10 @@ class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
 
 
 class FinalOpsHook(session_run_hook.SessionRunHook):
-  """A run hook which evaluates `Tensors` at the end of a session."""
+  """A hook which evaluates `Tensors` at the end of a session."""
 
   def __init__(self, final_ops, final_ops_feed_dict=None):
-    """Constructs the FinalOpHook with ops to run at the end of the session.
+    """Initializes `FinalOpHook` with ops to run at the end of the session.
 
     Args:
       final_ops: A single `Tensor`, a list of `Tensors` or a dictionary of
@@ -645,6 +657,23 @@ class FinalOpsHook(session_run_hook.SessionRunHook):
     if self._final_ops is not None:
       self._final_ops_values = session.run(self._final_ops,
                                            feed_dict=self._final_ops_feed_dict)
+
+
+class FeedFnHook(session_run_hook.SessionRunHook):
+  """Runs `feed_fn` and sets the `feed_dict` accordingly."""
+
+  def __init__(self, feed_fn):
+    """Initializes a `FeedFnHook`.
+
+    Args:
+      feed_fn: function that takes no arguments and returns `dict` of `Tensor`
+        to feed.
+    """
+    self.feed_fn = feed_fn
+
+  def before_run(self, run_context):  # pylint: disable=unused-argument
+    return session_run_hook.SessionRunArgs(
+        fetches=None, feed_dict=self.feed_fn())
 
 
 def _as_graph_element(obj):

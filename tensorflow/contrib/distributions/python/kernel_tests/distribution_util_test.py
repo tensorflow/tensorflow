@@ -35,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class AssertCloseTest(test.TestCase):
@@ -123,59 +124,59 @@ class AssertCloseTest(test.TestCase):
           array_ops.identity(w).eval()
 
 
-class GetLogitsAndProbTest(test.TestCase):
+class GetLogitsAndProbsTest(test.TestCase):
 
-  def testGetLogitsAndProbImproperArguments(self):
+  def testGetLogitsAndProbsImproperArguments(self):
     with self.test_session():
       with self.assertRaises(ValueError):
-        distribution_util.get_logits_and_prob(logits=None, p=None)
+        distribution_util.get_logits_and_probs(logits=None, probs=None)
 
       with self.assertRaises(ValueError):
-        distribution_util.get_logits_and_prob(logits=[0.1], p=[0.1])
+        distribution_util.get_logits_and_probs(logits=[0.1], probs=[0.1])
 
-  def testGetLogitsAndProbLogits(self):
+  def testGetLogitsAndProbsLogits(self):
     p = np.array([0.01, 0.2, 0.5, 0.7, .99], dtype=np.float32)
     logits = special.logit(p)
 
     with self.test_session():
-      new_logits, new_p = distribution_util.get_logits_and_prob(
+      new_logits, new_p = distribution_util.get_logits_and_probs(
           logits=logits, validate_args=True)
 
       self.assertAllClose(p, new_p.eval())
       self.assertAllClose(logits, new_logits.eval())
 
-  def testGetLogitsAndProbLogitsMultidimensional(self):
+  def testGetLogitsAndProbsLogitsMultidimensional(self):
     p = np.array([0.2, 0.3, 0.5], dtype=np.float32)
     logits = np.log(p)
 
     with self.test_session():
-      new_logits, new_p = distribution_util.get_logits_and_prob(
+      new_logits, new_p = distribution_util.get_logits_and_probs(
           logits=logits, multidimensional=True, validate_args=True)
 
       self.assertAllClose(new_p.eval(), p)
       self.assertAllClose(new_logits.eval(), logits)
 
-  def testGetLogitsAndProbProbability(self):
+  def testGetLogitsAndProbsProbability(self):
     p = np.array([0.01, 0.2, 0.5, 0.7, .99], dtype=np.float32)
 
     with self.test_session():
-      new_logits, new_p = distribution_util.get_logits_and_prob(
-          p=p, validate_args=True)
+      new_logits, new_p = distribution_util.get_logits_and_probs(
+          probs=p, validate_args=True)
 
       self.assertAllClose(special.logit(p), new_logits.eval())
       self.assertAllClose(p, new_p.eval())
 
-  def testGetLogitsAndProbProbabilityMultidimensional(self):
+  def testGetLogitsAndProbsProbabilityMultidimensional(self):
     p = np.array([[0.3, 0.4, 0.3], [0.1, 0.5, 0.4]], dtype=np.float32)
 
     with self.test_session():
-      new_logits, new_p = distribution_util.get_logits_and_prob(
-          p=p, multidimensional=True, validate_args=True)
+      new_logits, new_p = distribution_util.get_logits_and_probs(
+          probs=p, multidimensional=True, validate_args=True)
 
       self.assertAllClose(np.log(p), new_logits.eval())
       self.assertAllClose(p, new_p.eval())
 
-  def testGetLogitsAndProbProbabilityValidateArgs(self):
+  def testGetLogitsAndProbsProbabilityValidateArgs(self):
     p = [0.01, 0.2, 0.5, 0.7, .99]
     # Component less than 0.
     p2 = [-1, 0.2, 0.5, 0.3, .2]
@@ -183,26 +184,29 @@ class GetLogitsAndProbTest(test.TestCase):
     p3 = [2, 0.2, 0.5, 0.3, .2]
 
     with self.test_session():
-      _, prob = distribution_util.get_logits_and_prob(p=p, validate_args=True)
+      _, prob = distribution_util.get_logits_and_probs(
+          probs=p, validate_args=True)
       prob.eval()
 
       with self.assertRaisesOpError("Condition x >= 0"):
-        _, prob = distribution_util.get_logits_and_prob(
-            p=p2, validate_args=True)
+        _, prob = distribution_util.get_logits_and_probs(
+            probs=p2, validate_args=True)
         prob.eval()
 
-      _, prob = distribution_util.get_logits_and_prob(p=p2, validate_args=False)
+      _, prob = distribution_util.get_logits_and_probs(
+          probs=p2, validate_args=False)
       prob.eval()
 
-      with self.assertRaisesOpError("p has components greater than 1"):
-        _, prob = distribution_util.get_logits_and_prob(
-            p=p3, validate_args=True)
+      with self.assertRaisesOpError("probs has components greater than 1"):
+        _, prob = distribution_util.get_logits_and_probs(
+            probs=p3, validate_args=True)
         prob.eval()
 
-      _, prob = distribution_util.get_logits_and_prob(p=p3, validate_args=False)
+      _, prob = distribution_util.get_logits_and_probs(
+          probs=p3, validate_args=False)
       prob.eval()
 
-  def testGetLogitsAndProbProbabilityValidateArgsMultidimensional(self):
+  def testGetLogitsAndProbsProbabilityValidateArgsMultidimensional(self):
     p = np.array([[0.3, 0.4, 0.3], [0.1, 0.5, 0.4]], dtype=np.float32)
     # Component less than 0. Still sums to 1.
     p2 = np.array([[-.3, 0.4, 0.9], [0.1, 0.5, 0.4]], dtype=np.float32)
@@ -212,36 +216,36 @@ class GetLogitsAndProbTest(test.TestCase):
     p4 = np.array([[1.1, 0.3, 0.4], [0.1, 0.5, 0.4]], dtype=np.float32)
 
     with self.test_session():
-      _, prob = distribution_util.get_logits_and_prob(
-          p=p, multidimensional=True)
+      _, prob = distribution_util.get_logits_and_probs(
+          probs=p, multidimensional=True)
       prob.eval()
 
       with self.assertRaisesOpError("Condition x >= 0"):
-        _, prob = distribution_util.get_logits_and_prob(
-            p=p2, multidimensional=True, validate_args=True)
+        _, prob = distribution_util.get_logits_and_probs(
+            probs=p2, multidimensional=True, validate_args=True)
         prob.eval()
 
-      _, prob = distribution_util.get_logits_and_prob(
-          p=p2, multidimensional=True, validate_args=False)
+      _, prob = distribution_util.get_logits_and_probs(
+          probs=p2, multidimensional=True, validate_args=False)
       prob.eval()
 
       with self.assertRaisesOpError(
-          "(p has components greater than 1|p does not sum to 1)"):
-        _, prob = distribution_util.get_logits_and_prob(
-            p=p3, multidimensional=True, validate_args=True)
+          "(probs has components greater than 1|probs does not sum to 1)"):
+        _, prob = distribution_util.get_logits_and_probs(
+            probs=p3, multidimensional=True, validate_args=True)
         prob.eval()
 
-      _, prob = distribution_util.get_logits_and_prob(
-          p=p3, multidimensional=True, validate_args=False)
+      _, prob = distribution_util.get_logits_and_probs(
+          probs=p3, multidimensional=True, validate_args=False)
       prob.eval()
 
-      with self.assertRaisesOpError("p does not sum to 1"):
-        _, prob = distribution_util.get_logits_and_prob(
-            p=p4, multidimensional=True, validate_args=True)
+      with self.assertRaisesOpError("probs does not sum to 1"):
+        _, prob = distribution_util.get_logits_and_probs(
+            probs=p4, multidimensional=True, validate_args=True)
         prob.eval()
 
-      _, prob = distribution_util.get_logits_and_prob(
-          p=p4, multidimensional=True, validate_args=False)
+      _, prob = distribution_util.get_logits_and_probs(
+          probs=p4, multidimensional=True, validate_args=False)
       prob.eval()
 
 
@@ -563,16 +567,17 @@ class SoftplusTest(test.TestCase):
           order="F")
       err = gradient_checker.compute_gradient_error(
           x, [2, 5], y, [2, 5], x_init_value=x_init)
-    print("softplus (float) gradient err = ", err)
+    logging.vlog(2, "softplus (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
   def testInverseSoftplusGradientNeverNan(self):
     with self.test_session():
       # Note that this range contains both zero and inf.
-      x = constant_op.constant((10.**np.arange(-8, 6)).astype(np.float16))
-      y = distribution_util.softplus_inverse(x).eval()
+      x = constant_op.constant(np.logspace(-8, 6).astype(np.float16))
+      y = distribution_util.softplus_inverse(x)
+      grads = gradients_impl.gradients(y, x)[0].eval()
       # Equivalent to `assertAllFalse` (if it existed).
-      self.assertAllEqual(np.zeros_like(y).astype(np.bool), np.isnan(y))
+      self.assertAllEqual(np.zeros_like(grads).astype(np.bool), np.isnan(grads))
 
 if __name__ == "__main__":
   test.main()

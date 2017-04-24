@@ -456,8 +456,8 @@ def _make_specific_exception(node_def, op, message, error_code):
 
 @contextlib.contextmanager
 def raise_exception_on_not_ok_status():
+  status = pywrap_tensorflow.TF_NewStatus()
   try:
-    status = pywrap_tensorflow.TF_NewStatus()
     yield status
     if pywrap_tensorflow.TF_GetCode(status) != 0:
       raise _make_specific_exception(

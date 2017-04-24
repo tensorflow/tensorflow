@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
+// TODO(yangzihao): Remove the dependency of conv_2d.h once we move all
+// GPU util functions and transpose kernels into separate files.
+#include "tensorflow/core/kernels/conv_2d.h"
+
 namespace tensorflow {
 namespace internal {
 
@@ -89,13 +93,94 @@ void TransposeUsingEigen(const Device& d, const Tensor& in,
   y.device(d) = x.shuffle(p);
 }
 
+// TransposeUsingTile tries to reduce the dimension of the input tensor to 3 and
+// then call special kernels to swap either dimension 1 and dimension 2 or
+// dimension 0 and dimension 2. It returns true if the operation is success,
+// false otherwise.
+template <typename T>
+bool TransposeUsingTile(const Eigen::GpuDevice& d, const Tensor& in,
+                        const gtl::ArraySlice<int32> perm, Tensor* out) {
+  // First try to reduce the dimensions of the input tensor.
+  TransposePermsVec new_perm;
+  TransposeDimsVec new_dims;
+  ReduceTransposeDimensions(in.shape(), perm, &new_perm, &new_dims);
+
+  // Only use special GPU kernel when dimension is 2 or 3.
+  int dims = new_dims.size();
+  if (dims < 2 || dims > 3) return false;
+  auto in_data = reinterpret_cast<const T*>(in.tensor_data().data());
+  auto out_data =
+      reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data()));
+  switch (dims) {
+    case 2:
+      if (new_perm[0] == 1 && new_perm[1] == 0) {
+        // Add the first dimension size as 1.
+        new_dims.insert(new_dims.begin(), 1);
+        tensorflow::functor::SwapDimension1And2InTensor3<Eigen::GpuDevice, T>()(
+            d, in_data, new_dims, out_data);
+        return true;
+      }
+      break;
+    case 3:
+      if (new_perm == TransposePermsVec({0, 2, 1})) {
+        tensorflow::functor::SwapDimension1And2InTensor3<Eigen::GpuDevice, T>()(
+            d, in_data, new_dims, out_data);
+        return true;
+      } else if (new_perm == TransposePermsVec({2, 1, 0})) {
+        tensorflow::functor::SwapDimension0And2InTensor3<Eigen::GpuDevice, T>()(
+            d, in_data, new_dims, out_data);
+        return true;
+      } else {
+        // do not handle other 3D permutations
+        return false;
+      }
+      break;
+    default:
+      return false;
+  }
+  return false;
+}
+
 }  // end namespace internal
 
-typedef Eigen::GpuDevice Device;
+typedef Eigen::GpuDevice GPUDevice;
+
+// Transpose kernel specialized for CPU Device.
+template <typename T>
+struct Transpose<GPUDevice, T> {
+  static void run(const GPUDevice& d, const Tensor& in,
+                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+    switch (in.dims()) {
+      case 2:
+        if (!internal::TransposeUsingTile<T>(d, in, perm, out)) {
+          internal::TransposeUsingEigen<GPUDevice, T, 2>(d, in, perm, out);
+        }
+        break;
+      case 3:
+        if (!internal::TransposeUsingTile<T>(d, in, perm, out)) {
+          internal::TransposeUsingEigen<GPUDevice, T, 3>(d, in, perm, out);
+        }
+        break;
+      case 4:
+        if (!internal::TransposeUsingTile<T>(d, in, perm, out)) {
+          internal::TransposeUsingEigen<GPUDevice, T, 4>(d, in, perm, out);
+        }
+        break;
+      case 5:
+        if (!internal::TransposeUsingTile<T>(d, in, perm, out)) {
+          internal::TransposeUsingEigen<GPUDevice, T, 5>(d, in, perm, out);
+        }
+        break;
+      default:
+        internal::TransposeSimple<GPUDevice, T>(d, in, perm, out);
+        break;
+    }
+  }
+};
 
 template <>
-Status DoTranspose<Device>(const Device& d, const Tensor& in,
-                           const gtl::ArraySlice<int32> perm, Tensor* out) {
+Status DoTranspose<GPUDevice>(const GPUDevice& d, const Tensor& in,
+                              const gtl::ArraySlice<int32> perm, Tensor* out) {
   CHECK_GE(in.dims(), 2);
   CHECK_EQ(in.dims(), out->dims());
   CHECK_EQ(in.dims(), perm.size());
@@ -106,7 +191,7 @@ Status DoTranspose<Device>(const Device& d, const Tensor& in,
     case DT_QINT8:
     case DT_QUINT8:
     case DT_UINT8:
-      internal::Transpose<Device, uint8>(d, in, perm, out);
+      Transpose<GPUDevice, uint8>::run(d, in, perm, out);
       break;
 
     case DT_BFLOAT16:
@@ -115,23 +200,23 @@ Status DoTranspose<Device>(const Device& d, const Tensor& in,
     case DT_QINT16:
     case DT_QUINT16:
     case DT_UINT16:
-      internal::Transpose<Device, uint16>(d, in, perm, out);
+      Transpose<GPUDevice, uint16>::run(d, in, perm, out);
       break;
 
     case DT_FLOAT:
     case DT_INT32:
     case DT_QINT32:
-      internal::Transpose<Device, uint32>(d, in, perm, out);
+      Transpose<GPUDevice, uint32>::run(d, in, perm, out);
       break;
 
     case DT_COMPLEX64:
     case DT_DOUBLE:
     case DT_INT64:
-      internal::Transpose<Device, uint64>(d, in, perm, out);
+      Transpose<GPUDevice, uint64>::run(d, in, perm, out);
       break;
 
     case DT_COMPLEX128:
-      internal::Transpose<Device, float4>(d, in, perm, out);
+      Transpose<GPUDevice, float4>::run(d, in, perm, out);
       break;
 
     default:

@@ -18,11 +18,11 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace {
@@ -168,7 +168,7 @@ TEST(EncapsulateSubgraphsTest, NoFunctions) {
 
   GraphDef graphdef_in;
   FunctionDefLibrary library_in;
-  builder.ToGraphDef(&graphdef_in);
+  TF_EXPECT_OK(builder.ToGraphDef(&graphdef_in));
   *library_in.add_function() = test::function::XTimesTwo();
 
   GraphDef graphdef_out = graphdef_in;
@@ -195,7 +195,7 @@ TEST(EncapsulateSubgraphsTest, OneFunction) {
     Node* d = Binary(b, c, b1.opts().WithName("c").WithControlInput(c).WithAttr(
                                "_encapsulate", "F1"));
     Binary(a, d, b1.opts().WithName("E"));
-    b1.ToGraphDef(&graphdef);
+    TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
   TF_EXPECT_OK(Encapsulate(&graphdef, &library));
@@ -224,7 +224,7 @@ TEST(EncapsulateSubgraphsTest, OneFunction) {
     Node* call = b2.opts().FinalizeBuilder(&node_builder);
 
     Binary(a, call, b2.opts().WithName("E"));
-    b2.ToGraphDef(&graphdef_expected);
+    TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
   // If there are no marked nodes, funcification should be a no-op.
@@ -251,7 +251,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctions) {
         Binary(b, c, b1.opts().WithName("D").WithControlInput(control).WithAttr(
                          "_encapsulate", "F2"));
     Binary(a, d, b1.opts().WithName("E"));
-    b1.ToGraphDef(&graphdef);
+    TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
 
   TF_EXPECT_OK(Encapsulate(&graphdef, &library));
@@ -290,7 +290,7 @@ TEST(EncapsulateSubgraphsTest, TwoFunctions) {
     Node* call2 = b2.opts().FinalizeBuilder(&nb2);
 
     Binary(a, call2, b2.opts().WithName("E"));
-    b2.ToGraphDef(&graphdef_expected);
+    TF_EXPECT_OK(b2.ToGraphDef(&graphdef_expected));
   }
 
   // If there are no marked nodes, funcification should be a no-op.

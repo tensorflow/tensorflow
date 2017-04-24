@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -44,7 +45,7 @@ class ExtractExampleParserConfigurationTest : public ::testing::Test {
     ReadFileToStringOrDie(Env::Default(), filename, &proto_string);
     protobuf::TextFormat::ParseFromString(proto_string, &graph_def_);
     session_.reset(CreateSession());
-    session_->Create(graph_def_);
+    TF_CHECK_OK(session_->Create(graph_def_));
   }
 
   NodeDef* parse_example_node() {
@@ -194,8 +195,8 @@ class ExampleParserConfigurationProtoToFeatureVectorsTest
 TEST_F(ExampleParserConfigurationProtoToFeatureVectorsTest, Basic) {
   std::vector<FixedLenFeature> fixed_len_features;
   std::vector<VarLenFeature> var_len_features;
-  ExampleParserConfigurationProtoToFeatureVectors(
-      config_proto_, &fixed_len_features, &var_len_features);
+  TF_ASSERT_OK(ExampleParserConfigurationProtoToFeatureVectors(
+      config_proto_, &fixed_len_features, &var_len_features));
   ASSERT_EQ(1, fixed_len_features.size());
   ASSERT_EQ(1, var_len_features.size());
 

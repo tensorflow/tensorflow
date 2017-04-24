@@ -53,8 +53,9 @@ def main(unused_argv):
                   for k in FEATURES]
 
   # Build 2 layer fully connected DNN with 10, 10 units respectively.
-  regressor = tf.contrib.learn.DNNRegressor(
-      feature_columns=feature_cols, hidden_units=[10, 10])
+  regressor = tf.contrib.learn.DNNRegressor(feature_columns=feature_cols,
+                                            hidden_units=[10, 10],
+                                            model_dir="/tmp/boston_model")
 
   # Fit
   regressor.fit(input_fn=lambda: input_fn(training_set), steps=5000)

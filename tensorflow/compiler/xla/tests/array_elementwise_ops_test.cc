@@ -29,12 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -80,6 +81,50 @@ TEST_F(ArrayElementwiseOpTest, NegConstantS32) {
                              {1, 0, -1, -324, std::numeric_limits<int32>::min(),
                               -std::numeric_limits<int32>::max()},
                              {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({});
+  auto result = builder.IsFinite(a);
+
+  ComputeAndCompareR1<bool>(&builder, {}, {});
+}
+
+// A non-canonical quiet NaN value.
+static const float kNonCanonicalNaN = tensorflow::bit_cast<float>(0x7FD01234);
+
+XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteScalarF32) {
+  ComputationBuilder builder(client_, TestName());
+  auto result = builder.IsFinite(builder.ConstantR0<float>(NAN));
+  ComputeAndCompareR0<bool>(&builder, false, {});
+
+  EXPECT_TRUE(std::isnan(kNonCanonicalNaN));
+  auto result_non_canonical =
+      builder.IsFinite(builder.ConstantR0<float>(kNonCanonicalNaN));
+  ComputeAndCompareR0<bool>(&builder, false, {});
+
+  const float inf = std::numeric_limits<float>::infinity();
+  auto result_inf = builder.IsFinite(builder.ConstantR0<float>(inf));
+  ComputeAndCompareR0<bool>(&builder, false, {});
+
+  auto result_neg_inf = builder.IsFinite(builder.ConstantR0<float>(-inf));
+  ComputeAndCompareR0<bool>(&builder, false, {});
+
+  auto result_zero = builder.IsFinite(builder.ConstantR0<float>(0.0f));
+  ComputeAndCompareR0<bool>(&builder, true, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteR1F32s) {
+  ComputationBuilder builder(client_, TestName());
+  const float inf = std::numeric_limits<float>::infinity();
+  EXPECT_TRUE(std::isnan(kNonCanonicalNaN));
+  auto a = builder.ConstantR1<float>(
+      {{NAN, 7.0f, kNonCanonicalNaN, -1.0f, inf, -inf}});
+  auto result = builder.IsFinite(a);
+
+  ComputeAndCompareR1<bool>(&builder, {false, true, false, true, false, false},
+                            {});
 }
 
 TEST_F(ArrayElementwiseOpTest, AddTwoConstantF32s) {
@@ -1622,9 +1667,9 @@ TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
   auto concatenated = builder.Add(x, x);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(computation_status.status().ToString(),
-               testing::ContainsRegex(
-                   "Expected non-opaque argument for lhs of binary operation"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              ::testing::ContainsRegex(
+                  "Expected non-opaque argument for lhs of binary operation"));
 }
 
 // Regression test for b/31927799. "slice - y" is fused and requires implicit

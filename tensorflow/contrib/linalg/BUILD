@@ -29,6 +29,23 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "linear_operator_addition_test",
+    size = "small",
+    srcs = ["python/kernel_tests/linear_operator_addition_test.py"],
+    additional_deps = [
+        ":linalg_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "linear_operator_composition_test",
     size = "medium",
     srcs = ["python/kernel_tests/linear_operator_composition_test.py"],
@@ -43,7 +60,6 @@ cuda_py_tests(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    shard_count = 5,
 )
 
 cuda_py_tests(
@@ -61,7 +77,6 @@ cuda_py_tests(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
     ],
-    shard_count = 5,
 )
 
 cuda_py_tests(
@@ -78,13 +93,12 @@ cuda_py_tests(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
     ],
-    shard_count = 5,
 )
 
 cuda_py_tests(
-    name = "linear_operator_matrix_test",
+    name = "linear_operator_full_matrix_test",
     size = "medium",
-    srcs = ["python/kernel_tests/linear_operator_matrix_test.py"],
+    srcs = ["python/kernel_tests/linear_operator_full_matrix_test.py"],
     additional_deps = [
         ":linalg_py",
         "//tensorflow/python:array_ops",
@@ -94,7 +108,6 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
-    shard_count = 5,
 )
 
 cuda_py_tests(
@@ -110,12 +123,27 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+)
+
+cuda_py_tests(
+    name = "linear_operator_udvh_update_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/linear_operator_udvh_update_test.py"],
+    additional_deps = [
+        ":linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
     shard_count = 5,
 )
 
 cuda_py_tests(
     name = "linear_operator_util_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/linear_operator_util_test.py"],
     additional_deps = [
         ":linalg_py",
@@ -126,7 +154,6 @@ cuda_py_tests(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    shard_count = 5,
 )
 
 py_library(

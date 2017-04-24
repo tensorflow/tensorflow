@@ -88,7 +88,7 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     mu_.lock();
     if (tmp_reader->status().ok()) {
       reader = tmp_reader;
-      readers_[filepattern] = make_pair(*func_ptr, reader);
+      readers_[filepattern] = std::make_pair(*func_ptr, reader);
     } else {
       delete tmp_reader;
     }

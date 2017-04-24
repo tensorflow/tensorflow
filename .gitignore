@@ -1,6 +1,8 @@
 .DS_Store
 .ipynb_checkpoints
 node_modules
+/.bazelrc
+/.tf_configure.bazelrc
 /bazel-*
 /third_party/py/numpy/numpy_include
 /tools/bazel.rc
@@ -13,3 +15,4 @@ node_modules
 *.pyc
 __pycache__
 *.swp
+.vscode/

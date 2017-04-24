@@ -82,6 +82,7 @@ contains vz-distribution-charts embedded inside tf-panes-helper's.
           color-scale="[[_colorScale]]"
           data-type="[[dataType]]"
           data-provider="[[dataProvider]]"
+          data-not-found="[[dataNotFound]]"
           run2tag="[[run2tag]]"
           selected-runs="[[_selectedRuns]]"
           repeat-for-runs
@@ -100,9 +101,13 @@ contains vz-distribution-charts embedded inside tf-panes-helper's.
   </template>
 
   <script>
-    Polymer({
+    TF.Dashboard.TfDistributionDashboard = Polymer({
       is: "tf-distribution-dashboard",
+      factoryImpl: function(backend) {
+        this.backend = backend;
+      },
       behaviors: [
+        TF.Dashboard.DashboardBehavior("distributions"),
         TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
         TF.Backend.Behavior,
       ],

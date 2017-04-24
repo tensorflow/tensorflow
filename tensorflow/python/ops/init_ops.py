@@ -49,30 +49,64 @@ class Initializer(object):
   def __call__(self, shape, dtype=None, partition_info=None):
     raise NotImplementedError
 
+  def get_config(self):
+    """Returns the configuration of the initializer as a JSON-serializable dict.
+
+    Returns:
+      A JSON-serializable Python dict.
+    """
+    return {}
+
+  @classmethod
+  def from_config(cls, config):
+    """Instantiates an initializer from a configuration dictionary.
+
+    Example:
+
+    ```
+    initializer = RandomUniform(-1, 1)
+    config = initializer.get_config()
+    initializer = RandomUniform.from_config(config)
+    ```
+
+    Arguments:
+      config: A Python dictionary.
+        It will typically be the output of `get_config`.
+
+    Returns:
+      An Initializer instance.
+    """
+    return cls(**config)
+
 
 class Zeros(Initializer):
   """Initializer that generates tensors initialized to 0."""
 
   def __init__(self, dtype=dtypes.float32):
-    self.dtype = dtype
+    self.dtype = dtypes.as_dtype(dtype)
 
   def __call__(self, shape, dtype=None, partition_info=None):
     if dtype is None:
       dtype = self.dtype
-    return constant_op.constant(False if dtype is dtypes.bool else 0,
-                                dtype=dtype, shape=shape)
+    return array_ops.zeros(shape, dtype)
+
+  def get_config(self):
+    return {"dtype": self.dtype.name}
 
 
 class Ones(Initializer):
   """Initializer that generates tensors initialized to 1."""
 
   def __init__(self, dtype=dtypes.float32):
-    self.dtype = dtype
+    self.dtype = dtypes.as_dtype(dtype)
 
   def __call__(self, shape, dtype=None, partition_info=None):
     if dtype is None:
       dtype = self.dtype
-    return constant_op.constant(1, dtype=dtype, shape=shape)
+    return array_ops.ones(shape, dtype)
+
+  def get_config(self):
+    return {"dtype": self.dtype.name}
 
 
 class Constant(Initializer):
@@ -96,6 +130,9 @@ class Constant(Initializer):
       elements of the initialized variable will be set to the corresponding
       value in the `value` argument.
     dtype: The data type.
+    verify_shape: Boolean that enables verification of the shape of `value`. If
+      `True`, the initializer will throw an error if the shape of `value` is not
+      compatible with the shape of the initialized tensor.
 
   Examples:
     The following example can be rewritten using a numpy.ndarray instead
@@ -112,7 +149,6 @@ class Constant(Initializer):
     >>> init = tf.constant_initializer(value)
 
     >>> print('fitting shape:')
-    >>> tf.reset_default_graph()
     >>> with tf.Session():
     >>>   x = tf.get_variable('x', shape=[2, 4], initializer=init)
     >>>   x.initializer.run()
@@ -123,7 +159,6 @@ class Constant(Initializer):
      [ 4.  5.  6.  7.]]
 
     >>> print('larger shape:')
-    >>> tf.reset_default_graph()
     >>> with tf.Session():
     >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init)
     >>>   x.initializer.run()
@@ -135,22 +170,43 @@ class Constant(Initializer):
      [ 7.  7.  7.  7.]]
 
     >>> print('smaller shape:')
-    >>> tf.reset_default_graph()
     >>> with tf.Session():
     >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
     ValueError: Too many elements provided. Needed at most 6, but received 8
+
+    >>> print('shape verification:')
+    >>> init_verify = tf.constant_initializer(value, verify_shape=True)
+    >>> with tf.Session():
+    >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init_verify)
+
+    TypeError: Expected Tensor's shape: (3, 4), got (8,).
   ```
   """
 
-  def __init__(self, value=0, dtype=dtypes.float32):
+  def __init__(self, value=0, dtype=dtypes.float32, verify_shape=False):
     self.value = value
-    self.dtype = dtype
+    self.dtype = dtypes.as_dtype(dtype)
+    self._verify_shape = verify_shape
 
-  def __call__(self, shape, dtype=None, partition_info=None):
+  def __call__(self, shape,
+               dtype=None,
+               partition_info=None,
+               verify_shape=None):
     if dtype is None:
       dtype = self.dtype
-    return constant_op.constant(self.value, dtype=dtype, shape=shape)
+    if verify_shape is None:
+      verify_shape = self._verify_shape
+    return constant_op.constant(self.value, dtype=dtype, shape=shape,
+                                verify_shape=verify_shape)
+
+  def get_config(self):
+    # We don't include `verify_shape` for compatibility with Keras.
+    # `verify_shape` should be passed as an argument to `__call__` rather
+    # than as a constructor argument: conceptually it isn't a property
+    # of the initializer.
+    return {"value": self.value,
+            "dtype": self.dtype.name}
 
 
 class RandomUniform(Initializer):
@@ -171,13 +227,19 @@ class RandomUniform(Initializer):
     self.minval = minval
     self.maxval = maxval
     self.seed = seed
-    self.dtype = dtype
+    self.dtype = dtypes.as_dtype(dtype)
 
   def __call__(self, shape, dtype=None, partition_info=None):
     if dtype is None:
       dtype = self.dtype
     return random_ops.random_uniform(shape, self.minval, self.maxval,
                                      dtype, seed=self.seed)
+
+  def get_config(self):
+    return {"minval": self.minval,
+            "maxval": self.maxval,
+            "seed": self.seed,
+            "dtype": self.dtype.name}
 
 
 class RandomNormal(Initializer):
@@ -198,13 +260,19 @@ class RandomNormal(Initializer):
     self.mean = mean
     self.stddev = stddev
     self.seed = seed
-    self.dtype = _assert_float_dtype(dtype)
+    self.dtype = _assert_float_dtype(dtypes.as_dtype(dtype))
 
   def __call__(self, shape, dtype=None, partition_info=None):
     if dtype is None:
       dtype = self.dtype
     return random_ops.random_normal(shape, self.mean, self.stddev,
                                     dtype, seed=self.seed)
+
+  def get_config(self):
+    return {"mean": self.mean,
+            "stddev": self.stddev,
+            "seed": self.seed,
+            "dtype": self.dtype.name}
 
 
 class TruncatedNormal(Initializer):
@@ -230,13 +298,19 @@ class TruncatedNormal(Initializer):
     self.mean = mean
     self.stddev = stddev
     self.seed = seed
-    self.dtype = _assert_float_dtype(dtype)
+    self.dtype = _assert_float_dtype(dtypes.as_dtype(dtype))
 
   def __call__(self, shape, dtype=None, partition_info=None):
     if dtype is None:
       dtype = self.dtype
     return random_ops.truncated_normal(shape, self.mean, self.stddev,
                                        dtype, seed=self.seed)
+
+  def get_config(self):
+    return {"mean": self.mean,
+            "stddev": self.stddev,
+            "seed": self.seed,
+            "dtype": self.dtype.name}
 
 
 class UniformUnitScaling(Initializer):
@@ -269,7 +343,7 @@ class UniformUnitScaling(Initializer):
   def __init__(self, factor=1.0, seed=None, dtype=dtypes.float32):
     self.factor = factor
     self.seed = seed
-    self.dtype = _assert_float_dtype(dtype)
+    self.dtype = _assert_float_dtype(dtypes.as_dtype(dtype))
 
   def __call__(self, shape, dtype=None, partition_info=None):
     if dtype is None:
@@ -289,6 +363,11 @@ class UniformUnitScaling(Initializer):
     max_val = math.sqrt(3 / input_size) * self.factor
     return random_ops.random_uniform(shape, -max_val, max_val,
                                      dtype, seed=self.seed)
+
+  def get_config(self):
+    return {"factor": self.factor,
+            "seed": self.seed,
+            "dtype": self.dtype.name}
 
 
 class VarianceScaling(Initializer):
@@ -334,7 +413,7 @@ class VarianceScaling(Initializer):
     self.mode = mode
     self.distribution = distribution
     self.seed = seed
-    self.dtype = _assert_float_dtype(dtype)
+    self.dtype = _assert_float_dtype(dtypes.as_dtype(dtype))
 
   def __call__(self, shape, dtype=None, partition_info=None):
     if dtype is None:
@@ -359,12 +438,19 @@ class VarianceScaling(Initializer):
       return random_ops.random_uniform(shape, -limit, limit,
                                        dtype, seed=self.seed)
 
+  def get_config(self):
+    return {"scale": self.scale,
+            "mode": self.mode,
+            "distribution": self.distribution,
+            "seed": self.seed,
+            "dtype": self.dtype.name}
+
 
 class Orthogonal(Initializer):
   """Initializer that generates an orthogonal matrix.
 
-  If the shape of the tensor to initialize is two-dimensional, i is initialized 
-  with an orthogonal matrix obtained from the singular value decomposition of a 
+  If the shape of the tensor to initialize is two-dimensional, i is initialized
+  with an orthogonal matrix obtained from the singular value decomposition of a
   matrix of uniform random numbers.
 
   If the shape of the tensor to initialize is more than two-dimensional,
@@ -380,9 +466,9 @@ class Orthogonal(Initializer):
       for behavior.
   """
 
-  def __init__(self, gain=1.0, dtype=dtypes.float32, seed=None):
+  def __init__(self, gain=1.0, seed=None, dtype=dtypes.float32):
     self.gain = gain
-    self.dtype = _assert_float_dtype(dtype)
+    self.dtype = _assert_float_dtype(dtypes.as_dtype(dtype))
     self.seed = seed
 
   def __call__(self, shape, dtype=None, partition_info=None):
@@ -412,6 +498,11 @@ class Orthogonal(Initializer):
       # such that we need to transpose axes here
       q = array_ops.transpose(v)
     return self.gain * array_ops.reshape(q, shape)
+
+  def get_config(self):
+    return {"gain": self.gain,
+            "seed": self.seed,
+            "dtype": self.dtype.name}
 
 
 # Aliases.

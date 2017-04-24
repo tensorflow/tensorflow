@@ -32,7 +32,6 @@ namespace xla {
 // different lifetimes than computation results.
 class CopyInsertion : public HloPassInterface {
  public:
-  ~CopyInsertion() override {}
   tensorflow::StringPiece name() const override { return "copy-insertion"; }
 
   // Run the pass on the given module. Returns whether the module was changed

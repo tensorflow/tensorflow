@@ -32,7 +32,7 @@ void SwitchOp::Compute(OpKernelContext* context) {
 
   bool pred = outputPorts.scalar<bool>()();
   int port = (pred) ? 1 : 0;
-  if (IsRefType(context->input_dtype(0))) {
+  if (context->input_is_ref(0)) {
     context->forward_ref_input_to_ref_output(0, port);
   } else {
     context->set_output(port, context->input(0));
@@ -321,6 +321,30 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_REF_KERNEL);
 
 #undef REGISTER_SYCL_KERNEL
 #undef REGISTER_SYCL_REF_KERNEL
+#define REGISTER_SYCL_HOST_KERNEL(type)                   \
+  REGISTER_KERNEL_BUILDER(Name("Enter")                   \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          EnterOp)
+
+#define REGISTER_SYCL_HOST_REF_KERNEL(type)               \
+  REGISTER_KERNEL_BUILDER(Name("RefEnter")                \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("data")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          EnterOp)
+
+REGISTER_SYCL_HOST_KERNEL(int32);
+REGISTER_SYCL_HOST_REF_KERNEL(int32);
+REGISTER_SYCL_HOST_KERNEL(string);
+REGISTER_SYCL_HOST_REF_KERNEL(string);
+REGISTER_SYCL_HOST_KERNEL(ResourceHandle);
+
+#undef REGISTER_SYCL_HOST_KERNEL
+#undef REGISTER_SYCL_HOST_REF_KERNEL
 #endif
 
 // Special GPU kernels for int32 and string.

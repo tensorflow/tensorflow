@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 
-#include <set>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -45,7 +45,9 @@ StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
 }
 
 tensorflow::Status BufferLiveness::Analyze() {
-  TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
+  TF_ASSIGN_OR_RETURN(points_to_analysis_,
+                      TuplePointsToAnalysis::Run(
+                          module_, /*include_loop_fusion_instructions=*/true));
   for (auto& computation : module_->computations()) {
     // Gather all instructions whose buffers might alias other instructions into
     // the set aliased_buffers_.  This includes those contained as a tuple
@@ -61,11 +63,9 @@ tensorflow::Status BufferLiveness::Analyze() {
     }
 
     if (computation.get() == module_->entry_computation()) {
-      for (const LogicalBuffer* live_out_buffer :
-           points_to_analysis_->GetPointsToSet(computation->root_instruction())
-               .CreateFlattenedSet()) {
-        maybe_live_out_buffers_.insert(live_out_buffer);
-      }
+      const HloInstruction* root = computation->root_instruction();
+      maybe_live_out_buffers_ =
+          points_to_analysis_->GetPointsToSet(root).CreateFlattenedSet();
     }
   }
 
@@ -92,19 +92,6 @@ string BufferLiveness::ToString() const {
   return tensorflow::str_util::Join(pieces, "\n");
 }
 
-// Returns false if 'user' cannot possibly use the buffer at 'index' in
-// 'operand'. Returns true otherwise.
-// Precondition: 'operand' is an operand of 'user'.
-bool MayUseBufferInOperand(HloInstruction* operand, const ShapeIndex& index,
-                           HloInstruction* user) {
-  if (user->opcode() == HloOpcode::kGetTupleElement && !index.empty()) {
-    // GetTupleElement instructions only access the top-level buffer of their
-    // operand.
-    return false;
-  }
-  return true;
-}
-
 bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
                                                 const LogicalBuffer& b) const {
   TF_CHECK_OK(points_to_analysis_->VerifyBuffer(a));
@@ -117,7 +104,8 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
   // Every user of 'a' must be a predecessor of 'b' or 'b' itself.
   for (const BufferAlias& alias : points_to_analysis_->GetBufferAliases(a)) {
     for (auto user : alias.instruction()->users()) {
-      if (!MayUseBufferInOperand(alias.instruction(), alias.index(), user)) {
+      if (DoesNotUseOperandBuffer(alias.instruction(), alias.index(), user,
+                                  points_to_analysis())) {
         continue;
       }
       if (user != b.instruction() &&
@@ -127,13 +115,18 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
     }
   }
 
-  // If 'b' is a user of 'a' then the buffers interfere if b is not an
-  // elementwise operation emitting the same shape/layout as 'a'.
+  // If 'b' is a user of 'a' then the buffers interfere unless 'a.instruction'
+  // and 'b.instruction' emit the same shape/layout, and 'b.instruction' meets
+  // one of following qualifications:
+  // *) Is element-wise.
+  // *) Is a loop fusion instruction (with DynamicUpdateSlice fused root) where
+  //    the singleton use of 'a' at 'a.index' is the fused root at operand 0.
+  // *) Use of 'operand' is DynamicUpdateSlice at operand index 0.
   for (const BufferAlias& alias : points_to_analysis_->GetBufferAliases(a)) {
-    if (alias.instruction()->users().count(b.instruction()) > 0 &&
-        (!ShapeUtil::Equal(alias.instruction()->shape(),
-                           b.instruction()->shape()) ||
-         !b.instruction()->IsElementwise())) {
+    if (b.instruction()->IsUserOf(alias.instruction()) &&
+        !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),
+                                       b.instruction(), b.index(),
+                                       points_to_analysis())) {
       return false;
     }
   }
@@ -142,6 +135,21 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
 
 bool BufferLiveness::MayInterfere(const LogicalBuffer& a,
                                   const LogicalBuffer& b) const {
+  // Entry parameters live for the entire execution, thus always interfere with
+  // all other instructions.
+  const HloInstruction* a_instruction = a.instruction();
+  const HloComputation* a_computation = a_instruction->parent();
+  if (a_instruction->opcode() == HloOpcode::kParameter &&
+      a_computation == a_computation->parent()->entry_computation()) {
+    return true;
+  }
+  const HloInstruction* b_instruction = b.instruction();
+  const HloComputation* b_computation = b_instruction->parent();
+  if (b_instruction->opcode() == HloOpcode::kParameter &&
+      b_computation == b_computation->parent()->entry_computation()) {
+    return true;
+  }
+  // Buffers without disjoint liveness may interfere.
   return (!live_range_strictly_before(a, b) &&
           !live_range_strictly_before(b, a));
 }

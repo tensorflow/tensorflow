@@ -15,9 +15,9 @@ limitations under the License.
 
 // XLA-specific sequence and range Ops.
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -138,7 +138,7 @@ class RangeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Range", RangeOp);
+REGISTER_XLA_OP(Name("Range"), RangeOp);
 
 class LinSpaceOp : public XlaOpKernel {
  public:
@@ -207,7 +207,7 @@ class LinSpaceOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("LinSpace", LinSpaceOp);
+REGISTER_XLA_OP(Name("LinSpace"), LinSpaceOp);
 
 }  // namespace
 }  // namespace tensorflow

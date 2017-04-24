@@ -96,7 +96,6 @@ cc_library(
     hdrs = ["hlo_to_ir_bindings.h"],
     deps = [
         ":ir_emission_utils",
-        ":temp_buffer_offsets",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
@@ -127,7 +126,6 @@ cc_library(
         ":ir_emission_utils",
         ":parallel_loop_emitter",
         ":partition_assignment",
-        ":temp_buffer_offsets",
         ":while_transformer",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -198,22 +196,10 @@ cc_library(
 )
 
 cc_library(
-    name = "temp_buffer_offsets",
-    srcs = ["temp_buffer_offsets.cc"],
-    hdrs = ["temp_buffer_offsets.h"],
-    deps = [
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "buffer_allocations",
     srcs = ["buffer_allocations.cc"],
     hdrs = ["buffer_allocations.h"],
     deps = [
-        ":temp_buffer_offsets",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -256,7 +242,6 @@ cc_library(
         ":buffer_allocations",
         ":partition_assignment",
         ":stream_assignment",
-        ":temp_buffer_offsets",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
@@ -273,6 +258,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:logical_buffer",
+        "//tensorflow/compiler/xla/service:pool",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
@@ -370,13 +356,12 @@ cc_library(
     srcs = ["fusion_merger.cc"],
     hdrs = ["fusion_merger.h"],
     deps = [
+        ":instruction_fusion",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:instruction_fusion",
         "//tensorflow/core:lib",
     ],
 )
@@ -430,7 +415,6 @@ cc_library(
         ":pad_insertion",
         ":partition_assignment",
         ":stream_assignment",
-        ":temp_buffer_offsets",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -441,13 +425,16 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dce",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
@@ -543,14 +530,10 @@ cc_test(
     deps = [
         ":instruction_fusion",
         ":while_transformer",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:copy_insertion",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
