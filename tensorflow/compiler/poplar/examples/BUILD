@@ -15,3 +15,21 @@ py_test(
         "//tensorflow:tensorflow_py",
     ],
 )
+
+py_test(
+    name = "example_resnet50_inference",
+    size = "enormous",
+    srcs = ["example_resnet50_inference.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "example_resnet18",
+    size = "enormous",
+    srcs = ["example_resnet18.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)

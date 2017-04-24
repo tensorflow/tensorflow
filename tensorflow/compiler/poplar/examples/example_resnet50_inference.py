@@ -150,10 +150,9 @@ def max_pool(x, ksize=3, stride=2):
 # Main code
 #
 
-with tf.device("/job:localhost/replica:0/task:0/device:XLA_CPU:0"):
+with tf.device("/job:localhost/replica:0/task:0/device:XLA_IPU:0"):
   # Inputs
   x = tf.placeholder(tf.float32, shape=[2, 224, 224, 4])
-  y_ = tf.placeholder(tf.float32, shape=[2, 1])
 
   # Inference
   logits = inference(x)

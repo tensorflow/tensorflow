@@ -24,56 +24,14 @@ def inference(x):
   with tf.variable_scope('scale2-1', use_resource=True):
     x = block(x, 1, 64, 256)
 
-  with tf.variable_scope('scale2-2', use_resource=True):
-    x = block(x, 1, 64, 256)
-
-  with tf.variable_scope('scale2-3', use_resource=True):
-    x = block(x, 1, 64, 256)
-
-
-
   with tf.variable_scope('scale3-1', use_resource=True):
     x = block(x, 2, 128, 512)
-
-  with tf.variable_scope('scale3-2', use_resource=True):
-    x = block(x, 1, 128, 512)
-
-  with tf.variable_scope('scale3-3', use_resource=True):
-    x = block(x, 1, 128, 512)
-
-  with tf.variable_scope('scale3-4', use_resource=True):
-    x = block(x, 1, 128, 512)
-
-
 
   with tf.variable_scope('scale4-1', use_resource=True):
     x = block(x, 2, 256, 1024)
 
-  with tf.variable_scope('scale4-2', use_resource=True):
-    x = block(x, 1, 256, 1024)
-
-  with tf.variable_scope('scale4-3', use_resource=True):
-    x = block(x, 1, 256, 1024)
-
-  with tf.variable_scope('scale4-4', use_resource=True):
-    x = block(x, 1, 256, 1024)
-
-  with tf.variable_scope('scale4-5', use_resource=True):
-    x = block(x, 1, 256, 1024)
-
-  with tf.variable_scope('scale4-6', use_resource=True):
-    x = block(x, 1, 256, 1024)
-
-
-
   with tf.variable_scope('scale5-1', use_resource=True):
     x = block(x, 2, 512, 2048)
-
-  with tf.variable_scope('scale5-2', use_resource=True):
-    x = block(x, 1, 512, 2048)
-
-  with tf.variable_scope('scale5-3', use_resource=True):
-    x = block(x, 1, 512, 2048)
 
   x = tf.reduce_mean(x, reduction_indices=[1, 2])
 
@@ -93,10 +51,6 @@ def block(x, first_stride, internal_filters, final_filters):
     x = tf.nn.relu(x)
 
   with tf.variable_scope('b', use_resource=True):
-    x = conv(x, 3, 1, internal_filters)
-    x = tf.nn.relu(x)
-
-  with tf.variable_scope('c', use_resource=True):
     x = conv(x, 1, 1, final_filters)
 
   with tf.variable_scope('shortcut', use_resource=True):
