@@ -29,7 +29,7 @@ generate_backend_suites()
 py_library(
     name = "xla_test",
     testonly = 1,
-    srcs = ["xla_test.py"],
+    srcs = ["xla_test.py"] + glob(["plugin_config.py"]),
     srcs_version = "PY2AND3",
     visibility = [":friends"],
     deps = [
