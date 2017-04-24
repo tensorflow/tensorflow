@@ -64,8 +64,9 @@ GlobalDataHandle AllocationTracker::RegisterInternal(
     auto& allocation = FindOrDie(handle_to_allocation_, handle);
     int ref_count = allocation->ref_count();
     CHECK_GT(ref_count, 0);
-    VLOG(2) << "ref_count: " << ref_count << " -> " << ref_count + 1;
-    allocation->increment_ref_count();
+    VLOG(2) << "ref_count: " << ref_count << " -> " <<
+            (ref_count + initial_ref_count);
+    allocation->increment_ref_count(initial_ref_count);
   } else {
     handle = next_handle_++;
     VLOG(2) << "ref_count: " << initial_ref_count;
