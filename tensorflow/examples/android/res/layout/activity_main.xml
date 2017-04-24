@@ -28,16 +28,6 @@
             android:textSize="24dp" />
 
         <Button
-            android:id="@+id/history_button"
-            style="@style/Widget.AppCompat.Button"
-            android:layout_width="300dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:onClick="history"
-            android:text="@string/previous_classifications"
-            android:textSize="24dp" />
-
-        <Button
             android:id="@+id/capture_button"
             style="@style/Widget.AppCompat.Button"
             android:layout_width="match_parent"

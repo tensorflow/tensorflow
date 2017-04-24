@@ -26,4 +26,11 @@
     <string name="developers">Developers</string>
     <string name="title_activity_classify_history">ClassifyHistoryActivity</string>
     <string name="title_activity_capture">CaptureActivity</string>
+    <string name="title_activity_upload">Upload Photo Information</string>
+
+    <!-- Strings related to login -->
+    <string name="prompt_upload">Label</string>
+    <string name="action_upload">Upload Photo</string>
+    <string name="action_upload_short">Upload</string>
+
 </resources>

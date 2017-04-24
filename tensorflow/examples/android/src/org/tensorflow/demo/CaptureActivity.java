@@ -1,6 +1,7 @@
 package org.tensorflow.demo;
 
 import android.annotation.TargetApi;
+import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.app.Activity;
@@ -208,6 +209,8 @@ public class CaptureActivity extends Activity {
                             output.close();
                         }
                     }
+
+
                 }
             };
             reader.setOnImageAvailableListener(readerListener, mBackgroundHandler);
@@ -216,7 +219,8 @@ public class CaptureActivity extends Activity {
                 public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
                     super.onCaptureCompleted(session, request, result);
                     Toast.makeText(CaptureActivity.this, "Saved:" + file, Toast.LENGTH_SHORT).show();
-                    createCameraPreview();
+                    //createCameraPreview();
+                    createUploadScreen(file);
                 }
             };
             cameraDevice.createCaptureSession(outputSurfaces, new CameraCaptureSession.StateCallback() {
@@ -263,6 +267,11 @@ public class CaptureActivity extends Activity {
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
+    }
+    protected void createUploadScreen(File file) {
+        Intent intent = new Intent(this, UploadActivity.class);
+        intent.putExtra("photoPath", file.toString());
+        startActivity(intent);
     }
     @TargetApi(Build.VERSION_CODES.M)
     private void openCamera() {

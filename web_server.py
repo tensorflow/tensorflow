@@ -93,9 +93,7 @@ def images():
 
         # Create the file path if it does not exist
         directory = os.path.join( \
-            DEFAULTS['StaticURLPath'], \
             DEFAULTS['DatabaseFolder'], \
-            DEFAULTS['UploadFolder'], \
             species.replace(' ', '_'))
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -116,6 +114,8 @@ def images():
 
                 # save the image in the directory
                 img.save(os.path.join(directory, filename))
+                print "File saved successfully:" + filename
+
 
         return make_response('file(s) uploaded successfully', 200)
 
@@ -202,40 +202,49 @@ def search_images():
 
 def update_models():
     """ Update the MODELPATHS dictionary with the model paths. """
+    # Clear current entries to only show current files.
+    global MODELPATHS
+    MODELPATHS = {}
+
     # Check if dictionary variables exist
-    if 'ModelPath' and 'ModelExtension' and 'LabelExtension' not in DEFAULTS:
-        return False
-    # Check if path exists
-    if not os.path.isdir(DEFAULTS['ModelPath']):
+    if DEFAULTS['ModelPathNorth'] and DEFAULTS['ModelPathEast'] and DEFAULTS['ModelPathSouth'] and DEFAULTS['ModelPathWest'] and 'ModelExtension' and 'LabelExtension' not in DEFAULTS:
         return False
 
-    # Find all files in the ModelPath with the ModelExtension and LabelExtension
-    for path, subdirs, files in os.walk(DEFAULTS['ModelPath']):
-        for name in files:
-            if name.endswith(DEFAULTS['ModelExtension']):
-                file_path = os.path.join(path, name)
-                key = file_path \
-                    .replace(DEFAULTS['ModelPath'], '') \
-                    .replace(DEFAULTS['ModelExtension'], '')
+    modelPaths = [DEFAULTS['ModelPathNorth'],DEFAULTS['ModelPathEast'],DEFAULTS['ModelPathSouth'],DEFAULTS['ModelPathWest']]
 
-                # Check if the key already exists in the dictionary
-                if key in MODELPATHS:
-                    MODELPATHS[key]['Model'] = file_path
-                else:
-                    MODELPATHS[key] = {'Model':file_path}
-            if name.endswith(DEFAULTS['LabelExtension']):
-                file_path = os.path.join(path, name)
-                key = file_path \
-                    .replace(DEFAULTS['ModelPath'], '') \
-                    .replace(DEFAULTS['LabelExtension'], '')
+    for modelPath in modelPaths:
+        # Check if path exists
+        if not os.path.isdir(modelPath):
+            return False
 
-                # Check if the key already exists in the dictionary
-                if key in MODELPATHS:
-                    MODELPATHS[key]['Label'] = file_path
-                else:
-                    MODELPATHS[key] = {'Label':file_path}
+        # Find all files in the ModelPath with the ModelExtension and LabelExtension
+        for path, subdirs, files in os.walk(modelPath):
+            for name in files:
+                if name.endswith(DEFAULTS['ModelExtension']):
+                    file_path = os.path.join(path, name)
+                    key = file_path \
+                        .replace(DEFAULTS['RootTFFiles'], '') \
+                        .replace(DEFAULTS['ModelExtension'], '')
 
-        return True
+                    # Check if the key already exists in the dictionary
+                    if key in MODELPATHS:
+                        MODELPATHS[key]['Model'] = file_path
+                    else:
+                        MODELPATHS[key] = {'Model':file_path}
+                # This accounts for the bottleneck files that the training server creates
+                if name.endswith(DEFAULTS['LabelExtension']) and not name.endswith('.jpg' + DEFAULTS['LabelExtension']):
+                    file_path = os.path.join(path, name)
+                    key = file_path \
+                        .replace(DEFAULTS['RootTFFiles'], '') \
+                        .replace(DEFAULTS['LabelExtension'], '')
+
+                    # Check if the key already exists in the dictionary
+                    if key in MODELPATHS:
+                        MODELPATHS[key]['Label'] = file_path
+                    else:
+                        MODELPATHS[key] = {'Label':file_path}
+
+    return True
 
 @APP.route('/list-models')
 def list_models():

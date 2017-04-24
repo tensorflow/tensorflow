@@ -19,4 +19,3 @@ tensorflow/examples/android/.gradle/3.3/*
 tensorflow/examples/android/.idea/*
 WORKSPACE
 tensorflow/examples/android/local.properties
-tensorflow/examples/android/build.gradle
