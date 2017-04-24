@@ -33,7 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.layers import convolutional as convolutional_layers
 from tensorflow.python.layers import core as core_layers
-from tensorflow.python.layers import  normalization as normalization_layers
+from tensorflow.python.layers import normalization as normalization_layers
 from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -49,15 +49,18 @@ from tensorflow.python.training import moving_averages
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
 __all__ = ['avg_pool2d',
+           'avg_pool3d',
            'batch_norm',
            'bias_add',
            'conv2d',
            'conv2d_in_plane',
            'conv2d_transpose',
+           'conv3d',
            'convolution',
            'convolution2d',
            'convolution2d_in_plane',
            'convolution2d_transpose',
+           'convolution3d',
            'dropout',
            'elu',
            'flatten',
@@ -66,6 +69,7 @@ __all__ = ['avg_pool2d',
            'linear',
            'pool',
            'max_pool2d',
+           'max_pool3d',
            'one_hot_encoding',
            'relu',
            'relu6',
@@ -73,6 +77,8 @@ __all__ = ['avg_pool2d',
            'scale_gradient',
            'separable_conv2d',
            'separable_convolution2d',
+           'separable_conv3d',
+           'separable_convolution3d',
            'softmax',
            'stack',
            'unit_norm',
@@ -132,23 +138,71 @@ def avg_pool2d(inputs,
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
+@add_arg_scope
+def avg_pool3d(inputs,
+               kernel_size,
+               stride=2,
+               padding='VALID',
+               data_format=DATA_FORMAT_NHWC,
+               outputs_collections=None,
+               scope=None):
+  """Adds a 3D average pooling op.
+
+  It is assumed that the pooling is done per image but not in batch or channels.
+
+  Args:
+    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]` if
+      `data_format` is `NDHWC`, and `[batch_size, channels, depth, height, width]` if
+      `data_format` is `NCDHW`.
+    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width] of the
+      pooling kernel over which the op is computed. Can be an int if both
+      values are the same.
+    stride: A list of length 3: [stride_depth, stride_height, stride_width].
+      Can be an int if both strides are the same. Note that presently
+      both strides must have the same value.
+    padding: The padding method, either 'VALID' or 'SAME'.
+    data_format: A string. `NDHWC` (default) and `NCDHW` are supported.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: If `data_format` is neither `NDHWC` nor `NCDHW`.
+  """
+  if data_format not in (DATA_FORMAT_NCDHW, DATA_FORMAT_NDHWC):
+    raise ValueError('data_format has to be either NCDHW or NDHWC.')
+  with ops.name_scope(scope, 'AvgPool3D', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = pooling_layers.AveragePooling3D(pool_size=kernel_size,
+                                            strides=stride,
+                                            padding=padding,
+                                            data_format=df,
+                                            _scope=sc)
+    outputs = layer.apply(inputs)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
 def _fused_batch_norm(
-    inputs,
-    decay=0.999,
-    center=True,
-    scale=False,
-    epsilon=0.001,
-    activation_fn=None,
-    param_initializers=None,
-    updates_collections=ops.GraphKeys.UPDATE_OPS,
-    is_training=True,
-    reuse=None,
-    variables_collections=None,
-    outputs_collections=None,
-    trainable=True,
-    data_format=DATA_FORMAT_NHWC,
-    zero_debias_moving_mean=False,
-    scope=None):
+        inputs,
+        decay=0.999,
+        center=True,
+        scale=False,
+        epsilon=0.001,
+        activation_fn=None,
+        param_initializers=None,
+        updates_collections=ops.GraphKeys.UPDATE_OPS,
+        is_training=True,
+        reuse=None,
+        variables_collections=None,
+        outputs_collections=None,
+        trainable=True,
+        data_format=DATA_FORMAT_NHWC,
+        zero_debias_moving_mean=False,
+        scope=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -220,7 +274,7 @@ def _fused_batch_norm(
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with variable_scope.variable_scope(
-      scope, 'BatchNorm', [inputs], reuse=reuse) as sc:
+          scope, 'BatchNorm', [inputs], reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
     original_shape = inputs.get_shape()
     original_inputs = inputs
@@ -305,6 +359,7 @@ def _fused_batch_norm(
     def _fused_batch_norm_training():
       return nn.fused_batch_norm(
           inputs, gamma, beta, epsilon=epsilon, data_format=data_format)
+
     def _fused_batch_norm_inference():
       return nn.fused_batch_norm(
           inputs,
@@ -327,6 +382,7 @@ def _fused_batch_norm(
     if need_updates:
       if updates_collections is None:
         no_updates = lambda: outputs
+
         def _force_updates():
           """Internal function forces updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
@@ -334,11 +390,12 @@ def _fused_batch_norm(
           update_moving_variance = moving_averages.assign_moving_average(
               moving_variance, variance, decay, zero_debias=False)
           with ops.control_dependencies(
-              [update_moving_mean, update_moving_variance]):
+                  [update_moving_mean, update_moving_variance]):
             return array_ops.identity(outputs)
         outputs = utils.smart_cond(is_training, _force_updates, no_updates)
       else:
         moving_vars_fn = lambda: (moving_mean, moving_variance)
+
         def _delay_updates():
           """Internal function that delay updates moving_vars if is_training."""
           update_moving_mean = moving_averages.assign_moving_average(
@@ -506,14 +563,14 @@ def batch_norm(inputs,
 
   layer_variable_getter = _build_variable_getter()
   with variable_scope.variable_scope(
-      scope, 'BatchNorm', [inputs], reuse=reuse,
-      custom_getter=layer_variable_getter) as sc:
+          scope, 'BatchNorm', [inputs], reuse=reuse,
+          custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
 
     # Determine whether we can use the core layer class.
     if (batch_weights is None and
         updates_collections is ops.GraphKeys.UPDATE_OPS and
-        not zero_debias_moving_mean):
+            not zero_debias_moving_mean):
       # Use the core layer class.
       axis = 1 if data_format == DATA_FORMAT_NCHW else -1
       if not param_initializers:
@@ -797,7 +854,7 @@ def bias_add(inputs,
     biases_collections = utils.get_variable_collections(variables_collections,
                                                         'biases')
     biases = variables.model_variable('biases',
-                                      shape=[num_features,],
+                                      shape=[num_features, ],
                                       dtype=dtype,
                                       initializer=initializer,
                                       regularizer=regularizer,
@@ -819,7 +876,7 @@ def convolution(inputs,
                 stride=1,
                 padding='SAME',
                 data_format=None,
-                rate=1,
+                dilation_rate=1,
                 activation_fn=nn.relu,
                 normalizer_fn=None,
                 normalizer_params=None,
@@ -844,8 +901,8 @@ def convolution(inputs,
   variable would be created and added the activations. Finally, if
   `activation_fn` is not `None`, it is applied to the activations as well.
 
-  Performs a'trous convolution with input stride/dilation rate equal to `rate`
-  if a value > 1 for any dimension of `rate` is specified.  In this case
+  Performs a'trous convolution with input stride/dilation rate equal to `dilation_rate`
+  if a value > 1 for any dimension of `dilation_rate` is specified.  In this case
   `stride` values != 1 are not supported.
 
   Args:
@@ -861,7 +918,7 @@ def convolution(inputs,
     stride: A sequence of N positive integers specifying the stride at which to
       compute output.  Can be a single integer to specify the same value for all
       spatial dimensions.  Specifying any `stride` value != 1 is incompatible
-      with specifying any `rate` value != 1.
+      with specifying any `dilation_rate` value != 1.
     padding: One of `"VALID"` or `"SAME"`.
     data_format: A string or None.  Specifies whether the channel dimension of
       the `input` and output is the last dimension (default, or if `data_format`
@@ -869,9 +926,9 @@ def convolution(inputs,
       starts with "NC").  For N=1, the valid values are "NWC" (default) and
       "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
       For N=3, the valid values are "NDHWC" (default) and "NCDHW".
-    rate: A sequence of N positive integers specifying the dilation rate to use
+    dilation_rate: A sequence of N positive integers specifying the dilation rate to use
       for a'trous convolution.  Can be a single integer to specify the same
-      value for all spatial dimensions.  Specifying any `rate` value != 1 is
+      value for all spatial dimensions.  Specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `stride` value != 1.
     activation_fn: Activation function. The default value is a ReLU function.
       Explicitly set it to None to skip it and maintain a linear activation.
@@ -898,7 +955,7 @@ def convolution(inputs,
 
   Raises:
     ValueError: If `data_format` is invalid.
-    ValueError: Both 'rate' and `stride` are not uniformly 1.
+    ValueError: Both 'dilation_rate' and `stride` are not uniformly 1.
   """
   if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC', 'NCDHW']:
     raise ValueError('Invalid data_format: %r' % (data_format,))
@@ -907,8 +964,8 @@ def convolution(inputs,
       {'bias': 'biases', 'kernel': 'weights'})
 
   with variable_scope.variable_scope(
-      scope, 'Conv', [inputs], reuse=reuse,
-      custom_getter=layer_variable_getter) as sc:
+          scope, 'Conv', [inputs], reuse=reuse,
+          custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
     input_rank = inputs.get_shape().ndims
 
@@ -929,7 +986,7 @@ def convolution(inputs,
                         strides=stride,
                         padding=padding,
                         data_format=df,
-                        dilation_rate=rate,
+                        dilation_rate=dilation_rate,
                         activation=None,
                         use_bias=not normalizer_fn and biases_initializer,
                         kernel_initializer=weights_initializer,
@@ -959,26 +1016,27 @@ def convolution(inputs,
                                        sc.original_name_scope, outputs)
 
 convolution2d = convolution
+convolution3d = convolution
 
 
 @add_arg_scope
 def convolution2d_in_plane(
-    inputs,
-    kernel_size,
-    stride=1,
-    padding='SAME',
-    activation_fn=nn.relu,
-    normalizer_fn=None,
-    normalizer_params=None,
-    weights_initializer=initializers.xavier_initializer(),
-    weights_regularizer=None,
-    biases_initializer=init_ops.zeros_initializer(),
-    biases_regularizer=None,
-    reuse=None,
-    variables_collections=None,
-    outputs_collections=None,
-    trainable=True,
-    scope=None):
+        inputs,
+        kernel_size,
+        stride=1,
+        padding='SAME',
+        activation_fn=nn.relu,
+        normalizer_fn=None,
+        normalizer_params=None,
+        weights_initializer=initializers.xavier_initializer(),
+        weights_regularizer=None,
+        biases_initializer=init_ops.zeros_initializer(),
+        biases_regularizer=None,
+        reuse=None,
+        variables_collections=None,
+        outputs_collections=None,
+        trainable=True,
+        scope=None):
   """Performs the same in-plane convolution to each channel independently.
 
   This is useful for performing various simple channel-independent convolution
@@ -1024,7 +1082,7 @@ def convolution2d_in_plane(
     A `Tensor` representing the output of the operation.
   """
   with variable_scope.variable_scope(
-      scope, 'ConvInPlane', [inputs], reuse=reuse) as sc:
+          scope, 'ConvInPlane', [inputs], reuse=reuse) as sc:
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
@@ -1050,7 +1108,7 @@ def convolution2d_in_plane(
         biases_collections = utils.get_variable_collections(
             variables_collections, 'biases')
         biases = variables.model_variable('biases',
-                                          shape=[num_filters_in,],
+                                          shape=[num_filters_in, ],
                                           dtype=dtype,
                                           initializer=biases_initializer,
                                           regularizer=biases_regularizer,
@@ -1066,24 +1124,24 @@ def convolution2d_in_plane(
 
 @add_arg_scope
 def convolution2d_transpose(
-    inputs,
-    num_outputs,
-    kernel_size,
-    stride=1,
-    padding='SAME',
-    data_format=DATA_FORMAT_NHWC,
-    activation_fn=nn.relu,
-    normalizer_fn=None,
-    normalizer_params=None,
-    weights_initializer=initializers.xavier_initializer(),
-    weights_regularizer=None,
-    biases_initializer=init_ops.zeros_initializer(),
-    biases_regularizer=None,
-    reuse=None,
-    variables_collections=None,
-    outputs_collections=None,
-    trainable=True,
-    scope=None):
+        inputs,
+        num_outputs,
+        kernel_size,
+        stride=1,
+        padding='SAME',
+        data_format=DATA_FORMAT_NHWC,
+        activation_fn=nn.relu,
+        normalizer_fn=None,
+        normalizer_params=None,
+        weights_initializer=initializers.xavier_initializer(),
+        weights_regularizer=None,
+        biases_initializer=init_ops.zeros_initializer(),
+        biases_regularizer=None,
+        reuse=None,
+        variables_collections=None,
+        outputs_collections=None,
+        trainable=True,
+        scope=None):
   """Adds a convolution2d_transpose with an optional batch normalization layer.
 
   The function creates a variable called `weights`, representing the
@@ -1133,8 +1191,8 @@ def convolution2d_transpose(
       {'bias': 'biases', 'kernel': 'weights'})
 
   with variable_scope.variable_scope(
-      scope, 'Conv2d_transpose', [inputs], reuse=reuse,
-      custom_getter=layer_variable_getter) as sc:
+          scope, 'Conv2d_transpose', [inputs], reuse=reuse,
+          custom_getter=layer_variable_getter) as sc:
     if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
       raise ValueError('data_format has to be either NCHW or NHWC.')
 
@@ -1206,7 +1264,7 @@ def dropout(inputs,
     A tensor representing the output of the operation.
   """
   with variable_scope.variable_scope(
-      scope, 'Dropout', [inputs], custom_getter=_model_variable_getter) as sc:
+          scope, 'Dropout', [inputs], custom_getter=_model_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
     layer = core_layers.Dropout(rate=1 - keep_prob,
                                 noise_shape=noise_shape,
@@ -1447,8 +1505,8 @@ def fully_connected(inputs,
                                                   'kernel': 'weights'})
 
   with variable_scope.variable_scope(
-      scope, 'fully_connected', [inputs],
-      reuse=reuse, custom_getter=layer_variable_getter) as sc:
+          scope, 'fully_connected', [inputs],
+          reuse=reuse, custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
     layer = core_layers.Dense(
         units=num_outputs,
@@ -1625,6 +1683,55 @@ def max_pool2d(inputs,
 
 
 @add_arg_scope
+def max_pool3d(inputs,
+               kernel_size,
+               stride=2,
+               padding='VALID',
+               data_format=DATA_FORMAT_NHWC,
+               outputs_collections=None,
+               scope=None):
+  """Adds a 3D Max Pooling op.
+
+  It is assumed that the pooling is done per image but not in batch or channels.
+
+  Args:
+    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]` if
+      `data_format` is `NDHWC`, and `[batch_size, channels, depth, height, width]` if
+      `data_format` is `NCDHW`.
+    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width] of the
+      pooling kernel over which the op is computed. Can be an int if both
+      values are the same.
+    stride: A list of length 3: [stride_depth, stride_height, stride_width].
+      Can be an int if both strides are the same. Note that presently
+      both strides must have the same value.
+    padding: The padding method, either 'VALID' or 'SAME'.
+    data_format: A string. `NDHWC` (default) and `NCDHW` are supported.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: If `data_format` is neither `NDHWC` nor `NCDHW`.
+    ValueError: If 'kernel_size' is not a 3-D list
+  """
+  if data_format not in (DATA_FORMAT_NCDHW, DATA_FORMAT_NDHWC):
+    raise ValueError('data_format has to be either NCDHW or NDHWC.')
+  with ops.name_scope(scope, 'MaxPool3D', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = pooling_layers.MaxPooling3D(pool_size=kernel_size,
+                                        strides=stride,
+                                        padding=padding,
+                                        data_format=df,
+                                        _scope=sc)
+    outputs = layer.apply(inputs)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
 def pool(inputs,
          kernel_size,
          pooling_type,
@@ -1774,7 +1881,7 @@ def repeat(inputs, repetitions, layer, *args, **kwargs):
         scope = 'repeat'
     outputs = inputs
     for i in range(repetitions):
-      kwargs['scope'] = scope + '_' + str(i+1)
+      kwargs['scope'] = scope + '_' + str(i + 1)
       outputs = layer(outputs, *args, **kwargs)
     return outputs
 
@@ -1823,25 +1930,25 @@ def scale_gradient(inputs, gradient_multiplier):
 
 @add_arg_scope
 def separable_convolution2d(
-    inputs,
-    num_outputs,
-    kernel_size,
-    depth_multiplier,
-    stride=1,
-    padding='SAME',
-    rate=1,
-    activation_fn=nn.relu,
-    normalizer_fn=None,
-    normalizer_params=None,
-    weights_initializer=initializers.xavier_initializer(),
-    weights_regularizer=None,
-    biases_initializer=init_ops.zeros_initializer(),
-    biases_regularizer=None,
-    reuse=None,
-    variables_collections=None,
-    outputs_collections=None,
-    trainable=True,
-    scope=None):
+        inputs,
+        num_outputs,
+        kernel_size,
+        depth_multiplier,
+        stride=1,
+        padding='SAME',
+        rate=1,
+        activation_fn=nn.relu,
+        normalizer_fn=None,
+        normalizer_params=None,
+        weights_initializer=initializers.xavier_initializer(),
+        weights_regularizer=None,
+        biases_initializer=init_ops.zeros_initializer(),
+        biases_regularizer=None,
+        reuse=None,
+        variables_collections=None,
+        outputs_collections=None,
+        trainable=True,
+        scope=None):
   """Adds a depth-separable 2D convolution with optional batch_norm layer.
 
   This op first performs a depthwise convolution that acts separately on
@@ -1895,8 +2002,8 @@ def separable_convolution2d(
        'pointwise_kernel': 'pointwise_weights'})
 
   with variable_scope.variable_scope(
-      scope, 'SeparableConv2d', [inputs], reuse=reuse,
-      custom_getter=layer_variable_getter) as sc:
+          scope, 'SeparableConv2d', [inputs], reuse=reuse,
+          custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
 
     if num_outputs is not None:
@@ -1970,7 +2077,7 @@ def separable_convolution2d(
           biases_collections = utils.get_variable_collections(
               variables_collections, 'biases')
           biases = variables.model_variable('biases',
-                                            shape=[num_outputs,],
+                                            shape=[num_outputs, ],
                                             dtype=dtype,
                                             initializer=biases_initializer,
                                             regularizer=biases_regularizer,
@@ -2055,7 +2162,7 @@ def stack(inputs, layer, stack_args, **kwargs):
         scope = 'stack'
     outputs = inputs
     for i in range(len(stack_args)):
-      kwargs['scope'] = scope + '_' + str(i+1)
+      kwargs['scope'] = scope + '_' + str(i + 1)
       layer_args = stack_args[i]
       if not isinstance(layer_args, (list, tuple)):
         layer_args = [layer_args]
@@ -2243,6 +2350,7 @@ linear = functools.partial(fully_connected, activation_fn=None)
 
 # Simple alias.
 conv2d = convolution2d
+conv3d = convolution3d
 conv2d_transpose = convolution2d_transpose
 conv2d_in_plane = convolution2d_in_plane
 separable_conv2d = separable_convolution2d
