@@ -101,6 +101,15 @@ py_test(
     ],
 )
 
+py_test(
+    name = "reduce_test",
+    size = "small",
+    srcs = ["tests/reduce_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -110,15 +119,6 @@ test_suite(
         "multi_run_test",
         "conv_test",
         "variable_test",
-    ],
-)
-
-py_test(
-    name = "example_mnist_conv",
-    size = "enormous",
-    srcs = ["examples/example_mnist_conv.py"],
-    deps = [
-        "//tensorflow:tensorflow_py",
     ],
 )
 
