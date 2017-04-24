@@ -228,7 +228,8 @@ module tf.graph.util {
 
   export function hasDisplayableNodeStats(stats: NodeStats) {
     if (stats &&
-        (stats.totalBytes > 0 || stats.totalMicros > 0 || stats.outputSize)) {
+        (stats.totalBytes > 0 || stats.getTotalMicros() > 0 ||
+         stats.outputSize)) {
       return true;
     }
     return false;

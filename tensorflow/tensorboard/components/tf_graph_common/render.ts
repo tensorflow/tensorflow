@@ -228,7 +228,7 @@ export class RenderGraphInfo {
       let node = topLevelGraph.node(nodeName);
       // Some ops don't have stats at all.
       if (node.stats != null) {
-        return node.stats.totalMicros;
+        return node.stats.getTotalMicros();
       }
     });
     this.computeTimeScale = d3.scale.linear<string, string>()
@@ -286,7 +286,7 @@ export class RenderGraphInfo {
     if (node.stats) {
       renderInfo.memoryColor = this.memoryUsageScale(node.stats.totalBytes);
       renderInfo.computeTimeColor =
-        this.computeTimeScale(node.stats.totalMicros);
+          this.computeTimeScale(node.stats.getTotalMicros());
     }
 
     if (!node.isGroupNode) {

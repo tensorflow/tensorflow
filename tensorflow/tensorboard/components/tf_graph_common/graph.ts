@@ -509,16 +509,7 @@ export class NodeStats {
    * if it is a Group node.
    */
   totalBytes = 0;
-  /**
-   * Total number of compute time in microseconds used for the node.
-   * Sum of all children if it is a Group node. Null if it is unknown.
-   */
-  get totalMicros(): number {
-    if (this.startTime == null || this.endTime == null) {
-      return null;
-    }
-    return this.endTime - this.startTime;
-  }
+
   /**
    * The shape of each output tensors, if there are any.
    * Empty if it is a Group node.
@@ -534,9 +525,22 @@ export class NodeStats {
     if (stats.totalBytes != null) {
       this.totalBytes += stats.totalBytes;
     }
-    if (stats.totalMicros != null) {
+    if (stats.getTotalMicros() != null) {
       this.addExecutionTime(stats.startTime, stats.endTime);
     }
+  }
+
+  /**
+   * Total number of compute time in microseconds used for the node.
+   * Sum of all children if it is a Group node. Null if it is unknown.
+   * This method can not be scaffolded under a getter attribute because
+   * ECMAScript 5 does not support getter attributes.
+   */
+  getTotalMicros(): number {
+    if (this.startTime == null || this.endTime == null) {
+      return null;
+    }
+    return this.endTime - this.startTime;
   }
 }
 
