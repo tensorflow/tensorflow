@@ -841,7 +841,7 @@ filegroup(
 
 # Core sources for Android builds.
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         ":proto_text_srcs_all",
         "//tensorflow/core/kernels:android_srcs",
@@ -2756,4 +2756,10 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
+    visibility = ["//visibility:public"],
 )
