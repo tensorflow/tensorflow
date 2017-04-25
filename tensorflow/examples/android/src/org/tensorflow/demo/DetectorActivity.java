@@ -25,6 +25,7 @@ import android.graphics.Paint;
 import android.graphics.Paint.Style;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.hardware.Camera;
 import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
@@ -115,6 +116,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private BorderedText borderedText;
 
   private long lastProcessingTimeMs;
+  private Runnable postInferenceCallback;
 
   @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
@@ -231,12 +233,107 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   OverlayView trackingOverlay;
 
+  private void processImageRGBbytes() {
+    final long currTimestamp = timestamp;
+
+    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+    final Canvas canvas = new Canvas(croppedBitmap);
+    canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
+
+    // For examining the actual TF input.
+    if (SAVE_PREVIEW_BITMAP) {
+      ImageUtils.saveBitmap(croppedBitmap);
+    }
+
+    runInBackground(
+        new Runnable() {
+          @Override
+          public void run() {
+            final long startTime = SystemClock.uptimeMillis();
+            final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
+            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+
+            cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+            final Canvas canvas = new Canvas(cropCopyBitmap);
+            final Paint paint = new Paint();
+            paint.setColor(Color.RED);
+            paint.setStyle(Style.STROKE);
+            paint.setStrokeWidth(2.0f);
+
+            final List<Classifier.Recognition> mappedRecognitions =
+                new LinkedList<Classifier.Recognition>();
+
+            for (final Classifier.Recognition result : results) {
+              final RectF location = result.getLocation();
+              if (location != null && result.getConfidence() >= MINIMUM_CONFIDENCE) {
+                canvas.drawRect(location, paint);
+
+                cropToFrameTransform.mapRect(location);
+                result.setLocation(location);
+                mappedRecognitions.add(result);
+              }
+            }
+
+            tracker.trackResults(mappedRecognitions, luminance, currTimestamp);
+            trackingOverlay.postInvalidate();
+
+            requestRender();
+            computing = false;
+
+            if (postInferenceCallback != null) {
+              postInferenceCallback.run();
+            }
+          }
+        });
+  }
+
+  /*
+  * Callback for android.hardware.Camera API
+  */
+  @Override
+  public void onPreviewFrame(final byte[] bytes, final Camera camera) {
+    if (computing) {
+      return;
+    }
+    computing = true;
+
+    Camera.Size previewSize = camera.getParameters().getPreviewSize();
+    try {
+      // Initialize the storage bitmaps once when the resolution is known.
+      if (previewWidth != previewSize.width || previewHeight != previewSize.height) {
+        onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
+      }
+
+      ImageUtils.convertYUV420SPToARGB8888(bytes, rgbBytes, previewWidth, previewHeight, false);
+    } catch (final Exception e) {
+      LOGGER.e(e, "Exception!");
+      return;
+    }
+
+    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+
+    if (luminance == null) {
+      luminance = new byte[bytes.length * 2/3];
+    }
+    System.arraycopy(bytes, 0, luminance, 0, luminance.length);
+
+    postInferenceCallback= new Runnable() {
+      @Override
+      public void run() {
+        camera.addCallbackBuffer(bytes);
+      }
+    };
+    processImageRGBbytes();
+  }
+
+  /*
+   * Callback for Camera2 API
+   */
   @Override
   public void onImageAvailable(final ImageReader reader) {
     Image image = null;
 
     ++timestamp;
-    final long currTimestamp = timestamp;
 
     try {
       image = reader.acquireLatestImage();
@@ -288,16 +385,6 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
       }
       LOGGER.e(e, "Exception!");
       Trace.endSection();
-      return;
-    }
-
-    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
-    final Canvas canvas = new Canvas(croppedBitmap);
-    canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
-
-    // For examining the actual TF input.
-    if (SAVE_PREVIEW_BITMAP) {
-      ImageUtils.saveBitmap(croppedBitmap);
     }
 
     if (luminance == null) {
@@ -305,42 +392,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     }
     System.arraycopy(yuvBytes[0], 0, luminance, 0, luminance.length);
 
-    runInBackground(
-        new Runnable() {
-          @Override
-          public void run() {
-            final long startTime = SystemClock.uptimeMillis();
-            final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
-            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-
-            cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-            final Canvas canvas = new Canvas(cropCopyBitmap);
-            final Paint paint = new Paint();
-            paint.setColor(Color.RED);
-            paint.setStyle(Style.STROKE);
-            paint.setStrokeWidth(2.0f);
-
-            final List<Classifier.Recognition> mappedRecognitions =
-                new LinkedList<Classifier.Recognition>();
-
-            for (final Classifier.Recognition result : results) {
-              final RectF location = result.getLocation();
-              if (location != null && result.getConfidence() >= MINIMUM_CONFIDENCE) {
-                canvas.drawRect(location, paint);
-
-                cropToFrameTransform.mapRect(location);
-                result.setLocation(location);
-                mappedRecognitions.add(result);
-              }
-            }
-
-            tracker.trackResults(mappedRecognitions, luminance, currTimestamp);
-            trackingOverlay.postInvalidate();
-
-            requestRender();
-            computing = false;
-          }
-        });
+    processImageRGBbytes();
 
     Trace.endSection();
   }

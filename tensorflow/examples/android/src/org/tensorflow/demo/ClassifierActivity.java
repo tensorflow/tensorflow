@@ -22,6 +22,7 @@ import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Typeface;
+import android.hardware.Camera;
 import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
@@ -97,6 +98,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   private BorderedText borderedText;
 
   private long lastProcessingTimeMs;
+  private Runnable postInferenceCallback;
 
   @Override
   protected int getLayoutId() {
@@ -165,6 +167,39 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
         });
   }
 
+  private void processImageRGBbytes() {
+    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+    final Canvas canvas = new Canvas(croppedBitmap);
+    canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
+
+    // For examining the actual TF input.
+    if (SAVE_PREVIEW_BITMAP) {
+      ImageUtils.saveBitmap(croppedBitmap);
+    }
+
+    runInBackground(
+        new Runnable() {
+          @Override
+          public void run() {
+            final long startTime = SystemClock.uptimeMillis();
+            final List<Classifier.Recognition> results = classifier.recognizeImage(croppedBitmap);
+            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+
+            cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+            resultsView.setResults(results);
+            requestRender();
+            computing = false;
+
+            if (postInferenceCallback != null) {
+              postInferenceCallback.run();
+            }
+          }
+        });
+  }
+
+  /*
+   * Callback for Camera2 API
+   */
   @Override
   public void onImageAvailable(final ImageReader reader) {
     Image image = null;
@@ -212,31 +247,44 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
       return;
     }
 
-    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
-    final Canvas canvas = new Canvas(croppedBitmap);
-    canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
-
-    // For examining the actual TF input.
-    if (SAVE_PREVIEW_BITMAP) {
-      ImageUtils.saveBitmap(croppedBitmap);
-    }
-
-    runInBackground(
-        new Runnable() {
-          @Override
-          public void run() {
-            final long startTime = SystemClock.uptimeMillis();
-            final List<Classifier.Recognition> results = classifier.recognizeImage(croppedBitmap);
-            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-
-            cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-            resultsView.setResults(results);
-            requestRender();
-            computing = false;
-          }
-        });
+    processImageRGBbytes();
 
     Trace.endSection();
+  }
+
+  /*
+   * Callback for android.hardware.Camera API
+   */
+  @Override
+  public void onPreviewFrame(final byte[] bytes, final Camera camera) {
+    if (computing) {
+      return;
+    }
+    computing = true;
+
+    Camera.Size previewSize = camera.getParameters().getPreviewSize();
+    try {
+      // Initialize the storage bitmaps once when the resolution is known.
+      if (previewWidth != previewSize.width || previewHeight != previewSize.height) {
+        onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
+      }
+
+      ImageUtils.convertYUV420SPToARGB8888(bytes, rgbBytes, previewWidth, previewHeight, false);
+    } catch (final Exception e) {
+      LOGGER.e(e, "Exception!");
+      return;
+    }
+
+    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+
+    postInferenceCallback = new Runnable() {
+      @Override
+      public void run() {
+        camera.addCallbackBuffer(bytes);
+      }
+    };
+
+    processImageRGBbytes();
   }
 
   @Override

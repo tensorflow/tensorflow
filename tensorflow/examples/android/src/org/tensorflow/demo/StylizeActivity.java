@@ -28,6 +28,7 @@ import android.graphics.Paint;
 import android.graphics.Paint.Style;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.hardware.Camera;
 import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
@@ -58,7 +59,6 @@ import org.tensorflow.demo.OverlayView.DrawCallback;
 import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
-import org.tensorflow.demo.R;
 
 /**
  * Sample activity that stylizes the camera preview according to "A Learned Representation For
@@ -132,6 +132,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
   private ImageGridAdapter adapter;
   private GridView grid;
+  private Runnable postInferenceCallback;
 
   private final OnTouchListener gridTouchAdapter =
       new OnTouchListener() {
@@ -398,6 +399,11 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     grid.setAdapter(adapter);
     grid.setOnTouchListener(gridTouchAdapter);
 
+    LOGGER.i(
+        "Initializing at size preview size %dx%d, stylize size %d",
+        previewWidth, previewHeight, desiredSize);
+    rgbBytes = new int[previewWidth * previewHeight];
+    rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
     setStyle(adapter.items[0], 1.0f);
   }
 
@@ -459,6 +465,65 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     }
   }
 
+  private void resetPreviewBuffers() {
+    croppedBitmap = Bitmap.createBitmap(desiredSize, desiredSize, Config.ARGB_8888);
+
+    frameToCropTransform =
+        ImageUtils.getTransformationMatrix(
+            previewWidth, previewHeight,
+            desiredSize, desiredSize,
+            sensorOrientation, true);
+
+    cropToFrameTransform = new Matrix();
+    frameToCropTransform.invert(cropToFrameTransform);
+
+    yuvBytes = new byte[3][];
+
+    intValues = new int[desiredSize * desiredSize];
+    floatValues = new float[desiredSize * desiredSize * 3];
+    initializedSize = desiredSize;
+  }
+
+  /*
+   * Callback for android.hardware.Camera API
+   */
+  @Override
+  public void onPreviewFrame(final byte[] bytes, final Camera camera) {
+    if (computing) {
+      return;
+    }
+    computing = true;
+
+    Camera.Size previewSize = camera.getParameters().getPreviewSize();
+    try {
+      // Initialize the storage bitmaps once when the resolution is known.
+      if (previewWidth != previewSize.width || previewHeight != previewSize.height) {
+        onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
+      }
+      if (desiredSize != initializedSize) {
+        resetPreviewBuffers();
+      }
+
+      ImageUtils.convertYUV420SPToARGB8888(bytes, rgbBytes, previewWidth, previewHeight, false);
+
+    } catch (final Exception e) {
+      LOGGER.e(e, "Exception!");
+      return;
+    }
+
+    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+    postInferenceCallback= new Runnable() {
+      @Override
+      public void run() {
+        camera.addCallbackBuffer(bytes);
+      }
+    };
+    processImageRGBbytes();
+  }
+
+  /*
+   * Callback for Camera2 API
+   */
   @Override
   public void onImageAvailable(final ImageReader reader) {
     Image image = null;
@@ -476,27 +541,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
       }
 
       if (desiredSize != initializedSize) {
-        LOGGER.i(
-            "Initializing at size preview size %dx%d, stylize size %d",
-            previewWidth, previewHeight, desiredSize);
-        rgbBytes = new int[previewWidth * previewHeight];
-        rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
-        croppedBitmap = Bitmap.createBitmap(desiredSize, desiredSize, Config.ARGB_8888);
-
-        frameToCropTransform =
-            ImageUtils.getTransformationMatrix(
-                previewWidth, previewHeight,
-                desiredSize, desiredSize,
-                sensorOrientation, true);
-
-        cropToFrameTransform = new Matrix();
-        frameToCropTransform.invert(cropToFrameTransform);
-
-        yuvBytes = new byte[3][];
-
-        intValues = new int[desiredSize * desiredSize];
-        floatValues = new float[desiredSize * desiredSize * 3];
-        initializedSize = desiredSize;
+        resetPreviewBuffers();
       }
 
       computing = true;
@@ -528,36 +573,41 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
       }
       LOGGER.e(e, "Exception!");
       Trace.endSection();
-      return;
     }
 
-    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
-    final Canvas canvas = new Canvas(croppedBitmap);
-    canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
-
-    // For examining the actual TF input.
-    if (SAVE_PREVIEW_BITMAP) {
-      ImageUtils.saveBitmap(croppedBitmap);
-    }
-
-    runInBackground(
-        new Runnable() {
-          @Override
-          public void run() {
-            cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-
-            final long startTime = SystemClock.uptimeMillis();
-            stylizeImage(croppedBitmap);
-            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-
-            textureCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-
-            requestRender();
-            computing = false;
-          }
-        });
-
+    processImageRGBbytes();
     Trace.endSection();
+  }
+
+  private void processImageRGBbytes() {
+    runInBackground(new Runnable() {
+      @Override
+      public void run() {
+        rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+        final Canvas canvas = new Canvas(croppedBitmap);
+        canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
+
+        // For examining the actual TF input.
+        if (SAVE_PREVIEW_BITMAP) {
+          ImageUtils.saveBitmap(croppedBitmap);
+        }
+
+        cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+
+        final long startTime = SystemClock.uptimeMillis();
+        stylizeImage(croppedBitmap);
+        lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+
+        textureCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+
+        requestRender();
+        computing = false;
+
+        if (postInferenceCallback != null) {
+          postInferenceCallback.run();
+        }
+      }
+    });
   }
 
   private void stylizeImage(final Bitmap bitmap) {
