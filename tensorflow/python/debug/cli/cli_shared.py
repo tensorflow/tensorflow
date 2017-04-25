@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 import numpy as np
 import six
 
@@ -71,6 +73,14 @@ def bytes_to_readable_str(num_bytes, include_b=False):
   if include_b:
     result += "B"
   return result
+
+
+def time_to_readable_str(value):
+  if not value:
+    return "0"
+  suffixes = ["us", "ms", "s"]
+  order = min(len(suffixes) - 1, int(math.log(value, 10) / 3))
+  return "{:.3g}{}".format(value / math.pow(10.0, 3*order), suffixes[order])
 
 
 def parse_ranges_highlight(ranges_string):

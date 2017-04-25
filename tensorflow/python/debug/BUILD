@@ -148,6 +148,22 @@ py_library(
 )
 
 py_library(
+    name = "profile_analyzer_cli",
+    srcs = ["cli/profile_analyzer_cli.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cli_shared",
+        ":command_parser",
+        ":debug_data",
+        ":debugger_cli_common",
+        ":source_utils",
+        ":ui_factory",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "stepper_cli",
     srcs = ["cli/stepper_cli.py"],
     srcs_version = "PY2AND3",
@@ -241,6 +257,7 @@ py_library(
         ":debug_data",
         ":debugger_cli_common",
         ":framework",
+        ":profile_analyzer_cli",
         ":stepper_cli",
         ":ui_factory",
     ],
@@ -603,6 +620,24 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "profile_analyzer_cli_test",
+    size = "small",
+    srcs = [
+        "cli/profile_analyzer_cli_test.py",
+    ],
+    deps = [
+        ":command_parser",
+        ":profile_analyzer_cli",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
     ],
 )
 
