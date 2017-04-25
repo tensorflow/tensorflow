@@ -22,9 +22,6 @@ DEFAULTS = { \
     'LabelExtension':'.txt' \
 }
 
-# Paths containing the models
-MODELPATHS = {}
-
 # Check if server config file exists
 # If if doesn't, create the file
 if not os.path.isfile('server.config'):
@@ -64,6 +61,13 @@ def index():
 def static_file(path):
     """ Serve static files inside the static folder. """
     return APP.send_static_file(path)
+
+@APP.route('/' + DEFAULTS['RootTFFiles'] + '/<path:path>')
+def serve_db_image(path):
+    """ Serve the images inside the database folder. """
+    path = os.path.join(DEFAULTS['RootTFFiles'], path)
+    path, name = os.path.split(path)
+    return send_from_directory(path, name)
 
 # TODO: Change the image upload and search process to use the correct file
 # structure
@@ -123,15 +127,10 @@ def grab_images(search, number, page):
     # initialize variables
     exist = False
     query = search.replace(' ', '_').lower()
-    directory = os.path.join(DEFAULTS['StaticURLPath'], DEFAULTS['DatabaseFolder'])
+    directory = DEFAULTS['DatabaseFolder']
     results = []
 
     # Check if the directory exists and find all image files if it does
-    #if os.path.isdir(full_directory):
-    #    for path, subdirs, files in os.walk(full_directory):
-    #        for name in files:
-    #            # insert the path in the static folder to the image
-    #            results.append(os.path.join('/', os.path.join(directory, name)))
     if os.path.isdir(directory):
         for path, subdirs, files in os.walk(directory):
             for subdir in subdirs:
@@ -200,85 +199,30 @@ def search_images():
 
         return grab_images(request.form['species'], -1, -1)
 
-def update_models():
-    """ Update the MODELPATHS dictionary with the model paths. """
-    # Clear current entries to only show current files.
-    global MODELPATHS
-    MODELPATHS = {}
-
-    # Check if dictionary variables exist
-    if DEFAULTS['ModelPathNorth'] and DEFAULTS['ModelPathEast'] and DEFAULTS['ModelPathSouth'] and DEFAULTS['ModelPathWest'] and 'ModelExtension' and 'LabelExtension' not in DEFAULTS:
-        return False
-
-    modelPaths = [DEFAULTS['ModelPathNorth'],DEFAULTS['ModelPathEast'],DEFAULTS['ModelPathSouth'],DEFAULTS['ModelPathWest']]
-
-    for modelPath in modelPaths:
-        # Check if path exists
-        if not os.path.isdir(modelPath):
-            return False
-
-        # Find all files in the ModelPath with the ModelExtension and LabelExtension
-        for path, subdirs, files in os.walk(modelPath):
-            for name in files:
-                if name.endswith(DEFAULTS['ModelExtension']):
-                    file_path = os.path.join(path, name)
-                    key = file_path \
-                        .replace(DEFAULTS['RootTFFiles'], '') \
-                        .replace(DEFAULTS['ModelExtension'], '')
-
-                    # Check if the key already exists in the dictionary
-                    if key in MODELPATHS:
-                        MODELPATHS[key]['Model'] = file_path
-                    else:
-                        MODELPATHS[key] = {'Model':file_path}
-                # This accounts for the bottleneck files that the training server creates
-                if name.endswith(DEFAULTS['LabelExtension']) and not name.endswith('.jpg' + DEFAULTS['LabelExtension']):
-                    file_path = os.path.join(path, name)
-                    key = file_path \
-                        .replace(DEFAULTS['RootTFFiles'], '') \
-                        .replace(DEFAULTS['LabelExtension'], '')
-
-                    # Check if the key already exists in the dictionary
-                    if key in MODELPATHS:
-                        MODELPATHS[key]['Label'] = file_path
-                    else:
-                        MODELPATHS[key] = {'Label':file_path}
-
-    return True
-
-@APP.route('/list-models')
-def list_models():
-    """ Return the available models in JSON format to the client. """
-    if update_models():
-        return jsonify(MODELPATHS)
-    else:
-        return make_response('error: defined model path does not contain any models', 500)
-
 @APP.route('/update-model')
 def download_model():
     """ Send the specified model to the client. """
     # Check that URL arguments have been included.
     if 'model-key' not in request.args:
         return make_response('error: model-key argument missing from URL', 400)
-    if 'model-time' not in request.args:
-        return make_response('error: model-time argument missing from URL', 400)
+    #if 'model-time' not in request.args:
+    #    return make_response('error: model-time argument missing from URL', 400)
 
-    # Update the model locations and check if new version of model exists.
-    if update_models():
-        key = request.args.get('model-key')
-        time = request.args.get('model-time')
-        path = MODELPATHS[key]['Model']
+    key = request.args.get('model-key')
+    time = request.args.get('model-time')
+    modelPath = DEFAULTS[key]
 
-        newer = check_time(path, time)
+    for path, subdirs, files in os.walk(modelPath):
+        for name in files:
+            if name.endswith(DEFAULTS['ModelExtension']):
+                path = os.path.join(path, name)
+                newer = check_time(path, time)
 
-        # Serve model file if newer, else return False.
-        if newer:
-            path, name = os.path.split(path)
-            return send_from_directory(path, name)
-        else:
-            return make_response('error: model file not found', 404)
-    else:
-        return make_response('error: model dictionary failed to update', 500)
+                # Serve model file if newer, else return False.
+                if newer:
+                    path, name = os.path.split(path)
+                    return send_from_directory(path, name)
+    return make_response('error: model file not found', 404)
 
 @APP.route('/update-label')
 def download_label():
@@ -289,88 +233,43 @@ def download_label():
     if 'model-time' not in request.args:
         return make_response('error: model-time argument missing from URL', 400)
 
-    # Update the model locations and check if new version of model exists.
-    if update_models():
-        key = request.args.get('model-key')
-        time = request.args.get('model-time')
-        path = MODELPATHS[key]['Label']
+    key = request.args.get('model-key')
+    time = request.args.get('model-time')
+    modelPath = DEFAULTS[key]
 
-        newer = check_time(path, time)
+    for path, subdirs, files in os.walk(modelPath):
+        for name in files:
+            if name.endswith(DEFAULTS['LabelExtension']):
+                if 'bottlenecks' not in path:
+                    newer = check_time(name, time)
 
-        if newer:
-            path, name = os.path.split(path)
-            return send_from_directory(path, name)
-        else:
-            return make_response('error: label file not found', 404)
-    else:
-        return make_response('error: model dictionary failed to update', 500)
+                    # Serve model file if newer, else return False.
+                    if newer:
+                        return send_from_directory(path, name, as_attachment=True)
+    return make_response('error: model file not found', 404)
 
 def check_time(path, time):
     """ Check the metadata of the model file to see if there is a new
     version available. """
     path, name = os.path.split(path)
-    server_time = re.findall('\\d+', name)[0]
+    digits = re.findall('\\d+', name)
+    if digits:
+        server_time = re.findall('\\d+', name)[-1]
 
-    if server_time > time:
-        return True
+        if server_time > time:
+            return True
+        else:
+            return False
     else:
         return False
 
-'''
-# Check if model has update
-@APP.route('/push-model-update')
-def push_model_update():
-    """ Send the model file to the client. """
-    return send_from_directory('tensorflow/examples/android/assets', \
-		'tensorflow_inception_graph.pb')
+@APP.route('/download-apk')
+def download_apk():
+    apk_path = DEFAULTS['APKPath']
 
-@APP.route('/push-label-update')
-def push_label_update():
-    """ Send the lable file to the client. """
-    return send_from_directory('tensorflow/examples/android/assets', \
-		'imagenet_comp_graph_label_strings.txt')
+    for path, subdirs, files in os.walk(apk_path):
+        for name in files:
+            if name.endswith('.apk'):
+                return send_from_directory(path, name, as_attachment=True)
 
-@APP.route('check-version')
-def check_version():
-    # Grab the URL arguments
-    update_available = False
-    client_mod_time = int(request.args.get('time-modified'))
-    client_size = int(request.args.get('size'))
-
-    # Grab the metadata for the model file in the server
-    file_info = os.stat('tensorflow/examples/android/assets/tensorflow_inception_graph.pb')
-    size = file_info[ST_SIZE]
-    mod_time = file_info[ST_MTIME]
-
-    # Debug lines
-    print 'client mod time: {0}, client size: {1}'.format(client_mod_time, client_size)
-    print 'server mod time: {0}, server size: {1}'.format(mod_time, size)
-
-    # Compare the last modified time first
-    if client_mod_time < mod_time:
-        print 'client mod time is older than server mod time'
-        update_available = True
-        return APP.response_class(
-            response=json.dumps(update_available),
-            status=200,
-            mimetype='application/json'
-        )
-
-    # Compare size if modified time is the same (which should not happen)
-    if client_size != size:
-        print 'client size is not the same as server size'
-        update_available = True
-        return APP.response_class(
-            response=json.dumps(update_available),
-            status=200,
-            mimetype='application/json'
-        )
-
-    # No update available, return false
-    print 'no update available'
-    return APP.response_class(
-        response=json.dumps(update_available),
-        status=200,
-        mimetype='application/json'
-    )
-'''
+    return make_response('error: apk file not found', 404)
