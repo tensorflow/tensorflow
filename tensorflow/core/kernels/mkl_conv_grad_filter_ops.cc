@@ -37,9 +37,9 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#include "tensorflow/core/util/mkl_util.h"
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -268,7 +268,7 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     MklShape input_shape, grad_filter_shape, out_backprop_shape;
     dnnPrimitive_t prim_conv_bwdfilter = nullptr, convert_bwdfilter = nullptr;
     dnnLayout_t lt_input = nullptr, lt_grad_filter = nullptr,
-        lt_out_backprop = nullptr;
+                lt_out_backprop = nullptr;
     void* conv_res[dnnResourceNumber];
 
     void MklCleanup() {
@@ -410,7 +410,7 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
 };
 
 #define REGISTER_MKL_FILTER_KERNELS(T)                              \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilter")           \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilter")          \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
