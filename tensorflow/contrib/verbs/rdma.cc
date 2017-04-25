@@ -477,7 +477,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.dest_qp_num = remoteAddr.qpn;
     attr.rq_psn = remoteAddr.psn;
     attr.max_dest_rd_atomic = 1;
-    attr.min_rnr_timer = 12;+    
+    attr.min_rnr_timer = 12;   
     attr.ah_attr.is_global = 1;
     attr.ah_attr.grh.dgid.global.subnet_prefix = remoteAddr.snp;
     attr.ah_attr.grh.dgid.global.interface_id = remoteAddr.iid;
