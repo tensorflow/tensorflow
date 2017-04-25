@@ -69,7 +69,7 @@ void RdmaMgr::SetupChannels() {
     channel_info->set_lid(rc->self_.lid);
     channel_info->set_qpn(rc->self_.qpn);
     channel_info->set_psn(rc->self_.psn);
-    channel_info->set_psn(rc->self_.gid);
+    channel_info->set_gid(rc->self_.gid);
     for (int i = 0; i < RdmaChannel::kNumMessageBuffers; i++) {
       MemoryRegion* mr = req.add_mr();
       mr->set_remote_addr(
