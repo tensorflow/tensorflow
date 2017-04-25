@@ -2404,6 +2404,17 @@ py_test(
 )
 
 py_test(
+    name = "tf_should_use_test",
+    size = "small",
+    srcs = ["util/tf_should_use_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+    ],
+)
+
+py_test(
     name = "tf_inspect_test",
     size = "small",
     srcs = ["util/tf_inspect_test.py"],
