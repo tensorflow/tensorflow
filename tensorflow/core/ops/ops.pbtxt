@@ -11514,7 +11514,7 @@ op {
     minimum: 1
   }
   summary: "Forwards the value of an available tensor from `inputs` to `output`."
-  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor for become available to `output`, and sets\n`value_index` to its index in `inputs`."
+  description: "`Merge` waits for at least one of the tensors in `inputs` to become available.\nIt is usually combined with `Switch` to implement branching.\n\n`Merge` forwards the first tensor to become available to `output`, and sets\n`value_index` to its index in `inputs`."
 }
 op {
   name: "MergeSummary"
