@@ -355,7 +355,7 @@ void MklReluGradOp<Device, T>::Compute(OpKernelContext* context) {
   mkl_context.MklCreateInputLayouts(context);
   float negative_slope = 0.0;
   CHECK_EQ(dnnReLUCreateBackward_F32(&mkl_context.prim_relu_bwd, NULL,
-                                     mkl_context.lt_grad, mkl_context.lt_input,
+                                     mkl_context.lt_grad, mkl_context.lt_grad,
                                      negative_slope),
            E_SUCCESS);
   Tensor mkl_tmp_grad_buf_tensor, mkl_tmp_input_buf_tensor;
