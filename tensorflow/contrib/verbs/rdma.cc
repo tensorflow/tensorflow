@@ -324,13 +324,15 @@ void RdmaChannel::SetRemoteAddress(const RdmaAddress& ra, bool override) {
     remote_.lid = ra.lid;
     remote_.qpn = ra.qpn;
     remote_.psn = ra.psn;
-    remote_.gid = ra.gid;
+    remote_.snp = ra.snp;
+    remote_.iid = ra.iid;
     remote_set_ = true;
   } else {
     CHECK(remote_.lid == ra.lid);
     CHECK(remote_.qpn == ra.qpn);
     CHECK(remote_.psn == ra.psn);
-    CHECK(remote_.gid == ra.gid);
+    CHECK(remote_.snp == ra.snp);
+    CHECK(remote_.iid == ra.iid);
   }
 }
 
