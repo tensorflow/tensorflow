@@ -102,6 +102,14 @@ class MklLRNOp : public OpKernel {
       return;
     }
 
+    if (depth_radius_ != 2) {
+      Tensor converted_tensor =
+          ConvertMklToTF<T>(context, input, mkl_context.input_shape);
+      mkl_context.MklDefaultToEigen(context, depth_radius_, bias_, alpha_,
+                                    beta_, converted_tensor);
+      return;
+    }
+
     if (input_in_mkl_format) {
       // MKL supports normalization over channel dimension only
       if (mkl_context.input_shape.tf_dim_idx(mkl_context.in_dims - 1) ==
@@ -110,8 +118,10 @@ class MklLRNOp : public OpKernel {
             static_cast<dnnLayout_t>(mkl_context.input_shape.GetCurLayout());
         workspace_enabled_ = true;
       } else {
+        Tensor converted_tensor =
+            ConvertMklToTF<T>(context, input, mkl_context.input_shape);
         mkl_context.MklDefaultToEigen(context, depth_radius_, bias_, alpha_,
-                                      beta_, input);
+                                      beta_, converted_tensor);
         return;
       }
     }
@@ -375,6 +385,12 @@ class MklLRNGradOp : public OpKernel {
       mkl_context.MklDefaultToEigen(context);
       return;
     }
+
+    if (depth_radius_ != 2) {
+      mkl_context.MklDefaultToEigen(context);
+      return;
+    }
+
     if (ingrad_in_mkl_format || inimage_in_mkl_format) {
       const MklShape* tmp_mkl_shape = (ingrad_in_mkl_format)
                                           ? &mkl_context.ingrad_shape
@@ -616,13 +632,35 @@ class MklLRNGradOp : public OpKernel {
     // copy.
     void MklDefaultToEigen(OpKernelContext* context) {
       // CHECK(false);
-      Tensor in_grads = MklGetInput(context, 0);
-      Tensor in_image = MklGetInput(context, 1);
-      Tensor out_image = MklGetInput(context, 2);
+
+      Tensor in_grads;
+      Tensor in_image;
+      Tensor out_image;
 
       GetMklShape(context, 0, &ingrad_shape);
       GetMklShape(context, 1, &inimage_shape);
       GetMklShape(context, 2, &outimage_shape);
+
+      if (ingrad_shape.IsMklTensor()) {
+        in_grads =
+            ConvertMklToTF<T>(context, MklGetInput(context, 0), ingrad_shape);
+      } else {
+        in_grads = MklGetInput(context, 0);
+      }
+
+      if (inimage_shape.IsMklTensor()) {
+        in_image =
+            ConvertMklToTF<T>(context, MklGetInput(context, 1), inimage_shape);
+      } else {
+        in_image = MklGetInput(context, 1);
+      }
+
+      if (outimage_shape.IsMklTensor()) {
+        out_image =
+            ConvertMklToTF<T>(context, MklGetInput(context, 2), outimage_shape);
+      } else {
+        out_image = MklGetInput(context, 2);
+      }
 
       const int64 batch = static_cast<int64>(in_grads.dim_size(0));
       const int64 rows = static_cast<int64>(in_grads.dim_size(1));
