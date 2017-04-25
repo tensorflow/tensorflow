@@ -46,7 +46,7 @@ def xavier_initializer(uniform=True, seed=None, dtype=dtypes.float32):
   Args:
     uniform: Whether to use uniform or normal distributed random initialization.
     seed: A Python integer. Used to create random seeds. See
-      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      [`set_random_seed`](../../../../../api_guides/python/constant_op#random-tensors)
       for behavior.
     dtype: The data type. Only floating point types are supported.
 
