@@ -1206,7 +1206,11 @@ class Operation(object):
     else:
       if not all(x.is_compatible_with(i.dtype)
                  for i, x in zip(self._inputs, input_types)):
-        raise TypeError("Inputs are not compatible with input types")
+        raise TypeError("In op '%s', input types (%s) are not compatible "
+                        "with expected types (%s)" % (
+                            self.node_def.name,
+                            [i.dtype for i in self._inputs],
+                            input_types))
     self._input_types = input_types
 
     # Build the list of control inputs.
