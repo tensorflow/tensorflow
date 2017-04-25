@@ -266,8 +266,9 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     int input_offsets[2];
     size_t conv_strides[2];
     MklShape input_shape, grad_filter_shape, out_backprop_shape;
-    dnnPrimitive_t prim_conv_bwdfilter, convert_bwdfilter;
-    dnnLayout_t lt_input, lt_grad_filter, lt_out_backprop;
+    dnnPrimitive_t prim_conv_bwdfilter = nullptr, convert_bwdfilter = nullptr;
+    dnnLayout_t lt_input = nullptr, lt_grad_filter = nullptr,
+        lt_out_backprop = nullptr;
     void* conv_res[dnnResourceNumber];
 
     void MklCleanup() {
