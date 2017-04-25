@@ -487,16 +487,13 @@ class Orthogonal(Initializer):
     flat_shape = (num_rows, num_cols)
 
     # Generate a random matrix
-    a = random_ops.random_uniform(flat_shape, dtype=dtype, seed=self.seed)
-    # Compute the svd
-    _, u, v = linalg_ops.svd(a, full_matrices=False)
-    # Pick the appropriate singular value decomposition
-    if num_rows > num_cols:
-      q = u
-    else:
-      # Tensorflow departs from numpy conventions
-      # such that we need to transpose axes here
-      q = array_ops.transpose(v)
+    a = random_ops.random_normal(flat_shape, dtype=dtype, seed=self.seed)
+    # Compute the qr factorization
+    q, r = linalg_ops.qr(a, full_matrices=False)
+    # Pad zeros to Q (if rows smaller than cols)
+    if num_rows < num_cols:
+      padding = array_ops.zeros([num_rows, num_cols - num_rows], dtype=dtype)
+      q = array_ops.concat([q, padding], 1)
     return self.gain * array_ops.reshape(q, shape)
 
   def get_config(self):
