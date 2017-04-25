@@ -1843,6 +1843,33 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 name=name)
 
 
+def max_pool1d(value, ksize, strides, padding, data_format="NHWC", name=None):
+  """Performs the max pooling on an input with one spatial dimension.
+
+  Args:
+    value: A 3-D `Tensor` with shape `[batch, width, channels]` and
+      type `tf.float32`.
+    ksize: A list of ints that has length 3.  The size of the window for
+      each dimension of the input tensor.
+    strides: A list of ints that has length 3.  The stride of the sliding
+      window for each dimension of the input tensor.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the @{tf.nn.convolution$comment here}
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    name: Optional name for the operation.
+
+  Returns:
+    A `Tensor` with type `tf.float32`.  The max pooled output tensor.
+  """
+  value_rsh = array_ops.reshape(value, [int(value.shape[0]), 1, int(value.shape[1]), int(value.shape[2])])
+  ksize_rsh = [ksize[0], 1,  ksize[1], ksize[2]]
+  strides_rsh = [strides[0], 1, strides[1], strides[2]]
+
+  pooled = max_pool(value_rsh, ksize_rsh, strides_rsh, padding, data_format, name)
+  result = array_ops.reshape(pooled, [int(pooled.shape[0]), int(pooled.shape[2]), int(pooled.shape[3])])
+  return result
+
+
 @ops.RegisterStatistics("Conv2D", "flops")
 def _calc_conv_flops(graph, node):
   """Calculates the compute resources needed for Conv2D."""
