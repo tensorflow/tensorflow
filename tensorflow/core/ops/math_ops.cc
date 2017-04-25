@@ -733,14 +733,18 @@ where \\(\psi(x)\\) is the digamma function.
 )doc");
 
 REGISTER_OP("Atan2")
-    .Input("x1: T")
-    .Input("x2: T")
+    .Input("y: T")
+    .Input("x: T")
     .Output("z: T")
     .Attr("T: {float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Computes arctangent of x1/x2 element-wise, respecting signs of the arguments.
-This is the angle of x2 + x1 * i.
+Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
+This is the angle \( \theta \in [-\pi, \pi] \) such that
+\[ x = r \cos(\theta) \]
+and
+\[ y = r \sin(\theta) \]
+where \(r = \sqrt(x^2 + y^2) \).
 )doc");
 
 REGISTER_OP("Betainc")
