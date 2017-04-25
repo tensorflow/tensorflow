@@ -301,9 +301,8 @@ def zero_fraction(value, name=None):
   This is useful in summaries to measure and report sparsity.  For example,
 
   ```python
-      z = tf.Relu(...)
-      summ = tf.contrib.deprecated.scalar_summary('sparsity',
-      tf.nn.zero_fraction(z))
+      z = tf.nn.relu(...)
+      summ = tf.summary.scalar('sparsity', tf.nn.zero_fraction(z))
   ```
 
   Args:

@@ -34,9 +34,9 @@ def xavier_initializer(uniform=True, seed=None, dtype=dtypes.float32):
   This function implements the weight initialization from:
 
   Xavier Glorot and Yoshua Bengio (2010):
-           Understanding the difficulty of training deep feedforward neural
+           [Understanding the difficulty of training deep feedforward neural
            networks. International conference on artificial intelligence and
-           statistics.
+           statistics.](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.207.2059&rep=rep1&type=pdf)
 
   This initializer is designed to keep the scale of the gradients roughly the
   same in all layers. In uniform distribution this ends up being the range:
