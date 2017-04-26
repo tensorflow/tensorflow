@@ -431,40 +431,40 @@ sf: vector of string, where each element is the string encoding of
 indices: vector of indices inside sf
 ids: vector of id extracted from the SparseFeatures proto.
 weights: vector of weight extracted from the SparseFeatures proto.
-)doc'),
-                R'proto(
+)doc"),
+                R"proto(
 input_arg {
-  name: 'sf'
-  description: 'vector of string, where each element is the string encoding of\nSparseFeatures proto.'
+  name: "sf"
+  description: "vector of string, where each element is the string encoding of\nSparseFeatures proto."
   type: DT_STRING
 }
 output_arg {
-  name: 'indices'
-  description: 'vector of indices inside sf'
+  name: "indices"
+  description: "vector of indices inside sf"
   type: DT_INT32
 }
 output_arg {
-  name: 'ids'
-  description: 'vector of id extracted from the SparseFeatures proto.'
+  name: "ids"
+  description: "vector of id extracted from the SparseFeatures proto."
   type: DT_INT64
 }
 output_arg {
-  name: 'weights'
-  description: 'vector of weight extracted from the SparseFeatures proto.'
+  name: "weights"
+  description: "vector of weight extracted from the SparseFeatures proto."
   type: DT_FLOAT
 }
-summary: 'Converts a vector of strings with dist_belief::SparseFeatures to tensors.'
-description: 'Note that indices, ids and weights are vectors of the same size and have\none-to-one correspondence between their elements. ids and weights are each\nobtained by sequentially concatenating sf[i].id and sf[i].weight, for i in\n1...size(sf). Note that if sf[i].weight is not set, the default value for the\nweight is assumed to be 1.0. Also for any j, if ids[j] and weights[j] were\nextracted from sf[i], then index[j] is set to i.'
-)proto');
+summary: "Converts a vector of strings with dist_belief::SparseFeatures to tensors."
+description: "Note that indices, ids and weights are vectors of the same size and have\none-to-one correspondence between their elements. ids and weights are each\nobtained by sequentially concatenating sf[i].id and sf[i].weight, for i in\n1...size(sf). Note that if sf[i].weight is not set, the default value for the\nweight is assumed to be 1.0. Also for any j, if ids[j] and weights[j] were\nextracted from sf[i], then index[j] is set to i."
+)proto");
 }
 
 TEST_F(OpDefBuilderTest, DocConcat) {
-  ExpectOrdered(b().Input('concat_dim: int32')
-                    .Input('values: num_values * dtype')
-                    .Output('output: dtype')
-                    .Attr('dtype: type')
-                    .Attr('num_values: int >= 2')
-                    .Doc(R'doc(
+  ExpectOrdered(b().Input("concat_dim: int32")
+                    .Input("values: num_values * dtype")
+                    .Output("output: dtype")
+                    .Attr("dtype: type")
+                    .Attr("num_values: int >= 2")
+                    .Doc(R"doc(
 Concatenate N Tensors along one dimension.
 
 concat_dim: The (scalar) dimension along which to concatenate.  Must be
@@ -474,71 +474,71 @@ values: The N Tensors to concatenate. Their ranks and types must match,
 output: A Tensor with the concatenation of values stacked along the
   concat_dim dimension.  This Tensor's shape matches the Tensors in
   values, except in concat_dim where it has the sum of the sizes.
-)doc'),
-                R'proto(
+)doc"),
+                R"proto(
 input_arg {
-  name: 'concat_dim'
-  description: 'The (scalar) dimension along which to concatenate.  Must be\nin the range [0, rank(values...)).'
+  name: "concat_dim"
+  description: "The (scalar) dimension along which to concatenate.  Must be\nin the range [0, rank(values...))."
   type: DT_INT32
 }
 input_arg {
-  name: 'values'
-  description: 'The N Tensors to concatenate. Their ranks and types must match,\nand their sizes must match in all dimensions except concat_dim.'
-  type_attr: 'dtype'
-  number_attr: 'num_values'
+  name: "values"
+  description: "The N Tensors to concatenate. Their ranks and types must match,\nand their sizes must match in all dimensions except concat_dim."
+  type_attr: "dtype"
+  number_attr: "num_values"
 }
 output_arg {
-  name: 'output'
-  description: 'A Tensor with the concatenation of values stacked along the\nconcat_dim dimension.  This Tensor\'s shape matches the Tensors in\nvalues, except in concat_dim where it has the sum of the sizes.'
-  type_attr: 'dtype'
+  name: "output"
+  description: "A Tensor with the concatenation of values stacked along the\nconcat_dim dimension.  This Tensor\'s shape matches the Tensors in\nvalues, except in concat_dim where it has the sum of the sizes."
+  type_attr: "dtype"
 }
-summary: 'Concatenate N Tensors along one dimension.'
+summary: "Concatenate N Tensors along one dimension."
 attr {
-  name: 'dtype'
-  type: 'type'
+  name: "dtype"
+  type: "type"
 }
 attr {
-  name: 'num_values'
-  type: 'int'
+  name: "num_values"
+  type: "int"
   has_minimum: true
   minimum: 2
 }
-)proto');
+)proto");
 }
 
 TEST_F(OpDefBuilderTest, DocAttr) {
-  ExpectOrdered(b().Attr('i: int').Doc(R'doc(
+  ExpectOrdered(b().Attr("i: int").Doc(R"doc(
 Summary
 
 i: How much to operate.
-)doc'),
-                R'proto(
-summary: 'Summary'
+)doc"),
+                R"proto(
+summary: "Summary"
 attr {
-  name: 'i'
-  type: 'int'
-  description: 'How much to operate.'
+  name: "i"
+  type: "int"
+  description: "How much to operate."
 }
-)proto');
+)proto");
 }
 
 TEST_F(OpDefBuilderTest, DocCalledTwiceFailure) {
-  ExpectFailure(b().Doc('What's').Doc('up, doc?'),
-                'Extra call to Doc() for Op Test');
+  ExpectFailure(b().Doc("What's").Doc("up, doc?"),
+                "Extra call to Doc() for Op Test");
 }
 
 TEST_F(OpDefBuilderTest, DocFailureMissingName) {
   ExpectFailure(
-      b().Input('a: int32').Doc(R'doc(
+      b().Input("a: int32").Doc(R"doc(
 Summary
 
 a: Something for a.
 b: b is not defined.
-)doc'),
-      'No matching input/output/attr for name 'b' from Doc() for Op Test');
+)doc"),
+      "No matching input/output/attr for name 'b' from Doc() for Op Test");
 
   ExpectFailure(
-      b().Input('a: int32').Doc(R'doc(
+      b().Input("a: int32").Doc(R"doc(
 Summary
 
 b: b is not defined and by itself.
