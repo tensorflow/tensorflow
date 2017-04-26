@@ -16,13 +16,31 @@ limitations under the License.
 -->
 
 <link rel="import" href="polymer/polymer.html">
+<link rel="import" href="paper-styles/paper-styles.html">
 
-<!--
-tf-color-scale is a plumbing component that takes in an array of runs, and produces
-an upward-bindable outColorScale, which is a color scale mapping from those runs to
-a set of colors.
+<dom-module id="scrollbar-style">
+  <template>
+    <style>
+      .scrollbar::-webkit-scrollbar-track
+      {
+        visibility: hidden;
+      }
 
-@element tf-color-scale
--->
-<dom-module id="tf-color-scale">
+      .scrollbar::-webkit-scrollbar
+      {
+        width: 10px;
+      }
+
+      .scrollbar::-webkit-scrollbar-thumb
+      {
+        border-radius: 10px;
+        -webkit-box-shadow: inset 0 0 2px rgba(0,0,0,.3);
+        background-color: var(--paper-grey-500);
+        color: var(--paper-grey-900);
+      }
+      .scrollbar {
+        box-sizing: border-box;
+      }
+    </style>
+  </template>
 </dom-module>

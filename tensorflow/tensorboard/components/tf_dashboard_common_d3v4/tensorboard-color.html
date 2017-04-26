@@ -17,12 +17,16 @@ limitations under the License.
 
 <link rel="import" href="polymer/polymer.html">
 
-<!--
-tf-color-scale is a plumbing component that takes in an array of runs, and produces
-an upward-bindable outColorScale, which is a color scale mapping from those runs to
-a set of colors.
+<style is="custom-style">
 
-@element tf-color-scale
--->
-<dom-module id="tf-color-scale">
-</dom-module>
+  :root {
+    --tb-orange-weak: #ffa726;
+    --tb-orange-strong: #f57c00;
+    --tb-grey-darker: #e2e2e2;
+    --tb-grey-lighter: #f3f3f3;
+    --tb-ui-dark-accent: #757575;
+    --tb-ui-light-accent: #e0e0e0;
+    --tb-graph-faded: #e0d4b3;
+  }
+
+</style>
