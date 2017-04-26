@@ -257,9 +257,8 @@ class LiteralUtil {
   // like representation in a protobuf).
   static void EachCellAsString(
       const Literal& literal,
-      std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
-                         const string& value)>
-          per_cell);
+      const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
+                               const string& value)>& per_cell);
   template <typename NativeT>
   static void EachCell(
       const Literal& literal,

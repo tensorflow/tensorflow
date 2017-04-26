@@ -680,9 +680,8 @@ void TransposeLiteralInternal(const Literal& original,
 
 /* static */ void LiteralUtil::EachCellAsString(
     const Literal& literal,
-    std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
-                       const string& value)>
-        per_cell) {
+    const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
+                             const string& value)>& per_cell) {
   if (ShapeUtil::Rank(literal.shape()) == 1) {
     for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
       per_cell({i0}, GetAsString(literal, {i0}));
