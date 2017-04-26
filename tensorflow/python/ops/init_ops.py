@@ -40,6 +40,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import math_ops
 
 
 class Initializer(object):
@@ -490,6 +491,11 @@ class Orthogonal(Initializer):
     a = random_ops.random_normal(flat_shape, dtype=dtype, seed=self.seed)
     # Compute the qr factorization
     q, r = linalg_ops.qr(a, full_matrices=False)
+    # Make q uniform
+    square_len = math_ops.minimum(num_rows, num_cols)
+    d = array_ops.diag_part(r[:square_len, :square_len])
+    ph = d / math_ops.abs(d)
+    q *= ph
     # Pad zeros to Q (if rows smaller than cols)
     if num_rows < num_cols:
       padding = array_ops.zeros([num_rows, num_cols - num_rows], dtype=dtype)
