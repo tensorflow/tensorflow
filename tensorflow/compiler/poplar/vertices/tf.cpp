@@ -184,29 +184,6 @@ template class Clamp<float>;
 template class Clamp<half>;
 template class Clamp<int>;
 
-// Dot product
-template <typename T>
-class Dot : public Vertex {
-public:
-  Input<Vector<T>> a;
-  Input<Vector<T>> b;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    T sum = 0;
-    for (unsigned i = 0; i < a.size(); ++i)
-      sum += a[i] * b[i];
-    out[0] = sum;
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class Dot<float>;
-template class Dot<half>;
-template class Dot<int>;
-
 // Random
 
 template<typename T>
