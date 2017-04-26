@@ -2347,6 +2347,7 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_grad",
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],

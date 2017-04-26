@@ -111,6 +111,7 @@ py_library(
     srcs = ["cli/tensor_format.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":debug_data",
         ":debugger_cli_common",
         "//third_party/py/numpy",
     ],
