@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 
@@ -164,3 +165,28 @@ def constant_value(pred):
   else:
     raise TypeError('`pred` must be a Tensor, a Variable, or a Python bool.')
   return pred_value
+
+
+def get_deconv_dim(dim_size, stride_size, kernel_size, padding):
+  """Return output dimension of a deconv layer, based on input dimension.
+
+  Arguments:
+    dim_size: An int representing size of dimension, can be height, width
+      or depth.
+    stride_size: An int representing the stride of deconvolution filters
+      along the same dimension.
+    kernel_size: An int representing size of deconv kernel (filter) along
+      the same dimension.
+    padding: one of `"valid"` or `"same"` (case-insensitive).
+
+  Returns:
+    An int representing the size of output dimension of the layer.
+  """
+  if isinstance(dim_size, ops.Tensor):
+    dim_size = math_ops.multiply(dim_size, stride_size)
+  elif dim_size is not None:
+    dim_size *= stride_size
+
+  if padding == 'valid' and dim_size is not None:
+    dim_size += max(kernel_size - stride_size, 0)
+  return dim_size
