@@ -139,7 +139,7 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0) {
   RunCopyInsertionPass();
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
-  EXPECT_TRUE(result.ok());
+  ASSERT_TRUE(result.ok());
   // Check results.
   EXPECT_THAT(result.ConsumeValueOrDie(),
               Eq(std::tuple<int64, int64, int64>(0, 10, 1)));
@@ -156,7 +156,7 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
   RunCopyInsertionPass();
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
-  EXPECT_TRUE(result.ok());
+  ASSERT_TRUE(result.ok());
   // Check results.
   EXPECT_THAT(result.ConsumeValueOrDie(),
               Eq(std::tuple<int64, int64, int64>(0, 10, 1)));
@@ -173,7 +173,7 @@ TEST_F(WhileTransformerTest, InvalidLoopLimit) {
   RunCopyInsertionPass();
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
-  EXPECT_FALSE(result.ok());
+  ASSERT_FALSE(result.ok());
   EXPECT_THAT(result.status().error_message(),
               HasSubstr("Loop start must be less than loop limit."));
 }
@@ -189,7 +189,7 @@ TEST_F(WhileTransformerTest, InvalidLoopIncrement) {
   RunCopyInsertionPass();
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
-  EXPECT_FALSE(result.ok());
+  ASSERT_FALSE(result.ok());
   EXPECT_THAT(result.status().error_message(),
               HasSubstr("Loop increment must greater than zero."));
 }

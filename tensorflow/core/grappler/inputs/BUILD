@@ -13,12 +13,18 @@ filegroup(
 )
 
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = glob(
         [
             "utils.*",
         ],
     ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
     visibility = ["//tensorflow:__subpackages__"],
 )
 

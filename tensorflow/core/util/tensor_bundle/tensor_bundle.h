@@ -108,7 +108,6 @@ extern const char* const kHeaderEntryKey;
 class BundleWriter {
  public:
   BundleWriter(Env* env, StringPiece prefix);
-  ~BundleWriter();
 
   // Adds the tensor "val" under key "key".
   // Across calls "key" must be unique but can be added in any order.

@@ -25,6 +25,7 @@ See the @{$python/tfdbg} guide.
 @@has_inf_or_nan
 @@DumpingDebugHook
 @@DumpingDebugWrapperSession
+@@GrpcDebugHook
 @@GrpcDebugWrapperSession
 @@LocalCLIDebugHook
 @@LocalCLIDebugWrapperSession
@@ -49,6 +50,7 @@ from tensorflow.python.debug.wrappers.dumping_wrapper import DumpingDebugWrapper
 from tensorflow.python.debug.wrappers.framework import WatchOptions
 from tensorflow.python.debug.wrappers.grpc_wrapper import GrpcDebugWrapperSession
 from tensorflow.python.debug.wrappers.hooks import DumpingDebugHook
+from tensorflow.python.debug.wrappers.hooks import GrpcDebugHook
 from tensorflow.python.debug.wrappers.hooks import LocalCLIDebugHook
 from tensorflow.python.debug.wrappers.local_cli_wrapper import LocalCLIDebugWrapperSession
 

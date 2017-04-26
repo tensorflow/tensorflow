@@ -75,7 +75,7 @@ suite('graph', () => {
 
             tf.graph.parser.parseStatsPbTxt(statsPbtxt).then(stepStats => {
               tf.graph.joinStatsInfoWithGraph(slimGraph, stepStats);
-              assert.equal(slimGraph.nodes['Q'].stats.totalMicros, 6);
+              assert.equal(slimGraph.nodes['Q'].stats.getTotalMicros(), 6);
               done();
             });
           });

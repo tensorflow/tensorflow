@@ -252,7 +252,7 @@ class BeamSearchDecoderTest(test.TestCase):
         cell = attention_wrapper.AttentionWrapper(
             cell=cell,
             attention_mechanism=attention_mechanism,
-            attention_size=attention_depth,
+            attention_layer_size=attention_depth,
             alignment_history=False)
       cell_state = cell.zero_state(
           dtype=dtypes.float32, batch_size=batch_size * beam_width)
