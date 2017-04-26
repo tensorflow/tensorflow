@@ -326,6 +326,13 @@ class MklLRNOp : public OpKernel {
       dnnLayoutDelete_F32(lt_internal_input);
       dnnLayoutDelete_F32(lt_internal_workspace);
       dnnLayoutDelete_F32(lt_internal_output);
+
+// TODO(intelft) Why is code not used ?
+#if 0
+      if (!input_in_mkl_format) {
+        dnnLayoutDelete_F32(mkl_prims.lt_input);
+      }
+#endif
     }
   } MklLRNOpContext;
 
@@ -502,14 +509,11 @@ class MklLRNGradOp : public OpKernel {
     MklShape ingrad_shape, inimage_shape, outimage_shape;
     dnnPrimitive_t lrn_bwd = nullptr;
     dnnPrimitive_t convert_input = nullptr;
-    /* dnnPrimitive_t convert_output; */
     dnnLayout_t lt_input = nullptr;
     dnnLayout_t lt_output = nullptr;
     dnnLayout_t lt_bdw_input = nullptr;
     dnnLayout_t lt_workspace = nullptr;
     dnnLayout_t lt_internal_input = nullptr;
-    /* dnnLayout_t lt_internal_workspace;
-    dnnLayout_t lt_internal_output; */
     void* res_lrn_bwd[dnnResourceNumber];
 
     // prepare mkl input
