@@ -28,7 +28,8 @@
         android:id="@+id/results"
         android:layout_width="match_parent"
         android:layout_height="112dp"
-        android:layout_alignParentTop="true" />
+        android:layout_alignParentTop="true"
+        android:background="@android:color/darker_gray" />
 
     <org.tensorflow.demo.OverlayView
         android:id="@+id/debug_overlay"
@@ -54,6 +55,7 @@
         android:layout_alignParentEnd="true"
         android:layout_alignTop="@+id/cameraFloatingActionButton"
         android:layout_marginEnd="26dp"
+        android:background="@android:color/holo_green_light"
         android:text="Model Select"
         android:textSize="12sp" />
 

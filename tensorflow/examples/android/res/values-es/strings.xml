@@ -10,6 +10,7 @@
     <string name="request_permission">Esta muestra requiere permiso de cámara.</string>
     <string name="update_model">Actualizar el modelo</string>
     <string name="classify">Clasificar</string>
+    <string name="instruction">instrucción</string>
     <string name="about_project">Esta aplicación provee una herramenta para identificar la especie de una planta usando una imagen de las hojas de la planta.</string>
     <string name="previous_classifications">Historia</string>
     <string name="capture_images">Tomar Fotos</string>

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/holo_blue_light"
+    android:orientation="vertical"
+    android:weightSum="1">
+
+    <TextView
+        android:id="@+id/instruction_title"
+        android:layout_width="match_parent"
+        android:layout_height="150sp"
+        android:gravity="center"
+        android:text="@string/instruction"
+        android:textAlignment="center"
+        android:textSize="30sp" />
+
+    <TextView
+        android:id="@+id/classify_instruction_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Classify"
+        android:textSize="20sp" />
+
+    <TextView
+        android:id="@+id/classify_instruction_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight="0.14" />
+
+    <TextView
+        android:id="@+id/capture_instruction_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Capture"
+        android:textSize="20sp" />
+
+    <TextView
+        android:id="@+id/capture_instruction_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight="0.16" />
+
+    <TextView
+        android:id="@+id/update_model_instruction_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Update Model"
+        android:textSize="20sp" />
+
+    <TextView
+        android:id="@+id/update_model_instruction_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight="0.26" />
+</LinearLayout>

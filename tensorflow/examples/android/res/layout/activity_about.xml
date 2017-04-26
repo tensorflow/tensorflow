@@ -4,69 +4,87 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@android:color/holo_green_dark"
     tools:context="org.tensorflow.demo.AboutActivity">
 
     <LinearLayout
-        android:layout_width="395dp"
-        android:layout_height="587dp"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginStart="8dp"
         android:orientation="vertical"
-        tools:layout_editor_absoluteY="8dp"
-        tools:layout_editor_absoluteX="8dp"
         android:paddingLeft="10dp"
-        android:paddingRight="10dp">
+        android:paddingRight="10dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:layout_constraintBottom_creator="1"
+        tools:layout_constraintLeft_creator="1"
+        tools:layout_constraintRight_creator="1"
+        tools:layout_constraintTop_creator="1"
+        tools:layout_height="match_parent">
 
         <TextView
             android:id="@+id/about_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="@null"
             android:ems="10"
-            android:textSize="24dp"
-            android:textStyle="bold"
             android:gravity="center"
             android:inputType="textCapWords"
-            android:background="@null"
             android:text="@string/about"
-            tools:layout_editor_absoluteY="0dp"
-            tools:layout_editor_absoluteX="8dp" />
+            android:textAlignment="center"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            tools:layout_editor_absoluteX="8dp"
+            tools:layout_editor_absoluteY="0dp" />
 
         <TextView
             android:id="@+id/about_project"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingTop="12dp"
-            android:paddingBottom="12dp"
-            android:ems="10"
-            android:inputType="textMultiLine"
+            android:layout_gravity="center"
             android:background="@null"
+            android:ems="10"
+            android:gravity="center"
+            android:inputType="textMultiLine"
+            android:paddingBottom="12dp"
+            android:paddingLeft="10dp"
+            android:paddingTop="12dp"
             android:text="@string/about_project"
-            tools:layout_editor_absoluteY="0dp"
-            tools:layout_editor_absoluteX="8dp" />
+            android:textAlignment="center"
+            tools:layout_editor_absoluteX="8dp"
+            tools:layout_editor_absoluteY="0dp" />
 
         <TextView
             android:id="@+id/about_developers_heading"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="@null"
             android:ems="10"
-            android:textSize="24dp"
-            android:textStyle="bold"
             android:gravity="center"
             android:inputType="textCapWords"
-            android:background="@null"
             android:text="@string/developers"
-            tools:layout_editor_absoluteY="0dp"
-            tools:layout_editor_absoluteX="8dp" />
+            android:textAlignment="center"
+            android:textSize="24dp"
+            android:textStyle="bold"
+            tools:layout_editor_absoluteX="8dp"
+            tools:layout_editor_absoluteY="0dp" />
 
         <TextView
-            android:layout_gravity="center"
-            android:layout_width="200dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingTop="12dp"
-            android:paddingBottom="12dp"
-            android:ems="10"
-            android:inputType="textMultiLine"
+            android:layout_gravity="center"
             android:background="@null"
+            android:ems="10"
+            android:gravity="center"
+            android:inputType="textMultiLine"
+            android:paddingBottom="12dp"
+            android:paddingTop="12dp"
             android:text="Alejandro Suazo\nDakota Smith\nDenishkumar Patel\nDimas Gonzales\nMatthew Zauber\nOvidio Henriquez"
-            tools:layout_editor_absoluteY="0dp"
-            tools:layout_editor_absoluteX="8dp" />
+            android:textAlignment="center"
+            tools:layout_editor_absoluteX="8dp"
+            tools:layout_editor_absoluteY="0dp" />
     </LinearLayout>
 </android.support.constraint.ConstraintLayout>

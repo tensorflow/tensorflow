@@ -2,6 +2,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="?android:attr/colorPressedHighlight"
     android:gravity="center_horizontal"
     android:orientation="vertical"
     android:paddingBottom="@dimen/activity_vertical_margin"
@@ -36,8 +37,7 @@
                 android:layout_height="wrap_content"
                 android:hint="@string/prompt_upload"
                 android:inputType="textEmailAddress"
-                android:maxLines="1"
-                />
+                android:maxLines="1" />
 
             <Button
                 android:id="@+id/upload_button"
@@ -45,6 +45,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
+                android:background="@android:color/holo_blue_dark"
                 android:text="@string/action_upload"
                 android:textStyle="bold" />
 

@@ -8,6 +8,7 @@
     <string name="request_permission">This sample needs camera permission.</string>
     <string name="update_model">Update model</string>
     <string name="classify">Classify</string>
+    <string name="instruction">Instruction</string>
     <string name="about_project">This app aims to provide a tool to identify the species of a plant by taking a picture of the plant\'s leaves.</string>
     <string name="previous_classifications">History</string>
     <string name="capture_images">Capture</string>

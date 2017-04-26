@@ -7,20 +7,39 @@
     tools:context="org.tensorflow.demo.MainActivity">
 
     <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="500dp"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
         android:layout_gravity="center"
+        android:layout_marginTop="5dp"
         android:gravity="center"
         android:orientation="vertical"
-        tools:layout_editor_absoluteX="34dp"
-        tools:layout_editor_absoluteY="5dp">
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.0"
+        tools:layout_constraintLeft_creator="1"
+        tools:layout_constraintRight_creator="1"
+        tools:layout_constraintTop_creator="1"
+        app:layout_constraintRight_toRightOf="parent">
+
+        <Button
+            android:id="@+id/instruction_button"
+            style="@style/Widget.AppCompat.Button"
+            android:layout_width="match_parent"
+            android:layout_height="200sp"
+            android:layout_weight="1"
+            android:background="?android:attr/colorActivatedHighlight"
+            android:onClick="instructions"
+            android:text="@string/instruction"
+            android:textColor="@android:color/background_light"
+            android:textSize="24dp" />
 
         <Button
             android:id="@+id/classify_button"
             style="@style/Widget.AppCompat.Button"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="200sp"
             android:layout_weight="1"
+            android:background="@android:color/holo_purple"
             android:gravity="center"
             android:onClick="classify"
             android:text="@string/classify"
@@ -31,10 +50,12 @@
             android:id="@+id/capture_button"
             style="@style/Widget.AppCompat.Button"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="200sp"
             android:layout_weight="1"
+            android:background="@android:color/darker_gray"
             android:onClick="capture"
             android:text="@string/capture_images"
             android:textSize="24dp" />
+
     </LinearLayout>
 </android.support.constraint.ConstraintLayout>

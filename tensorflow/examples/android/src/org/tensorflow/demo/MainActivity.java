@@ -32,6 +32,11 @@ public class MainActivity extends AppCompatActivity implements DownloadCallback 
         mNetworkFragment = NetworkFragment.getInstance(getSupportFragmentManager(), serverUrl);
     }
 
+    public void instructions(View view) {
+        Intent intent = new Intent(this, InstructionActivity.class);
+        startActivity(intent);
+    }
+
     /*
      * Change to the Classify activity when the button is pressed.
      */

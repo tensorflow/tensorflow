@@ -1,8 +1,8 @@
 <component name="libraryTable">
   <library name="support-compat-25.2.0">
     <CLASSES>
-      <root url="file://$PROJECT_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-compat/25.2.0/res" />
-      <root url="jar://$PROJECT_DIR$/gradleBuild/intermediates/exploded-aar/com.android.support/support-compat/25.2.0/jars/classes.jar!/" />
+      <root url="file://$USER_HOME$/.android/build-cache/93d509cfbb4bd39ed127386e4c1d1661d00bdcac/output/res" />
+      <root url="jar://$USER_HOME$/.android/build-cache/93d509cfbb4bd39ed127386e4c1d1661d00bdcac/output/jars/classes.jar!/" />
     </CLASSES>
     <JAVADOC />
     <SOURCES>

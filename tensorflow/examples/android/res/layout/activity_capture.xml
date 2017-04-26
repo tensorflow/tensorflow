@@ -9,6 +9,7 @@
         android:layout_height="wrap_content"
         android:layout_above="@+id/btn_takepicture"
         android:layout_alignParentTop="true"/>
+
     <Button
         android:id="@+id/btn_takepicture"
         android:layout_width="wrap_content"
@@ -17,5 +18,6 @@
         android:layout_centerHorizontal="true"
         android:layout_marginBottom="16dp"
         android:layout_marginTop="16dp"
+        android:background="@android:color/holo_purple"
         android:text="Capture" />
 </RelativeLayout>
