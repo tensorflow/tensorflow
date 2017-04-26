@@ -370,16 +370,17 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackprop_Positive) {
       " input: ['E'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(Input);D(_MklConv2DWithBias);DMT/_0(Const);"
-            "E(Sub);F(_MklConv2DWithBiasBackpropBias);M(_MklInput);N(_MklInput);"
-            "O(_MklInput)|A->D;A->E:1;B->D:1;C->D:2;D->E;DMT/_0->F:1;E->F;"
-            "E:control->DMT/_0:control;M->D:3;N->D:4;O->D:5");
+            "E(Sub);F(_MklConv2DWithBiasBackpropBias);M(_MklInput);"
+            "N(_MklInput);O(_MklInput)|A->D;A->E:1;B->D:1;C->D:2;D->E;"
+            "DMT/_0->F:1;E->F;E:control->DMT/_0:control;M->D:3;N->D:4;"
+            "O->D:5");
 }
 
 // No _MklConv2DWithBias in context, but _MklConv2D in context.
 // No rewrite for BiasAddGrad should happen.
 // C=_MklConv2D(A,M,B,N); D=Sub(C,A); E=BiasAddGrad(D) (for interleaved)
 // C=_MklConv2D(A,B,M,N); D=Sub(C,A); E=BiasAddGrad(D) (for contiguous)
-TEST_F(_MklLayoutPassTest, NodeMerge_Conv2DBackprop_Neg_NoMklConv2DWithBias) {
+TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackprop_Neg_NoMklConv2DWithBias) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Input'}"
@@ -514,9 +515,10 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2D_Basic) {
       "node { name: 'D' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(_MklConv2D);D(Mul);DMT/_0(Const);DMT/_1(Const)|"
-            "A->C;A:control->DMT/_0:control;A:control->DMT/_1:control;B->C:1;"
-            "B->D;C->D:1;DMT/_0->C:2;DMT/_1->C:3");
+            "A(Input);B(Input);C(_MklConv2D);D(Mul);DMT/_0(Const);"
+            "DMT/_1(Const)|A->C;A:control->DMT/_0:control;"
+            "A:control->DMT/_1:control;B->C:1;B->D;C->D:1;DMT/_0->C:2;"
+            "DMT/_1->C:3");
 }
 
 // 2 Conv2D Ops in sequence. Both should get transformed and 1st Conv2D will
@@ -583,7 +585,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2DGradFilter_Positive) {
       "node { name: 'E' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Int32Input);C(Input);D(MklConv2DBackpropFilter);"
+            "A(Input);B(Int32Input);C(Input);D(_MklConv2DBackpropFilter);"
             "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Mul)|"
             "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"
             "A:control->DMT/_2:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"
@@ -605,7 +607,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2DGradInput_Positive) {
       "node { name: 'E' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Int32Input);C(Input);D(MklConv2DBackpropInput);"
+            "A(Input);B(Int32Input);C(Input);D(_MklConv2DBackpropInput);"
             "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Mul)|"
             "A->D:1;A->E;B->D;B:control->DMT/_0:control;"
             "B:control->DMT/_1:control;B:control->DMT/_2:control;C->D:2;"
@@ -832,7 +834,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Relu_Positive) {
       "node { name: 'C' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'B'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(MklRelu);C(Mul);DMT/_0(Const)|A->B;A->C;"
+            "A(Input);B(_MklRelu);C(Mul);DMT/_0(Const)|A->B;A->C;"
             "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");
 }
 
@@ -846,7 +848,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ReluGrad_Positive) {
       "node { name: 'D' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'C'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(MklReluGrad);D(Mul);DMT/_0(Const);"
+            "A(Input);B(Input);C(_MklReluGrad);D(Mul);DMT/_0(Const);"
             "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"
             "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");
 }
@@ -863,7 +865,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ReluReluGrad_Positive) {
       "node { name: 'D' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'C'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(MklRelu);C(MklReluGrad);D(Mul);DMT/_0(Const);"
+            "A(Input);B(_MklRelu);C(_MklReluGrad);D(Mul);DMT/_0(Const);"
             "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"
             "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"
             "DMT/_1->C:2");
@@ -882,7 +884,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_AvgPool_Positive) {
       "node { name: 'C' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'B'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(MklAvgPool);C(Mul);DMT/_0(Const)|A->B;A->C;"
+            "A(Input);B(_MklAvgPool);C(Mul);DMT/_0(Const)|A->B;A->C;"
             "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");
 }
 
@@ -900,7 +902,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_AvgPoolGrad_Positive) {
       "node { name: 'D' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Int32Input);B(Input);C(MklAvgPoolGrad);D(Mul);DMT/_0(Const);"
+            "A(Int32Input);B(Input);C(_MklAvgPoolGrad);D(Mul);DMT/_0(Const);"
             "DMT/_1(Const)|A->C;A:control->DMT/_0:control;"
             "A:control->DMT/_1:control;B->C:1;B->D;C->D:1;DMT/_0->C:2;"
             "DMT/_1->C:3");
@@ -927,7 +929,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_AvgPoolAvgPoolGrad_Positive) {
       "node { name: 'D' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'C'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(MklAvgPool);C(MklAvgPoolGrad);D(Mul);DMT/_0(Const);"
+            "A(Input);B(_MklAvgPool);C(_MklAvgPoolGrad);D(Mul);DMT/_0(Const);"
             "DMT/_1(Const);I(Int32Input)|A->B;A->D;A:control->DMT/_0:control;"
             "B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;DMT/_1->C:2;I->C;"
             "I:control->DMT/_1:control");
@@ -951,7 +953,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormGrad_Positive) {
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
             "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(Input);"
-            "F(MklFusedBatchNormGrad);G(Mul)|A->F;A->G;"
+            "F(_MklFusedBatchNormGrad);G(Mul)|A->F;A->G;"
             "A:control->DMT/_0:control;A:control->DMT/_1:control;"
             "A:control->DMT/_2:control;A:control->DMT/_3:control;"
             "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"
@@ -977,7 +979,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNorm_Positive) {
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
             "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(Input);"
-            "F(MklFusedBatchNorm);G(Mul)|A->F;A->G;"
+            "F(_MklFusedBatchNorm);G(Mul)|A->F;A->G;"
             "A:control->DMT/_0:control;A:control->DMT/_1:control;"
             "A:control->DMT/_2:control;A:control->DMT/_3:control;"
             "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"
@@ -1030,11 +1032,11 @@ TEST_F(MklLayoutPassTest, MaxPoolLRN_Positive) {
       " input: ['H', 'G'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
       "A(Input);B(_MklLRN);C(_MklMaxPool);D(Input);DMT/_0(Const);DMT/_1(Const);"
-      "DMT/_2(Const);E(_MklMaxPoolGrad);F(Input);G(_MklLRNGrad);H(Input);I(Mul)|"
-      "A->B;A:control->DMT/_0:control;B->C;B->E;B->G:2;B:1->G:3;B:2->C:1;"
-      "B:2->E:4;B:2->G:6;B:3->G:7;B:control->DMT/_1:control;C->E:1;C:1->E:3;"
-      "C:2->E:5;C:3->E:7;D->E:2;DMT/_0->B:1;DMT/_1->E:6;DMT/_2->G:5;E->G;"
-      "E:1->G:4;E:control->DMT/_2:control;F->G:1;G->I:1;H->I");
+      "DMT/_2(Const);E(_MklMaxPoolGrad);F(Input);G(_MklLRNGrad);H(Input);"
+      "I(Mul)|A->B;A:control->DMT/_0:control;B->C;B->E;B->G:2;B:1->G:3;"
+      "B:2->C:1;B:2->E:4;B:2->G:6;B:3->G:7;B:control->DMT/_1:control;C->E:1;"
+      "C:1->E:3;C:2->E:5;C:3->E:7;D->E:2;DMT/_0->B:1;DMT/_1->E:6;DMT/_2->G:5;"
+      "E->G;E:1->G:4;E:control->DMT/_2:control;F->G:1;G->I:1;H->I");
 }
 
 /* Test LRN->LRNGrad replacement by workspace nodes. */
@@ -1405,10 +1407,10 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackprop_DeviceTest) {
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Input'}"
       "node { name: 'C' op: 'Input'}"
-      "node { name: 'M' op: 'MklInput'}"
-      "node { name: 'N' op: 'MklInput'}"
-      "node { name: 'O' op: 'MklInput'}"
-      "node { name: 'D' op: 'MklConv2DWithBias'"
+      "node { name: 'M' op: '_MklInput'}"
+      "node { name: 'N' op: '_MklInput'}"
+      "node { name: 'O' op: '_MklInput'}"
+      "node { name: 'D' op: '_MklConv2DWithBias'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
@@ -1423,9 +1425,9 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DBackprop_DeviceTest) {
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " input: ['E'] }", kGPUDevice);
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(Input);D(MklConv2DWithBias);"
-            "E(Sub);F(BiasAddGrad);M(MklInput);N(MklInput);"
-            "O(MklInput)|A->D;A->E:1;B->D:1;C->D:2;D->E;E->F;"
+            "A(Input);B(Input);C(Input);D(_MklConv2DWithBias);"
+            "E(Sub);F(BiasAddGrad);M(_MklInput);N(_MklInput);"
+            "O(_MklInput)|A->D;A->E:1;B->D:1;C->D:2;D->E;E->F;"
             "M->D:3;N->D:4;O->D:5");
 }
 
@@ -1575,9 +1577,9 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_DeviceTest) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Input'}"
-      "node { name: 'M' op: 'MklInput'}"
-      "node { name: 'N' op: 'MklInput'}"
-      "node { name: 'C' op: 'MklConv2D'"
+      "node { name: 'M' op: '_MklInput'}"
+      "node { name: 'N' op: '_MklInput'}"
+      "node { name: 'C' op: '_MklConv2D'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
@@ -1594,8 +1596,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_DeviceTest) {
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}", kGPUDevice);
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Input);C(MklConv2D);D(Input);E(BiasAdd);"
-            "M(MklInput);N(MklInput);Y(Input);Z(Sub)|A->C;"
+            "A(Input);B(Input);C(_MklConv2D);D(Input);E(BiasAdd);"
+            "M(_MklInput);N(_MklInput);Y(Input);Z(Sub)|A->C;"
             "B->C:1;C->E;D->E:1;E->Z;M->C:2;N->C:3;Y->Z:1");
 }
 
