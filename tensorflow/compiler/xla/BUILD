@@ -45,6 +45,17 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "test",
+    testonly = 1,
+    hdrs = ["test.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "types",
     hdrs = ["types.h"],
     visibility = [":friends"],
@@ -81,6 +92,7 @@ cc_test(
     deps = [
         ":status_macros",
         ":statusor",
+        ":test",
         ":test_helpers",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -116,6 +128,7 @@ cc_test(
     srcs = ["statusor_test.cc"],
     deps = [
         ":statusor",
+        ":test",
         ":types",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -158,9 +171,9 @@ cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],
     deps = [
+        ":test",
         ":types",
         ":util",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -199,6 +212,7 @@ cc_test(
     srcs = ["shape_util_test.cc"],
     deps = [
         ":shape_util",
+        ":test",
         ":test_helpers",
         ":types",
         ":util",
@@ -212,6 +226,7 @@ cc_test(
     srcs = ["layout_util_test.cc"],
     deps = [
         ":shape_util",
+        ":test",
         ":test_helpers",
         "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/core:test",
@@ -224,9 +239,9 @@ cc_test(
     srcs = ["index_util_test.cc"],
     deps = [
         ":shape_util",
+        ":test",
         ":test_helpers",
         ":xla_data_proto",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -256,10 +271,9 @@ cc_test(
         ":array4d",
         ":literal_util",
         ":shape_util",
-        ":test_helpers",
+        ":test",
         ":types",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -271,7 +285,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":util",
-        ":xla_data_proto",
         "//tensorflow/core:lib",
     ],
 )
@@ -304,7 +317,7 @@ cc_test(
     srcs = ["array2d_test.cc"],
     deps = [
         ":array2d",
-        "//tensorflow/core:test",
+        ":test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -324,8 +337,8 @@ cc_test(
     srcs = ["array3d_test.cc"],
     deps = [
         ":array3d",
+        ":test",
         ":types",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -346,8 +359,8 @@ cc_test(
     srcs = ["array4d_test.cc"],
     deps = [
         ":array4d",
+        ":test",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -379,7 +392,6 @@ cc_library(
 cc_library(
     name = "test_helpers",
     testonly = 1,
-    srcs = ["test_helpers.cc"],
     hdrs = ["test_helpers.h"],
     visibility = [":internal"],
     deps = [
@@ -415,11 +427,11 @@ cc_test(
     deps = [
         ":literal_util",
         ":shape_util",
+        ":test",
         ":text_literal_reader",
         ":types",
         ":xla_data_proto",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -444,6 +456,7 @@ cc_test(
     srcs = ["text_literal_writer_test.cc"],
     deps = [
         ":literal_util",
+        ":test",
         ":test_helpers",
         ":text_literal_writer",
         ":types",
@@ -472,8 +485,8 @@ cc_test(
     deps = [
         ":shape_tree",
         ":shape_util",
+        ":test",
         ":xla_data_proto",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -531,11 +544,11 @@ cc_test(
         ":array4d",
         ":literal_util",
         ":reference_util",
+        ":test",
         ":util",
         ":xla_data_proto",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )

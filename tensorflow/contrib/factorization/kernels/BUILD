@@ -6,8 +6,6 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-
 cc_library(
     name = "all_kernels",
     deps = [

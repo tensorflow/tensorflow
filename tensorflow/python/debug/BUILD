@@ -185,6 +185,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base_ui",
+        ":cli_shared",
         ":command_parser",
         ":curses_widgets",
         ":debugger_cli_common",
@@ -375,6 +376,7 @@ py_test(
         ":debug_utils",
         ":source_utils",
         "//tensorflow/python:client",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
@@ -588,6 +590,7 @@ cuda_py_test(
         ":debug_data",
         ":debug_utils",
         ":debugger_cli_common",
+        ":source_utils",
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow:tensorflow_py",
@@ -598,6 +601,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
 )

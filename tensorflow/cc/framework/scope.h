@@ -204,6 +204,7 @@ class Scope {
   const std::vector<Operation>& control_deps() const;
 
  private:
+  friend class InternalScope;
   class Impl;
   std::unique_ptr<Impl> impl_;
   Impl* impl() { return impl_.get(); }

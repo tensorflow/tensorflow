@@ -18,15 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import os
 import sys
 
 import tensorflow as tf
 
 from tensorflow.python import debug as tf_debug
+from tensorflow.python.util import tf_inspect
 from tensorflow.tools.docs import generate_lib
-
 
 if __name__ == '__main__':
   doc_generator = generate_lib.DocGenerator()
@@ -38,7 +37,7 @@ if __name__ == '__main__':
   # tensorflow/, we can compute the base directory (two levels up), which is
   # valid unless we're trying to apply this to a different code base, or are
   # moving the script around.
-  script_dir = os.path.dirname(inspect.getfile(inspect.currentframe()))
+  script_dir = os.path.dirname(tf_inspect.getfile(tf_inspect.currentframe()))
   default_base_dir = os.path.join(script_dir, '..', '..')
   doc_generator.add_base_dir_argument(default_base_dir)
 
@@ -46,6 +45,5 @@ if __name__ == '__main__':
 
   # tf_debug is not imported with tf, it's a separate module altogether
   doc_generator.set_py_modules([('tf', tf), ('tfdbg', tf_debug)])
-  doc_generator.load_contrib()
 
   sys.exit(doc_generator.build(flags))

@@ -173,8 +173,9 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
         self._diag,
         message="Singular operator:  Diagonal contained zero values.")
 
-  def _apply(self, x, adjoint=False):
-    return math_ops.matmul(self._tril, x, adjoint_a=adjoint)
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
+    return math_ops.matmul(
+        self._tril, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
   def _determinant(self):
     return math_ops.reduce_prod(self._diag, reduction_indices=[-1])
@@ -183,7 +184,8 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
     return math_ops.reduce_sum(
         math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
     return linalg_ops.matrix_triangular_solve(
         self._tril, rhs, lower=True, adjoint=adjoint)
 

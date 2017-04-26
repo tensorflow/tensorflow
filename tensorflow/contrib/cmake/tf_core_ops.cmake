@@ -1,3 +1,17 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 set(tf_op_lib_names
     "array_ops"
     "candidate_sampling_ops"
@@ -18,11 +32,12 @@ set(tf_op_lib_names
     "resource_variable_ops"
     "script_ops"
     "sdca_ops"
-    "set_ops"  
+    "set_ops"
     "sendrecv_ops"
     "sparse_ops"
     "spectral_ops"
     "state_ops"
+    "stateless_random_ops"
     "string_ops"
     "training_ops"
 )
@@ -61,6 +76,7 @@ GENERATE_CONTRIB_OP_LIBRARY(memory_stats "${tensorflow_source_dir}/tensorflow/co
 GENERATE_CONTRIB_OP_LIBRARY(nccl "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(rnn_gru "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/gru_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(rnn_lstm "${tensorflow_source_dir}/tensorflow/contrib/rnn/ops/lstm_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(seq2seq_beam_search "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/ops/beam_search_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(tensor_forest "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/ops/tensor_forest_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(tensor_forest_hybrid "${tensor_forest_hybrid_srcs}")
 GENERATE_CONTRIB_OP_LIBRARY(bigquery_reader "${tensorflow_source_dir}/tensorflow/contrib/cloud/ops/bigquery_reader_ops.cc")
@@ -96,7 +112,7 @@ file(GLOB_RECURSE tf_core_ops_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/user_ops/*.cu.cc"
 )
 
-list(REMOVE_ITEM tf_core_ops_srcs ${tf_core_ops_exclude_srcs}) 
+list(REMOVE_ITEM tf_core_ops_srcs ${tf_core_ops_exclude_srcs})
 
 add_library(tf_core_ops OBJECT ${tf_core_ops_srcs})
 

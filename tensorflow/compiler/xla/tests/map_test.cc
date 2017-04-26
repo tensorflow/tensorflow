@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -529,9 +529,9 @@ TEST_F(MapTest, MapOperantionWithBuildError) {
 
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_TRUE(!computation_status.ok());
-  EXPECT_MATCH(computation_status.status().ToString(),
-               testing::HasSubstr("error from: ErrorAdd: binary op with "
-                                  "different element types: f32[] and u16[]"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              ::testing::HasSubstr("error from: ErrorAdd: binary op with "
+                                   "different element types: f32[] and u16[]"));
 }
 
 // MapTest disables inline and algsimp. MapTestWithFullOpt runs all

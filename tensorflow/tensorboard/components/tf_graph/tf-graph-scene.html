@@ -619,6 +619,18 @@ Polymer({
     renderHierarchy: Object,
     name: String,
     colorBy: String,
+
+    // For each render hierarchy, we only fit it to the viewport once (when the scene is attached to
+    // the DOM). We do not fit the hierarchy again (unless the user clicks the reset button). For
+    // instance, if the user enters a certain view in the graph, switches to another dashboard, and
+    // returns to the graph dashboard, the user expects the previous view. These properties enable
+    // that behavior.
+
+    /** Whether the scene has fit the current render hierarchy (to the viewport) at least once. */
+    _hasRenderHierarchyBeenFitOnce: Boolean,
+    /** Whether this scene element is currently attached to a parent element. */
+    _isAttached: Boolean,
+
     /** @type {d3_zoom} d3 zoom object */
     _zoom: Object,
     highlightedNode: {
@@ -723,7 +735,10 @@ Polymer({
   },
   observers: [
     '_colorByChanged(colorBy)',
-    '_buildAndFit(renderHierarchy)',
+    '_renderHierarchyChanged(renderHierarchy)',
+    // Animation and fitting must come after the observer for the hierarchy changing because we must
+    // first build the render hierarchy.
+    '_animateAndFit(_isAttached, renderHierarchy)',
     '_updateHealthPills(nodeNamesToHealthPills, healthPillStepIndex)',
   ],
   getNode: function(nodeName) {
@@ -826,9 +841,24 @@ Polymer({
         tf.graph.layout.PARAMS.minimap.size,
         tf.graph.layout.PARAMS.subscene.meta.labelHeight);
   },
-  _buildAndFit: function(renderHierarchy) {
+  attached: function() {
+    this.set('_isAttached', true);
+  },
+  detached: function() {
+    this.set('_isAttached', false);
+  },
+  _renderHierarchyChanged: function(renderHierarchy) {
+    this._hasRenderHierarchyBeenFitOnce = false;
     this._resetState();
     this._build(renderHierarchy);
+  },
+  _animateAndFit: function(isAttached, renderHierarchy) {
+    if (this._hasRenderHierarchyBeenFitOnce || !isAttached) {
+      // Do not animate and fit if the scene has already fitted this render hierarchy once. Or if
+      // the graph dashboard is not attached (in which case the scene lacks DOM info for fitting).
+      return;
+    }
+
     // Fit to screen after the graph is done animating.
     setTimeout(this.fit.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
@@ -881,6 +911,7 @@ Polymer({
     }
   },
   fit: function() {
+    this._hasRenderHierarchyBeenFitOnce = true;
     tf.graph.scene.fit(this.$.svg, this.$.root, this._zoom, function() {
       this._zoomed = false;
     }.bind(this));

@@ -91,6 +91,32 @@ not a suggested device partitioning strategy.)
 
 ## Dynamic Decoding
 
+Example usage:
+
+``` python
+cell = # instance of RNNCell
+
+if mode == "train":
+  helper = tf.contrib.seq2seq.TrainingHelper(
+    input=input_vectors,
+    sequence_length=input_lengths)
+elif mode == "infer":
+  helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(
+      embedding=embedding,
+      start_tokens=tf.tile([GO_SYMBOL], [batch_size]),
+      end_token=END_SYMBOL)
+
+decoder = tf.contrib.seq2seq.BasicDecoder(
+    cell=cell,
+    helper=helper,
+    initial_state=cell.zero_state(batch_size, tf.float32))
+outputs, _ = tf.contrib.seq2seq.dynamic_decode(
+   decoder=decoder,
+   output_time_major=False,
+   impute_finished=True,
+   maximum_iterations=20)
+```
+
 ### Decoder base class and functions
 *   @{tf.contrib.seq2seq.Decoder}
 *   @{tf.contrib.seq2seq.dynamic_decode}

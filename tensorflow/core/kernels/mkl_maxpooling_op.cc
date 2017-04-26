@@ -83,10 +83,11 @@ class MklMaxPoolingOp : public OpKernel {
     ExtractMklOpParams(context, data_format_, pool_params, &mkl_context.params);
 
     mkl_context.MklCreateLayoutsAndPrimitives(context);
+    OP_REQUIRES_OK(context, context->status());
 
     // Declare output tensor
     TensorShape tensor_out_shape;
-    MklShape mkl_out_shape;
+    MklShape mkl_out_shape, mkl_workspace_shape;
     mkl_out_shape.SetMklTensor(true);
     mkl_out_shape.SetMklLayout(mkl_context.prim_pooling_fwd, dnnResourceDst);
     mkl_out_shape.SetTfLayout(mkl_context.params.in_dim,
@@ -98,31 +99,22 @@ class MklMaxPoolingOp : public OpKernel {
     tensor_out_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                                 mkl_out_shape.GetMklLayout())) /
                             sizeof(T));
-    AllocateOutputSetMklshape(context, 0, &output_tensor, tensor_out_shape,
+    AllocateOutputSetMklShape(context, 0, &output_tensor, tensor_out_shape,
                               mkl_out_shape);
-
-    if (!workspace_enabled_) {
-      mkl_out_shape.SetMklTensor(false);
-    }
 
     Tensor* workspace_tensor;
     void* workspace_buf = nullptr;
-    if (workspace_enabled_) {
-      TensorShape workspace_shape;
-      workspace_shape.AddDim(
-          dnnLayoutGetMemorySize_F32(
-              static_cast<dnnLayout_t>(mkl_context.lt_workspace)) /
-          sizeof(T));
-      AllocateOutputSetMklshape(context, 1, &workspace_tensor, workspace_shape,
-                                mkl_out_shape);
-      mkl_context.pooling_res[dnnResourceWorkspace] = const_cast<void*>(
-          static_cast<const void*>(workspace_tensor->flat<T>().data()));
-    } else {
-      AllocTmpBuffer(context, workspace_tensor, mkl_context.lt_workspace,
-                     &workspace_buf);
-      mkl_context.pooling_res[dnnResourceWorkspace] = workspace_buf;
-    }
 
+    TensorShape workspace_shape;
+    mkl_workspace_shape.SetMklTensor(false);
+    workspace_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
+                               mkl_context.lt_workspace)) /
+                           sizeof(T));
+    AllocateOutputSetMklShape(context, 1, &workspace_tensor, workspace_shape,
+                              mkl_workspace_shape);
+
+    mkl_context.pooling_res[dnnResourceWorkspace] = const_cast<void*>(
+        static_cast<const void*>(workspace_tensor->flat<T>().data()));
     mkl_context.pooling_res[dnnResourceSrc] =
         const_cast<void*>(static_cast<const void*>(tensor_in.flat<T>().data()));
     mkl_context.pooling_res[dnnResourceDst] = const_cast<void*>(
@@ -140,8 +132,8 @@ class MklMaxPoolingOp : public OpKernel {
     MklPoolingOpParams params;
     MklShape input_shape;
     void* pooling_res[dnnResourceNumber];
-    dnnPrimitive_t prim_pooling_fwd;
-    dnnLayout_t lt_user_input, lt_workspace;
+    dnnPrimitive_t prim_pooling_fwd = nullptr;
+    dnnLayout_t lt_user_input = nullptr, lt_workspace = nullptr;
 
     void MklCreateLayoutsAndPrimitives(OpKernelContext* context) {
       bool input_in_mkl_format = input_shape.IsMklTensor();
@@ -256,8 +248,13 @@ class MklMaxPoolingGradOp : public OpKernel {
     ExtractMklOpParams(context, data_format_, pool_params, &mkl_context.params);
 
     mkl_context.MklCreateLayouts(context);
+    OP_REQUIRES_OK(context, context->status());
+
     mkl_context.MklCreatePrimitives(context, workspace_enabled_);
+    OP_REQUIRES_OK(context, context->status());
+
     mkl_context.MklPrepareInputs(context, workspace_enabled_);
+    OP_REQUIRES_OK(context, context->status());
 
     // Create shape for the input back prop output
     TensorShape mkl_input_backprop;
@@ -274,7 +271,7 @@ class MklMaxPoolingGradOp : public OpKernel {
         dnnLayoutGetMemorySize_F32(
             static_cast<dnnLayout_t>(mkl_output_shape.GetMklLayout())) /
         sizeof(T));
-    AllocateOutputSetMklshape(context, 0, &output_tensor, mkl_input_backprop,
+    AllocateOutputSetMklShape(context, 0, &output_tensor, mkl_input_backprop,
                               mkl_output_shape);
     mkl_context.pooling_res[dnnResourceDiffSrc] = const_cast<void*>(
         static_cast<const void*>(output_tensor->flat<T>().data()));
@@ -297,12 +294,15 @@ class MklMaxPoolingGradOp : public OpKernel {
     MklShape input_shape, output_backprop_shape;
     void* pooling_resfwd[dnnResourceNumber];
     void* pooling_res[dnnResourceNumber];
-    dnnPrimitive_t prim_pooling_fwd, prim_pooling_bwd, convert_input,
-        convert_outbackprop;
-    dnnLayout_t lt_outbackprop_user, lt_outbackprop_prim, lt_input_user,
-        lt_input_prim;
+    dnnPrimitive_t prim_pooling_fwd = nullptr, prim_pooling_bwd = nullptr,
+                   convert_input = nullptr, convert_outbackprop = nullptr;
+    dnnLayout_t lt_outbackprop_user = nullptr, lt_outbackprop_prim = nullptr,
+                lt_input_user = nullptr, lt_input_prim = nullptr;
     void* input_buf;
     void* outbackprop_buf;
+    Tensor tmp_output_buf_tensor;
+    Tensor workspace_buf_tensor;
+    Tensor input_buf_tensor, outbackprop_buf_tensor;
 
     void MklCreateLayouts(OpKernelContext* context) {
       bool input_in_mkl_format = input_shape.IsMklTensor();
@@ -351,9 +351,6 @@ class MklMaxPoolingGradOp : public OpKernel {
                    &lt_outbackprop_prim, prim_pooling_bwd, dnnResourceDiffDst),
                E_SUCCESS);
 
-      // Tensors needed to create temporary buffers
-      Tensor input_buf_tensor, outbackprop_buf_tensor;
-
       if (workspace_enabled == false) {
         CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(
                      &lt_input_prim, prim_pooling_fwd, dnnResourceSrc),
@@ -384,28 +381,24 @@ class MklMaxPoolingGradOp : public OpKernel {
       bool input_in_mkl_format = input_shape.IsMklTensor();
       bool outbackprop_in_mkl_format = output_backprop_shape.IsMklTensor();
 
-      void* tmp_output_buf;
-      Tensor tmp_output_buf_tensor;
-
-      void* workspace_buf;
-      Tensor workspace_buf_tensor;
+      void* tmp_output_buf = nullptr;
+      void* workspace_buf = nullptr;
 
       if (workspace_enabled == false) {
         if (convert_input != nullptr) {
           if (input_in_mkl_format == false) {
-            CHECK_EQ(dnnConversionExecute_F32(
-                         convert_input,
-                         const_cast<void*>(static_cast<const void*>(
-                             tensor_in.flat<T>().data())),
-                         input_buf),
-                     E_SUCCESS);
+            CHECK_EQ(
+                dnnConversionExecute_F32(
+                    convert_input, const_cast<void*>(static_cast<const void*>(
+                                       tensor_in.flat<T>().data())),
+                    input_buf),
+                E_SUCCESS);
             CHECK_EQ(dnnDelete_F32(convert_input), E_SUCCESS);
             convert_input = nullptr;
           } else {
             input_shape.GetConvertedFlatData(
-                lt_input_prim,
-                const_cast<void*>(
-                    static_cast<const void*>(tensor_in.flat<T>().data())),
+                lt_input_prim, const_cast<void*>(static_cast<const void*>(
+                                   tensor_in.flat<T>().data())),
                 input_buf);
           }
           pooling_resfwd[dnnResourceSrc] = input_buf;
@@ -450,9 +443,8 @@ class MklMaxPoolingGradOp : public OpKernel {
           CHECK_EQ(dnnDelete_F32(convert_outbackprop), E_SUCCESS);
         } else {
           output_backprop_shape.GetConvertedFlatData(
-              lt_outbackprop_prim,
-              const_cast<void*>(
-                  static_cast<const void*>(out_backprop.flat<T>().data())),
+              lt_outbackprop_prim, const_cast<void*>(static_cast<const void*>(
+                                       out_backprop.flat<T>().data())),
               outbackprop_buf);
         }
         pooling_res[dnnResourceDiffDst] = outbackprop_buf;
@@ -490,16 +482,16 @@ class MklMaxPoolingGradOp : public OpKernel {
   bool workspace_enabled_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("MklMaxPool")
+REGISTER_KERNEL_BUILDER(Name("_MklMaxPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklMaxPoolingOp<CPUDevice, float>);
 
-REGISTER_KERNEL_BUILDER(Name("MklMaxPoolGrad")
+REGISTER_KERNEL_BUILDER(Name("_MklMaxPoolGrad")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
-                            .Label(mkl_layer_registry::kMklLayerLabel),
+                            .Label(mkl_op_registry::kMklOpLabel),
                         MklMaxPoolingGradOp<CPUDevice, float>);
 
 }  // namespace tensorflow

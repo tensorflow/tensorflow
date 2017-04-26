@@ -1388,8 +1388,7 @@ class StagingArea(object):
   """Class for staging inputs. No ordering guarantees.
 
   A `StagingArea` is a TensorFlow data structure that stores tensors across
-  multiple steps, and exposes operations that can put and get
-  tensors.
+  multiple steps, and exposes operations that can put and get tensors.
 
   Each `StagingArea` element is a tuple of one or more tensors, where each
   tuple component has a static dtype, and may have a static shape.
@@ -1605,6 +1604,13 @@ class StagingArea(object):
 
     If the staging area is empty when this operation executes, it will block
     until there is an element to dequeue.
+
+    Note that unlike others ops that can block, like the queue Dequeue
+    operations, this can stop other work from happening.  To avoid this, the
+    intended use is for this to be called only when there will be an element
+    already available.  One method for doing this in a training loop would be to
+    run a `put()` call during a warmup session.run call, and then call both
+    `get()` and `put()` in each subsequent step.
 
     The placement of the returned tensor will be determined by the current
     device scope when this function is called.

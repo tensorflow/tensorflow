@@ -639,18 +639,22 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
           math_ops.reduce_mean(y, axes, keep_dims=True))
     else:
       shift = math_ops.cast(shift, y.dtype)
-    counts, m_ss, v_ss, shift = sufficient_statistics(
-        y, axes, shift=shift, keep_dims=keep_dims, name=name)
-    # Reshape shift as needed.
-    shift = array_ops.reshape(shift, array_ops.shape(m_ss))
-    shift.set_shape(m_ss.get_shape())
-    with ops.control_dependencies([counts, m_ss, v_ss]):
-      mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
-      if x.dtype == dtypes.float16:
-        return (math_ops.cast(mean, dtypes.float16),
-                math_ops.cast(variance, dtypes.float16))
-      else:
-        return (mean, variance)
+    shifted_mean = math_ops.reduce_mean(
+        math_ops.subtract(y, shift), axes, keep_dims=True, name="shifted_mean")
+    variance = math_ops.subtract(
+        math_ops.reduce_mean(
+            math_ops.squared_difference(y, shift), axes, keep_dims=True),
+        math_ops.square(shifted_mean),
+        name="variance")
+    mean = math_ops.add(shifted_mean, shift, name="mean")
+    if not keep_dims:
+      mean = array_ops.squeeze(mean, axes)
+      variance = array_ops.squeeze(variance, axes)
+    if x.dtype == dtypes.float16:
+      return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
+          variance, dtypes.float16))
+    else:
+      return (mean, variance)
 
 
 def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
@@ -920,7 +924,8 @@ def _compute_sampled_logits(weights,
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
         objects whose concatenation along dimension 0 has shape
         `[num_classes, dim]`.  The (possibly-partitioned) class embeddings.
-    biases: A `Tensor` of shape `[num_classes]`.  The class biases.
+    biases: A `Tensor` of shape `[num_classes]`.  The (possibly-partitioned)
+        class biases.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
         the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
@@ -985,7 +990,8 @@ def _compute_sampled_logits(weights,
     # weights shape is [num_classes, dim]
     all_w = embedding_ops.embedding_lookup(
         weights, all_ids, partition_strategy=partition_strategy)
-    all_b = embedding_ops.embedding_lookup(biases, all_ids)
+    all_b = embedding_ops.embedding_lookup(
+        biases, all_ids, partition_strategy=partition_strategy)
     # true_w shape is [batch_size * num_true, dim]
     # true_b is a [batch_size * num_true] tensor
     true_w = array_ops.slice(

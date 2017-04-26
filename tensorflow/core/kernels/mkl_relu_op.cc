@@ -63,7 +63,7 @@ class MklReluOp : public OpKernel {
       const TensorShape& o_shape = input.shape();
       Tensor* out_tensor = nullptr;
       mkl_context.output_shape.SetMklTensor(false);
-      AllocateOutputSetMklshape(context, 0, &out_tensor, o_shape,
+      AllocateOutputSetMklShape(context, 0, &out_tensor, o_shape,
                                 mkl_context.output_shape);
       void* out_o = static_cast<void*>(out_tensor->flat<T>().data());
       (static_cast<T*>(out_o))[0] =
@@ -114,12 +114,12 @@ class MklReluOp : public OpKernel {
       tf_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                           mkl_context.output_shape.GetMklLayout())) /
                       sizeof(T));
-      AllocateOutputSetMklshape(context, 0, &output, tf_shape,
+      AllocateOutputSetMklShape(context, 0, &output, tf_shape,
                                 mkl_context.output_shape);
     } else {
       const TensorShape& o_shape = input.shape();
       mkl_context.output_shape.SetMklTensor(false);
-      AllocateOutputSetMklshape(context, 0, &output, o_shape,
+      AllocateOutputSetMklShape(context, 0, &output, o_shape,
                                 mkl_context.output_shape);
     }
 
@@ -293,7 +293,7 @@ void MklReluGradOp<Device, T>::Compute(OpKernelContext* context) {
     // Allocate space for g and
     const TensorShape& g_shape = g.shape();
     mkl_context.output_shape.SetMklTensor(false);
-    AllocateOutputSetMklshape(context, 0, &output, g_shape,
+    AllocateOutputSetMklShape(context, 0, &output, g_shape,
                               mkl_context.output_shape);
     void* out_o = static_cast<void*>(output->flat<T>().data());
     (static_cast<T*>(out_o))[0] =
@@ -359,13 +359,13 @@ void MklReluGradOp<Device, T>::Compute(OpKernelContext* context) {
     tf_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                         mkl_context.output_shape.GetMklLayout())) /
                     sizeof(T));
-    AllocateOutputSetMklshape(context, 0, &output, tf_shape,
+    AllocateOutputSetMklShape(context, 0, &output, tf_shape,
                               mkl_context.output_shape);
 
   } else {
     const TensorShape& o_shape = g.shape();
     mkl_context.output_shape.SetMklTensor(false);
-    AllocateOutputSetMklshape(context, 0, &output, o_shape,
+    AllocateOutputSetMklShape(context, 0, &output, o_shape,
                               mkl_context.output_shape);
   }
 
@@ -379,16 +379,16 @@ void MklReluGradOp<Device, T>::Compute(OpKernelContext* context) {
 
 /* Register DNN kernels for supported operations and supported types - right now
  * it is only Relu and f32*/
-#define REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES(type)                   \
-  REGISTER_KERNEL_BUILDER(Name("MklRelu")                                 \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<type>("T")                  \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
-                          MklReluOp<CPUDevice, type>);                    \
-  REGISTER_KERNEL_BUILDER(Name("MklReluGrad")                             \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<type>("T")                  \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+#define REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES(type)             \
+  REGISTER_KERNEL_BUILDER(Name("_MklRelu")                           \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklReluOp<CPUDevice, type>);              \
+  REGISTER_KERNEL_BUILDER(Name("_MklReluGrad")                       \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklReluGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES);
 

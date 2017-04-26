@@ -2612,10 +2612,10 @@ scale_after_normalization: A bool indicating whether the resulted tensor
 )doc");
 
 #ifdef INTEL_MKL
-REGISTER_OP("MklConv2D")
+REGISTER_OP("_MklConv2D")
     .Input("input: T")
-    .Input("mkl_input: uint8")
     .Input("filter: T")
+    .Input("mkl_input: uint8")
     .Input("mkl_filter: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
@@ -2632,12 +2632,12 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklConv2DWithBias")
+REGISTER_OP("_MklConv2DWithBias")
     .Input("input: T")
-    .Input("mkl_input: uint8")
     .Input("filter: T")
-    .Input("mkl_filter: uint8")
     .Input("bias: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
     .Input("mkl_bias: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
@@ -2654,12 +2654,12 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklConv2DBackpropFilter")
+REGISTER_OP("_MklConv2DBackpropFilter")
     .Input("input: T")
-    .Input("mkl_input: uint8")
     .Input("filter_sizes: int32")
-    .Input("mkl_filter_size: uint8")
     .Input("out_backprop: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter_size: uint8")
     .Input("mkl_out_backprop: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
@@ -2669,7 +2669,7 @@ REGISTER_OP("MklConv2DBackpropFilter")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      return InputTensorShapeOrUnknown(c, 2 /* input_idx */, 4 /* ndims */);
+      return InputTensorShapeOrUnknown(c, 1 /* input_idx */, 4 /* ndims */);
     })
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilter. Uses MKL DNN APIs to compute the
@@ -2679,7 +2679,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklConv2DWithBiasBackpropBias")
+REGISTER_OP("_MklConv2DWithBiasBackpropBias")
     .Input("out_backprop: T")
     .Input("mkl_out_backprop: uint8")
     .Output("output: T")
@@ -2695,12 +2695,12 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklConv2DBackpropInput")
+REGISTER_OP("_MklConv2DBackpropInput")
     .Input("input_sizes: int32")
-    .Input("mkl_input_sizes: uint8")
     .Input("filter: T")
-    .Input("mkl_filter: uint8")
     .Input("out_backprop: T")
+    .Input("mkl_input_sizes: uint8")
+    .Input("mkl_filter: uint8")
     .Input("mkl_out_backprop: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
@@ -2720,7 +2720,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklRelu")
+REGISTER_OP("_MklRelu")
     .Input("features: T")
     .Input("mkl_features: uint8")
     .Output("activations: T")
@@ -2734,10 +2734,10 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklReluGrad")
+REGISTER_OP("_MklReluGrad")
     .Input("gradients: T")
-    .Input("mkl_gradients: uint8")
     .Input("features: T")
+    .Input("mkl_gradients: uint8")
     .Input("mkl_features: uint8")
     .Output("backprops: T")
     .Output("mkl_backprops: uint8")
@@ -2751,7 +2751,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklMaxPool")
+REGISTER_OP("_MklMaxPool")
     .Attr("T: {float, half} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -2761,8 +2761,8 @@ REGISTER_OP("MklMaxPool")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-    .Output("mkl_output: uint8")
     .Output("workspace: T")
+    .Output("mkl_output: uint8")
     .Output("mkl_workspace: uint8")
     .SetShapeFn(shape_inference::MaxPoolShape)
     .Doc(R"doc(
@@ -2773,7 +2773,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklMaxPoolGrad")
+REGISTER_OP("_MklMaxPoolGrad")
     .Attr("T: {float, half} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -2781,12 +2781,12 @@ REGISTER_OP("MklMaxPoolGrad")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Input("orig_input: T")
-    .Input("mkl_orig_input: uint8")
     .Input("orig_output: T")
-    .Input("mkl_orig_output: uint8")
     .Input("grad: T")
-    .Input("mkl_grad: uint8")
     .Input("workspace: T")
+    .Input("mkl_orig_input: uint8")
+    .Input("mkl_orig_output: uint8")
+    .Input("mkl_grad: uint8")
     .Input("mkl_workspace: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
@@ -2801,7 +2801,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklAvgPool")
+REGISTER_OP("_MklAvgPool")
     .Input("value: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
@@ -2820,10 +2820,10 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklAvgPoolGrad")
+REGISTER_OP("_MklAvgPoolGrad")
     .Input("orig_input_shape: int32")
-    .Input("mkl_orig_input: uint8")
     .Input("grad: T")
+    .Input("mkl_orig_input: uint8")
     .Input("mkl_grad: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
@@ -2843,7 +2843,212 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("MklToTf")
+REGISTER_OP("_MklLRN")
+    .Input("input: T")
+    .Input("mkl_input: uint8")
+    .Output("output: T")
+    .Output("workspace: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_workspace: uint8")
+    .Attr("depth_radius: int = 5")
+    .Attr("bias: float = 1.0")
+    .Attr("alpha: float = 1.0")
+    .Attr("beta: float = 0.5")
+    .Attr("workspace_enabled: bool = false")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 4);
+    })
+    .Doc(R"doc(
+MKL version of LRN operator. Uses MKL DNN APIs to perform local response
+normalization.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklLRNGrad")
+    .Input("input_grads: T")
+    .Input("input_image: T")
+    .Input("output_image: T")
+    .Input("workspace: T")
+    .Input("mkl_input_grads: uint8")
+    .Input("mkl_input_image: uint8")
+    .Input("mkl_output_image: uint8")
+    .Input("mkl_workspace: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("depth_radius: int = 5")
+    .Attr("bias: float = 1.0")
+    .Attr("alpha: float = 1.0")
+    .Attr("beta: float = 0.5")
+    .Attr("workspace_enabled: bool = false")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &s));  // input_grads
+      TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));     // input_image
+      TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));     // output_image
+      c->set_output(0, s);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of LRNGrad operator. Uses MKL DNN APIs to compute gradient for
+local response normalization.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklFusedBatchNorm")
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("offset: T")
+    .Input("mean: T")
+    .Input("variance: T")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_offset: uint8")
+    .Input("mkl_mean: uint8")
+    .Input("mkl_variance: uint8")
+    .Output("y: T")
+    .Output("batch_mean: T")
+    .Output("batch_variance: T")
+    .Output("reserve_space_1: T")
+    .Output("reserve_space_2: T")
+    .Output("mkl_y: uint8")
+    .Output("mkl_batch_mean: uint8")
+    .Output("mkl_batch_variance: uint8")
+    .Output("mkl_reserve_space_1: uint8")
+    .Output("mkl_reserve_space_2: uint8")
+    .Attr("T: numbertype")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("is_training: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+      bool is_training;
+      c->GetAttr("is_training", &is_training);
+      int number_inputs = (is_training) ? 3 : 5;
+      string data_format;
+      c->GetAttr("data_format", &data_format);
+      DimensionHandle channel_dim =
+          (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
+
+      // covers scale, offset, and if is_training is false, mean, variance
+      for (int i = 1; i < number_inputs; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      ShapeHandle y;
+      if (data_format == "NHWC") {
+        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 3, channel_dim, &y));
+      } else {
+        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 1, channel_dim, &y));
+      }
+      c->set_output(0, y);
+      ShapeHandle vector_shape = c->Vector(channel_dim);
+      c->set_output(1, vector_shape);
+      c->set_output(2, vector_shape);
+      c->set_output(3, vector_shape);
+      c->set_output(4, vector_shape);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of FusedBatchNorm operator. Uses MKL DNN APIs to perform fused
+batch normalization.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklFusedBatchNormGrad")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("reserve_space_1: T")
+    .Input("reserve_space_2: T")
+    .Input("mkl_y_backprop: uint8")
+    .Input("mkl_x: uint8")
+    .Input("mkl_scale: uint8")
+    .Input("mkl_reserve_space_1: uint8")
+    .Input("mkl_reserve_space_2: uint8")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: T")
+    .Output("offset_backprop: T")
+    .Output("reserve_space_3: T")
+    .Output("reserve_space_4: T")
+    .Output("mkl_x_backprop: uint8")
+    .Output("mkl_scale_backprop: uint8")
+    .Output("mkl_offset_backprop: uint8")
+    .Output("mkl_reserve_space_3: uint8")
+    .Output("mkl_reserve_space_4: uint8")
+    .Attr("T: numbertype")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("is_training: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle y_backprop;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_backprop));
+      ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
+
+      bool is_training;
+      string data_format;
+      c->GetAttr("is_training", &is_training);
+      c->GetAttr("data_format", &data_format);
+      DimensionHandle channel_dim = (data_format == "NHWC")
+                                        ? c->Dim(y_backprop, 3)
+                                        : c->Dim(y_backprop, 1);
+      if (data_format == "NHWC") {
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 3), &channel_dim));
+      } else {
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 1), &channel_dim));
+      }
+
+      // covers scale, mean (reserve_space_1), variance (reserve_space_2)
+      for (int i = 2; i < 5; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      ShapeHandle x_backprop;
+      if (data_format == "NHWC") {
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(y_backprop, 3, channel_dim, &x_backprop));
+      } else {
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(y_backprop, 1, channel_dim, &x_backprop));
+      }
+      c->set_output(0, x_backprop);
+      c->set_output(1, c->Vector(channel_dim));
+      c->set_output(2, c->Vector(channel_dim));
+      // Set the correct shapes for reserve_spaces
+      // so that gradients can be performed when
+      // the op is in a symbolic condition.
+      if (is_training) {
+        c->set_output(3, c->Vector(0));
+        c->set_output(4, c->Vector(0));
+      } else {
+        c->set_output(3, c->Vector(channel_dim));
+        c->set_output(4, c->Vector(channel_dim));
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+MKL version of FusedBatchNormGrad operator. Uses MKL DNN APIs to compute
+gradients for fused batch normalization.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklToTf")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")

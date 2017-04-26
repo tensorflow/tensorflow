@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
@@ -90,7 +91,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       node.clear_device();
     }
 
-    if (node.op() == "Placeholder" || node.op() == "PlaceholderV2") {
+    if (IsPlaceholder(node)) {
       if (node.attr().count("dtype") == 0) {
         LOG(ERROR) << "Unknown type for placeholder " << node.name()
                    << ", skipping this input";

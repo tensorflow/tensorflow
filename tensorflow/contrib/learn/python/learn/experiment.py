@@ -76,7 +76,7 @@ class Experiment(object):
                local_eval_frequency=None,
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60,
-               min_eval_frequency=1,
+               min_eval_frequency=None,
                delay_workers_by_global_step=False,
                export_strategies=None,
                train_steps_per_iteration=None):
@@ -116,9 +116,13 @@ class Experiment(object):
       min_eval_frequency: (applies only to train_and_evaluate). the minimum
         number of steps between evaluations. Of course, evaluation does not
         occur if no new snapshot is available, hence, this is the minimum.
+        If 0, the evaluation will only happen after training.
+        If None, defaults to 1, unless model_dir is on GCS, in which case the
+        default is 1000.
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
-      export_strategies: A list of `ExportStrategy`s, or a single one, or None.
+      export_strategies: Iterable of `ExportStrategy`s, or a single one, or
+        `None`.
       train_steps_per_iteration: (applies only to continuous_train_and_eval).
         Perform this many (integer) number of train steps for each
         training-evaluation iteration. With a small value, the model will be
@@ -156,7 +160,13 @@ class Experiment(object):
     self._local_eval_frequency = local_eval_frequency
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
-    self._min_eval_frequency = min_eval_frequency
+    # Using 1 on a non-cached file system requires a lot of overhead to
+    # read the checkpoint state file. This is particular bad on GCS, so
+    # we use a different default. This is a temporary band-aid, to be
+    # fixed holistically later (b/36498507).
+    default_min_eval_frequency = 1000 if _is_gcs(estimator.model_dir) else 1
+    self._min_eval_frequency = min_eval_frequency if (
+        min_eval_frequency is not None) else default_min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
     self._train_monitors = train_monitors[:] if train_monitors else []
     self._eval_hooks = eval_hooks[:] if eval_hooks else []
@@ -184,16 +194,19 @@ class Experiment(object):
   def eval_steps(self):
     return self._eval_steps
 
-  def _set_export_strategies(self, value):
-    if value is None:
-      self._export_strategies = []
-    elif isinstance(value, list):
-      self._export_strategies = value[:]
-    elif isinstance(value, export_strategy.ExportStrategy):
-      self._export_strategies = [value]
-    else:
-      raise ValueError("`export_strategies` must be an ExportStrategy, "
-                       "a list of ExportStrategies, or None.")
+  def _set_export_strategies(self, values):  # pylint: disable=missing-docstring
+    export_strategies = []
+    if values:
+      if isinstance(values, export_strategy.ExportStrategy):
+        export_strategies.append(values)
+      else:
+        for value in values:
+          if not isinstance(value, export_strategy.ExportStrategy):
+            raise ValueError("`export_strategies` must be an ExportStrategy,"
+                             " an iterable of ExportStrategy, or `None`,"
+                             " found %s." % value)
+          export_strategies.append(value)
+    self._export_strategies = tuple(export_strategies)
 
   def extend_train_hooks(self, additional_hooks):
     """Extends the hooks for training."""
@@ -443,7 +456,7 @@ class Experiment(object):
     """Interleaves training and evaluation.
 
     The frequency of evaluation is controlled by the contructor arg
-    `min_eval_frequency`. When this parameter is None or 0, evaluation happens
+    `min_eval_frequency`. When this parameter is 0, evaluation happens
     only after training has completed. Note that evaluation cannot happen
     more frequently than checkpoints are taken. If no new snapshots are
     available when evaluation is supposed to occur, then evaluation doesn't
@@ -695,3 +708,7 @@ def _new_attr_context(obj, attr):
     yield
   finally:
     setattr(obj, attr, saved)
+
+
+def _is_gcs(model_dir):
+  return model_dir and model_dir.startswith("gs://")

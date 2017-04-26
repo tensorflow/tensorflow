@@ -1465,6 +1465,30 @@ class PartialFlattenTest(test.TestCase):
     flattened5 = _layers._inner_flatten(inputs, 5)
     self.assertEqual([2, None, 4, None, 30], flattened5.get_shape().as_list())
 
+  def testDenseFlattenRankAssertion(self):
+    """Test `_inner_flatten` rank assertion for dense tensors."""
+    shape = [2, 3]
+    new_rank = 3
+    inputs = array_ops.placeholder(dtypes.int32)
+    inputs.set_shape(shape)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 'inputs has rank less than new_rank'):
+      _layers._inner_flatten(inputs, new_rank)
+
+  def testSparseFlattenRankAssertion(self):
+    """Test `_inner_flatten` rank assertion for sparse tensors."""
+    shape = [2, 3]
+    new_rank = 3
+    np.random.seed(10301)
+    random_ = np.random.rand(*shape)
+    indices, values, _ = _sparsify(random_)
+    inputs = sparse_tensor.SparseTensor(indices, values, shape)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 'Inputs has rank less than new_rank'):
+      _layers._inner_flatten(inputs, new_rank)
+
 
 class FCTest(test.TestCase):
 
@@ -3091,6 +3115,15 @@ class StackTests(test.TestCase):
           (5, height * width * 3), seed=1, name='images')
       output = _layers.stack(images, layers_lib.relu, [10, 20, 30])
       self.assertEqual(output.op.name, 'Stack/fully_connected_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
+  def testStackElu(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = random_ops.random_uniform(
+          (5, height * width * 3), seed=1, name='images')
+      output = _layers.stack(images, layers_lib.elu, [10, 20, 30])
+      self.assertEqual(output.op.name, 'Stack/fully_connected_3/Elu')
       self.assertListEqual(output.get_shape().as_list(), [5, 30])
 
   def testStackConvolution2d(self):

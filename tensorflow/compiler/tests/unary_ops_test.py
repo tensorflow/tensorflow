@@ -183,6 +183,11 @@ class UnaryOpsTest(XLATestCase):
               dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
+          math_ops.sigmoid,
+          np.array([-300, -150, 0, 150, 300], dtype=dtype),
+          expected=np.array([0, 0, 0.5, 1, 1], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
           math_ops.sqrt,
           np.array([[4, 9]], dtype=dtype),
           expected=np.array([[2, 3]], dtype=dtype))
@@ -208,6 +213,11 @@ class UnaryOpsTest(XLATestCase):
               [[-1.3862944, -1.3862944, -1.3862944, -1.3862944],
                [-3.4401896, -2.4401896, -1.4401897, -0.44018969]],
               dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          nn_ops.elu,
+          np.array([[-1, 0, 1]], dtype=dtype),
+          expected=np.array([[-0.63212056, 0, 1]], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           nn_ops.relu,

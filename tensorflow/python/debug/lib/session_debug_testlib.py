@@ -158,6 +158,52 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     return simple_add_results(u_init_val, v_init_val, u, v, w, u_name, v_name,
                               w_name, dump)
 
+  def testCopyNodesHaveCorrectDebugOpsAndURLsAttributeValues(self):
+    with session.Session() as sess:
+      u = variables.Variable(2.1, name="u")
+      v = variables.Variable(20.0, name="v")
+      w = math_ops.multiply(u, v, name="w")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_urls = self._debug_urls()
+      debug_utils.add_debug_tensor_watch(
+          run_options,
+          "u",
+          0, ["DebugNumericSummary(gated_grpc=True)", "DebugIdentity"],
+          debug_urls=debug_urls)
+      debug_utils.add_debug_tensor_watch(
+          run_options, "v", 0, ["DebugNumericSummary"], debug_urls=debug_urls)
+
+      run_metadata = config_pb2.RunMetadata()
+      r = sess.run(w, options=run_options, run_metadata=run_metadata)
+      self.assertAllClose(42.0, r)
+
+      u_copy_node_def = None
+      v_copy_node_def = None
+      for partition_graph in run_metadata.partition_graphs:
+        for node_def in partition_graph.node:
+          if debug_data.is_copy_node(node_def.name):
+            if node_def.name == "__copy_u_0":
+              u_copy_node_def = node_def
+            elif node_def.name == "__copy_v_0":
+              v_copy_node_def = node_def
+
+      self.assertIsNotNone(u_copy_node_def)
+      debug_ops_spec = u_copy_node_def.attr["debug_ops_spec"].list.s
+      self.assertEqual(2, len(debug_ops_spec))
+      self.assertEqual("DebugNumericSummary;%s;1" % debug_urls[0],
+                       debug_ops_spec[0].decode("utf-8"))
+      self.assertEqual("DebugIdentity;%s;0" % debug_urls[0],
+                       debug_ops_spec[1].decode("utf-8"))
+
+      self.assertIsNotNone(v_copy_node_def)
+      debug_ops_spec = v_copy_node_def.attr["debug_ops_spec"].list.s
+      self.assertEqual(1, len(debug_ops_spec))
+      self.assertEqual("DebugNumericSummary;%s;0" % debug_urls[0],
+                       debug_ops_spec[0].decode("utf-8"))
+
   def testConcurrentDumpingToPathsWithOverlappingParentDirsWorks(self):
     results = self._generate_dump_from_simple_addition_graph()
     self.assertTrue(results.dump.loaded_partition_graphs())
@@ -484,18 +530,14 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       sess.run(variables.global_variables_initializer())
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      if any(url.startswith("grpc://") for url in self._debug_urls()):
-        debug_utils.watch_graph_with_blacklists(
-            run_options,
-            sess.graph,
-            node_name_regex_blacklist="(.*rnn/while/.*|.*TensorArray.*)",
-            debug_urls=self._debug_urls())
-        # b/36870549: Nodes with these name patterns need to be excluded from
-        # tfdbg in order to prevent MSAN warnings of uninitialized Tensors
-        # under the grpc:// debug URL scheme.
-      else:
-        debug_utils.watch_graph(
-            run_options, sess.graph, debug_urls=self._debug_urls())
+      debug_utils.watch_graph_with_blacklists(
+          run_options,
+          sess.graph,
+          node_name_regex_blacklist="(.*rnn/while/.*|.*TensorArray.*)",
+          debug_urls=self._debug_urls())
+      # b/36870549: Nodes with these name patterns need to be excluded from
+      # tfdbg in order to prevent MSAN warnings of uninitialized Tensors
+      # under both file:// and grpc:// debug URL schemes.
 
       run_metadata = config_pb2.RunMetadata()
       sess.run(train_op, feed_dict={concat_inputs: input_values},

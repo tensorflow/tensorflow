@@ -54,8 +54,10 @@ class HloComputation {
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(const string& name)
-        : name_(name), last_added_instruction_(nullptr) {}
+    explicit Builder(const string& name, bool is_fusion_computation = false)
+        : name_(name),
+          last_added_instruction_(nullptr),
+          is_fusion_computation_(is_fusion_computation) {}
 
     // Build and return an HloComputation. The parameter root_instruction
     // specifies the already-added instruction to use as the root. If
@@ -74,12 +76,23 @@ class HloComputation {
    private:
     const string name_;
     HloInstruction* last_added_instruction_;
+    bool is_fusion_computation_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
   };
 
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction);
+
+  // Remove the param_no'th parameter from the computation.
+  // Note this is only applicatable to the computation for the fusion
+  // instruction.
+  Status RemoveParameter(int64 param_no);
+
+  // Add new parameter instruction to the computation.
+  // This should be a new parameter. Instruction will be appended to parameters
+  // and inserted to the instruction list.
+  HloInstruction* AddParameter(std::unique_ptr<HloInstruction> instruction);
 
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
@@ -123,7 +136,7 @@ class HloComputation {
   void set_name(const string& name) { name_ = name; }
 
   // Return a string representation of the computation.
-  string ToString() const;
+  string ToString(int nested_level = 0) const;
 
   const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
     return instructions_;
@@ -220,17 +233,24 @@ class HloComputation {
   // Same as Accept() above, but the visitor is given as a function.
   Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
 
+  // Returns a deep copy of this computation including all instructions.
+  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone");
+
   // Returns true if instructions of the given opcode can be removed from the
   // computation. Instructions such as parameters and send/receive instructions
   // cannot be removed without violating invariants of the HLO computation or
-  // module.
-  static bool IsRemovable(const HloOpcode& opcode);
+  // module with the exception of fusion computation.
+  // A parameter instruction is removable for a fusion computation.
+  bool IsRemovable(const HloOpcode& opcode);
+
+  // Returns if this computation is a fusion computation.
+  bool IsFusionComputation() const { return is_fusion_computation_; }
 
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction);
+      HloInstruction* root_instruction, bool is_fusion_computation = false);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
@@ -238,10 +258,6 @@ class HloComputation {
 
   // Helper for setting the parent of instructions that are added to this
   // computation.
-  //
-  // Because we clone HLO instructions without knowing what computation they're
-  // destined to be added to, this is required to appropriate set the parent on
-  // fused instruction sequences.
   void Reparent(HloInstruction* instruction);
 
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
@@ -260,6 +276,9 @@ class HloComputation {
 
   string name_;
   HloInstruction* root_instruction_;
+
+  // A tag shows if this is a fusion computation.
+  bool is_fusion_computation_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

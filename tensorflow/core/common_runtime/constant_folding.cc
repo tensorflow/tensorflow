@@ -43,7 +43,7 @@ namespace tensorflow {
 namespace {
 
 bool IsConstantFoldable(const Node* n,
-                        std::function<bool(const Node*)> consider) {
+                        const std::function<bool(const Node*)>& consider) {
   if (n->op_def().is_stateful()) {
     return false;
   }

@@ -116,7 +116,7 @@ class MasterSession : public core::RefCounted {
   std::atomic<int64> partial_run_handle_counter_ = {0};
 
   mutex mu_;
-  std::unique_ptr<SimpleGraphExecutionState> execution_state_;
+  std::unique_ptr<SimpleGraphExecutionState> execution_state_ GUARDED_BY(mu_);
   int64 graph_version_;
 
   // We keep a map from a signature of a run request to the

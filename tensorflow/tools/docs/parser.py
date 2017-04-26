@@ -21,7 +21,6 @@ from __future__ import print_function
 import ast
 import collections
 import functools
-import inspect
 import json
 import os
 import re
@@ -30,6 +29,8 @@ import codegen
 import six
 
 from google.protobuf.message import Message as ProtoMessage
+from tensorflow.python.util import tf_inspect
+
 
 # A regular expression capturing a python indentifier.
 IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
@@ -71,12 +72,12 @@ def _get_raw_docstring(py_object):
   Returns:
     The docstring, or the empty string if no docstring was found.
   """
-  # For object instances, inspect.getdoc does give us the docstring of their
+  # For object instances, tf_inspect.getdoc does give us the docstring of their
   # type, which is not what we want. Only return the docstring if it is useful.
-  if (inspect.isclass(py_object) or inspect.ismethod(py_object) or
-      inspect.isfunction(py_object) or inspect.ismodule(py_object) or
+  if (tf_inspect.isclass(py_object) or tf_inspect.ismethod(py_object) or
+      tf_inspect.isfunction(py_object) or tf_inspect.ismodule(py_object) or
       isinstance(py_object, property)):
-    return inspect.getdoc(py_object) or ''
+    return tf_inspect.getdoc(py_object) or ''
   else:
     return ''
 
@@ -119,12 +120,12 @@ class ReferenceResolver(object):
       an instance of `ReferenceResolver` ()
     """
     is_class = {
-        name: inspect.isclass(visitor.index[name])
+        name: tf_inspect.isclass(visitor.index[name])
         for name, obj in visitor.index.items()
     }
 
     is_module = {
-        name: inspect.ismodule(visitor.index[name])
+        name: tf_inspect.ismodule(visitor.index[name])
         for name, obj in visitor.index.items()
     }
 
@@ -530,7 +531,7 @@ def _parse_md_docstring(py_object, relative_path_to_root, reference_resolver):
 def _get_arg_spec(func):
   """Extracts signature information from a function or functools.partial object.
 
-  For functions, uses `inspect.getargspec`. For `functools.partial` objects,
+  For functions, uses `tf_inspect.getargspec`. For `functools.partial` objects,
   corrects the signature of the underlying function to take into account the
   removed arguments.
 
@@ -539,11 +540,11 @@ def _get_arg_spec(func):
 
   Returns:
     An `ArgSpec` namedtuple `(args, varargs, keywords, defaults)`, as returned
-    by `inspect.getargspec`.
+    by `tf_inspect.getargspec`.
   """
   # getargspec does not work for functools.partial objects directly.
   if isinstance(func, functools.partial):
-    argspec = inspect.getargspec(func.func)
+    argspec = tf_inspect.getargspec(func.func)
     # Remove the args from the original function that have been used up.
     first_default_arg = (
         len(argspec.args or []) - len(argspec.defaults or []))
@@ -566,12 +567,12 @@ def _get_arg_spec(func):
           argspec_defaults.pop(i-first_default_arg)
         else:
           first_default_arg -= 1
-    return inspect.ArgSpec(args=argspec_args,
-                           varargs=argspec.varargs,
-                           keywords=argspec.keywords,
-                           defaults=tuple(argspec_defaults))
+    return tf_inspect.ArgSpec(args=argspec_args,
+                              varargs=argspec.varargs,
+                              keywords=argspec.keywords,
+                              defaults=tuple(argspec_defaults))
   else:  # Regular function or method, getargspec will work fine.
-    return inspect.getargspec(func)
+    return tf_inspect.getargspec(func)
 
 
 def _remove_first_line_indent(string):
@@ -583,7 +584,7 @@ def _generate_signature(func, reverse_index):
   """Given a function, returns a list of strings representing its args.
 
   This function produces a list of strings representing the arguments to a
-  python function. It uses inspect.getargspec, which
+  python function. It uses tf_inspect.getargspec, which
   does not generalize well to Python 3.x, which is more flexible in how *args
   and **kwargs are handled. This is not a problem in TF, since we have to remain
   compatible to Python 2.7 anyway.
@@ -603,9 +604,6 @@ def _generate_signature(func, reverse_index):
     code.
   """
 
-  # This produces poor signatures for decorated functions.
-  # TODO(wicke): We need to use something like the decorator module to fix it.
-
   args_list = []
 
   argspec = _get_arg_spec(func)
@@ -624,7 +622,7 @@ def _generate_signature(func, reverse_index):
   # Add all args with defaults.
   if argspec.defaults:
     try:
-      source = _remove_first_line_indent(inspect.getsource(func))
+      source = _remove_first_line_indent(tf_inspect.getsource(func))
       func_ast = ast.parse(source)
       ast_defaults = func_ast.body[0].args.defaults
     except IOError:  # If this is a builtin, getsource fails with IOError
@@ -689,7 +687,7 @@ def _get_guides_markdown(duplicate_names, guide_index, relative_path):
 
 
 def _get_defining_class(py_class, name):
-  for cls in inspect.getmro(py_class):
+  for cls in tf_inspect.getmro(py_class):
     if name in cls.__dict__:
       return cls
   return None
@@ -936,15 +934,15 @@ class _ClassPageInfo(object):
       if isinstance(child, property):
         self._add_property(short_name, child_name, child, child_doc)
 
-      elif inspect.isclass(child):
+      elif tf_inspect.isclass(child):
         if defining_class is None:
           continue
         url = parser_config.reference_resolver.reference_to_url(
             child_name, relative_path)
         self._add_class(short_name, child_name, child, child_doc, url)
 
-      elif (inspect.ismethod(child) or inspect.isfunction(child) or
-            inspect.isroutine(child)):
+      elif (tf_inspect.ismethod(child) or tf_inspect.isfunction(child) or
+            tf_inspect.isroutine(child)):
         if defining_class is None:
           continue
 
@@ -967,7 +965,7 @@ class _ClassPageInfo(object):
           child_signature = _generate_signature(child,
                                                 parser_config.reverse_index)
         except TypeError:
-          # If this is a (dynamically created) slot wrapper, inspect will
+          # If this is a (dynamically created) slot wrapper, tf_inspect will
           # raise typeerror when trying to get to the code. Ignore such
           # functions.
           continue
@@ -1106,13 +1104,13 @@ class _ModulePageInfo(object):
       url = parser_config.reference_resolver.reference_to_url(
           member_full_name, relative_path)
 
-      if inspect.ismodule(member):
+      if tf_inspect.ismodule(member):
         self._add_module(name, member_full_name, member, member_doc, url)
 
-      elif inspect.isclass(member):
+      elif tf_inspect.isclass(member):
         self._add_class(name, member_full_name, member, member_doc, url)
 
-      elif inspect.isfunction(member):
+      elif tf_inspect.isfunction(member):
         self._add_function(name, member_full_name, member, member_doc, url)
 
       else:
@@ -1196,17 +1194,17 @@ def docs_for_object(full_name, py_object, parser_config):
   duplicate_names = parser_config.duplicates.get(master_name, [full_name])
 
   # TODO(wicke): Once other pieces are ready, enable this also for partials.
-  if (inspect.ismethod(py_object) or inspect.isfunction(py_object) or
+  if (tf_inspect.ismethod(py_object) or tf_inspect.isfunction(py_object) or
       # Some methods in classes from extensions come in as routines.
-      inspect.isroutine(py_object)):
+      tf_inspect.isroutine(py_object)):
     page_info = _FunctionPageInfo(master_name)
     page_info.set_signature(py_object, parser_config.reverse_index)
 
-  elif inspect.isclass(py_object):
+  elif tf_inspect.isclass(py_object):
     page_info = _ClassPageInfo(master_name)
     page_info.collect_docs_for_class(py_object, parser_config)
 
-  elif inspect.ismodule(py_object):
+  elif tf_inspect.ismodule(py_object):
     page_info = _ModulePageInfo(master_name)
     page_info.collect_docs_for_module(parser_config)
 
@@ -1341,7 +1339,7 @@ def _get_defined_in(py_object, parser_config):
   # TODO(wicke): Only use decorators that support this in TF.
 
   try:
-    path = os.path.relpath(path=inspect.getfile(py_object),
+    path = os.path.relpath(path=tf_inspect.getfile(py_object),
                            start=parser_config.base_dir)
   except TypeError:  # getfile throws TypeError if py_object is a builtin.
     return _PythonBuiltin()
@@ -1384,15 +1382,15 @@ def generate_global_index(library_name, index, reference_resolver):
   """
   symbol_links = []
   for full_name, py_object in six.iteritems(index):
-    if (inspect.ismodule(py_object) or inspect.isfunction(py_object) or
-        inspect.isclass(py_object)):
+    if (tf_inspect.ismodule(py_object) or tf_inspect.isfunction(py_object) or
+        tf_inspect.isclass(py_object)):
       # In Python 3, unbound methods are functions, so eliminate those.
-      if inspect.isfunction(py_object):
+      if tf_inspect.isfunction(py_object):
         if full_name.count('.') == 0:
           parent_name = ''
         else:
           parent_name = full_name[:full_name.rfind('.')]
-        if parent_name in index and inspect.isclass(index[parent_name]):
+        if parent_name in index and tf_inspect.isclass(index[parent_name]):
           # Skip methods (=functions with class parents).
           continue
       symbol_links.append((

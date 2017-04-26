@@ -202,7 +202,7 @@ class MklConv2DCustomBackpropInputOp : public OpKernel {
     mkl_out_shape.AddDim(dnnLayoutGetMemorySize_F32(static_cast<dnnLayout_t>(
                              mklOutputShape.GetMklLayout())) /
                          sizeof(T));
-    AllocateOutputSetMklshape(context, 0, &in_backprop, mkl_out_shape,
+    AllocateOutputSetMklShape(context, 0, &in_backprop, mkl_out_shape,
                               mklOutputShape);
 
     mkl_context.conv_res[dnnResourceDiffSrc] =
@@ -341,11 +341,11 @@ class MklConv2DCustomBackpropInputOp : public OpKernel {
   TensorFormat data_format;
 };
 
-#define REGISTER_MKL_CPU_KERNELS(T)                                       \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2DBackpropInput")                  \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+#define REGISTER_MKL_CPU_KERNELS(T)                                 \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropInput")            \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklConv2DCustomBackpropInputOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_KERNELS);

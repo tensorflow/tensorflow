@@ -76,9 +76,9 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
     batch_shape = shape_[:-2]
     a = np.random.uniform(
         low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(dtype_)
-    a += a.T
+    a += np.conj(a.T)
     a = np.tile(a, batch_shape + (1, 1))
-    if dtype_ == np.float32:
+    if dtype_ == np.float32 or dtype_ == np.complex64:
       atol = 1e-4
     else:
       atol = 1e-12
@@ -118,7 +118,7 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_):
     batch_shape = shape_[:-2]
     a = np.random.uniform(
         low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(dtype_)
-    a += a.T
+    a += np.conj(a.T)
     a = np.tile(a, batch_shape + (1, 1))
     # Optimal stepsize for central difference is O(epsilon^{1/3}).
     epsilon = np.finfo(dtype_).eps
@@ -135,7 +135,7 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_):
       for b in tf_e, tf_v:
         x_init = np.random.uniform(
             low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(dtype_)
-        x_init += x_init.T
+        x_init += np.conj(x_init.T)
         x_init = np.tile(x_init, batch_shape + (1, 1))
         theoretical, numerical = gradient_checker.compute_gradient(
             tf_a,
@@ -151,12 +151,15 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_):
 
 if __name__ == '__main__':
   for dtype in np.float32, np.float64:
+    # TODO(rmlarsen): Re-enable for np.complex64, np.complex128
+    # when we have a fix for the crash in numpy.linalg.eig.
     for size in 1, 2, 5, 10:
       for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):
         shape = batch_dims + (size, size)
         name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
         setattr(SelfAdjointEigTest, 'testSelfAdjointEig_' + name,
                 _GetSelfAdjointEigTest(dtype, shape))
-        setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
-                _GetSelfAdjointEigGradTest(dtype, shape))
+        if dtype in [np.float32, np.float64]:
+          setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
+                  _GetSelfAdjointEigGradTest(dtype, shape))
   test.main()

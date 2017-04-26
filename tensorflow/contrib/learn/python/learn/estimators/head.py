@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import inspect
 
 import six
 
@@ -38,15 +37,17 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 class Head(object):
@@ -612,7 +613,7 @@ def _create_model_fn_ops(features,
   if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
     weight_tensor = _weight_tensor(features, weight_column_name)
     loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
-    logging_ops.scalar_summary(
+    summary.scalar(
         _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
     if mode == model_fn.ModeKeys.TRAIN:
@@ -1658,19 +1659,16 @@ def _compute_weighted_loss(loss_unweighted, weight, name="loss"):
     name: Optional name
 
   Returns:
-    A tuple of losses. First one for training and the second one for reproting.
+    A tuple of losses. First one for training and the second one for reporting.
   """
   with ops.name_scope(name, values=(loss_unweighted, weight)) as name_scope:
     if weight is None:
       loss = math_ops.reduce_mean(loss_unweighted, name=name_scope)
       return loss, loss
+    weight = weights_broadcast_ops.broadcast_weights(weight, loss_unweighted)
     with ops.name_scope(None, "weighted_loss",
                         (loss_unweighted, weight)) as name:
-      weighted_loss = math_ops.multiply(
-          array_ops.reshape(loss_unweighted, shape=(-1,)),
-          array_ops.reshape(weight, shape=(-1,)), name=name)
-    # TODO(ptucker): This might be wrong if weights are broadcast to loss shape.
-    # We should use tf.losses here.
+      weighted_loss = math_ops.multiply(loss_unweighted, weight, name=name)
     weighted_loss_mean = math_ops.reduce_mean(weighted_loss, name=name_scope)
     weighted_loss_normalized = math_ops.div(
         math_ops.reduce_sum(weighted_loss),
@@ -1699,9 +1697,10 @@ def _check_mode_valid(mode):
 
 def _get_arguments(func):
   """Returns a spec of given func."""
+  _, func = tf_decorator.unwrap(func)
   if hasattr(func, "__code__"):
     # Regular function.
-    return inspect.getargspec(func)
+    return tf_inspect.getargspec(func)
   elif hasattr(func, "__call__"):
     # Callable object.
     return _get_arguments(func.__call__)
@@ -1735,7 +1734,7 @@ def _centered_bias(logits_dimension, head_name=None):
   # Do not create a variable with variable_scope.get_variable, because that may
   # create a PartitionedVariable, which does not support indexing, so
   # summary.scalar will not work.
-  centered_bias = variables.Variable(
+  centered_bias = variable_scope.variable(
       name="centered_bias_weight",
       initial_value=array_ops.zeros(shape=(logits_dimension,)),
       trainable=True)
@@ -1804,8 +1803,13 @@ def _float_weights_or_none(weights):
 
 
 def _indicator_labels_streaming_mean(labels, weights=None, class_id=None):
-  labels = ops.convert_to_tensor(labels)
+  labels = math_ops.to_float(labels)
+  weights = _float_weights_or_none(weights)
+  if weights is not None:
+    weights = weights_broadcast_ops.broadcast_weights(weights, labels)
   if class_id is not None:
+    if weights is not None:
+      weights = weights[:, class_id]
     labels = labels[:, class_id]
   return metrics_lib.streaming_mean(labels, weights=weights)
 
@@ -1813,11 +1817,13 @@ def _indicator_labels_streaming_mean(labels, weights=None, class_id=None):
 def _predictions_streaming_mean(predictions,
                                 weights=None,
                                 class_id=None):
-  predictions = ops.convert_to_tensor(predictions)
+  predictions = math_ops.to_float(predictions)
+  weights = _float_weights_or_none(weights)
   if weights is not None:
-    weights = ops.convert_to_tensor(weights)
-
+    weights = weights_broadcast_ops.broadcast_weights(weights, predictions)
   if class_id is not None:
+    if weights is not None:
+      weights = weights[:, class_id]
     predictions = predictions[:, class_id]
   return metrics_lib.streaming_mean(predictions, weights=weights)
 
@@ -1852,16 +1858,21 @@ def _class_labels_streaming_mean(labels, weights, class_id):
 
 def _streaming_auc(predictions, labels, weights=None, class_id=None,
                    curve="ROC"):
-  predictions = ops.convert_to_tensor(predictions)
-  labels = ops.convert_to_tensor(labels)
+  # pylint: disable=missing-docstring
+  predictions = math_ops.to_float(predictions)
+  if labels.dtype.base_dtype != dtypes.bool:
+    logging.warning("Casting %s labels to bool.", labels.dtype)
+    labels = math_ops.cast(labels, dtypes.bool)
+  weights = _float_weights_or_none(weights)
+  if weights is not None:
+    weights = weights_broadcast_ops.broadcast_weights(weights, predictions)
   if class_id is not None:
+    if weights is not None:
+      weights = weights[:, class_id]
     predictions = predictions[:, class_id]
     labels = labels[:, class_id]
   return metrics_lib.streaming_auc(
-      predictions,
-      math_ops.cast(labels, dtypes.bool),
-      weights=_float_weights_or_none(weights),
-      curve=curve)
+      predictions, labels, weights=weights, curve=curve)
 
 
 def _assert_class_id(class_id, num_classes=None):

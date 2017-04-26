@@ -1265,13 +1265,12 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   }
 }
 
-Status IrEmitter::HandleCall(
-    HloInstruction* call, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* computation) {
+Status IrEmitter::HandleCall(HloInstruction* call) {
+  HloComputation* computation = call->to_apply();
   llvm::Function* call_ir_function = FindOrDie(emitted_functions_, computation);
 
   std::vector<llvm::Value*> parameter_addresses;
-  for (HloInstruction* operand : operands) {
+  for (const HloInstruction* operand : call->operands()) {
     parameter_addresses.push_back(GetEmittedValueFor(operand));
   }
 
@@ -1322,9 +1321,9 @@ Status IrEmitter::HandleCustomCall(
   return Status::OK();
 }
 
-Status IrEmitter::HandleWhile(HloInstruction* xla_while, HloInstruction* init,
-                              HloComputation* condition, HloComputation* body) {
+Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   // Precondition: Condition computation must return a scalar bool.
+  HloComputation* condition = xla_while->while_condition();
   TF_RET_CHECK(ShapeUtil::IsScalar(condition->root_instruction()->shape()) &&
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";
@@ -1361,12 +1360,14 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while, HloInstruction* init,
       }));
 
   // Set emitted value to that of 'init' with which it shares an allocation.
+  const HloInstruction* init = xla_while->operand(0);
   emitted_value_[xla_while] = GetEmittedValueFor(init);
 
   // The called computation should have been emitted previously.
   llvm::Function* condition_ir_function =
       FindOrDie(emitted_functions_, condition);
-  llvm::Function* body_ir_function = FindOrDie(emitted_functions_, body);
+  llvm::Function* body_ir_function =
+      FindOrDie(emitted_functions_, xla_while->while_body());
 
   // Generating:
   //   while (Condition(while_result)) {
@@ -1710,8 +1711,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetAddressForOp(
       llvm::AttrBuilder attr_builder;
       attr_builder.addAlignmentAttr(MinimumAlignmentForShape(target_shape));
       attr_builder.addDereferenceableAttr(ByteSizeOf(target_shape));
-      retval->addAttr(llvm::AttributeList::get(
-          retval->getContext(), retval->getArgNo() + 1, attr_builder));
+      retval->addAttrs(attr_builder);
     }
     return ir_builder_.CreateBitCast(retval,
                                      IrShapeType(target_shape)->getPointerTo());

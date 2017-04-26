@@ -20,12 +20,12 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import inspect
 
 from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras.engine import InputSpec
 from tensorflow.contrib.keras.python.keras.engine import Layer
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util import tf_inspect
 
 
 class Wrapper(Layer):
@@ -44,19 +44,53 @@ class Wrapper(Layer):
     super(Wrapper, self).__init__(**kwargs)
 
   def build(self, input_shape=None):
-    # Assumes that self.layer is already set.
-    # Should be called at the end of .build() in the children classes.
-    self.trainable_weights = getattr(self.layer, 'trainable_weights', [])
-    self.non_trainable_weights = getattr(self.layer, 'non_trainable_weights',
-                                         [])
-    self.updates = getattr(self.layer, 'updates', [])
-    self.losses = getattr(self.layer, 'losses', [])
-    self.constraints = getattr(self.layer, 'constraints', {})
     self.built = True
 
+  @property
+  def activity_regularizer(self):
+    if hasattr(self.layer, 'activity_regularizer'):
+      return self.layer.activity_regularizer
+    else:
+      return None
+
+  @property
+  def trainable_weights(self):
+    return self.layer.trainable_weights
+
+  @property
+  def non_trainable_weights(self):
+    return self.layer.non_trainable_weights
+
+  @property
+  def updates(self):
+    if hasattr(self.layer, 'updates'):
+      return self.layer.updates
+    return []
+
+  def get_updates_for(self, inputs=None):
+    if inputs is None:
+      updates = self.layer.get_updates_for(None)
+      return updates + super(Wrapper, self).get_updates_for(None)
+    return super(Wrapper, self).get_updates_for(inputs)
+
+  @property
+  def losses(self):
+    if hasattr(self.layer, 'losses'):
+      return self.layer.losses
+    return []
+
+  def get_losses_for(self, inputs=None):
+    if inputs is None:
+      losses = self.layer.get_losses_for(None)
+      return losses + super(Wrapper, self).get_losses_for(None)
+    return super(Wrapper, self).get_losses_for(inputs)
+
+  @property
+  def constraints(self):
+    return self.layer.constraints
+
   def get_weights(self):
-    weights = self.layer.get_weights()
-    return weights
+    return self.layer.get_weights()
 
   def set_weights(self, weights):
     self.layer.set_weights(weights)
@@ -135,8 +169,8 @@ class TimeDistributed(Wrapper):
 
   def _compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    child_input_shape = tensor_shape.TensorShape([input_shape[0]] + input_shape[
-        2:])
+    child_input_shape = tensor_shape.TensorShape([input_shape[0]] +
+                                                 input_shape[2:])
     child_output_shape = self.layer._compute_output_shape(  # pylint: disable=protected-access
         child_input_shape).as_list()
     timesteps = input_shape[1]
@@ -250,7 +284,7 @@ class Bidirectional(Wrapper):
 
   def call(self, inputs, training=None, mask=None):
     kwargs = {}
-    func_args = inspect.getargspec(self.layer.call).args
+    func_args = tf_inspect.getargspec(self.layer.call).args
     if 'training' in func_args:
       kwargs['training'] = training
     if 'mask' in func_args:

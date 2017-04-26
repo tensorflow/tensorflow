@@ -197,8 +197,10 @@ class ResourceVariable(object):
             self._initialize_op = gen_resource_variable_ops.assign_variable_op(
                 self._handle, self._initial_value, name=n)
         with ops.name_scope("Read"), ops.colocate_with(self._handle):
-          value = gen_resource_variable_ops.read_variable_op(
-              self._handle, dtype=self._dtype)
+          # Manually assign reads to the handle's device to avoid log messages.
+          with ops.device(self._handle.device):
+            value = gen_resource_variable_ops.read_variable_op(
+                self._handle, dtype=self._dtype)
           self._graph_element = value
           if caching_device is not None:
             # Variables may be created in a tf.device() or ops.colocate_with()
@@ -242,6 +244,7 @@ class ResourceVariable(object):
       self._save_slice_info = None
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
+    self._graph_element = self.value()
 
   @property
   def dtype(self):
@@ -276,8 +279,10 @@ class ResourceVariable(object):
     """A cached operation which reads the value of this variable."""
     if self._cached_value is not None:
       return self._cached_value
-    return gen_resource_variable_ops.read_variable_op(
-        self._handle, dtype=self._dtype)
+    with ops.colocate_with(None, ignore_existing=True):
+      with ops.device(self._handle.device):
+        return gen_resource_variable_ops.read_variable_op(
+            self._handle, dtype=self._dtype)
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -318,8 +323,9 @@ class ResourceVariable(object):
      the read operation.
     """
     with ops.name_scope("Read"):
-      value = gen_resource_variable_ops.read_variable_op(
-          self._handle, dtype=self._dtype)
+      with ops.device(self._handle.device):
+        value = gen_resource_variable_ops.read_variable_op(
+            self._handle, dtype=self._dtype)
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)

@@ -121,16 +121,16 @@ class ZeroOutOp : public OpKernel {
     Tensor* output_tensor = NULL;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
-    auto output = output_tensor->flat<int32>();
+    auto output_flat = output_tensor->flat<int32>();
 
     // Set all but the first element of the output tensor to 0.
     const int N = input.size();
     for (int i = 1; i < N; i++) {
-      output(i) = 0;
+      output_flat(i) = 0;
     }
 
     // Preserve the first input value if possible.
-    if (N > 0) output(0) = input(0);
+    if (N > 0) output_flat(0) = input(0);
   }
 };
 ```
@@ -182,10 +182,10 @@ g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC -O2
 On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
 building the `.so` file.
 
->   Note on gcc version 5: gcc5 uses the new C++
->   [ABI](https://gcc.gnu.org/gcc-5/changes.html#libstdcxx). The binary pip
->   packages available on the TensorFlow website are built with gcc4 that uses
->   the older ABI. If you compile your op library with gcc5, add
+>   Note on `gcc` version `>=5`: gcc uses the new C++
+>   [ABI](https://gcc.gnu.org/gcc-5/changes.html#libstdcxx) since version `5`. The binary pip
+>   packages available on the TensorFlow website are built with `gcc4` that uses
+>   the older ABI. If you compile your op library with `gcc>=5`, add
 >   `-D_GLIBCXX_USE_CXX11_ABI=0` to the command line to make the library
 >   compatible with the older abi.
 >   Furthermore if you are using TensorFlow package created from source remember to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`

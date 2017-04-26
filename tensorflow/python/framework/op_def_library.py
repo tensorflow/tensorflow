@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -33,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_contextlib
 
 
 def _Attr(op_def, name):
@@ -241,7 +240,7 @@ class _OpInfo(object):
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def _MaybeColocateWith(inputs):
   """A context manager for (maybe) colocating with a list of input tensors.
 

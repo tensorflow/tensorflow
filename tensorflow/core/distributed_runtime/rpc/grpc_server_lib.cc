@@ -62,6 +62,13 @@ class NoReusePortOption : public ::grpc::ServerBuilderOption {
                          plugins) override {}
 };
 
+// static utility function
+RendezvousMgrInterface* NewRpcRendezvousMgr(
+    const WorkerEnv* env, const string& worker_name,
+    WorkerCacheInterface* worker_cache) {
+  return new RpcRendezvousMgr(env, worker_name, worker_cache);
+}
+
 }  // namespace
 
 GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
@@ -93,14 +100,16 @@ GrpcServer::~GrpcServer() {
   // - worker_env_.compute_pool
 }
 
-Status GrpcServer::Init() {
+Status GrpcServer::Init(ServiceInitFunction service_func,
+                        RendezvousMgrCreationFunction rendevous_mgr_func) {
   mutex_lock l(mu_);
   CHECK_EQ(state_, NEW);
   master_env_.env = env_;
   worker_env_.env = env_;
 
   SessionOptions sess_opts;
-  sess_opts.config = server_def_.default_session_config();
+  ConfigProto config = server_def_.default_session_config();
+  sess_opts.config = config;
 
   // Configure shared devices between master and worker.
   string name_prefix =
@@ -164,10 +173,15 @@ Status GrpcServer::Init() {
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
   master_impl_ = CreateMaster(&master_env_);
-  master_service_ = NewGrpcMasterService(master_impl_.get(), &builder);
+  master_service_ = NewGrpcMasterService(
+      master_impl_.get(), config.operation_timeout_in_ms(), &builder);
   worker_impl_ = NewGrpcWorker(&worker_env_);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
+  // extra service:
+  if (service_func != nullptr) {
+    service_func(&worker_env_, &builder);
+  }
   server_ = builder.BuildAndStart();
 
   if (!server_) {
@@ -180,7 +194,9 @@ Status GrpcServer::Init() {
 
   // Set up worker environment.
   std::unique_ptr<RendezvousMgrInterface> rendezvous_mgr(
-      new RpcRendezvousMgr(&worker_env_, name_prefix, worker_cache));
+      rendevous_mgr_func == nullptr ?
+      new RpcRendezvousMgr(&worker_env_, name_prefix, worker_cache) :
+      rendevous_mgr_func(&worker_env_, name_prefix, worker_cache));
   worker_env_.session_mgr = new SessionMgr(
       &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
       std::unique_ptr<WorkerCacheInterface>(worker_cache),
@@ -194,16 +210,23 @@ Status GrpcServer::Init() {
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
   master_env_.master_session_factory =
-      [](const SessionOptions& options, const MasterEnv* env,
-         std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs) {
+      [config](
+          SessionOptions options, const MasterEnv* env,
+          std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs) {
+        options.config.MergeFrom(config);
         return new MasterSession(options, env, std::move(remote_devs),
                                  CreateNoOpStatsPublisher);
       };
 
   // Provide direct access to the master from in-process clients.
-  LocalMaster::Register(target(), master_impl_.get());
+  LocalMaster::Register(target(), master_impl_.get(),
+                        config.operation_timeout_in_ms());
 
   return Status::OK();
+}
+
+Status GrpcServer::Init() {
+  return Init(nullptr, nullptr);
 }
 
 Status GrpcServer::ParseChannelSpec(const ServerDef& server_def,
@@ -243,6 +266,7 @@ Status GrpcServer::WorkerCacheFactory(const ServerDef& server_def,
       channel_spec, GetChannelCreationFunction(server_def)));
   const string host_port = channel_cache->TranslateTask(name_prefix);
   int requested_port;
+
   if (!strings::safe_strto32(str_util::Split(host_port, ':')[1],
                              &requested_port)) {
     return errors::Internal("Could not parse port for local server from \"",
@@ -327,7 +351,9 @@ std::shared_ptr<::grpc::ServerCredentials> GrpcServer::GetServerCredentials(
 
 ChannelCreationFunction GrpcServer::GetChannelCreationFunction(
     const ServerDef& server_def) const {
-  return NewHostPortGrpcChannel;
+  // We can do this because SparseGrpcChannelCache is robust to nullptr being
+  // returned by the channel creation function
+  return ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
 }
 
 std::unique_ptr<Master> GrpcServer::CreateMaster(MasterEnv* master_env) {
@@ -339,7 +365,8 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
                           std::unique_ptr<ServerInterface>* out_server) {
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
-  TF_RETURN_IF_ERROR(ret->Init());
+  ServiceInitFunction service_func = nullptr;
+  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr));
   *out_server = std::move(ret);
   return Status::OK();
 }
