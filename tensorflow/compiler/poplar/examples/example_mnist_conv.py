@@ -50,20 +50,20 @@ def infer(images, keep_prob):
 
   return tf.matmul(h_fc1_drop, W_fc2) + b_fc2
 
-with tf.device("/job:localhost/replica:0/task:0/device:XLA_IPU:0"):
-  # Inputs
-  x = tf.placeholder(tf.float32, shape=[None, 784])
-  y_ = tf.placeholder(tf.float32, shape=[None, 10])
-  kp = tf.placeholder(tf.float32)
 
-  with tf.variable_scope("vars", use_resource=True):
-    # Inference
-    logits = infer(x, kp)
+# Inputs
+x = tf.placeholder(tf.float32, shape=[None, 784])
+y_ = tf.placeholder(tf.float32, shape=[None, 10])
+kp = tf.placeholder(tf.float32)
 
-  # Training
-  cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
-  optimizer = tf.train.GradientDescentOptimizer(0.01)
-  train_step = optimizer.minimize(cross_entropy)
+with tf.variable_scope("vars", use_resource=True):
+  # Inference
+  logits = infer(x, kp)
+
+# Training
+cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
+optimizer = tf.train.GradientDescentOptimizer(0.01)
+train_step = optimizer.minimize(cross_entropy)
 
 sess = tf.InteractiveSession()
 
