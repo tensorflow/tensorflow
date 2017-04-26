@@ -217,6 +217,7 @@ def _print_tensor_info(tensor_info):
     shape = ', '.join(dims)
     shape = '(' + shape + ')'
   print('    shape: ' + shape)
+  print('    name: ' + tensor_info.name)
 
 
 def _show_all(saved_model_dir):
@@ -599,7 +600,7 @@ def create_parser():
              ' the output tensors to files:\n'
              '$saved_model_cli show --dir /tmp/saved_model --tag_set serve'
              '--signature_def serving_default '
-             '--inputs x1=/tmp/124.npz[x],x2=/tmp/123.npy'
+             '--inputs input1_key=/tmp/124.npz[x],input2_key=/tmp/123.npy'
              '--outdir=/out\n\n'
              'For more information about input file format, please see:\n')
   parser_run = subparsers.add_parser(
@@ -622,7 +623,7 @@ def create_parser():
       help='key of SignatureDef to run')
   msg = ('inputs in the format of \'input_key=filename[variable_name]\', '
          'separated by \',\'. Inputs can only be loaded from .npy, .npz or '
-         'pickle files.')
+         'pickle files. Please use input keys instead of input names.')
   parser_run.add_argument('--inputs', type=str, required=True, help=msg)
   parser_run.add_argument(
       '--outdir',

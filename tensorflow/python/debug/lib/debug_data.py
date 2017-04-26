@@ -215,7 +215,7 @@ def is_copy_node(node_name):
   return node_name.startswith("__copy_")
 
 
-def _is_debug_node(node_name):
+def is_debug_node(node_name):
   """Determine whether a node name is that of a debug node.
 
   Such nodes are inserted by TensorFlow core upon request in
@@ -230,7 +230,7 @@ def _is_debug_node(node_name):
   return node_name.startswith("__dbg_")
 
 
-def _parse_debug_node_name(node_name):
+def parse_debug_node_name(node_name):
   """Parse the name of a debug node.
 
   Args:
@@ -791,12 +791,12 @@ class DebugDumpDir(object):
       ValueError: If duplicate node names are encountered.
     """
 
-    if _is_debug_node(node.name):
+    if is_debug_node(node.name):
       # This is a debug node. Parse the node name and retrieve the
       # information about debug watches on tensors. But do not include
       # the node in the graph.
       (watched_node_name, watched_output_slot, _,
-       debug_op) = _parse_debug_node_name(node.name)
+       debug_op) = parse_debug_node_name(node.name)
 
       self._debug_watches[watched_node_name][watched_output_slot].add(
           debug_op)
@@ -878,7 +878,7 @@ class DebugDumpDir(object):
       ctrl_inputs = self._node_ctrl_inputs[node]
       debug_op_inputs = []
       for ctrl_inp in ctrl_inputs:
-        if _is_debug_node(ctrl_inp):
+        if is_debug_node(ctrl_inp):
           debug_op_inputs.append(ctrl_inp)
       for debug_op_inp in debug_op_inputs:
         ctrl_inputs.remove(debug_op_inp)

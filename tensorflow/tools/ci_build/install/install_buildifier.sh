@@ -17,7 +17,7 @@
 set -e
 BUILDIFIER_DIR="buildifier"
 mkdir ${BUILDIFIER_DIR}
-curl -Ls https://github.com/bazelbuild/buildifier/archive/0.4.3.tar.gz | \
+curl -Ls https://github.com/bazelbuild/buildifier/archive/0.4.5.tar.gz | \
     tar -C "${BUILDIFIER_DIR}" --strip-components=1 -xz
 pushd ${BUILDIFIER_DIR}
 
