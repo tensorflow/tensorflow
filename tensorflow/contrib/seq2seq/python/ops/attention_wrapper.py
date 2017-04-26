@@ -73,8 +73,9 @@ def _prepare_memory(memory, memory_sequence_length, check_inner_dims_defined):
   """
   memory = nest.map_structure(
       lambda m: ops.convert_to_tensor(m, name="memory"), memory)
-  memory_sequence_length = ops.convert_to_tensor(
-      memory_sequence_length, name="memory_sequence_length")
+  if memory_sequence_length is not None:
+    memory_sequence_length = ops.convert_to_tensor(
+        memory_sequence_length, name="memory_sequence_length")
   if check_inner_dims_defined:
     def _check_dims(m):
       if not m.get_shape()[2:].is_fully_defined():
