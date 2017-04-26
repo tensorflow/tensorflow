@@ -27,6 +27,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/common_runtime/sycl/sycl_util.h"
+#endif // TENSORFLOW_USE_SYCL
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -141,6 +145,40 @@ static void PrepareAndValidateInputs(OpKernelContext* c,
   *num_updates = indices_shape.num_elements() / safe_slice_dim;
 }
 
+template <typename Device, typename Index>
+class IndexFlattener {
+public:
+  inline typename TTypes<Index, 2>::ConstTensor
+  operator()(OpKernelContext*, const Tensor& indices) {
+    return indices.flat_inner_dims<Index>();
+  }
+};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename Index>
+class IndexFlattener<SYCLDevice, Index> {
+public:
+  IndexFlattener() { indices_host_ = nullptr; }
+  ~IndexFlattener() { delete[] indices_host_; }
+
+  inline typename TTypes<Index, 2>::ConstTensor
+  operator()(OpKernelContext* c, const Tensor& indices) {
+    size_t num_indices = indices.NumElements();
+    indices_host_ = new Index[num_indices];
+    auto device = c->eigen_sycl_device();
+    auto size = sizeof(Index) * num_indices;
+    auto src_ptr = GetBase(&indices);
+    device.memcpyDeviceToHost(indices_host_, static_cast<const Index*>(src_ptr),
+                              size);
+    return typename TTypes<Index, 2>::ConstTensor(indices_host_,
+           indices.shape().AsEigenDSizes<2>());
+  }
+
+private:
+  Index* indices_host_;
+};
+#endif
+
 template <typename Device, typename T, typename Index>
 class ScatterNdOp : public OpKernel {
  public:
@@ -169,7 +207,8 @@ class ScatterNdOp : public OpKernel {
                                     &num_updates, &slice_size);
     if (!c->status().ok()) return;
 
-    auto indices_flat = indices.flat_inner_dims<Index>();
+    IndexFlattener<Device, Index> index_flattener;
+    auto indices_flat = index_flattener(c, indices);
     auto updates_flat = updates.shaped<T, 2>({num_updates, slice_size});
 
     Tensor* out = nullptr;
@@ -265,7 +304,8 @@ class ScatterNdUpdateOp : public OpKernel {
                                     &slice_dim, &num_updates, &slice_size);
     if (!c->status().ok()) return;
 
-    auto indices_flat = indices.flat_inner_dims<Index>();
+    IndexFlattener<Device, Index> index_flattener;
+    auto indices_flat = index_flattener(c, indices);
     auto updates_flat = updates.shaped<T, 2>({num_updates, slice_size});
     auto params_matrix = params.template shaped<T, 2>(
         {params_shape.num_elements() / slice_size, slice_size});
