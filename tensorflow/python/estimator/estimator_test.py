@@ -540,6 +540,8 @@ class EstimatorTrainTest(test.TestCase):
     # Mocking the SessionManager.wait_for_session, so that worker doesn't wait
     # for chief.
     def get_initialized_session(*args, **kwargs):
+      # Session doesn't take 'max_wait_secs' argument.
+      kwargs.pop('max_wait_secs', None)
       scaffold = training.Scaffold().finalize()
       sess = session.Session(*args, **kwargs)
       sess.run(scaffold.init_op)
