@@ -519,6 +519,12 @@ struct acos : base<T, Eigen::internal::scalar_acos_op<T> > {};
 template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T> > {};
 
+template <typename T>
+struct sinh : base<T, Eigen::internal::scalar_sinh_op<T> > {};
+
+template <typename T>
+struct cosh : base<T, Eigen::internal::scalar_cosh_op<T> > {};
+
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool> > {
 };
 

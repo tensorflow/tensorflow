@@ -358,6 +358,14 @@ REGISTER_OP("Atan").UNARY().Doc(R"doc(
 Computes atan of x element-wise.
 )doc");
 
+REGISTER_OP("Sinh").UNARY().Doc(R"doc(
+Computes sinh of x element-wise.
+)doc");
+
+REGISTER_OP("Cosh").UNARY().Doc(R"doc(
+Computes cosh of x element-wise.
+)doc");
+
 #undef UNARY
 #undef UNARY_REAL
 #undef UNARY_COMPLEX
