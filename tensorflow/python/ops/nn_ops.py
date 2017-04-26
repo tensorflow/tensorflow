@@ -1272,7 +1272,7 @@ def conv3d_transpose(value,
                      output_shape,
                      strides,
                      padding="SAME",
-                     data_format=None,
+                     data_format="NDHWC",
                      name=None):
   """The transpose of `conv3d`.
 
@@ -1294,7 +1294,7 @@ def conv3d_transpose(value,
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the @{tf.nn.convolution$comment here}
     data_format: A string, either `'NDHWC'` or `'NCDHW`' specifying the layout
-      of the input and output tensors.
+      of the input and output tensors. Defaults to `'NDHWC'`.
     name: Optional name for the returned tensor.
 
   Returns:
