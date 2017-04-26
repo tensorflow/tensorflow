@@ -1010,6 +1010,7 @@ class Conv2DTranspose(Conv2D):
 
   def __init__(self, filters,
                kernel_size,
+               output_shape=None,
                strides=(1, 1),
                padding='valid',
                data_format='channels_last',
@@ -1023,6 +1024,7 @@ class Conv2DTranspose(Conv2D):
                trainable=True,
                name=None,
                **kwargs):
+    self.output_shape = output_shape
     super(Conv2DTranspose, self).__init__(
         filters,
         kernel_size,
@@ -1092,10 +1094,12 @@ class Conv2DTranspose(Conv2D):
       if padding == 'valid' and dim_size is not None:
         dim_size += max(kernel_size - stride_size, 0)
       return dim_size
-
-    # Infer the dynamic output shape:
-    out_height = get_deconv_dim(height, stride_h, kernel_h, self.padding)
-    out_width = get_deconv_dim(width, stride_w, kernel_w, self.padding)
+    if self.output_shape is None:
+      # Infer the dynamic output shape:
+      out_height = get_deconv_dim(height, stride_h, kernel_h, self.padding)
+      out_width = get_deconv_dim(width, stride_w, kernel_w, self.padding)
+    else:
+      out_height, out_width = self.output_shape
 
     if self.data_format == 'channels_first':
       output_shape = (batch_size, self.filters, out_height, out_width)
@@ -1116,10 +1120,20 @@ class Conv2DTranspose(Conv2D):
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = self.filters
-    out_shape[h_axis] = get_deconv_dim(
-        out_shape[h_axis], stride_h, kernel_h, self.padding)
-    out_shape[w_axis] = get_deconv_dim(
-        out_shape[w_axis], stride_w, kernel_w, self.padding)
+    if (self.output_shape is None or
+        isinstance(self.output_shape[0], ops.Tensor)):
+      out_shape[h_axis] = get_deconv_dim(
+          out_shape[h_axis], stride_h, kernel_h, self.padding)
+    else:
+      out_shape[h_axis] = self.output_shape[0]
+
+    if (self.output_shape is None or
+        isinstance(self.output_shape[1], ops.Tensor)):
+      out_shape[w_axis] = get_deconv_dim(
+          out_shape[w_axis], stride_w, kernel_w, self.padding)
+    else:
+      out_shape[w_axis] = self.output_shape[1]
+
     outputs.set_shape(out_shape)
 
     if self.bias:
@@ -1136,6 +1150,7 @@ class Conv2DTranspose(Conv2D):
 def conv2d_transpose(inputs,
                      filters,
                      kernel_size,
+                     output_shape=None,
                      strides=(1, 1),
                      padding='valid',
                      data_format='channels_last',
@@ -1195,6 +1210,7 @@ def conv2d_transpose(inputs,
   layer = Conv2DTranspose(
       filters=filters,
       kernel_size=kernel_size,
+      output_shape=output_shape,
       strides=strides,
       padding=padding,
       data_format=data_format,
