@@ -48,7 +48,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
                sess,
                dump_root=None,
                log_usage=True,
-               ui_type="curses"):
+               ui_type="curses",
+               thread_name_filter=None):
     """Constructor of LocalCLIDebugWrapperSession.
 
     Args:
@@ -61,6 +62,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       log_usage: (`bool`) whether the usage of this class is to be logged.
       ui_type: (`str`) requested UI type. Currently supported:
         (curses | readline)
+      thread_name_filter: Regular-expression white list for thread name. See
+        the doc of `BaseDebugWrapperSession` for details.
 
     Raises:
       ValueError: If dump_root is an existing and non-empty directory or if
@@ -70,7 +73,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if log_usage:
       pass  # No logging for open-source.
 
-    framework.BaseDebugWrapperSession.__init__(self, sess)
+    framework.BaseDebugWrapperSession.__init__(
+        self, sess, thread_name_filter=thread_name_filter)
 
     if not dump_root:
       self._dump_root = tempfile.mktemp(prefix=_DUMP_ROOT_PREFIX)

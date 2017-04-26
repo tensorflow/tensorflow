@@ -889,6 +889,8 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
     const HloComputation& computation, const BufferLiveness& buffer_liveness,
     std::vector<ColocatedBufferSet>* colocated_buffer_sets) {
   CHECK(!colocated_set.empty());
+  const TuplePointsToAnalysis& points_to_analysis =
+      buffer_liveness.points_to_analysis();
 
   // Parallel while loops cannot safely share colocated buffer sets.
   if (buffer_liveness.hlo_ordering().SequentialOrder(computation) == nullptr) {
@@ -919,13 +921,26 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
       continue;
     }
 
-    // Build vector of predecessor while result buffers.
+    // Build vector of predecessor while result and init buffers, which are
+    // checked for liveness interference below. We must check both the result
+    // and init buffers because they're aliased together, but
+    // TuplePointsToAnalysis is unaware of this aliasing.
     std::vector<const LogicalBuffer*> predecessor_while_buffers;
     for (const LogicalBuffer* buffer : predecessor_set) {
-      if (buffer->instruction()->opcode() == HloOpcode::kWhile &&
+      const HloInstruction* instruction = buffer->instruction();
+      if (instruction->opcode() == HloOpcode::kWhile &&
           buffer_size_(*buffer) == init_buffer_size &&
-          buffer->instruction()->parent() == &computation) {
+          instruction->parent() == &computation) {
         predecessor_while_buffers.push_back(buffer);
+        // Add the init buffer at the same index, which must also exist in the
+        // predecessor set, and must be unambiguous.
+        const PointsToSet& init_points_to =
+            points_to_analysis.GetPointsToSet(instruction->operand(0));
+        const std::vector<const LogicalBuffer*>& init_buffers =
+            init_points_to.element(buffer->index());
+        CHECK_EQ(init_buffers.size(), 1);
+        CHECK_GT(predecessor_set.count(init_buffers[0]), 0);
+        predecessor_while_buffers.push_back(init_buffers[0]);
       }
     }
     if (predecessor_while_buffers.empty()) {
@@ -1070,6 +1085,19 @@ void BufferAssigner::AssignColocatedBufferSets(
                                   buffer_size_(*buffer));
       }
       colocated_buffers->insert(buffer);
+
+      // Each entry parameter must reside in its own BufferAllocation. As a
+      // result, it doesn't make sense for entry parameters to appear in a
+      // colocated buffer set, since the only correct scenario would be a
+      // degenerate colocated set that only contains the entry parameter.
+      const HloInstruction* instruction = buffer->instruction();
+      const HloComputation* computation = instruction->parent();
+      const bool is_entry_parameter =
+          instruction->opcode() == HloOpcode::kParameter &&
+          computation == computation->parent()->entry_computation();
+      CHECK(!is_entry_parameter)
+          << "allocation: " << *allocation << " instruction: " << *buffer << " "
+          << instruction->ToString();
     }
   }
 }

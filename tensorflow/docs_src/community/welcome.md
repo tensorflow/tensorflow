@@ -26,6 +26,21 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 * [Rust language bindings](https://github.com/google/tensorflow-rust)
 * [Operator Vectorization Library](https://github.com/opveclib/opveclib)
 
+## TensorFlow Communities Around the World
+
+Asia:
+
+* [TensorFlow Korea (TF-KR) User Group](https://www.facebook.com/groups/TensorFlowKR/) _(Korean language)_
+* [TensorFlow User Group Tokyo](https://tfug-tokyo.connpass.com/) _(Japanese Language)_
+* [Soleil Data Dojo](https://soleildatadojo.connpass.com/) _(Japanese language)_
+
+
+Europe:
+
+* [TensorFlow Barcelona](https://www.meetup.com/Barcelona-Machine-Learning-Meetup/)
+* [TensorFlow Madrid](https://www.meetup.com/TensorFlow-Madrid/)
+
+
 
 ## Support
 
@@ -45,3 +60,5 @@ please read the following list carefully:
     [TensorFlow issues tracker](https://github.com/tensorflow/tensorflow/issues)
     on GitHub.  For example, use the issue tracker to request a
     new operation in TensorFlow.
+    
+

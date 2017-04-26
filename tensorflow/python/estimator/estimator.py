@@ -579,7 +579,7 @@ class Estimator(object):
         saver_hook_exists = any([
             isinstance(h, training.CheckpointSaverHook)
             for h in (all_hooks + chief_hooks +
-                      estimator_spec.training_chief_hooks)
+                      list(estimator_spec.training_chief_hooks))
         ])
         if not saver_hook_exists:
           chief_hooks = [
@@ -595,7 +595,8 @@ class Estimator(object):
           checkpoint_dir=self._model_dir,
           scaffold=estimator_spec.scaffold,
           hooks=all_hooks,
-          chief_only_hooks=chief_hooks + estimator_spec.training_chief_hooks,
+          chief_only_hooks=(
+              tuple(chief_hooks) + tuple(estimator_spec.training_chief_hooks)),
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
           config=self._session_config) as mon_sess:
