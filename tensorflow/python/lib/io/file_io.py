@@ -27,6 +27,7 @@ import uuid
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 
 
 class FileIO(object):
@@ -121,11 +122,51 @@ class FileIO(object):
       return self._prepare_value(
           pywrap_tensorflow.ReadFromStream(self._read_buf, length, status))
 
-  def seek(self, position):
-    """Seeks to the position in the file."""
+  @deprecation.deprecated_args(
+      None,
+      "position is deprecated in favor of the offset argument.",
+      "position")
+  def seek(self, offset=None, whence=0, position=None):
+    # TODO(jhseu): Delete later. Used to omit `position` from docs.
+    # pylint: disable=g-doc-args
+    """Seeks to the offset in the file.
+
+    Args:
+      offset: The byte count relative to the whence argument.
+      whence: Valid values for whence are:
+        0: start of the file (default)
+        1: relative to the current position of the file
+        2: relative to the end of file. offset is usually negative.
+    """
+    # pylint: enable=g-doc-args
     self._preread_check()
+    # We needed to make offset a keyword argument for backwards-compatibility.
+    # This check exists so that we can convert back to having offset be a
+    # positional argument.
+    # TODO(jhseu): Make `offset` a positional argument after `position` is
+    # deprecated.
+    if offset is None and position is None:
+      raise TypeError("seek(): offset argument required")
+    if offset is not None and position is not None:
+      raise TypeError("seek(): offset and position may not be set "
+                      "simultaneously.")
+
+    if position is not None:
+      offset = position
+
     with errors.raise_exception_on_not_ok_status() as status:
-      ret_status = self._read_buf.Seek(position)
+      if whence == 0:
+        pass
+      elif whence == 1:
+        offset += self.tell()
+      elif whence == 2:
+        offset += self.size()
+      else:
+        raise errors.InvalidArgumentError(
+            None, None,
+            "Invalid whence argument: {}. Valid values are 0, 1, or 2."
+            .format(whence))
+      ret_status = self._read_buf.Seek(offset)
       pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
   def readline(self):

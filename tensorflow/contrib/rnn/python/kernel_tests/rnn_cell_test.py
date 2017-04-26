@@ -569,7 +569,7 @@ class RNNCellTest(test.TestCase):
               self.assertTrue(
                   float(np.linalg.norm((state[0, :] - state[i, :]))) > 1e-6)
 
-  def testAttentionCellWrapperCorrectResult(self):
+  def _testAttentionCellWrapperCorrectResult(self):
     num_units = 4
     attn_length = 6
     batch_size = 2

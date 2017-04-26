@@ -1,0 +1,14 @@
+path: "tensorflow.estimator.export.ClassificationOutput.__metaclass__"
+tf_class {
+  is_instance: "<class \'abc.ABCMeta\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "mro"
+  }
+  member_method {
+    name: "register"
+    argspec: "args=[\'cls\', \'subclass\'], varargs=None, keywords=None, defaults=None"
+  }
+}

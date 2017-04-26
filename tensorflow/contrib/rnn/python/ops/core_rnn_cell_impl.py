@@ -108,11 +108,11 @@ class BasicRNNCell(RNNCell):
   """The most basic RNN cell."""
 
   def __init__(self, num_units, input_size=None, activation=tanh, reuse=None):
+    super(BasicRNNCell, self).__init__(_reuse=reuse)
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated.", self)
     self._num_units = num_units
     self._activation = activation
-    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -122,11 +122,9 @@ class BasicRNNCell(RNNCell):
   def output_size(self):
     return self._num_units
 
-  def __call__(self, inputs, state, scope=None):
+  def call(self, inputs, state):
     """Most basic RNN: output = new_state = act(W * input + U * state + B)."""
-    with _checked_scope(self, scope or "basic_rnn_cell", reuse=self._reuse):
-      output = self._activation(
-          _linear([inputs, state], self._num_units, True))
+    output = self._activation(_linear([inputs, state], self._num_units, True))
     return output, output
 
 
@@ -134,11 +132,11 @@ class GRUCell(RNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078)."""
 
   def __init__(self, num_units, input_size=None, activation=tanh, reuse=None):
+    super(GRUCell, self).__init__(_reuse=reuse)
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated.", self)
     self._num_units = num_units
     self._activation = activation
-    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -148,21 +146,15 @@ class GRUCell(RNNCell):
   def output_size(self):
     return self._num_units
 
-  def __call__(self, inputs, state, scope=None):
+  def call(self, inputs, state):
     """Gated recurrent unit (GRU) with nunits cells."""
-    with _checked_scope(self, scope or "gru_cell", reuse=self._reuse):
-      with vs.variable_scope("gates"):  # Reset gate and update gate.
-        # We start with bias of 1.0 to not reset and not update.
-        value = sigmoid(_linear(
-          [inputs, state], 2 * self._num_units, True, 1.0))
-        r, u = array_ops.split(
-            value=value,
-            num_or_size_splits=2,
-            axis=1)
-      with vs.variable_scope("candidate"):
-        c = self._activation(_linear([inputs, r * state],
-                                     self._num_units, True))
-      new_h = u * state + (1 - u) * c
+    with vs.variable_scope("gates"):  # Reset gate and update gate.
+      # We start with bias of 1.0 to not reset and not update.
+      value = sigmoid(_linear([inputs, state], 2 * self._num_units, True, 1.0))
+      r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
+    with vs.variable_scope("candidate"):
+      c = self._activation(_linear([inputs, r * state], self._num_units, True))
+    new_h = u * state + (1 - u) * c
     return new_h, new_h
 
 
@@ -217,6 +209,7 @@ class BasicLSTMCell(RNNCell):
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
     """
+    super(BasicLSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -226,7 +219,6 @@ class BasicLSTMCell(RNNCell):
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
     self._activation = activation
-    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -237,28 +229,28 @@ class BasicLSTMCell(RNNCell):
   def output_size(self):
     return self._num_units
 
-  def __call__(self, inputs, state, scope=None):
+  def call(self, inputs, state):
     """Long short-term memory cell (LSTM)."""
-    with _checked_scope(self, scope or "basic_lstm_cell", reuse=self._reuse):
-      # Parameters of gates are concatenated into one multiply for efficiency.
-      if self._state_is_tuple:
-        c, h = state
-      else:
-        c, h = array_ops.split(value=state, num_or_size_splits=2, axis=1)
-      concat = _linear([inputs, h], 4 * self._num_units, True)
+    # Parameters of gates are concatenated into one multiply for efficiency.
+    if self._state_is_tuple:
+      c, h = state
+    else:
+      c, h = array_ops.split(value=state, num_or_size_splits=2, axis=1)
 
-      # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
+    concat = _linear([inputs, h], 4 * self._num_units, True)
 
-      new_c = (c * sigmoid(f + self._forget_bias) + sigmoid(i) *
-               self._activation(j))
-      new_h = self._activation(new_c) * sigmoid(o)
+    # i = input_gate, j = new_input, f = forget_gate, o = output_gate
+    i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
 
-      if self._state_is_tuple:
-        new_state = LSTMStateTuple(new_c, new_h)
-      else:
-        new_state = array_ops.concat([new_c, new_h], 1)
-      return new_h, new_state
+    new_c = (
+        c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
+    new_h = self._activation(new_c) * sigmoid(o)
+
+    if self._state_is_tuple:
+      new_state = LSTMStateTuple(new_c, new_h)
+    else:
+      new_state = array_ops.concat([new_c, new_h], 1)
+    return new_h, new_state
 
 
 class LSTMCell(RNNCell):
@@ -319,6 +311,7 @@ class LSTMCell(RNNCell):
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
     """
+    super(LSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -341,7 +334,6 @@ class LSTMCell(RNNCell):
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
     self._activation = activation
-    self._reuse = reuse
 
     if num_proj:
       self._state_size = (
@@ -362,7 +354,7 @@ class LSTMCell(RNNCell):
   def output_size(self):
     return self._output_size
 
-  def __call__(self, inputs, state, scope=None):
+  def call(self, inputs, state):
     """Run one step of LSTM.
 
     Args:
@@ -371,7 +363,6 @@ class LSTMCell(RNNCell):
         `2-D, batch x state_size`.  If `state_is_tuple` is True, this must be a
         tuple of state Tensors, both `2-D`, with column sizes `c_state` and
         `m_state`.
-      scope: VariableScope for the created subgraph; defaults to "lstm_cell".
 
     Returns:
       A tuple containing:
@@ -400,9 +391,8 @@ class LSTMCell(RNNCell):
     input_size = inputs.get_shape().with_rank(2)[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
-    with _checked_scope(self, scope or "lstm_cell",
-                        initializer=self._initializer,
-                        reuse=self._reuse) as unit_scope:
+    scope = vs.get_variable_scope()
+    with vs.variable_scope(scope, initializer=self._initializer) as unit_scope:
       if self._num_unit_shards is not None:
         unit_scope.set_partitioner(
             partitioned_variables.fixed_size_partitioner(
@@ -481,13 +471,13 @@ class OutputProjectionWrapper(RNNCell):
       TypeError: if cell is not an RNNCell.
       ValueError: if output_size is not positive.
     """
+    super(OutputProjectionWrapper, self).__init__(_reuse=reuse)
     if not isinstance(cell, RNNCell):
       raise TypeError("The parameter cell is not RNNCell.")
     if output_size < 1:
       raise ValueError("Parameter output_size must be > 0: %d." % output_size)
     self._cell = cell
     self._output_size = output_size
-    self._reuse = reuse
     self._activation = activation
 
   @property
@@ -502,15 +492,12 @@ class OutputProjectionWrapper(RNNCell):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
       return self._cell.zero_state(batch_size, dtype)
 
-  def __call__(self, inputs, state, scope=None):
+  def call(self, inputs, state):
     """Run the cell and output projection on inputs, starting from state."""
     output, res_state = self._cell(inputs, state)
-    # Default scope: "OutputProjectionWrapper"
-    with _checked_scope(self, scope or "output_projection_wrapper",
-                        reuse=self._reuse):
-      projected = _linear(output, self._output_size, True)
-      if self._activation:
-        projected = self._activation(projected)
+    projected = _linear(output, self._output_size, True)
+    if self._activation:
+      projected = self._activation(projected)
     return projected, res_state
 
 
@@ -522,7 +509,8 @@ class InputProjectionWrapper(RNNCell):
   do the projection on this batch-concatenated sequence, then split it.
   """
 
-  def __init__(self, cell, num_proj, activation=None, input_size=None):
+  def __init__(self, cell, num_proj, activation=None, input_size=None,
+               reuse=None):
     """Create a cell with input projection.
 
     Args:
@@ -530,10 +518,14 @@ class InputProjectionWrapper(RNNCell):
       num_proj: Python integer.  The dimension to project to.
       activation: (optional) an optional activation function.
       input_size: Deprecated and unused.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
 
     Raises:
       TypeError: if cell is not an RNNCell.
     """
+    super(InputProjectionWrapper, self).__init__(_reuse=reuse)
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated.", self)
     if not isinstance(cell, RNNCell):
@@ -554,13 +546,12 @@ class InputProjectionWrapper(RNNCell):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
       return self._cell.zero_state(batch_size, dtype)
 
-  def __call__(self, inputs, state, scope=None):
+  def call(self, inputs, state):
     """Run the input projection and then the cell."""
     # Default scope: "InputProjectionWrapper"
-    with vs.variable_scope(scope or "input_projection_wrapper"):
-      projected = _linear(inputs, self._num_proj, True)
-      if self._activation:
-        projected = self._activation(projected)
+    projected = _linear(inputs, self._num_proj, True)
+    if self._activation:
+      projected = self._activation(projected)
     return self._cell(projected, state)
 
 
@@ -811,7 +802,8 @@ class DeviceWrapper(RNNCell):
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      return self._cell.zero_state(batch_size, dtype)
+      with ops.device(self._device):
+        return self._cell.zero_state(batch_size, dtype)
 
   def __call__(self, inputs, state, scope=None):
     """Run the cell on specified device."""
@@ -846,6 +838,7 @@ class EmbeddingWrapper(RNNCell):
       TypeError: if cell is not an RNNCell.
       ValueError: if embedding_classes is not positive.
     """
+    super(EmbeddingWrapper, self).__init__(_reuse=reuse)
     if not isinstance(cell, RNNCell):
       raise TypeError("The parameter cell is not RNNCell.")
     if embedding_classes <= 0 or embedding_size <= 0:
@@ -855,7 +848,6 @@ class EmbeddingWrapper(RNNCell):
     self._embedding_classes = embedding_classes
     self._embedding_size = embedding_size
     self._initializer = initializer
-    self._reuse = reuse
 
   @property
   def state_size(self):
@@ -869,31 +861,31 @@ class EmbeddingWrapper(RNNCell):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
       return self._cell.zero_state(batch_size, dtype)
 
-  def __call__(self, inputs, state, scope=None):
+  def call(self, inputs, state):
     """Run the cell on embedded inputs."""
-    with _checked_scope(self, scope or "embedding_wrapper", reuse=self._reuse):
-      with ops.device("/cpu:0"):
-        if self._initializer:
-          initializer = self._initializer
-        elif vs.get_variable_scope().initializer:
-          initializer = vs.get_variable_scope().initializer
-        else:
-          # Default initializer for embeddings should have variance=1.
-          sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
-          initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
+    with ops.device("/cpu:0"):
+      if self._initializer:
+        initializer = self._initializer
+      elif vs.get_variable_scope().initializer:
+        initializer = vs.get_variable_scope().initializer
+      else:
+        # Default initializer for embeddings should have variance=1.
+        sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
+        initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
 
-        if type(state) is tuple:
-          data_type = state[0].dtype
-        else:
-          data_type = state.dtype
+      if type(state) is tuple:
+        data_type = state[0].dtype
+      else:
+        data_type = state.dtype
 
-        embedding = vs.get_variable(
-            "embedding", [self._embedding_classes, self._embedding_size],
-            initializer=initializer,
-            dtype=data_type)
-        embedded = embedding_ops.embedding_lookup(
-            embedding, array_ops.reshape(inputs, [-1]))
-    return self._cell(embedded, state)
+      embedding = vs.get_variable(
+          "embedding", [self._embedding_classes, self._embedding_size],
+          initializer=initializer,
+          dtype=data_type)
+      embedded = embedding_ops.embedding_lookup(embedding,
+                                                array_ops.reshape(inputs, [-1]))
+
+      return self._cell(embedded, state)
 
 
 class MultiRNNCell(RNNCell):
@@ -913,6 +905,7 @@ class MultiRNNCell(RNNCell):
       ValueError: if cells is empty (not allowed), or at least one of the cells
         returns a state tuple but the flag `state_is_tuple` is `False`.
     """
+    super(MultiRNNCell, self).__init__()
     if not cells:
       raise ValueError("Must specify at least one cell for MultiRNNCell.")
     if not nest.is_sequence(cells):
@@ -947,28 +940,29 @@ class MultiRNNCell(RNNCell):
         # presumably does not contain TensorArrays or anything else fancy
         return super(MultiRNNCell, self).zero_state(batch_size, dtype)
 
-  def __call__(self, inputs, state, scope=None):
+  def call(self, inputs, state):
     """Run this multi-layer cell on inputs, starting from state."""
-    with vs.variable_scope(scope or "multi_rnn_cell"):
-      cur_state_pos = 0
-      cur_inp = inputs
-      new_states = []
-      for i, cell in enumerate(self._cells):
-        with vs.variable_scope("cell_%d" % i):
-          if self._state_is_tuple:
-            if not nest.is_sequence(state):
-              raise ValueError(
-                  "Expected state to be a tuple of length %d, but received: %s"
-                  % (len(self.state_size), state))
-            cur_state = state[i]
-          else:
-            cur_state = array_ops.slice(
-                state, [0, cur_state_pos], [-1, cell.state_size])
-            cur_state_pos += cell.state_size
-          cur_inp, new_state = cell(cur_inp, cur_state)
-          new_states.append(new_state)
+    cur_state_pos = 0
+    cur_inp = inputs
+    new_states = []
+    for i, cell in enumerate(self._cells):
+      with vs.variable_scope("cell_%d" % i):
+        if self._state_is_tuple:
+          if not nest.is_sequence(state):
+            raise ValueError(
+                "Expected state to be a tuple of length %d, but received: %s" %
+                (len(self.state_size), state))
+          cur_state = state[i]
+        else:
+          cur_state = array_ops.slice(state, [0, cur_state_pos],
+                                      [-1, cell.state_size])
+          cur_state_pos += cell.state_size
+        cur_inp, new_state = cell(cur_inp, cur_state)
+        new_states.append(new_state)
+
     new_states = (tuple(new_states) if self._state_is_tuple else
                   array_ops.concat(new_states, 1))
+
     return cur_inp, new_states
 
 

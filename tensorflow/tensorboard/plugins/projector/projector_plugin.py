@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import imghdr
 import math
 import os
@@ -45,6 +46,11 @@ from tensorflow.tensorboard.plugins.projector import projector_config_pb2
 _PLUGIN_PREFIX_ROUTE = 'projector'
 
 PROJECTOR_FILENAME = 'projector_config.pbtxt'
+_PLUGIN_NAME = 'org_tensorflow_tensorboard_projector'
+_PLUGINS_DIR = 'plugins'
+
+# Number of tensors in the LRU cache.
+_TENSOR_CACHE_CAPACITY = 1
 
 # HTTP routes.
 CONFIG_ROUTE = '/info'
@@ -61,6 +67,34 @@ _IMGHDR_TO_MIMETYPE = {
     'png': 'image/png'
 }
 _DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
+
+
+class LRUCache(object):
+  """LRU cache. Used for storing the last used tensor."""
+
+  def __init__(self, size):
+    if size < 1:
+      raise ValueError('The cache size must be >=1')
+    self._size = size
+    self._dict = collections.OrderedDict()
+
+  def get(self, key):
+    try:
+      value = self._dict.pop(key)
+      self._dict[key] = value
+      return value
+    except KeyError:
+      return None
+
+  def set(self, key, value):
+    if value is None:
+      raise ValueError('value must be != None')
+    try:
+      self._dict.pop(key)
+    except KeyError:
+      if len(self._dict) >= self._size:
+        self._dict.popitem(last=False)
+    self._dict[key] = value
 
 
 class EmbeddingMetadata(object):
@@ -112,7 +146,7 @@ class EmbeddingMetadata(object):
 
 class ProjectorPluginAsset(plugin_asset.PluginAsset):
   """Provides a registry for assets needed by the Projector plugin."""
-  plugin_name = 'org_tensorflow_tensorboard_projector'
+  plugin_name = _PLUGIN_NAME
 
   def __init__(self):
     self._config = projector_config_pb2.ProjectorConfig()
@@ -250,7 +284,7 @@ class ProjectorPluginAsset(plugin_asset.PluginAsset):
     return self._assets
 
 
-def _read_tensor_file(fpath):
+def _read_tensor_tsv_file(fpath):
   with file_io.FileIO(fpath, 'r') as f:
     tensor = []
     for line in f:
@@ -259,12 +293,20 @@ def _read_tensor_file(fpath):
   return np.array(tensor, dtype='float32')
 
 
+def _assets_dir_to_logdir(assets_dir):
+  sub_path = os.path.sep + _PLUGINS_DIR + os.path.sep
+  if sub_path in assets_dir:
+    two_parents_up = os.pardir + os.path.sep + os.pardir
+    return os.path.abspath(os.path.join(assets_dir, two_parents_up))
+  return assets_dir
+
+
 def _latest_checkpoints_changed(configs, run_path_pairs):
   """Returns true if the latest checkpoint has changed in any of the runs."""
-  for run_name, logdir in run_path_pairs:
+  for run_name, assets_dir in run_path_pairs:
     if run_name not in configs:
       config = projector_config_pb2.ProjectorConfig()
-      config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
+      config_fpath = os.path.join(assets_dir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
         file_content = file_io.read_file_to_string(config_fpath)
         text_format.Merge(file_content, config)
@@ -272,6 +314,7 @@ def _latest_checkpoints_changed(configs, run_path_pairs):
       config = configs[run_name]
 
     # See if you can find a checkpoint file in the logdir.
+    logdir = _assets_dir_to_logdir(assets_dir)
     ckpt_path = _find_latest_checkpoint(logdir)
     if not ckpt_path:
       continue
@@ -302,6 +345,13 @@ def _parse_positive_int_param(request, param_name):
     return -1
 
 
+def _rel_to_abs_asset_path(fpath, config_fpath):
+  fpath = os.path.expanduser(fpath)
+  if not os.path.isabs(fpath):
+    return os.path.join(os.path.dirname(config_fpath), fpath)
+  return fpath
+
+
 class ProjectorPlugin(TBPlugin):
   """Embedding projector."""
 
@@ -314,8 +364,11 @@ class ProjectorPlugin(TBPlugin):
     self.logdir = None
     self._configs = None
     self.old_num_run_paths = None
+    self.multiplexer = None
+    self.tensor_cache = LRUCache(_TENSOR_CACHE_CAPACITY)
 
   def get_plugin_apps(self, multiplexer, logdir):
+    self.multiplexer = multiplexer
     self.run_paths = multiplexer.RunPaths()
     self.logdir = logdir
     self._handlers = {
@@ -328,10 +381,21 @@ class ProjectorPlugin(TBPlugin):
     }
     return self._handlers
 
+  def is_active(self):
+    """Determines whether this plugin is active.
+
+    This plugin is only active if any run has an embedding.
+
+    Returns:
+      A boolean. Whether this plugin is active.
+    """
+    return bool(self.configs)
+
   @property
   def configs(self):
     """Returns a map of run paths to `ProjectorConfig` protos."""
     run_path_pairs = list(self.run_paths.items())
+    self._append_plugin_asset_directories(run_path_pairs)
     # If there are no summary event files, the projector should still work,
     # treating the `logdir` as the model checkpoint directory.
     if not run_path_pairs:
@@ -359,7 +423,12 @@ class ProjectorPlugin(TBPlugin):
           embedding.tensor_name = embedding.tensor_name[:-2]
         # Find the size of embeddings associated with a tensors file.
         if embedding.tensor_path and not embedding.tensor_shape:
-          tensor = _read_tensor_file(embedding.tensor_path)
+          fpath = _rel_to_abs_asset_path(embedding.tensor_path,
+                                         self.config_fpaths[run])
+          tensor = self.tensor_cache.get(embedding.tensor_name)
+          if tensor is None:
+            tensor = _read_tensor_tsv_file(fpath)
+            self.tensor_cache.set(embedding.tensor_name, tensor)
           embedding.tensor_shape.extend([len(tensor), len(tensor[0])])
 
       reader = self._get_reader_for_run(run)
@@ -397,21 +466,23 @@ class ProjectorPlugin(TBPlugin):
     """Reads and returns the projector config files in every run directory."""
     configs = {}
     config_fpaths = {}
-    for run_name, logdir in run_path_pairs:
+    for run_name, assets_dir in run_path_pairs:
       config = projector_config_pb2.ProjectorConfig()
-      config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
+      config_fpath = os.path.join(assets_dir, PROJECTOR_FILENAME)
       if file_io.file_exists(config_fpath):
         file_content = file_io.read_file_to_string(config_fpath)
         text_format.Merge(file_content, config)
-
       has_tensor_files = False
       for embedding in config.embeddings:
         if embedding.tensor_path:
+          if not embedding.tensor_name:
+            embedding.tensor_name = os.path.basename(embedding.tensor_path)
           has_tensor_files = True
           break
 
       if not config.model_checkpoint_path:
         # See if you can find a checkpoint file in the logdir.
+        logdir = _assets_dir_to_logdir(assets_dir)
         ckpt_path = _find_latest_checkpoint(logdir)
         if not ckpt_path and not has_tensor_files:
           continue
@@ -421,7 +492,7 @@ class ProjectorPlugin(TBPlugin):
       # Sanity check for the checkpoint file.
       if (config.model_checkpoint_path and
           not checkpoint_exists(config.model_checkpoint_path)):
-        logging.warning('Checkpoint file %s not found',
+        logging.warning('Checkpoint file "%s" not found',
                         config.model_checkpoint_path)
         continue
       configs[run_name] = config
@@ -438,7 +509,7 @@ class ProjectorPlugin(TBPlugin):
       try:
         reader = NewCheckpointReader(config.model_checkpoint_path)
       except Exception:  # pylint: disable=broad-except
-        logging.warning('Failed reading %s', config.model_checkpoint_path)
+        logging.warning('Failed reading "%s"', config.model_checkpoint_path)
     self.readers[run] = reader
     return reader
 
@@ -469,6 +540,14 @@ class ProjectorPlugin(TBPlugin):
         return info
     return None
 
+  def _append_plugin_asset_directories(self, run_path_pairs):
+    for run, assets in self.multiplexer.PluginAssets(_PLUGIN_NAME).items():
+      if PROJECTOR_FILENAME not in assets:
+        continue
+      assets_dir = os.path.join(self.run_paths[run], _PLUGINS_DIR, _PLUGIN_NAME)
+      assets_path_pair = (run, os.path.abspath(assets_dir))
+      run_path_pairs.append(assets_path_pair)
+
   @wrappers.Request.application
   def _serve_runs(self, request):
     """Returns a list of runs that have embeddings."""
@@ -481,7 +560,7 @@ class ProjectorPlugin(TBPlugin):
       return Respond(request, 'query parameter "run" is required', 'text/plain',
                      400)
     if run not in self.configs:
-      return Respond(request, 'Unknown run: %s' % run, 'text/plain', 400)
+      return Respond(request, 'Unknown run: "%s"' % run, 'text/plain', 400)
 
     config = self.configs[run]
     return Respond(request,
@@ -505,17 +584,19 @@ class ProjectorPlugin(TBPlugin):
                      'text/plain', 400)
 
     if run not in self.configs:
-      return Respond(request, 'Unknown run: %s' % run, 'text/plain', 400)
+      return Respond(request, 'Unknown run: "%s"' % run, 'text/plain', 400)
 
     config = self.configs[run]
     fpath = self._get_metadata_file_for_tensor(name, config)
     if not fpath:
       return Respond(
           request,
-          'No metadata file found for tensor %s in the config file %s' %
+          'No metadata file found for tensor "%s" in the config file "%s"' %
           (name, self.config_fpaths[run]), 'text/plain', 400)
+    fpath = _rel_to_abs_asset_path(fpath, self.config_fpaths[run])
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      return Respond(request, '%s is not a file' % fpath, 'text/plain', 400)
+      return Respond(request, '"%s" not found, or is not a file' % fpath,
+                     'text/plain', 400)
 
     num_header_rows = 0
     with file_io.FileIO(fpath, 'r') as f:
@@ -548,35 +629,39 @@ class ProjectorPlugin(TBPlugin):
                      'text/plain', 400)
 
     if run not in self.configs:
-      return Respond(request, 'Unknown run: %s' % run, 'text/plain', 400)
+      return Respond(request, 'Unknown run: "%s"' % run, 'text/plain', 400)
 
-    reader = self._get_reader_for_run(run)
     config = self.configs[run]
 
-    if reader is None:
+    tensor = self.tensor_cache.get(name)
+    if tensor is None:
       # See if there is a tensor file in the config.
       embedding = self._get_embedding(name, config)
-      if not embedding or not embedding.tensor_path:
-        return Respond(request,
-                       'Tensor %s has no tensor_path in the config' % name,
-                       'text/plain', 400)
-      if not file_io.file_exists(embedding.tensor_path):
-        return Respond(request,
-                       'Tensor file %s does not exist' % embedding.tensor_path,
-                       'text/plain', 400)
-      tensor = _read_tensor_file(embedding.tensor_path)
-    else:
-      if not reader.has_tensor(name):
-        return Respond(request, 'Tensor %s not found in checkpoint dir %s' %
-                       (name, config.model_checkpoint_path), 'text/plain', 400)
-      try:
-        tensor = reader.get_tensor(name)
-      except errors.InvalidArgumentError as e:
-        return Respond(request, str(e), 'text/plain', 400)
+
+      if embedding and embedding.tensor_path:
+        fpath = _rel_to_abs_asset_path(embedding.tensor_path,
+                                       self.config_fpaths[run])
+        if not file_io.file_exists(fpath):
+          return Respond(request,
+                         'Tensor file "%s" does not exist' % fpath,
+                         'text/plain', 400)
+        tensor = _read_tensor_tsv_file(fpath)
+      else:
+        reader = self._get_reader_for_run(run)
+        if not reader or not reader.has_tensor(name):
+          return Respond(request,
+                         'Tensor "%s" not found in checkpoint dir "%s"' %
+                         (name, config.model_checkpoint_path), 'text/plain',
+                         400)
+        try:
+          tensor = reader.get_tensor(name)
+        except errors.InvalidArgumentError as e:
+          return Respond(request, str(e), 'text/plain', 400)
+
+      self.tensor_cache.set(name, tensor)
 
     if num_rows:
       tensor = tensor[:num_rows]
-
     if tensor.dtype != 'float32':
       tensor = tensor.astype(dtype='float32', copy=False)
     data_bytes = tensor.tobytes()
@@ -595,17 +680,19 @@ class ProjectorPlugin(TBPlugin):
                      'text/plain', 400)
 
     if run not in self.configs:
-      return Respond(request, 'Unknown run: %s' % run, 'text/plain', 400)
+      return Respond(request, 'Unknown run: "%s"' % run, 'text/plain', 400)
 
     config = self.configs[run]
     fpath = self._get_bookmarks_file_for_tensor(name, config)
     if not fpath:
       return Respond(
           request,
-          'No bookmarks file found for tensor %s in the config file %s' %
+          'No bookmarks file found for tensor "%s" in the config file "%s"' %
           (name, self.config_fpaths[run]), 'text/plain', 400)
+    fpath = _rel_to_abs_asset_path(fpath, self.config_fpaths[run])
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      return Respond(request, '%s is not a file' % fpath, 'text/plain', 400)
+      return Respond(request, '"%s" not found, or is not a file' % fpath,
+                     'text/plain', 400)
 
     bookmarks_json = None
     with file_io.FileIO(fpath, 'rb') as f:
@@ -625,7 +712,7 @@ class ProjectorPlugin(TBPlugin):
                      'text/plain', 400)
 
     if run not in self.configs:
-      return Respond(request, 'Unknown run: %s' % run, 'text/plain', 400)
+      return Respond(request, 'Unknown run: "%s"' % run, 'text/plain', 400)
 
     config = self.configs[run]
     embedding_info = self._get_embedding(name, config)
@@ -633,12 +720,13 @@ class ProjectorPlugin(TBPlugin):
     if not embedding_info or not embedding_info.sprite.image_path:
       return Respond(
           request,
-          'No sprite image file found for tensor %s in the config file %s' %
+          'No sprite image file found for tensor "%s" in the config file "%s"' %
           (name, self.config_fpaths[run]), 'text/plain', 400)
 
     fpath = os.path.expanduser(embedding_info.sprite.image_path)
+    fpath = _rel_to_abs_asset_path(fpath, self.config_fpaths[run])
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      return Respond(request, '%s does not exist or is directory' % fpath,
+      return Respond(request, '"%s" does not exist or is directory' % fpath,
                      'text/plain', 400)
     f = file_io.FileIO(fpath, 'rb')
     encoded_image_string = f.read()

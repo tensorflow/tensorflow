@@ -351,7 +351,7 @@ def _sampled_scattered_embedding_lookup(
     # No need to validate the indices since we have checked the params
     # dimensions and we know the largest id.
     result = embedding_ops.embedding_lookup(
-        params, ids, partition_strategy="div", validate_indices=False)
+        params, ids, partition_strategy="div")
 
     return array_ops.reshape(result,
                              array_ops.concat([values_shape, [dimension]], 0))
@@ -681,19 +681,17 @@ def embedding_lookup_sparse_with_distributed_aggregation(
     return embeddings
 
 
-def _do_gather(params, ids, validate_indices=True, name=None):
+def _do_gather(params, ids, name=None):
   """Deals with doing gather differently for resource variables."""
   if isinstance(params, resource_variable_ops.ResourceVariable):
     return params.sparse_read(ids, name=name)
-  return array_ops.gather(
-      params, ids, name=name, validate_indices=validate_indices)
+  return array_ops.gather(params, ids, name=name)
 
 
 def _embedding_lookup_with_distributed_aggregation(params,
                                                    ids,
                                                    partition_strategy="mod",
                                                    name=None,
-                                                   validate_indices=True,
                                                    max_norm=None,
                                                    weights=None,
                                                    idx=None,
@@ -724,8 +722,7 @@ def _embedding_lookup_with_distributed_aggregation(params,
       params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     if np == 1:
       with ops.colocate_with(params[0]):
-        ret = maybe_normalize(
-            _do_gather(params[0], ids, validate_indices=validate_indices))
+        ret = maybe_normalize(_do_gather(params[0], ids))
         ignore_weights = weights is None
         if not ignore_weights:
           if weights.dtype != ret.dtype:
@@ -803,9 +800,7 @@ def _embedding_lookup_with_distributed_aggregation(params,
       partitioned_result = []
       for p in xrange(np):
         with ops.colocate_with(params[p]):
-          partitioned_result.append(
-              _do_gather(
-                  params[p], gather_ids[p], validate_indices=validate_indices))
+          partitioned_result.append(_do_gather(params[p], gather_ids[p]))
 
       ignore_weights = weights is None
       if not ignore_weights:

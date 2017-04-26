@@ -17,11 +17,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
+
+using ::testing::Eq;
+using ::testing::HasSubstr;
 
 class WhileTransformerTest : public HloTestBase {
  protected:
@@ -137,10 +141,8 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0) {
   auto result = gpu::CanTransformWhileToFor(while_hlo);
   EXPECT_TRUE(result.ok());
   // Check results.
-  auto tuple = result.ConsumeValueOrDie();
-  EXPECT_EQ(0, std::get<0>(tuple));
-  EXPECT_EQ(10, std::get<1>(tuple));
-  EXPECT_EQ(1, std::get<2>(tuple));
+  EXPECT_THAT(result.ConsumeValueOrDie(),
+              Eq(std::tuple<int64, int64, int64>(0, 10, 1)));
 }
 
 TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
@@ -156,10 +158,8 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
   auto result = gpu::CanTransformWhileToFor(while_hlo);
   EXPECT_TRUE(result.ok());
   // Check results.
-  auto tuple = result.ConsumeValueOrDie();
-  EXPECT_EQ(0, std::get<0>(tuple));
-  EXPECT_EQ(10, std::get<1>(tuple));
-  EXPECT_EQ(1, std::get<2>(tuple));
+  EXPECT_THAT(result.ConsumeValueOrDie(),
+              Eq(std::tuple<int64, int64, int64>(0, 10, 1)));
 }
 
 TEST_F(WhileTransformerTest, InvalidLoopLimit) {
@@ -174,9 +174,8 @@ TEST_F(WhileTransformerTest, InvalidLoopLimit) {
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
   EXPECT_FALSE(result.ok());
-  EXPECT_MATCH(
-      result.status().error_message(),
-      testing::ContainsRegex("Loop start must be less than loop limit."));
+  EXPECT_THAT(result.status().error_message(),
+              HasSubstr("Loop start must be less than loop limit."));
 }
 
 TEST_F(WhileTransformerTest, InvalidLoopIncrement) {
@@ -191,9 +190,8 @@ TEST_F(WhileTransformerTest, InvalidLoopIncrement) {
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
   EXPECT_FALSE(result.ok());
-  EXPECT_MATCH(
-      result.status().error_message(),
-      testing::ContainsRegex("Loop increment must greater than zero."));
+  EXPECT_THAT(result.status().error_message(),
+              HasSubstr("Loop increment must greater than zero."));
 }
 
 }  // namespace

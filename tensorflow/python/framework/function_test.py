@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import time
 
 import numpy as np
@@ -1154,6 +1155,7 @@ class FunctionInlineControlTest(test.TestCase):
             do_common_subexpression_elimination=True,
             do_function_inlining=True,
             do_constant_folding=True)))
+    cell_func_call_pattern = re.compile(r"Cell[^/]*\(")
     for noinline in [False, True]:
 
       @function.Defun(dtype, noinline=noinline)
@@ -1192,7 +1194,7 @@ class FunctionInlineControlTest(test.TestCase):
       def MetadataHasCell(run_metadata):
         for dev_stats in run_metadata.step_stats.dev_stats:
           for node_stats in dev_stats.node_stats:
-            if "Cell" in node_stats.timeline_label:
+            if cell_func_call_pattern.search(node_stats.timeline_label):
               return True
         return False
 

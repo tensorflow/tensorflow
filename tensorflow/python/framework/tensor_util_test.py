@@ -713,6 +713,13 @@ class ConstantValueTest(test.TestCase):
     self.assertAllEqual(np_val, c_val)
     self.assertEqual(np.int32, c_val.dtype)
 
+  def testFill(self):
+    np_val = np.array([-1, -1, -1], dtype=np.float32)
+    tf_val = array_ops.fill([3], constant_op.constant(-1.0))
+    c_val = tensor_util.constant_value(tf_val)
+    self.assertAllEqual(np_val, c_val)
+    self.assertEqual(np.float32, c_val.dtype)
+
   def testSize(self):
     tf_val = array_ops.size(constant_op.constant(0.0, shape=[1, 2, 3]))
     c_val = tensor_util.constant_value(tf_val)

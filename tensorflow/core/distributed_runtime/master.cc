@@ -198,7 +198,7 @@ class DeviceFinder {
     while (num_pending_ != 0) {
       pending_zero_.wait_for(l, std::chrono::milliseconds(kLoggingPeriodMs));
       if (num_pending_ != 0) {
-        for (int i = 0; static_cast<size_t>(i) < targets_.size(); ++i) {
+        for (size_t i = 0; i < targets_.size(); ++i) {
           if (!seen_targets_[i]) {
             LOG(INFO)
                 << "CreateSession still waiting for response from worker: "

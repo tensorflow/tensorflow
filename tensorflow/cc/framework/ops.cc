@@ -20,7 +20,7 @@ namespace tensorflow {
 
 Operation::Operation(Node* n) : inputs_(GetInputs(n)), node_(n) {}
 
-Output Operation::input(int i) const {
+Output Operation::input(int32 i) const {
   CHECK_NOTNULL(node_);
   CHECK_GE(i, 0);
   CHECK_LT(i, node_->num_inputs());
@@ -37,14 +37,14 @@ Output Operation::input(int i) const {
   return Output(inputs_[i].first, inputs_[i].second);
 }
 
-Output Operation::output(int i) const {
+Output Operation::output(int32 i) const {
   CHECK_NOTNULL(node_);
   CHECK_GE(i, 0);
   CHECK_LT(i, node_->num_outputs());
   return Output(node_, i);
 }
 
-uint64 Operation::hash(int64 index) const {
+uint64 Operation::hash(int32 index) const {
   return ::tensorflow::Hash64(reinterpret_cast<const char*>(&node_),
                               sizeof(Node*), index);
 }

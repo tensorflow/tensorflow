@@ -1,3 +1,17 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 # CMake rules for generating the TensorFlow Python bindings.
 #
 # Known limitations:
@@ -212,7 +226,6 @@ add_python_module("tensorflow/tensorboard")
 add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/backend/event_processing")
 add_python_module("tensorflow/tensorboard/plugins")
-add_python_module("tensorflow/tensorboard/plugins/debugger")
 add_python_module("tensorflow/tensorboard/plugins/projector")
 add_python_module("tensorflow/tensorboard/plugins/text")
 add_python_module("tensorflow/tensorboard/scripts")
@@ -434,6 +447,8 @@ add_python_module("tensorflow/contrib/saved_model")
 add_python_module("tensorflow/contrib/saved_model/python")
 add_python_module("tensorflow/contrib/saved_model/python/saved_model")
 add_python_module("tensorflow/contrib/seq2seq")
+add_python_module("tensorflow/contrib/seq2seq/kernels")
+add_python_module("tensorflow/contrib/seq2seq/ops")
 add_python_module("tensorflow/contrib/seq2seq/python")
 add_python_module("tensorflow/contrib/seq2seq/python/kernel_tests")
 add_python_module("tensorflow/contrib/seq2seq/python/ops")
@@ -455,7 +470,9 @@ add_python_module("tensorflow/contrib/sparsemax/python")
 add_python_module("tensorflow/contrib/sparsemax/python/ops")
 add_python_module("tensorflow/contrib/specs")
 add_python_module("tensorflow/contrib/specs/python")
+add_python_module("tensorflow/contrib/staging")
 add_python_module("tensorflow/contrib/stat_summarizer")
+add_python_module("tensorflow/contrib/stateless")
 add_python_module("tensorflow/contrib/tensorboard")
 add_python_module("tensorflow/contrib/tensorboard/plugins")
 add_python_module("tensorflow/contrib/tensorboard/plugins/projector")
@@ -615,12 +632,16 @@ GENERATE_PYTHON_OP_LIB("contrib_rnn_gru_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_gru_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_lstm_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_lstm_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_seq2seq_beam_search_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/seq2seq/ops/gen_beam_search_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_hybrid_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/hybrid/ops/gen_training_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_bigquery_reader_ops.py)
+GENERATE_PYTHON_OP_LIB("stateless_random_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/stateless/gen_stateless_random_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
@@ -670,12 +691,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_writer.cc"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.h"
     "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.cc"
-    "${tensorflow_source_dir}/tensorflow/c/c_api.cc"
-    "${tensorflow_source_dir}/tensorflow/c/c_api.h"
-    "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.cc"
-    "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.h"
-    "${tensorflow_source_dir}/tensorflow/c/tf_status_helper.cc"
-    "${tensorflow_source_dir}/tensorflow/c/tf_status_helper.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/ops.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/scope.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc"
 )
 
@@ -691,9 +708,12 @@ if(WIN32)
     #
     add_library(pywrap_tensorflow_internal_static STATIC
         ${pywrap_tensorflow_internal_src}
+        $<TARGET_OBJECTS:tf_c>
         $<TARGET_OBJECTS:tf_core_lib>
         $<TARGET_OBJECTS:tf_core_cpu>
         $<TARGET_OBJECTS:tf_core_framework>
+        $<TARGET_OBJECTS:tf_cc>
+        $<TARGET_OBJECTS:tf_cc_ops>
         $<TARGET_OBJECTS:tf_core_ops>
         $<TARGET_OBJECTS:tf_core_direct_session>
         $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
@@ -702,33 +722,44 @@ if(WIN32)
         $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
         $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
     )
+    
     target_include_directories(pywrap_tensorflow_internal_static PUBLIC
         ${PYTHON_INCLUDE_DIR}
         ${NUMPY_INCLUDE_DIR}
     )
-    target_link_libraries(pywrap_tensorflow_internal_static
-        tf_protos_cc
-        tf_python_protos_cc
+    #target_link_libraries(pywrap_tensorflow_internal_static
+    #	tf_protos_cc
+    #	tf_python_protos_cc
+    #)  
+    add_dependencies(pywrap_tensorflow_internal_static tf_protos_cc tf_python_protos_cc)
+    set(pywrap_tensorflow_internal_static_dependencies
+        $<TARGET_FILE:pywrap_tensorflow_internal_static>
+        $<TARGET_FILE:tf_protos_cc>
+        $<TARGET_FILE:tf_python_protos_cc>
     )
+    
     set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
     set_source_files_properties(${pywrap_tensorflow_deffile} PROPERTIES GENERATED TRUE)
 
     add_custom_command(TARGET pywrap_tensorflow_internal_static POST_BUILD
         COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/create_def_file.py
-            --input $<TARGET_FILE:pywrap_tensorflow_internal_static>
-            --output ${pywrap_tensorflow_deffile}
+            --input "${pywrap_tensorflow_internal_static_dependencies}"
+            --output "${pywrap_tensorflow_deffile}"
+            --target _pywrap_tensorflow_internal.pyd
     )
 endif(WIN32)
-
 
 # pywrap_tensorflow_internal is a shared library containing all of the
 # TensorFlow runtime and the standard ops and kernels. These are installed into
 # tf_python/tensorflow/python/.
 add_library(pywrap_tensorflow_internal SHARED
     ${pywrap_tensorflow_internal_src}
+    $<TARGET_OBJECTS:tf_c>
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>
+    $<TARGET_OBJECTS:tf_cc>
+    $<TARGET_OBJECTS:tf_cc_ops>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
@@ -747,7 +778,8 @@ target_include_directories(pywrap_tensorflow_internal PUBLIC
     ${PYTHON_INCLUDE_DIR}
     ${NUMPY_INCLUDE_DIR}
 )
-target_link_libraries(pywrap_tensorflow_internal
+
+target_link_libraries(pywrap_tensorflow_internal PRIVATE
     ${tf_core_gpu_kernels_lib}
     ${tensorflow_EXTERNAL_LIBRARIES}
     tf_protos_cc
@@ -791,6 +823,26 @@ if(WIN32)
         GPUSOURCES ${tf_lstm_gpu_srcs}
         DEPENDS pywrap_tensorflow_internal tf_python_ops
         DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/python/ops/)
+endif(WIN32)
+
+if(WIN32)
+    # include contrib/seq2seq as .so
+    #
+    set(tf_beam_search_srcs
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.cc"
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops.h"
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/ops/beam_search_ops.cc"
+    )
+
+    set(tf_beam_search_gpu_srcs
+        "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/beam_search_ops_gpu.cu.cc"
+    )
+
+    AddUserOps(TARGET _beam_search_ops
+        SOURCES "${tf_beam_search_srcs}"
+        GPUSOURCES ${tf_beam_search_gpu_srcs}
+        DEPENDS pywrap_tensorflow_internal tf_python_ops
+        DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/seq2seq/python/ops/)
 endif(WIN32)
 
 ############################################################

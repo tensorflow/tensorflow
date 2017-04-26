@@ -132,8 +132,13 @@ class DirectSession : public Session {
     NameNodeMap name_to_node;
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
     std::vector<PerPartitionExecutorsAndLib> items;
-    std::unordered_map<string, string> input_keys;
-    std::unordered_map<string, string> output_keys;
+    std::unordered_map<string, size_t> input_name_to_index;
+    std::unordered_map<string, string> input_name_to_rendezvous_key;
+    std::unordered_map<string, size_t> output_name_to_index;
+    std::unordered_map<string, string> output_name_to_rendezvous_key;
+
+    DataTypeVector input_types;
+    DataTypeVector output_types;
   };
 
   // For each live partial execution, the session maintains a RunState.
@@ -187,7 +192,8 @@ class DirectSession : public Session {
       const BuildGraphOptions& options,
       std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
       std::unique_ptr<FunctionLibraryDefinition>* flib_def,
-      RunStateArgs* run_state_args);
+      RunStateArgs* run_state_args, DataTypeVector* input_types,
+      DataTypeVector* output_types);
 
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
       EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
@@ -196,17 +202,17 @@ class DirectSession : public Session {
       const Tensor& resource_tensor, Tensor* retrieved_tensor);
 
   // Feeds more inputs to the executors, triggering further execution.
-  ::tensorflow::Status SendInputs(
+  ::tensorflow::Status SendPRunInputs(
       const std::vector<std::pair<string, Tensor>>& inputs,
       const ExecutorsAndKeys* executors_and_keys,
       IntraProcessRendezvous* rendez);
 
   // Fetches more outputs from the executors. It waits until the output
   // tensors are computed.
-  ::tensorflow::Status RecvOutputs(const std::vector<string>& output_names,
-                                   const ExecutorsAndKeys* executors_and_keys,
-                                   RunState* run_state,
-                                   std::vector<Tensor>* outputs);
+  ::tensorflow::Status RecvPRunOutputs(
+      const std::vector<string>& output_names,
+      const ExecutorsAndKeys* executors_and_keys, RunState* run_state,
+      std::vector<Tensor>* outputs);
 
   // Check if the specified fetches can be computed from the feeds
   // that we have already provided.
@@ -247,6 +253,8 @@ class DirectSession : public Session {
   std::vector<thread::ThreadPool*> thread_pools_;
   bool owns_thread_pools_ = false;
 
+  // If true, blocks until device has finished all queued operations in a step.
+  bool sync_on_finish_ = true;
   // Schedules 'c' for execution on pool.
   void SchedClosure(thread::ThreadPool* pool, std::function<void()> c);
 

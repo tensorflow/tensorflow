@@ -18,9 +18,8 @@ limitations under the License.
 #include <initializer_list>
 
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
@@ -144,14 +143,11 @@ TEST(IndexUtilTest, BumpIndices2x2) {
   auto shape = ShapeUtil::MakeShape(S32, {2, 2});
   std::vector<int64> indices = {0, 0};
   EXPECT_TRUE(IndexUtil::BumpIndices(shape, &indices));
-  EXPECT_MATCH(indices,
-               testing::VectorMatcher<int64>(std::vector<int64>{0, 1}));
+  EXPECT_THAT(indices, ::testing::ElementsAre(0, 1));
   EXPECT_TRUE(IndexUtil::BumpIndices(shape, &indices));
-  EXPECT_MATCH(indices,
-               testing::VectorMatcher<int64>(std::vector<int64>{1, 0}));
+  EXPECT_THAT(indices, ::testing::ElementsAre(1, 0));
   EXPECT_TRUE(IndexUtil::BumpIndices(shape, &indices));
-  EXPECT_MATCH(indices,
-               testing::VectorMatcher<int64>(std::vector<int64>{1, 1}));
+  EXPECT_THAT(indices, ::testing::ElementsAre(1, 1));
   EXPECT_FALSE(IndexUtil::BumpIndices(shape, &indices));
 }
 

@@ -50,8 +50,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -426,10 +424,11 @@ def merge(inputs, name=None):
 # pylint: enable=protected-access
 
 
-def _convert_tensorarrays_to_flows(tensors_or_tensor_arrays):
-  return [ta.flow if isinstance(ta, tensor_array_ops.TensorArray)
-          else ta
-          for ta in tensors_or_tensor_arrays]
+def _convert_tensorarray_to_flow(tensor_or_tensor_array):
+  if isinstance(tensor_or_tensor_array, tensor_array_ops.TensorArray):
+    return tensor_or_tensor_array.flow
+  else:
+    return tensor_or_tensor_array
 
 
 def _make_tensor_array(ta, t_or_flow):
@@ -1417,8 +1416,7 @@ class ControlFlowContext(object):
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
     if self._outer_context:
-      for x in result:
-        self._outer_context.AddName(x.name)
+      nest.map_structure(lambda x: self._outer_context.AddName(x.name), result)
 
   def GetWhileContext(self):
     """Return the while context containing this context."""
@@ -1637,63 +1635,77 @@ class CondContext(ControlFlowContext):
         real_val = external_val
     return real_val
 
+  def _BuildCondTensor(self, v):
+    if isinstance(v, ops.Operation):
+      # Use pivot as the proxy for this op.
+      return with_dependencies([v], self._pivot)
+    elif isinstance(v, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
+      values = self._ProcessOutputTensor(v.values)
+      indices = self._ProcessOutputTensor(v.indices)
+      if isinstance(v, ops.IndexedSlices):
+        dense_shape = v.dense_shape
+        if dense_shape is not None:
+          dense_shape = self._ProcessOutputTensor(dense_shape)
+        return ops.IndexedSlices(values, indices, dense_shape)
+      else:
+        dense_shape = self._ProcessOutputTensor(v.dense_shape)
+        return sparse_tensor.SparseTensor(indices, values, dense_shape)
+    else:
+      v = nest.map_structure(_convert_tensorarray_to_flow, v)
+      return self._ProcessOutputTensor(ops.convert_to_tensor(v))
+
   def BuildCondBranch(self, fn):
     """Add the subgraph defined by fn() to the graph."""
-    r = fn()
-    original_r = r
-    result = []
-    if r is not None:
-      if not isinstance(r, list) and not isinstance(r, _basetuple):
-        r = [r]
-        original_r = [original_r]
-      r = _convert_tensorarrays_to_flows(r)
-      for v in r:
-        real_v = v
-        if isinstance(v, ops.Operation):
-          # Use pivot as the proxy for this op.
-          real_v = with_dependencies([v], self._pivot)
-        else:
-          if isinstance(v, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
-            values = self._ProcessOutputTensor(v.values)
-            indices = self._ProcessOutputTensor(v.indices)
-            if isinstance(v, ops.IndexedSlices):
-              dense_shape = v.dense_shape
-              if dense_shape is not None:
-                dense_shape = self._ProcessOutputTensor(dense_shape)
-              real_v = ops.IndexedSlices(values, indices, dense_shape)
-            else:
-              dense_shape = self._ProcessOutputTensor(v.dense_shape)
-              real_v = sparse_tensor.SparseTensor(indices, values, dense_shape)
-          else:
-            real_v = self._ProcessOutputTensor(v)
-        result.append(real_v)
-    return original_r, result
+    original_result = fn()
+    if original_result is None:
+      return None, None
+
+    result = nest.map_structure(self._BuildCondTensor, original_result)
+    if not isinstance(result, (list, _basetuple)):
+      result = [result]
+    return original_result, result
 
 
-def cond(pred, fn1, fn2, name=None):
-  """Return either fn1() or fn2() based on the boolean predicate `pred`.
+def _UnpackIfSingleton(res):
+  if isinstance(res, (list, _basetuple)) and len(res) == 1:
+    return res[0]
+  else:
+    return res
+
+
+def cond(pred, fn1, fn2, strict=False, name=None):
+  """Return either `fn1()` or `fn2()` based on the boolean predicate `pred`.
 
   `fn1` and `fn2` both return lists of output tensors. `fn1` and `fn2` must have
   the same non-zero number and type of outputs.
 
   Note that the conditional execution applies only to the operations defined in
-  fn1 and fn2. Consider the following simple program:
+  `fn1` and `fn2`. Consider the following simple program:
 
   ```python
   z = tf.multiply(a, b)
   result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
   ```
 
-  If x < y, the `tf.add` operation will be executed and `tf.square`
-  operation will not be executed. Since z is needed for at least one
-  branch of the cond, the `tf.multiply` operation is always executed, unconditionally.
+  If `x < y`, the `tf.add` operation will be executed and `tf.square`
+  operation will not be executed. Since `z` is needed for at least one
+  branch of the `cond`, the `tf.multiply` operation is always executed,
+  unconditionally.
   Although this behavior is consistent with the dataflow model of TensorFlow,
   it has occasionally surprised some users who expected a lazier semantics.
+
+  `tf.cond` supports nested structures as implemented in
+  `tensorflow.python.util.nest`. Both `fn1` and `fn2` must return the same
+  (possibly nested) value structure of lists, tuples, and/or named tuples.
+  Singleton lists and tuples form the only exceptions to this: when returned by
+  `fn1` and/or `fn2`, they are implicitly unpacked to single values. This
+  behavior is disabled by passing `strict=True`.
 
   Args:
     pred: A scalar determining whether to return the result of `fn1` or `fn2`.
     fn1: The callable to be performed if pred is true.
     fn2: The callable to be performed if pred is false.
+    strict: A boolean that enables/disables 'strict' mode; see above.
     name: Optional name prefix for the returned tensors.
 
   Returns:
@@ -1738,23 +1750,43 @@ def cond(pred, fn1, fn2, name=None):
     # Build the graph for the true branch in a new context.
     context_t = CondContext(pred, pivot_1, branch=1)
     context_t.Enter()
-    orig_res, res_t = context_t.BuildCondBranch(fn1)
+    orig_res_t, res_t = context_t.BuildCondBranch(fn1)
+    if orig_res_t is None:
+      raise ValueError("fn1 must have a return value.")
     context_t.ExitResult(res_t)
     context_t.Exit()
 
     # Build the graph for the false branch in a new context.
     context_f = CondContext(pred, pivot_2, branch=0)
     context_f.Enter()
-    _, res_f = context_f.BuildCondBranch(fn2)
+    orig_res_f, res_f = context_f.BuildCondBranch(fn2)
+    if orig_res_f is None:
+      raise ValueError("fn2 must have a return value.")
     context_f.ExitResult(res_f)
     context_f.Exit()
 
+    if not strict:
+      orig_res_t = _UnpackIfSingleton(orig_res_t)
+      orig_res_f = _UnpackIfSingleton(orig_res_f)
+
+    # Check that the return values of the two branches have the same structure.
+    try:
+      nest.assert_same_structure(orig_res_t, orig_res_f)
+    except TypeError as e:
+      raise TypeError(
+          "Incompatible return types of fn1 and fn2: {}".format(e))
+    except ValueError as e:
+      raise ValueError(
+          "Incompatible return values of fn1 and fn2: {}".format(e))
+
     # Add the final merge to the graph.
-    if len(res_t) != len(res_f):
-      raise ValueError("fn1 and fn2 must return the same number of results.")
     if not res_t:
       raise ValueError("fn1 and fn2 must return at least one result.")
-    for x, y in zip(res_t, res_f):
+
+    res_t_flat = nest.flatten(res_t)
+    res_f_flat = nest.flatten(res_f)
+
+    for x, y in zip(res_t_flat, res_f_flat):
       assert ((isinstance(x, ops.IndexedSlices) and
                isinstance(y, ops.IndexedSlices)) or
               (isinstance(x, sparse_tensor.SparseTensor) and
@@ -1765,14 +1797,20 @@ def cond(pred, fn1, fn2, name=None):
       if val_x.dtype.base_dtype != val_y.dtype.base_dtype:
         raise ValueError("Outputs of fn1 and fn2 must have the same type: "
                          "%s, %s" % (val_x.dtype.name, val_y.dtype.name))
-    merges = [merge([x[0], x[1]])[0] for x in zip(res_f, res_t)]
-    merges = _convert_flows_to_tensorarrays(orig_res, merges)
+
+    merges = [merge(pair)[0] for pair in zip(res_f_flat, res_t_flat)]
+    merges = _convert_flows_to_tensorarrays(nest.flatten(orig_res_t), merges)
 
     # Add to collections
     ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_t)
     ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_f)
 
-    return merges[0] if len(merges) == 1 else merges
+    merges = nest.pack_sequence_as(structure=orig_res_t, flat_sequence=merges)
+
+    # Singleton lists and tuples are automatically unpacked if strict == False.
+    if not strict:
+      merges = _UnpackIfSingleton(merges)
+    return merges
 
 
 def _resource_safe_shape(t):
@@ -2415,8 +2453,8 @@ class WhileContext(ControlFlowContext):
     # Store body_result to keep track of TensorArrays returned by body
     original_body_result = body_result
     # Convert TensorArrays returned by body into their flow variables
-    flat_result = nest.flatten(body_result)
-    result = _convert_tensorarrays_to_flows(flat_result)
+    result = nest.map_structure(_convert_tensorarray_to_flow,
+                                nest.flatten(body_result))
     result = ops.convert_n_to_tensor_or_indexed_slices(result)
 
     # Add NextIteration and the back edges to complete the loop.
@@ -2446,9 +2484,9 @@ class WhileContext(ControlFlowContext):
 
     # Keep original_loop_vars to identify which are TensorArrays
     original_loop_vars = loop_vars
-    flat_loop_vars = nest.flatten(loop_vars)
     # Convert TensorArrays to their flow variables
-    loop_vars = _convert_tensorarrays_to_flows(flat_loop_vars)
+    loop_vars = nest.map_structure(_convert_tensorarray_to_flow,
+                                   nest.flatten(loop_vars))
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     try:
       self.Enter()
@@ -2820,7 +2858,7 @@ def tuple(tensors, name=None, control_inputs=None):
     return tpl
 
 
-def case(pred_fn_pairs, default, exclusive=False, name="case"):
+def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
   """Create a case operation.
 
   The `pred_fn_pairs` parameter is a dict or list of pairs of size N.
@@ -2836,6 +2874,13 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
   evaluates to True, and the tensors generated by the corresponding function
   are returned immediately. If none of the predicates evaluate to True, this
   operation returns the tensors generated by `default`.
+
+  `tf.case` supports nested structures as implemented in
+  `tensorflow.python.util.nest`. Both `fn1` and `fn2` must return the same
+  (possibly nested) value structure of lists, tuples, and/or named tuples.
+  Singleton lists and tuples form the only exceptions to this: when returned by
+  `fn1` and/or `fn2`, they are implicitly unpacked to single values. This
+  behavior is disabled by passing `strict=True`.
 
   Example 1:
     Pseudocode:
@@ -2877,6 +2922,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
                    callable which returns a list of tensors.
     default: A callable that returns a list of tensors.
     exclusive: True iff at most one predicate is allowed to evaluate to `True`.
+    strict: A boolean that enables/disables 'strict' mode; see above.
     name: A name for this operation (optional).
 
   Returns:
@@ -2941,20 +2987,31 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
 
     # Create an empty tensor, or list, with the right type and shape
     with ops.name_scope("case_create_empty"):
-      dummy_value = default()
+      def _create_empty_constant(dtype, shape):
+        value = ("" if dtype == dtypes.string else dtype.as_numpy_dtype())
+        if shape.ndims is None:
+          return array_ops.constant(value, dtype=dtype)
+        else:
+          temp_shape = [1 if x.value is None else x.value for x in shape]
+          result = array_ops.constant(value, shape=temp_shape, dtype=dtype)
+          result._shape = shape  # pylint: disable=protected-access
+          return result
+
       def _correct_empty(v):
         if isinstance(v, ops.Operation):
           return no_op()
-        elif v.dtype == dtypes.string:
-          return array_ops.constant("")
+        elif isinstance(v, tensor_array_ops.TensorArray):
+          return v
+        elif not hasattr(v, "dtype"):
+          return ops.convert_to_tensor(v)
+        elif isinstance(v, sparse_tensor.SparseTensor):
+          return sparse_tensor.SparseTensor(indices=[[0] * len(v.get_shape())],
+                                            values=[v.dtype.as_numpy_dtype()],
+                                            dense_shape=v.get_shape())
         else:
-          return array_ops.constant(v.dtype.as_numpy_dtype())
+          return _create_empty_constant(v.dtype, v.get_shape())
 
-      if isinstance(dummy_value, collections.Sequence):
-        dummy_type = type(dummy_value)
-        empty = lambda: dummy_type(_correct_empty(v) for v in dummy_value)
-      else:
-        empty = lambda: _correct_empty(dummy_value)
+      empty = lambda: nest.map_structure(_correct_empty, default())
 
     # case_sequence = [
     #   cond(~p3 & ~p2 & ~p1, default, empty),
@@ -2972,7 +3029,7 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
         prev_case = cond(
             cp, fn,
             empty if i == 0 else lambda: prev_case,
-            name="If_%d" % i)
+            strict=strict, name="If_%d" % i)
       return prev_case
 
     if exclusive:
@@ -2994,6 +3051,8 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     else:
       case_seq = _build_case()
 
+    if not strict:
+      case_seq = _UnpackIfSingleton(case_seq)
     return case_seq
 
 

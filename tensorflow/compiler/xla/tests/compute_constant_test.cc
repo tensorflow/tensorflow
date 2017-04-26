@@ -27,13 +27,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -222,10 +221,10 @@ TEST_F(ComputeConstantTest, DISABLED_ON_CPU(ReuseComputedConstant)) {
   // Try to use value from ComputeConstant in Execute.
   auto execute_status = client_->Execute(computation, {handle.get()});
   EXPECT_FALSE(execute_status.ok());
-  EXPECT_MATCH(
+  EXPECT_THAT(
       execute_status.status().error_message(),
-      testing::ContainsRegex("argument 0 is on device Host:0 but computation "
-                             "will be executed on device"));
+      ::testing::ContainsRegex("argument 0 is on device Host:0 but computation "
+                               "will be executed on device"));
 }
 
 }  // namespace

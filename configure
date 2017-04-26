@@ -56,7 +56,7 @@ rm -f .tf_configure.bazelrc
 touch .tf_configure.bazelrc
 touch .bazelrc
 sed_hyphen_i "/tf_configure/d" .bazelrc
-echo "import .tf_configure.bazelrc" >> .bazelrc
+echo "import %workspace%/.tf_configure.bazelrc" >> .bazelrc
 
 # Delete any leftover BUILD files from the Makefile build, which would interfere
 # with Bazel parsing.
@@ -86,15 +86,18 @@ while true; do
   PYTHON_BIN_PATH=""
   # Retry
 done
+export PYTHON_BIN_PATH
+write_action_env_to_bazelrc "PYTHON_BIN_PATH" "$PYTHON_BIN_PATH"
+# TODO(ngiraldo): allow the user to optionally set PYTHON_INCLUDE_PATH and NUMPY_INCLUDE_PATH
 
 ## Set up MKL related environment settings
 if false; then # Disable building with MKL for now
   while [ "$TF_NEED_MKL" == "" ]; do
     fromuser=""
-    read -p "Do you wish to build TensorFlow with MKL support? [y/N] " INPUT
+    read -p "Do you wish to build TensorFlow with MKL support (experimental)? [y/N] " INPUT
     fromuser="1"
     case $INPUT in
-      [Yy]* ) echo "MKL support will be enabled for TensorFlow"; TF_NEED_MKL=1;;
+      [Yy]* ) echo "MKL support (experimental) (will be enabled for TensorFlow"; TF_NEED_MKL=1;;
       [Nn]* ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
       "" ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
       * ) echo "Invalid selection: " $INPUT;;
@@ -241,9 +244,27 @@ if [[ "$TF_ENABLE_XLA" == "1" ]]; then
   write_to_bazelrc 'build --define with_xla_support=true'
 fi
 
+# Verbs configuration
+while [ "$TF_NEED_VERBS" == "" ]; do
+  read -p "Do you wish to build TensorFlow with "\
+"VERBS support? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "VERBS support will be enabled for "\
+"TensorFlow"; TF_NEED_VERBS=1;;
+    [Nn]* ) echo "No VERBS support will be enabled for "\
+"TensorFlow"; TF_NEED_VERBS=0;;
+    "" ) echo "No VERBS support will be enabled for "\
+"TensorFlow"; TF_NEED_VERBS=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+if [[ "$TF_NEED_VERBS" == "1" ]]; then
+  write_to_bazelrc 'build --define with_verbs_support=true'
+fi
 
 # Invoke python_config and set up symlinks to python includes
-./util/python/python_config.sh --setup "$PYTHON_BIN_PATH"
+./util/python/python_config.sh "$PYTHON_BIN_PATH"
 
 # Append CC optimization flags to bazel.rc
 echo >> tools/bazel.rc
@@ -284,6 +305,7 @@ export TF_NEED_CUDA
 write_action_env_to_bazelrc "TF_NEED_CUDA" "$TF_NEED_CUDA"
 
 export TF_NEED_OPENCL
+write_action_env_to_bazelrc "TF_NEED_OPENCL" "$TF_NEED_OPENCL"
 
 if [ "$TF_NEED_CUDA" == "1" ]; then
 while [[ "$TF_CUDA_CLANG" == "" ]]; do
@@ -547,6 +569,7 @@ while true; do
   fi
   if [ -e "$HOST_CXX_COMPILER" ]; then
     export HOST_CXX_COMPILER
+    write_action_env_to_bazelrc "HOST_CXX_COMPILER" "$HOST_CXX_COMPILER"
     break
   fi
   echo "Invalid C++ compiler path. ${HOST_CXX_COMPILER} cannot be found" 1>&2
@@ -570,6 +593,7 @@ while true; do
   fi
   if [ -e "$HOST_C_COMPILER" ]; then
     export HOST_C_COMPILER
+    write_action_env_to_bazelrc "HOST_C_COMPILER" "$HOST_C_COMPILER"
     break
   fi
   echo "Invalid C compiler path. ${HOST_C_COMPILER} cannot be found" 1>&2
@@ -600,6 +624,7 @@ while true; do
 
   if [ -e "${COMPUTECPP_TOOLKIT_PATH}/${SYCL_RT_LIB_PATH}" ]; then
     export COMPUTECPP_TOOLKIT_PATH
+    write_action_env_to_bazelrc "COMPUTECPP_TOOLKIT_PATH" "$COMPUTECPP_TOOLKIT_PATH"
     break
   fi
   echo "Invalid SYCL $TF_OPENCL_VERSION library path. ${COMPUTECPP_TOOLKIT_PATH}/${SYCL_RT_LIB_PATH} cannot be found"

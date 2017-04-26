@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -33,6 +34,10 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::testing::ContainsRegex;
+using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 
 class DeconstructTupleTest : public ClientLibraryTestBase {
  protected:
@@ -63,9 +68,9 @@ TEST_F(DeconstructTupleTest, DeconstructTuple) {
   auto handles = result_status.ConsumeValueOrDie();
   std::vector<float> copy(4);
   ASSERT_IS_OK(client_->TransferInProcess(*handles[0], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({1.0, 2.0, 3.0, 4.0}));
+  EXPECT_THAT(copy, ElementsAre(1.0, 2.0, 3.0, 4.0));
   ASSERT_IS_OK(client_->TransferInProcess(*handles[1], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({2.0, 4.0, 6.0, 8.0}));
+  EXPECT_THAT(copy, ElementsAre(2.0, 4.0, 6.0, 8.0));
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
@@ -85,16 +90,16 @@ TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
   std::vector<float> copy(4);
 
   ASSERT_IS_OK(client_->TransferInProcess(*handles1[0], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({1.0, 2.0, 3.0, 4.0}));
+  EXPECT_THAT(copy, ElementsAre(1.0, 2.0, 3.0, 4.0));
   ASSERT_IS_OK(client_->TransferInProcess(*handles1[1], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({2.0, 4.0, 6.0, 8.0}));
+  EXPECT_THAT(copy, ElementsAre(2.0, 4.0, 6.0, 8.0));
   handles1[0].reset();
   handles1[1].reset();
 
   ASSERT_IS_OK(client_->TransferInProcess(*handles2[0], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({1.0, 2.0, 3.0, 4.0}));
+  EXPECT_THAT(copy, ElementsAre(1.0, 2.0, 3.0, 4.0));
   ASSERT_IS_OK(client_->TransferInProcess(*handles2[1], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({2.0, 4.0, 6.0, 8.0}));
+  EXPECT_THAT(copy, ElementsAre(2.0, 4.0, 6.0, 8.0));
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
@@ -114,13 +119,13 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
 
   std::vector<float> copy(4);
   ASSERT_IS_OK(client_->TransferInProcess(*handles[0], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({1.0, 2.0, 3.0, 4.0}));
+  EXPECT_THAT(copy, ElementsAre(1.0, 2.0, 3.0, 4.0));
   ASSERT_IS_OK(client_->TransferInProcess(*handles[1], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({2.0, 4.0, 6.0, 8.0}));
+  EXPECT_THAT(copy, ElementsAre(2.0, 4.0, 6.0, 8.0));
   ASSERT_IS_OK(client_->TransferInProcess(*handles[2], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({2.0, 4.0, 6.0, 8.0}));
+  EXPECT_THAT(copy, ElementsAre(2.0, 4.0, 6.0, 8.0));
   ASSERT_IS_OK(client_->TransferInProcess(*handles[3], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({1.0, 2.0, 3.0, 4.0}));
+  EXPECT_THAT(copy, ElementsAre(1.0, 2.0, 3.0, 4.0));
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
@@ -140,17 +145,17 @@ TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
 
   std::vector<float> copy(4);
   ASSERT_IS_OK(client_->TransferInProcess(*handles[0], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({1.0, 2.0, 3.0, 4.0}));
+  EXPECT_THAT(copy, ElementsAre(1.0, 2.0, 3.0, 4.0));
   ASSERT_IS_OK(client_->TransferInProcess(*handles[1], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({2.0, 4.0, 6.0, 8.0}));
+  EXPECT_THAT(copy, ElementsAre(2.0, 4.0, 6.0, 8.0));
   ASSERT_IS_OK(client_->TransferInProcess(*handles[2], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({1.0, 2.0, 3.0, 4.0}));
+  EXPECT_THAT(copy, ElementsAre(1.0, 2.0, 3.0, 4.0));
 
   /// Try deallocating one of the repeated elements, then copy
   handles[0].reset();
 
   ASSERT_IS_OK(client_->TransferInProcess(*handles[2], &copy[0]));
-  EXPECT_MATCH(copy, testing::VectorMatcher<float>({1.0, 2.0, 3.0, 4.0}));
+  EXPECT_THAT(copy, ElementsAre(1.0, 2.0, 3.0, 4.0));
 }
 
 TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
@@ -160,8 +165,8 @@ TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
 
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_FALSE(result_status.ok());
-  EXPECT_MATCH(result_status.status().error_message(),
-               testing::ContainsRegex("global data handle .* is not a tuple"));
+  EXPECT_THAT(result_status.status().error_message(),
+              ContainsRegex("global data handle .* is not a tuple"));
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
@@ -189,9 +194,8 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
 
   auto result_status = client_->DeconstructTuple(*global_data);
   EXPECT_FALSE(result_status.ok());
-  EXPECT_MATCH(
-      result_status.status().error_message(),
-      testing::ContainsRegex("deconstructing nested tuples not yet supported"));
+  EXPECT_THAT(result_status.status().error_message(),
+              HasSubstr("deconstructing nested tuples not yet supported"));
 }
 
 }  // namespace

@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.platform import test
 
@@ -27,16 +29,16 @@ from tensorflow.python.platform import test
 class MatrixTriangularSolveOpTest(test.TestCase):
 
   def _verifySolveAllWays(self, x, y, batch_dims=None):
-    for use_gpu in True, False:
-      for lower in True, False:
-        for adjoint in True, False:
+    for lower in True, False:
+      for adjoint in True, False:
+        for use_placeholder in True, False:
           self._verifySolve(
               x,
               y,
               lower=lower,
               adjoint=adjoint,
               batch_dims=batch_dims,
-              use_gpu=use_gpu)
+              use_placeholder=use_placeholder)
 
   def _verifySolve(self,
                    x,
@@ -44,7 +46,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
                    lower=True,
                    adjoint=False,
                    batch_dims=None,
-                   use_gpu=False):
+                   use_placeholder=False):
     for np_type in [np.float32, np.float64]:
       a = x.astype(np_type)
       b = y.astype(np_type)
@@ -64,16 +66,30 @@ class MatrixTriangularSolveOpTest(test.TestCase):
         a_np = np.tile(a_np, batch_dims + [1, 1])
         b = np.tile(b, batch_dims + [1, 1])
 
-      with self.test_session(use_gpu=use_gpu):
-        tf_ans = linalg_ops.matrix_triangular_solve(
-            a, b, lower=lower, adjoint=adjoint)
-        out = tf_ans.eval()
-        np_ans = np.linalg.solve(a_np, b)
-        self.assertEqual(np_ans.shape, tf_ans.get_shape())
-        self.assertEqual(np_ans.shape, out.shape)
-        self.assertAllClose(np_ans, out)
+      with self.test_session(use_gpu=True) as sess:
+        if use_placeholder:
+          a_tf = array_ops.placeholder(a.dtype)
+          b_tf = array_ops.placeholder(b.dtype)
+          tf_ans = linalg_ops.matrix_triangular_solve(
+              a_tf, b_tf, lower=lower, adjoint=adjoint)
+          tf_val = sess.run(tf_ans, feed_dict={a_tf: a, b_tf: b})
+          np_ans = np.linalg.solve(a_np, b)
+        else:
+          a_tf = constant_op.constant(a)
+          b_tf = constant_op.constant(b)
+          tf_ans = linalg_ops.matrix_triangular_solve(
+              a_tf, b_tf, lower=lower, adjoint=adjoint)
+          tf_val = tf_ans.eval()
+          np_ans = np.linalg.solve(a_np, b)
+          self.assertEqual(np_ans.shape, tf_ans.get_shape())
+        self.assertEqual(np_ans.shape, tf_val.shape)
+        self.assertAllClose(np_ans, tf_val)
 
   def testSolve(self):
+    # 1x1 matrix, single rhs.
+    matrix = np.array([[0.1]])
+    rhs0 = np.array([[1.]])
+    self._verifySolveAllWays(matrix, rhs0)
     # 2x2 matrices, single right-hand side.
     matrix = np.array([[1., 2.], [3., 4.]])
     rhs0 = np.array([[1.], [1.]])

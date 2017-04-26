@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 
@@ -60,7 +63,7 @@ TEST_F(InstructionFusionTest,
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
           .ValueOrDie());
-  EXPECT_EQ(HloOpcode::kFusion, computation->root_instruction()->opcode());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest,
@@ -80,7 +83,7 @@ TEST_F(InstructionFusionTest,
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
           .ValueOrDie());
-  EXPECT_EQ(HloOpcode::kFusion, computation->root_instruction()->opcode());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest,
@@ -100,7 +103,7 @@ TEST_F(InstructionFusionTest,
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
           .ValueOrDie());
-  EXPECT_EQ(HloOpcode::kFusion, computation->root_instruction()->opcode());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {

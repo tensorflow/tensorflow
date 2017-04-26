@@ -351,7 +351,8 @@ def get_session():
       _SESSION = session_module.Session(config=config)
     session = _SESSION
   if not _MANUAL_VAR_INIT:
-    _initialize_variables()
+    with session.graph.as_default():
+      _initialize_variables()
   return session
 
 
@@ -2898,13 +2899,14 @@ def in_top_k(predictions, targets, k):
   """Returns whether the `targets` are in the top `k` `predictions`.
 
   Arguments:
-      predictions: A tensor of shape `batch_size` x classes and type `float32`.
-      targets: A tensor of shape batch_size and type `int32` or `int64`.
+      predictions: A tensor of shape `(batch_size, classes)` and type `float32`.
+      targets: A 1D tensor of length `batch_size` and type `int32` or `int64`.
       k: An `int`, number of top elements to consider.
 
   Returns:
-      A tensor of shape `batch_size` and type `bool`. `output_i` is `True` if
-      `targets_i` is within top-k values of `predictions_i`
+      A 1D tensor of length `batch_size` and type `bool`.
+      `output[i]` is `True` if `predictions[i, targets[i]]` is within top-`k`
+      values of `predictions[i]`.
   """
   return nn.in_top_k(predictions, targets, k)
 
@@ -3452,8 +3454,9 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
   max_num_labels_tns = array_ops.stack([label_shape[1]])
 
   def range_less_than(_, current_input):
-    return array_ops.expand_dims(math_ops.range(
-        label_shape[1]), 0) < array_ops.fill(max_num_labels_tns, current_input)
+    return array_ops.expand_dims(
+        math_ops.range(label_shape[1]), 0) < array_ops.fill(
+            max_num_labels_tns, current_input)
 
   init = math_ops.cast(
       array_ops.fill([1, label_shape[1]], 0), dtypes_module.bool)
@@ -3614,7 +3617,7 @@ _config_path = os.path.expanduser(os.path.join(_keras_dir, 'keras.json'))
 if os.path.exists(_config_path):
   try:
     _config = json.load(open(_config_path))
-  except json.decoder.JSONDecodeError:
+  except ValueError:
     _config = {}
   _floatx = _config.get('floatx', floatx())
   assert _floatx in {'float16', 'float32', 'float64'}
@@ -3627,21 +3630,24 @@ if os.path.exists(_config_path):
   set_image_data_format(_image_data_format)
 
 # Save config file.
-if os.access(_keras_base_dir, os.W_OK):
-  if not os.path.exists(_keras_dir):
-    try:
-      os.makedirs(_keras_dir)
-    except OSError:
-      # Except potential race conditions
-      # in multi-threaded environments.
-      pass
+if not os.path.exists(_keras_dir):
+  try:
+    os.makedirs(_keras_dir)
+  except OSError:
+    # Except permission denied and potential race conditions
+    # in multi-threaded environments.
+    pass
 
-  if not os.path.exists(_config_path):
-    _config = {
-        'floatx': floatx(),
-        'epsilon': epsilon(),
-        'backend': 'tensorflow',
-        'image_data_format': image_data_format()
-    }
+if not os.path.exists(_config_path):
+  _config = {
+      'floatx': floatx(),
+      'epsilon': epsilon(),
+      'backend': 'tensorflow',
+      'image_data_format': image_data_format()
+  }
+  try:
     with open(_config_path, 'w') as f:
       f.write(json.dumps(_config, indent=4))
+  except IOError:
+    # Except permission denied.
+    pass

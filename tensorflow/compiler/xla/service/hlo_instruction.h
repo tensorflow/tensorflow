@@ -22,6 +22,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTION_H_
 
 #include <functional>
+#include <iosfwd>
 #include <list>
 #include <memory>
 #include <string>
@@ -45,6 +46,7 @@ limitations under the License.
 namespace xla {
 
 class HloComputation;
+class HloModule;
 
 // HLO instructions are the IR used by the high-level compiler.
 class HloInstruction {
@@ -57,6 +59,7 @@ class HloInstruction {
     kConvBackwardInput,   // Fused into a backward input convolution.
   };
 
+  ~HloInstruction();
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
                                                          const Shape& shape,
@@ -418,6 +421,11 @@ class HloInstruction {
     return parameter_name_;
   }
 
+  void set_parameter_name(const string& str) {
+    CHECK_EQ(HloOpcode::kParameter, opcode_);
+    parameter_name_ = str;
+  }
+
   // Returns the dimension sizes or numbers associated with this instruction.
   //
   // Precondition: opcode() is one of: concatenate, reduce, broadcast, reshape,
@@ -533,6 +541,11 @@ class HloInstruction {
   //
   // Precondition: opcode() == HloOpcode::kFusion
   HloInstruction* fused_expression_root() const;
+
+  // Returns the computation for this fused instruction.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  HloComputation* fused_instructions_computation() const;
 
   // Returns the vector of fused instructions inside this fusion
   // instruction. The order is a reverse postorder of the fused expression (root
@@ -718,9 +731,20 @@ class HloInstruction {
   const HloComputation* parent() const { return parent_; }
   HloComputation* parent() { return parent_; }
 
+  // Returns the module for this instruction.
+  HloModule* GetModule() const;
+
   // Returns whether we could assign input and output layouts to this
   // instruction to make it a bitcast.
   bool CouldBeBitcast() const;
+
+  // Sets the parent fusion instruction for this instruction.
+  //
+  // Precondition: opcode() == HloOpcode::kFusion
+  void SetParentFusion(HloInstruction* fusion_instruction) {
+    CHECK_EQ(HloOpcode::kFusion, fusion_instruction->opcode());
+    parent_fusion_instruction_ = fusion_instruction;
+  }
 
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
@@ -807,21 +831,13 @@ class HloInstruction {
   // padding of this pad instruction. Only set for pad instructions.
   std::unique_ptr<PaddingConfig> padding_config_;
 
-  // The set of instruction fused into this fusion instruction. Only set for
-  // fusion instructions.
-  std::list<std::unique_ptr<HloInstruction>> fused_instructions_;
+  // The computation that stores of instructions fused into this fusion
+  // instruction. Only set for fusion instructions.
+  std::unique_ptr<HloComputation> fused_instructions_computation_;
 
   // If this instruction is fused into a fusion instruction, this field points
   // to the fusion instruction.
   HloInstruction* parent_fusion_instruction_ = nullptr;
-
-  // The vector of parameter instructions inside this fusion instruction.  The
-  // index of the vector is the parameter_number of the parameter instruction.
-  // This vector is non-empty only for fusion instructions.
-  std::vector<HloInstruction*> fused_parameters_;
-
-  // The root of the expression fused into this fusion instruction.
-  HloInstruction* fused_root_ = nullptr;
 
   // The type of the fusion. Used by kFusion only.
   FusionKind fusion_kind_;
@@ -897,6 +913,8 @@ class HloInstruction {
 };
 
 string ToString(HloInstruction::FusionKind kind);
+
+std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 
 }  // namespace xla
 

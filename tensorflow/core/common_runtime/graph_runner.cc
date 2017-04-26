@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -129,9 +130,11 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   }
 
   // Call RewriteGraphForExecution
+  subgraph::RewriteGraphMetadata metadata;
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       graph_to_run.get(), input_names, output_names, {} /* target nodes */,
-      cpu_device_->attributes()));
+      cpu_device_->attributes(), false /* use_function_convention */,
+      &metadata));
 
   // Create the local executor and the Rendezvous for fetching back the
   // constants.
@@ -175,8 +178,13 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
     Rendezvous::ParsedKey parsed;
     TF_RETURN_IF_ERROR(Rendezvous::ParseKey(output_key, &parsed));
     bool is_dead;
+    Tensor output_tensor;
     TF_RETURN_IF_ERROR(
-        rendez->Recv(parsed, Rendezvous::Args(), &(*outputs)[i], &is_dead));
+        rendez->Recv(parsed, Rendezvous::Args(), &output_tensor, &is_dead));
+    // Does a deep copy so that ownership of the tensor isn't tied to the
+    // allocator of the cpu device we created above. The allocator could be
+    // deleted along with the device.
+    (*outputs)[i] = tensor::DeepCopy(output_tensor);
   }
 
   return Status::OK();

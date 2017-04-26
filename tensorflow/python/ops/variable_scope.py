@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections as collections_lib
-import contextlib
 import copy
 import functools
 import traceback
@@ -36,6 +35,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_contextlib
 
 __all__ = ["VariableScope", "get_variable_scope",
            "get_variable", "get_local_variable", "variable_scope",
@@ -974,6 +974,8 @@ class VariableScope(object):
       partitioner = self._partitioner
     if dtype is None:
       dtype = self._dtype
+    if use_resource is None:
+      use_resource = self._use_resource
 
     if self._custom_getter is not None:
       raise ValueError(
@@ -1248,7 +1250,7 @@ def _get_partitioned_variable(name,
   # pylint: enable=protected-access
 
 
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def _pure_variable_scope(name_or_scope,
                          reuse=None,
                          initializer=None,
@@ -1407,7 +1409,7 @@ def _get_unique_variable_scope(prefix):
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def variable_scope(name_or_scope,
                    default_name=None,
                    values=None,
@@ -1580,7 +1582,7 @@ def variable_scope(name_or_scope,
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def variable_op_scope(values,
                       name_or_scope,
                       default_name=None,
@@ -1637,3 +1639,22 @@ def _compute_slice_dim_and_shape(full_shape, slicing):
   if slice_dim is None:
     slice_dim = 0
   return slice_dim, slice_shape
+
+
+def variable(initial_value=None,
+             trainable=True,
+             collections=None,
+             validate_shape=True,
+             caching_device=None,
+             name=None,
+             dtype=None):
+  if get_variable_scope().use_resource:
+    return resource_variable_ops.ResourceVariable(
+        initial_value=initial_value, trainable=trainable,
+        collections=collections, validate_shape=validate_shape,
+        caching_device=caching_device, name=name, dtype=dtype)
+  else:
+    return variables.Variable(
+        initial_value=initial_value, trainable=trainable,
+        collections=collections, validate_shape=validate_shape,
+        caching_device=caching_device, name=name, dtype=dtype)

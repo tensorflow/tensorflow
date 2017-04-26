@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import inspect
 import types as python_types
 
 import numpy as np
@@ -35,6 +34,7 @@ from tensorflow.contrib.keras.python.keras.utils.generic_utils import deserializ
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import func_dump
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import func_load
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util import tf_inspect
 
 
 class Masking(Layer):
@@ -595,7 +595,7 @@ class Lambda(Layer):
 
   def call(self, inputs, mask=None):
     arguments = self.arguments
-    arg_spec = inspect.getargspec(self.function)
+    arg_spec = tf_inspect.getargspec(self.function)
     if 'mask' in arg_spec.args:
       arguments['mask'] = mask
     return self.function(inputs, **arguments)

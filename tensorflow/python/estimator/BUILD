@@ -17,7 +17,6 @@ py_library(
     srcs = ["estimator_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":checkpoint_utils",
         ":estimator",
         ":export",
         ":inputs",
@@ -37,33 +36,6 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
-)
-
-py_library(
-    name = "checkpoint_utils",
-    srcs = ["checkpoint_utils.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
-    ],
-)
-
-py_test(
-    name = "checkpoint_utils_test",
-    size = "small",
-    srcs = ["checkpoint_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":checkpoint_utils",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-    ],
 )
 
 py_library(
@@ -108,18 +80,19 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":checkpoint_utils",
         ":export",
         ":model_fn",
         ":run_config",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:metrics",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:tag_constants",
     ],
@@ -131,20 +104,31 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":estimator",
+        ":export",
         ":model_fn",
         ":numpy_io",
         ":run_config",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
