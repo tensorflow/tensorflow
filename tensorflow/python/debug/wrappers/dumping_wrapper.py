@@ -31,7 +31,12 @@ from tensorflow.python.platform import gfile
 class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
   """Debug Session wrapper that dumps debug data to filesystem."""
 
-  def __init__(self, sess, session_root, watch_fn=None, log_usage=True):
+  def __init__(self,
+               sess,
+               session_root,
+               watch_fn=None,
+               thread_name_filter=None,
+               log_usage=True):
     """Constructor of DumpingDebugWrapperSession.
 
     Args:
@@ -48,6 +53,9 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       watch_fn: (`Callable`) A Callable that can be used to define per-run
         debug ops and watched tensors. See the doc of
         `NonInteractiveDebugWrapperSession.__init__()` for details.
+      thread_name_filter: Regular-expression white list for threads on which the
+        wrapper session will be active. See doc of `BaseDebugWrapperSession` for
+        more details.
       log_usage: (`bool`) whether the usage of this class is to be logged.
 
     Raises:
@@ -59,7 +67,7 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       pass  # No logging for open-source.
 
     framework.NonInteractiveDebugWrapperSession.__init__(
-        self, sess, watch_fn=watch_fn)
+        self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter)
 
     if gfile.Exists(session_root):
       if not gfile.IsDirectory(session_root):
