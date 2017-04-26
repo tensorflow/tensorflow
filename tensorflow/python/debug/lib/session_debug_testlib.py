@@ -358,9 +358,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       u_vals = dump.get_tensors(u_name, 0, "DebugIdentity")
       s_vals = dump.get_tensors(s_name, 0, "DebugIdentity")
       self.assertEqual(1, len(u_vals))
-      self.assertIsNone(u_vals[0])
+      self.assertIsInstance(u_vals[0], debug_data.InconvertibleTensorProto)
+      self.assertFalse(u_vals[0].initialized)
       self.assertEqual(1, len(s_vals))
-      self.assertIsNone(s_vals[0])
+      self.assertIsInstance(s_vals[0], debug_data.InconvertibleTensorProto)
+      self.assertFalse(s_vals[0].initialized)
 
       # Call run() again, to check that u is initialized properly.
       self.assertAllClose(u_init_val, sess.run(u))
@@ -1422,7 +1424,10 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           self._dump_root, partition_graphs=run_metadata.partition_graphs)
       self.assertTrue(dump.loaded_partition_graphs())
 
-      self.assertIsNone(dump.get_tensors("fifo_queue", 0, "DebugIdentity")[0])
+      fifo_queue_tensor = dump.get_tensors("fifo_queue", 0, "DebugIdentity")[0]
+      self.assertIsInstance(fifo_queue_tensor,
+                            debug_data.InconvertibleTensorProto)
+      self.assertTrue(fifo_queue_tensor.initialized)
       self.assertAllClose(
           [101.0, 202.0, 303.0],
           dump.get_tensors("enqueue_many/component_0", 0, "DebugIdentity")[0])

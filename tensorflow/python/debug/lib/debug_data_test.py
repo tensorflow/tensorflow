@@ -23,6 +23,7 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -125,9 +126,15 @@ class HasNanOrInfTest(test_util.TensorFlowTestCase):
     a = np.array([])
     self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
 
-  def testNone(self):
-    a = None
-    self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
+  def testInconvertibleTensorProto(self):
+    self.assertFalse(debug_data.has_inf_or_nan(
+        self._dummy_datum,
+        debug_data.InconvertibleTensorProto(tensor_pb2.TensorProto(),
+                                            initialized=False)))
+    self.assertFalse(debug_data.has_inf_or_nan(
+        self._dummy_datum,
+        debug_data.InconvertibleTensorProto(tensor_pb2.TensorProto(),
+                                            initialized=True)))
 
   def testDTypeComplexWorks(self):
     a = np.array([1j, 3j, 3j, 7j], dtype=np.complex128)

@@ -42,6 +42,8 @@ struct GrapplerItem {
 
   // Initialization op(s).
   std::vector<string> init_ops;
+  // Expected initialization time in seconds, or 0 if unknown
+  int64 expected_init_time = 0;
 
   // Queue runner(s) required to run the queue(s) of this model.
   std::vector<QueueRunnerDef> queue_runners;
