@@ -145,6 +145,7 @@ _allowed_symbols_math_ops = [
     # These are documented in nn.
     # We are are not importing nn because it would create a circular dependency.
     "sigmoid",
+    "log_sigmoid",
     "tanh",
 ]
 

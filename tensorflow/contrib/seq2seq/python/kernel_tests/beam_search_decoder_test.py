@@ -245,10 +245,14 @@ class BeamSearchDecoderTest(test.TestCase):
       if has_attention:
         inputs = np.random.randn(batch_size, decoder_max_time,
                                  input_depth).astype(np.float32)
+        tiled_inputs = beam_search_decoder.tile_batch(
+            inputs, multiplier=beam_width)
+        tiled_sequence_length = beam_search_decoder.tile_batch(
+            encoder_sequence_length, multiplier=beam_width)
         attention_mechanism = attention_wrapper.BahdanauAttention(
             num_units=attention_depth,
-            memory=inputs,
-            memory_sequence_length=encoder_sequence_length)
+            memory=tiled_inputs,
+            memory_sequence_length=tiled_sequence_length)
         cell = attention_wrapper.AttentionWrapper(
             cell=cell,
             attention_mechanism=attention_mechanism,

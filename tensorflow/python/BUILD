@@ -1499,6 +1499,7 @@ py_library(
         ":framework_ops",
         ":graph_util",
         ":math_ops_gen",
+        ":nn_ops_gen",
         ":sparse_ops_gen",
         ":sparse_tensor",
         ":spectral_ops_gen",
