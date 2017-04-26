@@ -307,6 +307,29 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
   // Unary concatenates are useless.
   if (operands.size() == 1) {
     ReplaceInstructionIfSameShape(concatenate, operands[0]);
+    return Status::OK();
+  }
+  // Filter out and remove empty operands.
+  std::vector<HloInstruction*> nonempty_operands;
+  for (HloInstruction* operand : operands) {
+    if (!ShapeUtil::HasZeroElements(operand->shape())) {
+      nonempty_operands.push_back(operand);
+    }
+  }
+  if (nonempty_operands.size() < operands.size()) {
+    HloInstruction* replacement;
+    if (nonempty_operands.empty()) {
+      replacement = operands[0];
+    } else if (nonempty_operands.size() == 1) {
+      replacement = nonempty_operands[0];
+    } else {
+      replacement =
+          computation_->AddInstruction(concatenate->CloneWithNewOperands(
+              concatenate->shape(), nonempty_operands));
+    }
+    VLOG(10) << "trying to replace " << concatenate->ToString() << " with "
+             << replacement->ToString();
+    ReplaceInstructionIfSameShape(concatenate, replacement);
   }
   return Status::OK();
 }
