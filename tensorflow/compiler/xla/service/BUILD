@@ -1254,6 +1254,7 @@ cc_library(
         ":hlo_cost_analysis",
         ":hlo_dce",
         ":hlo_ordering",
+        ":liveness_util",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -1271,6 +1272,7 @@ cc_test(
     deps = [
         ":cpu_plugin",
         ":hlo",
+        ":hlo_matchers",
         ":hlo_ordering",
         ":hlo_rematerialization",
         "//tensorflow/compiler/xla:shape_util",

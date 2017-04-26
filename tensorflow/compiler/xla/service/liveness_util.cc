@@ -28,8 +28,9 @@ limitations under the License.
 
 namespace xla {
 
-bool DoesNotUseOperandBuffer(HloInstruction* operand, const ShapeIndex& index,
-                             HloInstruction* user,
+bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                             const ShapeIndex& index,
+                             const HloInstruction* user,
                              const TuplePointsToAnalysis& points_to_analysis) {
   CHECK(user->IsUserOf(operand))
       << "user: " << user->ToString() << " operand: " << operand->ToString();
