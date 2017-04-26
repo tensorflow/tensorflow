@@ -318,7 +318,7 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 0, 4>();
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 4>(0);
     EXPECT_EQ(2, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(3, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(4, flat_inner_outer_dims.dimension(2));
@@ -328,7 +328,7 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, -2, 4>();
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 6>(-2);
     EXPECT_EQ(1, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(1, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(2, flat_inner_outer_dims.dimension(2));
@@ -340,7 +340,7 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 0, 6>();
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 6>(0);
     EXPECT_EQ(2, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(3, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(4, flat_inner_outer_dims.dimension(2));
@@ -352,7 +352,7 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, -2, 6>();
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 8>(-2);
     EXPECT_EQ(1, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(1, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(2, flat_inner_outer_dims.dimension(2));
@@ -366,7 +366,7 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 1, 4>();
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 3>(1);
     EXPECT_EQ(6, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(4, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(5, flat_inner_outer_dims.dimension(2));
@@ -375,7 +375,7 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 1, 6>();
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 5>(1);
     EXPECT_EQ(6, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(4, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(5, flat_inner_outer_dims.dimension(2));
@@ -386,7 +386,7 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 0, 3>();
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 3>(0);
     EXPECT_EQ(2, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(3, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(20, flat_inner_outer_dims.dimension(2));
@@ -395,7 +395,7 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, -2, 3>();
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 5>(-2);
     EXPECT_EQ(1, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(1, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(2, flat_inner_outer_dims.dimension(2));
@@ -406,7 +406,7 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 1, 3>();
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 2>(1);
     EXPECT_EQ(6, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(20, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(flat_inner_outer_dims(0, 0), 0.01f);
@@ -460,20 +460,20 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 0, 2>();
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 2>(0);
     EXPECT_EQ(3, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(1));
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 0, 3>();
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 3>(0);
     EXPECT_EQ(3, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(2));
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 0, 5>();
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 5>(0);
     EXPECT_EQ(3, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(2, flat_inner_outer_dims.dimension(2));
@@ -482,20 +482,20 @@ TEST(Tensor_Float, Reshape) {
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 3, 5>();
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 2>(3);
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(5, flat_inner_outer_dims.dimension(1));
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 2, 5>();
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 3>(2);
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(5, flat_inner_outer_dims.dimension(2));
   }
   {
     LOG(INFO) << "flat_inner_outer_dims";
-    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 1, 4>();
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 3>(1);
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(0));
     EXPECT_EQ(2, flat_inner_outer_dims.dimension(1));
     EXPECT_EQ(0, flat_inner_outer_dims.dimension(2));

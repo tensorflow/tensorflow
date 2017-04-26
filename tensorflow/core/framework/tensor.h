@@ -304,14 +304,14 @@ class Tensor {
   template <typename T, size_t NDIMS = 2>
   typename TTypes<T, NDIMS>::Tensor flat_outer_dims();
 
-  /// Returns the data as an Eigen::Tensor with END-START dimensions, collapsing
-  /// Tensor dimensions of the first START into the first dimension of the
-  /// result and the Tensor dimensions of the last dims()-END into the last dimension
-  /// of the result. If START < 0 then the the |START| leading dimensions of size 1 will be
-  /// added. If END > dims() then END - dims() trailing dimensions of size 1 will be
-  /// added.
-  template <typename T, size_t BEGIN, size_t END>
-  typename TTypes<T, END-BEGIN>::Tensor flat_inner_outer_dims();
+  /// Returns the data as an Eigen::Tensor with NDIMS dimensions, collapsing the
+  /// first 'begin' Tensor dimensions into the first dimension of the result and
+  /// the Tensor dimensions of the last dims() - 'begin' - NDIMS into the last
+  /// dimension of the result. If 'begin' < 0 then the the |'begin'| leading
+  /// dimensions of size 1 will be added. If 'begin' + NDIMS > dims() then
+  /// 'begin' + NDIMS - dims() trailing dimensions of size 1 will be added.
+  template <typename T, size_t NDIMS = 3>
+  typename TTypes<T, NDIMS>::Tensor flat_inner_outer_dims(int64 begin);
 
   template <typename T, size_t NDIMS>
   typename TTypes<T, NDIMS>::Tensor shaped(gtl::ArraySlice<int64> new_sizes);
@@ -395,8 +395,8 @@ class Tensor {
   template <typename T, size_t NDIMS = 2>
   typename TTypes<T, NDIMS>::ConstTensor flat_outer_dims() const;
 
-  template <typename T, size_t BEGIN, size_t END>
-  typename TTypes<T, END-BEGIN>::Tensor flat_inner_outer_dims() const;
+  template <typename T, size_t NDIMS = 3>
+  typename TTypes<T, NDIMS>::Tensor flat_inner_outer_dims(int64 begin) const;
 
   /// Render the first `max_entries` values in `*this` into a string.
   string SummarizeValue(int64 max_entries) const;
@@ -660,10 +660,10 @@ typename TTypes<T, NDIMS>::Tensor Tensor::flat_outer_dims() {
   return shaped<T, NDIMS>(ComputeFlatOuterDims(shape_.dim_sizes(), NDIMS));
 }
 
-template <typename T, size_t BEGIN, size_t END>
-typename TTypes<T, END-BEGIN>::Tensor Tensor::flat_inner_outer_dims() {
-  gtl::InlinedVector<int64, 4> o = ComputeFlatOuterDims(shape_.dim_sizes(), END);
-  return shaped<T, END-BEGIN>(ComputeFlatInnerDims(o, END-BEGIN));
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::Tensor Tensor::flat_inner_outer_dims(int64 begin) {
+  gtl::InlinedVector<int64, 4> o = ComputeFlatOuterDims(shape_.dim_sizes(), begin+NDIMS);
+  return shaped<T, NDIMS>(ComputeFlatInnerDims(o, NDIMS));
 }
 
 template <typename T, size_t NDIMS>
@@ -676,10 +676,10 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::flat_outer_dims() const {
   return shaped<T, NDIMS>(ComputeFlatOuterDims(shape_.dim_sizes(), NDIMS));
 }
 
-template <typename T, size_t BEGIN, size_t END>
-typename TTypes<T, END-BEGIN>::Tensor Tensor::flat_inner_outer_dims() const {
-  gtl::InlinedVector<int64, 4> o = ComputeFlatOuterDims(shape_.dim_sizes(), END);
-  return shaped<T, END-BEGIN>(ComputeFlatInnerDims(o, END-BEGIN));
+template <typename T, size_t NDIMS>
+typename TTypes<T, NDIMS>::Tensor Tensor::flat_inner_outer_dims(int64 begin) const {
+  gtl::InlinedVector<int64, 4> o = ComputeFlatOuterDims(shape_.dim_sizes(), begin+NDIMS);
+  return shaped<T, NDIMS>(ComputeFlatInnerDims(o, NDIMS));
 }
 
 inline Tensor::Tensor(const Tensor& other)
