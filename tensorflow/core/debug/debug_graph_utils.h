@@ -52,7 +52,7 @@ class DebuggerState : public DebuggerStateInterface {
                               const int64 executor_step_count,
                               const std::vector<string>& input_names,
                               const std::vector<string>& output_names,
-                              const std::vector<string>& target_names);
+                              const std::vector<string>& target_names) override;
 
  private:
   std::unordered_set<string> debug_urls_;
@@ -121,11 +121,11 @@ class DebugNodeInserter {
                                        const string& debug_op_name);
 
  private:
-  static Status CreateCopyNode(Graph* graph, const DeviceType device_type,
-                               const bool is_host_memory,
-                               const string& src_node_name,
-                               const int src_output, const DataType src_dt,
-                               const string& tensor_name, Node** copy_node);
+  static Status CreateCopyNode(
+      Graph* graph, const DeviceType device_type, const bool is_host_memory,
+      const string& src_node_name, const int src_output, const DataType src_dt,
+      const string& tensor_name, const std::vector<string>& debug_ops,
+      const std::vector<string>& debug_urls, Node** copy_node);
 
   // Parse the debug_op_name string to extract proper op name and attributes.
   // debug_op_name can be the proper op name only, e.g., "DebugNumericSummary".

@@ -223,6 +223,17 @@ class EstimatorSpecEvalTest(test.TestCase):
           training_hooks=[_FakeHook()],
           scaffold=monitored_session.Scaffold())
 
+  def testTupleMetric(self):
+    """Tests that no errors are raised when a metric is tuple-valued."""
+    with ops.Graph().as_default(), self.test_session():
+      loss = constant_op.constant(1.)
+      model_fn.EstimatorSpec(
+          mode=model_fn.ModeKeys.EVAL,
+          loss=loss,
+          eval_metric_ops={
+              'some_metric': ((loss, loss, (constant_op.constant(2), loss)),
+                              control_flow_ops.no_op())})
+
   def testLoss1DTensor(self):
     """Tests that no errors are raised when loss is 1D tensor."""
     with ops.Graph().as_default(), self.test_session():
@@ -345,7 +356,7 @@ class EstimatorSpecEvalTest(test.TestCase):
       loss = constant_op.constant(1.)
       with self.assertRaisesRegexp(
           TypeError,
-          (r'Values of eval_metric_ops must be \(metric_tensor, update_op\) '
+          (r'Values of eval_metric_ops must be \(metric_value, update_op\) '
            'tuples')):
         model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
@@ -362,6 +373,17 @@ class EstimatorSpecEvalTest(test.TestCase):
             predictions={'loss': loss},
             loss=loss,
             eval_metric_ops={'loss': ('NonTensor', loss)})
+
+  def testEvalMetricNestedNoTensorOrOperation(self):
+    with ops.Graph().as_default(), self.test_session():
+      loss = constant_op.constant(1.)
+      with self.assertRaisesRegexp(TypeError, 'must be Operation or Tensor'):
+        model_fn.EstimatorSpec(
+            mode=model_fn.ModeKeys.EVAL,
+            predictions={'loss': loss},
+            loss=loss,
+            eval_metric_ops={'loss': ((('NonTensor',),),
+                                      control_flow_ops.no_op())})
 
   def testEvalMetricOpsFromDifferentGraph(self):
     with ops.Graph().as_default():

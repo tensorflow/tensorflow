@@ -229,6 +229,19 @@ class Mixture(distribution.Distribution):
       log_sum_exp = math_ops.reduce_logsumexp(concat_log_probs, [0])
       return log_sum_exp
 
+  def _log_cdf(self, x):
+    with ops.control_dependencies(self._assertions):
+      x = ops.convert_to_tensor(x, name="x")
+      distribution_log_cdfs = [d.log_cdf(x) for d in self.components]
+      cat_log_probs = self._cat_probs(log_probs=True)
+      final_log_cdfs = [
+          cat_lp + d_lcdf
+          for (cat_lp, d_lcdf) in zip(cat_log_probs, distribution_log_cdfs)
+      ]
+      concatted_log_cdfs = array_ops.stack(final_log_cdfs, axis=0)
+      mixture_log_cdf = math_ops.reduce_logsumexp(concatted_log_cdfs, [0])
+      return mixture_log_cdf
+
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 

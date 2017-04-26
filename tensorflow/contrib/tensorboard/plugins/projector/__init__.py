@@ -12,7 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Public API for the Embedding Projector."""
+"""Public API for the Embedding Projector.
+
+@@ProjectorPluginAsset
+@@ProjectorConfig
+@@EmbeddingInfo
+@@EmbeddingMetadata
+@@SpriteMetadata
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,11 +28,12 @@ from __future__ import print_function
 import os
 
 from google.protobuf import text_format
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import EmbeddingInfo
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
 from tensorflow.python.lib.io import file_io
-
-PROJECTOR_FILENAME = 'projector_config.pbtxt'
+from tensorflow.tensorboard.plugins.projector import projector_plugin
+# pylint: disable=wildcard-import
+from tensorflow.tensorboard.plugins.projector.projector_config_pb2 import *
+from tensorflow.tensorboard.plugins.projector.projector_plugin import *
+# pylint: enable=wildcard-import
 
 
 def visualize_embeddings(summary_writer, config):
@@ -51,4 +59,4 @@ def visualize_embeddings(summary_writer, config):
   # Saving the config file in the logdir.
   config_pbtxt = text_format.MessageToString(config)
   file_io.write_string_to_file(
-      os.path.join(logdir, PROJECTOR_FILENAME), config_pbtxt)
+      os.path.join(logdir, projector_plugin.PROJECTOR_FILENAME), config_pbtxt)

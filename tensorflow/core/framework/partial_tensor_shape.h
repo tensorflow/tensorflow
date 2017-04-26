@@ -46,7 +46,9 @@ class PartialTensorShape {
       : PartialTensorShape(gtl::ArraySlice<int64>(dim_sizes)) {}
 
   /// REQUIRES: `IsValid(proto)`
-  explicit PartialTensorShape(const TensorShapeProto& proto);
+  PartialTensorShape(
+      const TensorShapeProto& proto);            // NOLINT(runtime/explicit)
+  PartialTensorShape(const TensorShape& shape);  // NOLINT(runtime/explicit)
 
   /// Returns `true` iff `proto` is a valid partial tensor shape.
   static bool IsValid(const TensorShapeProto& proto);

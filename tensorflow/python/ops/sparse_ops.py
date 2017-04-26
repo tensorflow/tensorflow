@@ -1239,7 +1239,7 @@ def sparse_tensor_dense_matmul(sp_a,
     A should be sorted in order of increasing dimension 1 (i.e., "column major"
     order instead of "row major" order).
 
-  Deciding when to use sparse_tensor_dense_matmul vs. matmul(sp_a=True):
+  Deciding when to use sparse_tensor_dense_matmul vs. matmul(a_is_sparse=True):
 
   There are a number of questions to ask in the decision process, including:
 
@@ -1249,14 +1249,14 @@ def sparse_tensor_dense_matmul(sp_a,
 
   If the answer to several of these questions is yes, consider
   converting the `SparseTensor` to a dense one and using `tf.matmul` with
-  `sp_a=True`.
+  `a_is_sparse=True`.
 
   This operation tends to perform well when A is more sparse, if the column size
   of the product is small (e.g. matrix-vector multiplication), if
   `sp_a.dense_shape` takes on large values.
 
   Below is a rough speed comparison between sparse_tensor_dense_matmul,
-  labelled 'sparse', and matmul(sp_a=True), labelled 'dense'.  For purposes of
+  labelled 'sparse', and matmul(a_is_sparse=True), labelled 'dense'.  For purposes of
   the comparison, the time spent converting from a SparseTensor to a dense
   Tensor is not included, so it is overly conservative with respect to
   the time ratio.

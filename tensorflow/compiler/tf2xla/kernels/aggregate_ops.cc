@@ -41,7 +41,7 @@ class AddNOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(AddNOp);
 };
 
-REGISTER_XLA_OP("AddN", AddNOp);
+REGISTER_XLA_OP(Name("AddN"), AddNOp);
 
 }  // namespace
 }  // namespace tensorflow

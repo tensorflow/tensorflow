@@ -56,6 +56,8 @@ class ClientLibraryTestBase : public ::testing::Test {
     execution_options_.set_disable_fast_math(disabled);
   }
 
+  void SetSeed(uint64 seed) { execution_options_.set_seed(seed); }
+
   // TODO(b/25566808): Add helper that populates a literal from a testdata file.
 
   // Convenience methods for building and running a computation from a builder.

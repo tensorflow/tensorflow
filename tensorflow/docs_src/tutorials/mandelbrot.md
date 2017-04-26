@@ -7,7 +7,6 @@ actually a pretty naive implementation of the visualization, but it makes the
 point.  (We may end up providing a more elaborate implementation down the line
 to produce more truly beautiful images.)
 
-Note: This tutorial was originally prepared as an IPython notebook.
 
 ## Basic Setup
 

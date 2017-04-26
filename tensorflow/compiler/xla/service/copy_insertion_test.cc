@@ -20,17 +20,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-#include "tensorflow/compiler/xla/test_helpers.h"
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
+
+using ::testing::UnorderedElementsAre;
 
 class CopyInsertionTest : public HloTestBase {
  protected:
@@ -51,43 +56,6 @@ class CopyInsertionTest : public HloTestBase {
       EXPECT_NE(buffer->instruction()->opcode(), HloOpcode::kParameter);
     }
   }
-
-  // OperandTree is a test helper class that simplifies the expression of
-  // an expected tree of operands (starting at some root instruction) in a
-  // unit test.
-  // Each HLO instruction is represented as a node in the OperandTree.
-  struct OperandTree {
-    // The expected opcode for this OperandTree node.
-    HloOpcode opcode;
-    // The set of operands expected for this OperandTree node.
-    std::vector<OperandTree> operands;
-    // If non-null, a pointer to the expected HloInstruction at this node.
-    const HloInstruction* instruction = nullptr;
-
-    // Returns a mutable reference to operand 'i' of this node.
-    OperandTree& op(int i) {
-      if (i >= operands.size()) {
-        operands.resize(i + 1);
-      }
-      return operands[i];
-    }
-
-    // Check that 'instruction' and its operands match expected values recorded
-    // in OperandTree.
-    void Check(const HloInstruction* instruction) {
-      EXPECT_EQ(opcode, instruction->opcode());
-      if (instruction != nullptr) {
-        EXPECT_EQ(instruction, instruction);
-      }
-      if (operands.empty()) {
-        return;
-      }
-      EXPECT_EQ(operands.size(), instruction->operand_count());
-      for (int i = 0; i < instruction->operand_count(); ++i) {
-        operands[i].Check(instruction->operand(i));
-      }
-    }
-  };
 };
 
 TEST_F(CopyInsertionTest, SingleParameter) {
@@ -97,25 +65,16 @@ TEST_F(CopyInsertionTest, SingleParameter) {
   HloInstruction* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({x}));
 
-  ExpectEqUnordered(x->users(), {tuple});
+  EXPECT_THAT(x->users(), UnorderedElementsAre(tuple));
 
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
-  HloInstruction* new_root = module.entry_computation()->root_instruction();
 
-  // Check path from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(module.entry_computation()->root_instruction(),
+              op::Tuple(op::Copy(op::GetTupleElement(old_root))));
 }
 
 TEST_F(CopyInsertionTest, SingleConstant) {
@@ -125,25 +84,16 @@ TEST_F(CopyInsertionTest, SingleConstant) {
   HloInstruction* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant}));
 
-  ExpectEqUnordered(constant->users(), {tuple});
+  EXPECT_THAT(constant->users(), UnorderedElementsAre(tuple));
 
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
-  HloInstruction* new_root = module.entry_computation()->root_instruction();
 
-  // Check path from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(module.entry_computation()->root_instruction(),
+              op::Tuple(op::Copy(op::GetTupleElement(old_root))));
 }
 
 TEST_F(CopyInsertionTest, MultipleConstantsAndParameters) {
@@ -172,30 +122,11 @@ TEST_F(CopyInsertionTest, MultipleConstantsAndParameters) {
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
-  HloInstruction* new_root = module.entry_computation()->root_instruction();
 
-  // "constant2" and parameter "x" are pointed to by the tuple and should be
-  // copied.
-
-  // Check all paths from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(0).op(0).instruction = old_root;
-
-  op_tree.op(2).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(2).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(2).op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(module.entry_computation()->root_instruction(),
+              op::Tuple(op::Copy(op::GetTupleElement(old_root)),
+                        op::Copy(op::GetTupleElement(old_root)),
+                        op::GetTupleElement(old_root)));
 }
 
 TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
@@ -219,32 +150,19 @@ TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
   builder.AddInstruction(HloInstruction::CreateTernary(
       tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
 
-  ExpectEqUnordered(constant1->users(), {tuple1});
-  ExpectEqUnordered(constant2->users(), {tuple1, tuple2});
-  ExpectEqUnordered(constant3->users(), {tuple2});
+  EXPECT_THAT(constant1->users(), UnorderedElementsAre(tuple1));
+  EXPECT_THAT(constant2->users(), UnorderedElementsAre(tuple1, tuple2));
+  EXPECT_THAT(constant3->users(), UnorderedElementsAre(tuple2));
 
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
-  HloInstruction* new_root = module.entry_computation()->root_instruction();
 
-  // Check all paths from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kSelect;
-  op_tree.op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).opcode = HloOpcode::kSelect;
-  op_tree.op(1).op(0).op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(module.entry_computation()->root_instruction(),
+              op::Tuple(op::Copy(op::GetTupleElement(old_root)),
+                        op::Copy(op::GetTupleElement(old_root))));
 }
 
 TEST_F(CopyInsertionTest, BitcastParameter) {
@@ -259,19 +177,13 @@ TEST_F(CopyInsertionTest, BitcastParameter) {
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
-  ExpectEqUnordered(x->users(), {bitcast});
+  EXPECT_THAT(x->users(), UnorderedElementsAre(bitcast));
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
-  HloInstruction* new_root = module.entry_computation()->root_instruction();
 
-  // Check path from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kCopy;
-  op_tree.op(0).opcode = HloOpcode::kBitcast;
-  op_tree.op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(module.entry_computation()->root_instruction(),
+              op::Copy(old_root));
 }
 
 TEST_F(CopyInsertionTest, BitcastConstant) {
@@ -287,19 +199,13 @@ TEST_F(CopyInsertionTest, BitcastConstant) {
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
-  ExpectEqUnordered(constant->users(), {bitcast});
+  EXPECT_THAT(constant->users(), UnorderedElementsAre(bitcast));
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
-  HloInstruction* new_root = module.entry_computation()->root_instruction();
 
-  // Check path from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kCopy;
-  op_tree.op(0).opcode = HloOpcode::kBitcast;
-  op_tree.op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(module.entry_computation()->root_instruction(),
+              op::Copy(old_root));
 }
 
 TEST_F(CopyInsertionTest, BitcastTupleElementParameter) {
@@ -314,21 +220,13 @@ TEST_F(CopyInsertionTest, BitcastTupleElementParameter) {
   HloModule module(TestName());
   module.AddEntryComputation(builder.Build());
 
-  ExpectEqUnordered(x->users(), {bitcast});
+  EXPECT_THAT(x->users(), UnorderedElementsAre(bitcast));
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
-  HloInstruction* new_root = module.entry_computation()->root_instruction();
 
-  // Check path from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(module.entry_computation()->root_instruction(),
+              op::Tuple(op::Copy(op::GetTupleElement(old_root))));
 }
 
 TEST_F(CopyInsertionTest, NestedTupleParameter) {
@@ -339,10 +237,11 @@ TEST_F(CopyInsertionTest, NestedTupleParameter) {
 
   // Param shape is: ((F32[], S32[1,2,3]), F32[42])
   builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape(
-             {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {}),
-                                         ShapeUtil::MakeShape(S32, {1, 2, 3})}),
-              ShapeUtil::MakeShape(F32, {42})}),
+      0,
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {}),
+                                      ShapeUtil::MakeShape(S32, {1, 2, 3})}),
+           ShapeUtil::MakeShape(F32, {42})}),
       "param0"));
 
   HloModule module(TestName());
@@ -356,30 +255,13 @@ TEST_F(CopyInsertionTest, NestedTupleParameter) {
   HloInstruction* new_root = module.entry_computation()->root_instruction();
   EXPECT_NE(old_root, new_root);
 
-  // Check all paths from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).op(0).op(0).opcode = HloOpcode::kParameter;
-  op_tree.op(0).op(0).op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(1).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(1).op(0).op(0).op(0).opcode = HloOpcode::kParameter;
-  op_tree.op(0).op(1).op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).opcode = HloOpcode::kParameter;
-  op_tree.op(1).op(0).op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(
+      new_root,
+      op::Tuple(
+          op::Tuple(
+              op::Copy(op::GetTupleElement(op::GetTupleElement(old_root))),
+              op::Copy(op::GetTupleElement(op::GetTupleElement(old_root)))),
+          op::Copy(op::GetTupleElement(old_root))));
 }
 
 TEST_F(CopyInsertionTest, ElementOfNestedTupleParameter) {
@@ -389,10 +271,11 @@ TEST_F(CopyInsertionTest, ElementOfNestedTupleParameter) {
 
   // Param shape is: ((F32[], S32[1,2,3]), F32[42])
   auto param = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape(
-             {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {}),
-                                         ShapeUtil::MakeShape(S32, {1, 2, 3})}),
-              ShapeUtil::MakeShape(F32, {42})}),
+      0,
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {}),
+                                      ShapeUtil::MakeShape(S32, {1, 2, 3})}),
+           ShapeUtil::MakeShape(F32, {42})}),
       "param0"));
 
   // The return value of the computation is the zero-th elemnt of the nested
@@ -407,23 +290,10 @@ TEST_F(CopyInsertionTest, ElementOfNestedTupleParameter) {
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
-  HloInstruction* new_root = module.entry_computation()->root_instruction();
 
-  // Check all paths from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(module.entry_computation()->root_instruction(),
+              op::Tuple(op::Copy(op::GetTupleElement(old_root)),
+                        op::Copy(op::GetTupleElement(old_root))));
 }
 
 TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
@@ -456,15 +326,9 @@ TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
 
   HloInstruction* old_root = module.entry_computation()->root_instruction();
   InsertCopies(&module);
-  HloInstruction* new_root = module.entry_computation()->root_instruction();
 
-  // Check path from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kCopy;
-  op_tree.op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(module.entry_computation()->root_instruction(),
+              op::Copy(old_root));
 }
 
 class WhileCopyInsertionTest : public CopyInsertionTest {
@@ -788,7 +652,7 @@ TEST_F(WhileCopyInsertionTest, IndependentTupleElements) {
   HloInstruction* new_root = body->root_instruction();
 
   // No copies should be inserted so root should not be updated.
-  CHECK_EQ(old_root, new_root);
+  EXPECT_EQ(old_root, new_root);
 }
 
 // Tests while body computation with dependent tuple elements:
@@ -815,22 +679,10 @@ TEST_F(WhileCopyInsertionTest, DependentTupleElements) {
 
   HloInstruction* old_root = body->root_instruction();
   InsertCopies(&module_);
-  HloInstruction* new_root = body->root_instruction();
 
-  // Check all paths from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.op(1).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(body->root_instruction(),
+              op::Tuple(op::Copy(op::GetTupleElement(old_root)),
+                        op::GetTupleElement(old_root)));
 }
 
 // Tests while body computation with read-only tuple element 0:
@@ -859,7 +711,7 @@ TEST_F(WhileCopyInsertionTest, DependentTupleElements_OneReadOnly) {
   HloInstruction* new_root = body->root_instruction();
 
   // No copies should be inserted so root should not be updated.
-  CHECK_EQ(old_root, new_root);
+  EXPECT_EQ(old_root, new_root);
 }
 
 // Tests while body computation with nested tuple elements:
@@ -898,30 +750,13 @@ TEST_F(WhileCopyInsertionTest, NestedTupleElements) {
 
   HloInstruction* old_root = body->root_instruction();
   InsertCopies(&module_);
-  HloInstruction* new_root = body->root_instruction();
 
-  // Check all paths from 'new_root' to 'old_root'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).instruction = old_root;
-
-  op_tree.op(1).opcode = HloOpcode::kTuple;
-
-  op_tree.op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.op(1).op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(1).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(1).op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(1).op(0).op(0).op(0).instruction = old_root;
-
-  op_tree.Check(new_root);
+  EXPECT_THAT(
+      body->root_instruction(),
+      op::Tuple(op::GetTupleElement(old_root),
+                op::Tuple(op::GetTupleElement(op::GetTupleElement(old_root)),
+                          op::Copy(op::GetTupleElement(
+                              op::GetTupleElement(old_root))))));
 }
 
 // Tests while init instruction which points-to a constant.
@@ -942,23 +777,10 @@ TEST_F(WhileCopyInsertionTest, InitPointsToConstant) {
   auto while_hlo = BuildWhileInstruction_InitPointsToConstant();
   auto old_init = while_hlo->operand(0);
   InsertCopies(&module_);
-  auto new_init = while_hlo->operand(0);
 
-  // Check all paths from 'new_init' to 'old_init'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).op(0).instruction = old_init;
-
-  op_tree.op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(0).op(0).instruction = old_init;
-
-  op_tree.Check(new_init);
+  EXPECT_THAT(while_hlo->operand(0),
+              op::Tuple(op::Copy(op::GetTupleElement(old_init)),
+                        op::Copy(op::GetTupleElement(old_init))));
 }
 
 // Tests while init instruction which points-to a parameter.
@@ -979,23 +801,10 @@ TEST_F(WhileCopyInsertionTest, InitPointsToParameter) {
   auto while_hlo = BuildWhileInstruction_InitPointsToParameter();
   auto old_init = while_hlo->operand(0);
   InsertCopies(&module_);
-  auto new_init = while_hlo->operand(0);
 
-  // Check all paths from 'new_init' to 'old_init'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).op(0).instruction = old_init;
-
-  op_tree.op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(0).op(0).instruction = old_init;
-
-  op_tree.Check(new_init);
+  EXPECT_THAT(while_hlo->operand(0),
+              op::Tuple(op::Copy(op::GetTupleElement(old_init)),
+                        op::Copy(op::GetTupleElement(old_init))));
 }
 
 // Tests while init instruction which has an ambiguous points-to set.
@@ -1025,32 +834,14 @@ TEST_F(WhileCopyInsertionTest, InitPointsToAmbiguous) {
   auto while_hlo = BuildWhileInstruction_InitPointsToAmbiguous();
   auto old_init = while_hlo->operand(0);
   InsertCopies(&module_);
-  auto new_init = while_hlo->operand(0);
 
-  // Check all paths from 'new_init' to 'old_init'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).op(0).instruction = old_init;
-
-  op_tree.op(1).opcode = HloOpcode::kTuple;
-
-  op_tree.op(1).op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(0).op(0).op(0).op(0).instruction = old_init;
-
-  op_tree.op(1).op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(1).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(1).op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(1).op(0).op(0).op(0).instruction = old_init;
-
-  op_tree.Check(new_init);
+  EXPECT_THAT(
+      while_hlo->operand(0),
+      op::Tuple(
+          op::Copy(op::GetTupleElement(old_init)),
+          op::Tuple(
+              op::Copy(op::GetTupleElement(op::GetTupleElement(old_init))),
+              op::Copy(op::GetTupleElement(op::GetTupleElement(old_init))))));
 }
 
 // Tests while init instruction which has a non-distinct points-to set.
@@ -1079,32 +870,14 @@ TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinct) {
   auto while_hlo = BuildWhileInstruction_InitPointsToNonDistinct();
   auto old_init = while_hlo->operand(0);
   InsertCopies(&module_);
-  auto new_init = while_hlo->operand(0);
 
-  // Check all paths from 'new_init' to 'old_init'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).op(0).instruction = old_init;
-
-  op_tree.op(1).opcode = HloOpcode::kTuple;
-
-  op_tree.op(1).op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(0).op(0).op(0).op(0).instruction = old_init;
-
-  op_tree.op(1).op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(1).op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(1).op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(1).op(0).op(0).op(0).instruction = old_init;
-
-  op_tree.Check(new_init);
+  EXPECT_THAT(
+      while_hlo->operand(0),
+      op::Tuple(
+          op::Copy(op::GetTupleElement(old_init)),
+          op::Tuple(
+              op::Copy(op::GetTupleElement(op::GetTupleElement(old_init))),
+              op::Copy(op::GetTupleElement(op::GetTupleElement(old_init))))));
 }
 
 // Tests while init instruction buffer which interfers with while result buffer.
@@ -1127,23 +900,10 @@ TEST_F(WhileCopyInsertionTest, InitPointsToInterfering) {
   auto while_hlo = BuildWhileInstruction_InitPointsToInterfering();
   auto old_init = while_hlo->operand(0);
   InsertCopies(&module_);
-  auto new_init = while_hlo->operand(0);
 
-  // Check all paths from 'new_init' to 'old_init'.
-  OperandTree op_tree;
-  op_tree.opcode = HloOpcode::kTuple;
-
-  op_tree.op(0).opcode = HloOpcode::kCopy;
-  op_tree.op(0).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(0).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(0).op(0).op(0).instruction = old_init;
-
-  op_tree.op(1).opcode = HloOpcode::kCopy;
-  op_tree.op(1).op(0).opcode = HloOpcode::kGetTupleElement;
-  op_tree.op(1).op(0).op(0).opcode = HloOpcode::kTuple;
-  op_tree.op(1).op(0).op(0).instruction = old_init;
-
-  op_tree.Check(new_init);
+  EXPECT_THAT(while_hlo->operand(0),
+              op::Tuple(op::Copy(op::GetTupleElement(old_init)),
+                        op::Copy(op::GetTupleElement(old_init))));
 }
 
 }  // namespace

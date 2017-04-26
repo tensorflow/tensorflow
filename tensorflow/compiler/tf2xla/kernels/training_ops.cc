@@ -37,7 +37,8 @@ class ResourceApplyGradientDescent : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
   }
 };
-REGISTER_XLA_OP("ResourceApplyGradientDescent", ResourceApplyGradientDescent);
+REGISTER_XLA_OP(Name("ResourceApplyGradientDescent"),
+                ResourceApplyGradientDescent);
 
 class ResourceApplyMomentum : public XlaOpKernel {
  public:
@@ -108,7 +109,7 @@ class ResourceApplyMomentum : public XlaOpKernel {
  private:
   bool use_nesterov_;
 };
-REGISTER_XLA_OP("ResourceApplyMomentum", ResourceApplyMomentum);
+REGISTER_XLA_OP(Name("ResourceApplyMomentum"), ResourceApplyMomentum);
 
 class ResourceApplyAdagrad : public XlaOpKernel {
  public:
@@ -162,7 +163,7 @@ class ResourceApplyAdagrad : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
   }
 };
-REGISTER_XLA_OP("ResourceApplyAdagrad", ResourceApplyAdagrad);
+REGISTER_XLA_OP(Name("ResourceApplyAdagrad"), ResourceApplyAdagrad);
 
 class ResourceApplyRMSProp : public XlaOpKernel {
  public:
@@ -206,9 +207,9 @@ class ResourceApplyRMSProp : public XlaOpKernel {
 
     // var should be the same shape as mom and ms.
     OP_REQUIRES(ctx, var_shape.IsSameSize(ms_shape),
-                errors::InvalidArgument(
-                    "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                errors::InvalidArgument("var and ms do not have the same shape",
+                                        var_shape.DebugString(), " ",
+                                        ms_shape.DebugString()));
     OP_REQUIRES(ctx, var_shape.IsSameSize(mom_shape),
                 errors::InvalidArgument(
                     "var and mom do not have the same shape",
@@ -261,7 +262,7 @@ class ResourceApplyRMSProp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, type, new_mom));
   }
 };
-REGISTER_XLA_OP("ResourceApplyRMSProp", ResourceApplyRMSProp);
+REGISTER_XLA_OP(Name("ResourceApplyRMSProp"), ResourceApplyRMSProp);
 
 }  // namespace
 }  // namespace tensorflow

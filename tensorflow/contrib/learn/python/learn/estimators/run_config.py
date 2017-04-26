@@ -18,13 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 import json
 import os
 
 import six
 
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.estimator import run_config as core_run_config
 from tensorflow.python.training import server_lib
 
 
@@ -86,9 +89,9 @@ class ClusterConfig(object):
     ```
       cluster = {'ps': ['host1:2222', 'host2:2222'],
                  'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
-      os.environ['TF_CONFIG'] = json.dumps({
+      os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
-           'task': {'type': 'worker', 'index': 1}}})
+           'task': {'type': 'worker', 'index': 1}})
       config = ClusterConfig()
       assert config.master == 'host4:2222'
       assert config.task_id == 1
@@ -190,8 +193,10 @@ class ClusterConfig(object):
     return int(task_index) if task_index else 0
 
 
-class RunConfig(ClusterConfig):
+class RunConfig(ClusterConfig, core_run_config.RunConfig):
   """This class specifies the configurations for an `Estimator` run.
+
+  This class is the implementation of ${tf.estimator.RunConfig} interface.
 
   If you're a Google-internal user using command line flags with
   `learn_runner.py` (for instance, to do distributed training or to use
@@ -212,7 +217,8 @@ class RunConfig(ClusterConfig):
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                evaluation_master='',
-               model_dir=None):
+               model_dir=None,
+               session_config=None):
     """Constructor.
 
     Note that the superclass `ClusterConfig` may set properties like
@@ -244,6 +250,9 @@ class RunConfig(ClusterConfig):
       evaluation_master: the master on which to perform evaluation.
       model_dir: directory where model parameters, graph etc are saved. If
         `None`, see `Estimator` about where the model will be saved.
+      session_config: a ConfigProto used to set session parameters, or None.
+         Note - using this argument, it is easy to provide settings which break
+         otherwise perfectly good models. Use with care.
     """
     super(RunConfig, self).__init__(
         master=master, evaluation_master=evaluation_master)
@@ -259,6 +268,7 @@ class RunConfig(ClusterConfig):
     self._tf_random_seed = tf_random_seed
     self._save_summary_steps = save_summary_steps
     self._save_checkpoints_secs = save_checkpoints_secs
+    self._session_config = session_config
     if save_checkpoints_secs == RunConfig._USE_DEFAULT:
       if save_checkpoints_steps is None:
         self._save_checkpoints_secs = 600
@@ -291,7 +301,7 @@ class RunConfig(ClusterConfig):
 
     new_copy = copy.deepcopy(self)
 
-    # TODO(xiejw): Allow more fields, such as the user allowed changed ones.
+    # TODO(b/33295821): Allow more fields to be replaced.
     for key, new_value in six.iteritems(kwargs):
       if key == 'model_dir':
         new_copy._model_dir = new_value  # pylint: disable=protected-access
@@ -300,6 +310,28 @@ class RunConfig(ClusterConfig):
       raise ValueError('{} is not supported by RunConfig replace'.format(key))
 
     return new_copy
+
+  @experimental
+  def uid(self):
+    """Generates a 'Unique Identifier' based on all internal fields.
+
+    Caller should use the uid string to check `RunConfig` instance integrity
+    in one session use, but should not rely on the implementation details, which
+    is subject to change.
+
+    Returns:
+      A uid string.
+    """
+    # TODO(b/33295821): Allows user to specify a whitelist.
+    state = {k: v for k, v in self.__dict__.items() if not k.startswith('__')}
+    ordered_state = collections.OrderedDict(
+        sorted(state.items(), key=lambda t: t[0]))
+    # For class instance without __repr__, some special cares are required.
+    # Otherwise, the object address will be used.
+    if '_cluster_spec' in ordered_state:
+      ordered_state['_cluster_spec'] = ordered_state['_cluster_spec'].as_dict()
+    return ', '.join(
+        '%s=%r' % (k, v) for (k, v) in six.iteritems(ordered_state))
 
   @property
   def model_dir(self):
@@ -324,6 +356,10 @@ class RunConfig(ClusterConfig):
   @property
   def save_checkpoints_steps(self):
     return self._save_checkpoints_steps
+
+  @property
+  def session_config(self):
+    return self._session_config
 
   @property
   def keep_checkpoint_max(self):

@@ -26,6 +26,25 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+// TODO(cais): Switch to safe_strtob when available.
+Status ParseBoolString(const string& bool_str, bool* bool_val) {
+  const string lower_bool_str = str_util::Lowercase(bool_str);
+  if (lower_bool_str == "false" || lower_bool_str == "f" ||
+      lower_bool_str == "0") {
+    *bool_val = false;
+  } else if (lower_bool_str == "true" || lower_bool_str == "t" ||
+             lower_bool_str == "1") {
+    *bool_val = true;
+  } else {
+    return errors::InvalidArgument("Invalid string for bool value: ", bool_str);
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 DebuggerState::DebuggerState(const DebugOptions& debug_options)
     : watches(debug_options.debug_tensor_watch_opts()), debug_urls_() {
   for (const DebugTensorWatch& watch : watches) {
@@ -93,6 +112,9 @@ Status DebuggerState::PublishDebugMetadata(
 Status DebugNodeInserter::InsertNodes(
     const protobuf::RepeatedPtrField<DebugTensorWatch>& watches, Graph* graph,
     Device* device) {
+  // TODO(cais): This method is getting too large in size.
+  // Refactor it with helpers.
+
   if (watches.empty()) {
     // Nothing to do: Return OK right away.
     return Status::OK();
@@ -191,7 +213,8 @@ Status DebugNodeInserter::InsertNodes(
       Node* copy_node;
       Status copy_s = CreateCopyNode(
           graph, device_type, memory_type == HOST_MEMORY, src_node->name(),
-          src_output_slot, src_dt, tensor_name, &copy_node);
+          src_output_slot, src_dt, tensor_name, tensor_watches[tensor_name],
+          tensor_watch_urls[tensor_name], &copy_node);
       if (!copy_s.ok()) {
         return Status(
             error::FAILED_PRECONDITION,
@@ -305,15 +328,40 @@ const string DebugNodeInserter::GetDebugNodeName(const string& tensor_name,
 Status DebugNodeInserter::CreateCopyNode(
     Graph* graph, const DeviceType device_type, const bool is_host_memory,
     const string& src_node_name, const int src_output, const DataType src_dt,
-    const string& tensor_name, Node** copy_node) {
+    const string& tensor_name, const std::vector<string>& debug_ops,
+    const std::vector<string>& debug_urls, Node** copy_node) {
+  const string kGatedGrpcAttributeKey = "gated_grpc";
+
   NodeDef node_def;
   const KernelDef* kdef;
 
   const string copy_op_name = is_host_memory ? "CopyHost" : "Copy";
   const string copy_node_name = GetCopyNodeName(src_node_name, src_output);
 
+  // Cross debug_ops and debug_urls to get the list of debug ops and watches.
+  std::vector<string> debug_ops_spec;
+  for (const string& debug_op : debug_ops) {
+    for (const string& debug_url : debug_urls) {
+      string debug_op_name_proper;
+      std::unordered_map<string, string> custom_attributes;
+      TF_RETURN_IF_ERROR(ParseDebugOpName(debug_op, &debug_op_name_proper,
+                                          &custom_attributes));
+
+      bool gated_grpc_value = false;
+      if (custom_attributes.find(kGatedGrpcAttributeKey) !=
+          custom_attributes.end()) {
+        TF_RETURN_IF_ERROR(ParseBoolString(
+            custom_attributes[kGatedGrpcAttributeKey], &gated_grpc_value));
+      }
+      debug_ops_spec.push_back(strings::StrCat(debug_op_name_proper, ";",
+                                               debug_url, ";",
+                                               gated_grpc_value ? "1" : "0"));
+    }
+  }
+
   auto builder = NodeDefBuilder(copy_node_name, copy_op_name)
-                     .Input(src_node_name, src_output, src_dt);
+                     .Input(src_node_name, src_output, src_dt)
+                     .Attr("debug_ops_spec", std::move(debug_ops_spec));
 
   if (!builder.Finalize(&node_def).ok()) {
     return Status(
@@ -422,16 +470,13 @@ Status DebugNodeInserter::SetDebugNodeAttributes(
         }
         debug_node->AddAttr<int>(attr.name(), int_value);
       } else if (attr.type() == "bool") {
-        string bool_str = str_util::Lowercase(attr_value);
-        if (bool_str == "false" || bool_str == "f" || bool_str == "0") {
-          debug_node->AddAttr<bool>(attr.name(), false);
-        } else if (bool_str == "true" || bool_str == "t" || bool_str == "1") {
-          debug_node->AddAttr<bool>(attr.name(), true);
-        } else {
+        bool bool_value;
+        if (!ParseBoolString(attr_value, &bool_value).ok()) {
           return errors::InvalidArgument(
               "Invalid value string for bool-type attribute ", attr.name(),
               "of debug node ", debug_node->name(), ": \"", attr_value, "\"");
         }
+        debug_node->AddAttr<bool>(attr.name(), bool_value);
       } else {
         return errors::InvalidArgument(
             "Unsupported type of custom attribute for debug ops: ",

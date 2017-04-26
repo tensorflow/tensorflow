@@ -76,9 +76,10 @@ class Experiment(object):
                local_eval_frequency=None,
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60,
-               min_eval_frequency=1,
+               min_eval_frequency=None,
                delay_workers_by_global_step=False,
-               export_strategies=None):
+               export_strategies=None,
+               train_steps_per_iteration=None):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -96,7 +97,8 @@ class Experiment(object):
         finite number of batches (generally, 1 epoch over the evaluation data).
       eval_metrics: `dict` of string, metric function. If `None`, default set
         is used. This should be `None` if the `estimator` is
-        ${tf.estimator.Estimator}.
+        ${tf.estimator.Estimator}. If metrics are provided they will be
+        *appended* to the default set.
       train_steps: Perform this many steps of training. `None`, the default,
         means train forever.
       eval_steps: `evaluate` runs until input is exhausted (or another exception
@@ -114,9 +116,18 @@ class Experiment(object):
       min_eval_frequency: (applies only to train_and_evaluate). the minimum
         number of steps between evaluations. Of course, evaluation does not
         occur if no new snapshot is available, hence, this is the minimum.
+        If 0, the evaluation will only happen after training.
+        If None, defaults to 1, unless model_dir is on GCS, in which case the
+        default is 1000.
       delay_workers_by_global_step: if `True` delays training workers
         based on global step instead of time.
-      export_strategies: A list of `ExportStrategy`s, or a single one, or None.
+      export_strategies: Iterable of `ExportStrategy`s, or a single one, or
+        `None`.
+      train_steps_per_iteration: (applies only to continuous_train_and_eval).
+        Perform this many (integer) number of train steps for each
+        training-evaluation iteration. With a small value, the model will be
+        evaluated more frequently with more checkpoints saved. If `None`, will
+        use a default value (which is smaller than `train_steps` if provided).
 
     Raises:
       ValueError: if `estimator` does not implement Estimator interface,
@@ -149,11 +160,23 @@ class Experiment(object):
     self._local_eval_frequency = local_eval_frequency
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
-    self._min_eval_frequency = min_eval_frequency
+    # Using 1 on a non-cached file system requires a lot of overhead to
+    # read the checkpoint state file. This is particular bad on GCS, so
+    # we use a different default. This is a temporary band-aid, to be
+    # fixed holistically later (b/36498507).
+    default_min_eval_frequency = 1000 if _is_gcs(estimator.model_dir) else 1
+    self._min_eval_frequency = min_eval_frequency if (
+        min_eval_frequency is not None) else default_min_eval_frequency
     self._delay_workers_by_global_step = delay_workers_by_global_step
     self._train_monitors = train_monitors[:] if train_monitors else []
     self._eval_hooks = eval_hooks[:] if eval_hooks else []
     self._set_export_strategies(export_strategies)
+
+    self._train_steps_per_iteration = train_steps_per_iteration
+    if (self._train_steps_per_iteration is not None and
+        not isinstance(self._train_steps_per_iteration, int)):
+      raise ValueError(
+          "`train_steps_per_iteration` must be an integer.")
 
   @property
   def estimator(self):
@@ -171,16 +194,19 @@ class Experiment(object):
   def eval_steps(self):
     return self._eval_steps
 
-  def _set_export_strategies(self, value):
-    if value is None:
-      self._export_strategies = []
-    elif isinstance(value, list):
-      self._export_strategies = value[:]
-    elif isinstance(value, export_strategy.ExportStrategy):
-      self._export_strategies = [value]
-    else:
-      raise ValueError("`export_strategies` must be an ExportStrategy, "
-                       "a list of ExportStrategies, or None.")
+  def _set_export_strategies(self, values):  # pylint: disable=missing-docstring
+    export_strategies = []
+    if values:
+      if isinstance(values, export_strategy.ExportStrategy):
+        export_strategies.append(values)
+      else:
+        for value in values:
+          if not isinstance(value, export_strategy.ExportStrategy):
+            raise ValueError("`export_strategies` must be an ExportStrategy,"
+                             " an iterable of ExportStrategy, or `None`,"
+                             " found %s." % value)
+          export_strategies.append(value)
+    self._export_strategies = tuple(export_strategies)
 
   def extend_train_hooks(self, additional_hooks):
     """Extends the hooks for training."""
@@ -430,7 +456,7 @@ class Experiment(object):
     """Interleaves training and evaluation.
 
     The frequency of evaluation is controlled by the contructor arg
-    `min_eval_frequency`. When this parameter is None or 0, evaluation happens
+    `min_eval_frequency`. When this parameter is 0, evaluation happens
     only after training has completed. Note that evaluation cannot happen
     more frequently than checkpoints are taken. If no new snapshots are
     available when evaluation is supposed to occur, then evaluation doesn't
@@ -478,12 +504,11 @@ class Experiment(object):
 
   @experimental
   def continuous_train_and_eval(self,
-                                train_steps_per_iteration=1000,
                                 continuous_eval_predicate_fn=None):
     """Interleaves training and evaluation.
 
-    The frequency of evaluation is controlled by the
-    `train_steps_per_iteration`. The model will be first trained for
+    The frequency of evaluation is controlled by the `train_steps_per_iteration`
+    (via constructor). The model will be first trained for
     `train_steps_per_iteration`, and then be evaluated in turns.
 
     This differs from `train_and_evaluate` as follows:
@@ -499,10 +524,6 @@ class Experiment(object):
       is generated at the end of each small trainning iteration.
 
     Args:
-      train_steps_per_iteration: The (integer) number of train steps for
-        each training-evaluation iteration. With a small
-        `train_steps_per_iteration`, the model will be evaluated more frequently
-        with more checkpoints saved.
       continuous_eval_predicate_fn: A predicate function determining whether to
         continue after each iteration. `predicate_fn` takes the evaluation
         results as its arguments. At the beginning of evaluation, the passed
@@ -524,16 +545,15 @@ class Experiment(object):
       raise ValueError(
           "`continuous_eval_predicate_fn` must be a callable, or None.")
 
-    if not isinstance(train_steps_per_iteration, int):
-      raise ValueError(
-          "`train_steps_per_iteration` must be an integer.")
-
     eval_result = None
 
-    # TODO(b/33295821): improve the way to determine the
-    # train_steps_per_iteration.
-    if self._train_steps and train_steps_per_iteration > self._train_steps:
-      train_steps_per_iteration = self._train_steps
+    # Set the default value for train_steps_per_iteration, which will be
+    # overriden by other settings.
+    train_steps_per_iteration = 1000
+    if self._train_steps_per_iteration is not None:
+      train_steps_per_iteration = self._train_steps_per_iteration
+    elif self._train_steps is not None:
+      train_steps_per_iteration = int(self._train_steps / 10)
 
     while (not continuous_eval_predicate_fn or
            continuous_eval_predicate_fn(eval_result)):
@@ -688,3 +708,7 @@ def _new_attr_context(obj, attr):
     yield
   finally:
     setattr(obj, attr, saved)
+
+
+def _is_gcs(model_dir):
+  return model_dir and model_dir.startswith("gs://")

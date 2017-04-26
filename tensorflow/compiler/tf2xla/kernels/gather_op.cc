@@ -93,12 +93,10 @@ class GatherOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(GatherOp);
 };
 
-REGISTER_XLA_OP("Gather", GatherOp);
-
-REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
-                    Name("Gather")
-                        .TypeConstraint("Tparams", DT_FLOAT)
-                        .TypeConstraint("Tindices", {DT_INT32, DT_INT64}));
+REGISTER_XLA_OP(Name("Gather")
+                    .TypeConstraint("Tparams", DT_FLOAT)
+                    .Device(DEVICE_CPU_XLA_JIT),
+                GatherOp);
 
 }  // namespace
 }  // namespace tensorflow

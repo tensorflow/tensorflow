@@ -32,7 +32,8 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_file_inspector as efi
-
+from tensorflow.tensorboard.plugins.projector import projector_plugin
+from tensorflow.tensorboard.plugins.text import text_plugin
 
 # TensorBoard flags
 
@@ -88,8 +89,18 @@ flags.DEFINE_string(
 FLAGS = flags.FLAGS
 
 
-def create_tb_app():
-  """Read the flags, and create a TensorBoard WSGI application."""
+def create_tb_app(plugins):
+  """Read the flags, and create a TensorBoard WSGI application.
+
+  Args:
+    plugins: A list of plugins for TensorBoard to initialize.
+
+  Raises:
+    ValueError: if a logdir is not specified.
+
+  Returns:
+    A new TensorBoard WSGI application.
+  """
   if not FLAGS.logdir:
     raise ValueError('A logdir must be specified. Run `tensorboard --help` for '
                      'details and examples.')
@@ -98,7 +109,8 @@ def create_tb_app():
   return application.standard_tensorboard_wsgi(
       logdir=logdir,
       purge_orphaned_data=FLAGS.purge_orphaned_data,
-      reload_interval=FLAGS.reload_interval)
+      reload_interval=FLAGS.reload_interval,
+      plugins=plugins)
 
 
 def make_simple_server(tb_app, host, port):
@@ -184,7 +196,11 @@ def main(unused_argv=None):
     efi.inspect(FLAGS.logdir, event_file, FLAGS.tag)
     return 0
   else:
-    tb = create_tb_app()
+    plugins = [
+        projector_plugin.ProjectorPlugin(),
+        text_plugin.TextPlugin(),
+    ]
+    tb = create_tb_app(plugins)
     run_simple_server(tb)
 
 if __name__ == '__main__':

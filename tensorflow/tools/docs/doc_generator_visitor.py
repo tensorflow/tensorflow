@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 import six
+
+from tensorflow.python.util import tf_inspect
 
 
 class DocGeneratorVisitor(object):
@@ -133,8 +133,8 @@ class DocGeneratorVisitor(object):
       parent_name: The fully qualified name of a symbol found during traversal.
       parent: The Python object referenced by `parent_name`.
       children: A list of `(name, py_object)` pairs enumerating, in alphabetical
-        order, the children (as determined by `inspect.getmembers`) of `parent`.
-        `name` is the local name of `py_object` in `parent`.
+        order, the children (as determined by `tf_inspect.getmembers`) of
+          `parent`. `name` is the local name of `py_object` in `parent`.
 
     Raises:
       RuntimeError: If this visitor is called with a `parent` that is not a
@@ -144,9 +144,9 @@ class DocGeneratorVisitor(object):
     self._index[parent_name] = parent
     self._tree[parent_name] = []
 
-    if not (inspect.ismodule(parent) or inspect.isclass(parent)):
-      raise RuntimeError('Unexpected type in visitor -- %s: %r' %
-                         (parent_name, parent))
+    if not (tf_inspect.ismodule(parent) or tf_inspect.isclass(parent)):
+      raise RuntimeError('Unexpected type in visitor -- %s: %r' % (parent_name,
+                                                                   parent))
 
     for i, (name, child) in enumerate(list(children)):
       # Don't document __metaclass__
@@ -190,9 +190,8 @@ class DocGeneratorVisitor(object):
       # have no usable docstring and won't be documented automatically.
       if (py_object is not None and
           not isinstance(py_object, six.integer_types + six.string_types +
-                         (six.binary_type, six.text_type, float, complex, bool)
-                        ) and
-          py_object is not ()):
+                         (six.binary_type, six.text_type, float, complex, bool))
+          and py_object is not ()):
         object_id = id(py_object)
         if object_id in reverse_index:
           master_name = reverse_index[object_id]

@@ -112,6 +112,10 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
+  Status HandleConcatenate(
+      HloInstruction* concatenate,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+
   Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
 
   Status HandleConvert(HloInstruction* convert,
@@ -146,6 +150,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
                       tensorflow::gtl::ArraySlice<int64> dimensions,
                       HloComputation* function) override;
 
+  Status HandleReverse(HloInstruction* reverse,
+                       HloInstruction* operand) override;
   Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
 
   Status HandleTranspose(HloInstruction* transpose) override;
@@ -292,6 +298,16 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy,
                                               HloInstruction* operand) {
   // All copies can be eliminated (assuming layout constraints are satisified).
   ReplaceInstructionIfSameShape(copy, operand);
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleConcatenate(
+    HloInstruction* concatenate,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  // Unary concatenates are useless.
+  if (operands.size() == 1) {
+    ReplaceInstructionIfSameShape(concatenate, operands[0]);
+  }
   return Status::OK();
 }
 
@@ -1012,6 +1028,21 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   return Status::OK();
 }
 
+Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse,
+                                                 HloInstruction* operand) {
+  // When all the dimensions to reverse are trivial (i.e. the bound is 1), there
+  // is nothing to be done.
+  auto dim_is_one = [&](int64 i) -> bool {
+    return reverse->shape().dimensions(i) == 1;
+  };
+  if (std::all_of(reverse->dimensions().begin(), reverse->dimensions().end(),
+                  dim_is_one)) {
+    changed_ = true;
+    return computation_->ReplaceInstruction(reverse, operand);
+  }
+  return Status::OK();
+}
+
 Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice,
                                                HloInstruction* operand) {
   // Delete no-op slices, i.e. where shape = operand shape.
@@ -1331,13 +1362,20 @@ Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum,
 StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
-  bool changed =
-      std::any_of(module->computations().begin(), module->computations().end(),
-                  [=](const std::unique_ptr<HloComputation>& computation) {
-                    return AlgebraicSimplifierVisitor::Run(
-                        computation.get(), is_layout_sensitive_,
-                        valid_bitcast_callback_, enable_dot_simplification_);
-                  });
+  bool changed = false;
+  // Make a copy of the computations because we may add computations to the
+  // module, invalidating iteration.
+  std::vector<HloComputation*> computations;
+  for (auto& comp : module->computations()) {
+    computations.push_back(comp.get());
+  }
+  for (auto& comp : computations) {
+    if (AlgebraicSimplifierVisitor::Run(comp, is_layout_sensitive_,
+                                        valid_bitcast_callback_,
+                                        enable_dot_simplification_)) {
+      changed = true;
+    }
+  }
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), after:\n" + module->ToString());
   return changed;

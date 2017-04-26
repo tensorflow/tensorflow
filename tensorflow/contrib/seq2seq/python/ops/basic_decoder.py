@@ -52,14 +52,13 @@ class BasicDecoder(decoder.Decoder):
       cell: An `RNNCell` instance.
       helper: A `Helper` instance.
       initial_state: A (possibly nested tuple of...) tensors and TensorArrays.
+        The initial state of the RNNCell.
       output_layer: (Optional) An instance of `tf.layers.Layer`, i.e.,
         `tf.layers.Dense`.  Optional layer to apply to the RNN output prior
         to storing the result or sampling.
 
     Raises:
-      TypeError: if `cell` is not an instance of `RNNCell`, `helper`
-        is not an instance of `Helper`, or `output_layer` is not an instance
-        of `tf.layers.Layer`.
+      TypeError: if `cell`, `helper` or `output_layer` have an incorrect type.
     """
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError("cell must be an RNNCell, received: %s" % type(cell))

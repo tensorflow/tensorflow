@@ -68,6 +68,7 @@ See the @{$python/train} guide.
 @@LoggingTensorHook
 @@StopAtStepHook
 @@CheckpointSaverHook
+@@CheckpointSaverListener
 @@NewCheckpointReader
 @@StepCounterHook
 @@NanLossDuringTrainingError
@@ -94,10 +95,14 @@ from __future__ import print_function
 import sys as _sys
 
 from tensorflow.python.ops import io_ops as _io_ops
+from tensorflow.python.ops import sdca_ops as _sdca_ops
 from tensorflow.python.ops import state_ops as _state_ops
 from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=g-bad-import-order,unused-import
+from tensorflow.python.ops.sdca_ops import sdca_optimizer
+from tensorflow.python.ops.sdca_ops import sdca_fprint
+from tensorflow.python.ops.sdca_ops import sdca_shrink_l1
 from tensorflow.python.training.adadelta import AdadeltaOptimizer
 from tensorflow.python.training.adagrad import AdagradOptimizer
 from tensorflow.python.training.adagrad_da import AdagradDAOptimizer
@@ -128,6 +133,7 @@ from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
 from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook
+from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverListener
 from tensorflow.python.training.basic_session_run_hooks import StepCounterHook
 from tensorflow.python.training.basic_session_run_hooks import NanLossDuringTrainingError
 from tensorflow.python.training.basic_session_run_hooks import NanTensorHook
@@ -222,4 +228,4 @@ _allowed_symbols = [
 # * Input methods in tf.train are documented in io_ops.
 # * Saver methods in tf.train are documented in state_ops.
 remove_undocumented(__name__, _allowed_symbols,
-                    [_sys.modules[__name__], _io_ops, _state_ops])
+                    [_sys.modules[__name__], _io_ops, _sdca_ops, _state_ops])

@@ -20,6 +20,7 @@ from __future__ import print_function
 import collections
 import curses
 from curses import textpad
+import os
 import signal
 import sys
 import threading
@@ -27,6 +28,7 @@ import threading
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug.cli import base_ui
+from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import curses_widgets
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -41,6 +43,9 @@ _SCROLL_DOWN_A_LINE = "down_a_line"
 _SCROLL_HOME = "home"
 _SCROLL_END = "end"
 _SCROLL_TO_LINE_INDEX = "scroll_to_line_index"
+
+_COLOR_READY_COLORTERMS = ["gnome-terminal", "xfce4-terminal"]
+_COLOR_ENABLED_TERM = "xterm-256color"
 
 
 def _get_command_from_line_attr_segs(mouse_x, attr_segs):
@@ -77,7 +82,7 @@ class ScrollBar(object):
   event in the screen region it occupies.
   """
 
-  BASE_ATTR = "black_on_white"
+  BASE_ATTR = cli_shared.COLOR_BLACK + "_on_" + cli_shared.COLOR_WHITE
 
   def __init__(self,
                min_x,
@@ -119,7 +124,7 @@ class ScrollBar(object):
       raise ValueError("Insufficient height for ScrollBar (%d)" %
                        (self._max_y - self._min_y + 1))
 
-  def _block_y(self):
+  def _block_y(self, screen_coord_sys=False):
     """Get the 0-based y coordinate of the scroll block.
 
     This y coordinate takes into account the presence of the UP and DN buttons
@@ -127,9 +132,13 @@ class ScrollBar(object):
     location, the return value will be 1; at the bottom location, the return
     value will be self._scroll_bar_height - 2.
 
+    Args:
+      screen_coord_sys: (`bool`) whether the return value will be in the
+        screen coordinate system.
+
     Returns:
       (int) 0-based y coordinate of the scroll block, in the ScrollBar
-        coordinate system, i.e., not the screen coordinate system. For example,
+        coordinate system by default. For example,
         when scroll position is at the top, this return value will be 1 (not 0,
         because of the presence of the UP button). When scroll position is at
         the bottom, this return value will be self._scroll_bar_height - 2
@@ -137,8 +146,10 @@ class ScrollBar(object):
         button).
     """
 
-    return int(float(self._scroll_position) / (self._output_num_rows - 1) *
-               (self._scroll_bar_height - 3)) + 1
+    rel_block_y = int(
+        float(self._scroll_position) / (self._output_num_rows - 1) *
+        (self._scroll_bar_height - 3)) + 1
+    return rel_block_y + self._min_y if screen_coord_sys else rel_block_y
 
   def layout(self):
     """Get the RichTextLines layout of the scroll bar.
@@ -187,9 +198,11 @@ class ScrollBar(object):
       return _SCROLL_UP_A_LINE
     elif mouse_y == self._max_y:
       return _SCROLL_DOWN_A_LINE
-    elif mouse_y > self._block_y() and mouse_y < self._max_y:
+    elif (mouse_y > self._block_y(screen_coord_sys=True) and
+          mouse_y < self._max_y):
       return _SCROLL_DOWN
-    elif mouse_y < self._block_y() and mouse_y > self._min_y:
+    elif (mouse_y < self._block_y(screen_coord_sys=True) and
+          mouse_y > self._min_y):
       return _SCROLL_UP
     else:
       return None
@@ -225,27 +238,36 @@ class CursesUI(base_ui.BaseUI):
   }
 
   _FOREGROUND_COLORS = {
-      "white": curses.COLOR_WHITE,
-      "red": curses.COLOR_RED,
-      "green": curses.COLOR_GREEN,
-      "yellow": curses.COLOR_YELLOW,
-      "blue": curses.COLOR_BLUE,
-      "cyan": curses.COLOR_CYAN,
-      "magenta": curses.COLOR_MAGENTA,
-      "black": curses.COLOR_BLACK,
+      cli_shared.COLOR_WHITE: curses.COLOR_WHITE,
+      cli_shared.COLOR_RED: curses.COLOR_RED,
+      cli_shared.COLOR_GREEN: curses.COLOR_GREEN,
+      cli_shared.COLOR_YELLOW: curses.COLOR_YELLOW,
+      cli_shared.COLOR_BLUE: curses.COLOR_BLUE,
+      cli_shared.COLOR_CYAN: curses.COLOR_CYAN,
+      cli_shared.COLOR_MAGENTA: curses.COLOR_MAGENTA,
+      cli_shared.COLOR_BLACK: curses.COLOR_BLACK,
   }
   _BACKGROUND_COLORS = {
-      "white": curses.COLOR_WHITE,
-      "black": curses.COLOR_BLACK,
+      "transparent": -1,
+      cli_shared.COLOR_WHITE: curses.COLOR_WHITE,
+      cli_shared.COLOR_BLACK: curses.COLOR_BLACK,
   }
 
   # Font attribute for search and highlighting.
-  _SEARCH_HIGHLIGHT_FONT_ATTR = "black_on_white"
-  _ARRAY_INDICES_COLOR_PAIR = "black_on_white"
-  _ERROR_TOAST_COLOR_PAIR = "red_on_white"
-  _INFO_TOAST_COLOR_PAIR = "blue_on_white"
-  _STATUS_BAR_COLOR_PAIR = "black_on_white"
-  _UI_WAIT_COLOR_PAIR = "magenta_on_white"
+  _SEARCH_HIGHLIGHT_FONT_ATTR = (
+      cli_shared.COLOR_BLACK + "_on_" + cli_shared.COLOR_WHITE)
+  _ARRAY_INDICES_COLOR_PAIR = (
+      cli_shared.COLOR_BLACK + "_on_" + cli_shared.COLOR_WHITE)
+  _ERROR_TOAST_COLOR_PAIR = (
+      cli_shared.COLOR_RED + "_on_" + cli_shared.COLOR_WHITE)
+  _INFO_TOAST_COLOR_PAIR = (
+      cli_shared.COLOR_BLUE + "_on_" + cli_shared.COLOR_WHITE)
+  _STATUS_BAR_COLOR_PAIR = (
+      cli_shared.COLOR_BLACK + "_on_" + cli_shared.COLOR_WHITE)
+  _UI_WAIT_COLOR_PAIR = (
+      cli_shared.COLOR_MAGENTA + "_on_" + cli_shared.COLOR_WHITE)
+  _NAVIGATION_WARNING_COLOR_PAIR = (
+      cli_shared.COLOR_RED + "_on_" + cli_shared.COLOR_WHITE)
 
   _UI_WAIT_MESSAGE = "Processing..."
 
@@ -370,28 +392,42 @@ class CursesUI(base_ui.BaseUI):
 
     Creates curses stdscr and initialize the color pairs for display.
     """
-
+    # If the terminal type is color-ready, enable it.
+    if os.getenv("COLORTERM") in _COLOR_READY_COLORTERMS:
+      os.environ["TERM"] = _COLOR_ENABLED_TERM
     self._stdscr = curses.initscr()
     self._command_window = None
+    self._screen_color_init()
 
-    # Prepare color pairs.
+  def _screen_color_init(self):
+    """Initialization of screen colors."""
     curses.start_color()
-
+    curses.use_default_colors()
     self._color_pairs = {}
     color_index = 0
 
+    # Prepare color pairs.
     for fg_color in self._FOREGROUND_COLORS:
       for bg_color in self._BACKGROUND_COLORS:
-
         color_index += 1
         curses.init_pair(color_index, self._FOREGROUND_COLORS[fg_color],
                          self._BACKGROUND_COLORS[bg_color])
 
         color_name = fg_color
-        if bg_color != "black":
+        if bg_color != "transparent":
           color_name += "_on_" + bg_color
 
         self._color_pairs[color_name] = curses.color_pair(color_index)
+
+    # Try getting color(s) available only under 256-color support.
+    try:
+      color_index += 1
+      curses.init_pair(color_index, 245, -1)
+      self._color_pairs[cli_shared.COLOR_GRAY] = curses.color_pair(color_index)
+    except curses.error:
+      # Use fall-back color(s):
+      self._color_pairs[cli_shared.COLOR_GRAY] = (
+          self._color_pairs[cli_shared.COLOR_GREEN])
 
     # A_BOLD or A_BLINK is not really a "color". But place it here for
     # convenience.
@@ -400,7 +436,7 @@ class CursesUI(base_ui.BaseUI):
     self._color_pairs["underline"] = curses.A_UNDERLINE
 
     # Default color pair to use when a specified color pair does not exist.
-    self._default_color_pair = self._color_pairs["white"]
+    self._default_color_pair = self._color_pairs[cli_shared.COLOR_WHITE]
 
   def _screen_launch(self, enable_mouse_on_start):
     """Launch the curses screen."""
@@ -477,7 +513,7 @@ class CursesUI(base_ui.BaseUI):
   def get_help(self):
     return self._command_handler_registry.get_help()
 
-  def _screen_create_command_textbox(self, existing_command):
+  def _screen_create_command_textbox(self, existing_command=None):
     """Create command textbox on screen.
 
     Args:
@@ -588,7 +624,7 @@ class CursesUI(base_ui.BaseUI):
         scroll_position = item.scroll_position
       else:
         self._toast("At the LATEST in navigation history!",
-                    color="red_on_white")
+                    color=self._NAVIGATION_WARNING_COLOR_PAIR)
         return
     else:
       if self._nav_history.can_go_back():
@@ -596,7 +632,7 @@ class CursesUI(base_ui.BaseUI):
         scroll_position = item.scroll_position
       else:
         self._toast("At the OLDEST in navigation history!",
-                    color="red_on_white")
+                    color=self._NAVIGATION_WARNING_COLOR_PAIR)
         return
 
     self._display_output(item.screen_output)
@@ -811,6 +847,7 @@ class CursesUI(base_ui.BaseUI):
         else:
           command = self._fetch_hyperlink_command(mouse_x, mouse_y)
           if command:
+            self._screen_create_command_textbox()
             exit_token = self._dispatch_command(command)
             if exit_token is not None:
               raise debugger_cli_common.CommandLineExit(exit_token=exit_token)
@@ -870,13 +907,14 @@ class CursesUI(base_ui.BaseUI):
     """Automatically key in a command to the command Textbox.
 
     Args:
-      command: The command, as a string.
+      command: The command, as a string or None.
       erase_existing: (bool) whether existing text (if any) is to be erased
           first.
     """
     if erase_existing:
       self._erase_existing_command()
 
+    command = command or ""
     for c in command:
       self._command_textbox.do_command(ord(c))
 
@@ -959,7 +997,7 @@ class CursesUI(base_ui.BaseUI):
       self._curr_wrapped_output.lines.append("Output cut off at %d lines!" %
                                              self.max_output_lines)
       self._curr_wrapped_output.font_attr_segs[self.max_output_lines] = [
-          (0, len(output.lines[-1]), "magenta")
+          (0, len(output.lines[-1]), cli_shared.COLOR_MAGENTA)
       ]
 
     self._display_nav_bar()
@@ -1199,9 +1237,9 @@ class CursesUI(base_ui.BaseUI):
 
     self._scroll_bar = ScrollBar(
         self._max_x - 2,
-        2,
+        3,
         self._max_x - 1,
-        self._output_num_rows,
+        self._output_num_rows + 1,
         self._output_pad_row,
         self._output_pad_height - self._output_pad_screen_height)
 
@@ -1518,7 +1556,9 @@ class CursesUI(base_ui.BaseUI):
 
     pad, _, _ = self._display_lines(
         debugger_cli_common.RichTextLines(
-            message, font_attr_segs={0: [(0, len(message), color or "white")]}),
+            message,
+            font_attr_segs={
+                0: [(0, len(message), color or cli_shared.COLOR_WHITE)]}),
         0)
 
     right_end = min(len(message), self._max_x - 2)

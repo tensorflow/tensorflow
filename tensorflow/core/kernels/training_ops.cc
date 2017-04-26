@@ -92,15 +92,14 @@ struct ApplyProximalGradientDescent<CPUDevice, T> {
     // compute v = w - lr * grad.
     prox_var.device(d) -= grad * lr();
     if (l1() > 0) {
-      var.device(d) = prox_var.abs() - var.constant(lr() * l1());
       // compute sign(v) * max(|v| - lr * l1, 0)
-      var.device(d) = prox_var.sign() * var.cwiseMax(T(0.0));
+      var.device(d) =
+          prox_var.sign() *
+          (prox_var.abs() - var.constant(lr() * l1())).cwiseMax(T(0.0)) /
+          (var.constant(1.0) + var.constant(l2() * lr()));
     } else {
-      var.device(d) = prox_var;
-    }
-    if (l2() > 0) {
-      // compute v / (1.0 + l2 * lr)
-      var.device(d) = var / (var.constant(1.0) + var.constant(l2() * lr()));
+      var.device(d) =
+          prox_var / (var.constant(1.0) + var.constant(l2() * lr()));
     }
   }
 };
@@ -169,15 +168,14 @@ struct ApplyProximalAdagrad<CPUDevice, T> {
     // compute v = w - lr * grad.
     prox_var.device(d) -= grad * learning_rate;
     if (l1() > 0) {
-      var.device(d) = prox_var.abs() - learning_rate * prox_var.constant(l1());
       // compute sign(v) * max(|v| - lr * l1, 0)
-      var.device(d) = prox_var.sign() * var.cwiseMax(T(0.0));
+      var.device(d) = prox_var.sign() *
+                      (prox_var.abs() - learning_rate * prox_var.constant(l1()))
+                          .cwiseMax(T(0.0)) /
+                      (var.constant(1.0) + var.constant(l2()) * learning_rate);
     } else {
-      var.device(d) = prox_var;
-    }
-    if (l2() > 0) {
       var.device(d) =
-          var / (var.constant(1.0) + var.constant(l2()) * learning_rate);
+          prox_var / (var.constant(1.0) + var.constant(l2()) * learning_rate);
     }
   }
 };
@@ -205,14 +203,17 @@ struct ApplyFtrl<CPUDevice, T> {
     if (lr_power() == static_cast<T>(-0.5)) {
       auto y = new_accum.sqrt() / new_accum.constant(lr()) +
                linear.constant(static_cast<T>(2) * l2());
-      var.device(d) = x / y;
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+
     } else {
       auto y = new_accum.pow(-lr_power()) / new_accum.constant(lr()) +
                linear.constant(static_cast<T>(2) * l2());
-      var.device(d) = x / y;
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
     }
-    var.device(d) = (linear.abs() > linear.constant(l1()))
-                        .select(var, var.constant(static_cast<T>(0)));
     accum.device(d) += grad.square();
   }
 };
@@ -889,14 +890,14 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
           // v = w - g * learning_rate.
           prox_v -= g * learning_rate;
           if (l1_scalar > 0) {
-            v = prox_v.abs() - learning_rate * prox_v.constant(l1_scalar);
             // compute sign(v) * max(|v|, 0)
-            v = prox_v.sign() * v.cwiseMax(static_cast<T>(0.0));
+            v = prox_v.sign() *
+                (prox_v.abs() - learning_rate * prox_v.constant(l1_scalar))
+                    .cwiseMax(static_cast<T>(0.0)) /
+                (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
           } else {
-            v = prox_v;
-          }
-          if (l2_scalar > 0) {
-            v /= (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
+            v = prox_v /
+                (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
           }
         }
       } else {
@@ -919,14 +920,13 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
           auto prox_v = var_flat(index);
           prox_v -= learning_rate * g;
           if (l1_scalar > 0) {
-            var_flat(index) = std::abs(prox_v) - learning_rate * l1_scalar;
             var_flat(index) =
-                sgn(prox_v) * std::max(var_flat(index), static_cast<T>(0.0));
+                sgn(prox_v) *
+                std::max(std::abs(prox_v) - learning_rate * l1_scalar,
+                         static_cast<T>(0.0)) /
+                (1.0 + l2_scalar * learning_rate);
           } else {
-            var_flat(index) = prox_v;
-          }
-          if (l2_scalar > 0) {
-            var_flat(index) /= (1.0 + l2_scalar * learning_rate);
+            var_flat(index) = prox_v / (1.0 + l2_scalar * learning_rate);
           }
         }
       }
@@ -1381,14 +1381,14 @@ class SparseApplyProximalAdagradOp : public OpKernel {
           // v = w - g * learning_rate.
           prox_v -= g * learning_rate;
           if (l1_scalar > 0) {
-            v = prox_v.abs() - learning_rate * prox_v.constant(l1_scalar);
             // compute sign(v) * max(|v|, 0)
-            v = prox_v.sign() * v.cwiseMax(static_cast<T>(0.0));
+            v = prox_v.sign() *
+                (prox_v.abs() - learning_rate * prox_v.constant(l1_scalar))
+                    .cwiseMax(static_cast<T>(0.0)) /
+                (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
           } else {
-            v = prox_v;
-          }
-          if (l2_scalar > 0) {
-            v /= (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
+            v = prox_v /
+                (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
           }
         }
       } else {
@@ -1414,14 +1414,13 @@ class SparseApplyProximalAdagradOp : public OpKernel {
           auto prox_v = var_flat(index);
           prox_v -= learning_rate * g;
           if (l1_scalar > 0) {
-            var_flat(index) = std::abs(prox_v) - learning_rate * l1_scalar;
             var_flat(index) =
-                sgn(prox_v) * std::max(var_flat(index), static_cast<T>(0.0));
+                sgn(prox_v) *
+                std::max(std::abs(prox_v) - learning_rate * l1_scalar,
+                         static_cast<T>(0.0)) /
+                (1.0 + l2_scalar * learning_rate);
           } else {
-            var_flat(index) = prox_v;
-          }
-          if (l2_scalar > 0) {
-            var_flat(index) /= (1.0 + l2_scalar * learning_rate);
+            var_flat(index) = prox_v / (1.0 + l2_scalar * learning_rate);
           }
         }
       }
@@ -1672,10 +1671,10 @@ class SparseApplyAdagradDAOp : public OpKernel {
           ga += g;
           da += g.square();
           if (l1_scalar > 0) {
-            v = (ga.abs() / ga.constant(global_step_scalar)) -
-                ga.constant(l1_scalar);
             v = ga.constant(-1.0) * ga.sign() *
-                v.cwiseMax(static_cast<T>(0.0)) /
+                ((ga.abs() / ga.constant(global_step_scalar)) -
+                 ga.constant(l1_scalar))
+                    .cwiseMax(static_cast<T>(0.0)) /
                 (v.constant(l2_scalar) + da.sqrt() / v.constant(gs_lr));
           } else {
             v = ga.constant(-1.0) * (ga / ga.constant(global_step_scalar)) /

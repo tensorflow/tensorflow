@@ -42,6 +42,28 @@ to integer values.
 """
 
 
+def _bdtr(k, n, p):
+  """The binomial cumulative distribution function.
+
+  Args:
+    k: floating point `Tensor`.
+    n: floating point `Tensor`.
+    p: floating point `Tensor`.
+
+  Returns:
+    `sum_{j=0}^k p^j (1 - p)^(n - j)`.
+  """
+  # Trick for getting safe backprop/gradients into n, k when
+  #   betainc(a = 0, ..) = nan
+  # Write:
+  #   where(unsafe, safe_output, betainc(where(unsafe, safe_input, input)))
+  ones = array_ops.ones_like(n - k)
+  k_eq_n = math_ops.equal(k, n)
+  safe_dn = array_ops.where(k_eq_n, ones, n - k)
+  dk = math_ops.betainc(a=safe_dn, b=k + 1, x=1 - p)
+  return array_ops.where(k_eq_n, ones, dk)
+
+
 class Binomial(distribution.Distribution):
   """Binomial distribution.
 
@@ -200,6 +222,18 @@ class Binomial(distribution.Distribution):
   @distribution_util.AppendDocstring(_binomial_sample_note)
   def _prob(self, counts):
     return math_ops.exp(self._log_prob(counts))
+
+  def _cdf(self, counts):
+    counts = self._maybe_assert_valid_sample(counts)
+    probs = self.probs
+    if not (counts.shape.is_fully_defined()
+            and self.probs.shape.is_fully_defined()
+            and counts.shape.is_compatible_with(self.probs.shape)):
+      # If both shapes are well defined and equal, we skip broadcasting.
+      probs += array_ops.zeros_like(counts)
+      counts += array_ops.zeros_like(self.probs)
+
+    return _bdtr(k=counts, n=self.total_count, p=probs)
 
   def _log_unnormalized_prob(self, counts):
     counts = self._maybe_assert_valid_sample(counts)

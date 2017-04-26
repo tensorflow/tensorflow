@@ -21,7 +21,9 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import logistic
 from tensorflow.contrib.distributions.python.ops import transformed_distribution
-from tensorflow.contrib.distributions.python.ops.bijectors import sigmoid as sigmoid_lib
+# Bijectors must be directly imported because `remove_undocumented` prevents
+# individual file imports.
+from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import Sigmoid
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -171,12 +173,13 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits, probs=probs, validate_args=validate_args)
       super(RelaxedBernoulli, self).__init__(
-          distribution=logistic.Logistic(self._logits / self._temperature,
-                                         1. / self._temperature,
-                                         validate_args=validate_args,
-                                         allow_nan_stats=allow_nan_stats,
-                                         name=name + "/Logistic"),
-          bijector=sigmoid_lib.Sigmoid(validate_args=validate_args),
+          distribution=logistic.Logistic(
+              self._logits / self._temperature,
+              1. / self._temperature,
+              validate_args=validate_args,
+              allow_nan_stats=allow_nan_stats,
+              name=name + "/Logistic"),
+          bijector=Sigmoid(validate_args=validate_args),
           validate_args=validate_args,
           name=name)
     self._parameters = parameters

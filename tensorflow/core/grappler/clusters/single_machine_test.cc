@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/clusters/single_machine.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -127,6 +130,33 @@ TEST_F(SingleMachineTest, MultipleItems) {
     ::tensorflow::protobuf::TextFormat::PrintToString(metadata2, &s2);
     EXPECT_EQ(s1, s2);
   }
+}
+
+TEST_F(SingleMachineTest, InitializationMemory) {
+  // Build a variable and its initialization graph.
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  int batch_size = 10;
+  Output x =
+      ops::RandomNormal(s.WithOpName("x"), {batch_size, 1}, DataType::DT_FLOAT);
+  Output v = ops::Variable(s.WithOpName("v"), TensorShape({batch_size, 1}),
+                           DataType::DT_FLOAT);
+  Output init = ops::Assign(s.WithOpName("init"), v, x);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.init_ops.push_back(init.name());
+  item.fetch.push_back(v.name());
+
+  TF_CHECK_OK(cluster_->Initialize(item));
+  RunMetadata metadata;
+  TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
+
+  // Check that the initialization op is present in the cost model.
+  bool found = false;
+  for (const auto& node : metadata.cost_graph().node()) {
+    found |= (node.name() == NodeName(init.name()));
+  }
+  EXPECT_TRUE(found);
 }
 
 }  // namespace

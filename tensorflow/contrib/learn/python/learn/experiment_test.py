@@ -484,6 +484,25 @@ class ExperimentTest(test.TestCase):
       self.assertAllEqual([noop_hook, another_noop_hook], ex._train_monitors)
       self.assertAllEqual([noop_hook], input_hooks)
 
+  def test_invalid_export_strategies(self):
+    for est in self._estimators_for_tests():
+      with self.assertRaisesRegexp(ValueError, 'ExportStrategy'):
+        experiment.Experiment(
+            est,
+            train_input_fn='train_input',
+            eval_input_fn='eval_input',
+            train_steps=100,
+            eval_steps=100,
+            export_strategies='not_an_export_strategy')
+      with self.assertRaisesRegexp(ValueError, 'ExportStrategy'):
+        experiment.Experiment(
+            est,
+            train_input_fn='train_input',
+            eval_input_fn='eval_input',
+            train_steps=100,
+            eval_steps=100,
+            export_strategies=['not_an_export_srategy'])
+
   def test_export_strategies_reset(self):
     for est in self._estimators_for_tests():
       eval_metrics = 'eval_metrics' if not isinstance(
@@ -498,7 +517,7 @@ class ExperimentTest(test.TestCase):
           eval_metrics=eval_metrics,
           train_steps=100,
           eval_steps=100,
-          export_strategies=[export_strategy_1])
+          export_strategies=(export_strategy_1,))
       ex.train_and_evaluate()
       self.assertEqual(1, est.export_count)
 
@@ -546,6 +565,59 @@ class ExperimentTest(test.TestCase):
       self.assertEqual([noop_hook], est.eval_hooks)
       self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
 
+  def test_train_and_evaluate_with_no_eval_during_training(self):
+    for est in self._estimators_for_tests():
+      eval_metrics = 'eval_metrics' if not isinstance(
+          est, core_estimator.Estimator) else None
+      noop_hook = _NoopHook()
+      ex = experiment.Experiment(
+          est,
+          train_input_fn='train_input',
+          eval_input_fn='eval_input',
+          eval_metrics=eval_metrics,
+          eval_hooks=[noop_hook],
+          train_steps=100,
+          eval_steps=100,
+          min_eval_frequency=0)
+      ex.train_and_evaluate()
+      self.assertEqual(1, est.fit_count)
+      self.assertEqual(1, est.eval_count)
+      self.assertEqual(0, len(est.monitors))
+
+  def test_min_eval_frequency_defaults(self):
+    def dummy_model_fn(features, labels):  # pylint: disable=unused-argument
+      pass
+
+    # The default value when model_dir is on GCS is 1000
+    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
+    ex = experiment.Experiment(
+        estimator, train_input_fn=None, eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 1000)
+
+    # The default value when model_dir is not on GCS is 1
+    estimator = core_estimator.Estimator(dummy_model_fn, '/tmp/dummy')
+    ex = experiment.Experiment(
+        estimator, train_input_fn=None, eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 1)
+
+    # Make sure default not used when explicitly set
+    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
+    ex = experiment.Experiment(
+        estimator,
+        min_eval_frequency=123,
+        train_input_fn=None,
+        eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 123)
+
+    # Make sure default not used when explicitly set as 0
+    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
+    ex = experiment.Experiment(
+        estimator,
+        min_eval_frequency=0,
+        train_input_fn=None,
+        eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 0)
+
   def test_continuous_train_and_eval(self):
     for est in self._estimators_for_tests(eval_dict={'global_step': 100}):
       eval_metrics = 'eval_metrics' if not isinstance(
@@ -592,6 +664,76 @@ class ExperimentTest(test.TestCase):
       self.assertEqual(0, est.eval_count)
       self.assertEqual(1, est.export_count)
 
+  def test_continuous_train_and_eval_with_adapted_steps_per_iteration(self):
+    mock_estimator = test.mock.Mock(core_estimator.Estimator)
+    type(mock_estimator).model_dir = test.mock.PropertyMock(
+        return_value='test_dir')
+
+    total_steps = 100000000000000
+    ex = experiment.Experiment(
+        mock_estimator,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        train_steps=total_steps)
+
+    def predicate_fn(eval_result):
+      # Allows the first invoke only.
+      return eval_result is None
+
+    ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
+    mock_estimator.train.assert_called_once_with(
+        input_fn='train_input',
+        steps=int(total_steps/10),
+        max_steps=test.mock.ANY,
+        hooks=test.mock.ANY)
+
+  def test_continuous_train_and_eval_with_steps_per_iteration_from_user(self):
+    mock_estimator = test.mock.Mock(core_estimator.Estimator)
+    type(mock_estimator).model_dir = test.mock.PropertyMock(
+        return_value='test_dir')
+
+    total_steps = 100000000000000
+    ex = experiment.Experiment(
+        mock_estimator,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        train_steps_per_iteration=1234,
+        train_steps=total_steps)
+
+    def predicate_fn(eval_result):
+      # Allows the first invoke only.
+      return eval_result is None
+
+    ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
+    mock_estimator.train.assert_called_once_with(
+        input_fn='train_input',
+        steps=1234,
+        max_steps=test.mock.ANY,
+        hooks=test.mock.ANY)
+
+  def test_continuous_train_and_eval_with_default_steps_per_iteration(self):
+    mock_estimator = test.mock.Mock(core_estimator.Estimator)
+    type(mock_estimator).model_dir = test.mock.PropertyMock(
+        return_value='test_dir')
+
+    ex = experiment.Experiment(
+        mock_estimator,
+        train_input_fn='train_input',
+        eval_input_fn='eval_input',
+        train_steps_per_iteration=None,
+        train_steps=None)
+
+    def predicate_fn(eval_result):
+      # Allows the first invoke only.
+      return eval_result is None
+
+    ex.continuous_train_and_eval(continuous_eval_predicate_fn=predicate_fn)
+    mock_estimator.train.assert_called_once_with(
+        input_fn='train_input',
+        steps=1000,
+        max_steps=test.mock.ANY,
+        hooks=test.mock.ANY)
+
   def test_continuous_train_and_eval_with_invalid_predicate_fn(self):
     for est in self._estimators_for_tests():
       ex = experiment.Experiment(
@@ -604,13 +746,13 @@ class ExperimentTest(test.TestCase):
 
   def test_continuous_train_and_eval_with_invalid_train_steps_iterations(self):
     for est in self._estimators_for_tests():
-      ex = experiment.Experiment(
-          est,
-          train_input_fn='train_input',
-          eval_input_fn='eval_input')
       with self.assertRaisesRegexp(
           ValueError, '`train_steps_per_iteration` must be an integer.'):
-        ex.continuous_train_and_eval(train_steps_per_iteration='123')
+        experiment.Experiment(
+            est,
+            train_input_fn='train_input',
+            eval_input_fn='eval_input',
+            train_steps_per_iteration='123')
 
   @test.mock.patch.object(server_lib, 'Server')
   def test_run_std_server(self, mock_server):
@@ -658,7 +800,7 @@ class ExperimentTest(test.TestCase):
           est,
           train_input_fn='train_input',
           eval_input_fn='eval_input',
-          export_strategies=[exp_strategy])
+          export_strategies=(exp_strategy,))
       ex.test()
       self.assertEqual(1, est.fit_count)
       self.assertEqual(1, est.eval_count)

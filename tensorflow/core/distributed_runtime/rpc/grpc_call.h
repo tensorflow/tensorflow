@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
 
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/macros.h"
 
 #include "grpc++/grpc++.h"

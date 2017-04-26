@@ -24,6 +24,7 @@ import time
 
 import six
 
+from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import compat
@@ -37,7 +38,8 @@ class EventFileWriter(object):
   is encoded using the tfrecord format, which is similar to RecordIO.
   """
 
-  def __init__(self, logdir, max_queue=10, flush_secs=120):
+  def __init__(self, logdir, max_queue=10, flush_secs=120,
+               filename_suffix=None):
     """Creates a `EventFileWriter` and an event file to write to.
 
     On construction the summary writer creates a new event file in `logdir`.
@@ -57,6 +59,8 @@ class EventFileWriter(object):
       max_queue: Integer. Size of the queue for pending events and summaries.
       flush_secs: Number. How often, in seconds, to flush the
         pending events and summaries to disk.
+      filename_suffix: A string. Every event file's name is suffixed with
+        `filename_suffix`.
     """
     self._logdir = logdir
     if not gfile.IsDirectory(self._logdir):
@@ -64,11 +68,19 @@ class EventFileWriter(object):
     self._event_queue = six.moves.queue.Queue(max_queue)
     self._ev_writer = pywrap_tensorflow.EventsWriter(
         compat.as_bytes(os.path.join(self._logdir, "events")))
+    self._flush_secs = flush_secs
+    self._sentinel_event = self._get_sentinel_event()
+    if filename_suffix:
+      self._ev_writer.InitWithSuffix(compat.as_bytes(filename_suffix))
     self._closed = False
     self._worker = _EventLoggerThread(self._event_queue, self._ev_writer,
-                                      flush_secs)
+                                      self._flush_secs, self._sentinel_event)
 
     self._worker.start()
+
+  def _get_sentinel_event(self):
+    """Generate a sentinel event for terminating worker."""
+    return event_pb2.Event()
 
   def get_logdir(self):
     """Returns the directory where event file will be written."""
@@ -83,6 +95,9 @@ class EventFileWriter(object):
     Does nothing if the EventFileWriter was not closed.
     """
     if self._closed:
+      self._worker = _EventLoggerThread(self._event_queue, self._ev_writer,
+                                        self._flush_secs, self._sentinel_event)
+      self._worker.start()
       self._closed = False
 
   def add_event(self, event):
@@ -108,7 +123,9 @@ class EventFileWriter(object):
 
     Call this method when you do not need the summary writer anymore.
     """
+    self.add_event(self._sentinel_event)
     self.flush()
+    self._worker.join()
     self._ev_writer.Close()
     self._closed = True
 
@@ -116,7 +133,7 @@ class EventFileWriter(object):
 class _EventLoggerThread(threading.Thread):
   """Thread that logs events."""
 
-  def __init__(self, queue, ev_writer, flush_secs):
+  def __init__(self, queue, ev_writer, flush_secs, sentinel_event):
     """Creates an _EventLoggerThread.
 
     Args:
@@ -125,6 +142,8 @@ class _EventLoggerThread(threading.Thread):
        the visualizer.
       flush_secs: How often, in seconds, to flush the
         pending file to disk.
+      sentinel_event: A sentinel element in queue that tells this thread to
+        terminate.
     """
     threading.Thread.__init__(self)
     self.daemon = True
@@ -133,10 +152,14 @@ class _EventLoggerThread(threading.Thread):
     self._flush_secs = flush_secs
     # The first event will be flushed immediately.
     self._next_event_flush_time = 0
+    self._sentinel_event = sentinel_event
 
   def run(self):
     while True:
       event = self._queue.get()
+      if event is self._sentinel_event:
+        self._queue.task_done()
+        break
       try:
         self._ev_writer.WriteEvent(event)
         # Flush the event writer every so often.

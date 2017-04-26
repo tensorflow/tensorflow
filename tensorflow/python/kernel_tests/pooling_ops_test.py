@@ -24,10 +24,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -97,7 +97,7 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = [f * 1.0 for f in range(1, total_size + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=use_gpu):
       t = constant_op.constant(x, shape=input_sizes, dtype=data_type)
       if data_format == "NCHW":
         t = test_util.NHWCToNCHW(t)
@@ -497,7 +497,7 @@ class PoolingTest(test.TestCase):
                                          strides,
                                          error_msg,
                                          use_gpu=False):
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=use_gpu):
       t = constant_op.constant(1.0, shape=in_size)
       with self.assertRaisesRegexp(errors_impl.UnimplementedError, error_msg):
         t = nn_ops.max_pool(
@@ -562,7 +562,8 @@ class PoolingTest(test.TestCase):
         self.assertShapeEqual(cpu_val, out_op)
       # The CPU version accumulates its gradient on fp16, so it's less
       # accurate than the GPU version that does the accumulation on fp32
-      self.assertAllCloseAccordingToType(cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
+      self.assertAllCloseAccordingToType(
+          cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
 
   def _CompareMaxPoolingGradBk(self, input_shape, output_shape, ksize, strides,
                                padding):
@@ -570,14 +571,13 @@ class PoolingTest(test.TestCase):
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
-      tensor_output = np.random.rand(*output_shape).astype(dtype)
       with self.test_session(use_gpu=True):
         t = constant_op.constant(tensor_input, shape=input_shape)
         _, argmax_op = nn_ops.max_pool_with_argmax(t, ksize, strides, padding)
         argmax = argmax_op.eval()
         grad_in = constant_op.constant(tensor_input, shape=input_shape)
-        out_op = gen_nn_ops._max_pool_grad_grad_with_argmax(t, grad_in, argmax,
-                                                            ksize, strides, padding)
+        out_op = gen_nn_ops._max_pool_grad_grad_with_argmax(
+            t, grad_in, argmax, ksize, strides, padding)
         gpu_val = out_op.eval()
         self.assertShapeEqual(gpu_val, out_op)
       with self.test_session(use_gpu=False):
@@ -585,13 +585,14 @@ class PoolingTest(test.TestCase):
         out_op = nn_ops.max_pool(t, ksize, strides, padding)
         orig_out = out_op.eval()
         grad_in = constant_op.constant(tensor_input, shape=input_shape)
-        out_op = gen_nn_ops._max_pool_grad_grad(t, orig_out, grad_in, ksize, strides,
-                                                padding)
+        out_op = gen_nn_ops._max_pool_grad_grad(t, orig_out, grad_in, ksize,
+                                                strides, padding)
         cpu_val = out_op.eval()
         self.assertShapeEqual(cpu_val, out_op)
       # The CPU version accumulates its gradient on fp16, so it's less
       # accurate than the GPU version that does the accumulation on fp32
-      self.assertAllCloseAccordingToType(cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
+      self.assertAllCloseAccordingToType(
+          cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
 
   def testMaxPoolingWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
@@ -619,7 +620,7 @@ class PoolingTest(test.TestCase):
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     tensor_input = [11.0, 12.0, 13.0, 14.0]
     tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session(use_gpu=True):
       orig_in = constant_op.constant(orig_input, shape=[1, 3, 3, 1])
       t = constant_op.constant(tensor_input, shape=[1, 2, 2, 1])
       argmax = constant_op.constant(
@@ -642,7 +643,7 @@ class PoolingTest(test.TestCase):
     orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
     tensor_input = [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0]
     tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session(use_gpu=True):
       orig_in = constant_op.constant(orig_input, shape=[1, 3, 3, 1])
       t = constant_op.constant(tensor_input, shape=[1, 3, 3, 1])
       argmax = constant_op.constant(
@@ -655,8 +656,7 @@ class PoolingTest(test.TestCase):
           strides=[1, 1, 1, 1],
           padding="VALID")
       out = out_op.eval().flatten()
-      self.assertAllClose(out,
-                          [11.0, 12.0, 14.0, 16.0])
+      self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0])
 
   def _ConstructAndTestGradient(self,
                                 pool_func,
@@ -791,16 +791,16 @@ class PoolingTest(test.TestCase):
         strides = [1, row_stride, col_stride, 1]
         t = input_tensor
       t = pool_func(
-        t,
-        ksize=ksize,
-        strides=strides,
-        padding=padding,
-        data_format=data_format,
-        name=func_name)
+          t,
+          ksize=ksize,
+          strides=strides,
+          padding=padding,
+          data_format=data_format,
+          name=func_name)
       if data_format == "NCHW":
         t = test_util.NHWCToNCHW(t)
 
-      t_g = gradients_impl.gradients(t ** 2, input_tensor)[0]
+      t_g = gradients_impl.gradients(t**2, input_tensor)[0]
       err = gradient_checker.compute_gradient_error(
           input_tensor,
           input_sizes,
@@ -952,7 +952,7 @@ class PoolingTest(test.TestCase):
                              expected_input_backprop, input_sizes, output_sizes,
                              window_rows, window_cols, row_stride, col_stride,
                              padding, use_gpu):
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=use_gpu):
       input_tensor = constant_op.constant(input_data, shape=input_sizes)
       output_tensor = nn_ops.max_pool(input_tensor,
                                       [1, window_rows, window_cols, 1],
@@ -1312,8 +1312,10 @@ class PoolingTest(test.TestCase):
       A Tensor.
     """
     return gen_nn_ops._max_pool_grad_grad(orig_input, orig_output, grad,
-                                          [1, window_rows, window_cols, 1],
-                                          [1, row_stride, col_stride, 1], padding)
+                                          [1, window_rows, window_cols,
+                                           1], [1, row_stride, col_stride,
+                                                1], padding)
+
   def testAvgPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testAvgPoolGradValidPadding1_1(data_format, use_gpu)
@@ -1501,7 +1503,9 @@ def GetMaxPoolGradTest(input_size, filter_size, output_size, strides, padding):
 
   return Test
 
-def GetMaxPoolGradGradTest(input_size, filter_size, output_size, strides, padding):
+
+def GetMaxPoolGradGradTest(input_size, filter_size, output_size, strides,
+                           padding):
 
   def Test(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
@@ -1522,6 +1526,6 @@ if __name__ == "__main__":
             GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
                                padding_))
     setattr(PoolingTest, "testMaxPoolGradGrad_" + name_,
-            GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_, stride_,
-                                   padding_))
+            GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
+                                   stride_, padding_))
   test.main()

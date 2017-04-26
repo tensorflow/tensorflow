@@ -38,6 +38,7 @@ See the @{$python/contrib.learn} guide.
 @@LinearEstimator
 @@LinearRegressor
 @@LogisticRegressor
+@@StateSavingRnnEstimator
 @@SVM
 @@SKCompat
 

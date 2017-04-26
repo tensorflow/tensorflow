@@ -30,6 +30,16 @@ namespace tensorflow {
 
 Status ReadEventFromFile(const string& dump_file_path, Event* event);
 
+struct DebugWatchAndURLSpec {
+  DebugWatchAndURLSpec(const string& watch_key, const string& url,
+                       const bool gated_grpc)
+      : watch_key(watch_key), url(url), gated_grpc(gated_grpc) {}
+
+  const string watch_key;
+  const string url;
+  const bool gated_grpc;
+};
+
 class DebugIO {
  public:
   static Status PublishDebugMetadata(
@@ -51,6 +61,14 @@ class DebugIO {
   //   wall_time_us: Time stamp for the Tensor. Unit: microseconds (us).
   //   debug_urls: An array of debug target URLs, e.g.,
   //     "file:///foo/tfdbg_dump", "grpc://localhost:11011"
+  //   gated_grpc: Whether this call is subject to gRPC gating.
+  static Status PublishDebugTensor(const string& tensor_name,
+                                   const string& debug_op, const Tensor& tensor,
+                                   const uint64 wall_time_us,
+                                   const gtl::ArraySlice<string>& debug_urls,
+                                   const bool gated_grpc);
+
+  // Convenience overload of the method above for no gated_grpc by default.
   static Status PublishDebugTensor(const string& tensor_name,
                                    const string& debug_op, const Tensor& tensor,
                                    const uint64 wall_time_us,
@@ -63,6 +81,51 @@ class DebugIO {
   //   debug_urls: The set of debug URLs to publish the graph to.
   static Status PublishGraph(const Graph& graph,
                              const std::unordered_set<string>& debug_urls);
+
+  // Determine whether a copy node needs to perform deep-copy of input tensor.
+  //
+  // The input arguments contain sufficient information about the attached
+  // downstream debug ops for this method to determine whether all the said
+  // ops are disabled given the current status of the gRPC gating.
+  //
+  // Args:
+  //   specs: A vector of DebugWatchAndURLSpec carrying information about the
+  //     debug ops attached to the Copy node, their debug URLs and whether
+  //     they have the attribute value gated_grpc == True.
+  //
+  // Returns:
+  //   Whether any of the attached downstream debug ops is enabled given the
+  //   current status of the gRPC gating.
+  static bool IsCopyNodeGateOpen(
+      const std::vector<DebugWatchAndURLSpec>& specs);
+
+  // Determine whether a debug node needs to proceed given the current gRPC
+  // gating status.
+  //
+  // Args:
+  //   watch_key: debug tensor watch key, in the format of
+  //     tensor_name:debug_op, e.g., "Weights:0:DebugIdentity".
+  //   debug_urls: the debug URLs of the debug node.
+  //
+  // Returns:
+  //   Whether this debug op should proceed.
+  static bool IsDebugNodeGateOpen(const string& watch_key,
+                                  const std::vector<string>& debug_urls);
+
+  // Determine whether debug information should be sent through a grpc://
+  // debug URL given the current gRPC gating status.
+  //
+  // Args:
+  //   watch_key: debug tensor watch key, in the format of
+  //     tensor_name:debug_op, e.g., "Weights:0:DebugIdentity".
+  //   debug_url: the debug URL, e.g., "grpc://localhost:3333",
+  //     "file:///tmp/tfdbg_1".
+  //
+  // Returns:
+  //   Whether the sending of debug data to the debug_url should
+  //     proceed.
+  static bool IsDebugURLGateOpen(const string& watch_key,
+                                 const string& debug_url);
 
   static Status CloseDebugURL(const string& debug_url);
 
@@ -166,10 +229,12 @@ class DebugGrpcChannel {
   //   True iff the write is successful.
   bool WriteEvent(const Event& event);
 
-  // Close the stream and the channel.
-  Status Close();
+  // Receive EventReplies from server (if any) and close the stream and the
+  // channel.
+  Status ReceiveServerRepliesAndClose();
 
  private:
+  string url_;
   ::grpc::ClientContext ctx_;
   std::shared_ptr<::grpc::Channel> channel_;
   std::unique_ptr<EventListener::Stub> stub_;
@@ -182,12 +247,10 @@ class DebugGrpcChannel {
 class DebugGrpcIO {
  public:
   // Send a tensor through a debug gRPC stream.
-  static Status SendTensorThroughGrpcStream(const string& node_name,
-                                            const int32 output_slot,
-                                            const string& debug_op,
-                                            const Tensor& tensor,
-                                            const uint64 wall_time_us,
-                                            const string& grpc_stream_url);
+  static Status SendTensorThroughGrpcStream(
+      const string& node_name, const int32 output_slot, const string& debug_op,
+      const Tensor& tensor, const uint64 wall_time_us,
+      const string& grpc_stream_url, const bool gated);
 
   // Send an Event proto through a debug gRPC stream.
   // Thread-safety: Safe with respect to other calls to the same method and
@@ -195,15 +258,53 @@ class DebugGrpcIO {
   static Status SendEventProtoThroughGrpcStream(const Event& event_proto,
                                                 const string& grpc_stream_url);
 
+  // Check whether a debug watch key is allowed to send data to a given grpc://
+  // debug URL given the current gating status.
+  //
+  // Args:
+  //   watch_key: debug tensor watch key, in the format of
+  //     tensor_name:debug_op, e.g., "Weights:0:DebugIdentity".
+  //   grpc_debug_url: the debug URL, e.g., "grpc://localhost:3333",
+  //
+  // Returns:
+  //   Whether the sending of debug data to grpc_debug_url should
+  //     proceed.
+  static bool IsGateOpen(const string& watch_key, const string& grpc_debug_url);
+
   // Close a gRPC stream to the given address, if it exists.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to SendTensorThroughGrpcStream().
   static Status CloseGrpcStream(const string& grpc_stream_url);
 
+  // Enable a debug watch key at a grpc:// debug URL.
+  static void EnableWatchKey(const string& grpc_debug_url,
+                             const string& watch_key);
+
+  // Disable a debug watch key at a grpc:// debug URL.
+  static void DisableWatchKey(const string& grpc_debug_url,
+                              const string& watch_key);
+
  private:
+  // Returns a global map from grpc debug URLs to the corresponding
+  // DebugGrpcChannels.
+  static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+  GetStreamChannels();
+
+  // Returns a global map from grpc debug URLs to the enabled gated debug nodes.
+  // The keys are grpc:// URLs of the debug servers, e.g., "grpc://foo:3333".
+  // Each value element of the value has the format
+  // <node_name>:<output_slot>:<debug_op>", e.g.,
+  // "Weights_1:0:DebugNumericSummary".
+  static std::unordered_map<string, std::unordered_set<string>>*
+  GetEnabledWatchKeys();
+
+  static void ClearEnabledWatchKeys();
+  static void CreateEmptyEnabledSet(const string& grpc_debug_url);
+
   static mutex streams_mu;
-  static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>
-      stream_channels GUARDED_BY(streams_mu);
+
+  friend class GrpcDebugTest;
+  friend class DebugNumericSummaryOpTest;
 };
 
 }  // namespace tensorflow

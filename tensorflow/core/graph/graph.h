@@ -84,12 +84,12 @@ class Node {
   const OpDef& op_def() const { return *props_->op_def_; }
 
   // input and output types
-  int num_inputs() const { return props_->input_types_.size(); }
-  DataType input_type(int i) const { return props_->input_types_[i]; }
+  int32 num_inputs() const { return props_->input_types_.size(); }
+  DataType input_type(int32 i) const { return props_->input_types_[i]; }
   const DataTypeVector& input_types() const { return props_->input_types_; }
 
-  int num_outputs() const { return props_->output_types_.size(); }
-  DataType output_type(int o) const { return props_->output_types_[o]; }
+  int32 num_outputs() const { return props_->output_types_.size(); }
+  DataType output_type(int32 o) const { return props_->output_types_[o]; }
   const DataTypeVector& output_types() const { return props_->output_types_; }
 
   // This gives the device the runtime has assigned this node to.  If
@@ -323,6 +323,12 @@ class Graph {
   // Removes edge from the graph.
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
+
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib);
 
   // The number of live nodes in the graph.
   //

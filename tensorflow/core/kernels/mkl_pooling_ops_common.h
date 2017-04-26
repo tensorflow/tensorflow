@@ -76,17 +76,16 @@ typedef struct {
   size_t in_strides[4];
   size_t out_sizes[4];
   size_t out_strides[4];
-  int    in_offset[4];
+  int in_offset[4];
   size_t kernel_stride[2];
   size_t kernel_size[2];
 } MklPoolingOpParams;
 
 // Transfers the right parameters for pooling to the op parameters
 // Updates context->status if there is an invalid input.
-void ExtractMklOpParams(OpKernelContext* context,
-                        TensorFormat data_format,
-                        const MklPoolParameters &params,
-                        MklPoolingOpParams *mkl_params);
+void ExtractMklOpParams(OpKernelContext* context, TensorFormat data_format,
+                        const MklPoolParameters& params,
+                        MklPoolingOpParams* mkl_params);
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

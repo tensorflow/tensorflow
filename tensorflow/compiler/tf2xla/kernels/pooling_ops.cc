@@ -129,14 +129,14 @@ class MaxPool2DOp : public MaxPoolOp {
                 errors::InvalidArgument("Invalid data format"));
   }
 };
-REGISTER_XLA_OP("MaxPool", MaxPool2DOp);
+REGISTER_XLA_OP(Name("MaxPool"), MaxPool2DOp);
 
 class MaxPool3DOp : public MaxPoolOp {
  public:
   explicit MaxPool3DOp(OpKernelConstruction* ctx)
       : MaxPoolOp(ctx, /*num_spatial_dims=*/3) {}
 };
-REGISTER_XLA_OP("MaxPool3D", MaxPool3DOp);
+REGISTER_XLA_OP(Name("MaxPool3D"), MaxPool3DOp);
 
 // Common computation shared between AvgPool and AvgPoolGrad. Divide each
 // element of an image by the count of elements that contributed to that
@@ -224,14 +224,14 @@ class AvgPool2DOp : public AvgPoolOp {
                 errors::InvalidArgument("Invalid data format"));
   }
 };
-REGISTER_XLA_OP("AvgPool", AvgPool2DOp);
+REGISTER_XLA_OP(Name("AvgPool"), AvgPool2DOp);
 
 class AvgPool3DOp : public AvgPoolOp {
  public:
   explicit AvgPool3DOp(OpKernelConstruction* ctx)
       : AvgPoolOp(ctx, /*num_spatial_dims=*/3) {}
 };
-REGISTER_XLA_OP("AvgPool3D", AvgPool3DOp);
+REGISTER_XLA_OP(Name("AvgPool3D"), AvgPool3DOp);
 
 // The operation to compute MaxPool gradients.
 // It takes three inputs:
@@ -314,14 +314,14 @@ class MaxPool2DGradOp : public MaxPoolGradOp {
                 errors::InvalidArgument("Invalid data format"));
   }
 };
-REGISTER_XLA_OP("MaxPoolGrad", MaxPool2DGradOp);
+REGISTER_XLA_OP(Name("MaxPoolGrad"), MaxPool2DGradOp);
 
 class MaxPool3DGradOp : public MaxPoolGradOp {
  public:
   explicit MaxPool3DGradOp(OpKernelConstruction* ctx)
       : MaxPoolGradOp(ctx, /*num_spatial_dims=*/3) {}
 };
-REGISTER_XLA_OP("MaxPool3DGrad", MaxPool3DGradOp);
+REGISTER_XLA_OP(Name("MaxPool3DGrad"), MaxPool3DGradOp);
 
 // Average-pooling gradient
 class AvgPoolGradOp : public XlaOpKernel {
@@ -455,14 +455,14 @@ class AvgPool2DGradOp : public AvgPoolGradOp {
                 errors::InvalidArgument("Invalid data format"));
   }
 };
-REGISTER_XLA_OP("AvgPoolGrad", AvgPool2DGradOp);
+REGISTER_XLA_OP(Name("AvgPoolGrad"), AvgPool2DGradOp);
 
 class AvgPool3DGradOp : public AvgPoolGradOp {
  public:
   explicit AvgPool3DGradOp(OpKernelConstruction* ctx)
       : AvgPoolGradOp(ctx, /*num_spatial_dims=*/3) {}
 };
-REGISTER_XLA_OP("AvgPool3DGrad", AvgPool3DGradOp);
+REGISTER_XLA_OP(Name("AvgPool3DGrad"), AvgPool3DGradOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

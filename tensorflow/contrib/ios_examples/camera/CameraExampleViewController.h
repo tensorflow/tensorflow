@@ -29,7 +29,6 @@
   dispatch_queue_t videoDataOutputQueue;
   AVCaptureStillImageOutput *stillImageOutput;
   UIView *flashView;
-  UIImage *square;
   BOOL isUsingFrontFacingCamera;
   AVSpeechSynthesizer *synth;
   NSMutableDictionary *oldPredictionValues;

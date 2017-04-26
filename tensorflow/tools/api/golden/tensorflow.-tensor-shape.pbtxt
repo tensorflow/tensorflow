@@ -1,0 +1,73 @@
+path: "tensorflow.TensorShape"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShape\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "dims"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "ndims"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'dims\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_list"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_proto"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "assert_has_rank"
+    argspec: "args=[\'self\', \'rank\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "assert_is_compatible_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "assert_is_fully_defined"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "assert_same_rank"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "concatenate"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_compatible_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_fully_defined"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "merge_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "num_elements"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_rank"
+    argspec: "args=[\'self\', \'rank\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_rank_at_least"
+    argspec: "args=[\'self\', \'rank\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_rank_at_most"
+    argspec: "args=[\'self\', \'rank\'], varargs=None, keywords=None, defaults=None"
+  }
+}

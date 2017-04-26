@@ -282,7 +282,7 @@ enough that it can be stored in @{tf.constant TensorFlow constants}. The
 following code produces the simplest possible input pipeline:
 
 ```python
-# Define the test inputs
+# Define the training inputs
 def get_train_inputs():
   x = tf.constant(training_set.data)
   y = tf.constant(training_set.target)

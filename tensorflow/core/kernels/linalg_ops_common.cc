@@ -95,6 +95,10 @@ void LinearAlgebraOp<Scalar>::Compute(OpKernelContext* context) {
   PrepareOutputs(context, input_matrix_shapes, batch_shape, &outputs,
                  &output_matrix_shapes);
 
+  // Perform batch-wide pre-computions, if any.
+  BatchPreCompute(context, inputs, input_matrix_shapes, outputs,
+                  output_matrix_shapes);
+
   // Process the individual matrix problems in parallel using a threadpool.
   auto shard = [this, &inputs, &input_matrix_shapes, &outputs,
                 &output_matrix_shapes, context](int64 begin, int64 end) {
@@ -106,6 +110,10 @@ void LinearAlgebraOp<Scalar>::Compute(OpKernelContext* context) {
   auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
   Shard(worker_threads.num_threads, worker_threads.workers,
         batch_shape.num_elements(), GetCostPerUnit(input_matrix_shapes), shard);
+
+  // Perform batch-wide post-computions, if any.
+  BatchPostCompute(context, inputs, input_matrix_shapes, outputs,
+                   output_matrix_shapes);
 }
 
 template <typename Scalar>

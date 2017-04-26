@@ -34,12 +34,17 @@ def text_summary(name, tensor, collections=None):
   """Summarizes textual data.
 
   Text data summarized via this plugin will be visible in the Text Dashboard
-  in TensorBoard.
+  in TensorBoard. The standard TensorBoard Text Dashboard will render markdown
+  in the strings, and will automatically organize 1d and 2d tensors into tables.
+  If a tensor with more than 2 dimensions is provided, a 2d subarray will be
+  displayed along with a warning message. (Note that this behavior is not
+  intrinsic to the text summary api, but rather to the default TensorBoard text
+  plugin.)
 
   Args:
     name: A name for the generated node. Will also serve as a series name in
       TensorBoard.
-    tensor: a scalar string-type Tensor to summarize.
+    tensor: a string-type Tensor to summarize.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
 
@@ -49,17 +54,13 @@ def text_summary(name, tensor, collections=None):
     type `string` which contains `Summary` protobufs.
 
   Raises:
-    ValueError: If tensor has the wrong shape or type.
+    ValueError: If tensor has the wrong type.
   """
   if tensor.dtype != dtypes.string:
     raise ValueError("Expected tensor %s to have dtype string, got %s" %
                      (tensor.name, tensor.dtype))
 
-  if tensor.shape.ndims != 0:
-    raise ValueError("Expected tensor %s to be scalar, has shape %s" %
-                     (tensor.name, tensor.shape))
-
-  t_summary = tensor_summary(name, tensor, collections)
+  t_summary = tensor_summary(name, tensor, collections=collections)
   text_assets = plugin_asset.get_plugin_asset(TextSummaryPluginAsset)
   text_assets.register_tensor(t_summary.op.name)
   return t_summary

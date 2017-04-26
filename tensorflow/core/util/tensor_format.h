@@ -177,7 +177,7 @@ inline TensorShape ShapeFromFormat(TensorFormat format, int64 N,
                                    gtl::ArraySlice<int64> spatial, int64 C) {
   gtl::InlinedVector<int64, 5> dim_sizes(spatial.size() + 2);
   dim_sizes[GetTensorBatchDimIndex(dim_sizes.size(), format)] = N;
-  for (int dim = 0; dim < spatial.size(); dim++) {
+  for (int dim = 0; static_cast<size_t>(dim) < spatial.size(); dim++) {
     dim_sizes[GetTensorSpatialDimIndex(dim_sizes.size(), format, dim)] =
         spatial[dim];
   }

@@ -56,6 +56,48 @@ GridSpec = collections.namedtuple("GridSpec", ["min", "max", "shape"])
 ErrorSpec = collections.namedtuple("ErrorSpec", ["rtol", "atol"])
 
 
+class NdtriTest(test.TestCase):
+
+  def assertAllFinite(self, tensor):
+    is_finite = np.isfinite(tensor.eval())
+    all_true = np.ones_like(is_finite, dtype=np.bool)
+    self.assertAllEqual(all_true, is_finite)
+
+  def testNdtri(self):
+    """Verifies that ndtri computation is correct."""
+    with self.test_session():
+      p = np.linspace(0., 1.0, 50).astype(np.float64)
+      # Quantile performs piecewise rational approximation so adding some
+      # special input values to make sure we hit all the pieces.
+      p = np.hstack((p, np.exp(-32), 1. - np.exp(-32),
+                     np.exp(-2), 1. - np.exp(-2)))
+      expected_x = special.ndtri(p)
+      x = special_math.ndtri(p)
+      self.assertAllClose(expected_x, x.eval(), atol=0.)
+
+  def _baseNdtriFiniteGradientTest(self, dtype):
+    """Verifies that ndtri has finite gradients at interesting points."""
+    g = ops.Graph()
+    with g.as_default():
+      # Tests gradients at 0, 1, and piece-wise boundaries.
+      p = variables.Variable(
+          np.array([0.,
+                    np.exp(-32.), np.exp(-2.),
+                    1. - np.exp(-2.), 1. - np.exp(-32.),
+                    1.]).astype(dtype))
+    value = special_math.ndtri(p)
+    grads = gradients_impl.gradients(value, p)
+    with self.test_session(graph=g):
+      variables.global_variables_initializer().run()
+      self.assertAllFinite(grads[0])
+
+  def testNdtriFiniteGradientFloat32(self):
+    self._baseNdtriFiniteGradientTest(np.float32)
+
+  def testNdtriFiniteGradientFloat64(self):
+    self._baseNdtriFiniteGradientTest(np.float64)
+
+
 class NdtrTest(test.TestCase):
   _use_log = False
   # Grid min/max chosen to ensure 0 < cdf(x) < 1.

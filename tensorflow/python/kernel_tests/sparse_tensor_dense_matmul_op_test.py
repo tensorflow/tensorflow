@@ -45,7 +45,12 @@ def _maybe_complex(x):
 
 class SparseTensorDenseMatMulTest(test.TestCase):
 
-  def _testMatmul(self, x, y, adjoint_a=False, adjoint_b=False):
+  def _testMatmul(self,
+                  x,
+                  y,
+                  adjoint_a=False,
+                  adjoint_b=False,
+                  indices_dtype=np.int64):
     x_mat = np.matrix(x)
     if adjoint_a:
       x_mat = x_mat.H
@@ -55,7 +60,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
 
     np_ans = x_mat * y_mat
 
-    x_indices = np.vstack(np.where(x)).astype(np.int64).T
+    x_indices = np.vstack(np.where(x)).astype(indices_dtype).T
     x_values = x[np.where(x)]
     x_shape = x.shape
 
@@ -82,13 +87,13 @@ class SparseTensorDenseMatMulTest(test.TestCase):
         else:
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
 
-  def _testBasic(self, np_dtype):
-    x = _maybe_complex(np.random.rand(10, 10).astype(np_dtype))
+  def _testBasic(self, value_dtype, indices_dtype=np.int64):
+    x = _maybe_complex(np.random.rand(10, 10).astype(value_dtype))
     x[np.abs(x) < 0.5] = 0  # Make it sparse
 
-    y = _maybe_complex(np.random.randn(10, 20).astype(np_dtype))
+    y = _maybe_complex(np.random.randn(10, 20).astype(value_dtype))
 
-    self._testMatmul(x, y)
+    self._testMatmul(x, y, indices_dtype=indices_dtype)
 
   def testBasic(self):
     np.random.seed(127)  # Repeatable results
@@ -97,6 +102,8 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     self._testBasic(np.float64)
     self._testBasic(np.complex64)
     self._testBasic(np.complex128)
+    self._testBasic(np.int32, indices_dtype=np.int32)
+    self._testBasic(np.float32, indices_dtype=np.int32)
 
   def testShapeInference(self):
     x = np.random.rand(10, 10)
@@ -122,6 +129,37 @@ class SparseTensorDenseMatMulTest(test.TestCase):
                                                          x_shape_inconsistent)
     with self.assertRaisesRegexp(ValueError, "Dimensions must be equal"):
       sparse_ops.sparse_tensor_dense_matmul(x_st_shape_inconsistent, y)
+
+  def testInvalidIndicesForSparseTensorDenseMatmul(self):
+    # Note: use_gpu=False because nice errors are only returned from CPU kernel.
+    with self.test_session(use_gpu=False):
+      indices = np.matrix([[1, 10]]).astype(np.int64)
+      values = np.array([10]).astype(np.float32)
+      shape = [3, 2]
+      sparse_t = sparse_tensor.SparseTensor(indices, values, shape)
+
+      # Test multiplying by both a small and large dense matrix, to hit
+      # both cases in the kernel.
+      dense_t = np.matrix([[1] * 5, [2] * 5], dtype=np.float32)
+      with self.assertRaisesOpError(
+          "k .10. from index.0,1. out of bounds .>=2."):
+        sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t).eval()
+      dense_t = np.matrix([[1] * 500, [2] * 500], dtype=np.float32)
+      with self.assertRaisesOpError(
+          "k .10. from index.0,1. out of bounds .>=2."):
+        sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t).eval()
+
+      # Repeat with adjoint_a, to get a different error.
+      dense_t = np.matrix([[1] * 5, [2] * 5, [3] * 5], dtype=np.float32)
+      with self.assertRaisesOpError(
+          "m .10. from index.0,1. out of bounds .>=2."):
+        sparse_ops.sparse_tensor_dense_matmul(
+            sparse_t, dense_t, adjoint_a=True).eval()
+      dense_t = np.matrix([[1] * 500, [2] * 500, [3] * 500], dtype=np.float32)
+      with self.assertRaisesOpError(
+          "m .10. from index.0,1. out of bounds .>=2."):
+        sparse_ops.sparse_tensor_dense_matmul(
+            sparse_t, dense_t, adjoint_a=True).eval()
 
   # Tests setting one dimension to be a high value.
   def _testLarge(self, np_dtype):

@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A powerful dynamic attention wrapper object.
-"""
+"""A powerful dynamic attention wrapper object."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -176,19 +175,18 @@ class LuongAttention(_BaseAttentionMechanism):
   "Effective Approaches to Attention-based Neural Machine Translation."
   EMNLP 2015.  https://arxiv.org/abs/1508.04025
 
-  The second is the normalized form.  This form is inspired by the
-  normalization proposed for Bahdanau attention in
-
-  Colin Raffel, Thang Luong, Peter J. Liu, Ron J. Weiss, and Douglas Eck.
-  "Online and Linear-Time Attention by Enforcing Monotonic Alignments."
-  (Eq. 15).
+  The second is the scaled form inspired partly by the normalized form of
+  Bahdanau attention.
 
   To enable the second form, construct the object with parameter
-  `normalize=True`.
+  `scale=True`.
   """
 
-  def __init__(self, num_units, memory, memory_sequence_length=None,
-               normalize=False, attention_r_initializer=None,
+  def __init__(self,
+               num_units,
+               memory,
+               memory_sequence_length=None,
+               scale=False,
                name="LuongAttention"):
     """Construct the AttentionMechanism mechanism.
 
@@ -199,38 +197,30 @@ class LuongAttention(_BaseAttentionMechanism):
       memory_sequence_length (optional): Sequence lengths for the batch entries
         in memory.  If provided, the memory tensor rows are masked with zeros
         for values past the respective sequence lengths.
-      normalize: Python boolean.  Whether to normalize the energy term.
-      attention_r_initializer:  Initial value of the post-normalization bias
-        when normalizing.  Default is `0`.
+      scale: Python boolean.  Whether to scale the energy term.
       name: Name to use when creating ops.
     """
     # For LuongAttention, we only transform the memory layer; thus
     # num_units **must** match expected the query depth.
     super(LuongAttention, self).__init__(
         query_layer=None,
-        memory_layer=layers_core.Dense(num_units, name="memory_layer"),
+        memory_layer=layers_core.Dense(
+            num_units, name="memory_layer", use_bias=False),
         memory=memory,
         memory_sequence_length=memory_sequence_length,
         name=name)
     self._num_units = num_units
-    self._normalize = normalize
+    self._scale = scale
     self._name = name
-    if normalize and attention_r_initializer is None:
-      attention_r_initializer = 0
-    if normalize:
-      with ops.name_scope(name, "LuongAttention",
-                          [memory, attention_r_initializer]):
-        attention_r_initializer = ops.convert_to_tensor(
-            attention_r_initializer, dtype=self.values.dtype,
-            name="attention_r_initializer")
-    self._attention_r_initializer = attention_r_initializer
 
-  def __call__(self, query):
+  def __call__(self, query, tiling_factor=1):
     """Score the query based on the keys and values.
 
     Args:
       query: Tensor of dtype matching `self.values` and shape
         `[batch_size, query_depth]`.
+      tiling_factor: An integer factor for which to tile the batch dimension.
+        Used with BeamSearchDecoder.
 
     Returns:
       score: Tensor of dtype matching `self.values` and shape
@@ -249,7 +239,7 @@ class LuongAttention(_BaseAttentionMechanism):
           % (query, depth, self.keys, key_units, key_units))
     dtype = query.dtype
 
-    with ops.name_scope(None, "LuongAttentionCall", [query]):
+    with variable_scope.variable_scope(None, "luong_attention", [query]):
       # Reshape from [batch_size, depth] to [batch_size, 1, depth]
       # for matmul.
       query = array_ops.expand_dims(query, 1)
@@ -266,16 +256,11 @@ class LuongAttention(_BaseAttentionMechanism):
       score = math_ops.matmul(query, self.keys, transpose_b=True)
       score = array_ops.squeeze(score, [1])
 
-      if self._normalize:
-        # Scalar used in weight normalization
+      if self._scale:
+        # Scalar used in weight scaling
         g = variable_scope.get_variable(
-            "attention_g", dtype=dtype,
-            initializer=math.sqrt((1. / self._num_units)))
-        # Scalar bias added to attention scores
-        r = variable_scope.get_variable(
-            "attention_r", dtype=dtype,
-            initializer=self._attention_r_initializer)
-        score = g * score + r
+            "attention_g", dtype=dtype, initializer=1.)
+        score = g * score
 
     return score
 
@@ -290,18 +275,23 @@ class BahdanauAttention(_BaseAttentionMechanism):
   "Neural Machine Translation by Jointly Learning to Align and Translate."
   ICLR 2015. https://arxiv.org/abs/1409.0473
 
-  The second is the normalized form, Raffel attention, as described in:
+  The second is the normalized form.  This form is inspired by the
+  weight normalization article:
 
-  Colin Raffel, Thang Luong, Peter J. Liu, Ron J. Weiss, and Douglas Eck.
-  "Online and Linear-Time Attention by Enforcing Monotonic Alignments."
-  (Eq. 15).
+  Tim Salimans, Diederik P. Kingma.
+  "Weight Normalization: A Simple Reparameterization to Accelerate
+   Training of Deep Neural Networks."
+  https://arxiv.org/abs/1602.07868
 
   To enable the second form, construct the object with parameter
   `normalize=True`.
   """
 
-  def __init__(self, num_units, memory, memory_sequence_length=None,
-               normalize=False, attention_r_initializer=None,
+  def __init__(self,
+               num_units,
+               memory,
+               memory_sequence_length=None,
+               normalize=False,
                name="BahdanauAttention"):
     """Construct the Attention mechanism.
 
@@ -313,45 +303,39 @@ class BahdanauAttention(_BaseAttentionMechanism):
         in memory.  If provided, the memory tensor rows are masked with zeros
         for values past the respective sequence lengths.
       normalize: Python boolean.  Whether to normalize the energy term.
-      attention_r_initializer:  Initial value of the post-normalization bias
-        when normalizing.  Default is `0`.
       name: Name to use when creating ops.
     """
     super(BahdanauAttention, self).__init__(
-        query_layer=layers_core.Dense(num_units, name="query_layer"),
-        memory_layer=layers_core.Dense(num_units, name="memory_layer"),
+        query_layer=layers_core.Dense(
+            num_units, name="query_layer", use_bias=False),
+        memory_layer=layers_core.Dense(
+            num_units, name="memory_layer", use_bias=False),
         memory=memory,
         memory_sequence_length=memory_sequence_length,
         name=name)
     self._num_units = num_units
     self._normalize = normalize
     self._name = name
-    if normalize and attention_r_initializer is None:
-      attention_r_initializer = 0
-    if normalize:
-      with ops.name_scope(name, "BahdanauAttention",
-                          [memory, attention_r_initializer]):
-        attention_r_initializer = ops.convert_to_tensor(
-            attention_r_initializer, dtype=self.values.dtype,
-            name="attention_r_initializer")
-    self._attention_r_initializer = attention_r_initializer
 
-  def __call__(self, query):
+  def __call__(self, query, tiling_factor=1):
     """Score the query based on the keys and values.
 
     Args:
       query: Tensor of dtype matching `self.values` and shape
         `[batch_size, query_depth]`.
+      tiling_factor: An integer factor for which to tile the batch dimension.
+        Used with BeamSearchDecoder.
 
     Returns:
       score: Tensor of dtype matching `self.values` and shape
         `[batch_size, max_time]` (`max_time` is memory's `max_time`).
     """
-    with ops.name_scope(None, "BahndahauAttentionCall", [query]):
+    with variable_scope.variable_scope(None, "bahdanau_attention", [query]):
       processed_query = self.query_layer(query) if self.query_layer else query
       dtype = processed_query.dtype
       # Reshape from [batch_size, ...] to [batch_size, 1, ...] for broadcasting.
       processed_query = array_ops.expand_dims(processed_query, 1)
+      keys = _maybe_tile_batch(self.keys, tiling_factor)
       v = variable_scope.get_variable(
           "attention_v", [self._num_units], dtype=dtype)
       if self._normalize:
@@ -363,26 +347,22 @@ class BahdanauAttention(_BaseAttentionMechanism):
         b = variable_scope.get_variable(
             "attention_b", [self._num_units], dtype=dtype,
             initializer=init_ops.zeros_initializer())
-        # Scalar bias added to attention scores
-        r = variable_scope.get_variable(
-            "attention_r", dtype=dtype,
-            initializer=self._attention_r_initializer)
         # normed_v = g * v / ||v||
         normed_v = g * v * math_ops.rsqrt(
             math_ops.reduce_sum(math_ops.square(v)))
         score = math_ops.reduce_sum(
-            normed_v * math_ops.tanh(self.keys + processed_query + b), [2]) + r
+            normed_v * math_ops.tanh(keys + processed_query + b), [2])
       else:
-        score = math_ops.reduce_sum(
-            v * math_ops.tanh(self.keys + processed_query), [2])
+        score = math_ops.reduce_sum(v * math_ops.tanh(keys + processed_query),
+                                    [2])
 
     return score
 
 
 class AttentionWrapperState(
-    collections.namedtuple(
-        "AttentionWrapperState", (
-            "cell_state", "attention", "time", "attention_history"))):
+    collections.namedtuple("AttentionWrapperState",
+                           ("cell_state", "attention", "time",
+                            "alignment_history"))):
   """`namedtuple` storing the state of a `AttentionWrapper`.
 
   Contains:
@@ -390,10 +370,29 @@ class AttentionWrapperState(
     - `cell_state`: The state of the wrapped `RNNCell`.
     - `attention`: The attention emitted at the previous time step.
     - `time`: int32 scalar containing the current time step.
-    - `attention_history`: (if enabled) a `TensorArray` containing attention
+    - `alignment_history`: (if enabled) a `TensorArray` containing alignment
        matrices from all time steps.  Call `stack()` to convert to a `Tensor`.
   """
-  pass
+
+  def clone(self, **kwargs):
+    """Clone this object, overriding components provided by kwargs.
+
+    Example:
+
+    ```python
+    initial_state = attention_wrapper.zero_state(dtype=..., batch_size=...)
+    initial_state = initial_state.clone(cell_state=encoder_state)
+    ```
+
+    Args:
+      **kwargs: Any properties of the state object to replace in the returned
+        `AttentionWrapperState`.
+
+    Returns:
+      A new `AttentionWrapperState` whose properties are the same as
+      this one, except any overriden properties as provided in `kwargs`.
+    """
+    return super(AttentionWrapperState, self)._replace(**kwargs)
 
 
 def hardmax(logits, name=None):
@@ -425,7 +424,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
                cell,
                attention_mechanism,
                attention_size,
-               attention_history=False,
+               alignment_history=False,
                cell_input_fn=None,
                probability_fn=None,
                output_attention=True,
@@ -437,7 +436,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       attention_mechanism: An instance of `AttentionMechanism`.
       attention_size: Python integer, the depth of the attention (output)
         tensor.
-      attention_history: Python boolean, whether to store attention history
+      alignment_history: Python boolean, whether to store alignment history
         from all time steps in the final output state (currently stored as a
         time major `TensorArray` on which you must call `stack()`).
       cell_input_fn: (optional) A `callable`.  The default is:
@@ -455,6 +454,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         up to the next cell in an RNN stack or to the top RNN output.
       name: Name to use when creating ops.
     """
+    super(AttentionWrapper, self).__init__()
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError(
           "cell must be an RNNCell, saw type: %s" % type(cell).__name__)
@@ -473,7 +473,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     if probability_fn is None:
       probability_fn = nn_ops.softmax
     else:
-      if not callable(cell_input_fn):
+      if not callable(probability_fn):
         raise TypeError(
             "probability_fn must be callable, saw type: %s"
             % type(probability_fn).__name__)
@@ -481,11 +481,11 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     self._attention_mechanism = attention_mechanism
     self._attention_size = attention_size
     self._attention_layer = layers_core.Dense(
-        attention_size, bias_initializer=None)
+        attention_size, name="attention_layer", use_bias=False)
     self._cell_input_fn = cell_input_fn
     self._probability_fn = probability_fn
     self._output_attention = output_attention
-    self._attention_history = attention_history
+    self._alignment_history = alignment_history
 
   @property
   def output_size(self):
@@ -500,23 +500,23 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         cell_state=self._cell.state_size,
         time=tensor_shape.TensorShape([]),
         attention=self._attention_size,
-        attention_history=())  # attention_history is sometimes a TensorArray
+        alignment_history=())  # alignment_history is sometimes a TensorArray
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      if self._attention_history:
-        attention_history = tensor_array_ops.TensorArray(
+      if self._alignment_history:
+        alignment_history = tensor_array_ops.TensorArray(
             dtype=dtype, size=0, dynamic_size=True)
       else:
-        attention_history = ()
+        alignment_history = ()
       return AttentionWrapperState(
           cell_state=self._cell.zero_state(batch_size, dtype),
           time=array_ops.zeros([], dtype=dtypes.int32),
-          attention=_zero_state_tensors(
-              self._attention_size, batch_size, dtype),
-          attention_history=attention_history)
+          attention=_zero_state_tensors(self._attention_size, batch_size,
+                                        dtype),
+          alignment_history=alignment_history)
 
-  def __call__(self, inputs, state, scope=None):
+  def __call__(self, inputs, state, tiling_factor=1):
     """Perform a step of attention-wrapped RNN.
 
     - Step 1: Mix the `inputs` and previous step's `attention` output via
@@ -535,7 +535,8 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       inputs: (Possibly nested tuple of) Tensor, the input at this time step.
       state: An instance of `AttentionWrapperState` containing
         tensors from the previous time step.
-      scope: Must be `None`.
+      tiling_factor: An integer factor for which to tile the batch dimension.
+        Used with BeamSearchDecoder.
 
     Returns:
       A tuple `(attention_or_cell_output, next_state)`, where:
@@ -547,21 +548,17 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     Raises:
       NotImplementedError: if `scope` is not `None`.
     """
-    if scope is not None:
-      raise NotImplementedError("scope not None is not supported")
-
     # Step 1: Calculate the true inputs to the cell based on the
     # previous attention value.
     cell_inputs = self._cell_input_fn(inputs, state.attention)
     cell_state = state.cell_state
-
     cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
 
-    score = self._attention_mechanism(cell_output)
+    score = self._attention_mechanism(cell_output, tiling_factor)
     alignments = self._probability_fn(score)
 
     # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
-    alignments = array_ops.expand_dims(alignments, 1)
+    expanded_alignments = array_ops.expand_dims(alignments, 1)
     # Context is the inner product of alignments and values along the
     # memory time dimension.
     # alignments shape is
@@ -571,25 +568,54 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     # the batched matmul is over memory_time, so the output shape is
     #   [batch_size, 1, attention_mechanism.num_units].
     # we then squeeze out the singleton dim.
-    context = math_ops.matmul(alignments, self._attention_mechanism.values)
+    attention_mechanism_values = _maybe_tile_batch(
+        self._attention_mechanism.values, tiling_factor)
+
+    context = math_ops.matmul(expanded_alignments, attention_mechanism_values)
     context = array_ops.squeeze(context, [1])
 
     attention = self._attention_layer(
         array_ops.concat([cell_output, context], 1))
 
-    if self._attention_history:
-      attention_history = state.attention_history.write(
-          state.time, attention)
+    if self._alignment_history:
+      alignment_history = state.alignment_history.write(
+          state.time, alignments)
     else:
-      attention_history = ()
+      alignment_history = ()
 
     next_state = AttentionWrapperState(
         time=state.time + 1,
         cell_state=next_cell_state,
         attention=attention,
-        attention_history=attention_history)
+        alignment_history=alignment_history)
 
     if self._output_attention:
       return attention, next_state
     else:
       return cell_output, next_state
+
+
+def _maybe_tile_batch(t, tiling_factor):
+  """Tile the tensor's batch by tiling_factor.
+
+  Here, we tile t such that it looks like [b1, b1, ..., ..., bN, bN, ...].
+
+  Args:
+    t: The tensor to tile.
+    tiling_factor: The amount to tile it.
+
+  Returns:
+    The tiled tensor.
+  """
+  if tiling_factor == 1:
+    return t
+
+  shape = t.get_shape().as_list()
+  shape = [shape[0] * tiling_factor] + shape[1:]
+  tile_values = len(shape)*[1]
+  tile_values.insert(1, tiling_factor)
+  t = array_ops.expand_dims(t, 1)
+  t = array_ops.tile(t, tile_values)
+  t = array_ops.reshape(t, shape)
+  t.set_shape(shape)
+  return t

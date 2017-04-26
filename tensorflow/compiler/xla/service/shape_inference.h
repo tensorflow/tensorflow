@@ -190,6 +190,10 @@ class ShapeInference {
       BinaryOperation operation, const Shape& lhs, const Shape& rhs,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
+  // Helper for inferring the shape of Clamp ops.
+  static StatusOr<Shape> InferClampShape(const Shape& min, const Shape& operand,
+                                         const Shape& max);
+
   // Helper for inferring the shape of Select ops.
   static StatusOr<Shape> InferSelectShape(const Shape& pred,
                                           const Shape& on_true,

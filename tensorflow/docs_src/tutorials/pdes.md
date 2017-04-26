@@ -6,7 +6,6 @@ pedestrian) example of using TensorFlow for simulating the behavior of a
 https://en.wikipedia.org/wiki/Partial_differential_equation).
 We'll simulate the surface of square pond as a few raindrops land on it.
 
-Note: This tutorial was originally prepared as an IPython notebook.
 
 ## Basic Setup
 

@@ -297,8 +297,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     acc = ea.EventAccumulator(gen)
     gen.AddHealthPill(13371337, 41, 'Add', 0, range(1, 13))
     gen.AddHealthPill(13381338, 42, 'Add', 1, range(42, 54))
-
-    acc = ea.EventAccumulator(gen)
     acc.Reload()
 
     # Retrieve the health pills for each node name.
@@ -320,6 +318,14 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
             output_slot=1,
             value=range(42, 54)),
         gotten_events[1])
+
+  def testGetOpsWithHealthPills(self):
+    gen = _EventGenerator(self)
+    acc = ea.EventAccumulator(gen)
+    gen.AddHealthPill(13371337, 41, 'Add', 0, range(1, 13))
+    gen.AddHealthPill(13381338, 42, 'MatMul', 1, range(42, 54))
+    acc.Reload()
+    self.assertItemsEqual(['Add', 'MatMul'], acc.GetOpsWithHealthPills())
 
   def testHistograms(self):
     gen = _EventGenerator(self)
