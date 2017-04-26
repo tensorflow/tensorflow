@@ -56,15 +56,15 @@ class NodeNameChecksTest(test_util.TensorFlowTestCase):
 
   def testIsDebugNode(self):
     self.assertTrue(
-        debug_data._is_debug_node("__dbg_ns1/ns2/node3:0_0_DebugIdentity"))
+        debug_data.is_debug_node("__dbg_ns1/ns2/node3:0_0_DebugIdentity"))
 
     self.assertFalse(
-        debug_data._is_debug_node("dbg_ns1/ns2/node3:0_0_DebugIdentity"))
+        debug_data.is_debug_node("dbg_ns1/ns2/node3:0_0_DebugIdentity"))
     self.assertFalse(
-        debug_data._is_debug_node("_dbg_ns1/ns2/node3:0_0_DebugIdentity"))
+        debug_data.is_debug_node("_dbg_ns1/ns2/node3:0_0_DebugIdentity"))
     self.assertFalse(
-        debug_data._is_debug_node("_dbgns1/ns2/node3:0_0_DebugIdentity"))
-    self.assertFalse(debug_data._is_debug_node("__copy_ns1/ns2/node3_0"))
+        debug_data.is_debug_node("_dbgns1/ns2/node3:0_0_DebugIdentity"))
+    self.assertFalse(debug_data.is_debug_node("__copy_ns1/ns2/node3_0"))
 
 
 class ParseDebugNodeNameTest(test_util.TensorFlowTestCase):
@@ -72,7 +72,7 @@ class ParseDebugNodeNameTest(test_util.TensorFlowTestCase):
   def testParseDebugNodeName_valid(self):
     debug_node_name_1 = "__dbg_ns_a/ns_b/node_c:1_0_DebugIdentity"
     (watched_node, watched_output_slot, debug_op_index,
-     debug_op) = debug_data._parse_debug_node_name(debug_node_name_1)
+     debug_op) = debug_data.parse_debug_node_name(debug_node_name_1)
 
     self.assertEqual("ns_a/ns_b/node_c", watched_node)
     self.assertEqual(1, watched_output_slot)
@@ -83,20 +83,20 @@ class ParseDebugNodeNameTest(test_util.TensorFlowTestCase):
     invalid_debug_node_name_1 = "__copy_ns_a/ns_b/node_c:1_0_DebugIdentity"
 
     with self.assertRaisesRegexp(ValueError, "Invalid prefix"):
-      debug_data._parse_debug_node_name(invalid_debug_node_name_1)
+      debug_data.parse_debug_node_name(invalid_debug_node_name_1)
 
   def testParseDebugNodeName_missingDebugOpIndex(self):
     invalid_debug_node_name_1 = "__dbg_node1:0_DebugIdentity"
 
     with self.assertRaisesRegexp(ValueError, "Invalid debug node name"):
-      debug_data._parse_debug_node_name(invalid_debug_node_name_1)
+      debug_data.parse_debug_node_name(invalid_debug_node_name_1)
 
   def testParseDebugNodeName_invalidWatchedTensorName(self):
     invalid_debug_node_name_1 = "__dbg_node1_0_DebugIdentity"
 
     with self.assertRaisesRegexp(ValueError,
                                  "Invalid tensor name in debug node name"):
-      debug_data._parse_debug_node_name(invalid_debug_node_name_1)
+      debug_data.parse_debug_node_name(invalid_debug_node_name_1)
 
 
 class HasNanOrInfTest(test_util.TensorFlowTestCase):

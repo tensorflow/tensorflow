@@ -59,9 +59,9 @@ TEST_F(UtilsTest, NodePosition) {
 }
 
 TEST_F(UtilsTest, AddNodeNamePrefix) {
-  EXPECT_EQ("OPTIMIZED-abc", AddPrefixToNodeName("abc", "OPTIMIZED"));
-  EXPECT_EQ("^OPTIMIZED-abc", AddPrefixToNodeName("^abc", "OPTIMIZED"));
-  EXPECT_EQ("OPTIMIZED-", AddPrefixToNodeName("", "OPTIMIZED"));
+  EXPECT_EQ("OPTIMIZED/abc", AddPrefixToNodeName("abc", "OPTIMIZED"));
+  EXPECT_EQ("^OPTIMIZED/abc", AddPrefixToNodeName("^abc", "OPTIMIZED"));
+  EXPECT_EQ("OPTIMIZED/", AddPrefixToNodeName("", "OPTIMIZED"));
 }
 
 TEST_F(UtilsTest, ExecuteWithTimeout) {

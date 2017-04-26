@@ -120,6 +120,11 @@ bool CanShareOperandBufferWithUser(
   if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
     return false;
   }
+  // Copy instructions are explicitly added by CopyInsertion to prevent liveness
+  // issues, so they should never re-use their operand buffer.
+  if (user->opcode() == HloOpcode::kCopy) {
+    return false;
+  }
   // Check if 'user' is a loop fusion instruction with a kDynamicUpdateSlice
   // fused root instruction.
   if (user->opcode() == HloOpcode::kFusion &&
@@ -144,8 +149,9 @@ bool CanShareOperandBufferWithUser(
       break;
     }
     return false;
-  } else if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
-             user->opcode() == HloOpcode::kWhile) {
+  }
+  if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
+      user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in BufferLiveness::live_range_strictly_before,
     // so here we just need to check that the use is at operand index 0.
     std::vector<int64> operand_indices = user->OperandIndices(operand);

@@ -9,7 +9,7 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "ctc_beam_entry.h",
         "ctc_beam_scorer.h",
@@ -17,6 +17,11 @@ filegroup(
         "ctc_decoder.h",
         "ctc_loss_util.h",
     ],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
 )
 
 filegroup(

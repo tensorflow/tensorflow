@@ -99,7 +99,7 @@ def _linear_learning_rate(num_linear_feature_columns):
   return min(_LINEAR_LEARNING_RATE, default_learning_rate)
 
 
-def _add_hidden_layer_summary(value, tag):
+def _add_layer_summary(value, tag):
   logging_ops.scalar_summary("%s/fraction_of_zero_values" % tag,
                              nn.zero_fraction(value))
   logging_ops.histogram_summary("%s/activation" % tag, value)
@@ -247,7 +247,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
                 net,
                 keep_prob=(1.0 - dnn_dropout))
         # TODO(b/31209633): Consider adding summary before dropout.
-        _add_hidden_layer_summary(net, dnn_hidden_layer_scope.name)
+        _add_layer_summary(net, dnn_hidden_layer_scope.name)
 
       with variable_scope.variable_scope(
           "logits",
@@ -258,7 +258,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
             activation_fn=None,
             variables_collections=[dnn_parent_scope],
             scope=dnn_logits_scope)
-      _add_hidden_layer_summary(dnn_logits, dnn_logits_scope.name)
+      _add_layer_summary(dnn_logits, dnn_logits_scope.name)
 
   # Build Linear logits.
   linear_parent_scope = "linear"
@@ -287,6 +287,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
             num_outputs=head.logits_dimension,
             weight_collections=[linear_parent_scope],
             scope=scope)
+      _add_layer_summary(linear_logits, scope.name)
 
   # Combine logits and build full model.
   if dnn_logits is not None and linear_logits is not None:

@@ -1403,10 +1403,13 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
   RunCopyInsertion(module.get());
   auto assignment = RunBufferAssignment(module.get());
 
-  EXPECT_EQ(assignment->GetUniqueSlice(while0, {2}).ConsumeValueOrDie(),
+  // while0 and while1 buffers should be completely aligned.
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {0}).ConsumeValueOrDie(),
             assignment->GetUniqueSlice(while1, {0}).ConsumeValueOrDie());
   EXPECT_EQ(assignment->GetUniqueSlice(while0, {1}).ConsumeValueOrDie(),
             assignment->GetUniqueSlice(while1, {1}).ConsumeValueOrDie());
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {2}).ConsumeValueOrDie(),
+            assignment->GetUniqueSlice(while1, {2}).ConsumeValueOrDie());
 }
 
 TEST_F(BufferAssignmentTest, TwoCalls) {
