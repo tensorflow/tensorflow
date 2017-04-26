@@ -484,7 +484,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.ah_attr.grh.dgid.global.subnet_prefix = remoteAddr.snp;
     attr.ah_attr.grh.dgid.global.interface_id = remoteAddr.iid;
     attr.ah_attr.grh.flow_label = 0;
-    attr.ah_attr.grh.hop_limit = 3; 
+    attr.ah_attr.grh.hop_limit = 255;
     attr.ah_attr.dlid = remoteAddr.lid;
     attr.ah_attr.sl = 0;
     attr.ah_attr.src_path_bits = 0;
