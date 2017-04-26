@@ -1,0 +1,14 @@
+path: "tensorflow.train.ChiefSessionCreator"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.monitored_session.ChiefSessionCreator\'>"
+  is_instance: "<class \'tensorflow.python.training.monitored_session.SessionCreator\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'scaffold\', \'master\', \'config\', \'checkpoint_dir\', \'checkpoint_filename_with_path\'], varargs=None, keywords=None, defaults=[\'None\', \'\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "create_session"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1484,15 +1484,11 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
       if (work_item >= total_num_creation_blocks) break;
       wrapper_libxsmm_spmdm_createSparseSlice_generic_thread(
           empty_type_wrapper<TL>{}, &entry->handle,
-          (transpose_left ? 'Y' : 'N'), left_data, entry->output_csr, work_item,
+          (transpose_left ? 'T' : 'N'), left_data, entry->output_csr, work_item,
           i, num_threads);
     }
   });
   // Do matrix-matrix multiplication
-  // TODO(jewillco): libxsmm doesn't support beta != 1 yet -- remove when
-  // release
-  // includes beta handling
-  memset(output_data, 0, left_dim0 * right_dim1 * sizeof(TR));
   ptrdiff_t total_num_mult_blocks =
       libxsmm_spmdm_get_num_compute_blocks(&entry->handle);
   std::atomic<int> cur_mult_block_number;
@@ -1506,8 +1502,8 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
       const TL beta(0.0);   // Stored in a variable so we can get a pointer
       wrapper_libxsmm_spmdm_compute_generic_thread(
           empty_type_wrapper<TL>{}, &entry->handle,
-          (transpose_left ? 'Y' : 'N'), 'N', &alpha, entry->output_csr,
-          right_data, (transpose_output ? 'Y' : 'N'), &beta, output_data,
+          (transpose_left ? 'T' : 'N'), 'N', &alpha, entry->output_csr,
+          right_data, (transpose_output ? 'T' : 'N'), &beta, output_data,
           work_item, i, num_threads);
     }
   });

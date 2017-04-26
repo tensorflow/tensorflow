@@ -21,8 +21,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import hashlib
-import inspect
 import re
 
 from tensorflow.core.framework import attr_value_pb2
@@ -32,8 +32,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 def _make_argname_from_tensor_name(name):
@@ -66,12 +69,7 @@ def _get_node_def(op):
 
 
 def _get_op_def(op):
-  # pylint: disable=protected-access
-  if hasattr(op, "_sig"):
-    return getattr(op, "_sig")
-  else:
-    return op_def_registry.get_registered_ops()[op.type]
-  # pylint: enable=protected-access
+  return op.op_def or op_def_registry.get_registered_ops()[op.type]
 
 
 def _is_in_placeholders(op, func_arg_placeholders):
@@ -191,8 +189,11 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
     attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
 
   compiled = kwargs.pop("compiled", None)
+  separate_compiled_gradients = kwargs.pop("separate_compiled_gradients", None)
   if compiled is not None:
     attrs["_XlaCompile"] = attr_value_pb2.AttrValue(b=bool(compiled))
+    attrs["_XlaSeparateCompiledGradients"] = attr_value_pb2.AttrValue(
+        b=bool(separate_compiled_gradients))
     attrs["_XlaScope"] = attr_value_pb2.AttrValue(
         s=("function_%s" % func_name).encode())
 
@@ -246,8 +247,8 @@ def _call(sig, *inputs, **kwargs):
         output_types,
         name=name,
         attrs=attrs,
+        op_def=sig,
         compute_shapes=False)
-  setattr(op, "_sig", sig)  # Remember the signature.
   if op.outputs:
     if len(op.outputs) == 1:
       ret = op.outputs[0]
@@ -259,10 +260,11 @@ def _call(sig, *inputs, **kwargs):
 
 
 def _get_func_name(func):
+  _, func = tf_decorator.unwrap(func)
   if callable(func):
-    if inspect.isfunction(func):
+    if tf_inspect.isfunction(func):
       return func.__name__
-    elif inspect.ismethod(func):
+    elif tf_inspect.ismethod(func):
       return "%s.%s" % (func.__self__.__name__, func.__name__)
     else:  # Probably a class instance with __call__
       return type(func)
@@ -299,8 +301,9 @@ class _FuncGraph(ops.Graph):
              shape=None,
              dtype=None,
              initializer=None,
+             reuse=None,
              trainable=True,
-             collections=None,
+             collections=None,  # pylint: disable=redefined-outer-name
              use_resource=None,
              **kwargs):
     """A custom variable getter."""
@@ -319,10 +322,17 @@ class _FuncGraph(ops.Graph):
           shape=shape,
           dtype=dtype,
           initializer=initializer,
+          reuse=reuse,
           trainable=trainable,
           collections=collections,
           use_resource=use_resource)
       self.extra_vars.append(var)
+      if isinstance(var, resource_variable_ops.ResourceVariable):
+        # For resource-based variables read the variable outside the function
+        # and pass in the value. This ensures that the function is pure and
+        # differentiable. TODO(apassos) this may have performance problems if
+        # the function will only do embedding lookups on the variable.
+        return var.value()
       return var
 
   def create_op(self, op_type, inputs, data_types, **kwargs):
@@ -336,6 +346,10 @@ class _FuncGraph(ops.Graph):
           # Substitute with a placeholder.
           self.extra_inputs.append(x)
           ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
+          # pylint: disable=protected-access
+          ph._handle_shape = x._handle_shape
+          ph._handle_dtype = x._handle_dtype
+          # pylint: enable=protected-access
           inputs[i] = ph
           self._captured[x] = ph
           self.extra_args.append(ph)
@@ -444,6 +458,7 @@ class _DefinedFunction(object):
     self._shape_func = shape_func
     self._extra_kwargs = kwargs
     self._definition = None  # Constructed lazily.
+    self._sub_functions = dict()  # Constructed with definition.
 
     self._args = []
     assert isinstance(input_types, (list, tuple))
@@ -517,6 +532,9 @@ class _DefinedFunction(object):
       outputs = [ops.convert_to_tensor(_) for _ in outputs]
     self._extra_inputs = temp_graph.extra_inputs
     inputs.extend(temp_graph.extra_args)
+    # pylint: disable=protected-access
+    self._sub_functions = temp_graph._functions
+    # pylint: enable=protected-access
 
     # Build the FunctionDef
     self._definition = _graph_to_function_def(
@@ -530,61 +548,64 @@ class _DefinedFunction(object):
       self._definition.attr[k].CopyFrom(kwargs_attr[k])
 
     # Hash the definition and its dependencies.
-    hasher = hashlib.sha1()
-
-    def _hash_func_def():
-      """Hash the function definition agnostic to node/map ordering."""
-
-      def update_num(n):
-        hasher.update(compat.as_bytes("%x" % n))
-
-      def update_str(s):
-        update_num(len(s))
-        hasher.update(compat.as_bytes(s))
-
-      def update_strs(slist):
-        update_num(len(slist))
-        for s in slist:
-          update_str(s)
-
-      for adef in self._definition.signature.input_arg:
-        update_str(adef.SerializeToString())
-
-      for adef in self._definition.signature.output_arg:
-        update_str(adef.SerializeToString())
-
-      for n in sorted(self._definition.node_def, key=lambda n: n.name):
-        update_str(n.name)
-        update_str(n.op)
-        update_strs(n.input)
-        update_num(len(n.attr))
-        # NOTE: protobuf map serialization does not guarantee ordering.
-        for k in sorted(n.attr):
-          update_str(k)
-          update_str(n.attr[k].SerializeToString())
-
-    _hash_func_def()
-    # pylint: disable=protected-access
-    self._sub_functions = temp_graph._functions
-    for subname in sorted(self._sub_functions.keys()):
-      hasher.update(compat.as_bytes(self._sub_functions[subname]._hash_str))
-    # pylint: enable=protected-access
-
-    # Uses the first 8 bytes sha1 hash digest as the __hash__.
-    self._hash_str = hasher.hexdigest()[:8]
-    self._hash = int(self._hash_str, 16)
+    self._hash_str = self._create_hash_str(
+        self._definition.signature.input_arg,
+        self._definition.signature.output_arg,
+        self._definition.node_def)
 
     # Finally, we decide the function name to use.  If not specified,
-    # make up something which is almost certainly unique.
+    # make up something which is almost certainly unique (but deterministic).
     if not self._func_name:
       self._func_name = "_".join([_get_func_name(self._func), self._hash_str])
     self._definition.signature.name = self._func_name
     if self._func.__doc__:
       self._definition.signature.description = self._func.__doc__
 
-  def __hash__(self):
-    self._create_definition_if_needed()
-    return self._hash
+  def _create_hash_str(self, input_arg, output_arg, node_def):
+    """Creates an 8-character string unique to this input.
+
+    Args:
+      input_arg: the input_arg field of an OpDef
+                 (e.g. self._definition.signature.input_arg)
+      output_arg: the output_arg field of an OpDef
+                 (e.g. self._definition.signature.output_arg)
+      node_def: the node_def field of a FunctionDef
+                (e.g. self._definition.node_def)
+
+    Returns:
+      The unique string for this input
+    """
+    hasher = hashlib.sha1()
+
+    def update_num(n):
+      hasher.update(compat.as_bytes("%x" % n))
+
+    def update_str(s):
+      update_num(len(s))
+      hasher.update(compat.as_bytes(s))
+
+    def update_strs(slist):
+      update_num(len(slist))
+      for s in slist:
+        update_str(s)
+
+    for adef in input_arg:
+      update_str(adef.SerializeToString())
+
+    for adef in output_arg:
+      update_str(adef.SerializeToString())
+
+    for n in sorted(node_def, key=lambda n: n.name):
+      update_str(n.name)
+      update_str(n.op)
+      update_strs(n.input)
+      update_num(len(n.attr))
+      # NOTE: protobuf map serialization does not guarantee ordering.
+      for k in sorted(n.attr):
+        update_str(k)
+        update_str(n.attr[k].SerializeToString())
+
+    return hasher.hexdigest()[:8]
 
   def add_to_graph(self, g):
     """Adds this function into the graph g."""
@@ -593,7 +614,7 @@ class _DefinedFunction(object):
     # pylint: disable=protected-access
     # If 'g' has an identical function already, do nothing.
     prev = g._get_function(self.name)
-    if prev and (prev._hash == self._hash):
+    if prev and (prev._hash_str == self._hash_str):
       return
 
     # Adds this function into 'g'.
@@ -620,6 +641,105 @@ class _DefinedFunction(object):
       for (t, shape) in zip(op.outputs, shapes):
         t.set_shape(shape)
     return ret
+
+
+def _from_definition(fdef, grad_func=None):
+  """Creates a _DefinedFunction initialized from a FunctionDef proto.
+
+  Args:
+    fdef: a FunctionDef
+    grad_func: a _DefinedFunction or None
+
+  Returns:
+    A _DefinedFunction representing fdef
+  """
+  # The Python callable is only needed to create a FunctionDef. Since we have
+  # the FunctionDef here, we don't need to set _DefinedFunction._func (nor do we
+  # have access to such a callable here).
+  func = None
+  argnames = [arg.name for arg in fdef.signature.input_arg]
+  input_types = tuple(dtypes.as_dtype(arg.type)
+                      for arg in fdef.signature.input_arg)
+  func_name = fdef.signature.name
+  # Note: FunctionDefs do not include python gradient functions, so if the
+  # original _DefinedFunction included one it will not be reflected here.
+  python_grad_func = None
+  out_names = [arg.name for arg in fdef.signature.output_arg]
+  result = _DefinedFunction(func, argnames, input_types, func_name, grad_func,
+                            python_grad_func, out_names)
+  # pylint: disable=protected-access
+  result._definition = fdef
+  # Captured inputs are added as regular inputs to a function when it's
+  # serialized, i.e. any extra inputs from the original function are now
+  # included in `result`._args
+  result._extra_inputs = []
+  result._hash_str = result._create_hash_str(
+      result._definition.signature.input_arg,
+      result._definition.signature.output_arg,
+      result._definition.node_def)
+  # pylint: enable=protected-access
+  return result
+
+
+def _from_library(lib):
+  """Creates _DefinedFunctions initialized from a FunctionDefLibrary proto.
+
+  This method handles assigning the correct gradient functions to each
+  function.
+
+  Args:
+    lib: a FunctionDefLibrary
+
+  Returns:
+    A list of _DefinedFunctions
+
+  Raises:
+    ValueError: `lib` is invalid
+  """
+  if not lib.function and not lib.gradient: return []
+
+  # function name -> FunctionDef proto
+  funcs = {fdef.signature.name: fdef for fdef in lib.function}
+
+  # Validate that all references function names have function defs
+  for g in lib.gradient:
+    if g.function_name not in funcs:
+      raise ValueError("FunctionDefLibrary missing '%s' FunctionDef\n%s" %
+                       (g.function_name, str(lib)))
+    if g.gradient_func not in funcs:
+      raise ValueError("FunctionDefLibrary missing '%s' FunctionDef\n%s" %
+                       (g.gradient_func, str(lib)))
+
+  # function name -> gradient function name
+  func_to_grad = collections.defaultdict(lambda: None)
+  # gradient function name -> names of functions having that grad function
+  grad_to_funcs = collections.defaultdict(list)
+
+  for gdef in lib.gradient:
+    func_to_grad[gdef.function_name] = gdef.gradient_func
+    grad_to_funcs[gdef.gradient_func].append(gdef.function_name)
+
+  # Start with functions without gradients
+  ready = [fdef for fdef in lib.function
+           if func_to_grad[fdef.signature.name] is None]
+  if not ready:
+    raise ValueError("FunctionDefLibrary contains cyclic gradient functions!\n"
+                     + str(lib))
+  # function name -> _DefinedFunction
+  initialized = {}
+
+  while ready:
+    fdef = ready.pop()
+    name = fdef.signature.name
+
+    grad = initialized.get(func_to_grad[name])
+    if func_to_grad[name]: assert grad
+    defined_func = _from_definition(fdef, grad_func=grad)
+    initialized[name] = defined_func
+
+    ready.extend(funcs[f] for f in grad_to_funcs[name])
+
+  return initialized.values()
 
 
 # NOTE: The list needs to be extended when more data types are added.
@@ -769,7 +889,12 @@ class Defun(object):
   default graph and adds the definition of the function into the
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
-  
+
+  Any variables created inside of the function are hoisted into the outer graph.
+  Note that the variables are created in the variable scope that was active
+  during the first call to the function. Subsequent function calls will refer to
+  the same set of variables.
+
   Definitions of functions are frozen in a graph as soon as the graph is used to
   create a session. Therefore, nodes using the function must be created in the
   graph before the corresponding session is created.
@@ -832,7 +957,7 @@ class Defun(object):
       raise ValueError("func %s must be callable" % func)
 
     # Func should not use kwargs and defaults.
-    argspec = inspect.getargspec(func)
+    argspec = tf_inspect.getargspec(func)
     if argspec.keywords or argspec.defaults:
       raise ValueError("Functions with argument defaults or keyword "
                        "arguments are not supported.")
@@ -843,7 +968,7 @@ class Defun(object):
     if argspec.varargs:
       max_args = 1000000
     argnames = argspec.args
-    if inspect.ismethod(func):
+    if tf_inspect.ismethod(func):
       # 1st argument is the "class" type.
       min_args -= 1
       argnames = argnames[1:]
@@ -882,7 +1007,7 @@ class Declare(object):
 
   For example,
     # Declares  a function Foo, which takes a tf.int32 named "n" and a
-    # tf.float32 named "n" as inputs and returns a tf.float32 named "z"
+    # tf.float32 named "x" as inputs and returns a tf.float32 named "z"
     # as its output.
     foo = Declare("Foo", [("n", tf.int32), ("x", tf.float32)],
                   [("z", tf.float32)])

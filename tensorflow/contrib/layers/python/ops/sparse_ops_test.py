@@ -18,17 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.layers.python.ops import sparse_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -139,6 +133,54 @@ class SparseOpsTest(test.TestCase):
       with self.assertRaises(ValueError):
         tensor = array_ops.placeholder(dtype=dtypes.int32)
         sparse_ops.dense_to_sparse_tensor(tensor)
+
+  def test_sparse_row_envelope(self):
+    expected_sparse_row_envelope = [1, 0, 3]
+    with self.test_session() as sess:
+      sparse_input = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [2, 0], [2, 1], [2, 2]],
+          values=[0, 1, 2, 3],
+          dense_shape=[3, 3])
+      sparse_row_envelope = sess.run(
+          sparse_ops.sparse_row_envelope(sparse_input))
+      self.assertAllEqual(expected_sparse_row_envelope,
+                          sparse_row_envelope)
+
+  def test_sparse_row_envelope_unsorted_indices(self):
+    expected_sparse_row_envelope = [1, 0, 3]
+    with self.test_session() as sess:
+      sparse_input = sparse_tensor.SparseTensor(
+          indices=[[2, 0], [2, 2], [2, 1], [0, 0]],
+          values=[0, 1, 2, 3],
+          dense_shape=[3, 3])
+      sparse_row_envelope = sess.run(
+          sparse_ops.sparse_row_envelope(sparse_input))
+      self.assertAllEqual(expected_sparse_row_envelope,
+                          sparse_row_envelope)
+
+  def test_sparse_row_envelope_empty_in_the_end(self):
+    expected_sparse_row_envelope = [1, 0, 3, 0, 0]
+    with self.test_session() as sess:
+      sparse_input = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [2, 0], [2, 1], [2, 2]],
+          values=[0, 1, 2, 3],
+          dense_shape=[5, 3])
+      sparse_row_envelope = sess.run(
+          sparse_ops.sparse_row_envelope(sparse_input))
+      self.assertAllEqual(expected_sparse_row_envelope,
+                          sparse_row_envelope)
+
+  def test_sparse_row_envelope_empty_3d(self):
+    expected_sparse_row_envelope = [1, 0, 3, 0, 0]
+    with self.test_session() as sess:
+      sparse_input = sparse_tensor.SparseTensor(
+          indices=[[0, 0, 0], [0, 2, 0], [0, 2, 1], [0, 2, 2]],
+          values=[0, 1, 2, 3],
+          dense_shape=[1, 5, 3])
+      sparse_row_envelope = sess.run(
+          sparse_ops.sparse_row_envelope(sparse_input, 1, 2))
+      self.assertAllEqual(expected_sparse_row_envelope,
+                          sparse_row_envelope)
 
 
 if __name__ == '__main__':

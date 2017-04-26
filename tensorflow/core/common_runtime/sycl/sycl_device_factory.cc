@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 
 class SYCLDeviceFactory : public DeviceFactory {
-public:
+ public:
   Status CreateDevices(const SessionOptions &options, const string &name_prefix,
                        std::vector<Device *> *devices) override {
     int n = 1;
@@ -31,10 +31,10 @@ public:
     }
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/device:SYCL:", i);
-      devices->push_back(new SYCLDevice(options, name, Bytes(256 << 20),
-                                        DeviceLocality(),
-                                        SYCLDevice::GetShortDeviceDescription(),
-                                        cl::sycl::gpu_selector(), cpu_allocator()));
+      devices->push_back(
+          new SYCLDevice(options, name, Bytes(256 << 20), DeviceLocality(),
+                         SYCLDevice::GetShortDeviceDescription(),
+                         cl::sycl::gpu_selector(), cpu_allocator()));
     }
     return Status::OK();
   }
@@ -43,4 +43,4 @@ public:
 REGISTER_LOCAL_DEVICE_FACTORY("SYCL", SYCLDeviceFactory, 200);
 }
 
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL

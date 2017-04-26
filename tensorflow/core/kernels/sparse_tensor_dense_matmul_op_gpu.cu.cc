@@ -27,12 +27,12 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace generator {
 
-template <typename T, bool ADJ_A, bool ADJ_B>
+template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 class SparseTensorDenseMatMulGPUGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE SparseTensorDenseMatMulGPUGenerator(
       typename TTypes<T, 2>::Tensor32Bit out,
-      TTypes<const int64, 2>::Tensor32Bit a_indices,
+      typename TTypes<const Tindices, 2>::Tensor32Bit a_indices,
       typename TTypes<const T, 1>::Tensor32Bit a_values,
       typename TTypes<const T, 2>::Tensor32Bit b)
       : out_(out),
@@ -77,7 +77,7 @@ class SparseTensorDenseMatMulGPUGenerator {
   mutable typename TTypes<T, 2>::Tensor32Bit out_;
   const int lhs_index_a_;
   const int rhs_index_a_;
-  TTypes<const int64, 2>::Tensor32Bit a_indices_;
+  typename TTypes<const Tindices, 2>::Tensor32Bit a_indices_;
   typename TTypes<const T, 1>::Tensor32Bit a_values_;
   const int lhs_right_size;
   functor::MaybeAdjoint<typename TTypes<const T, 2>::Tensor32Bit, ADJ_B>
@@ -88,15 +88,14 @@ class SparseTensorDenseMatMulGPUGenerator {
 
 namespace functor {
 
-template <typename T, bool ADJ_A, bool ADJ_B>
-struct SparseTensorDenseMatMulFunctor<GPUDevice, T, ADJ_A, ADJ_B> {
-  static EIGEN_ALWAYS_INLINE void Compute(const GPUDevice& d,
-                                          typename TTypes<T>::Matrix out,
-                                          TTypes<int64>::ConstMatrix a_indices,
-                                          typename TTypes<T>::ConstVec a_values,
-                                          typename TTypes<T>::ConstMatrix b,
-                                          typename TTypes<T>::Vec scratch) {
-    generator::SparseTensorDenseMatMulGPUGenerator<T, ADJ_A, ADJ_B>
+template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
+struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
+  static EIGEN_ALWAYS_INLINE Status
+  Compute(const GPUDevice& d, typename TTypes<T>::Matrix out,
+          typename TTypes<Tindices>::ConstMatrix a_indices,
+          typename TTypes<T>::ConstVec a_values,
+          typename TTypes<T>::ConstMatrix b, typename TTypes<T>::Vec scratch) {
+    generator::SparseTensorDenseMatMulGPUGenerator<T, Tindices, ADJ_A, ADJ_B>
         sparse_tensor_dense_matmul_generator(To32Bit(out), To32Bit(a_indices),
                                              To32Bit(a_values), To32Bit(b));
     To32Bit(out).device(d) = To32Bit(out).constant(T(0));
@@ -140,22 +139,25 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, ADJ_A, ADJ_B> {
             .broadcast(n_by_1)
             .generate(sparse_tensor_dense_matmul_generator)
             .sum(reduce_on_rows);
+
+    return Status::OK();
   }
 };
 
 }  // namespace functor
 
-#define DEFINE(T)                                                              \
-  template struct functor::SparseTensorDenseMatMulFunctor<GPUDevice, T, false, \
-                                                          false>;              \
-  template struct functor::SparseTensorDenseMatMulFunctor<GPUDevice, T, false, \
-                                                          true>;               \
-  template struct functor::SparseTensorDenseMatMulFunctor<GPUDevice, T, true,  \
-                                                          false>;              \
-  template struct functor::SparseTensorDenseMatMulFunctor<GPUDevice, T, true,  \
-                                                          true>;
+#define DEFINE(T, Tindices)                                \
+  template struct functor::SparseTensorDenseMatMulFunctor< \
+      GPUDevice, T, Tindices, false, false>;               \
+  template struct functor::SparseTensorDenseMatMulFunctor< \
+      GPUDevice, T, Tindices, false, true>;                \
+  template struct functor::SparseTensorDenseMatMulFunctor< \
+      GPUDevice, T, Tindices, true, false>;                \
+  template struct functor::SparseTensorDenseMatMulFunctor< \
+      GPUDevice, T, Tindices, true, true>;
 
-DEFINE(float);
+DEFINE(float, int32);
+DEFINE(float, int64);
 #undef DEFINE
 
 }  // end namespace tensorflow

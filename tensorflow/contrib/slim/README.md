@@ -109,7 +109,7 @@ weights = slim.variable('weights',
 Note that in native TensorFlow, there are two types of variables: regular
 variables and local (transient) variables. The vast majority of variables are
 regular variables: once created, they can be saved to disk using a
-[saver](https://www.tensorflow.org/versions/r0.11/api_docs/python/state_ops.html#Saver).
+[saver](https://www.tensorflow.org/api_docs/python/tf/train/Saver).
 Local variables are those variables that only exist for the duration of a
 session and are not saved to disk.
 
@@ -229,7 +229,7 @@ net = ...
 net = slim.conv2d(net, 256, [3, 3], scope='conv3_1')
 net = slim.conv2d(net, 256, [3, 3], scope='conv3_2')
 net = slim.conv2d(net, 256, [3, 3], scope='conv3_3')
-net = slim.max_pool2d(net, [2, 2], scope='pool3')
+net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
 One way to reduce this code duplication would be via a `for` loop:
@@ -238,14 +238,14 @@ One way to reduce this code duplication would be via a `for` loop:
 net = ...
 for i in range(3):
   net = slim.conv2d(net, 256, [3, 3], scope='conv3_' % (i+1))
-net = slim.max_pool2d(net, [2, 2], scope='pool3')
+net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
 This can be made even cleaner by using TF-Slim's `repeat` operation:
 
 ```python
 net = slim.repeat(net, 3, slim.conv2d, 256, [3, 3], scope='conv3')
-net = slim.max_pool(net, [2, 2], scope='pool2')
+net = slim.max_pool2d(net, [2, 2], scope='pool2')
 ```
 
 Notice that the `slim.repeat` not only applies the same argument in-line, it
@@ -289,10 +289,10 @@ slim.stack(x, slim.conv2d, [(32, [3, 3]), (32, [1, 1]), (64, [3, 3]), (64, [1, 1
 ### Scopes
 
 In addition to the types of scope mechanisms in TensorFlow
-([name_scope](https://www.tensorflow.org/api_docs/python/framework.html#name_scope),
-[variable_scope](https://www.tensorflow.org/api_docs/python/state_layers.html#variable_scope),
+([name_scope](https://www.tensorflow.org/api_docs/python/tf/name_scope),
+[variable_scope](https://www.tensorflow.org/api_docs/python/tf/variable_scope),
 TF-Slim adds a new scoping mechanism called
-[arg_scope](https://www.tensorflow.org/code/tensorflow/contrib/framework/python/ops/arg_scope.py).
+[arg_scope](https://www.tensorflow.org/api_docs/python/tf/contrib/framework/arg_scope),
 This new scope allows a user to specify one or more operations and a set of
 arguments which will be passed to each of the operations defined in the
 `arg_scope`. This functionality is best illustrated by example. Consider the
@@ -447,7 +447,7 @@ vgg = tf.contrib.slim.nets.vgg
 images, labels = ...
 
 # Create the model.
-predictions = vgg.vgg16(images)
+predictions, _ = vgg.vgg_16(images)
 
 # Define the loss functions and get the total loss.
 loss = slim.losses.softmax_cross_entropy(predictions, labels)

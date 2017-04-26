@@ -27,6 +27,22 @@ filegroup(
 )
 
 tf_cuda_library(
+    name = "c_api_internal",
+    srcs = ["c_api.h"],
+    hdrs = ["c_api_internal.h"],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
+)
+
+tf_cuda_library(
     name = "c_api",
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
@@ -34,15 +50,28 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
+            ":c_api_internal",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            ":c_api_internal",
             "//tensorflow/cc/saved_model:loader",
+            "//tensorflow/cc:gradients",
+            "//tensorflow/cc:ops",
+            "//tensorflow/cc:scope_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
         ],
     }),
+)
+
+exports_files(
+    [
+        "version_script.lds",
+        "exported_symbols.lds",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 tf_cuda_library(
@@ -89,21 +118,22 @@ tf_cc_test(
     # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":c_api",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:grad_ops",
         "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
-        "//third_party/eigen3",
     ],
 )
 

@@ -35,7 +35,7 @@ class GcsFileSystem : public FileSystem {
   GcsFileSystem();
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
                 std::unique_ptr<HttpRequest::Factory> http_request_factory,
-                size_t read_ahead_bytes, int32 max_upload_attempts);
+                size_t read_ahead_bytes, int64 initial_retry_delay_usec);
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -114,9 +114,8 @@ class GcsFileSystem : public FileSystem {
   // RandomAccessFile implementation. Defaults to 256Mb.
   const size_t read_ahead_bytes_ = 256 * 1024 * 1024;
 
-  // The max number of attempts to upload a file to GCS using the resumable
-  // upload API.
-  const int32 max_upload_attempts_ = 5;
+  // The initial delay for exponential backoffs when retrying failed calls.
+  const int64 initial_retry_delay_usec_ = 1000000L;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);
 };

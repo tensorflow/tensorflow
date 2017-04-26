@@ -96,17 +96,14 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
 
   // The input is in CNHW order. input_reshape should produce
   // NHWC for the convolution to hit the Eigen fast path.
-  EXPECT_TRUE(ContainersEqual(input_reshape->dimensions(),
-                              std::vector<int64>({1, 2, 3, 0})));
+  EXPECT_TRUE(ContainersEqual(input_reshape->dimensions(), {1, 2, 3, 0}));
   // The kernel is in OIHW order. kernel_reshape should produce
   // HWIO for the convolution to hit the Eigen fast path.
-  EXPECT_TRUE(ContainersEqual(kernel_reshape->dimensions(),
-                              std::vector<int64>({2, 3, 1, 0})));
+  EXPECT_TRUE(ContainersEqual(kernel_reshape->dimensions(), {2, 3, 1, 0}));
   // The output of the canonical convolution is in NHWC order (the same as
   // input_reshape's order). output_reshape should restore that order to the
   // order of the computation root (CNHW).
-  EXPECT_TRUE(ContainersEqual(output_reshape->dimensions(),
-                              std::vector<int64>({3, 0, 1, 2})));
+  EXPECT_TRUE(ContainersEqual(output_reshape->dimensions(), {3, 0, 1, 2}));
 }
 
 TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {

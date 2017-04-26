@@ -20,12 +20,6 @@ from __future__ import print_function
 
 import os
 import re
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -33,10 +27,6 @@ from tensorflow.contrib.learn.python.learn.utils import gc
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-
-
-def tearDownModule():
-  gfile.DeleteRecursively(test.get_temp_dir())
 
 
 class GcTest(test_util.TensorFlowTestCase):

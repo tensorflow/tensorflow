@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/version.h"
 
 // TODO(josh11b): Test InitCostModel().
@@ -203,6 +204,15 @@ REGISTER_OP("TestOneInputOneOutput")
 REGISTER_OP("TestDefaultAttr")
     .Attr("default_int: int=31415")
     .SetShapeFn(shape_inference::NoOutputs);
+REGISTER_OP("RequiresCurrentGraphVersion")
+    .Output("version: int32")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      if (c->graph_def_version() != TF_GRAPH_DEF_VERSION) {
+        return errors::InvalidArgument("Wrong graph version for shape");
+      }
+      return shape_inference::ScalarShape(c);
+    });
 
 TEST_F(GraphConstructorTest, InvalidNodeName) {
   auto expect_invalid_name = [this](const char* name) {
@@ -462,6 +472,337 @@ versions {
   )EOF");
 }
 
+TEST_F(GraphConstructorTest, ImportGraphThatUsesConstantValueFromInsideLoop) {
+  // Test graph produced in python using:
+  /*
+    with tf.Graph().as_default():
+      i = tf.constant(0)
+      j = tf.constant([0])
+      def s(t):
+        t.set_shape(tf.vector(1))
+        return t
+      c = lambda i, _: tf.less(i, 10)
+      b = lambda i, j: [i, s(tf.transpose(j, j))]
+      r1, r2 = tf.while_loop(c, b, [i, j])
+      with open('/tmp/graph.txt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+
+  */
+  const string pb_ascii = R"EOF(
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "Const_1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/Enter"
+  op: "Enter"
+  input: "Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Enter_1"
+  op: "Enter"
+  input: "Const_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Merge"
+  op: "Merge"
+  input: "while/Enter"
+  input: "while/NextIteration"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Merge_1"
+  op: "Merge"
+  input: "while/Enter_1"
+  input: "while/NextIteration_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Less/y"
+  op: "Const"
+  input: "^while/Merge"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 10
+      }
+    }
+  }
+}
+node {
+  name: "while/Less"
+  op: "Less"
+  input: "while/Merge"
+  input: "while/Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/LoopCond"
+  op: "LoopCond"
+  input: "while/Less"
+}
+node {
+  name: "while/Switch"
+  op: "Switch"
+  input: "while/Merge"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge"
+      }
+    }
+  }
+}
+node {
+  name: "while/Switch_1"
+  op: "Switch"
+  input: "while/Merge_1"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge_1"
+      }
+    }
+  }
+}
+node {
+  name: "while/Identity"
+  op: "Identity"
+  input: "while/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Identity_1"
+  op: "Identity"
+  input: "while/Switch_1:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/transpose"
+  op: "Transpose"
+  input: "while/Identity_1"
+  input: "while/Identity_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "Tperm"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration"
+  op: "NextIteration"
+  input: "while/Identity"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration_1"
+  op: "NextIteration"
+  input: "while/transpose"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Exit"
+  op: "Exit"
+  input: "while/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Exit_1"
+  op: "Exit"
+  input: "while/Switch_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 21
+}
+  )EOF";
+  GraphDef def;
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(pb_ascii, &def));
+
+  ImportGraphDefOptions opts;
+  auto s = ImportGraphDef(opts, def, &graph_, nullptr);
+  ASSERT_EQ(Status::OK(), s) << s;
+}
+
 TEST_F(GraphConstructorTest, TypeMismatch) {
   ExpectError(
       "node { name: 'input' op: 'TestInput' }"
@@ -695,6 +1036,111 @@ TEST_F(GraphConstructorTest, ImportGraphDef_Versioning) {
   EXPECT_EQ(TF_GRAPH_DEF_VERSION - 1, graph_.versions().bad_consumers(0));
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_DeprecatedOps) {
+  // BatchNormWithGlobalNormalization was deprecated in GraphDef version 9
+  GraphDef def;
+  bool parsed = protobuf::TextFormat::ParseFromString(
+      R"EOF(
+node {
+  name: "zeros"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+          dim {
+            size: 149
+          }
+          dim {
+            size: 149
+          }
+          dim {
+            size: 32
+          }
+        }
+        float_val: 0.0
+      }
+    }
+  }
+}
+node {
+  name: "m_v_beta_gamma"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 32
+          }
+        }
+        tensor_content: "\265\374\010=S\250\t\276\206\371>;Z\306y>\217]@\276\347\206\202\275\3747\241\275+1\227=J1\352\275\353?H;`\253\000>\023Y\014\276\341\310L;\301\030\314;\032Kw\275\273fQ;\036\252\200=\257o/\273\377\241\247\275\307,\332\274L\255\247\274\023\331R=r\271\225<\016/\204<\364\340\375\272t\030J=\220\306}\276\276x\003\275\231\013}\276\212\034\224\276\257\020\216>A\223\217\276"
+      }
+    }
+  }
+}
+node {
+  name: "batchnorm"
+  op: "BatchNormWithGlobalNormalization"
+  input: "zeros"
+  input: "m_v_beta_gamma"
+  input: "m_v_beta_gamma"
+  input: "m_v_beta_gamma"
+  input: "m_v_beta_gamma"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "scale_after_normalization"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "variance_epsilon"
+    value {
+      f: 0.0010000000475
+    }
+  }
+}
+  )EOF",
+      &def);
+  ASSERT_TRUE(parsed);
+  Status s = ImportGraphDef(ImportGraphDefOptions(), def, &graph_, nullptr);
+  EXPECT_EQ(Status::OK(), s) << s;
+
+  Graph g2(OpRegistry::Global());
+  def.mutable_versions()->set_producer(10);
+  s = ImportGraphDef(ImportGraphDefOptions(), def, &g2, nullptr);
+  EXPECT_EQ(error::UNIMPLEMENTED, s.code());
+  EXPECT_TRUE(s.error_message().find("BatchNormWithGlobalNormalization is not "
+                                     "available in GraphDef version 10") !=
+              string::npos)
+      << s;
+}
+
 TEST_F(GraphConstructorTest, ImportGraphDef_ShapeWhitelist) {
   // Barrier's shape is an output vector of 2, but the graph says it's a vector
   // of 1. This is currently whitelisted.
@@ -721,7 +1167,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ShapeWhitelist) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMap) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
@@ -761,7 +1207,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMap) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithPrefix) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK(
@@ -824,7 +1270,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithPrefix) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK("node { name: 'W1' op: 'TestParams' }", ImportGraphDefOptions(),
@@ -888,7 +1334,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK("node { name: 'W1' op: 'TestParams' }", ImportGraphDefOptions(),
@@ -920,7 +1366,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithInvalidNodeIndex) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK("node { name: 'input1' op: 'TestInput' }", ImportGraphDefOptions(),
@@ -941,7 +1387,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithInvalidNodeIndex) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithMissingEntries) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with node we'll use in input map
   ExpectOK("node { name: 'W1' op: 'TestParams' }", ImportGraphDefOptions(),
@@ -962,7 +1408,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithMissingEntries) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapDuplicateNodeNames) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Add two nodes with the same name to graph
   Node* node;
@@ -987,7 +1433,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapDuplicateNodeNames) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensors) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   ImportGraphDefOptions opts;
   opts.return_tensors.push_back({"input", 1});
@@ -1303,7 +1749,7 @@ versions {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ControlDeps) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with nodes we'll use in control deps and input map
   ExpectOK(
@@ -1370,7 +1816,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ControlDeps) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsWithCycle) {
-  ShapeRefiner refiner(graph_.op_registry());
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
 
   // Populate graph with nodes we'll use in control deps and input map
   ExpectOK(
@@ -1563,6 +2009,198 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
 #undef EXPECT_IMPORT_FAILURE
 }
 
+TEST_F(GraphConstructorTest, ImportGraphDef_FunctionDefs) {
+  // Import a graph def containing a function. The graph def was generated using
+  // this python code:
+  // @function.Defun(tf.float32, tf.float32, tf.float32)
+  // def FooGrad(x, y, dz): return dz, dz
+  //
+  // @function.Defun(tf.float32, tf.float32, grad_func=FooGrad)
+  // def Foo(x, y): return x + y
+  //
+  // p1 = tf.placeholder(tf.float32)
+  // p2 = tf.placeholder(tf.float32)
+  // foo = Foo(p1, p2)
+  ImportGraphDefOptions opts;
+  ExpectOK(
+      R"EOF(
+      node {
+        name: "Placeholder" op: "Placeholder"
+        attr { key: "dtype" value { type: DT_FLOAT } }
+        attr { key: "shape" value { shape { } } }
+      }
+      node {
+        name: "Placeholder_1" op: "Placeholder"
+        attr { key: "dtype" value { type: DT_FLOAT } }
+        attr { key: "shape" value { shape { } } }
+      }
+      node {
+        name: "Foo_d03c39a3" op: "Foo_d03c39a3"
+        input: "Placeholder" input: "Placeholder_1"
+      }
+      library {
+        function {
+          signature {
+            name: "Foo_d03c39a3"
+            input_arg { name: "x" type: DT_FLOAT }
+            input_arg { name: "y" type: DT_FLOAT }
+            output_arg { name: "add" type: DT_FLOAT }
+          }
+          node_def {
+            name: "add" op: "Add" input: "x" input: "y"
+            attr { key: "T" value { type: DT_FLOAT } }
+          }
+          ret { key: "add" value: "add:z:0" }
+        }
+        function {
+          signature {
+            name: "FooGrad_dc60abc8"
+            input_arg { name: "x" type: DT_FLOAT }
+            input_arg { name: "y" type: DT_FLOAT }
+            input_arg { name: "dz" type: DT_FLOAT }
+            output_arg { name: "dz" type: DT_FLOAT }
+            output_arg { name: "dz_U0" type: DT_FLOAT }
+          }
+          ret { key: "dz" value: "dz:0" }
+          ret { key: "dz_U0" value: "dz:0" }
+        }
+        gradient {
+          function_name: "Foo_d03c39a3" gradient_func: "FooGrad_dc60abc8"
+        }
+      }
+      versions { producer: 21 min_consumer: 12 }
+      )EOF",
+      opts);
+
+  EXPECT_TRUE(HasNode("Placeholder"));
+  EXPECT_TRUE(HasNode("Placeholder_1"));
+  EXPECT_TRUE(HasNode("Foo_d03c39a3"));
+  // Check that Foo and FooGrad have been imported
+  const OpDef* op_def;
+  TF_ASSERT_OK(graph_.op_registry()->LookUpOpDef("Foo_d03c39a3", &op_def));
+  TF_ASSERT_OK(graph_.op_registry()->LookUpOpDef("FooGrad_dc60abc8", &op_def));
+
+  // Re-serialize and run the graph. This tests that re-serialized functions can
+  // be imported again and that imported functions can be run.
+  GraphDef gdef;
+  graph_.ToGraphDef(&gdef);
+  EXPECT_EQ(gdef.library().function_size(), 2);
+  EXPECT_EQ(gdef.library().gradient_size(), 1);
+  EXPECT_EQ(gdef.library().gradient()[0].function_name(), "Foo_d03c39a3");
+  EXPECT_EQ(gdef.library().gradient()[0].gradient_func(), "FooGrad_dc60abc8");
+
+  std::unique_ptr<Session> sess(NewSession(SessionOptions()));
+  TF_ASSERT_OK(sess->Create(gdef));
+
+  Tensor p1(DT_FLOAT, TensorShape({1}));
+  p1.scalar<float>()() = 1.0;
+  Tensor p2(DT_FLOAT, TensorShape({1}));
+  p2.scalar<float>()() = 2.0;
+  std::vector<std::pair<string, Tensor>> inputs = {{"Placeholder", p1},
+                                                   {"Placeholder_1", p2}};
+  std::vector<string> output_names = {"Foo_d03c39a3"};
+  std::vector<string> target_names;
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(sess->Run(inputs, output_names, target_names, &outputs));
+
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_EQ(outputs[0].scalar<float>()(), 3.0);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
+  // Import a graph def containing a function. The graph def was generated using
+  // this python code:
+  //   @function.Defun(tf.float32, tf.float32)
+  //   def Inner(x, y): return x + y
+  //
+  //   @function.Defun(tf.float32, tf.float32)
+  //   def Outer(x, y): return Inner(x, y)
+  //
+  //   p1 = tf.placeholder(tf.float32)
+  //   p2 = tf.placeholder(tf.float32)
+  //   Outer(p1, p2)
+  ImportGraphDefOptions opts;
+  ExpectOK(
+      R"EOF(
+      node {
+        name: "Placeholder" op: "Placeholder"
+        attr { key: "dtype" value { type: DT_FLOAT } }
+        attr { key: "shape" value { shape { } } }
+      }
+      node {
+        name: "Placeholder_1" op: "Placeholder"
+        attr { key: "dtype" value { type: DT_FLOAT } }
+        attr { key: "shape" value { shape { } } }
+      }
+      node {
+        name: "Outer_966fa13d" op: "Outer_966fa13d"
+        input: "Placeholder" input: "Placeholder_1"
+      }
+      library {
+        function {
+          signature {
+            name: "Outer_966fa13d"
+            input_arg { name: "x" type: DT_FLOAT }
+            input_arg { name: "y" type: DT_FLOAT }
+            output_arg { name: "Inner_d03c39a3" type: DT_FLOAT }
+          }
+          node_def {
+            name: "Inner_d03c39a3" op: "Inner_d03c39a3" input: "x" input: "y"
+          }
+          ret { key: "Inner_d03c39a3" value: "Inner_d03c39a3:add:0" }
+        }
+        function {
+          signature {
+            name: "Inner_d03c39a3"
+            input_arg { name: "x" type: DT_FLOAT }
+            input_arg { name: "y" type: DT_FLOAT }
+            output_arg { name: "add" type: DT_FLOAT }
+          }
+          node_def {
+            name: "add" op: "Add" input: "x" input: "y"
+            attr { key: "T" value { type: DT_FLOAT } }
+          }
+          ret { key: "add" value: "add:z:0" }
+        }
+      }
+      versions { producer: 21 min_consumer: 12 }
+      )EOF",
+      opts);
+
+  EXPECT_TRUE(HasNode("Placeholder"));
+  EXPECT_TRUE(HasNode("Placeholder_1"));
+  EXPECT_TRUE(HasNode("Outer_966fa13d"));
+  // Check that Inner and Outer have been imported
+  const OpDef* op_def;
+  Status s = graph_.op_registry()->LookUpOpDef("Inner_d03c39a3", &op_def);
+  ASSERT_TRUE(s.ok()) << s.error_message();
+  s = graph_.op_registry()->LookUpOpDef("Outer_966fa13d", &op_def);
+  ASSERT_TRUE(s.ok()) << s.error_message();
+
+  // Re-serialize and run the graph. This tests that re-serialized functions can
+  // be imported again and that imported functions can be run.
+  GraphDef gdef;
+  graph_.ToGraphDef(&gdef);
+  std::unique_ptr<Session> sess(NewSession(SessionOptions()));
+  s = sess->Create(gdef);
+  ASSERT_TRUE(s.ok()) << s.error_message();
+
+  Tensor p1(DT_FLOAT, TensorShape({1}));
+  p1.scalar<float>()() = 1.0;
+  Tensor p2(DT_FLOAT, TensorShape({1}));
+  p2.scalar<float>()() = 2.0;
+  std::vector<std::pair<string, Tensor>> inputs = {{"Placeholder", p1},
+                                                   {"Placeholder_1", p2}};
+  std::vector<string> output_names = {"Outer_966fa13d"};
+  std::vector<string> target_names;
+  std::vector<Tensor> outputs;
+  s = sess->Run(inputs, output_names, target_names, &outputs);
+  ASSERT_TRUE(s.ok()) << s.error_message();
+
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_EQ(outputs[0].scalar<float>()(), 3.0);
+}
+
 TEST_F(GraphConstructorTest, CopyGraph) {
   const int v = TF_GRAPH_DEF_VERSION;
   const int bad = v + 17;
@@ -1580,6 +2218,228 @@ TEST_F(GraphConstructorTest, CopyGraph) {
   EXPECT_EQ(dst.versions().min_consumer(), versions.min_consumer());
   EXPECT_EQ(dst.versions().bad_consumers_size(), 1);
   EXPECT_EQ(dst.versions().bad_consumers(0), bad);
+}
+
+// Confirms that graph def version in the graph reaches the shape inference
+// function.
+TEST_F(GraphConstructorTest, GraphDefVersionUsedForShapeInference) {
+  string gdef_ascii = strings::StrCat(R"EOF(
+      node{ name:"A" op:"RequiresCurrentGraphVersion" }
+      versions { producer: )EOF",
+                                      TF_GRAPH_DEF_VERSION - 1, "}");
+  ImportGraphDefOptions opts;
+  ExpectError(gdef_ascii, opts, {"Wrong graph version for shape"});
+  gdef_ascii = strings::StrCat(R"EOF(
+      node{ name:"A" op:"RequiresCurrentGraphVersion" }
+      versions { producer: )EOF",
+                               TF_GRAPH_DEF_VERSION, "}");
+  ExpectOK(gdef_ascii, opts);
+}
+
+TEST_F(GraphConstructorTest, GraphDefVersionMergingDuringImport) {
+  ImportGraphDefOptions opts;
+  ExpectOK(
+      "versions { producer: 15 min_consumer: 5 bad_consumers: 2 bad_consumers: "
+      "3 "
+      "}",
+      opts);
+  EXPECT_EQ(15, graph_.versions().producer());
+  EXPECT_EQ(5, graph_.versions().min_consumer());
+  ASSERT_EQ(2, graph_.versions().bad_consumers_size());
+  EXPECT_EQ(2, graph_.versions().bad_consumers(0));
+  EXPECT_EQ(3, graph_.versions().bad_consumers(1));
+
+  ExpectOK(
+      "versions { producer: 10 min_consumer: 8 bad_consumers: 1 bad_consumers: "
+      "3 "
+      "}",
+      opts);
+  EXPECT_EQ(10, graph_.versions().producer());
+  EXPECT_EQ(8, graph_.versions().min_consumer());
+  ASSERT_EQ(3, graph_.versions().bad_consumers_size());
+  EXPECT_EQ(1, graph_.versions().bad_consumers(0));
+  EXPECT_EQ(2, graph_.versions().bad_consumers(1));
+  EXPECT_EQ(3, graph_.versions().bad_consumers(2));
+
+  // This one is a no-op.
+  ExpectOK("versions { producer: 20 min_consumer: 7 }", opts);
+  EXPECT_EQ(10, graph_.versions().producer());
+  EXPECT_EQ(8, graph_.versions().min_consumer());
+  ASSERT_EQ(3, graph_.versions().bad_consumers_size());
+  EXPECT_EQ(1, graph_.versions().bad_consumers(0));
+  EXPECT_EQ(2, graph_.versions().bad_consumers(1));
+  EXPECT_EQ(3, graph_.versions().bad_consumers(2));
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDefProvidedShapeRefinerVersions) {
+  ImportGraphDefOptions opts;
+  // A valid graph at producer version 20, but one
+  // that would not import if the graph_def_version were 21.
+  string gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "Sum/input"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\001\000\000\000\002\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "Sum/reduction_indices"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\000\000\000\000\001\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "Sum"
+  op: "Sum"
+  input: "Sum/input"
+  input: "Sum/reduction_indices"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+versions {
+  producer: 20
+})EOF");
+
+  // Create a shape refiner with the latest TF_GRAPH_DEF_VERSION.
+  // Importing the graphdef with an existing refiner should
+  // make the refiner inherit the graphdef version from the
+  // passed in graphdef since it has a lower producer.
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+  ExpectOK(gdef_ascii, opts, &refiner);
+
+  // Add another node with a higher producer
+  gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "RandomConst"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\001\000\000\000\002\000\000\000"
+      }
+    }
+  }
+}
+versions {
+  producer: 21
+})EOF");
+
+  ExpectOK(gdef_ascii, opts, &refiner);
+  // Check that the refiner's graph def version is the lowest of
+  // the graph defs we have seen so far.
+  EXPECT_EQ(20, refiner.graph_def_version());
+
+  // Add another node with a lower producer
+  gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "RandomConst2"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\001\000\000\000\002\000\000\000"
+      }
+    }
+  }
+}
+versions {
+  producer: 17
+})EOF");
+  ExpectOK(gdef_ascii, opts, &refiner);
+
+  // Check that the refiner's graph def version is the lowest of
+  // the graph defs we have seen so far.
+  EXPECT_EQ(17, refiner.graph_def_version());
 }
 
 }  // namespace

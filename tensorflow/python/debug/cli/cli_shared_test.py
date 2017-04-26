@@ -70,6 +70,21 @@ class BytesToReadableStrTest(test_util.TensorFlowTestCase):
             1024**3, include_b=True))
 
 
+class TimeToReadableStrTest(test_util.TensorFlowTestCase):
+
+  def testNoneTimeWorks(self):
+    self.assertEqual("0", cli_shared.time_to_readable_str(None))
+
+  def testMicrosecondsTime(self):
+    self.assertEqual("40us", cli_shared.time_to_readable_str(40))
+
+  def testMillisecondTime(self):
+    self.assertEqual("40ms", cli_shared.time_to_readable_str(40e3))
+
+  def testSecondTime(self):
+    self.assertEqual("40s", cli_shared.time_to_readable_str(40e6))
+
+
 class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):

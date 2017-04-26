@@ -181,7 +181,7 @@ result = classifier.evaluate(
     y=mnist.test.labels,
     metrics={
         'accuracy':
-            tf.contrib.learn.metric_spec.MetricSpec(
+            tf.contrib.learn.MetricSpec(
                 metric_fn=tf.contrib.metrics.streaming_accuracy,
                 prediction_key='accuracy'),
     })

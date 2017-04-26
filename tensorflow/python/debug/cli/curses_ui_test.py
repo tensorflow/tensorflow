@@ -20,8 +20,10 @@ from __future__ import print_function
 import argparse
 import curses
 import tempfile
+import threading
 
 import numpy as np
+from six.moves import queue
 
 from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -111,7 +113,7 @@ class MockCursesUI(curses_ui.CursesUI):
   def _screen_create_command_window(self):
     pass
 
-  def _screen_create_command_textbox(self, existing_command):
+  def _screen_create_command_textbox(self, existing_command=None):
     """Override to insert observer of existing commands.
 
     Used in testing of history navigation and tab completion.
@@ -206,6 +208,9 @@ class MockCursesUI(curses_ui.CursesUI):
     curses_ui.CursesUI._display_main_menu(self, output)
 
     self.main_menu_list.append(self._main_menu)
+
+  def _screen_render_nav_bar(self):
+    pass
 
   def _screen_render_menu_pad(self):
     pass
@@ -303,6 +308,18 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, ui._command_pointer)
     self.assertEqual([], ui._active_command_history)
     self.assertEqual("", ui._pending_command)
+
+  def testCursesUiInChildThreadStartsWithoutException(self):
+    result = queue.Queue()
+    def child_thread():
+      try:
+        MockCursesUI(40, 80)
+      except ValueError as e:
+        result.put(e)
+    t = threading.Thread(target=child_thread)
+    t.start()
+    t.join()
+    self.assertTrue(result.empty())
 
   def testRunUIExitImmediately(self):
     """Make sure that the UI can exit properly after launch."""
@@ -963,7 +980,11 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual([0], ui.output_pad_rows)
 
     # Invalid regex should have led to a toast error message.
-    self.assertEqual(["ERROR: Invalid regular expression: \"[\""], ui.toasts)
+    self.assertEqual(
+        [MockCursesUI._UI_WAIT_MESSAGE,
+         "ERROR: Invalid regular expression: \"[\"",
+         MockCursesUI._UI_WAIT_MESSAGE],
+        ui.toasts)
 
   def testRegexSearchFromCommandHistory(self):
     """Test regex search commands are recorded in command history."""
@@ -1009,7 +1030,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     """Test displaying tensor with indices."""
 
     ui = MockCursesUI(
-        8,  # Use a small screen height to cause scrolling.
+        9,  # Use a small screen height to cause scrolling.
         80,
         command_sequence=[
             string_to_codes("print_ones --size 5\n"),
@@ -1154,19 +1175,19 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     self.assertEqual({
         0: None,
-        -1: [1, 0]
+        -1: [0, 0]
     }, ui.output_array_pointer_indices[0])
     self.assertEqual({
         0: [0, 0],
-        -1: [3, 0]
+        -1: [2, 0]
     }, ui.output_array_pointer_indices[1])
     self.assertEqual({
         0: [1, 0],
-        -1: [4, 0]
+        -1: [3, 0]
     }, ui.output_array_pointer_indices[2])
     self.assertEqual({
         0: [0, 0],
-        -1: [3, 0]
+        -1: [2, 0]
     }, ui.output_array_pointer_indices[3])
 
   def testScrollTensorByInvalidIndices(self):
@@ -1193,10 +1214,10 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.output_array_pointer_indices))
 
     # Check error messages.
-    self.assertEqual("ERROR: Indices exceed tensor dimensions.", ui.toasts[1])
+    self.assertEqual("ERROR: Indices exceed tensor dimensions.", ui.toasts[2])
     self.assertEqual("ERROR: invalid literal for int() with base 10: ''",
-                     ui.toasts[2])
-    self.assertEqual("ERROR: Empty indices.", ui.toasts[3])
+                     ui.toasts[4])
+    self.assertEqual("ERROR: Empty indices.", ui.toasts[6])
 
   def testWriteScreenOutputToFileWorks(self):
     output_path = tempfile.mktemp()
@@ -1301,6 +1322,23 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(["bar"] * 10, ui.unwrapped_outputs[0].lines)
     self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[1].lines)
 
+  def testMouseClickOnLinkWithExistingTextTriggersCommand(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 10 -k\n"),
+            string_to_codes("foo"),  # Enter some existing code in the textbox.
+            [curses.KEY_MOUSE, 1, 4],  # A click on a hyperlink.
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(2, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 10, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[1].lines)
+
   def testMouseClickOffLinkDoesNotTriggersCommand(self):
     ui = MockCursesUI(
         40,
@@ -1328,7 +1366,7 @@ class CursesTest(test_util.TensorFlowTestCase):
         command_sequence=[
             string_to_codes("babble -n 10 -m\n"),
             # A click on the enabled menu item.
-            [curses.KEY_MOUSE, 3, 1],
+            [curses.KEY_MOUSE, 3, 2],
             self._EXIT
         ])
     ui.register_command_handler("babble", self._babble, "")
@@ -1367,6 +1405,128 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(1, len(ui.unwrapped_outputs))
     self.assertEqual(["bar"] * 10, ui.unwrapped_outputs[0].lines)
+
+  def testNavigationUsingCommandLineWorks(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2\n"),
+            string_to_codes("babble -n 4\n"),
+            string_to_codes("prev\n"),
+            string_to_codes("next\n"),
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(4, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[2].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[3].lines)
+
+  def testNavigationOverOldestLimitUsingCommandLineGivesCorrectWarning(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2\n"),
+            string_to_codes("babble -n 4\n"),
+            string_to_codes("prev\n"),
+            string_to_codes("prev\n"),  # Navigate over oldest limit.
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(3, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[2].lines)
+
+    self.assertEqual("At the OLDEST in navigation history!", ui.toasts[-2])
+
+  def testNavigationOverLatestLimitUsingCommandLineGivesCorrectWarning(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2\n"),
+            string_to_codes("babble -n 4\n"),
+            string_to_codes("prev\n"),
+            string_to_codes("next\n"),
+            string_to_codes("next\n"),  # Navigate over latest limit.
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(4, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[2].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[3].lines)
+
+    self.assertEqual("At the LATEST in navigation history!", ui.toasts[-2])
+
+  def testMouseClicksOnNavBarWorks(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2\n"),
+            string_to_codes("babble -n 4\n"),
+            # A click on the back (prev) button of the nav bar.
+            [curses.KEY_MOUSE, 3, 1],
+            # A click on the forward (prev) button of the nav bar.
+            [curses.KEY_MOUSE, 7, 1],
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(4, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[2].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[3].lines)
+
+  def testMouseClicksOnNavBarAfterPreviousScrollingWorks(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2\n"),
+            [curses.KEY_NPAGE],   # Scroll down one line.
+            string_to_codes("babble -n 4\n"),
+            # A click on the back (prev) button of the nav bar.
+            [curses.KEY_MOUSE, 3, 1],
+            # A click on the forward (prev) button of the nav bar.
+            [curses.KEY_MOUSE, 7, 1],
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(6, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[0].lines)
+    # From manual scroll.
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[2].lines)
+    # From history navigation.
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[3].lines)
+    # From history navigation's auto-scroll to history scroll position.
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[4].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[5].lines)
+
+    self.assertEqual(6, len(ui.scroll_messages))
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[0])
+    self.assertIn("Scroll (PgUp): 100.00%", ui.scroll_messages[1])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[2])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[3])
+    self.assertIn("Scroll (PgUp): 100.00%", ui.scroll_messages[4])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[5])
 
 
 class ScrollBarTest(test_util.TensorFlowTestCase):
@@ -1485,6 +1645,25 @@ class ScrollBarTest(test_util.TensorFlowTestCase):
     self.assertEqual(curses_ui._SCROLL_DOWN_A_LINE,
                      scroll_bar.get_click_command(7))
     self.assertIsNone(scroll_bar.get_click_command(8))
+
+  def testClickCommandsAreCorrectForScrollBarNotAtZeroMinY(self):
+    scroll_bar = curses_ui.ScrollBar(0, 5, 1, 12, 10, 20)
+    self.assertIsNone(scroll_bar.get_click_command(0))
+    self.assertIsNone(scroll_bar.get_click_command(4))
+    self.assertEqual(curses_ui._SCROLL_UP_A_LINE,
+                     scroll_bar.get_click_command(5))
+    self.assertEqual(curses_ui._SCROLL_UP,
+                     scroll_bar.get_click_command(6))
+    self.assertEqual(curses_ui._SCROLL_UP,
+                     scroll_bar.get_click_command(7))
+    self.assertIsNone(scroll_bar.get_click_command(8))
+    self.assertEqual(curses_ui._SCROLL_DOWN,
+                     scroll_bar.get_click_command(10))
+    self.assertEqual(curses_ui._SCROLL_DOWN,
+                     scroll_bar.get_click_command(11))
+    self.assertEqual(curses_ui._SCROLL_DOWN_A_LINE,
+                     scroll_bar.get_click_command(12))
+    self.assertIsNone(scroll_bar.get_click_command(13))
 
 
 if __name__ == "__main__":

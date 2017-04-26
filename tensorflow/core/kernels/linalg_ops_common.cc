@@ -95,6 +95,10 @@ void LinearAlgebraOp<Scalar>::Compute(OpKernelContext* context) {
   PrepareOutputs(context, input_matrix_shapes, batch_shape, &outputs,
                  &output_matrix_shapes);
 
+  // Perform batch-wide pre-computions, if any.
+  BatchPreCompute(context, inputs, input_matrix_shapes, outputs,
+                  output_matrix_shapes);
+
   // Process the individual matrix problems in parallel using a threadpool.
   auto shard = [this, &inputs, &input_matrix_shapes, &outputs,
                 &output_matrix_shapes, context](int64 begin, int64 end) {
@@ -106,6 +110,10 @@ void LinearAlgebraOp<Scalar>::Compute(OpKernelContext* context) {
   auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
   Shard(worker_threads.num_threads, worker_threads.workers,
         batch_shape.num_elements(), GetCostPerUnit(input_matrix_shapes), shard);
+
+  // Perform batch-wide post-computions, if any.
+  BatchPostCompute(context, inputs, input_matrix_shapes, outputs,
+                   output_matrix_shapes);
 }
 
 template <typename Scalar>
@@ -148,7 +156,7 @@ void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
     // TODO(rmlarsen): Use emplace_back when it is added to InlinedVector. Same
     // in several places below.
     input_matrix_shapes->push_back(TensorShape({num_rows, num_cols}));
-    inputs->push_back(in);
+    inputs->push_back(&in);
   }
   // Have the derived class validate that the inputs are as expected.
   ValidateInputMatrixShapes(context, *input_matrix_shapes);
@@ -171,15 +179,20 @@ void LinearAlgebraOp<Scalar>::PrepareOutputs(
           num_outputs, context->num_outputs()));
 
   // Allocate outputs.
-  for (int i = 0; i < context->num_outputs(); ++i) {
-    TensorShape output_tensor_shape({0});
-    if (i < num_outputs) {
+  std::set<int> unused_inputs;
+  for (int input_idx = 0; input_idx < context->num_inputs(); ++input_idx) {
+    unused_inputs.insert(input_idx);
+  }
+  for (int output_idx = 0; output_idx < context->num_outputs(); ++output_idx) {
+    TensorShape output_tensor_shape({});
+    if (output_idx < num_outputs) {
       // This output is used, set up output shape and allocate it.
-      const TensorShape& output_matrix_shape = output_matrix_shapes->at(i);
+      const TensorShape& output_matrix_shape =
+          output_matrix_shapes->at(output_idx);
       OP_REQUIRES(context, output_matrix_shape.dims() <= 2,
                   errors::InvalidArgument(
                       "Rank of matrix output no. %d must be 0, 1 or 2, got %d.",
-                      i, output_matrix_shape.dims()));
+                      output_idx, output_matrix_shape.dims()));
 
       // The final output has the shape of the outer batch dimensions
       // concatenated with the output_matrix_shape (if the output is not
@@ -190,8 +203,22 @@ void LinearAlgebraOp<Scalar>::PrepareOutputs(
       }
     }
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(i, output_tensor_shape, &out));
+    // See if there is an input buffer we can reuse for this output.
+    bool reused_input = false;
+    if (EnableInputForwarding()) {
+      for (int input_idx : unused_inputs) {
+        if (context->forward_input_to_output_with_shape(
+                input_idx, output_idx, output_tensor_shape, &out)) {
+          reused_input = true;
+          unused_inputs.erase(input_idx);
+          break;
+        }
+      }
+    }
+    if (!reused_input) {
+      OP_REQUIRES_OK(context, context->allocate_output(
+                                  output_idx, output_tensor_shape, &out));
+    }
     outputs->push_back(out);
   }
 }
@@ -206,7 +233,7 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
     // TODO(kalakris): Handle alignment if possible. Eigen::Map is
     // unaligned by default.
     matrix_inputs.push_back(
-        ConstMatrixMap(inputs[i].flat<Scalar>().data() +
+        ConstMatrixMap(inputs[i]->flat<Scalar>().data() +
                            matrix_index * input_matrix_shapes[i].num_elements(),
                        input_matrix_shapes[i].dim_size(0),
                        input_matrix_shapes[i].dim_size(1)));

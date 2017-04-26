@@ -150,6 +150,10 @@ class DfsHloVisitor {
   virtual Status HandleTanh(HloInstruction* tanh, HloInstruction* operand) {
     return HandleElementwiseUnary(tanh, HloOpcode::kTanh, operand);
   }
+  virtual Status HandleIsFinite(HloInstruction* is_finite,
+                                HloInstruction* operand) {
+    return HandleElementwiseUnary(is_finite, HloOpcode::kIsFinite, operand);
+  }
   virtual Status HandleLogicalAnd(HloInstruction* logical_and,
                                   HloInstruction* lhs, HloInstruction* rhs) {
     return HandleElementwiseBinary(logical_and, HloOpcode::kLogicalAnd, lhs,
@@ -185,10 +189,7 @@ class DfsHloVisitor {
   virtual Status HandleTranspose(HloInstruction* transpose) = 0;
   virtual Status HandleParameter(HloInstruction* parameter) = 0;
   virtual Status HandleFusion(HloInstruction* fusion) = 0;
-  virtual Status HandleCall(
-      HloInstruction* call,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* computation) = 0;
+  virtual Status HandleCall(HloInstruction* call) = 0;
   virtual Status HandleCustomCall(
       HloInstruction* custom_call,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands,
@@ -215,9 +216,7 @@ class DfsHloVisitor {
                                     const Window& window,
                                     HloComputation* function) = 0;
   virtual Status HandleSelectAndScatter(HloInstruction* instruction) = 0;
-  virtual Status HandleWhile(HloInstruction* xla_while, HloInstruction* init,
-                             HloComputation* condition,
-                             HloComputation* body) = 0;
+  virtual Status HandleWhile(HloInstruction* xla_while) = 0;
 
   virtual Status HandlePad(HloInstruction* pad) = 0;
 

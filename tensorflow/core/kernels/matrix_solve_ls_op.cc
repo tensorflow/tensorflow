@@ -68,6 +68,8 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
                                                   : static_cast<int64>(cost);
   }
 
+  bool EnableInputForwarding() const final { return false; }
+
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
     const ConstMatrixMap& matrix = inputs[0];

@@ -41,10 +41,10 @@ Status GetAxisForPackAndUnpack(InferenceContext* c, int32 rank_after_pack,
 }
 
 template <typename T>
-std::vector<int64> AsInt64(const Tensor* tensor, int num_elements) {
+std::vector<int64> AsInt64(const Tensor* tensor, int64 num_elements) {
   std::vector<int64> ret(num_elements);
   auto data = tensor->vec<T>();
-  for (int i = 0; i < num_elements; ++i) {
+  for (int64 i = 0; i < num_elements; ++i) {
     ret[i] = data(i);
   }
   return ret;
@@ -52,11 +52,11 @@ std::vector<int64> AsInt64(const Tensor* tensor, int num_elements) {
 
 template <typename T>
 Status PadKnown(InferenceContext* c, ShapeHandle input,
-                const Tensor* paddings_t, int32 num_dims) {
+                const Tensor* paddings_t, int64 num_dims) {
   // paddings_t is known.
   std::vector<DimensionHandle> dims(num_dims);
   auto paddings_data = paddings_t->matrix<T>();
-  for (int i = 0; i < num_dims; ++i) {
+  for (int64 i = 0; i < num_dims; ++i) {
     const T pad0 = paddings_data(i, 0);
     const T pad1 = paddings_data(i, 1);
     if (pad0 < 0 || pad1 < 0) {
@@ -394,6 +394,28 @@ output: A `Tensor` with the concatenation of values stacked along the
   in `concat_dim` where it has the sum of the sizes.
 )doc");
 
+// TODO(vivek.v.rane@intel.com): Prefix the op names with underscore if the ops
+// are not to be made user-accessible.
+#ifdef INTEL_MKL
+REGISTER_OP("_MklConcatV2")
+    .Input("values: N * T")
+    .Input("axis: Tidx")
+    .Input("mkl_values: N * uint8")
+    .Input("mkl_axis: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("N: int >= 2")
+    .Attr("T: type")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::ConcatV2Shape)
+    .Doc(R"doc(
+MKL version of ConcatV2 operator. Uses MKL DNN APIs to perform concatenation.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+#endif
+
 REGISTER_OP("ConcatOffset")
     .Input("concat_dim: int32")
     .Input("shape: N * int32")
@@ -488,7 +510,7 @@ REGISTER_OP("SplitV")
       ShapeHandle output_shape;
       const Tensor* size_splits = c->input_tensor(1);
       if (rank == InferenceContext::kUnknownRank) {
-        // If the rank of input tensor is unknown, then return unkown shapes.
+        // If the rank of input tensor is unknown, then return unknown shapes.
         output_shape = c->UnknownShape();
         for (int i = 0; i < num_outputs; ++i) {
           c->set_output(i, output_shape);
@@ -497,7 +519,7 @@ REGISTER_OP("SplitV")
         // Throw error if input is a scalar.
         return errors::InvalidArgument("Can't split scalars");
       } else if (size_splits == nullptr || !c->ValueKnown(split_dimension)) {
-        // If split dimension or tensor containing the split sizes is unkown,
+        // If split dimension or tensor containing the split sizes is unknown,
         // then return unknown shapes of same rank as input.
         output_shape = c->UnknownShapeOfRank(rank);
         for (int i = 0; i < num_outputs; ++i) {
@@ -606,6 +628,19 @@ Returns a tensor of zeros with the same shape and type as x.
 
 x: a tensor of type T.
 y: a tensor of the same shape and type as x but filled with zeros.
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("OnesLike")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {float, double, int32, int64, complex64, complex128}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Returns a tensor of ones with the same shape and type as x.
+
+x: a tensor of type T.
+y: a tensor of the same shape and type as x but filled with ones.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1231,9 +1266,12 @@ REGISTER_OP("_ParallelConcatStart")
     .Attr("dtype: type")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
-      c->set_output(0, out);
+      TensorShapeProto shape_proto;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(
+          c->MakeShapeFromShapeProto(shape_proto, &output_shape));
+      c->set_output(0, output_shape);
       return Status::OK();
     })
     .Doc(R"doc(
@@ -1310,8 +1348,13 @@ Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 If `indices` is a permutation and `len(indices) == params.shape[0]` then
 this operation will permute `params` accordingly.
 
+`validate_indices`: DEPRECATED. If this operation is assigned to CPU, values in
+`indices` are always validated to be within range. If assigned to GPU,
+out-of-bound indices result in safe but unspecified behavior, which may include
+raising an error.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/Gather.png" alt>
+<img style="width:100%" src="../../../images/Gather.png" alt>
 </div>
 )doc");
 
@@ -1616,6 +1659,21 @@ reshape(t, []) ==> 7
 
 shape: Defines the shape of the output tensor.
 )Doc");
+
+#ifdef INTEL_MKL
+REGISTER_OP("_MklReshape")
+    .Input("tensor: T")
+    .Input("shape: Tshape")
+    .Input("mkl_tensor: uint8")
+    .Input("mkl_shape: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) { return SetOutputShapeForReshape(c); })
+    .Doc(R"Doc( MKL implementation of ReshapeOp.
+)Doc");
+#endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
 REGISTER_OP("InvertPermutation")
@@ -2626,10 +2684,10 @@ output: The padded tensor.
 namespace {
 template <typename T>
 Status MirrorPadKnown(InferenceContext* c, ShapeHandle input,
-                      const Tensor* paddings_t, int32 input_rank) {
+                      const Tensor* paddings_t, int64 input_rank) {
   auto paddings_data = paddings_t->matrix<T>();
   std::vector<DimensionHandle> dims(input_rank);
-  for (int i = 0; i < input_rank; ++i) {
+  for (int64 i = 0; i < input_rank; ++i) {
     const int64 pad0 = static_cast<int64>(paddings_data(i, 0));
     const int64 pad1 = static_cast<int64>(paddings_data(i, 1));
     if (pad0 < 0 || pad1 < 0) {
@@ -2716,7 +2774,7 @@ output: The folded tensor.
 REGISTER_OP("Placeholder")
     .Output("output: dtype")
     .Attr("dtype: type")
-    .Attr("shape: shape = {}")
+    .Attr("shape: shape = { unknown_rank: true }")
     .SetShapeFn([](InferenceContext* c) {
       PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
@@ -2724,7 +2782,7 @@ REGISTER_OP("Placeholder")
       // Placeholder has legacy behavior where we cannot tell the difference
       // between a scalar shape attribute and 'unknown shape'.  So if the shape
       // is a scalar, we return an unknown shape.
-      if (shape.dims() <= 0) {
+      if (c->graph_def_version() <= 21 && shape.dims() <= 0) {
         return shape_inference::UnknownShape(c);
       }
 
@@ -2748,11 +2806,9 @@ shape: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
   shape is unconstrained.
 )doc");
 
-// This version fixes an issue with the original version of Placeholder
-// where the empty shape attribute "[]" was used to denote
-// an unknown shape.  This meant that scalars (added later) could
-// not be represented natively.  This new version fixes that
-// limitation.
+// Placeholder was modified in a backwards compatible way to do what
+// PlaceholderV2 did, so we have deprecated V2 (no one was really
+// using it).
 REGISTER_OP("PlaceholderV2")
     .Output("output: dtype")
     .Attr("dtype: type")
@@ -2765,6 +2821,7 @@ REGISTER_OP("PlaceholderV2")
       c->set_output(0, output);
       return Status::OK();
     })
+    .Deprecated(23, "Placeholder now behaves the same as PlaceholderV2.")
     .Doc(R"doc(
 A placeholder op for a value that will be fed into the computation.
 
@@ -4289,66 +4346,9 @@ REGISTER_OP("QuantizeAndDequantize")
     .Output("output: T")
     .Attr("T: {float, double}")
     .SetShapeFn(shape_inference::UnchangedShape)
-    .Deprecated(21, "Replaced by QuantizeAndDequantizeV2")
+    .Deprecated(22, "Replaced by QuantizeAndDequantizeV2")
     .Doc(R"doc(
-Quantizes then dequantizes a tensor.
-
-This op simulates the precision loss from the quantized forward pass by:
-1. Quantizing the tensor to fixed point numbers, which should match the target
-   quantization method when it is used in inference.
-2. Dequantizing it back to floating point numbers for the following ops, most
-   likely matmul.
-
-There are different ways to quantize. This version does not use the full range
-of the output type, choosing to elide the lowest possible value for symmetry
-(e.g., output range is -127 to 127, not -128 to 127 for signed 8 bit
-quantization), so that 0.0 maps to 0.
-
-To perform this op, we first find the range of values in our tensor. The range
-we use is always centered on 0, so we find m such that
-
-1. m = max(abs(input_min), abs(input_max)) if range_given is true,
-2. m = max(max(abs(min_elem(input)), abs(max_elem(input))) otherwise.
-
-Our input tensor range is then [-m, m].
-
-Next, we choose our fixed-point quantization buckets, [min_fixed, max_fixed].
-If signed_input is true, this is
-
-  [min_fixed, max_fixed ] =
-      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1].
-
-Otherwise, if signed_input is false, the fixed-point range is
-
-  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1].
-
-From this we compute our scaling factor, s:
-
-  s = (max_fixed - min_fixed) / (2 * m).
-
-Now we can quantize and dequantize the elements of our tensor.  An element e
-is transformed into e':
-
-  e' = (e * s).round_to_nearest() / s.
-
-Note that we have a different number of buckets in the signed vs. unsigned
-cases.  For example, if num_bits == 8, we get 254 buckets in the signed case
-vs. 255 in the unsigned case.
-
-For example, suppose num_bits = 8 and m = 1.  Then
-
-  [min_fixed, max_fixed] = [-127, 127], and
-  s = (127 + 127) / 2 = 127.
-
-Given the vector {-1, -0.5, 0, 0.3}, this is quantized to
-{-127, -63, 0, 38}, and dequantized to {-1, -63.0/127, 0, 38.0/127}.
-
-input: Tensor to quantize and then dequantize.
-signed_input: If the quantization is signed or unsigned.
-num_bits: The bitwidth of the quantization.
-range_given: If the range is given or should be computed from the tensor.
-input_min: If range is given, this is the min of the range.
-input_max: If range is given, this is the max of the range.
+Use QuantizeAndDequantizeV2 instead.
 )doc");
 
 REGISTER_OP("QuantizeAndDequantizeV2")
@@ -4428,120 +4428,6 @@ input_min: If range_given, this is the min of the range, otherwise this input
            will be ignored.
 input_max: If range_given, this is the max of the range, otherwise this input
            will be ignored.
-)doc");
-
-// EXPERIMENTAL: tfdbg debugger-inserted ops.
-REGISTER_OP("Copy")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .SetAllowsUninitializedInput()
-    .Doc(R"doc(
-Copy Op.
-
-Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the
-device on which the tensor is allocated.
-
-Unlike the CopyHost Op, this op does not have HostMemory constraint on its
-input or output.
-
-input: Input tensor.
-output: Output tensor, deep-copied from input.
-tensor_name: The name of the input tensor.
-)doc");
-
-REGISTER_OP("CopyHost")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .SetAllowsUninitializedInput()
-    .Doc(R"doc(
-Copy Host Op.
-
-Performs CPU-to-CPU deep-copying of tensor.
-
-Unlike the Copy Op, this op has HostMemory constraint on its input or output.
-
-input: Input tensor.
-output: Output tensor, deep-copied from input.
-tensor_name: The name of the input tensor.
-)doc");
-
-REGISTER_OP("DebugIdentity")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .Attr("debug_urls: list(string) = []")
-    .SetAllowsUninitializedInput()
-    .Doc(R"doc(
-Debug Identity Op.
-
-Provides an identity mapping of the non-Ref type input tensor for debugging.
-
-input: Input tensor, non-Reference type.
-output: Output tensor that equals the input tensor.
-tensor_name: Name of the input tensor.
-debug_urls: List of URLs to debug targets, e.g.,
-            file:///foo/tfdbg_dump, grpc:://localhost:11011
-)doc");
-
-REGISTER_OP("DebugNanCount")
-    .Input("input: T")
-    .Output("output: int64")  // The debug signal (nan count) is int64
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .Attr("debug_urls: list(string) = []")
-    .SetAllowsUninitializedInput()
-    .Doc(R"doc(
-Debug NaN Value Counter Op
-
-Counts number of NaNs in the input tensor, for debugging.
-
-input: Input tensor, non-Reference type.
-output: An integer output tensor that is the number of NaNs in the input.
-tensor_name: Name of the input tensor.
-debug_urls: List of URLs to debug targets, e.g.,
-            file:///foo/tfdbg_dump, grpc:://localhost:11011
-)doc");
-
-REGISTER_OP("DebugNumericSummary")
-    .Input("input: T")
-    .Output("output: double")
-    .Attr("T: type")
-    .Attr("tensor_name: string = ''")
-    .Attr("debug_urls: list(string) = []")
-    .SetAllowsUninitializedInput()
-    .Doc(R"doc(
-Debug Numeric Summary Op.
-
-Provide a basic summary of numeric value types, range and distribution.
-
-input: Input tensor, non-Reference type, float or double.
-output: A double tensor of shape [12], the elements of which are:
-  [0]: is initialized (1.0) or not (0.0).
-  [1]: total number of elements
-  [2]: -inf count
-  [3]: negative element count (excluding -inf)
-  [4]: zero element count
-  [5]: positive element count (excluding +inf)
-  [6]: +inf element count
-  [7]: NaN element count
-Output elements [1:8] are all zero, if the tensor is uninitialized.
-  [8]: minimum of all non-inf and non-NaN elements.
-       If uninitialized or no such element exists: +inf.
-  [9]: maximum of all non-inf and non-NaN elements.
-       If uninitialized or no such element exists: -inf.
-  [10]: mean of all non-inf and non-NaN elements.
-        If uninitialized or no such element exists: NaN.
-  [11]: variance of all non-inf and non-NaN elements.
-        If uninitialized or no such element exists: NaN.
-
-tensor_name: Name of the input tensor.
-debug_urls: List of URLs to debug targets, e.g.,
-            file:///foo/tfdbg_dump, grpc:://localhost:11011
 )doc");
 
 REGISTER_OP("QuantizeV2")
@@ -4664,7 +4550,7 @@ each value by 128 prior to casting.
 
 If the mode is 'MIN_FIRST', then this approach is used:
 
-```
+```c++
 number_of_steps = 1 << (# of bits in T)
 range_adjust = number_of_steps / (number_of_steps - 1)
 range = (range_max - range_min) * range_adjust
@@ -4899,12 +4785,14 @@ tensor with 8 elements.
 
 In Python, this scatter operation would look like this:
 
+```python
     indices = tf.constant([[4], [3], [1], [7]])
     updates = tf.constant([9, 10, 11, 12])
     shape = tf.constant([8])
     scatter = tf.scatter_nd(indices, updates, shape)
     with tf.Session() as sess:
       print sess.run(scatter)
+```
 
 The resulting tensor would look like this:
 
@@ -4920,6 +4808,7 @@ rank-3 tensor with two matrices of new values.
 
 In Python, this scatter operation would look like this:
 
+```python
     indices = tf.constant([[0], [2]])
     updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
                             [7, 7, 7, 7], [8, 8, 8, 8]],
@@ -4929,6 +4818,7 @@ In Python, this scatter operation would look like this:
     scatter = tf.scatter_nd(indices, updates, shape)
     with tf.Session() as sess:
       print sess.run(scatter)
+```
 
 The resulting tensor would look like this:
 
@@ -5111,6 +5001,27 @@ backprop_wrt_min: Backpropagated gradients w.r.t. min parameter, shape `[d]`:
 backprop_wrt_max: Backpropagated gradients w.r.t. max parameter, shape `[d]`:
   `sum_per_d(gradients * (inputs > max))`.
 )doc");
+
+#ifdef INTEL_MKL
+REGISTER_OP("_MklConcat")
+    .Input("concat_dim: int32")
+    .Input("values: N * T")
+    .Input("mkl_concat_dim: uint8")
+    .Input("mkl_values: N * uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("N: int >= 2")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::ConcatShape(c, c->num_inputs() - 3);
+    })
+    .Doc(R"doc(
+MKL version of Concat operator. Uses MKL DNN APIs to perform concatenation.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+#endif
 
 // Deprecated op registrations:
 

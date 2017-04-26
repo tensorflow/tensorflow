@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -72,7 +66,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
         output, state = rnn_cell.CoupledInputForgetGateLSTMCell(
-            num_units=num_units, forget_bias=1.0)(x, m)
+            num_units=num_units, forget_bias=1.0, state_is_tuple=False)(x, m)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state], {
             x.name:
@@ -179,7 +173,6 @@ class RNNCellTest(test.TestCase):
     with self.test_session() as sess:
       num_units = 8
       batch_size = 3
-      input_size = 4
       feature_size = 2
       frequency_skip = 1
       num_frequency_blocks = [1, 1]
@@ -576,7 +569,7 @@ class RNNCellTest(test.TestCase):
               self.assertTrue(
                   float(np.linalg.norm((state[0, :] - state[i, :]))) > 1e-6)
 
-  def testAttentionCellWrapperCorrectResult(self):
+  def _testAttentionCellWrapperCorrectResult(self):
     num_units = 4
     attn_length = 6
     batch_size = 2
@@ -604,6 +597,7 @@ class RNNCellTest(test.TestCase):
         dtype=np.float32)
     seed = 12345
     random_seed.set_random_seed(seed)
+    rnn_scope = None
     for state_is_tuple in [False, True]:
       with session.Session() as sess:
         with variable_scope.variable_scope(
@@ -613,6 +607,12 @@ class RNNCellTest(test.TestCase):
               num_units, state_is_tuple=state_is_tuple)
           cell = rnn_cell.AttentionCellWrapper(
               lstm_cell, attn_length, state_is_tuple=state_is_tuple)
+          # This is legacy behavior to preserve the test.  Weight
+          # sharing no longer works by creating a new RNNCell in the
+          # same variable scope; so here we restore the scope of the
+          # RNNCells after the first use below.
+          if rnn_scope is not None:
+            (cell._scope, lstm_cell._scope) = rnn_scope  # pylint: disable=protected-access,unpacking-non-sequence
           zeros1 = random_ops.random_uniform(
               (batch_size, num_units), 0.0, 1.0, seed=seed + 1)
           zeros2 = random_ops.random_uniform(
@@ -629,6 +629,12 @@ class RNNCellTest(test.TestCase):
           inputs = random_ops.random_uniform(
               (batch_size, num_units), 0.0, 1.0, seed=seed + 5)
           output, state = cell(inputs, zero_state)
+          # This is legacy behavior to preserve the test.  Weight
+          # sharing no longer works by creating a new RNNCell in the
+          # same variable scope; so here we store the scope of the
+          # first RNNCell for reuse above.
+          if rnn_scope is None:
+            rnn_scope = (cell._scope, lstm_cell._scope)  # pylint: disable=protected-access
           if state_is_tuple:
             state = array_ops.concat(
                 [state[0][0], state[0][1], state[1], state[2]], 1)
@@ -749,6 +755,133 @@ class RNNCellTest(test.TestCase):
         self.assertEqual(new_h.shape[1], num_proj)
         self.assertAllClose(np.concatenate(res[1], axis=1), expected_state)
 
+  def testUGRNNCell(self):
+    num_units = 2
+    batch_size = 3
+    expected_state_and_output = np.array(
+        [[0.13752282, 0.13752282],
+         [0.10545051, 0.10545051],
+         [0.10074195, 0.10074195]],
+        dtype=np.float32)
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "ugrnn_cell_test",
+          initializer=init_ops.constant_initializer(0.5)):
+        cell = rnn_cell.UGRNNCell(num_units=num_units)
+        inputs = constant_op.constant(
+            np.array([[1., 1., 1., 1.],
+                      [2., 2., 2., 2.],
+                      [3., 3., 3., 3.]],
+                     dtype=np.float32),
+            dtype=dtypes.float32)
+        init_state = constant_op.constant(
+            0.1 * np.ones(
+                (batch_size, num_units), dtype=np.float32),
+            dtype=dtypes.float32)
+        output, state = cell(inputs, init_state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state])
+        # This is a smoke test: Only making sure expected values didn't change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_state_and_output)
+        self.assertAllClose(res[1], expected_state_and_output)
+
+  def testIntersectionRNNCell(self):
+    num_units = 2
+    batch_size = 3
+    expected_state = np.array(
+        [[0.13752282, 0.13752282],
+         [0.10545051, 0.10545051],
+         [0.10074195, 0.10074195]],
+        dtype=np.float32)
+    expected_output = np.array(
+        [[2.00431061, 2.00431061],
+         [4.00060606, 4.00060606],
+         [6.00008249, 6.00008249]],
+        dtype=np.float32)
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "intersection_rnn_cell_test",
+          initializer=init_ops.constant_initializer(0.5)):
+        cell = rnn_cell.IntersectionRNNCell(num_units=num_units,
+                                            num_in_proj=num_units)
+        inputs = constant_op.constant(
+            np.array([[1., 1., 1., 1.],
+                      [2., 2., 2., 2.],
+                      [3., 3., 3., 3.]],
+                     dtype=np.float32),
+            dtype=dtypes.float32)
+        init_state = constant_op.constant(
+            0.1 * np.ones(
+                (batch_size, num_units), dtype=np.float32),
+            dtype=dtypes.float32)
+        output, state = cell(inputs, init_state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state])
+        # This is a smoke test: Only making sure expected values didn't change.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_output)
+        self.assertAllClose(res[1], expected_state)
+
+  def testIntersectionRNNCellFailure(self):
+    num_units = 2
+    batch_size = 3
+    cell = rnn_cell.IntersectionRNNCell(num_units=num_units)
+    inputs = constant_op.constant(
+        np.array([[1., 1., 1., 1.],
+                  [2., 2., 2., 2.],
+                  [3., 3., 3., 3.]],
+                 dtype=np.float32),
+        dtype=dtypes.float32)
+    init_state = constant_op.constant(
+        0.1 * np.ones(
+            (batch_size, num_units), dtype=np.float32),
+        dtype=dtypes.float32)
+    with self.assertRaisesRegexp(
+        ValueError, "Must have input size == output size for "
+                    "Intersection RNN. To fix, num_in_proj should "
+                    "be set to num_units at cell init."):
+      cell(inputs, init_state)
+
+  def testPhasedLSTMCell(self):
+    with self.test_session() as sess:
+      num_units = 2
+      batch_size = 3
+      input_size = 4
+      expected_state_c = np.array(
+          [[2.954548e-01, 8.354891e-04],
+           [2.834632e-01, 8.158963e-01],
+           [2.291694e-01, 1.325745e-04]],
+          dtype=np.float32)
+      expected_state_h = np.array(
+          [[2.116566e-01, 5.985238e-04],
+           [2.137760e-01, 6.153145e-01],
+           [1.742966e-01, 1.008306e-04]],
+          dtype=np.float32)
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        t = array_ops.zeros([batch_size, 1], dtype=dtypes.float64)
+        x = array_ops.zeros([batch_size, input_size])
+        c0 = array_ops.zeros([batch_size, 2])
+        h0 = array_ops.zeros([batch_size, 2])
+        state0 = core_rnn_cell_impl.LSTMStateTuple(c0, h0)
+        output, state = rnn_cell.PhasedLSTMCell(num_units=num_units)((t, x),
+                                                                     state0)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([output, state], {
+            t.name:
+                np.array([[1.], [2.], [3.]]),
+            x.name:
+                np.array([[1., 1., 1., 1.],
+                          [2., 2., 2., 2.],
+                          [3., 3., 3., 3.]]),
+        })
+        # This is a smoke test, making sure expected values are unchanged.
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], res[1].h)
+        self.assertAllClose(res[1].c, expected_state_c)
+        self.assertAllClose(res[1].h, expected_state_h)
+
 
 class LayerNormBasicLSTMCellTest(test.TestCase):
 
@@ -830,11 +963,8 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         c1 = array_ops.zeros([1, 2])
         h1 = array_ops.zeros([1, 2])
         state1 = core_rnn_cell_impl.LSTMStateTuple(c1, h1)
-        def single_cell():
-          return rnn_cell.LayerNormBasicLSTMCell(2)
-
         cell = core_rnn_cell_impl.MultiRNNCell(
-            [single_cell() for _ in range(2)])
+            [rnn_cell.LayerNormBasicLSTMCell(2) for _ in range(2)])
         h, (s0, s1) = cell(x, (state0, state1))
         sess.run([variables.global_variables_initializer()])
         res = sess.run([h, s0, s1], {
@@ -962,7 +1092,7 @@ class CompiledWrapperTest(test.TestCase):
     num_layers = 2
     max_time = 20
 
-    atol = 1e-6
+    atol = 1e-5
 
     random_seed.set_random_seed(1234)
     with self.test_session(graph=ops.Graph()) as sess:

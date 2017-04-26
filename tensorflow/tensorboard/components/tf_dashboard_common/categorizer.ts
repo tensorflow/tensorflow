@@ -51,19 +51,10 @@ module Categorizer {
    */
   export var topLevelNamespaceCategorizer: Categorizer = splitCategorizer(/\//);
 
-  // Try to produce good categorizations on legacy graphs, which often
-  // are namespaced like l1_foo/bar or l2_baz/bam.
-  // If there is no leading underscore before the first forward slash,
-  // then it behaves the same as topLevelNamespaceCategorizer
-  export var legacyUnderscoreCategorizer: Categorizer =
-      splitCategorizer(/[\/_]/);
-
   export function fallbackCategorizer(s: string): Categorizer {
     switch (s) {
       case 'TopLevelNamespaceCategorizer':
         return topLevelNamespaceCategorizer;
-      case 'LegacyUnderscoreCategorizer':
-        return legacyUnderscoreCategorizer;
       default:
         throw new Error('Unrecognized categorization strategy: ' + s);
     }
