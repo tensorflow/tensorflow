@@ -544,7 +544,8 @@ def _propagate(dim_indices, conf, cells, c_prev, m_prev, new_output, new_state,
     cell_inputs = array_ops.zeros([m_prev[0].get_shape().as_list()[0], 0],
                                   m_prev[0].dtype)
 
-  last_dim_output = new_output[-1] or m_prev[-1]
+  last_dim_output = (new_output[-1] if new_output[-1] is not None
+                     else m_prev[-1])
 
   for i in dim_indices:
     d = conf.dims[i]
