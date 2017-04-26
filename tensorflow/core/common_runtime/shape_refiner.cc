@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -79,7 +80,8 @@ Status ShapeRefiner::AddNode(const Node* node) {
   // Get the shape function for this node
   const OpRegistrationData* op_reg_data;
   TF_RETURN_IF_ERROR(ops_registry_->LookUp(node->type_string(), &op_reg_data));
-  if (op_reg_data->shape_inference_fn == nullptr) {
+  if (op_reg_data->shape_inference_fn == nullptr &&
+      require_shape_inference_fns_) {
     return errors::InvalidArgument(
         "No shape inference function exists for op '", node->type_string(),
         "', did you forget to define it?");
@@ -102,7 +104,11 @@ Status ShapeRefiner::AddNode(const Node* node) {
   }
 
   // Run the shape inference function, and return if there was an error.
-  TF_RETURN_IF_ERROR(c->Run(op_reg_data->shape_inference_fn));
+  if (op_reg_data->shape_inference_fn) {
+    TF_RETURN_IF_ERROR(c->Run(op_reg_data->shape_inference_fn));
+  } else {
+    TF_RETURN_IF_ERROR(c->Run(shape_inference::UnknownShape));
+  }
 
   // We must run the shape function repeatedly, in case users write
   // shape functions where they only conditionally call input_tensor()
@@ -163,7 +169,11 @@ Status ShapeRefiner::AddNode(const Node* node) {
       // so re-run shape inference.
       c->set_input_tensors(input_tensors);
       c->set_input_tensors_as_shapes(input_tensors_as_shapes);
-      TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(c.get()));
+      if (op_reg_data->shape_inference_fn) {
+        TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(c.get()));
+      } else {
+        TF_RETURN_IF_ERROR(shape_inference::UnknownShape(c.get()));
+      }
     }
   } while (rerun_shape_fn);
 
