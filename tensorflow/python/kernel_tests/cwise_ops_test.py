@@ -31,6 +31,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -165,6 +166,9 @@ class UnaryOpTest(test.TestCase):
   def _sigmoid(self, x):
     return 1.0 / (1.0 + np.exp(-x))
 
+  def _log_sigmoid(self, x):
+    return np.log(self._sigmoid(x))
+
   def _replace_domain_error_with_inf(self, fn):
 
     def func(x):
@@ -198,6 +202,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(z, np.log1p, math_ops.log1p)
     self._compareBoth(x, np.tanh, math_ops.tanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
+    self._compareBoth(x, self._log_sigmoid, math_ops.log_sigmoid)
     self._compareBoth(y, np.sign, math_ops.sign)
     self._compareBoth(x, np.sin, math_ops.sin)
     self._compareBoth(x, np.cos, math_ops.cos)
