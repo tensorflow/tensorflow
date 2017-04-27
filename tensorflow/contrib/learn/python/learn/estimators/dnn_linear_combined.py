@@ -35,11 +35,11 @@ from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.summary import summary
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 
@@ -99,10 +99,13 @@ def _linear_learning_rate(num_linear_feature_columns):
   return min(_LINEAR_LEARNING_RATE, default_learning_rate)
 
 
+def _add_hidden_layer_summary(value, tag):
+  summary.scalar("%s/fraction_of_zero_values" % tag, nn.zero_fraction(value))
+  summary.histogram("%s/activation" % tag, value)
 def _add_layer_summary(value, tag):
-  logging_ops.scalar_summary("%s/fraction_of_zero_values" % tag,
+  summary.scalar("%s/fraction_of_zero_values" % tag,
                              nn.zero_fraction(value))
-  logging_ops.histogram_summary("%s/activation" % tag, value)
+  summary.histogram("%s/activation" % tag, value)
 
 
 def _get_embedding_variable(column, collection_key, input_layer_scope):
