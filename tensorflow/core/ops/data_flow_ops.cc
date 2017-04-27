@@ -1043,7 +1043,10 @@ REGISTER_OP("StackPush")
     .Output("output: T")
     .Attr("T: type")
     .Attr("swap_memory: bool = false")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Push an element onto the stack.
 
