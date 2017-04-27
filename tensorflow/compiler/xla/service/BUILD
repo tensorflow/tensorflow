@@ -1386,6 +1386,7 @@ cc_test(
         ":cpu_plugin",
         ":hlo",
         ":hlo_cse",
+        ":hlo_matchers",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
