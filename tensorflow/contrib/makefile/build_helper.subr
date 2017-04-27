@@ -59,12 +59,22 @@ make_host_protoc() {
 }
 
 download_and_push() {
-    URL="$1"
-    LOCAL_DEST="$2"
-    ANDROID_DEST="$3"
-    curl -Ls "${URL}" -o "${LOCAL_DEST}"
-    if [[ ! -z "${ANDROID_DEST}" ]]; then
-        adb shell mkdir -p "${ANDROID_DEST}"
-        adb push "${LOCAL_DEST}" "${ANDROID_DEST}"
+  URL="$1"
+  LOCAL_DEST="$2"
+  ANDROID_DEST="$3"
+  SKIP_DOWNLOAD_IF_EXIST="$4"
+  if [[ "${SKIP_DOWNLOAD_IF_EXIST}" == "true" ]]; then
+    ANDROID_DEST_FILE_PATH="${ANDROID_DEST}/$(basename "${LOCAL_DEST}")"
+    if adb shell test -f "${ANDROID_DEST_FILE_PATH}"; then
+        echo "${ANDROID_DEST_FILE_PATH} already existins, skip download" 1>&2
+      return 0
     fi
+  fi
+
+  curl -Ls "${URL}" -o "${LOCAL_DEST}"
+
+  if [[ ! -z "${ANDROID_DEST}" ]]; then
+    adb shell mkdir -p "${ANDROID_DEST}"
+    adb push "${LOCAL_DEST}" "${ANDROID_DEST}"
+  fi
 }

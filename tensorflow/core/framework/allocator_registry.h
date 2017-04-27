@@ -27,7 +27,8 @@ namespace tensorflow {
 // A global AllocatorRegistry is used to hold allocators for CPU backends
 class AllocatorRegistry {
  public:
-  // Add an allocator to the registry.
+  // Add an allocator to the registry.  Caller releases ownership of
+  // 'allocator'.
   void Register(const string& name, int priority, Allocator* allocator);
 
   // Return allocator with highest priority
@@ -44,7 +45,9 @@ class AllocatorRegistry {
     Allocator* allocator;  // not owned
   } AllocatorRegistryEntry;
 
-  bool CheckForDuplicates(const string& name, int priority);
+  // Returns the Allocator registered for 'name' and 'priority',
+  // or 'nullptr' if not found.
+  Allocator* GetRegisteredAllocator(const string& name, int priority);
 
   std::vector<AllocatorRegistryEntry> allocators_;
   Allocator* m_curr_allocator_;  // not owned

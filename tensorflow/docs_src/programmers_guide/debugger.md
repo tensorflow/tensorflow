@@ -409,6 +409,25 @@ python -m tensorflow.python.debug.examples.debug_errors \
     --error uninitialized_variable --debug
 ```
 
+**Q**: _How can I let my tfdbg-wrapped Sessions or Hooks run the debug mode
+only from the main thread?_
+
+**A**:
+This is a common use case, in which the `Session` object is used from multiple
+threads concurrently. Typically, the child threads take care of background tasks
+such as running enqueue operations. Oftentimes, you want to debug only the main
+thread (or less frequently, only one of the child threads). You can use the
+`thread_name_filter` keyword argument of `LocalCLIDebugWrapperSession` to
+achieve this type of thread-selective debugging. For example, if you would like
+to debug from only the main thread, you can do:
+
+```python
+sess = tf_debug.LocalCLIDebugWrapperSession(sess, thread_name_filter="MainThread$")
+```
+
+The above example relies on the fact that main threads in Python have the
+default name `MainThread`.
+
 **Q**: _The model I am debugging is very large. The data dumped by tfdbg
 fills up the free space of my disk. What can I do?_
 

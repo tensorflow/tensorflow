@@ -20,7 +20,11 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import tensor_pb2
+from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.python.debug.cli import tensor_format
+from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
@@ -363,10 +367,28 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
       if i < 1:
         self.assertNotIn(p + i * 6 + 5, out.annotations)
 
-  def testFormatNone(self):
-    out = tensor_format.format_tensor(None, "a")
+  def testFormatUninitializedTensor(self):
+    tensor_proto = tensor_pb2.TensorProto(
+        dtype=types_pb2.DataType.Value("DT_FLOAT"),
+        tensor_shape=tensor_shape_pb2.TensorShapeProto(
+            dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)]))
+    out = tensor_format.format_tensor(
+        debug_data.InconvertibleTensorProto(tensor_proto, False), "a")
 
-    self.assertEqual(["Tensor \"a\":", "", "Uninitialized tensor"], out.lines)
+    self.assertEqual(["Tensor \"a\":", "", "Uninitialized tensor:"],
+                     out.lines[:3])
+    self.assertEqual(str(tensor_proto).split("\n"), out.lines[3:])
+
+  def testFormatResourceTypeTensor(self):
+    tensor_proto = tensor_pb2.TensorProto(
+        dtype=types_pb2.DataType.Value("DT_RESOURCE"),
+        tensor_shape=tensor_shape_pb2.TensorShapeProto(
+            dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)]))
+    out = tensor_format.format_tensor(
+        debug_data.InconvertibleTensorProto(tensor_proto), "a")
+
+    self.assertEqual(["Tensor \"a\":", ""], out.lines[:2])
+    self.assertEqual(str(tensor_proto).split("\n"), out.lines[2:])
 
   def testLocateTensorElement1DNoEllipsis(self):
     a = np.zeros(20)
@@ -821,9 +843,15 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual([12, None], end_cols)
 
   def testLocateTensorElementAnnotationsUnavailable(self):
-    out = tensor_format.format_tensor(None, "a")
+    tensor_proto = tensor_pb2.TensorProto(
+        dtype=types_pb2.DataType.Value("DT_FLOAT"),
+        tensor_shape=tensor_shape_pb2.TensorShapeProto(
+            dim=[tensor_shape_pb2.TensorShapeProto.Dim(size=1)]))
+    out = tensor_format.format_tensor(
+        debug_data.InconvertibleTensorProto(tensor_proto, False), "a")
 
-    self.assertEqual(["Tensor \"a\":", "", "Uninitialized tensor"], out.lines)
+    self.assertEqual(["Tensor \"a\":", "", "Uninitialized tensor:"],
+                     out.lines[:3])
 
     with self.assertRaisesRegexp(
         AttributeError, "tensor_metadata is not available in annotations"):

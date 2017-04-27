@@ -44,6 +44,8 @@ See the @{$python/contrib.seq2seq} guide.
 @@AttentionWrapper
 
 @@gather_tree
+
+@@tile_batch
 """
 
 from __future__ import absolute_import

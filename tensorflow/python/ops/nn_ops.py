@@ -1272,7 +1272,7 @@ def conv3d_transpose(value,
                      output_shape,
                      strides,
                      padding="SAME",
-                     data_format=None,
+                     data_format="NDHWC",
                      name=None):
   """The transpose of `conv3d`.
 
@@ -1308,9 +1308,10 @@ def conv3d_transpose(value,
                       [value, filter, output_shape]) as name:
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
-    if not value.get_shape()[4].is_compatible_with(filter.get_shape()[4]):
+    axis = 1 if data_format == "NCDHW" else 4
+    if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[4]):
       raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[4], filter.get_shape(
+                       "{} != {}".format(value.get_shape()[axis], filter.get_shape(
                        )[4]))
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")

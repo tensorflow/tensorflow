@@ -19,7 +19,9 @@ from __future__ import print_function
 import numpy as np
 from scipy import stats
 from tensorflow.contrib.distributions.python.ops import binomial
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -97,13 +99,14 @@ class BinomialTest(test.TestCase):
       binom.prob([3., 1, 2]).eval()
       binom.cdf([2., 3, 2]).eval()
       binom.cdf([3., 1, 2]).eval()
+      placeholder = array_ops.placeholder(dtypes.float32)
       # Both equality and integer checking fail.
       with self.assertRaisesOpError(
           "cannot contain fractional components."):
-        binom.prob([1.0, 2.5, 1.5]).eval()
+        binom.prob(placeholder).eval(feed_dict={placeholder: [1.0, 2.5, 1.5]})
       with self.assertRaisesOpError(
           "cannot contain fractional components."):
-        binom.cdf([1.0, 2.5, 1.5]).eval()
+        binom.cdf(placeholder).eval(feed_dict={placeholder: [1.0, 2.5, 1.5]})
 
       binom = binomial.Binomial(total_count=n, probs=p, validate_args=False)
       binom.prob([1., 2., 3.]).eval()

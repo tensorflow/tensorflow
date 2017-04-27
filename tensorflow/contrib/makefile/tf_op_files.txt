@@ -101,6 +101,7 @@ tensorflow/core/kernels/identity_op.cc
 tensorflow/core/kernels/gather_op.cc
 tensorflow/core/kernels/gather_functor.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
+tensorflow/core/kernels/function_ops.cc
 tensorflow/core/kernels/fill_functor.cc
 tensorflow/core/kernels/fifo_queue.cc
 tensorflow/core/kernels/fake_quant_ops.cc

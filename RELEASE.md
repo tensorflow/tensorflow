@@ -1,6 +1,7 @@
 # Changes since the last release
 
 ## Major Features and Improvements
+* Added `tf.layers.conv3d_transpose` layer for spatio temporal deconvolution.
 * Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
 * Added ibverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
 * `RNNCell` objects now subclass `tf.layers._Layer`.  The strictness described

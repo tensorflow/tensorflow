@@ -35,11 +35,11 @@ from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.summary import summary
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 
@@ -100,9 +100,12 @@ def _linear_learning_rate(num_linear_feature_columns):
 
 
 def _add_hidden_layer_summary(value, tag):
-  logging_ops.scalar_summary("%s/fraction_of_zero_values" % tag,
+  summary.scalar("%s/fraction_of_zero_values" % tag, nn.zero_fraction(value))
+  summary.histogram("%s/activation" % tag, value)
+def _add_layer_summary(value, tag):
+  summary.scalar("%s/fraction_of_zero_values" % tag,
                              nn.zero_fraction(value))
-  logging_ops.histogram_summary("%s/activation" % tag, value)
+  summary.histogram("%s/activation" % tag, value)
 
 
 def _get_embedding_variable(column, collection_key, input_layer_scope):
@@ -247,7 +250,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
                 net,
                 keep_prob=(1.0 - dnn_dropout))
         # TODO(b/31209633): Consider adding summary before dropout.
-        _add_hidden_layer_summary(net, dnn_hidden_layer_scope.name)
+        _add_layer_summary(net, dnn_hidden_layer_scope.name)
 
       with variable_scope.variable_scope(
           "logits",
@@ -258,7 +261,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
             activation_fn=None,
             variables_collections=[dnn_parent_scope],
             scope=dnn_logits_scope)
-      _add_hidden_layer_summary(dnn_logits, dnn_logits_scope.name)
+      _add_layer_summary(dnn_logits, dnn_logits_scope.name)
 
   # Build Linear logits.
   linear_parent_scope = "linear"
@@ -287,6 +290,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
             num_outputs=head.logits_dimension,
             weight_collections=[linear_parent_scope],
             scope=scope)
+      _add_layer_summary(linear_logits, scope.name)
 
   # Combine logits and build full model.
   if dnn_logits is not None and linear_logits is not None:
