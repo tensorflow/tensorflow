@@ -13,7 +13,6 @@
 
 #include <popstd/ActivationMapping.hpp>
 #include <popconv/Convolution.hpp>
-#include <popconv/ConvPlan.hpp>
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
@@ -92,46 +91,48 @@ CreateConv2D(poplar::Graph &graph,
             port::StrCat("Unequal paddings not supported on ", inst->name()));
   }
 
-  popconv::Plan plan = popconv::getPlan(graph,
-                                        dtype,
-                                        n_b,
-                                        n_y,
-                                        n_x,
-                                        n_i,
-                                        {f_y, f_x, n_o},
-                                        {s_y, s_x},
-                                        {p_y, p_x},
-                                        false, opts);
+  poplar::Tensor conv_in = popconv::createInput(graph, dtype,
+                                                n_b, n_y, n_x, n_i,
+                                                f_y, f_x, n_o,
+                                                s_y, s_x, p_y, p_x,
+                                                false, "", opts);
 
-  const unsigned in_chan_groups = n_i / plan.inChansPerGroup;
-  const unsigned out_chan_groups = n_o / plan.partialChansPerGroup;
+  poplar::Tensor conv_kernel = popconv::createWeights(graph, conv_in,
+                                                      f_y, f_x, n_o,
+                                                      s_y, s_x, p_y, p_x,
+                                                      false, opts);
+
+  poplar::program::Sequence prog;
 
   in = in.dimShuffle({(unsigned int)dims.batch_dimension(),
                       (unsigned int)dims.feature_dimension(),
                       (unsigned int)dims.spatial_dimensions(0),
                       (unsigned int)dims.spatial_dimensions(1)});
-  in = in.reshape({n_b,
-                   in_chan_groups,
-                   plan.inChansPerGroup,
-                   n_y,
-                   n_x});
+  in = in.reshape({conv_in.dim(0),
+                   conv_in.dim(1),
+                   conv_in.dim(4),
+                   conv_in.dim(2),
+                   conv_in.dim(3)});
   in = in.dimShuffle({0, 1, 3, 4, 2});
+  prog.add(poplar::program::Copy(in, conv_in));
+
   kernel = kernel.dimShuffle({(unsigned int)dims.kernel_spatial_dimensions(0),
                               (unsigned int)dims.kernel_spatial_dimensions(1),
                               (unsigned int)dims.kernel_input_feature_dimension(),
                               (unsigned int)dims.kernel_output_feature_dimension()});
-  kernel = kernel.reshape({f_y, f_x,
-                           in_chan_groups,
-                           plan.inChansPerGroup,
-                           out_chan_groups,
-                           plan.partialChansPerGroup});
+  kernel = kernel.reshape({conv_kernel.dim(2),
+                           conv_kernel.dim(3),
+                           conv_kernel.dim(1),
+                           conv_kernel.dim(5),
+                           conv_kernel.dim(0),
+                           conv_kernel.dim(4)});
   kernel = kernel.dimShuffle({4, 2, 0, 1, 5, 3});
+  prog.add(poplar::program::Copy(kernel, conv_kernel));
 
   popstd::mapActivations(graph, in);
   popconv::mapWeights(kernel, graph, in, s_y, s_x, p_y, p_x, false, opts);
 
   // Add the convolution
-  poplar::program::Sequence prog;
   poplar::Tensor out = popconv::convolution(graph,
                                             {s_y, s_x}, {p_y, p_x},
                                             n_o, in, kernel, dtype,

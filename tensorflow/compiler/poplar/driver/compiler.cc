@@ -45,8 +45,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #include <poplar/exceptions.hpp>
+#include <popstd/exceptions.hpp>
 #include <xgraph_core/exceptions.hpp>
-#include <enigma/exceptions.hpp>
 
 #include <popconv/codelets.hpp>
 #include <poplin/codelets.hpp>
@@ -173,7 +173,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
                         port::StrCat("[Poplar Compile] ",
                                      e.what()));
   }
-  catch (enigma::enigma_error e) {
+  catch (popstd::poplib_error e) {
     return port::Status(port::error::UNKNOWN,
                         port::StrCat("[Popnn Compile] ",
                                      e.what()));
