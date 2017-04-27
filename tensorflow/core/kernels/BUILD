@@ -17,7 +17,10 @@ licenses(["notice"])  # Apache 2.0
 
 package_group(
     name = "friends",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/brain/contrib/...",
+        "//tensorflow/...",
+    ],
 )
 
 load(
