@@ -209,6 +209,12 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
                                    HloInstruction* operand, HloInstruction* max,
                                    HloInstruction* max_operand);
 
+  // Tries to constant fold a concatenate operation, and returns true if the
+  // operation has been performed. An error status is returned in case of error.
+  StatusOr<bool> TryConcatenateConstantFold(
+      HloInstruction* concatenate,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+
   // A Reshape or Broadcast that feeds an element-wise operation with a unique
   // non-scalar operand can sink to after the operation.
   StatusOr<bool> TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(
@@ -301,12 +307,76 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy,
   return Status::OK();
 }
 
+StatusOr<bool> AlgebraicSimplifierVisitor::TryConcatenateConstantFold(
+    HloInstruction* concatenate,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  if (operands[0]->opcode() == HloOpcode::kConstant) {
+    // If all the operands of a concatenate are constant, fold them into a
+    // single constant tensor.
+    // The concatenate dimension is going to be the sum of all the concatenate
+    // dimensions.
+    int64 concat_dim = concatenate->dimensions()[0];
+    const Shape& reference_shape = operands[0]->shape();
+    if (ShapeUtil::IsTuple(reference_shape)) {
+      VLOG(5) << "Tuples not currently supported by the concatenate constant"
+                 " folder";
+      return false;
+    }
+    int64 rank = ShapeUtil::Rank(reference_shape);
+    std::vector<int64> concat_dimensions(reference_shape.dimensions().begin(),
+                                         reference_shape.dimensions().end());
+    if (concat_dim < 0) {
+      concat_dim += rank;
+    }
+    for (int64 i = 1; i < operands.size(); ++i) {
+      const Shape& operand_shape = operands[i]->shape();
+      if (operands[i]->opcode() != HloOpcode::kConstant ||
+          ShapeUtil::IsTuple(operand_shape)) {
+        return false;
+      }
+      // Accumulate the concat dimension from all tensors taking part to the
+      // operation.
+      concat_dimensions[concat_dim] +=
+          ShapeUtil::GetDimension(operand_shape, concat_dim);
+    }
+
+    auto literal = LiteralUtil::CreateFromDimensions(
+        reference_shape.element_type(), concat_dimensions);
+    std::vector<int64> source_indices(rank, 0);
+    std::vector<int64> dest_indices(concat_dimensions.size(), 0);
+    for (auto operand : operands) {
+      const Shape& operand_shape = operand->shape();
+      Status status = LiteralUtil::Copy(
+          operand->literal(), source_indices, literal.get(), dest_indices,
+          AsInt64Slice(operand_shape.dimensions()));
+      if (!status.ok()) {
+        VLOG(1) << "Error while creating concatenated literal : " << status;
+        return false;
+      }
+      dest_indices[concat_dim] +=
+          ShapeUtil::GetDimension(operand_shape, concat_dim);
+    }
+    TF_CHECK_OK(computation_->ReplaceWithNewInstruction(
+        concatenate, HloInstruction::CreateConstant(std::move(literal))));
+    changed_ = true;
+    return true;
+  }
+  return false;
+}
+
 Status AlgebraicSimplifierVisitor::HandleConcatenate(
     HloInstruction* concatenate,
     tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  // Unary concatenates are useless.
   if (operands.size() == 1) {
+    // Unary concatenates are useless.
     ReplaceInstructionIfSameShape(concatenate, operands[0]);
+    return Status::OK();
+  }
+  // If all the concatenate operands are constant, this will get folded into a
+  // new constant literal.
+  TF_ASSIGN_OR_RETURN(bool folded,
+                      TryConcatenateConstantFold(concatenate, operands));
+  if (folded) {
     return Status::OK();
   }
   // Filter out and remove empty operands.

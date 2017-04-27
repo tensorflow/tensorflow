@@ -139,6 +139,18 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
           std::equal(std::begin(c1), std::end(c1), std::begin(c2), p));
 }
 
+// Performs a copy of count values from src to dest, using different strides for
+// source and destination. The source starting index is src_base, while the
+// destination one is dest_base.
+template <typename D, typename S>
+void StridedCopy(tensorflow::protobuf::RepeatedField<D>* dest, int64 dest_base,
+                 int64 dest_stride, tensorflow::gtl::ArraySlice<S> src,
+                 int64 src_base, int64 src_stride, int64 count) {
+  for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
+    dest->Set(dest_base, static_cast<D>(src[src_base]));
+  }
+}
+
 // Adds some context information to the error message in a
 // Status.  This is useful as Statuses are
 // propagated upwards.

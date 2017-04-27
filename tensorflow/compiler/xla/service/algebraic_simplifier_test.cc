@@ -1620,5 +1620,46 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 }
 
+TEST_F(AlgebraicSimplifierTest, Concatenate) {
+  const struct TestConfig {
+    int concat_dimension;
+    tensorflow::gtl::ArraySlice<int64> dimensions;
+    tensorflow::gtl::ArraySlice<int64> concat_sizes;
+  } test_configs[] = {
+      {1, {11, 0, 7, 5, 9}, {2, 5, 7, 11}},
+      {3, {1, 4, 17, 0, 8}, {1, 3, 9, 12}},
+  };
+
+  for (auto& test_config : test_configs) {
+    HloComputation::Builder builder(TestName());
+    std::vector<int64> dimensions(test_config.dimensions.begin(),
+                                  test_config.dimensions.end());
+    int64 concat_size = 0;
+    std::vector<HloInstruction*> operands;
+    for (auto csize : test_config.concat_sizes) {
+      dimensions[test_config.concat_dimension] = csize;
+      concat_size += csize;
+      auto literal = LiteralUtil::CreateFromDimensions(F32, dimensions);
+      HloInstruction* insn = builder.AddInstruction(
+          HloInstruction::CreateConstant(std::move(literal)));
+      operands.push_back(insn);
+    }
+    dimensions[test_config.concat_dimension] = concat_size;
+    Shape shape = ShapeUtil::MakeShape(F32, dimensions);
+    builder.AddInstruction(HloInstruction::CreateConcatenate(
+        shape, operands, test_config.concat_dimension));
+    HloModule module(TestName());
+    auto computation = module.AddEntryComputation(builder.Build());
+
+    AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                   non_bitcasting_callback());
+    ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
+
+    HloInstruction* root = computation->root_instruction();
+    EXPECT_EQ(root->opcode(), HloOpcode::kConstant);
+    EXPECT_TRUE(ShapeUtil::Equal(root->shape(), shape));
+  }
+}
+
 }  // namespace
 }  // namespace xla
