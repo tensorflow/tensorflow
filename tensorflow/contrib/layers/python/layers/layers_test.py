@@ -27,7 +27,6 @@ from tensorflow.contrib.framework.python.ops import arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import layers as _layers
 from tensorflow.contrib.layers.python.layers import regularizers
-from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -49,6 +48,7 @@ from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.ops.losses.losses import get_regularization_losses
 
 
 class AvgPool2DTest(test.TestCase):
@@ -119,6 +119,76 @@ class AvgPool2DTest(test.TestCase):
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
     output = _layers.avg_pool2d(images, images.get_shape()[1:3], stride=1)
     self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+
+
+class AvgPool3DTest(test.TestCase):
+
+  def testInvalidDataFormat(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3))
+    with self.assertRaisesRegexp(ValueError,
+                                 'data_format has to be either NCDHW or NDHWC.'):
+      _layers.avg_pool3d(images, [3, 3, 3], data_format='CDHWN')
+
+  def testCreateAvgPool(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3))
+    output = _layers.avg_pool3d(images, [3, 3, 3])
+    self.assertEqual(output.op.name, 'AvgPool3D/AvgPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateAvgPoolNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, 2, depth, height, width))
+    output = _layers.avg_pool3d(images, [3, 3, 3], data_format='NCDHW')
+    self.assertEquals(output.op.name, 'AvgPool3D/transpose_1')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 1, 2, 4])
+
+  def testCollectOutputs(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], outputs_collections='outputs')
+    output_collected = ops.get_collection('outputs')[0]
+    self.assertEqual(output_collected.aliases, ['AvgPool3D'])
+    self.assertEqual(output_collected, output)
+
+  def testCreateSquareAvgPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, 3)
+    self.assertEqual(output.op.name, 'AvgPool3D/AvgPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateAvgPoolWithScope(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], scope='pool1')
+    self.assertEqual(output.op.name, 'pool1/AvgPool3D')
+
+  def testCreateAvgPoolWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 3, 5, 3])
+
+  def testCreateAvgPoolWithSamePaddingNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, 3, depth, height, width), seed=1)
+    output = _layers.avg_pool3d(
+        images, [3, 3, 3], padding='SAME', data_format='NCDHW')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 2, 3, 5])
+
+  def testCreateAvgPoolStrideWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], stride=1, padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, depth, height, width, 3])
+
+  def testGlobalAvgPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, images.get_shape()[1:4], stride=1)
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 1, 3])
 
 
 class PoolTest(test.TestCase):
@@ -472,7 +542,7 @@ class ConvolutionTest(test.TestCase):
     with self.test_session():
       self.assertFalse(variables.get_variables('conv1/weights'))
       self.assertFalse(variables.get_variables('conv1/biases'))
-      layers_lib.convolution2d(images, 32, [3, 3], rate=2, scope='conv1')
+      layers_lib.convolution2d(images, 32, [3, 3], dilation_rate=2, scope='conv1')
       self.assertTrue(variables.get_variables('conv1/weights'))
       self.assertTrue(variables.get_variables('conv1/biases'))
 
@@ -483,7 +553,7 @@ class ConvolutionTest(test.TestCase):
 
     images = random_ops.random_uniform(input_size, seed=1)
     output = layers_lib.convolution2d(
-        images, num_filters, [3, 3], rate=2, padding='SAME')
+        images, num_filters, [3, 3], dilation_rate=2, padding='SAME')
     self.assertListEqual(list(output.get_shape().as_list()), expected_size)
     with self.test_session() as sess:
       sess.run(variables_lib.global_variables_initializer())
@@ -497,7 +567,7 @@ class ConvolutionTest(test.TestCase):
 
     images = random_ops.random_uniform(input_size, seed=1)
     output = layers_lib.convolution2d(
-        images, num_filters, [3, 3], rate=2, padding='VALID')
+        images, num_filters, [3, 3], dilation_rate=2, padding='VALID')
     self.assertListEqual(list(output.get_shape().as_list()), expected_size)
     with self.test_session() as sess:
       sess.run(variables_lib.global_variables_initializer())
@@ -511,7 +581,7 @@ class ConvolutionTest(test.TestCase):
 
     images = random_ops.random_uniform(input_size, seed=1)
     output = layers_lib.convolution2d(
-        images, num_filters, [3, 3], rate=[2, 3], padding='VALID')
+        images, num_filters, [3, 3], dilation_rate=[2, 3], padding='VALID')
     self.assertListEqual(list(output.get_shape().as_list()), expected_size)
     with self.test_session() as sess:
       sess.run(variables_lib.global_variables_initializer())
@@ -528,7 +598,7 @@ class ConvolutionTest(test.TestCase):
       images = array_ops.placeholder(np.float32,
                                      [None, None, None, input_size[3]])
       output = layers_lib.convolution2d(
-          images, num_filters, [3, 3], rate=1, padding='VALID')
+          images, num_filters, [3, 3], dilation_rate=1, padding='VALID')
       variables_lib.global_variables_initializer().run()
       self.assertEqual(output.op.name, 'Conv/Relu')
       self.assertListEqual(output.get_shape().as_list(), expected_size)
@@ -548,7 +618,7 @@ class ConvolutionTest(test.TestCase):
         output = layers_lib.convolution2d(
             images,
             num_filters, [3, 3],
-            rate=1,
+            dilation_rate=1,
             padding='VALID',
             data_format='NCHW')
         variables_lib.global_variables_initializer().run()
@@ -567,7 +637,7 @@ class ConvolutionTest(test.TestCase):
       images = array_ops.placeholder(np.float32,
                                      [None, None, None, input_size[3]])
       output = layers_lib.convolution2d(
-          images, num_filters, [3, 3], rate=2, padding='VALID')
+          images, num_filters, [3, 3], dilation_rate=2, padding='VALID')
       variables_lib.global_variables_initializer().run()
       self.assertEqual(output.op.name, 'Conv/Relu')
       self.assertListEqual(output.get_shape().as_list(), expected_size)
@@ -581,7 +651,7 @@ class ConvolutionTest(test.TestCase):
 
     images = random_ops.random_uniform(input_size, seed=1)
     output = layers_lib.convolution2d(
-        images, num_filters, [3, 3], rate=2, padding='VALID', scope='conv7')
+        images, num_filters, [3, 3], dilation_rate=2, padding='VALID', scope='conv7')
     with self.test_session() as sess:
       sess.run(variables_lib.global_variables_initializer())
       self.assertEqual(output.op.name, 'conv7/Relu')
@@ -596,7 +666,7 @@ class ConvolutionTest(test.TestCase):
     output = layers_lib.convolution2d(
         images,
         num_filters, [3, 3],
-        rate=2,
+        dilation_rate=2,
         padding='VALID',
         activation_fn=None,
         scope='conv7')
@@ -1559,23 +1629,23 @@ class FCTest(test.TestCase):
         inputs, 32, scope='fc1', weights_regularizer=regularizer)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
-    self.assertEqual(len(loss_ops.get_regularization_losses()), 1)
+    self.assertEqual(len(get_regularization_losses()), 1)
     _layers.fully_connected(
         inputs, 32, scope='fc1', weights_regularizer=regularizer, reuse=True)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
-    self.assertEqual(len(loss_ops.get_regularization_losses()), 1)
+    self.assertEqual(len(get_regularization_losses()), 1)
 
     with variable_scope.variable_scope('outer', reuse=False):
       _layers.fully_connected(inputs, 32, weights_regularizer=regularizer)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 2)
-      self.assertEqual(len(loss_ops.get_regularization_losses()), 2)
+      self.assertEqual(len(get_regularization_losses()), 2)
     with variable_scope.variable_scope('outer', reuse=True):
       _layers.fully_connected(inputs, 32, weights_regularizer=regularizer)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 2)
-      self.assertEqual(len(loss_ops.get_regularization_losses()), 2)
+      self.assertEqual(len(get_regularization_losses()), 2)
 
   def testCreateFCWithoutActivation(self):
     height, width = 3, 3
@@ -2742,6 +2812,76 @@ class MaxPool2DTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
 
 
+class MaxPool3DTest(test.TestCase):
+
+  def testInvalidDataFormat(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3))
+    with self.assertRaisesRegexp(ValueError,
+                                 'data_format has to be either NCDHW or NDHWC.'):
+      _layers.max_pool3d(images, [3, 3, 3], data_format='CDHWN')
+
+  def testCreateMaxPool(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3)).astype(np.float32)
+    output = _layers.max_pool3d(images, [3, 3, 3])
+    self.assertEqual(output.op.name, 'MaxPool3D/MaxPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateMaxPoolNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, 3, depth, height, width)).astype(np.float32)
+    output = _layers.max_pool3d(images, [3, 3, 3], data_format='NCDHW')
+    self.assertEquals(output.op.name, 'MaxPool3D/transpose_1')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 1, 2, 4])
+
+  def testCollectOutputs(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], outputs_collections='outputs')
+    output_collected = ops.get_collection('outputs')[0]
+    self.assertEqual(output_collected.aliases, ['MaxPool3D'])
+    self.assertEqual(output_collected, output)
+
+  def testCreateSquareMaxPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, 3)
+    self.assertEqual(output.op.name, 'MaxPool3D/MaxPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateMaxPoolWithScope(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], scope='pool1')
+    self.assertEqual(output.op.name, 'pool1/MaxPool3D')
+
+  def testCreateMaxPoolWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 3, 5, 3])
+
+  def testCreateMaxPoolWithSamePaddingNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, 3, height, width), seed=1)
+    output = _layers.max_pool3d(
+        images, [3, 3, 3], padding='SAME', data_format='NCDHW')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 2, 3, 4])
+
+  def testCreateMaxPoolStrideWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], stride=1, padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, depth, height, width, 3])
+
+  def testGlobalMaxPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, images.get_shape()[1:4], stride=1)
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 1, 3])
+
+
 class OneHotEncodingTest(test.TestCase):
 
   def testOneHotEncodingCreate(self):
@@ -2851,7 +2991,7 @@ class SeparableConv2dTest(test.TestCase):
       self.assertFalse(variables.get_variables('conv1/depthwise_weights'))
       self.assertFalse(variables.get_variables('conv1/pointwise_weights'))
       self.assertFalse(variables.get_variables('conv1/biases'))
-      layers_lib.separable_conv2d(images, 32, [3, 3], 4, rate=2, scope='conv1')
+      layers_lib.separable_conv2d(images, 32, [3, 3], 4, dilation_rate=2, scope='conv1')
       self.assertTrue(variables.get_variables('conv1/depthwise_weights'))
       self.assertTrue(variables.get_variables('conv1/pointwise_weights'))
       self.assertTrue(variables.get_variables('conv1/biases'))
@@ -2896,7 +3036,7 @@ class SeparableConv2dTest(test.TestCase):
     with self.test_session():
       images = random_ops.random_uniform((5, height, width, 3), seed=1)
       output = layers_lib.separable_conv2d(
-          images, 32, [3, 3], 2, padding='VALID', rate=2)
+          images, 32, [3, 3], 2, padding='VALID', dilation_rate=2)
       self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 32])
 
   def testCreateDepthwiseConvValid(self):
@@ -2912,7 +3052,7 @@ class SeparableConv2dTest(test.TestCase):
     with self.test_session():
       images = random_ops.random_uniform((5, height, width, 3), seed=1)
       output = layers_lib.separable_conv2d(
-          images, None, [3, 3], 2, padding='VALID', rate=2)
+          images, None, [3, 3], 2, padding='VALID', dilation_rate=2)
       self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 6])
 
   def testCreateConvWithWeightDecay(self):
