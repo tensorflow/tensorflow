@@ -146,7 +146,7 @@ class BeamSearchDecoder(decoder.Decoder):
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
     if (output_layer is not None
-        and not isinstance(output_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(output_layer, layers_base.Layer)):
       raise TypeError(
           "output_layer must be a Layer, received: %s" % type(output_layer))
     self._cell = cell

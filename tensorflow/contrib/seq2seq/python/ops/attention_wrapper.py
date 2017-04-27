@@ -144,11 +144,11 @@ class _BaseAttentionMechanism(AttentionMechanism):
       name: Name to use when creating ops.
     """
     if (query_layer is not None
-        and not isinstance(query_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(query_layer, layers_base.Layer)):
       raise TypeError(
           "query_layer is not a Layer: %s" % type(query_layer).__name__)
     if (memory_layer is not None
-        and not isinstance(memory_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(memory_layer, layers_base.Layer)):
       raise TypeError(
           "memory_layer is not a Layer: %s" % type(memory_layer).__name__)
     self._query_layer = query_layer
