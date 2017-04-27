@@ -86,8 +86,7 @@ public: \
 \
 template class NAME<float>; \
 template class NAME<half>; \
-template class NAME<int>; \
-template class NAME<bool>;
+template class NAME<int>;
 
 
 // Predicates
