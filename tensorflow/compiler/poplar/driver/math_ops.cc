@@ -46,7 +46,7 @@ LookupPoplarVertexName(HloOpcode opcode) {
     POPLAR_OPCODE(kCrossReplicaSum, "");
     UNUSED_OPCODE(kCustomCall);
     POPLAR_OPCODE(kDivide, "Div");
-    POPLAR_OPCODE(kDot, "Dot");
+    UNUSED_OPCODE(kDot);
     UNUSED_OPCODE(kDynamicSlice);
     UNUSED_OPCODE(kDynamicUpdateSlice);
     POPLAR_OPCODE(kEq, "EqualTo");
