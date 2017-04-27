@@ -143,10 +143,7 @@ AddConstantTensor(poplar::Graph& graph,
   }
 
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
-  tensor = tensor.reshape(dim);
-
-  popstd::mapTensor(graph, tensor);
-  return tensor;
+  return tensor.reshape(dim);
 }
 
 template<typename T>

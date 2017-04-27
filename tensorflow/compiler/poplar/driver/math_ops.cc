@@ -107,12 +107,7 @@ IsInPlaceUpdate(const HloInstruction *inst) {
   const HloOpcode opcode(inst->opcode());
 
   if (!(opcode == HloOpcode::kAdd ||
-        opcode == HloOpcode::kDivide ||
-        opcode == HloOpcode::kMaximum ||
-        opcode == HloOpcode::kMinimum ||
         opcode == HloOpcode::kMultiply ||
-        opcode == HloOpcode::kPower ||
-        opcode == HloOpcode::kRemainder ||
         opcode == HloOpcode::kSubtract)) {
     return false;
   }
