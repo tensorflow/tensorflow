@@ -45,8 +45,7 @@ def frames(signal, frame_length, frame_step, name=None):
   Returns:
     A `Tensor` of frames with shape `[batch_size, num_frames, frame_length]`.
   """
-  with ops.name_scope(name, "frames",
-                      [signal, frame_length, frame_step]) as name:
+  with ops.name_scope(name, "frames", [signal, frame_length, frame_step]):
     signal = ops.convert_to_tensor(signal, name="signal")
     frame_length = ops.convert_to_tensor(frame_length, name="frame_length")
     frame_step = ops.convert_to_tensor(frame_step, name="frame_step")
@@ -77,6 +76,6 @@ def frames(signal, frame_length, frame_step, name=None):
     # TODO(Androbin) remove `transpose` when `gather` gets `axis` support
     pad_signal = array_ops.transpose(pad_signal)
     frames = array_ops.gather(pad_signal, indices)
-    frames = array_ops.transpose(frames, perm=[2, 0, 1], name=name)
+    frames = array_ops.transpose(frames, perm=[2, 0, 1])
     
     return frames
