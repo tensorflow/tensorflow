@@ -2864,7 +2864,7 @@ class MaxPool3DTest(test.TestCase):
 
   def testCreateMaxPoolWithSamePaddingNCDHW(self):
     depth, height, width = 3, 6, 9
-    images = random_ops.random_uniform((5, 3, height, width), seed=1)
+    images = random_ops.random_uniform((5, 3, depth, height, width), seed=1)
     output = _layers.max_pool3d(
         images, [3, 3, 3], padding='SAME', data_format='NCDHW')
     self.assertListEqual(output.get_shape().as_list(), [5, 3, 2, 3, 4])
