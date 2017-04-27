@@ -25,7 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
+
 
 def np_split_squeeze(array, axis):
   axis_len = array.shape[axis]
@@ -53,10 +53,6 @@ class UnstackOpTest(test.TestCase):
         self.assertAllEqual(cs, data)
 
   def testGradientsAxis0(self):
-    # Currently fails for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
       data = np.random.randn(*shape)
       shapes = [shape[1:]] * shape[0]

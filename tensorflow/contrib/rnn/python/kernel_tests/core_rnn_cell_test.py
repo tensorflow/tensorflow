@@ -343,7 +343,7 @@ class RNNCellTest(test.TestCase):
       self.assertTrue("cpu:14159" in outputs.device.lower())
 
   def testDeviceWrapperDynamicExecutionNodesAreAllProperlyLocated(self):
-    if not test.is_gpu_available() or test_util.is_sycl_enabled():
+    if not test.is_gpu_available():
       # Can't perform this test w/o a GPU
       return
 

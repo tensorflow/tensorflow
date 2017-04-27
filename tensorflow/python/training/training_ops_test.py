@@ -28,7 +28,6 @@ from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import training_ops
-from tensorflow.python.framework import test_util
 
 
 class TrainingOpsTest(TensorFlowTestCase):
@@ -121,10 +120,6 @@ class TrainingOpsTest(TensorFlowTestCase):
         self.assertAllClose(expected_out, out)
 
   def testApplyAdagrad(self):
-    # Currently not implemented for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     for (dtype, use_gpu) in itertools.product(
         [np.float16, np.float32, np.float64], [False, True]):
       x = np.arange(100).astype(dtype)

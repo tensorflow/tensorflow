@@ -918,10 +918,6 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     check_main_menu(self, out, list_tensors_enabled=True)
 
   def testPrintTensor(self):
-    # Currently fails for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     node_name = "simple_mul_add/matmul"
     tensor_name = node_name + ":0"
     out = self._registry.dispatch_command(
@@ -948,10 +944,6 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         list_outputs_node_name=node_name)
 
   def testPrintTensorHighlightingRanges(self):
-    # Currently fails for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     node_name = "simple_mul_add/matmul"
     tensor_name = node_name + ":0"
     out = self._registry.dispatch_command(
@@ -1002,10 +994,6 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         list_outputs_node_name=node_name)
 
   def testPrintTensorWithSlicing(self):
-    # Currently fails for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     node_name = "simple_mul_add/matmul"
     tensor_name = node_name + ":0"
     out = self._registry.dispatch_command(
@@ -1038,10 +1026,6 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
                      out.lines[-2])
 
   def testPrintTensorValidExplicitNumber(self):
-    # Currently fails for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     node_name = "simple_mul_add/matmul"
     tensor_name = node_name + ":0"
     out = self._registry.dispatch_command(
@@ -1089,10 +1073,6 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         list_outputs_node_name=node_name)
 
   def testPrintTensorMissingOutputSlotLeadsToOnlyDumpedTensorPrinted(self):
-    # Currently fails for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     node_name = "simple_mul_add/matmul"
     out = self._registry.dispatch_command("print_tensor", [node_name])
 

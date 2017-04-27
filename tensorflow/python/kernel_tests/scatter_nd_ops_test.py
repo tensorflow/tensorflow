@@ -30,7 +30,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
+
 
 def _AsType(v, vtype):
   return v.astype(vtype) if isinstance(v, np.ndarray) else vtype(v)
@@ -95,10 +95,6 @@ class ScatterNdTest(test.TestCase):
                         vtype,
                         itype,
                         repeat_indices=False):
-    # Currently not implemented for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     np.random.seed(8)
     ref_shapes = [(3, 6), (3, 6), (3, 6, 9), (3, 6, 9), (3, 6, 9), (3, 6, 9)]
     indices_shapes = [(2,), (2, 2), (2,), (2, 2), (2, 3), (2, 3, 3)]
@@ -149,10 +145,6 @@ class ScatterNdTest(test.TestCase):
         self._VariableRankTest(np_scatter, tf_scatter, vtype, itype)
 
   def testSimple(self):
-    # Currently not implemented for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
     updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
     ref = variables.Variable([0, 0, 0, 0, 0, 0, 0, 0], dtype=dtypes.float32)
@@ -166,10 +158,6 @@ class ScatterNdTest(test.TestCase):
       self.assertAllClose(result, expected)
 
   def testSimple2(self):
-    # Currently not implemented for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     indices = constant_op.constant([[1, 0], [1, 1]], dtype=dtypes.int32)
     updates = constant_op.constant([11., 12.], dtype=dtypes.float32)
     ref = variables.Variable(
@@ -184,10 +172,6 @@ class ScatterNdTest(test.TestCase):
       self.assertAllClose(result, expected)
 
   def testSimple3(self):
-    # Currently not implemented for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     indices = constant_op.constant([[1]], dtype=dtypes.int32)
     updates = constant_op.constant([[11., 12.]], dtype=dtypes.float32)
     ref = variables.Variable(
@@ -420,10 +404,6 @@ class ScatterNdTest(test.TestCase):
       self.assertAllEqual(expected_grads, grads.eval())
 
   def testConcurrentUpdates(self):
-    # Currently not implemented for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     num_updates = 10000
     update_values = np.random.rand(num_updates)
     ref = variables.Variable(np.zeros([2, 2]), dtype=dtypes.float64)

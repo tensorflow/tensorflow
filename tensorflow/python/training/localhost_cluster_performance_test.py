@@ -32,7 +32,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import server_lib
-from tensorflow.python.framework import test_util
 
 
 def create_local_cluster(num_workers, num_ps, protocol="grpc"):
@@ -62,10 +61,6 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
 class CreateLocalClusterTest(test.TestCase):
 
   def testCreateLocalCluster(self):
-    # Currently not implemented for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     workers, _ = create_local_cluster(num_workers=2, num_ps=2)
     worker_sessions = [session_lib.Session(w.target) for w in workers]
     with ops.device("/job:ps/task:0"):

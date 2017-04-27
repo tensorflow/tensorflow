@@ -40,9 +40,6 @@ def GetTestConfigs():
     all the valid test configs as tuples of data_format and use_gpu.
   """
   test_configs = [("NHWC", False), ("NHWC", True)]
-  # Currently not implemented for OpenCL
-  if test_util.is_sycl_enabled():
-    test_configs = [("NHWC", False)]
   if test.is_gpu_available(cuda_only=True):
     # "NCHW" format is currently supported exclusively on CUDA GPUs.
     test_configs += [("NCHW", True)]
@@ -515,9 +512,7 @@ class PoolingTest(test.TestCase):
         "depth window to equal the depth stride")
     self._testDepthwiseMaxPoolInvalidConfig([1, 2, 2, 4], [1, 1, 1, 3],
                                             [1, 1, 1, 3], "evenly divide")
-
-    # Currently not implemented for OpenCL
-    if test.is_gpu_available() and "sycl" not in test_util.gpu_device_name():
+    if test.is_gpu_available():
       with self.test_session(use_gpu=True):
         t = constant_op.constant(1.0, shape=[1, 2, 2, 4])
         with self.assertRaisesOpError("for CPU devices"):
@@ -1108,7 +1103,7 @@ class PoolingTest(test.TestCase):
         padding="VALID",
         use_gpu=False)
 
-    if not test.is_gpu_available() or test_util.is_sycl_enabled():
+    if not test.is_gpu_available():
       return
 
     # Test the GPU implementation that uses cudnn for now.
@@ -1154,7 +1149,7 @@ class PoolingTest(test.TestCase):
         padding="VALID",
         use_gpu=False)
 
-    if not test.is_gpu_available() or test_util.is_sycl_enabled():
+    if not test.is_gpu_available():
       return
 
     # Test the GPU implementation that uses cudnn for now.
@@ -1454,8 +1449,7 @@ class PoolingTest(test.TestCase):
   def testOpEdgeCases(self):
     with self.test_session() as sess:
       pool_funcs = [nn_ops.max_pool, nn_ops.avg_pool]
-      # Currently not implemented for OpenCL
-      if test.is_gpu_available() and "sycl" not in test_util.gpu_device_name():
+      if test.is_gpu_available():
         pool_funcs.append(nn_ops.max_pool_with_argmax)
       for pool_func in pool_funcs:
         # Illegal strides.

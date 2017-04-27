@@ -25,7 +25,6 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
 
 CASES = [(stateless.stateless_random_uniform, random_ops.random_uniform),
          (stateless.stateless_random_normal, random_ops.random_normal),
@@ -52,10 +51,6 @@ def invert_philox(key, value):
 class StatelessOpsTest(test.TestCase):
 
   def testMatchStateful(self):
-    # Currently fails for OpenCL
-    if test_util.is_sycl_enabled():
-      return
-
     # Stateless ops should be the same as stateful ops on the first call
     # after seed scrambling.
     key = 0x3ec8f720, 0x02461e29

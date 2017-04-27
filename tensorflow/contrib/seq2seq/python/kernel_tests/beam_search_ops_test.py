@@ -66,7 +66,7 @@ class GatherTreeTest(test.TestCase):
         _ = beams.eval()
 
   def testBadParentValuesOnGPU(self):
-    if not test.is_gpu_available() or test_util.is_sycl_enabled():
+    if not test.is_gpu_available():
       return
     # (max_time = 4, batch_size = 1, beams = 3)
     # bad parent in beam 1 time 1; appears as a negative index at time 0

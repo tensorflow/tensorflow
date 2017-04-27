@@ -28,7 +28,6 @@ from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
 
 
 def ConfigsToTest():
@@ -166,8 +165,7 @@ class DepthwiseConv2DTest(test.TestCase):
           input_size, filter_size, stride, padding, use_gpu=False)
 
   def testDepthwiseConv2DFormat(self):
-    # Currently not implemented for OpenCL
-    if not test.is_gpu_available() or test_util.is_sycl_enabled():
+    if not test.is_gpu_available():
       return
 
     for index, (input_size, filter_size, _, stride,
@@ -369,8 +367,7 @@ class DepthwiseConv2DTest(test.TestCase):
             use_gpu=use_gpu)
 
   def testDepthwiseConv2DInputGradFormat(self):
-    # Currently not implemented for OpenCL
-    if not test.is_gpu_available() or test_util.is_sycl_enabled():
+    if not test.is_gpu_available():
       return
 
     for index, (input_size, filter_size, output_size, stride,
@@ -403,8 +400,7 @@ class DepthwiseConv2DTest(test.TestCase):
             use_gpu=use_gpu)
 
   def testDepthwiseConv2DFilterGradFormat(self):
-    # Currently not implemented for OpenCL
-    if not test.is_gpu_available() or test_util.is_sycl_enabled():
+    if not test.is_gpu_available():
       return
 
     for index, (input_size, filter_size, output_size, stride,

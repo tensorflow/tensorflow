@@ -56,11 +56,6 @@ def gpu_device_name():
       return x.name
   return ""
 
-def is_sycl_enabled():
-  """Checks if current device is SYCL"""
-  if "sycl" in gpu_device_name():
-    return True
-  return False
 
 def assert_ops_in_graph(expected_ops, graph):
   """Assert all expected operations are found.
