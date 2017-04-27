@@ -221,7 +221,6 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
                                              const Args&);
 
   port::Status MoveDeviceToHost(TensorControl* tc) const;
-  port::Status MoveHostToDevice(TensorControl* tc) const;
 
   const PluginConfig plugin_config_;
 

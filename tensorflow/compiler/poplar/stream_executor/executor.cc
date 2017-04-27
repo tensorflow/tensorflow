@@ -30,6 +30,58 @@ limitations under the License.
 
 #include <poplar/Tensor.hpp>
 
+/*
+ * TensorControl is a structure that maintains state about the location
+ * of a tensor - either on the device or cached on the host.
+ *
+ * Tensorflow/XLA assumes that a tensor is on the device when the device
+ * allocator is called (PoplarExecutor::Allocate).  However, Poplar cannot
+ * allocate tensors independently of the compiled Engine.  The TensorControl
+ * structure tracks where the tensors are.
+ *
+ * TensorControl has three pieces of interacting state:
+ *   on_device: This says whether the data is on the device (in one of the
+ *              tensors belonging to the currently loaded engine).  When this
+ *              is false, it means the data is being held in the host side
+ *              buffer.
+ *
+ *   input_handle: If the tensor is on_device, and this is not -1, then it
+ *                 indicates which of the input tensors of the current engine
+ *                 contains the data.
+ *
+ *   output_handle: If the tensor is on_device, and this is not -1, then it
+ *                  indicates which of the output tensors of the current
+ *                  engine contains the data.
+ *
+ *   The states are:
+ *     on_device=false :
+ *       The data is in the host buffer.  If this buffer is passed as an
+ *       argument when an engine is executed then it must be copied to the
+ *       device.
+ *
+ *     on_device=true, input_handle!=-1, output_handle==-1 :
+ *       During the previous engine execution, the data was copied to the
+ *       device as one of the arguments.  On the next execution, if the engine
+ *       does not change, and the argument index is the same, then the data
+ *       does not need to be recopied to the device.  I suspect that this case
+ *       is rare.
+ *
+ *     on_device=true, input_handle==-1, output_handle!=-1 :
+ *       During the last execution, the buffer was allocated to represent one
+ *       of the outputs of the engine.  If the host wants to read the data back
+ *       then it will have to be retreived from the device.  If the next
+ *       execution changes the engine, then the data will have to be read back.
+ *
+ *     on_device=true, input_handle!=-1, output_handle!=-1 :
+ *       During the last execution, the buffer was an argument to the execution
+ *       and was also one of the output parameters.  This typically indicates
+ *       that it is a variable (weights/biases) that has been updated in place.
+ *       If the next execution doesn't change the engine, and the data is not
+ *       read back to the host inbetween, then the data does not need to be
+ *       copied back to the host.  This is the ideal situation when executing
+ *       an engine repeatedly with the same set of weights/biases.
+ *
+ */
 namespace se = ::perftools::gputools;
 
 namespace perftools {
@@ -106,9 +158,11 @@ port::Status PoplarExecutor::SynchronousMemcpy(DeviceMemoryBase *pop_dst,
                                              uint64 size) {
   TensorControl* tc = reinterpret_cast<TensorControl*>(pop_dst->opaque());
   memcpy(tc->data, host_src, size);
-  // TODO - this should copy to the device if it is currently on the device.
-  // TODO - can that happen?  maybe buffers from the host are not updated in
-  // TODO - place
+  {
+    std::lock_guard <std::recursive_mutex> g(mutex_);
+    tc->on_device = false;
+    tc->input_handle = -1;
+  }
   return port::Status::OK();
 }
 
@@ -254,18 +308,6 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
   }
 }
 
-port::Status
-PoplarExecutor::MoveHostToDevice(TensorControl* tc) const {
-  if (tc->input_handle != -1) {
-    void *buf(static_cast<void *>(tc->data));
-    current_engine_->writeTensor(GetCopyHandle(tc->input_handle), buf);
-    tc->on_device = true;
-    return port::Status::OK();
-  } else {
-    return tensorflow::errors::Internal("Tensor not on host");
-  }
-}
-
 port::StatusOr<se::DeviceMemoryBase>
 PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
                               const xla::Shape& shape,
@@ -279,13 +321,15 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
     std::lock_guard <std::recursive_mutex> g(mutex_);
 
     if (engine == NULL) {
+      // An empty engine is a graph that just passes its inputs through
+      // to its outputs.  A variable reading graph is such a thing.
       TF_ASSIGN_OR_RETURN(retbuf,
                           RemapArgs(shape, output_map, args));
 
     } else {
       // Pull previous execution output back from device if:
       // a) the engine is changing
-      // b) output buffer isn't an input to the current execution
+      // b) output buffer isn't an input to the current engine
       // c) output buffer isn't currently in the right place for the new input
       for (const auto &tc : allocations_) {
         if (tc->on_device == true && tc->output_handle != -1) {
@@ -309,8 +353,10 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
         auto mem = args[a];
         TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
         if (tc->on_device == false || tc->input_handle != a || engine_changed) {
+          void *buf(static_cast<void *>(tc->data));
+          current_engine_->writeTensor(GetCopyHandle(a), buf);
+          tc->on_device = true;
           tc->input_handle = a;
-          TF_RETURN_IF_ERROR(MoveHostToDevice(tc));
         }
       }
 
