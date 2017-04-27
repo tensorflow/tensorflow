@@ -34,6 +34,10 @@ class APIChangeSpec(object):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
     self.function_keyword_renames = {
+        "tf.batch_matmul": {
+            "adj_x": "adjoint_a",
+            "adj_y": "adjoint_b",
+        },
         "tf.count_nonzero": {
             "reduction_indices": "axis"
         },
