@@ -36,7 +36,7 @@ _batch_ops = loader.load_op_library(
 def _BatchGrad(op, *out_grads):  # pylint: disable=invalid-name
   """Gradient for batch op."""
   gradients = []
-  for i in xrange(len(op.inputs)):
+  for i in range(len(op.inputs)):
     gradients.append(
         gen_batch_ops.unbatch(
             out_grads[i],
