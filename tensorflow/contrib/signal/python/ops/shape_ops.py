@@ -62,7 +62,8 @@ def frames(signal, frame_length, frame_step, name=None):
     num_frames = 1 + math_ops.cast(num_frames, dtypes.int32)
     
     pad_length = (num_frames - 1) * frame_step + frame_length
-    pad_signal = array_ops.pad(signal, [[0, 0], [0, pad_length - signal_length]])
+    pad_signal = array_ops.pad(
+        signal, [[0, 0], [0, pad_length - signal_length]])
     
     indices_frame = array_ops.expand_dims(math_ops.range(frame_length), 0)
     indices_frames = array_ops.tile(indices_frame, [num_frames, 1])
