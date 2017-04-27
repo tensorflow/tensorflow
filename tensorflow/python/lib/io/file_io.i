@@ -31,13 +31,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 %}
 
-// Release the Python GIL for the duration of all methods.
-%exception {
-  Py_BEGIN_ALLOW_THREADS;
-  $action
-  Py_END_ALLOW_THREADS;
-}
-
 %{
 inline void FileExists(const string& filename, TF_Status* out_status) {
   tensorflow::Status status = tensorflow::Env::Default()->FileExists(filename);
@@ -306,6 +299,3 @@ string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
 %include "tensorflow/core/lib/io/path.h"
 
 %include "tensorflow/core/platform/file_statistics.h"
-
-// Delete the previously defined default handler that releases the Python GIL.
-%noexception;
