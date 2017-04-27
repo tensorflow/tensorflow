@@ -195,6 +195,19 @@ func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...Va
 	return op.Output(0)
 }
 
+// FakeQuantWithMinMaxVarsPerChannelGradientAttr is an optional argument to FakeQuantWithMinMaxVarsPerChannelGradient.
+type FakeQuantWithMinMaxVarsPerChannelGradientAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsPerChannelGradientNumBits sets the optional num_bits attribute to value.
+//
+// value: The bitwidth of the quantization; between 2 and 8, inclusive.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsPerChannelGradientNumBits(value int64) FakeQuantWithMinMaxVarsPerChannelGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
 //
 // Arguments:
@@ -211,18 +224,34 @@ func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...Va
 //   `gradients * (inputs >= min && inputs <= max)`.Backpropagated gradients w.r.t. min parameter, shape `[d]`:
 // `sum_per_d(gradients * (inputs < min))`.Backpropagated gradients w.r.t. max parameter, shape `[d]`:
 // `sum_per_d(gradients * (inputs > max))`.
-func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
+func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelGradientAttr) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVarsPerChannelGradient",
 		Input: []tf.Input{
 			gradients, inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// FakeQuantWithMinMaxVarsAttr is an optional argument to FakeQuantWithMinMaxVars.
+type FakeQuantWithMinMaxVarsAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsNumBits(value int64) FakeQuantWithMinMaxVarsAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
 }
 
 // Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
@@ -232,17 +261,23 @@ func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output
 // [min; max] is the clamping range for the 'inputs' data.  Op divides this range
 // into 255 steps (total of 256 values), then replaces each 'inputs' value with the
 // closest of the quantized step values.
+// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
 // This operation has a gradient and thus allows for training `min` and `max` values.
-func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output) (outputs tf.Output) {
+func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVars",
 		Input: []tf.Input{
 			inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -3514,11 +3549,20 @@ func FakeQuantWithMinMaxArgsMax(value float32) FakeQuantWithMinMaxArgsAttr {
 	}
 }
 
+// FakeQuantWithMinMaxArgsNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxArgsNumBits(value int64) FakeQuantWithMinMaxArgsAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
 //
 // Attributes [min; max] define the clamping range for the 'inputs' data.  Op
 // divides this range into 255 steps (total of 256 values), then replaces each
 // 'inputs' value with the closest of the quantized step values.
+// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
 // Quantization is called fake since the output is still in floating point.
 func FakeQuantWithMinMaxArgs(scope *Scope, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsAttr) (outputs tf.Output) {
@@ -5618,6 +5662,14 @@ func FakeQuantWithMinMaxArgsGradientMax(value float32) FakeQuantWithMinMaxArgsGr
 	}
 }
 
+// FakeQuantWithMinMaxArgsGradientNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxArgsGradientNumBits(value int64) FakeQuantWithMinMaxArgsGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxArgs operation.
 //
 // Arguments:
@@ -7513,6 +7565,17 @@ func RandomShuffle(scope *Scope, value tf.Output, optional ...RandomShuffleAttr)
 	return op.Output(0)
 }
 
+// FakeQuantWithMinMaxVarsPerChannelAttr is an optional argument to FakeQuantWithMinMaxVarsPerChannel.
+type FakeQuantWithMinMaxVarsPerChannelAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsPerChannelNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsPerChannelNumBits(value int64) FakeQuantWithMinMaxVarsPerChannelAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
 //
 // `[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
@@ -7521,17 +7584,23 @@ func RandomShuffle(scope *Scope, value tf.Output, optional ...RandomShuffleAttr)
 // [min; max] is the clamping range for the 'inputs' data in the corresponding
 // depth channel.  Op divides this range into 255 steps (total of 256 values), then
 // replaces each 'inputs' value with the closest of the quantized step values.
+// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
 // This operation has a gradient and thus allows for training `min` and `max` values.
-func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output) (outputs tf.Output) {
+func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVarsPerChannel",
 		Input: []tf.Input{
 			inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -18087,6 +18156,19 @@ func Less(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// FakeQuantWithMinMaxVarsGradientAttr is an optional argument to FakeQuantWithMinMaxVarsGradient.
+type FakeQuantWithMinMaxVarsGradientAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsGradientNumBits sets the optional num_bits attribute to value.
+//
+// value: The bitwidth of the quantization; between 2 and 8, inclusive.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsGradientNumBits(value int64) FakeQuantWithMinMaxVarsGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxVars operation.
 //
 // Arguments:
@@ -18100,15 +18182,20 @@ func Less(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 // `gradients * (inputs >= min && inputs <= max)`.Backpropagated gradients w.r.t. min parameter:
 // `sum(gradients * (inputs < min))`.Backpropagated gradients w.r.t. max parameter:
 // `sum(gradients * (inputs > max))`.
-func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
+func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsGradientAttr) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVarsGradient",
 		Input: []tf.Input{
 			gradients, inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
