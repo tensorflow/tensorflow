@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/partial_reduction_ops.h"
+#include "tensorflow/core/kernels/reduce_slice_ops.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -47,8 +47,8 @@ inline T min(T a,T b) { return a<b?a:b; }
 #endif // !GOOGLE_CUDA
 
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
-struct PartialReductionFunctor<CPUDevice, T, Index, beginning, reduce>{
-  virtual ~PartialReductionFunctor(){}
+struct ReduceSliceFunctor<CPUDevice, T, Index, beginning, reduce>{
+  virtual ~ReduceSliceFunctor(){}
   virtual void operator()(
       OpKernelContext* ctx, const CPUDevice& d,typename TTypes<Index>::ConstMatrix indices,
       typename TTypes<T>::ConstMatrix data,typename TTypes<T>::Matrix output)
@@ -77,15 +77,15 @@ struct PartialReductionFunctor<CPUDevice, T, Index, beginning, reduce>{
 };
 
 #define DEFINE_CPU_SUMPROD_SPECS_INDEX(T, Index)                                       \
-  template struct PartialReductionFunctor<CPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<CPUDevice, T, Index,                 \
            reduce_functions::zero<T>, reduce_functions::sum<T>>;               \
-  template struct PartialReductionFunctor<CPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<CPUDevice, T, Index,                 \
            reduce_functions::one<T>, reduce_functions::prod<T>>;
 
 #define DEFINE_CPU_MINMAX_SPECS_INDEX(T, Index)                                       \
-  template struct PartialReductionFunctor<CPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<CPUDevice, T, Index,                 \
            reduce_functions::negative_infinity<T>, reduce_functions::max<T>>;  \
-  template struct PartialReductionFunctor<CPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<CPUDevice, T, Index,                 \
            reduce_functions::infinity<T>, reduce_functions::min<T>>;
 
 #define DEFINE_CPU_SUMPROD_SPECS(T)          \
@@ -119,7 +119,7 @@ public:
     output_shape.set_dim(0,indices.shape().dim_size(0));
     Tensor *output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    auto functor = functor::PartialReductionFunctor<Device, T, Index, beginning, reduce>();
+    auto functor = functor::ReduceSliceFunctor<Device, T, Index, beginning, reduce>();
     functor(context, context->eigen_device<Device>(), indices.flat_outer_dims<Index,2>(),
         data.flat_outer_dims<T,2>(), output->flat_outer_dims<T,2>());
   }
@@ -128,28 +128,28 @@ public:
 #if GOOGLE_CUDA
 
 #define REGISTER_GPU_PARTIAL_REDUCE_KERNELS(type, index_type)                  \
-  REGISTER_KERNEL_BUILDER(Name("PartialSum")                                   \
+  REGISTER_KERNEL_BUILDER(Name("ReduceSliceSum")                                   \
                               .Device(DEVICE_GPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           PartialReduce<GPUDevice, type, index_type,           \
                           functor::reduce_functions::zero<type>,               \
                           functor::reduce_functions::sum<type>>);              \
-  REGISTER_KERNEL_BUILDER(Name("PartialProd")                                  \
+  REGISTER_KERNEL_BUILDER(Name("ReduceSliceProd")                                  \
                               .Device(DEVICE_GPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           PartialReduce<GPUDevice, type, index_type,           \
                           functor::reduce_functions::one<type>,                \
                           functor::reduce_functions::prod<type>>);             \
-  REGISTER_KERNEL_BUILDER(Name("PartialMax")                                   \
+  REGISTER_KERNEL_BUILDER(Name("ReduceSliceMax")                                   \
                               .Device(DEVICE_GPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           PartialReduce<GPUDevice, type, index_type,           \
                           functor::reduce_functions::negative_infinity<type>,  \
                           functor::reduce_functions::max<type>>);              \
-  REGISTER_KERNEL_BUILDER(Name("PartialMin")                                   \
+  REGISTER_KERNEL_BUILDER(Name("ReduceSliceMin")                                   \
                               .Device(DEVICE_GPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
@@ -169,14 +169,14 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL);
 #endif  // GOOGLE_CUDA
 
 #define REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS(type, index_type)          \
-  REGISTER_KERNEL_BUILDER(Name("PartialSum")                                   \
+  REGISTER_KERNEL_BUILDER(Name("ReduceSliceSum")                                   \
                               .Device(DEVICE_CPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           PartialReduce<CPUDevice, type, index_type,           \
                           functor::reduce_functions::zero<type>,               \
                           functor::reduce_functions::sum<type>>);              \
-  REGISTER_KERNEL_BUILDER(Name("PartialProd")                                  \
+  REGISTER_KERNEL_BUILDER(Name("ReduceSliceProd")                                  \
                               .Device(DEVICE_CPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
@@ -185,14 +185,14 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL);
                           functor::reduce_functions::prod<type>>);
 
 #define REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS(type, index_type)           \
-  REGISTER_KERNEL_BUILDER(Name("PartialMax")                                   \
+  REGISTER_KERNEL_BUILDER(Name("ReduceSliceMax")                                   \
                               .Device(DEVICE_CPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           PartialReduce<CPUDevice, type, index_type,           \
                           functor::reduce_functions::negative_infinity<type>,  \
                           functor::reduce_functions::max<type>>);              \
-  REGISTER_KERNEL_BUILDER(Name("PartialMin")                                   \
+  REGISTER_KERNEL_BUILDER(Name("ReduceSliceMin")                                   \
                               .Device(DEVICE_CPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \

@@ -132,10 +132,10 @@ See the @{$python/math_ops} guide.
 @@unique
 @@edit_distance
 @@invert_permutation
-@@partial_sum
-@@partial_prod
-@@partial_min
-@@partial_max
+@@reduce_slice_sum
+@@reduce_slice_prod
+@@reduce_slice_min
+@@reduce_slice_max
 """
 from __future__ import absolute_import
 from __future__ import division

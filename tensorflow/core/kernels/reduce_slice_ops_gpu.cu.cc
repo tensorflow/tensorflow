@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/partial_reduction_ops.h"
+#include "tensorflow/core/kernels/reduce_slice_ops.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
@@ -50,7 +50,7 @@ __host__ __device__ T min(T a,T b) { return a<b?a:b; }
 // x is row index of output
 // y is column index
 template <typename T, typename Index, T reduce(T,T)>
-__global__ void PartialReduceKernel(Index num_rows, Index num_cols, Index bound,
+__global__ void ReduceSliceKernel(Index num_rows, Index num_cols, Index bound,
     const T beginning, const Index *indices, const T *input, T *out)
 {
   Index x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -68,8 +68,8 @@ __global__ void PartialReduceKernel(Index num_rows, Index num_cols, Index bound,
 }
 
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
-struct PartialReductionFunctor<GPUDevice, T, Index, beginning, reduce>{
-  virtual ~PartialReductionFunctor(){}
+struct ReduceSliceFunctor<GPUDevice, T, Index, beginning, reduce>{
+  virtual ~ReduceSliceFunctor(){}
   virtual void operator()(
       OpKernelContext* ctx, const GPUDevice& d,typename TTypes<Index>::ConstMatrix indices,
       typename TTypes<T>::ConstMatrix data,typename TTypes<T>::Matrix output)
@@ -78,20 +78,20 @@ struct PartialReductionFunctor<GPUDevice, T, Index, beginning, reduce>{
     Index rows = output.dimension(0);
     Index cols = output.dimension(1);
     Cuda2DLaunchConfig config = GetCuda2DLaunchConfig(rows,cols,d);
-    PartialReduceKernel<T,Index,reduce><<<config.block_count,
+    ReduceSliceKernel<T,Index,reduce><<<config.block_count,
       config.thread_per_block, 0, d.stream()>>>(rows, cols, bound, beginning(),
             indices.data(), data.data(), output.data());
   }
 };
 
 #define DEFINE_GPU_SPECS_INDEX(T, Index)                                       \
-  template struct PartialReductionFunctor<GPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<GPUDevice, T, Index,                 \
            reduce_functions::zero<T>, reduce_functions::sum<T>>;               \
-  template struct PartialReductionFunctor<GPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<GPUDevice, T, Index,                 \
            reduce_functions::one<T>, reduce_functions::prod<T>>;               \
-  template struct PartialReductionFunctor<GPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<GPUDevice, T, Index,                 \
            reduce_functions::negative_infinity<T>, reduce_functions::max<T>>;  \
-  template struct PartialReductionFunctor<GPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<GPUDevice, T, Index,                 \
            reduce_functions::infinity<T>, reduce_functions::min<T>>;
 
 #define DEFINE_GPU_SPECS(T)          \

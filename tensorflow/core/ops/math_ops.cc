@@ -2372,6 +2372,8 @@ namespace {
 Status ParticalReductionShapeFn(InferenceContext* c) {
   ShapeHandle handle;
   DimensionHandle dimhandle;
+  // "axis" must be a scala
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &handle));
   // "indices" must have rank 2 and the number of columns must be 2
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &handle));
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(c->input(1),1), c->MakeDim(2), &dimhandle));
@@ -2385,12 +2387,14 @@ Status ParticalReductionShapeFn(InferenceContext* c) {
 
 } // namespace
 
-REGISTER_OP("PartialSum")
+REGISTER_OP("ReduceSliceSum")
     .Input("data: T")
     .Input("indices: Tindices")
+    .Input("axis: Taxis")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
+    .Attr("Taxis: {int32,int64}")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically sum over the first dimension of a tensor according to start and end
@@ -2429,12 +2433,14 @@ Tindices: the type of indices, must be int32 or int64.
 output: the computed sum values.
 )doc");
 
-REGISTER_OP("PartialProd")
+REGISTER_OP("ReduceSliceProd")
     .Input("data: T")
     .Input("indices: Tindices")
+    .Input("axis: Taxis")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
+    .Attr("Taxis: {int32,int64}")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically compute the product over the first dimension of a tensor according
@@ -2473,12 +2479,14 @@ Tindices: the type of indices, must be int32 or int64.
 output: the computed product values.
 )doc");
 
-REGISTER_OP("PartialMax")
+REGISTER_OP("ReduceSliceMax")
     .Input("data: T")
     .Input("indices: Tindices")
+    .Input("axis: Taxis")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
+    .Attr("Taxis: {int32,int64}")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically compute the maximum over the first dimension of a tensor according
@@ -2517,12 +2525,14 @@ Tindices: the type of indices, must be int32 or int64.
 output: the computed product values.
 )doc");
 
-REGISTER_OP("PartialMin")
+REGISTER_OP("ReduceSliceMin")
     .Input("data: T")
     .Input("indices: Tindices")
+    .Input("axis: Taxis")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
+    .Attr("Taxis: {int32,int64}")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically compute the minimum over the first dimension of a tensor according
