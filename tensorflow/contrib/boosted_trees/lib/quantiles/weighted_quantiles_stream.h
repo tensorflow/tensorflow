@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <vector>
+#include <cmath>
 
 #include "tensorflow/contrib/boosted_trees/lib/quantiles/weighted_quantiles_buffer.h"
 #include "tensorflow/contrib/boosted_trees/lib/quantiles/weighted_quantiles_summary.h"

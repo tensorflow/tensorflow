@@ -117,6 +117,7 @@ cc_library(
         "@llvm//:support",
         "@llvm//:target",  # fixdeps: keep
     ],
+    linkopts = ["-ldl"],
 )
 
 cc_library(
