@@ -220,6 +220,18 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   StatusOr<bool> TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(
       HloInstruction* reshape_or_broadcast);
 
+  // Replaces the existing HLO instruction old_instruction, with
+  // new_instruction, and marks the optimizer status as changed.
+  // Returns the Status representing the result of the replace operation.
+  Status ReplaceWithNewInstruction(
+      HloInstruction* old_instruction,
+      std::unique_ptr<HloInstruction> new_instruction) {
+    TF_CHECK_OK(computation_->ReplaceWithNewInstruction(
+        old_instruction, std::move(new_instruction)));
+    changed_ = true;
+    return Status::OK();
+  }
+
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
@@ -433,8 +445,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
         computation_->AddInstruction(HloInstruction::CreateBinary(
             divide->shape(), HloOpcode::kSubtract, lhs->mutable_operand(0),
             rhs->mutable_operand(0)));
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         divide, HloInstruction::CreateUnary(divide->shape(), HloOpcode::kExp,
                                             subtract));
   }
@@ -461,8 +472,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
       ShapeUtil::HasZeroElements(rhs->shape())) {
     auto zero = computation_->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0(0.0f)));
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateBroadcast(dot->shape(), zero, {}));
   }
 
@@ -471,8 +481,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
     auto new_dot = computation_->AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::PermuteDimensions({1, 0}, dot->shape()), HloOpcode::kDot,
         rhs->mutable_operand(0), lhs->mutable_operand(0)));
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateTranspose(dot->shape(), new_dot, {1, 0}));
   }
 
@@ -480,8 +489,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
   //
   // A dot(a[M, 1], b[1, N]) = multiply(a [M,1], b [1, N])
   if (ShapeUtil::Rank(rhs->shape()) == 2 && rhs->shape().dimensions(0) == 1) {
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateBinary(dot->shape(), HloOpcode::kMultiply,
                                           lhs, rhs));
   }
@@ -505,8 +513,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
     auto reduce = computation_->AddInstruction(HloInstruction::CreateReduce(
         ShapeUtil::MakeShape(dot->shape().element_type(), {}), multiply, zero,
         {0}, add_reduce_computation));
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateReshape(dot->shape(), reduce));
   }
 
@@ -545,8 +552,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
                                {rhs->shape().dimensions(1)}),
           multiply, zero, {0}, add_reduce_computation));
     }
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateReshape(dot->shape(), reduce));
   }
 
@@ -572,8 +578,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
         ShapeUtil::MakeShape(dot->shape().element_type(),
                              {lhs->shape().dimensions(0)}),
         multiply, zero, {1}, add_reduce_computation));
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateReshape(dot->shape(), reduce));
   }
   return Status::OK();
@@ -712,8 +717,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
           ShapeUtil::ElementsIn(operand->shape())) {
     VLOG(10) << "transform broadcast(X) -> reshape(X) where "
                 "n(broadcast(X)) == n(X)";
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         broadcast, HloInstruction::CreateReshape(broadcast->shape(), operand));
   }
 
@@ -725,8 +729,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
           ShapeUtil::ElementsIn(operand->shape())) {
     VLOG(10) << "transform broadcast(X) -> transpose(X) where "
                 "n(broadcast(X)) == n(X)";
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         broadcast, HloInstruction::CreateTranspose(broadcast->shape(), operand,
                                                    broadcast->dimensions()));
   }
@@ -746,8 +749,7 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
       for (auto inserted_index : inserted_indices) {
         dims.erase(dims.begin() + inserted_index);
       }
-      changed_ = true;
-      return computation_->ReplaceWithNewInstruction(
+      return ReplaceWithNewInstruction(
           broadcast,
           HloInstruction::CreateBroadcast(broadcast->shape(),
                                           operand->mutable_operand(0), dims));
@@ -864,9 +866,7 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert,
     const Literal& src_literal = operand->literal();
     std::unique_ptr<HloInstruction> new_constant =
         ConvertIfSrcTypeMatches(src_literal, dest_type);
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(convert,
-                                                   std::move(new_constant));
+    return ReplaceWithNewInstruction(convert, std::move(new_constant));
   }
   return Status::OK();
 }
@@ -952,8 +952,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
 
     std::unique_ptr<HloInstruction> slice = HloInstruction::CreateSlice(
         pad->shape(), nonzero_pad, start_indices, end_indices);
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(pad, std::move(slice));
+    return ReplaceWithNewInstruction(pad, std::move(slice));
   }
 
   return Status::OK();
@@ -973,8 +972,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
       ones = HloInstruction::CreateBroadcast(
           power->shape(), computation_->AddInstruction(std::move(one)), {});
     }
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(power, std::move(ones));
+    return ReplaceWithNewInstruction(power, std::move(ones));
   }
 
   VLOG(10) << "trying transform [pow(A, 1) => A]: " << power->ToString();
@@ -984,8 +982,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
 
   VLOG(10) << "trying transform [pow(A, 2) => A*A]: " << power->ToString();
   if (IsLiteralWithValue(rhs, 2)) {
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         power, HloInstruction::CreateBinary(power->shape(),
                                             HloOpcode::kMultiply, lhs, lhs));
   }
@@ -995,8 +992,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
     auto* one = computation_->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CloneToUnique(
             LiteralUtil::One(rhs->shape().element_type()))));
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kDivide,
                                             one, lhs));
   }
@@ -1083,8 +1079,7 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
 
   // Merge reshapes.
   if (HloOpcode::kReshape == operand->opcode()) {
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         reshape, HloInstruction::CreateReshape(reshape->shape(),
                                                operand->mutable_operand(0)));
   }
@@ -1093,8 +1088,7 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
     auto opt_dims = ReshapeLeavesDimensionsUnmodified(
         reshape, reshape->operand(0)->dimensions());
     if (opt_dims.first) {
-      changed_ = true;
-      return computation_->ReplaceWithNewInstruction(
+      return ReplaceWithNewInstruction(
           reshape,
           HloInstruction::CreateBroadcast(
               reshape->shape(), reshape->mutable_operand(0)->mutable_operand(0),
@@ -1151,9 +1145,8 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice,
                                       literal.get(), dest_indices,
                                       AsInt64Slice(shape.dimensions()));
     if (status.ok()) {
-      TF_CHECK_OK(computation_->ReplaceWithNewInstruction(
+      TF_CHECK_OK(ReplaceWithNewInstruction(
           slice, HloInstruction::CreateConstant(std::move(literal))));
-      changed_ = true;
     } else {
       VLOG(1) << "Error while creating sliced literal : " << status;
     }
@@ -1166,7 +1159,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(
     tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function) {
   if (ShapeUtil::HasZeroElements(arg->shape()) ||
       ShapeUtil::HasZeroElements(reduce->shape())) {
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         reduce,
         HloInstruction::CreateBroadcast(reduce->shape(), init_value, {}));
     return Status::OK();
@@ -1179,7 +1172,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(
     for (auto dim : dimensions) {
       new_reduce_dimensions.push_back(transpose_dimensions[dim]);
     }
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         reduce, HloInstruction::CreateReduce(
                     reduce->shape(), arg->mutable_operand(0), init_value,
                     new_reduce_dimensions, function));
@@ -1223,7 +1216,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(
           new_reduce_dimensions.push_back(i);
         }
       }
-      return computation_->ReplaceWithNewInstruction(
+      return ReplaceWithNewInstruction(
           reduce, HloInstruction::CreateReduce(
                       reduce->shape(), arg->mutable_operand(0), init_value,
                       new_reduce_dimensions, function));
@@ -1234,8 +1227,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(
       ShapeUtil::HasZeroElements(arg->shape())) {
     auto reshape = computation_->AddInstruction(
         HloInstruction::CreateReshape(reduce->shape(), arg));
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         reduce, HloInstruction::CreateMap(reduce->shape(),
                                           {reshape, init_value}, function));
   }
@@ -1253,8 +1245,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
   }
 
   if (HloOpcode::kTranspose == operand->opcode()) {
-    changed_ = true;
-    return computation_->ReplaceWithNewInstruction(
+    return ReplaceWithNewInstruction(
         transpose, HloInstruction::CreateTranspose(
                        transpose->shape(), operand->mutable_operand(0),
                        ComposePermutations(operand->dimensions(),
@@ -1397,8 +1388,7 @@ bool AlgebraicSimplifierVisitor::TransformToClampIfSameShape(
 
   auto clamp = HloInstruction::CreateTernary(root->shape(), HloOpcode::kClamp,
                                              max_operand, operand, min_operand);
-  TF_CHECK_OK(computation_->ReplaceWithNewInstruction(root, std::move(clamp)));
-  changed_ = true;
+  TF_CHECK_OK(ReplaceWithNewInstruction(root, std::move(clamp)));
   return true;
 }
 
