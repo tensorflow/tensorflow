@@ -810,8 +810,6 @@ def bias_add(inputs,
                                        sc.original_name_scope, outputs)
 
 
-# TODO(jbms): change `rate` parameter to `dilation_rate` for consistency with
-# underlying op.
 @add_arg_scope
 def convolution(inputs,
                 num_outputs,
@@ -819,7 +817,7 @@ def convolution(inputs,
                 stride=1,
                 padding='SAME',
                 data_format=None,
-                rate=1,
+                dilation_rate=1,
                 activation_fn=nn.relu,
                 normalizer_fn=None,
                 normalizer_params=None,
@@ -844,8 +842,8 @@ def convolution(inputs,
   variable would be created and added the activations. Finally, if
   `activation_fn` is not `None`, it is applied to the activations as well.
 
-  Performs a'trous convolution with input stride/dilation rate equal to `rate`
-  if a value > 1 for any dimension of `rate` is specified.  In this case
+  Performs a'trous convolution with input stride/dilation rate equal to `dilation_rate`
+  if a value > 1 for any dimension of `dilation_rate` is specified.  In this case
   `stride` values != 1 are not supported.
 
   Args:
@@ -861,7 +859,7 @@ def convolution(inputs,
     stride: A sequence of N positive integers specifying the stride at which to
       compute output.  Can be a single integer to specify the same value for all
       spatial dimensions.  Specifying any `stride` value != 1 is incompatible
-      with specifying any `rate` value != 1.
+      with specifying any `dilation_rate` value != 1.
     padding: One of `"VALID"` or `"SAME"`.
     data_format: A string or None.  Specifies whether the channel dimension of
       the `input` and output is the last dimension (default, or if `data_format`
@@ -869,9 +867,9 @@ def convolution(inputs,
       starts with "NC").  For N=1, the valid values are "NWC" (default) and
       "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
       For N=3, the valid values are "NDHWC" (default) and "NCDHW".
-    rate: A sequence of N positive integers specifying the dilation rate to use
+    dilation_rate: A sequence of N positive integers specifying the dilation rate to use
       for a'trous convolution.  Can be a single integer to specify the same
-      value for all spatial dimensions.  Specifying any `rate` value != 1 is
+      value for all spatial dimensions.  Specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `stride` value != 1.
     activation_fn: Activation function. The default value is a ReLU function.
       Explicitly set it to None to skip it and maintain a linear activation.
@@ -898,7 +896,7 @@ def convolution(inputs,
 
   Raises:
     ValueError: If `data_format` is invalid.
-    ValueError: Both 'rate' and `stride` are not uniformly 1.
+    ValueError: Both 'dilation_rate' and `stride` are not uniformly 1.
   """
   if data_format not in [None, 'NWC', 'NCW', 'NHWC', 'NCHW', 'NDHWC', 'NCDHW']:
     raise ValueError('Invalid data_format: %r' % (data_format,))
@@ -929,7 +927,7 @@ def convolution(inputs,
                         strides=stride,
                         padding=padding,
                         data_format=df,
-                        dilation_rate=rate,
+                        dilation_rate=dilation_rate,
                         activation=None,
                         use_bias=not normalizer_fn and biases_initializer,
                         kernel_initializer=weights_initializer,
