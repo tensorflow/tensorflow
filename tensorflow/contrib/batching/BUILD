@@ -19,6 +19,7 @@ cc_library(
 
 cc_library(
     name = "batch_scheduler",
+    hdrs = ["batch_scheduler.h"],
     deps = [
         ":batch_scheduler_hdrs",
         "//tensorflow/core:lib",
@@ -49,6 +50,7 @@ cc_library(
 
 cc_library(
     name = "shared_batch_scheduler",
+    hdrs = ["shared_batch_scheduler.h"],
     deps = [
         ":batch_scheduler",
         ":shared_batch_scheduler_hdrs",
