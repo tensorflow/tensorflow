@@ -217,7 +217,11 @@ std::vector<const HloInstruction*> GetUsers(
       if (buffer_alias.instruction() != logical_buffer->instruction()) {
         *has_indirect_users = true;
       }
-      users.push_back(user);
+      // A buffer may be used by the instruction via more than one alias. For
+      // example, a buffer which appears in more than one element of a tuple.
+      if (std::find(users.begin(), users.end(), user) == users.end()) {
+        users.push_back(user);
+      }
     }
   }
   return users;
