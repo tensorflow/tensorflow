@@ -55,6 +55,8 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_IPU, XlaIpuDeviceFactory, 210);
 // Kernel registrations
 
 static bool OpFilter(KernelDef* kdef) {
+  // TODO - probably remove int32/bool for some set of operators
+  // (or keep them for some given set)
   return true;
 }
 
