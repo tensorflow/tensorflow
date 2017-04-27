@@ -57,12 +57,23 @@ def frames(signal, frame_length, frame_step, name=None):
     
     signal_length = array_ops.shape(signal)[1]
     
-    num_frames = 1 + math_ops.cast(math_ops.ceil((signal_length - frame_length) / frame_step), dtypes.int32)
+    num_frames = math_ops.ceil((signal_length - frame_length) / frame_step)
+    num_frames = 1 + math_ops.cast(num_frames, dtypes.int32)
+    
     pad_length = (num_frames - 1) * frame_step + frame_length
     pad_signal = array_ops.pad(signal, [[0, 0], [0, pad_length - signal_length]])
     
-    indices_frames = array_ops.tile(array_ops.expand_dims(math_ops.range(frame_length), 0), [num_frames, 1])
-    indices_steps = array_ops.tile(array_ops.expand_dims(math_ops.range(num_frames) * frame_step, 1), [1, frame_length])
+    indices_frame = array_ops.expand_dims(math_ops.range(frame_length), 0)
+    indices_frames = array_ops.tile(indices_frame, [num_frames, 1])
+    
+    indices_step = array_ops.expand_dims(math_ops.range(num_frames) * frame_step, 1)
+    indices_steps = array_ops.tile(indices_step, [1, frame_length])
+    
     indices = indices_frames + indices_steps
     
-    return array_ops.transpose(array_ops.gather(array_ops.transpose(pad_signal), indices), perm=[2, 0, 1], name=name)
+    # TODO(Androbin) remove `transpose` when `gather` gets `axis` support
+    pad_signal = array_ops.transpose(pad_signal)
+    frames = array_ops.gather(pad_signal, indices)
+    frames = array_ops.transpose(frames, perm=[2, 0, 1], name=name)
+    
+    return frames
