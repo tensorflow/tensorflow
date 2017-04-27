@@ -799,6 +799,9 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
         try:
           y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
         except TypeError:
+          # If the RHS is not a tensor, it might be a tensor aware object
+          # that can implement the operator with knowledge of itself
+          # and the tensor.
           if hasattr(type(y), "__r%s__" % op_name):
             return NotImplemented
           else:
