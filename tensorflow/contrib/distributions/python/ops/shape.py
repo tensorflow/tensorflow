@@ -195,8 +195,8 @@ class _DistributionShape(object):
     self._batch_ndims = batch_ndims
     self._event_ndims = event_ndims
     self._validate_args = validate_args
-    with ops.name_scope(name) as ns:
-      self._name = ns
+    with ops.name_scope(name):
+      self._name = name
       with ops.name_scope("init"):
         self._batch_ndims = self._assert_non_negative_int32_scalar(
             ops.convert_to_tensor(

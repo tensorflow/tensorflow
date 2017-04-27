@@ -132,7 +132,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       for _ in range(10):
         update.run()
       v0_val, v1_val = sess.run([var0, var1])
-      self.assertAllClose(np.array([0.662907, 0.767398]), v0_val)
+      self.assertAllClose(np.array([-6.663634, -9.190331]), v0_val)
       self.assertAllClose(np.array([2.959304, 1.029232]), v1_val)
 
   def testProximalAdagradWithL1_L2(self):
@@ -159,8 +159,8 @@ class ProximalAdagradOptimizerTest(test.TestCase):
         update.run()
 
       v0_val, v1_val = sess.run([var0, var1])
-      self.assertAllClose(np.array([0.043069, 0.080461]), v0_val)
-      self.assertAllClose(np.array([0.004069, 0.008578]), v1_val)
+      self.assertAllClose(np.array([-0.0495, -0.0995]), v0_val)
+      self.assertAllClose(np.array([-0.0045, -0.0095]), v1_val)
 
   def applyOptimizer(self, opt, steps=5, is_sparse=False):
     if is_sparse:

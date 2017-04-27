@@ -11,7 +11,10 @@ It will print a list of errors it finds that it can't fix. You can also run
 it on a directory tree:
 
 ```
-tf_upgrade.py --intree coolcode -outtree coolcode-upgraded
+# just upgrade the .py files
+tf_upgrade.py --intree coolcode --outtree coolcode-upgraded
+# after upgrade the .py files, then copy all the other files to the outtree
+tf_upgrade.py --intree coolcode --outtree coolcode-upgraded --copyotherfiles True
 ```
 
 In either case, it will also dump out a report e.g. which will detail changes
@@ -32,8 +35,8 @@ Renamed keyword argument from `squeeze_dims` to `axis`
 ## Caveats
 
 - Don't update parts of your code manually before running this script. In
-particular, functions that have had reordered arguments like `tf.concat`,
-`tf.split` will cause the script to incorrectly add keyword arguments that
+particular, functions that have had reordered arguments like `tf.concat`
+or `tf.split` will cause the script to incorrectly add keyword arguments that
 mismap arguments.
 
 - This script wouldn't actually reorder arguments. Instead, the script will add

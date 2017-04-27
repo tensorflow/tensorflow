@@ -273,6 +273,14 @@ class PoolingTest(test.TestCase):
               strides=[1, 2],
               dilation_rate=[1, 1],
               data_format="NCHW")
+          self._test(
+              input_shape=[2, 2, 7, 5, 3],
+              window_shape=[2, 2, 2],
+              padding=padding,
+              pooling_type="MAX",
+              strides=[1, 2, 1],
+              dilation_rate=[1, 1, 1],
+              data_format="NCDHW")
         self._test(
             input_shape=[2, 2, 7, 9],
             window_shape=[2, 2],

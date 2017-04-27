@@ -83,6 +83,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   private static final boolean MAINTAIN_ASPECT = USE_YOLO;
 
+  private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
+
   private static final boolean SAVE_PREVIEW_BITMAP = false;
   private static final float TEXT_SIZE_DIP = 10;
 
@@ -124,30 +126,26 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
 
-    try {
-      if (USE_YOLO) {
-        detector =
-            TensorFlowYoloDetector.create(
-                getAssets(),
-                YOLO_MODEL_FILE,
-                YOLO_INPUT_SIZE,
-                YOLO_INPUT_NAME,
-                YOLO_OUTPUT_NAMES,
-                YOLO_BLOCK_SIZE);
-      } else {
-        detector =
-            TensorFlowMultiBoxDetector.create(
-                getAssets(),
-                MB_MODEL_FILE,
-                MB_LOCATION_FILE,
-                MB_IMAGE_MEAN,
-                MB_IMAGE_STD,
-                MB_INPUT_NAME,
-                MB_OUTPUT_LOCATIONS_NAME,
-                MB_OUTPUT_SCORES_NAME);
-      }
-    } catch (final Exception e) {
-      throw new RuntimeException("Error initializing TensorFlow!", e);
+    if (USE_YOLO) {
+      detector =
+          TensorFlowYoloDetector.create(
+              getAssets(),
+              YOLO_MODEL_FILE,
+              YOLO_INPUT_SIZE,
+              YOLO_INPUT_NAME,
+              YOLO_OUTPUT_NAMES,
+              YOLO_BLOCK_SIZE);
+    } else {
+      detector =
+          TensorFlowMultiBoxDetector.create(
+              getAssets(),
+              MB_MODEL_FILE,
+              MB_LOCATION_FILE,
+              MB_IMAGE_MEAN,
+              MB_IMAGE_STD,
+              MB_INPUT_NAME,
+              MB_OUTPUT_LOCATIONS_NAME,
+              MB_OUTPUT_SCORES_NAME);
     }
 
     previewWidth = size.getWidth();
@@ -353,8 +351,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   }
 
   @Override
-  protected int getDesiredPreviewFrameSize() {
-    return CROP_SIZE;
+  protected Size getDesiredPreviewFrameSize() {
+    return DESIRED_PREVIEW_SIZE;
   }
 
   @Override

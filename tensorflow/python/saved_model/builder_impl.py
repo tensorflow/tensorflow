@@ -57,7 +57,7 @@ class SavedModelBuilder(object):
   Typical usage for the `SavedModelBuilder`:
   ```python
   ...
-  builder = saved_model_builder.SavedModelBuilder(export_dir)
+  builder = saved_model.builder.SavedModelBuilder(export_dir)
 
   with tf.Session(graph=tf.Graph()) as sess:
     ...
@@ -352,10 +352,10 @@ class SavedModelBuilder(object):
     else:
       self._add_main_op(main_op)
 
-    # Initialize a saver to generate a sharded output for all variables in the
+    # Initialize a saver to generate a sharded output for all saveables in the
     # current scope.
     saver = tf_saver.Saver(
-        variables.global_variables(),
+        variables._all_saveable_objects(),  # pylint: disable=protected-access
         sharded=True,
         write_version=saver_pb2.SaverDef.V2,
         allow_empty=True)
@@ -423,10 +423,10 @@ class SavedModelBuilder(object):
     else:
       self._add_main_op(main_op)
 
-    # Initialize a saver to generate a sharded output for all variables in the
+    # Initialize a saver to generate a sharded output for all saveables in the
     # current scope.
     saver = tf_saver.Saver(
-        variables.global_variables(),
+        variables._all_saveable_objects(),  # pylint: disable=protected-access
         sharded=True,
         write_version=saver_pb2.SaverDef.V2,
         allow_empty=True)

@@ -40,13 +40,15 @@ class PartialTensorShape {
   PartialTensorShape() : is_unknown_(true) {}
 
   /// \brief Construct a `PartialTensorShape` from the provided sizes.
-  /// REQUIRES: `dim_sizes[i] >= 0`
+  /// REQUIRES: `dim_sizes[i] >= -1`; `-1` means `unknown`.
   explicit PartialTensorShape(gtl::ArraySlice<int64> dim_sizes);
   PartialTensorShape(std::initializer_list<int64> dim_sizes)
       : PartialTensorShape(gtl::ArraySlice<int64>(dim_sizes)) {}
 
   /// REQUIRES: `IsValid(proto)`
-  explicit PartialTensorShape(const TensorShapeProto& proto);
+  PartialTensorShape(
+      const TensorShapeProto& proto);            // NOLINT(runtime/explicit)
+  PartialTensorShape(const TensorShape& shape);  // NOLINT(runtime/explicit)
 
   /// Returns `true` iff `proto` is a valid partial tensor shape.
   static bool IsValid(const TensorShapeProto& proto);

@@ -44,7 +44,7 @@ DeviceMgr::~DeviceMgr() {
 }
 
 StringPiece DeviceMgr::CopyToBackingStore(StringPiece s) {
-  int n = s.size();
+  size_t n = s.size();
   char* space = name_backing_store_.Alloc(n);
   memcpy(space, s.data(), n);
   return StringPiece(space, n);

@@ -526,6 +526,14 @@ void Tensor::UnsafeCopyFromInternal(const Tensor& other, DataType dtype,
   }
 }
 
+// Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
+// For the latter case, we have to make sure that the refcount is
+// one both for the SubBuffer _and_ the underlying TensorBuffer.
+bool Tensor::RefCountIsOne() const {
+  return buf_ != nullptr && buf_->RefCountIsOne() &&
+         buf_->root_buffer()->RefCountIsOne() && buf_->OwnsMemory();
+}
+
 // The macro CASES() expands to a switch statement conditioned on
 // TYPE_ENUM. Each case expands the STMTS after a typedef for T.
 #define SINGLE_ARG(...) __VA_ARGS__
@@ -720,6 +728,18 @@ size_t Tensor::TotalBytes() const {
   CHECK(buf_) << "null buf_ with non-zero shape size " << shape_.num_elements();
   CASES(dtype(), return Helper<T>::TotalBytes(buf_, shape_.num_elements()));
   return 0;  // Makes compiler happy.
+}
+
+size_t Tensor::AllocatedBytes() const {
+  TensorDescription tensor_description;
+  FillDescription(&tensor_description);
+  if (tensor_description.has_allocation_description() &&
+      tensor_description.allocation_description().allocated_bytes() > 0) {
+    return tensor_description.allocation_description().allocated_bytes();
+  } else {
+    // Fall back to TotalBytes() if the allocator doesn't have its size.
+    return TotalBytes();
+  }
 }
 
 bool Tensor::CanUseDMA() const {

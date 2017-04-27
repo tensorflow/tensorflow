@@ -1202,7 +1202,8 @@ class CudnnRnnSequenceTensorDescriptor
     // Only the first one needs to be destroyed. All others are the same.
     cudnnStatus_t status =
         wrap::cudnnDestroyTensorDescriptor(parent_, handles_[0]);
-    CUDNN_RETURN_IF_FAIL(status, "Failed to destroy sequence tensor descriptor");
+    CUDNN_RETURN_IF_FAIL(status,
+                         "Failed to destroy sequence tensor descriptor");
   }
 
   const cudnnTensorDescriptor_t* handles() const {
@@ -1945,10 +1946,12 @@ bool CudnnSupport::DoConvolveImpl(
       timer->Destroy();
       return false;
     }
-    output_profile_result->set_is_valid(true);
-    output_profile_result->set_algorithm(algo);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+    if (status == CUDNN_STATUS_SUCCESS) {
+      output_profile_result->set_is_valid(true);
+      output_profile_result->set_algorithm(algo);
+      output_profile_result->set_elapsed_time_in_ms(
+          timer->GetElapsedMilliseconds());
+    }
     timer->Destroy();
   }
 
@@ -1968,6 +1971,10 @@ bool CudnnSupport::DoConvolveImpl(
 // Doing so by default make a few TensorFlow test cases to fail. Users can
 // explicitly enable them through an env-var "TF_ENABLE_WINOGRAD_NONFUSED=1".
 // https://github.com/tensorflow/tensorflow/pull/4901
+// TODO(yangzihao): for certain shapes, setting default flag to be true will
+// cause bug and return negative tensor shapes. Will flip the default flag when
+// the bug is fixed.
+template <bool DefaultFlag>
 class WinogradNonfused {
  public:
   static bool IsEnabled() {
@@ -1987,7 +1994,7 @@ class WinogradNonfused {
     }
     // TODO(zhengxq): turn the default to True when the test failure is
     // resolved.
-    return false;
+    return DefaultFlag;
   }
 };
 
@@ -2007,7 +2014,7 @@ bool CudnnSupport::GetConvolveAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused::IsEnabled()) {
+  if (WinogradNonfused<false>::IsEnabled()) {
     out_algorithms->push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
@@ -2028,7 +2035,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused::IsEnabled()) {
+  if (WinogradNonfused<false>::IsEnabled()) {
     out_algorithms->push_back(
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
@@ -2047,7 +2054,12 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused::IsEnabled()) {
+#if CUDNN_VERSION >= 5110
+  static constexpr bool kDefaultFlagWinogradNonfused = false;
+#else
+  static constexpr bool kDefaultFlagWinogradNonfused = false;
+#endif
+  if (WinogradNonfused<kDefaultFlagWinogradNonfused>::IsEnabled()) {
     out_algorithms->push_back(
         // Based on cudnn.h, the following is not implemented.
         // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,
@@ -2453,10 +2465,12 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
       /*gradData=*/backward_input_data->opaque());
   if (is_profiling) {
     timer->Stop(AsCUDAStream(stream));
-    output_profile_result->set_is_valid(true);
-    output_profile_result->set_algorithm(algo);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+    if (status == CUDNN_STATUS_SUCCESS) {
+      output_profile_result->set_is_valid(true);
+      output_profile_result->set_algorithm(algo);
+      output_profile_result->set_elapsed_time_in_ms(
+          timer->GetElapsedMilliseconds());
+    }
     timer->Destroy();
   }
   if (status != CUDNN_STATUS_SUCCESS) {
@@ -2686,10 +2700,12 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
       /*gradData=*/backward_filter_data->opaque());
   if (is_profiling) {
     timer->Stop(AsCUDAStream(stream));
-    output_profile_result->set_is_valid(true);
-    output_profile_result->set_algorithm(algo);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+    if (status == CUDNN_STATUS_SUCCESS) {
+      output_profile_result->set_is_valid(true);
+      output_profile_result->set_algorithm(algo);
+      output_profile_result->set_elapsed_time_in_ms(
+          timer->GetElapsedMilliseconds());
+    }
     timer->Destroy();
   }
   if (status != CUDNN_STATUS_SUCCESS) {
@@ -3069,6 +3085,41 @@ bool CudnnSupport::DoActivate(Stream* stream,
 bool CudnnSupport::DoPoolForward(
     Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
     const dnn::BatchDescriptor& input_dimensions,
+    const DeviceMemory<double>& input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    DeviceMemory<double>* output_data) {
+  mutex_lock lock{dnn_handle_mutex_};
+  auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+                                     AsCUDAStreamValue(stream));
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
+    return false;
+  }
+
+  // Alpha is the scaling factor for input.
+  double alpha = 1.0;
+  // Beta is the scaling factor for output.
+  double beta = 0.0;
+
+  ScopedTensorDescriptor src_desc{parent_, input_dimensions, CUDNN_DATA_DOUBLE};
+  ScopedTensorDescriptor dest_desc{parent_, output_dimensions,
+                                   CUDNN_DATA_DOUBLE};
+  ScopedPoolingDescriptor pooling_desc{parent_, pooling_dimensions};
+  status = wrap::cudnnPoolingForward(
+      parent_, ToHandle(dnn_handle_), pooling_desc.handle(), &alpha,
+      src_desc.handle(), input_data.opaque(), &beta, dest_desc.handle(),
+      output_data->opaque());
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to enqueue forward pooling on stream: "
+               << ToString(status);
+    return false;
+  }
+  return true;
+}
+
+bool CudnnSupport::DoPoolForward(
+    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions,
     const DeviceMemory<float>& input_data,
     const dnn::BatchDescriptor& output_dimensions,
     DeviceMemory<float>* output_data) {
@@ -3129,6 +3180,44 @@ bool CudnnSupport::DoPoolForward(
       output_data->opaque());
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to enqueue forward pooling on stream: "
+               << ToString(status);
+    return false;
+  }
+  return true;
+}
+
+bool CudnnSupport::DoPoolBackward(
+    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions,
+    const DeviceMemory<double>& input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    const DeviceMemory<double>& output_data,
+    const DeviceMemory<double>& input_diff_data,
+    DeviceMemory<double>* output_diff_data) {
+  mutex_lock lock{dnn_handle_mutex_};
+  auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+                                     AsCUDAStreamValue(stream));
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
+    return false;
+  }
+
+  // Alpha is the scaling factor for input.
+  double alpha = 1.0;
+  // Beta is the scaling factor for output.
+  double beta = 0.0;
+
+  ScopedTensorDescriptor src_desc{parent_, input_dimensions, CUDNN_DATA_DOUBLE};
+  ScopedTensorDescriptor dest_desc{parent_, output_dimensions,
+                                   CUDNN_DATA_DOUBLE};
+  ScopedPoolingDescriptor pooling_desc{parent_, pooling_dimensions};
+  status = wrap::cudnnPoolingBackward(
+      parent_, ToHandle(dnn_handle_), pooling_desc.handle(), &alpha,
+      dest_desc.handle(), output_data.opaque(), dest_desc.handle(),
+      input_diff_data.opaque(), src_desc.handle(), input_data.opaque(), &beta,
+      src_desc.handle(), output_diff_data->opaque());
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to enqueue backward pooling on stream: "
                << ToString(status);
     return false;
   }

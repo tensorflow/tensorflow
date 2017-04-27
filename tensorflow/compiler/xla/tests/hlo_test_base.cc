@@ -111,9 +111,12 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
       backend_->eigen_intra_op_thread_pool_device());
 
   HloExecutionProfile hlo_execution_profile;
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase result,
-                      executable->ExecuteOnStream(&run_options, arguments,
-                                                  &hlo_execution_profile));
+  ServiceExecutableRunOptions service_run_options(run_options,
+                                                  backend_->StreamBorrower());
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceMemoryBase result,
+      executable->ExecuteOnStream(&service_run_options, arguments,
+                                  &hlo_execution_profile));
   TF_RET_CHECK(stream.BlockHostUntilDone());
 
   allocations_.push_back(result);
@@ -133,6 +136,7 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
     std::set<void*> added_opaques;
     for (auto element_buffer : element_buffers) {
       if (added_opaques.count(element_buffer.opaque()) == 0) {
+        CHECK(element_buffer.opaque() != nullptr);
         added_opaques.insert(element_buffer.opaque());
         allocations_.push_back(element_buffer);
       }

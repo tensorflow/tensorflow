@@ -138,10 +138,15 @@ def ParseDataTensorOrDict(data):
         col_spec.original_type = DTYPE_TO_FTYPE[data[k].dtype]
         col_spec.name = k
         # the second dimension of get_shape should always be known.
-        col_spec.size = data[k].get_shape()[1].value
+        shape = data[k].get_shape()
+        if len(shape) == 1:
+          col_spec.size = 1
+        else:
+          col_spec.size = shape[1].value
 
         dense_features_size += col_spec.size
-        dense_features.append(CastToFloat(data[k]))
+        x = array_ops.reshape(data[k], [-1, 1])
+        dense_features.append(CastToFloat(x))
 
     processed_dense_features = None
     processed_sparse_features = None

@@ -52,7 +52,7 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
     for (auto& instruction : computation->instructions()) {
       if (instruction->user_count() == 0 &&
           live_instructions.count(instruction.get()) == 0 &&
-          HloComputation::IsRemovable(instruction->opcode())) {
+          computation->IsRemovable(instruction.get())) {
         dead_roots.push_back(instruction.get());
       }
     }

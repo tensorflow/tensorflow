@@ -23,7 +23,6 @@ import hashlib
 import math
 import numpy as np
 
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import linalg
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -514,7 +513,7 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
     def tril_ids(n):
       """Internal helper to create vector of linear indices into y."""
       # Build the ids statically; chose 512 because it implies 1MiB.
-      if not contrib_framework.is_tensor(n) and n <= 512:
+      if not tensor_util.is_tensor(n) and n <= 512:
         ids = np.arange(n**2, dtype=np.int32)
         rows = (ids / n).astype(np.int32)  # Implicit floor.
         # We need to stop incrementing the index when we encounter

@@ -18,6 +18,7 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.contrib import distributions
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -100,9 +101,10 @@ class MultinomialTest(test.TestCase):
       with self.assertRaisesOpError("counts must sum to `self.total_count`"):
         multinom.prob([2., 3, 2]).eval()
       # Counts are non-integers.
+      x = array_ops.placeholder(dtypes.float32)
       with self.assertRaisesOpError(
           "cannot contain fractional components."):
-        multinom.prob([1.0, 2.5, 1.5]).eval()
+        multinom.prob(x).eval(feed_dict={x: [1.0, 2.5, 1.5]})
 
       multinom = ds.Multinomial(total_count=n, probs=p, validate_args=False)
       multinom.prob([1., 2., 2.]).eval()

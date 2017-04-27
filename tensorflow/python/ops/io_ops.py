@@ -14,7 +14,9 @@
 # ==============================================================================
 
 # pylint: disable=line-too-long
-"""Inputs and Readers. See the @{$python/io_ops} guide.
+"""Inputs and Readers.
+
+See the @{$python/io_ops} guide.
 
 @@placeholder
 @@placeholder_with_default
@@ -228,10 +230,10 @@ class ReaderBase(object):
       # For compatibility with pre-resource queues, create a ref(string) tensor
       # which can be looked up as the same queue by a resource manager.
       old_queue_op = gen_data_flow_ops._fake_queue(queue_ref)
-      return gen_io_ops._reader_read_up_to_v2(self._reader_ref,
-                                              old_queue_op,
-                                              num_records,
-                                              name=name)
+      return gen_io_ops._reader_read_up_to(self._reader_ref,
+                                           old_queue_op,
+                                           num_records,
+                                           name=name)
 
   def num_records_produced(self, name=None):
     """Returns the number of records this reader has produced.
@@ -389,7 +391,11 @@ class FixedLengthRecordReader(ReaderBase):
   """
   # TODO(josh11b): Support serializing and restoring state.
 
-  def __init__(self, record_bytes, header_bytes=None, footer_bytes=None,
+  def __init__(self,
+               record_bytes,
+               header_bytes=None,
+               footer_bytes=None,
+               hop_bytes=None,
                name=None):
     """Create a FixedLengthRecordReader.
 
@@ -397,11 +403,15 @@ class FixedLengthRecordReader(ReaderBase):
       record_bytes: An int.
       header_bytes: An optional int. Defaults to 0.
       footer_bytes: An optional int. Defaults to 0.
+      hop_bytes: An optional int. Defaults to 0.
       name: A name for the operation (optional).
     """
     rr = gen_io_ops._fixed_length_record_reader_v2(
-        record_bytes=record_bytes, header_bytes=header_bytes,
-        footer_bytes=footer_bytes, name=name)
+        record_bytes=record_bytes,
+        header_bytes=header_bytes,
+        footer_bytes=footer_bytes,
+        hop_bytes=hop_bytes,
+        name=name)
     super(FixedLengthRecordReader, self).__init__(rr)
 
 

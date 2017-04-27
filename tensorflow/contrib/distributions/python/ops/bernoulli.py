@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -71,7 +72,7 @@ class Bernoulli(distribution.Distribution):
       ValueError: If p and logits are passed, or if neither are passed.
     """
     parameters = locals()
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,
           probs=probs,
@@ -79,13 +80,12 @@ class Bernoulli(distribution.Distribution):
           name=name)
     super(Bernoulli, self).__init__(
         dtype=dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._logits, self._probs],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -121,6 +121,7 @@ class Bernoulli(distribution.Distribution):
     return math_ops.cast(sample, self.dtype)
 
   def _log_prob(self, event):
+    event = self._maybe_assert_valid_sample(event)
     # TODO(jaana): The current sigmoid_cross_entropy_with_logits has
     # inconsistent  behavior for logits = inf/-inf.
     event = math_ops.cast(event, self.logits.dtype)
@@ -161,6 +162,17 @@ class Bernoulli(distribution.Distribution):
     """Returns `1` if `prob > 0.5` and `0` otherwise."""
     return math_ops.cast(self.probs > 0.5, self.dtype)
 
+  def _maybe_assert_valid_sample(self, event, check_integer=True):
+    if not self.validate_args:
+      return event
+    event = distribution_util.embed_check_nonnegative_discrete(
+        event, check_integer=check_integer)
+    return control_flow_ops.with_dependencies([
+        check_ops.assert_less_equal(
+            event, array_ops.ones_like(event),
+            message="event is not less than or equal to 1."),
+    ], event)
+
 
 class BernoulliWithSigmoidProbs(Bernoulli):
   """Bernoulli with `probs = nn.sigmoid(logits)`."""
@@ -172,13 +184,13 @@ class BernoulliWithSigmoidProbs(Bernoulli):
                allow_nan_stats=True,
                name="BernoulliWithSigmoidProbs"):
     parameters = locals()
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       super(BernoulliWithSigmoidProbs, self).__init__(
           probs=nn.sigmoid(logits, name="sigmoid_probs"),
           dtype=dtype,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
 

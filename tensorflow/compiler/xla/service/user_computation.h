@@ -144,6 +144,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddReshapeInstruction(
       const ReshapeRequest& reshape_request);
 
+  // Enqueues a transpose instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddTransposeInstruction(
+      const TransposeRequest& transpose_request);
+
   // Enqueues a slice instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddSliceInstruction(
       const SliceRequest& slice_request);
@@ -236,20 +240,24 @@ class UserComputation {
   // Returns the output shape of the operation indicated by the given handle.
   StatusOr<Shape> GetShape(const ComputationDataHandle& handle);
 
+  // Sets metadata on the Hlo instruction referenced by the given handle.
+  Status SetOpMetadata(const ComputationDataHandle& handle,
+                       const OpMetadata& metadata);
+
   // Builds a HLO computation from the UserComputation. The parameter "resolver"
   // is a function which returns a pointer to the HloComputation corresponding
   // to the given ComputationHandle at the given version. The resolver is used
   // for operations, such as map, which call other computations and need a
   // pointer to the called HloComputation to construct the respective HLO
-  // instructions. If include_unused_computation is true, then all parameter
-  // instructions are lowered into HloInstructions even if the parameter is
-  // unused (the root of the computation is unreachable from the parameter).
+  // instructions. If include_unreachable_instructions is true, then
+  // instructions which are not reachable from the root are lowered into
+  // HloInstructions.
   using HloComputationResolver =
       std::function<HloComputation*(const VersionedComputationHandle& handle)>;
   StatusOr<std::unique_ptr<HloComputation>> BuildHloComputation(
       VersionedComputationHandle::Version version,
       HloComputationResolver hlo_resolver,
-      bool include_unused_parameters = true) const;
+      bool include_unreachable_instructions = true) const;
 
   // Return a vector containing the embedded computations used by this
   // UserComputation. Only embedded computations which are called directly by
@@ -285,13 +293,8 @@ class UserComputation {
       const std::map<int64, ComputationHandle>& old_to_new)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  // Returns the OperationRequestion corresponding to the root (result) of the
-  // computation.
-  const OperationRequest& GetRoot(VersionedComputationHandle::Version version)
-      const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  // Returns the OperationRequest corresponding to the given handle value.
-  StatusOr<const OperationRequest*> LookupRequest(
+  // Returns the OperationRequest corresponding to the given handle.
+  StatusOr<const OperationRequest*> LookUpRequest(
       const ComputationDataHandle& handle) const
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -303,6 +306,9 @@ class UserComputation {
   // contiguous starting from zero. Returns appropriate error status if not.
   Status CheckParametersAreContiguous(
       VersionedComputationHandle::Version version) const
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  VersionedComputationHandle GetVersionedHandleInternal() const
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Name of the computation.

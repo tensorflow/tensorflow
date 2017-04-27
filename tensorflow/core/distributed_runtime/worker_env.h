@@ -26,9 +26,7 @@ class ThreadPool;
 
 class DeviceMgr;
 class Env;
-class GraphMgr;
-class RendezvousMgrInterface;
-class WorkerCacheInterface;
+class SessionMgr;
 
 // The worker environment class, which holds a bag of pointers to
 // per-worker singletons.
@@ -37,21 +35,12 @@ class WorkerCacheInterface;
 struct WorkerEnv {
   Env* env = nullptr;
 
-  // The name of the worker. E.g., /job:mnist/replica:1/task:0.
-  string worker_name;
-
-  // Object from which WorkerInterface instances can be obtained.
-  WorkerCacheInterface* worker_cache = nullptr;
+  // session_mgr encapsulates state for each session.
+  SessionMgr* session_mgr = nullptr;
 
   // device_mgr manages local devices (cpu and gpu). The WorkerService
   // is the network interface for managed devices.
   DeviceMgr* device_mgr = nullptr;
-
-  // graph_mgr keeps track of registered graphs of this worker.
-  GraphMgr* graph_mgr = nullptr;
-
-  // A set of rendezvous keyed by step ids.
-  RendezvousMgrInterface* rendezvous_mgr = nullptr;
 
   // A pool of threads for scheduling compute work.
   thread::ThreadPool* compute_pool = nullptr;

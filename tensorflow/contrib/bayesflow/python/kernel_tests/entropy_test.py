@@ -18,18 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.contrib import layers as layers_lib
-from tensorflow.contrib.bayesflow.python.ops import entropy as entropy_lib
+from tensorflow.contrib.bayesflow.python.ops import entropy_impl as entropy_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops

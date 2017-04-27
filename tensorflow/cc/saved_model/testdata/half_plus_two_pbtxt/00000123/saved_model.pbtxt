@@ -447,7 +447,7 @@ meta_graphs {
       }
     }
     tags: "serve"
-    tensorflow_version: "0.12.head"
+    tensorflow_version: "1.0.0"
     tensorflow_git_version: "unknown"
   }
   graph_def {
@@ -1714,7 +1714,7 @@ meta_graphs {
             dtype: DT_STRING
             tensor_shape {
             }
-            string_val: "_temp_aeab824a1fc94305a10a2504f5995de2/part"
+            string_val: "_temp_d286b725003942fd8bac94b6c67e7c0c/part"
           }
         }
       }
@@ -2501,6 +2501,42 @@ meta_graphs {
         value: "\n\003b:0\022\010b/Assign\032\010b/read:0"
         value: "\n\003c:0\022\010c/Assign\032\010c/read:0"
       }
+    }
+  }
+  signature_def {
+    key: "classify_x2_to_y3"
+    value {
+      inputs {
+        key: "inputs"
+        value {
+          name: "x2:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
+        }
+      }
+      outputs {
+        key: "scores"
+        value {
+          name: "y3:0"
+          dtype: DT_FLOAT
+          tensor_shape {
+            dim {
+              size: -1
+            }
+            dim {
+              size: 1
+            }
+          }
+        }
+      }
+      method_name: "tensorflow/serving/classify"
     }
   }
   signature_def {

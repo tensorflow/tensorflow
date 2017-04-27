@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-var fs = require('fs');
-var path = require('path');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Returns a list of web components inside the components directory for which
@@ -34,6 +34,6 @@ exports.getComponents = function(namePredicate) {
  * directory.
  */
 exports.tbComponents = exports.getComponents(function(name) {
-  var prefix = name.slice(0, 3);
+  const prefix = name.slice(0, 3);
   return prefix == 'tf_' || prefix == 'vz_';
 });

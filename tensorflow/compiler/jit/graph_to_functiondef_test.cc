@@ -19,11 +19,11 @@ limitations under the License.
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace {

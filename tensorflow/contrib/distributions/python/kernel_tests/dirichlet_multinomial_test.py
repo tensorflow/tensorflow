@@ -18,6 +18,7 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.contrib import distributions
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -87,9 +88,10 @@ class DirichletMultinomialTest(test.TestCase):
       dist.prob([3., 0, 2]).eval()
       dist.prob([3.0, 0, 2.0]).eval()
       # Both equality and integer checking fail.
+      placeholder = array_ops.placeholder(dtypes.float32)
       with self.assertRaisesOpError(
           "counts cannot contain fractional components"):
-        dist.prob([1.0, 2.5, 1.5]).eval()
+        dist.prob(placeholder).eval(feed_dict={placeholder: [1.0, 2.5, 1.5]})
       dist = ds.DirichletMultinomial(n, alpha, validate_args=False)
       dist.prob([1., 2., 3.]).eval()
       # Non-integer arguments work.
@@ -419,7 +421,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.test_session() as sess:
       dist = ds.DirichletMultinomial(
           total_count=5.,
-          concentration=2. * self._rng.rand(4, 3, 2).astype(np.float32))
+          concentration=1. + 2. * self._rng.rand(4, 3, 2).astype(np.float32))
       n = int(3e3)
       x = dist.sample(n, seed=0)
       sample_mean = math_ops.reduce_mean(x, 0)
@@ -448,7 +450,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.test_session() as sess:
       dist = ds.DirichletMultinomial(
           total_count=5.,
-          concentration=2. * self._rng.rand(4).astype(np.float32))
+          concentration=1. + 2. * self._rng.rand(4).astype(np.float32))
       n = int(5e3)
       x = dist.sample(n, seed=0)
       sample_mean = math_ops.reduce_mean(x, 0)

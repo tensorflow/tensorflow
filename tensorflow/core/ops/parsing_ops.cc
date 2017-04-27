@@ -354,7 +354,7 @@ output: Each tensor will have the same shape as records.
 REGISTER_OP("StringToNumber")
     .Input("string_tensor: string")
     .Output("output: out_type")
-    .Attr("out_type: {float, int32} = DT_FLOAT")
+    .Attr("out_type: {float, double, int32, int64} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Converts each string in the input Tensor to the specified numeric type.

@@ -18,6 +18,7 @@ limitations under the License.
 #include <fstream>
 #include <vector>
 
+#include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
-namespace {
 
 class DebugIdentityOpTest : public OpsTestBase {
  protected:
@@ -230,6 +230,24 @@ class DebugNumericSummaryOpTest : public OpsTestBase {
                     .Finalize(node_def()));
     return InitOp();
   }
+
+  Status InitGated(DataType input_type, const std::vector<string>& debug_urls) {
+    TF_CHECK_OK(NodeDefBuilder("op", "DebugNumericSummary")
+                    .Input(FakeInput(input_type))
+                    .Attr("tensor_name", "FakeTensor:0")
+                    .Attr("gated_grpc", true)
+                    .Attr("debug_urls", debug_urls)
+                    .Finalize(node_def()));
+    return InitOp();
+  }
+
+#if defined(PLATFORM_GOOGLE)
+  void ClearEnabledWatchKeys() { DebugGrpcIO::ClearEnabledWatchKeys(); }
+
+  void CreateEmptyEnabledSet(const string& grpc_debug_url) {
+    DebugGrpcIO::CreateEmptyEnabledSet(grpc_debug_url);
+  }
+#endif
 };
 
 TEST_F(DebugNumericSummaryOpTest, Float_full_house) {
@@ -254,12 +272,12 @@ TEST_F(DebugNumericSummaryOpTest, Float_full_house) {
       &expected,
       {1.0,              // Is initialized.
        18.0,             // Total element count.
+       4.0,              // nan count.
        2.0,              // -inf count.
        2.0,              // negative number count (excluding -inf).
        3.0,              // zero count.
        2.0,              // positive number count (excluding +inf).
        5.0,              // +inf count.
-       4.0,              // nan count.
        -3.0,             // minimum of non-inf and non-nan elements.
        7.0,              // maximum of non-inf and non-nan elements.
        0.85714285714,    // mean of non-inf and non-nan elements.
@@ -290,12 +308,12 @@ TEST_F(DebugNumericSummaryOpTest, Double_full_house) {
       &expected,
       {1.0,              // Is initialized.
        18.0,             // Total element count.
+       4.0,              // nan count.
        2.0,              // -inf count.
        2.0,              // negative count (excluding -inf).
        3.0,              // zero count.
        2.0,              // positive count (excluding +inf).
        5.0,              // +inf count.
-       4.0,              // nan count.
        -3.0,             // minimum of non-inf and non-nan elements.
        7.0,              // maximum of non-inf and non-nan elements.
        0.85714285714,    // mean of non-inf and non-nan elements.
@@ -315,12 +333,12 @@ TEST_F(DebugNumericSummaryOpTest, Float_only_valid_values) {
       &expected,
       {1.0,              // Is initialized.
        6.0,              // Total element count.
+       0.0,              // nan count.
        0.0,              // -inf count.
        1.0,              // negative count (excluding -inf).
        2.0,              // zero count.
        3.0,              // positive count (excluding +inf).
        0.0,              // +inf count.
-       0.0,              // nan count.
        -1.0,             // minimum of non-inf and non-nan elements.
        7.0,              // maximum of non-inf and non-nan elements.
        2.0,              // mean of non-inf and non-nan elements.
@@ -351,12 +369,12 @@ TEST_F(DebugNumericSummaryOpTest, Float_all_Inf_or_NaN) {
   // NaNs.
   ASSERT_NEAR(1.0, output[0], 1e-8);  // Is initialized.
   ASSERT_NEAR(9.0, output[1], 1e-8);  // Total element count.
-  ASSERT_NEAR(2.0, output[2], 1e-8);  // -inf count.
-  ASSERT_NEAR(0.0, output[3], 1e-8);  // negative count (excluding -inf).
-  ASSERT_NEAR(0.0, output[4], 1e-8);  // zero count.
-  ASSERT_NEAR(0.0, output[5], 1e-8);  // positive count (excluding +inf).
-  ASSERT_NEAR(3.0, output[6], 1e-8);  // +inf count.
-  ASSERT_NEAR(4.0, output[7], 1e-8);  // nan count.
+  ASSERT_NEAR(4.0, output[2], 1e-8);  // nan count.
+  ASSERT_NEAR(2.0, output[3], 1e-8);  // -inf count.
+  ASSERT_NEAR(0.0, output[4], 1e-8);  // negative count (excluding -inf).
+  ASSERT_NEAR(0.0, output[5], 1e-8);  // zero count.
+  ASSERT_NEAR(0.0, output[6], 1e-8);  // positive count (excluding +inf).
+  ASSERT_NEAR(3.0, output[7], 1e-8);  // +inf count.
   // Due to the absence of any non-inf and non-nan values, the output of min,
   // max, mean and var are all degenerate.
   ASSERT_EQ(std::numeric_limits<float>::infinity(), output[8]);
@@ -365,5 +383,240 @@ TEST_F(DebugNumericSummaryOpTest, Float_all_Inf_or_NaN) {
   ASSERT_TRUE(Eigen::numext::isnan(output[11]));
 }
 
-}  // namespace
+TEST_F(DebugNumericSummaryOpTest, Int16Success) {
+  TF_ASSERT_OK(Init(DT_INT16));
+  AddInputFromArray<int16>(TensorShape({4, 1}), {-1, -3, 3, 7});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,      // Is initialized.
+       4.0,      // Total element count.
+       0.0,      // nan count.
+       0.0,      // -inf count.
+       2.0,      // negative count (excluding -inf).
+       0.0,      // zero count.
+       2.0,      // positive count (excluding +inf).
+       0.0,      // +inf count.
+       -3.0,     // minimum of non-inf and non-nan elements.
+       7.0,      // maximum of non-inf and non-nan elements.
+       1.5,      // mean of non-inf and non-nan elements.
+       14.75});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+TEST_F(DebugNumericSummaryOpTest, Int32Success) {
+  TF_ASSERT_OK(Init(DT_INT32));
+  AddInputFromArray<int32>(TensorShape({2, 3}), {0, 0, -1, 3, 3, 7});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,              // Is initialized.
+       6.0,              // Total element count.
+       0.0,              // nan count.
+       0.0,              // -inf count.
+       1.0,              // negative count (excluding -inf).
+       2.0,              // zero count.
+       3.0,              // positive count (excluding +inf).
+       0.0,              // +inf count.
+       -1.0,             // minimum of non-inf and non-nan elements.
+       7.0,              // maximum of non-inf and non-nan elements.
+       2.0,              // mean of non-inf and non-nan elements.
+       7.33333333333});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+TEST_F(DebugNumericSummaryOpTest, Int64Success) {
+  TF_ASSERT_OK(Init(DT_INT64));
+  AddInputFromArray<int64>(TensorShape({2, 2, 2}), {0, 0, -1, 3, 3, 7, 0, 0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,     // Is initialized.
+       8.0,     // Total element count.
+       0.0,     // nan count.
+       0.0,     // -inf count.
+       1.0,     // negative count (excluding -inf).
+       4.0,     // zero count.
+       3.0,     // positive count (excluding +inf).
+       0.0,     // +inf count.
+       -1.0,    // minimum of non-inf and non-nan elements.
+       7.0,     // maximum of non-inf and non-nan elements.
+       1.5,     // mean of non-inf and non-nan elements.
+       6.25});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+TEST_F(DebugNumericSummaryOpTest, UInt8Success) {
+  TF_ASSERT_OK(Init(DT_UINT8));
+  AddInputFromArray<uint8>(TensorShape({1, 5}), {0, 10, 30, 30, 70});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,      // Is initialized.
+       5.0,      // Total element count.
+       0.0,      // nan count.
+       0.0,      // -inf count.
+       0.0,      // negative count (excluding -inf).
+       1.0,      // zero count.
+       4.0,      // positive count (excluding +inf).
+       0.0,      // +inf count.
+       0.0,      // minimum of non-inf and non-nan elements.
+       70.0,     // maximum of non-inf and non-nan elements.
+       28.0,     // mean of non-inf and non-nan elements.
+       576.0});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+TEST_F(DebugNumericSummaryOpTest, BoolSuccess) {
+  TF_ASSERT_OK(Init(DT_BOOL));
+  AddInputFromArray<bool>(TensorShape({2, 3}), {0, 0, 1, 1, 1, 0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,     // Is initialized.
+       6.0,     // Total element count.
+       0.0,     // nan count.
+       0.0,     // -inf count.
+       0.0,     // negative count (excluding -inf).
+       3.0,     // zero count.
+       3.0,     // positive count (excluding +inf).
+       0.0,     // +inf count.
+       0.0,     // minimum of non-inf and non-nan elements.
+       1.0,     // maximum of non-inf and non-nan elements.
+       0.5,     // mean of non-inf and non-nan elements.
+       0.25});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+#if defined(PLATFORM_GOOGLE)
+TEST_F(DebugNumericSummaryOpTest, DisabledDueToEmptyEnabledSet) {
+  ClearEnabledWatchKeys();
+  CreateEmptyEnabledSet("grpc://server:3333");
+
+  std::vector<string> debug_urls({"grpc://server:3333"});
+  TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));
+  AddInputFromArray<float>(TensorShape({2, 2}), {1.0, 3.0, 3.0, 7.0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected_disabled(allocator(), DT_DOUBLE, TensorShape({0}));
+  test::ExpectTensorNear<double>(expected_disabled, *GetOutput(0), 1e-8);
+}
+
+TEST_F(DebugNumericSummaryOpTest, DisabledDueToNonMatchingWatchKey) {
+  ClearEnabledWatchKeys();
+  DebugGrpcIO::EnableWatchKey("grpc://server:3333",
+                              "FakeTensor:1:DebugNumeriSummary");
+
+  std::vector<string> debug_urls({"grpc://server:3333"});
+  TF_ASSERT_OK(InitGated(DT_FLOAT, debug_urls));
+  AddInputFromArray<float>(TensorShape({2, 2}), {1.0, 3.0, 3.0, 7.0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected_disabled(allocator(), DT_DOUBLE, TensorShape({0}));
+  test::ExpectTensorNear<double>(expected_disabled, *GetOutput(0), 1e-8);
+}
+#endif
+
+// Tests for DebugNumericSummaryOp
+class DebugNumericSummaryOpCustomLowerBoundTest : public OpsTestBase {
+ protected:
+  Status Init(DataType input_type) {
+    TF_CHECK_OK(NodeDefBuilder("op", "DebugNumericSummary")
+                    .Input(FakeInput(input_type))
+                    .Attr("tensor_name", "FakeTensor:0")
+                    .Attr("lower_bound", -1.2f)
+                    .Finalize(node_def()));
+    return InitOp();
+  }
+};
+
+TEST_F(DebugNumericSummaryOpCustomLowerBoundTest, Float_full_house) {
+  TF_ASSERT_OK(Init(DT_FLOAT));
+  AddInputFromArray<float>(
+      TensorShape({18}),
+      {std::numeric_limits<float>::quiet_NaN(),
+       std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f, 0.0f, -1.0f, -3.0f,
+       3.0f, 7.0f, -std::numeric_limits<float>::infinity(),
+       -std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::infinity(),
+       std::numeric_limits<float>::quiet_NaN(),
+       std::numeric_limits<float>::quiet_NaN()});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,              // Is initialized.
+       18.0,             // Total element count.
+       4.0,              // nan count.
+       3.0,              // -inf count.
+       1.0,              // negative number count (excluding -inf).
+       3.0,              // zero count.
+       2.0,              // positive number count (excluding +inf).
+       5.0,              // +inf count.
+       -3.0,             // minimum of non-inf and non-nan elements.
+       7.0,              // maximum of non-inf and non-nan elements.
+       0.85714285714,    // mean of non-inf and non-nan elements.
+       8.97959183673});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
+// Tests for DebugNumericSummaryOp
+class DebugNumericSummaryOpCustomLowerUpperBoundsTest : public OpsTestBase {
+ protected:
+  Status Init(DataType input_type) {
+    TF_CHECK_OK(NodeDefBuilder("op", "DebugNumericSummary")
+                    .Input(FakeInput(input_type))
+                    .Attr("tensor_name", "FakeTensor:0")
+                    .Attr("lower_bound", -0.5f)
+                    .Attr("upper_bound", 3.6f)
+                    .Finalize(node_def()));
+    return InitOp();
+  }
+};
+
+TEST_F(DebugNumericSummaryOpCustomLowerUpperBoundsTest, Int32Success) {
+  TF_ASSERT_OK(Init(DT_INT32));
+  AddInputFromArray<int32>(TensorShape({2, 3}), {0, 0, -1, 3, 3, 7});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_DOUBLE, TensorShape({12}));
+  test::FillValues<double>(
+      &expected,
+      {1.0,              // Is initialized.
+       6.0,              // Total element count.
+       0.0,              // nan count.
+       1.0,              // -inf count.
+       0.0,              // negative count (excluding -inf).
+       2.0,              // zero count.
+       2.0,              // positive count (excluding +inf).
+       1.0,              // +inf count.
+       -1.0,             // minimum of non-inf and non-nan elements.
+       7.0,              // maximum of non-inf and non-nan elements.
+       2.0,              // mean of non-inf and non-nan elements.
+       7.33333333333});  // variance of non-inf and non-nan elements.
+
+  test::ExpectTensorNear<double>(expected, *GetOutput(0), 1e-8);
+}
+
 }  // namespace tensorflow

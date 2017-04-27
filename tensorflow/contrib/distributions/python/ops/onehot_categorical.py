@@ -116,7 +116,7 @@ class OneHotCategorical(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs]) as ns:
+    with ops.name_scope(name, values=[logits, probs]):
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           name=name, logits=logits, probs=probs, validate_args=validate_args,
           multidimensional=True)
@@ -136,14 +136,13 @@ class OneHotCategorical(distribution.Distribution):
 
     super(OneHotCategorical, self).__init__(
         dtype=dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._logits,
                        self._probs],
-        name=ns)
+        name=name)
 
   @property
   def event_size(self):

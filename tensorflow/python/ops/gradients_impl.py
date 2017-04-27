@@ -44,6 +44,7 @@ from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -354,10 +355,14 @@ def _MaybeCompile(scope, op, func, grad_fn):
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
     xla_compile = func.definition.attr["_XlaCompile"].b
+    xla_separate_compiled_gradients = func.definition.attr[
+        "_XlaSeparateCompiledGradients"].b
     xla_scope = func.definition.attr["_XlaScope"].s.decode()
   else:
     try:
       xla_compile = op.get_attr("_XlaCompile")
+      xla_separate_compiled_gradients = op.get_attr(
+          "_XlaSeparateCompiledGradients")
       xla_scope = op.get_attr("_XlaScope").decode()
     except ValueError:
       return grad_fn()  # Exit early
@@ -365,9 +370,19 @@ def _MaybeCompile(scope, op, func, grad_fn):
   if not xla_compile:
     return grad_fn()  # Exit early
 
-  attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
-           "_XlaScope": attr_value_pb2.AttrValue(
-               s=("%s_grad_%s" % (xla_scope, scope)).encode())}
+  # If the gradients are supposed to be compiled separately, we give them a
+  # _XlaScope name that is based on the name_scope of the gradients.  Otherwise
+  # they just inherit the existing _XlaScope name, which lets them be merged
+  # together with the non-gradient computation.
+  if xla_separate_compiled_gradients:
+    xla_grad_scope = "%s_grad_%s" % (xla_scope, scope)
+  else:
+    xla_grad_scope = xla_scope
+
+  attrs = {
+      "_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
+      "_XlaScope": attr_value_pb2.AttrValue(s=xla_grad_scope.encode())
+  }
   with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
     return grad_fn()
 
@@ -433,7 +448,8 @@ def gradients(ys,
     xs = [x.handle if isinstance(x, resource_variable_ops.ResourceVariable)
           else x
           for x in xs]
-    xs = ops.convert_n_to_tensor_or_indexed_slices(xs, name="x")
+    xs = ops.internal_convert_n_to_tensor_or_indexed_slices(xs, name="x",
+                                                            as_ref=True)
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops)
 
     # The approach we take here is as follows: Create a list of all ops in the
@@ -445,6 +461,8 @@ def gradients(ys,
 
     # Initialize the pending count for ops in the connected subgraph from ys
     # to the xs.
+    if len(ys) > 1:
+      ys = [array_ops.identity(y) if y.consumers() else y for y in ys]
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
     pending_count, loop_state = _PendingCount(ops.get_default_graph(), to_ops,

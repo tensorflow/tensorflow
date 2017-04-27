@@ -106,7 +106,7 @@ MatchBackwardFilter(HloInstruction* conv) {
   //
   // Compute the window of the backward convolution.
   Window backward_conv_window;
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < spatial_dims.size(); ++i) {
     WindowDimension* dim = backward_conv_window.add_dimensions();
     // The window size of the backward convolution equals the output size of the
     // forward convolution.
@@ -185,7 +185,7 @@ MatchBackwardFilter(HloInstruction* conv) {
   ConvolutionDimensionNumbers backward_conv_dnums;
   backward_conv_dnums.set_batch_dimension(feature_dim);
   backward_conv_dnums.set_feature_dimension(batch_dim);
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < spatial_dims.size(); ++i) {
     backward_conv_dnums.add_spatial_dimensions(spatial_dims[i]);
   }
   // The dimension numbering of the output of the forward convolution (before
@@ -201,7 +201,7 @@ MatchBackwardFilter(HloInstruction* conv) {
       PositionInContainer(transpose->dimensions(), batch_dim));
   backward_conv_dnums.set_kernel_output_feature_dimension(
       PositionInContainer(transpose->dimensions(), feature_dim));
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < spatial_dims.size(); ++i) {
     backward_conv_dnums.add_kernel_spatial_dimensions(
         PositionInContainer(transpose->dimensions(), spatial_dims[i]));
   }

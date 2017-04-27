@@ -28,9 +28,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Class is declared and defined in tla_jit_device.cc, reference
+// Class is defined in xla_compilation_device.cc, reference
 // included here only so the XlaCompilationDevice allocator_ member can be
-// defined.
+// declared.
 class XlaCompilationAllocator;
 
 // Deliberately don't register the device factory because we *never*
@@ -51,6 +51,8 @@ class XlaCompilationDevice : public LocalDevice {
   ~XlaCompilationDevice() override;
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
+
+  void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
 
   Status Sync() override;
 
@@ -74,11 +76,14 @@ class XlaExpression {
   // handle() stores the XLA handle of the computation that the
   // expression represents.
   void set_handle(const xla::ComputationDataHandle& h);
-  const xla::ComputationDataHandle& handle() const;
+  const xla::ComputationDataHandle& handle() const { return handle_; }
 
   void set_constant_value(Tensor value);
   bool has_constant_value() const { return has_constant_value_; }
   const Tensor& constant_value() const { return constant_value_; }
+
+  void set_variable_id(int id);
+  int variable_id() const { return variable_id_; }
 
  private:
   // The XLA handle of the expression's computation.
@@ -87,8 +92,10 @@ class XlaExpression {
   // If this expression is a constant with a known value, 'constant_value' is a
   // host-memory Tensor containing the value. Used to avoid invoking XLA for
   // expressions that are trivially constant.
-  bool has_constant_value_;
+  bool has_constant_value_ = false;
   Tensor constant_value_;
+
+  int variable_id_ = -1;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaExpression);
 };

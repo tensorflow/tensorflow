@@ -18,10 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import copy
 import json
 import os
 
+import six
+
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.estimator import run_config as core_run_config
 from tensorflow.python.training import server_lib
 
 
@@ -74,6 +80,8 @@ class ClusterConfig(object):
       `cluster_spec`. Defaults to ''.
     * `num_ps_replicas` is set by counting the number of nodes listed
       in the `ps` attribute of `cluster_spec`. Defaults to 0.
+    * `num_worker_replicas` is set by counting the number of nodes listed
+      in the `worker` attribute of `cluster_spec`. Defaults to 0.
     * `is_chief` is deteremined based on `task_type`, `type_id`, and
       `environment`.
 
@@ -81,13 +89,14 @@ class ClusterConfig(object):
     ```
       cluster = {'ps': ['host1:2222', 'host2:2222'],
                  'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
-      os.environ['TF_CONFIG'] = json.dumps({
+      os.environ['TF_CONFIG'] = json.dumps(
           {'cluster': cluster,
-           'task': {'type': 'worker', 'index': 1}}})
+           'task': {'type': 'worker', 'index': 1}})
       config = ClusterConfig()
       assert config.master == 'host4:2222'
       assert config.task_id == 1
       assert config.num_ps_replicas == 2
+      assert config.num_worker_replicas == 3
       assert config.cluster_spec == server_lib.ClusterSpec(cluster)
       assert config.task_type == 'worker'
       assert not config.is_chief
@@ -112,6 +121,7 @@ class ClusterConfig(object):
                     _get_master(self._cluster_spec, self._task_type,
                                 self._task_id) or '')
     self._num_ps_replicas = _count_ps(self._cluster_spec) or 0
+    self._num_worker_replicas = _count_worker(self._cluster_spec) or 0
 
     # Set is_chief.
     self._environment = config.get('environment', Environment.LOCAL)
@@ -155,6 +165,10 @@ class ClusterConfig(object):
     return self._num_ps_replicas
 
   @property
+  def num_worker_replicas(self):
+    return self._num_worker_replicas
+
+  @property
   def task_id(self):
     return self._task_id
 
@@ -179,14 +193,17 @@ class ClusterConfig(object):
     return int(task_index) if task_index else 0
 
 
-class RunConfig(ClusterConfig):
+class RunConfig(ClusterConfig, core_run_config.RunConfig):
   """This class specifies the configurations for an `Estimator` run.
+
+  This class is the implementation of ${tf.estimator.RunConfig} interface.
 
   If you're a Google-internal user using command line flags with
   `learn_runner.py` (for instance, to do distributed training or to use
   parameter servers), you probably want to use `learn_runner.EstimatorConfig`
   instead.
   """
+  _USE_DEFAULT = 0
 
   def __init__(self,
                master=None,
@@ -195,11 +212,13 @@ class RunConfig(ClusterConfig):
                gpu_memory_fraction=1,
                tf_random_seed=None,
                save_summary_steps=100,
-               save_checkpoints_secs=600,
+               save_checkpoints_secs=_USE_DEFAULT,
                save_checkpoints_steps=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
-               evaluation_master=''):
+               evaluation_master='',
+               model_dir=None,
+               session_config=None):
     """Constructor.
 
     Note that the superclass `ClusterConfig` may set properties like
@@ -229,6 +248,11 @@ class RunConfig(ClusterConfig):
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
       evaluation_master: the master on which to perform evaluation.
+      model_dir: directory where model parameters, graph etc are saved. If
+        `None`, see `Estimator` about where the model will be saved.
+      session_config: a ConfigProto used to set session parameters, or None.
+         Note - using this argument, it is easy to provide settings which break
+         otherwise perfectly good models. Use with care.
     """
     super(RunConfig, self).__init__(
         master=master, evaluation_master=evaluation_master)
@@ -244,12 +268,74 @@ class RunConfig(ClusterConfig):
     self._tf_random_seed = tf_random_seed
     self._save_summary_steps = save_summary_steps
     self._save_checkpoints_secs = save_checkpoints_secs
+    self._session_config = session_config
+    if save_checkpoints_secs == RunConfig._USE_DEFAULT:
+      if save_checkpoints_steps is None:
+        self._save_checkpoints_secs = 600
+      else:
+        self._save_checkpoints_secs = None
     self._save_checkpoints_steps = save_checkpoints_steps
 
     # TODO(weiho): Remove these after ModelFn refactoring, when users can
     # create Scaffold and Saver in their model_fn to set these.
     self._keep_checkpoint_max = keep_checkpoint_max
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+    self._model_dir = model_dir
+
+  def replace(self, **kwargs):
+    """Returns a new instance of `RunConfig` replacing specified properties.
+
+    Only the properties in the following list are allowed to be replaced:
+      - `model_dir`.
+
+    Args:
+      **kwargs: keyword named properties with new values.
+
+    Raises:
+      ValueError: If any property name in `kwargs` does not exist or is not
+        allowed to be replaced.
+
+    Returns:
+      a new instance of `RunConfig`.
+    """
+
+    new_copy = copy.deepcopy(self)
+
+    # TODO(b/33295821): Allow more fields to be replaced.
+    for key, new_value in six.iteritems(kwargs):
+      if key == 'model_dir':
+        new_copy._model_dir = new_value  # pylint: disable=protected-access
+        continue
+
+      raise ValueError('{} is not supported by RunConfig replace'.format(key))
+
+    return new_copy
+
+  @experimental
+  def uid(self):
+    """Generates a 'Unique Identifier' based on all internal fields.
+
+    Caller should use the uid string to check `RunConfig` instance integrity
+    in one session use, but should not rely on the implementation details, which
+    is subject to change.
+
+    Returns:
+      A uid string.
+    """
+    # TODO(b/33295821): Allows user to specify a whitelist.
+    state = {k: v for k, v in self.__dict__.items() if not k.startswith('__')}
+    ordered_state = collections.OrderedDict(
+        sorted(state.items(), key=lambda t: t[0]))
+    # For class instance without __repr__, some special cares are required.
+    # Otherwise, the object address will be used.
+    if '_cluster_spec' in ordered_state:
+      ordered_state['_cluster_spec'] = ordered_state['_cluster_spec'].as_dict()
+    return ', '.join(
+        '%s=%r' % (k, v) for (k, v) in six.iteritems(ordered_state))
+
+  @property
+  def model_dir(self):
+    return self._model_dir
 
   @property
   def tf_config(self):
@@ -272,6 +358,10 @@ class RunConfig(ClusterConfig):
     return self._save_checkpoints_steps
 
   @property
+  def session_config(self):
+    return self._session_config
+
+  @property
   def keep_checkpoint_max(self):
     return self._keep_checkpoint_max
 
@@ -283,6 +373,11 @@ class RunConfig(ClusterConfig):
 def _count_ps(cluster_spec):
   """Counts the number of parameter servers in cluster_spec."""
   return len(cluster_spec.as_dict().get('ps', [])) if cluster_spec else 0
+
+
+def _count_worker(cluster_spec):
+  """Counts the number of workers in cluster_spec."""
+  return len(cluster_spec.as_dict().get('worker', [])) if cluster_spec else 0
 
 
 def _get_master(cluster_spec, task_type, task_id):

@@ -86,6 +86,9 @@ BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}/tensorflow/contrib/... \
   //${PIP_TEST_PREFIX}/tensorflow/python/... \
   //${PIP_TEST_PREFIX}/tensorflow/tensorboard/..."
 
+# Clean the bazel cache
+bazel clean
+
 # Run configure again, we might be using a different python path, due to
 # virtualenv.
 export TF_NEED_GCP=0
@@ -104,28 +107,26 @@ export TF_NEED_CUDA=$IS_GPU
 yes "" | ./configure
 
 # Figure out how many concurrent tests we can run and do run the tests.
+BAZEL_PARALLEL_TEST_FLAGS=""
 if [[ $IS_GPU == 1 ]]; then
   # Number of test threads is the number of GPU cards available.
   if [[ $IS_MAC == 1 ]]; then
-    PAR_TEST_JOBS=1
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
   else
     PAR_TEST_JOBS=$TF_GPU_COUNT
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=${TF_GPU_COUNT} \
+        --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute"
   fi
-
-  # Actually run the tests.
-  bazel test ${BAZEL_FLAGS} --local_test_jobs=${PAR_TEST_JOBS} \
-    --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
-    -- ${BAZEL_TEST_TARGETS}
-
 else
   # Number of test threads is the number of physical CPUs.
   if [[ $IS_MAC == 1 ]]; then
-    PAR_TEST_JOBS=$(sysctl -n hw.ncpu)
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=$(sysctl -n hw.ncpu)"
   else
-    PAR_TEST_JOBS=$(grep -c ^processor /proc/cpuinfo)
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=$(grep -c ^processor /proc/cpuinfo)"
   fi
-
-  # Actually run the tests.
-  bazel test ${BAZEL_FLAGS} --local_test_jobs=${PAR_TEST_JOBS} \
-    -- ${BAZEL_TEST_TARGETS}
 fi
+
+# Actually run the tests.
+bazel test ${BAZEL_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} -- \
+    ${BAZEL_TEST_TARGETS}
+

@@ -1,4 +1,4 @@
-FROM ubuntu:14.04
+FROM ubuntu:16.04
 
 MAINTAINER Craig Citro <craigcitro@google.com>
 
@@ -66,4 +66,4 @@ EXPOSE 8888
 
 WORKDIR "/notebooks"
 
-CMD ["/run_jupyter.sh"]
+CMD ["/run_jupyter.sh", "--allow-root"]

@@ -32,6 +32,8 @@ class SDCAOptimizer(object):
   Estimator.
 
   Example usage:
+
+  ```python
     real_feature_column = real_valued_column(...)
     sparse_feature_column = sparse_column_with_hash_bucket(...)
     sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
@@ -44,19 +46,22 @@ class SDCAOptimizer(object):
         optimizer=sdca_optimizer)
     classifier.fit(input_fn_train, steps=50)
     classifier.evaluate(input_fn=input_fn_eval)
+  ```
 
-  Here the expectation is that the input_fn_* functions passed to train and
+  Here the expectation is that the `input_fn_*` functions passed to train and
   evaluate return a pair (dict, label_tensor) where dict has `example_id_column`
   as `key` whose value is a `Tensor` of shape [batch_size] and dtype string.
   num_loss_partitions defines the number of partitions of the global loss
-  function and should be set to (#concurrent train ops/per worker) x (#workers).
-  Convergence of (global) loss is guaranteed if num_loss_partitions is larger or
-  equal to the above product. Larger values for num_loss_partitions lead to
-  slower convergence. The recommended value for num_loss_partitions in tf.learn
-  (where currently there is one process per worker) is the number of workers
-  running the train steps. It defaults to 1 (single machine). num_table_shards
-  defines the number of shards for the internal state table, typically set to
-  match the number of parameter servers for large data sets.
+  function and should be set to `(#concurrent train ops/per worker)
+  x (#workers)`.
+  Convergence of (global) loss is guaranteed if `num_loss_partitions` is larger
+  or equal to the above product. Larger values for `num_loss_partitions` lead to
+  slower convergence. The recommended value for `num_loss_partitions` in
+  `tf.learn` (where currently there is one process per worker) is the number
+  of workers running the train steps. It defaults to 1 (single machine).
+  `num_table_shards` defines the number of shards for the internal state
+  table, typically set to match the number of parameter servers for large
+  data sets.
   """
 
   def __init__(self,
@@ -73,6 +78,26 @@ class SDCAOptimizer(object):
 
   def get_name(self):
     return 'SDCAOptimizer'
+
+  @property
+  def example_id_column(self):
+    return self._example_id_column
+
+  @property
+  def num_loss_partitions(self):
+    return self._num_loss_partitions
+
+  @property
+  def num_table_shards(self):
+    return self._num_table_shards
+
+  @property
+  def symmetric_l1_regularization(self):
+    return self._symmetric_l1_regularization
+
+  @property
+  def symmetric_l2_regularization(self):
+    return self._symmetric_l2_regularization
 
   def get_train_step(self, columns_to_variables,
                      weight_column_name, loss_type, features, targets,

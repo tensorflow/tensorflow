@@ -40,9 +40,9 @@ namespace {
 
 class GatherOpTest : public OpsTestBase {
  protected:
-  void MakeOp(DataType index_type) {
+  void MakeOp(DataType data_type, DataType index_type) {
     TF_ASSERT_OK(NodeDefBuilder("myop", "Gather")
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(data_type))
                      .Input(FakeInput(index_type))
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
@@ -50,7 +50,7 @@ class GatherOpTest : public OpsTestBase {
 };
 
 TEST_F(GatherOpTest, ScalarIndices) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 3, 4});
@@ -63,8 +63,26 @@ TEST_F(GatherOpTest, ScalarIndices) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(GatherOpTest, ScalarIndices_Complex) {
+  MakeOp(DT_COMPLEX64, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<std::complex<float>>(
+      TensorShape({5}), {std::complex<float>(0, 10), std::complex<float>(1, 11),
+                         std::complex<float>(2, 12), std::complex<float>(3, 13),
+                         std::complex<float>(4, 14)});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output.
+  Tensor expected(allocator(), DT_COMPLEX64, TensorShape({}));
+  test::FillValues<std::complex<float>>(&expected,
+                                        {std::complex<float>(3, 13)});
+  test::ExpectTensorEqual<std::complex<float>>(expected, *GetOutput(0));
+}
+
 TEST_F(GatherOpTest, Simple_TwoD32) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
@@ -79,7 +97,7 @@ TEST_F(GatherOpTest, Simple_TwoD32) {
 }
 
 TEST_F(GatherOpTest, ZeroSize_TwoD32) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 0}), {});
@@ -92,7 +110,7 @@ TEST_F(GatherOpTest, ZeroSize_TwoD32) {
 }
 
 TEST_F(GatherOpTest, Simple_TwoD64) {
-  MakeOp(DT_INT64);
+  MakeOp(DT_FLOAT, DT_INT64);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
@@ -107,7 +125,7 @@ TEST_F(GatherOpTest, Simple_TwoD64) {
 }
 
 TEST_F(GatherOpTest, HighRank) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({4}), {0, 1, 2, 3});
@@ -121,7 +139,7 @@ TEST_F(GatherOpTest, HighRank) {
 }
 
 TEST_F(GatherOpTest, Error_IndexOutOfRange) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),

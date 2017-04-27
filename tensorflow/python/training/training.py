@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Support for training models.  See the @{$python/train} guide.
+"""Support for training models.
+
+See the @{$python/train} guide.
 
 @@Optimizer
 @@GradientDescentOptimizer
@@ -66,6 +68,7 @@
 @@LoggingTensorHook
 @@StopAtStepHook
 @@CheckpointSaverHook
+@@CheckpointSaverListener
 @@NewCheckpointReader
 @@StepCounterHook
 @@NanLossDuringTrainingError
@@ -74,9 +77,12 @@
 @@GlobalStepWaiterHook
 @@FinalOpsHook
 @@FeedFnHook
+@@SecondOrStepTimer
 @@global_step
 @@basic_train_loop
 @@get_global_step
+@@get_or_create_global_step
+@@create_global_step
 @@assert_global_step
 @@write_graph
 """
@@ -89,10 +95,14 @@ from __future__ import print_function
 import sys as _sys
 
 from tensorflow.python.ops import io_ops as _io_ops
+from tensorflow.python.ops import sdca_ops as _sdca_ops
 from tensorflow.python.ops import state_ops as _state_ops
 from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=g-bad-import-order,unused-import
+from tensorflow.python.ops.sdca_ops import sdca_optimizer
+from tensorflow.python.ops.sdca_ops import sdca_fprint
+from tensorflow.python.ops.sdca_ops import sdca_shrink_l1
 from tensorflow.python.training.adadelta import AdadeltaOptimizer
 from tensorflow.python.training.adagrad import AdagradOptimizer
 from tensorflow.python.training.adagrad_da import AdagradDAOptimizer
@@ -123,6 +133,7 @@ from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
 from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
 from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
 from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook
+from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverListener
 from tensorflow.python.training.basic_session_run_hooks import StepCounterHook
 from tensorflow.python.training.basic_session_run_hooks import NanLossDuringTrainingError
 from tensorflow.python.training.basic_session_run_hooks import NanTensorHook
@@ -159,6 +170,8 @@ from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
 from tensorflow.python.training.training_util import get_global_step
 from tensorflow.python.training.training_util import assert_global_step
+from tensorflow.python.training.training_util import create_global_step
+from tensorflow.python.training.training_util import get_or_create_global_step
 from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 
@@ -215,4 +228,4 @@ _allowed_symbols = [
 # * Input methods in tf.train are documented in io_ops.
 # * Saver methods in tf.train are documented in state_ops.
 remove_undocumented(__name__, _allowed_symbols,
-                    [_sys.modules[__name__], _io_ops, _state_ops])
+                    [_sys.modules[__name__], _io_ops, _sdca_ops, _state_ops])

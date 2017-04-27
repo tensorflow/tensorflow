@@ -46,13 +46,13 @@ def conv_model(feature, target, mode):
 
   # First conv layer will compute 32 features for each 5x5 patch
   with tf.variable_scope('conv_layer1'):
-    h_conv1 = layers.convolution(
+    h_conv1 = layers.convolution2d(
         feature, 32, kernel_size=[5, 5], activation_fn=tf.nn.relu)
     h_pool1 = max_pool_2x2(h_conv1)
 
   # Second conv layer will compute 64 features for each 5x5 patch.
   with tf.variable_scope('conv_layer2'):
-    h_conv2 = layers.convolution(
+    h_conv2 = layers.convolution2d(
         h_pool1, 64, kernel_size=[5, 5], activation_fn=tf.nn.relu)
     h_pool2 = max_pool_2x2(h_conv2)
     # reshape tensor into a batch of vectors

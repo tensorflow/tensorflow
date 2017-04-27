@@ -93,6 +93,22 @@ bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
   return false;
 }
 
+bool ParseFloatFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
+                    float* dst, bool* value_parsing_ok) {
+  *value_parsing_ok = true;
+  if (arg.Consume("--") && arg.Consume(flag) && arg.Consume("=")) {
+    char extra;
+    if (sscanf(arg.data(), "%f%c", dst, &extra) != 1) {
+      LOG(ERROR) << "Couldn't interpret value " << arg << " for flag " << flag
+                 << ".";
+      *value_parsing_ok = false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace
 
 Flag::Flag(const char* name, tensorflow::int32* dst, const string& usage_text)
@@ -116,6 +132,12 @@ Flag::Flag(const char* name, string* dst, const string& usage_text)
       string_value_(dst),
       usage_text_(usage_text) {}
 
+Flag::Flag(const char* name, float* dst, const string& usage_text)
+    : name_(name),
+      type_(TYPE_FLOAT),
+      float_value_(dst),
+      usage_text_(usage_text) {}
+
 bool Flag::Parse(string arg, bool* value_parsing_ok) const {
   bool result = false;
   if (type_ == TYPE_INT) {
@@ -126,6 +148,8 @@ bool Flag::Parse(string arg, bool* value_parsing_ok) const {
     result = ParseBoolFlag(arg, name_, bool_value_, value_parsing_ok);
   } else if (type_ == TYPE_STRING) {
     result = ParseStringFlag(arg, name_, string_value_, value_parsing_ok);
+  } else if (type_ == TYPE_FLOAT) {
+    result = ParseFloatFlag(arg, name_, float_value_, value_parsing_ok);
   }
   return result;
 }
@@ -195,6 +219,10 @@ bool Flag::Parse(string arg, bool* value_parsing_ok) const {
       type_name = "string";
       flag_string = strings::Printf("--%s=\"%s\"", flag.name_.c_str(),
                                     flag.string_value_->c_str());
+    } else if (flag.type_ == Flag::TYPE_FLOAT) {
+      type_name = "float";
+      flag_string =
+          strings::Printf("--%s=%f", flag.name_.c_str(), *flag.float_value_);
     }
     strings::Appendf(&usage_text, "\t%-33s\t%s\t%s\n", flag_string.c_str(),
                      type_name, flag.usage_text_.c_str());
