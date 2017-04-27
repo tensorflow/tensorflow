@@ -37,15 +37,16 @@ def frames(signal, frame_length, frame_step, name=None):
   ```
   
   Args:
-    signal: A `Tensor` of shape [batch_size, signal_length].
+    signal: A `Tensor` of shape `[batch_size, signal_length]`.
     frame_length: An `int32` or `int64` `Tensor`. The length of each frame.
     frame_step: An `int32` or `int64` `Tensor`. The step between frames.
     name: A name for the operation (optional).
   
   Returns:
-    A `Tensor` of frames with shape [batch_size, num_frames, frame_length].
+    A `Tensor` of frames with shape `[batch_size, num_frames, frame_length]`.
   """
-  with ops.name_scope(name, "frames", [signal, frame_length, frame_step]) as name:
+  with ops.name_scope(name, "frames",
+                      [signal, frame_length, frame_step]) as name:
     signal = ops.convert_to_tensor(signal, name="signal")
     frame_length = ops.convert_to_tensor(frame_length, name="frame_length")
     frame_step = ops.convert_to_tensor(frame_step, name="frame_step")
@@ -66,7 +67,8 @@ def frames(signal, frame_length, frame_step, name=None):
     indices_frame = array_ops.expand_dims(math_ops.range(frame_length), 0)
     indices_frames = array_ops.tile(indices_frame, [num_frames, 1])
     
-    indices_step = array_ops.expand_dims(math_ops.range(num_frames) * frame_step, 1)
+    indices_step = array_ops.expand_dims(
+        math_ops.range(num_frames) * frame_step, 1)
     indices_steps = array_ops.tile(indices_step, [1, frame_length])
     
     indices = indices_frames + indices_steps
