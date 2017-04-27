@@ -86,7 +86,8 @@ public: \
 \
 template class NAME<float>; \
 template class NAME<half>; \
-template class NAME<int>;
+template class NAME<int>; \
+template class NAME<bool>;
 
 
 // Predicates
@@ -123,39 +124,6 @@ template class NAME<bool>;
 // Predicates
 LOGICAL_BINARY_ELEMENTWISE(LogicalAnd, a[i] && b[i])
 LOGICAL_BINARY_ELEMENTWISE(LogicalOr, a[i] || b[i])
-
-// Cast
-template<typename Tin, typename Tout>
-class Cast : public Vertex {
-public:
-  Input<Vector<Tin>> a;
-  Output<Vector<Tout>> out;
-
-  bool compute() {
-    for (unsigned i = 0; i < a.size(); ++i) {
-      out[i] = (Tout)(a[i]);
-    }
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class Cast<float,half>;
-template class Cast<float,int>;
-template class Cast<float,bool>;
-
-template class Cast<int,float>;
-template class Cast<int,half>;
-template class Cast<int,bool>;
-
-template class Cast<half,float>;
-template class Cast<half,int>;
-template class Cast<half,bool>;
-
-template class Cast<bool,float>;
-template class Cast<bool,half>;
-template class Cast<bool,int>;
 
 // Clamp
 template <typename T>

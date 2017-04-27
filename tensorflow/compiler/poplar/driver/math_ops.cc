@@ -14,6 +14,7 @@
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
 
+#include <popstd/Cast.hpp>
 #include <poplin/MatMul.hpp>
 
 namespace xla {
@@ -397,29 +398,8 @@ CreateCastOp(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
-  const std::string& poplar_in_data_type(graph.getTensorElementType(in));
-  const std::string& poplar_out_data_type(graph.getTensorElementType(out));
-
-  std::string vertex_name = templateVertex("Cast",
-                                           poplar_in_data_type,
-                                           poplar_out_data_type);
-
   auto cs = graph.addComputeSet(inst->ToString());
-  const auto &device_info = graph.getDevice().getDeviceInfo();
-
-  const unsigned long N = ShapeUtil::ElementsIn(output_shape);
-
-  unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-  num_workers = std::min(num_workers, N);
-
-  for (unsigned i = 0; i < num_workers; ++i) {
-    const auto begin = i * N / num_workers;
-    const auto end = (i + 1) * N / num_workers;
-    auto v = graph.addVertex(cs, vertex_name,
-                             {{a_conn, in.slice(begin, end)},
-                              {out_conn, out.slice(begin, end)}});
-    graph.setTileMapping(v, i / device_info.numWorkerContexts);
-  }
+  popstd::cast(graph, in, out, cs);
 
   return poplar::program::Execute(cs);
 }
