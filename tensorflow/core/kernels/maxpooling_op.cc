@@ -975,6 +975,9 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
 #define REGISTER_CPU_ONLY_POOL_KERNELS(T)                        \
   REGISTER_KERNEL_BUILDER(                                       \
       Name("MaxPool").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      MaxPoolingOp<CPUDevice, T>);                               \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("MaxPoolV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       MaxPoolingOp<CPUDevice, T>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_ONLY_POOL_KERNELS);
 #undef REGISTER_CPU_ONLY_POOL_KERNELS

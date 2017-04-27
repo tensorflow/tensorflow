@@ -1349,7 +1349,33 @@ REGISTER_OP("MaxPool")
     .Attr(GetConvnetDataFormatAttrString())
     .Input("input: T")
     .Output("output: T")
-    .SetShapeFn(shape_inference::MaxPoolShape)
+    .Deprecated(23, "Use MaxPoolV2 instead")
+    .SetShapeFn(shape_inference::MaxPoolV2Shape)
+    .Doc(R"doc(
+Performs max pooling on the input.
+
+ksize: The size of the window for each dimension of the input tensor.
+strides: The stride of the sliding window for each dimension of the
+  input tensor.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+input: 4-D input to pool over.
+output: The max pooled output tensor.
+)doc");
+
+REGISTER_OP("MaxPoolV2")
+    .Attr("T: realnumbertype = DT_FLOAT")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Input("input: T")
+    .Input("ksize: int32")
+    .Input("strides: int32")
+    .Output("output: T")
+    .SetShapeFn(shape_inference::MaxPoolV2Shape)
     .Doc(R"doc(
 Performs max pooling on the input.
 
