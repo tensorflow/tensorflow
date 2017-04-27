@@ -7420,8 +7420,15 @@ op {
       f: 6
     }
   }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
   summary: "Fake-quantize the \'inputs\' tensor, type float to \'outputs\' tensor of same type."
-  description: "Attributes [min; max] define the clamping range for the \'inputs\' data.  Op\ndivides this range into 255 steps (total of 256 values), then replaces each\n\'inputs\' value with the closest of the quantized step values.\n\nQuantization is called fake since the output is still in floating point."
+  description: "Attributes [min; max] define the clamping range for the \'inputs\' data.  Op\ndivides this range into 255 steps (total of 256 values), then replaces each\n\'inputs\' value with the closest of the quantized step values.\n\'num_bits\' is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nQuantization is called fake since the output is still in floating point."
 }
 op {
   name: "FakeQuantWithMinMaxArgsGradient"
@@ -7454,6 +7461,13 @@ op {
       f: 6
     }
   }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
   summary: "Compute gradients for a FakeQuantWithMinMaxArgs operation."
 }
 op {
@@ -7474,8 +7488,15 @@ op {
     name: "outputs"
     type: DT_FLOAT
   }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
   summary: "Fake-quantize the \'inputs\' tensor of type float via global float scalars `min`"
-  description: "and `max` to \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data.  Op divides this range\ninto 255 steps (total of 256 values), then replaces each \'inputs\' value with the\nclosest of the quantized step values.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+  description: "and `max` to \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data.  Op divides this range\ninto 255 steps (total of 256 values), then replaces each \'inputs\' value with the\nclosest of the quantized step values.\n\'num_bits\' is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
 }
 op {
   name: "FakeQuantWithMinMaxVarsGradient"
@@ -7512,6 +7533,14 @@ op {
     description: "Backpropagated gradients w.r.t. max parameter:\n`sum(gradients * (inputs > max))`."
     type: DT_FLOAT
   }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+    description: "The bitwidth of the quantization; between 2 and 8, inclusive."
+  }
   summary: "Compute gradients for a FakeQuantWithMinMaxVars operation."
 }
 op {
@@ -7532,8 +7561,15 @@ op {
     name: "outputs"
     type: DT_FLOAT
   }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
   summary: "Fake-quantize the \'inputs\' tensor of type float and one of the shapes: `[d]`,"
-  description: "`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`\nto \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data in the corresponding\ndepth channel.  Op divides this range into 255 steps (total of 256 values), then\nreplaces each \'inputs\' value with the closest of the quantized step values.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+  description: "`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`\nto \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data in the corresponding\ndepth channel.  Op divides this range into 255 steps (total of 256 values), then\nreplaces each \'inputs\' value with the closest of the quantized step values.\n\'num_bits\' is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
 }
 op {
   name: "FakeQuantWithMinMaxVarsPerChannelGradient"
@@ -7569,6 +7605,14 @@ op {
     name: "backprop_wrt_max"
     description: "Backpropagated gradients w.r.t. max parameter, shape `[d]`:\n`sum_per_d(gradients * (inputs > max))`."
     type: DT_FLOAT
+  }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+    description: "The bitwidth of the quantization; between 2 and 8, inclusive."
   }
   summary: "Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation."
 }
