@@ -46,15 +46,16 @@ def get_git_commit_sha():
   return os.getenv("GIT_COMMIT")
 
 
-def process_test_logs(name, test_name, test_args, start_time, run_time,
-                      log_files):
+def process_test_logs(name, test_name, test_args, benchmark_type,
+                      start_time, run_time, log_files):
   """Gather test information and put it in a TestResults proto.
 
   Args:
     name: Benchmark target identifier.
-    test_name:  A unique bazel target, e.g. "//path/to:test"
-    test_args:  A string containing all arguments to run the target with.
-
+    test_name: A unique bazel target, e.g. "//path/to:test"
+    test_args: A string containing all arguments to run the target with.
+    benchmark_type: A string representing the BenchmarkType enum; the
+      benchmark type for this target.
     start_time: Test starting time (epoch)
     run_time:   Wall time that the test ran for
     log_files:  Paths to the log files
@@ -68,6 +69,8 @@ def process_test_logs(name, test_name, test_args, start_time, run_time,
   results.target = test_name
   results.start_time = start_time
   results.run_time = run_time
+  results.benchmark_type = test_log_pb2.TestResults.BenchmarkType.Value(
+      benchmark_type.upper())
 
   # Gather source code information
   git_sha = get_git_commit_sha()
@@ -90,13 +93,15 @@ def process_benchmarks(log_files):
   return benchmarks
 
 
-def run_and_gather_logs(name, test_name, test_args):
+def run_and_gather_logs(name, test_name, test_args, benchmark_type):
   """Run the bazel test given by test_name.  Gather and return the logs.
 
   Args:
     name: Benchmark target identifier.
     test_name: A unique bazel target, e.g. "//path/to:test"
     test_args: A string containing all arguments to run the target with.
+    benchmark_type: A string representing the BenchmarkType enum; the
+      benchmark type for this target.
 
   Returns:
     A tuple (test_results, mangled_test_name), where
@@ -124,7 +129,7 @@ def run_and_gather_logs(name, test_name, test_args):
     test_executable = os.path.join(".", test_executable)
 
   temp_directory = tempfile.mkdtemp(prefix="run_and_gather_logs")
-  mangled_test_name = test_name.strip("/").replace("/", "_").replace(":", "_")
+  mangled_test_name = name.strip("/").replace("/", "_").replace(":", "_")
   test_file_prefix = os.path.join(temp_directory, mangled_test_name)
   test_file_prefix = "%s." % test_file_prefix
 
@@ -145,8 +150,9 @@ def run_and_gather_logs(name, test_name, test_args):
 
     return (process_test_logs(
         name,
-        test_name,
-        test_args,
+        test_name=test_name,
+        test_args=test_args,
+        benchmark_type=benchmark_type,
         start_time=int(start_time),
         run_time=run_time,
         log_files=log_files), mangled_test_name)

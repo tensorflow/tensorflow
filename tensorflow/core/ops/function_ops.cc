@@ -18,7 +18,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("_Arg")
+REGISTER_SYSTEM_OP("_Arg")
     .Output("output: T")
     .Attr("T: type")
     .Attr("index: int >= 0")
@@ -34,7 +34,7 @@ output: The argument.
 index: This argument is the index-th argument of the function.
 )doc");
 
-REGISTER_OP("_Retval")
+REGISTER_SYSTEM_OP("_Retval")
     .Input("input: T")
     .Attr("T: type")
     .Attr("index: int >= 0")

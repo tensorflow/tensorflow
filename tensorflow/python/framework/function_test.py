@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import time
 
 import numpy as np
 
+from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -337,6 +339,23 @@ class FunctionTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllEqual(z.eval(), 101.)
 
+  def testResourceVarAsImplicitInput(self):
+    g = ops.Graph()
+    with g.as_default():
+      v = variable_scope.get_variable(
+          "var", (4, 4), dtypes.float32, use_resource=True)
+
+      @function.Defun()
+      def Foo():
+        return array_ops.identity(v)
+
+      y = v.value()
+      z = Foo()
+
+    with self.test_session(graph=g):
+      v.initializer.run()
+      self.assertAllEqual(y.eval(), z.eval())
+
   def testDefineErrors(self):
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(ValueError, "can not return None"):
@@ -525,6 +544,48 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
 
+  def testDeclare(self):
+    foo = function.Declare("Foo", [("x", dtypes.float32)],
+                           [("y", dtypes.float32)])
+
+    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
+    def FooImpl(x):
+      return x * x + 1
+
+    x = array_ops.placeholder(dtypes.float32)
+    y = foo(x)
+
+    g = ops.get_default_graph()
+    FooImpl.add_to_graph(g)
+
+    with self.test_session():
+      rand = np.random.uniform(size=(3, 3))
+      expected = rand * rand + 1.0
+      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
+
+  def testDeclareUsedInDefun(self):
+    foo = function.Declare("Foo", [("x", dtypes.float32)],
+                           [("y", dtypes.float32)])
+
+    @function.Defun()
+    def Bar(x):
+      return foo(x)
+
+    @function.Defun(dtypes.float32, func_name="Foo", out_names=["y"])
+    def FooImpl(x):
+      return x * x + 1
+
+    x = array_ops.placeholder(dtypes.float32)
+    y = Bar(x)
+
+    g = ops.get_default_graph()
+    FooImpl.add_to_graph(g)
+
+    with self.test_session():
+      rand = np.random.uniform(size=(3, 3))
+      expected = rand * rand + 1.0
+      self.assertAllClose(expected, y.eval(feed_dict={x: rand}))
+
   def testDeclareTypeMistake(self):
     foo = function.Declare("Foo", [("x", dtypes.float32)],
                            [("y", dtypes.float32)])
@@ -661,6 +722,240 @@ class FunctionTest(test.TestCase):
       self.assertEqual(x.get_shape().as_list(), [2])
       y = Bar(array_ops.zeros([1, 2, 3]))
       self.assertAllEqual(y.get_shape().as_list(), [1, 1, 2, 3])
+
+  def testVariableReuse(self):
+    def LinearWithReuse(input_tensor, reuse=None):
+      size = input_tensor.shape.dims[1]
+      with variable_scope.variable_scope("linear", reuse=reuse):
+        w = variable_scope.get_variable("w", shape=[size, size],
+                                        dtype=input_tensor.dtype)
+      return math_ops.matmul(input_tensor, w)
+
+    @function.Defun(dtypes.float32)
+    def Foo(inputs):
+      inputs = array_ops.reshape(inputs, [32, 100])
+      hidden = LinearWithReuse(inputs)
+      return LinearWithReuse(hidden, reuse=True)
+
+    input_op = array_ops.placeholder(shape=[32, 100], dtype=dtypes.float32)
+    output_op = Foo(input_op)
+
+    global_vars = variables.global_variables()
+    self.assertEqual(len(global_vars), 1)
+    self.assertEqual(global_vars[0].name, "linear/w:0")
+
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      output_val = sess.run(output_op,
+                            feed_dict={input_op: np.random.rand(32, 100)})
+      self.assertEqual(output_val.shape, (32, 100))
+
+  def testFunctionCallInDifferentVariableScopes(self):
+    @function.Defun(dtypes.float32)
+    def Foo(inputs):
+      var = variable_scope.get_variable("var", shape=[10], dtype=dtypes.float32,
+                                        initializer=init_ops.ones_initializer())
+      return inputs + var
+
+    input_op = array_ops.placeholder(shape=[10], dtype=dtypes.float32)
+    with variable_scope.variable_scope("vs1"):
+      out1_op = Foo(input_op)
+
+    with variable_scope.variable_scope("vs2"):
+      out2_op = Foo(input_op)
+
+    global_vars = variables.global_variables()
+    self.assertEqual(len(global_vars), 1)
+    self.assertEqual(global_vars[0].name, "vs1/var:0")
+
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      out1, out2 = sess.run([out1_op, out2_op],
+                            feed_dict={input_op: np.linspace(1, 10, 10)})
+      self.assertAllEqual(out1, np.linspace(2, 11, 10))
+      self.assertAllEqual(out2, np.linspace(2, 11, 10))
+
+
+class FunctionsFromProtos(test.TestCase):
+
+  def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
+    if new_func is None:
+      # Make a copy of func.definition to avoid any bugs masked by using the
+      # same object
+      serialized_fdef = func.definition.SerializeToString()
+      # Serialize and then deserialize `func` to create `new_func`
+      fdef = function_pb2.FunctionDef.FromString(serialized_fdef)
+      new_func = function._from_definition(fdef, grad_func=grad_func)
+    self.assertEqual(func.name, new_func.name)
+    self.assertEqual(func.definition, new_func.definition)
+    self.assertEqual(func.grad_func_name, new_func.grad_func_name)
+    self.assertEqual(func.declared_input_types, new_func.declared_input_types)
+    self.assertEqual(func.captured_inputs, new_func.captured_inputs)
+
+  def testBasic(self):
+    @function.Defun(dtypes.float32, dtypes.float32)
+    def Foo(x, y):
+      return x + y
+    self.expectFunctionsEqual(Foo)
+
+  def testGradFunc(self):
+    @function.Defun(dtypes.float32, dtypes.float32)
+    def G(x, dy):
+      return x * dy
+
+    @function.Defun(dtypes.float32, grad_func=G)
+    def F(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+    self.expectFunctionsEqual(F, grad_func=G)
+
+  def testCapturedInputs(self):
+    c = constant_op.constant(10, dtypes.int64)
+    @function.Defun(dtypes.int64)
+    def Foo(x):
+      return x + c
+
+    new_func = function._from_definition(Foo.definition)
+
+    self.assertEqual(Foo.name, new_func.name)
+    self.assertEqual(Foo.definition, new_func.definition)
+    self.assertEqual(Foo.grad_func_name, new_func.grad_func_name)
+
+    # Captured inputs are added as regular inputs to the function definition
+    self.assertEqual(new_func.declared_input_types,
+                     Foo.declared_input_types + (dtypes.int64,))
+    self.assertEqual(len(new_func.captured_inputs), 0)
+
+  def testNestedFunctions(self):
+    @function.Defun(dtypes.float32)
+    def Outer(x):
+
+      @function.Defun(dtypes.float32)
+      def Inner(y):
+        return y + 1
+
+      return Inner(Inner(x))
+
+    self.expectFunctionsEqual(Outer)
+
+  def testFromLibrary(self):
+    # Define some functions with different gradient functions. Note that many of
+    # the below functions are identical since function bodies don't matter for
+    # this test.
+
+    @function.Defun(dtypes.float32, dtypes.float32)
+    def G1(x, dy):
+      return x * dy
+
+    @function.Defun(dtypes.float32, dtypes.float32)
+    def G2(x, dy):
+      return x * dy
+
+    # F1 and F2 have the same gradient function
+    @function.Defun(dtypes.float32, grad_func=G1)
+    def F1(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    @function.Defun(dtypes.float32, grad_func=G1)
+    def F2(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    # F3 has a different gradient function
+    @function.Defun(dtypes.float32, grad_func=G2)
+    def F3(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    # F4 has no gradient function
+    @function.Defun(dtypes.float32)
+    def F4(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    # Instantiate all functions
+    g = ops.Graph()
+    with g.as_default():
+      c = constant_op.constant(1.0, dtypes.float32)
+      f1 = F1(c)
+      f2 = F2(c)
+      f3 = F3(c)
+      f4 = F4(c)
+      gradients_impl.gradients([f1, f2, f3, f4], c)
+
+    library = g.as_graph_def().library
+    new_funcs = function._from_library(library)
+
+    def CheckNewFunc(func):
+      new_func = [f for f in new_funcs if f.name == func.name]
+      self.assertEqual(len(new_func), 1)
+      self.expectFunctionsEqual(func, new_func=new_func[0])
+
+    CheckNewFunc(G1)
+    CheckNewFunc(G2)
+    CheckNewFunc(F1)
+    CheckNewFunc(F2)
+    CheckNewFunc(F3)
+    CheckNewFunc(F4)
+
+  def testFromLibraryEmptyLib(self):
+    library = function_pb2.FunctionDefLibrary()
+    self.assertEqual(len(function._from_library(library)), 0)
+
+  def testFromLibraryMissingFuncDef(self):
+    @function.Defun(dtypes.float32, dtypes.float32)
+    def G1(x, dy):
+      return x * dy
+
+    @function.Defun(dtypes.float32)
+    def F1(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    gradient = function_pb2.GradientDef()
+    gradient.function_name = F1.name
+    gradient.gradient_func = G1.name
+
+    # Create invalid function def that is missing G1 function def
+    library = function_pb2.FunctionDefLibrary()
+    library.gradient.extend([gradient])
+    library.function.extend([F1.definition])
+
+    with self.assertRaisesRegexp(
+        ValueError, "FunctionDefLibrary missing 'G1_........' FunctionDef"):
+      function._from_library(library)
+
+    # Create invalid function def that is missing F1 function def
+    library = function_pb2.FunctionDefLibrary()
+    library.gradient.extend([gradient])
+    library.function.extend([G1.definition])
+
+    with self.assertRaisesRegexp(
+        ValueError, "FunctionDefLibrary missing 'F1_........' FunctionDef"):
+      function._from_library(library)
+
+  def testFromLibraryCyclicGradFuncs(self):
+    @function.Defun(dtypes.float32)
+    def F1(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    @function.Defun(dtypes.float32)
+    def F2(x):
+      return math_ops.exp(x) - math_ops.exp(-x)
+
+    # Create invalid function def library where F1 has gradient function F2 and
+    # F2 has gradient function F1
+    library = function_pb2.FunctionDefLibrary()
+    library.function.extend([F1.definition, F2.definition])
+
+    gradient1 = function_pb2.GradientDef()
+    gradient1.function_name = F1.name
+    gradient1.gradient_func = F2.name
+
+    gradient2 = function_pb2.GradientDef()
+    gradient2.function_name = F2.name
+    gradient2.gradient_func = F1.name
+
+    library.gradient.extend([gradient1, gradient2])
+
+    with self.assertRaisesRegexp(
+        ValueError, "FunctionDefLibrary contains cyclic gradient functions!"):
+      function._from_library(library)
 
 
 class FunctionOverloadTest(test.TestCase):
@@ -845,9 +1140,9 @@ class UnrollLSTMTest(test.TestCase):
       d1 = RunForwardBackward("cell", cfg)
       d2 = RunForwardBackward("loop", cfg)
       d3 = RunForwardBackward("loop10", cfg)
-      self.assertAllClose(d0, d1, rtol=1e-4)
-      self.assertAllClose(d0, d2, rtol=1e-4)
-      self.assertAllClose(d0, d3, rtol=1e-4)
+      self.assertAllClose(d0, d1, rtol=1e-4, atol=1e-4)
+      self.assertAllClose(d0, d2, rtol=1e-4, atol=1e-4)
+      self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
 class FunctionInlineControlTest(test.TestCase):
@@ -860,6 +1155,7 @@ class FunctionInlineControlTest(test.TestCase):
             do_common_subexpression_elimination=True,
             do_function_inlining=True,
             do_constant_folding=True)))
+    cell_func_call_pattern = re.compile(r"Cell[^/]*\(")
     for noinline in [False, True]:
 
       @function.Defun(dtype, noinline=noinline)
@@ -898,7 +1194,7 @@ class FunctionInlineControlTest(test.TestCase):
       def MetadataHasCell(run_metadata):
         for dev_stats in run_metadata.step_stats.dev_stats:
           for node_stats in dev_stats.node_stats:
-            if "Cell" in node_stats.timeline_label:
+            if cell_func_call_pattern.search(node_stats.timeline_label):
               return True
         return False
 

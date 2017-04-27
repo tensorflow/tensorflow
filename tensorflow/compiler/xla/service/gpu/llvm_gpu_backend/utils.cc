@@ -28,7 +28,8 @@ limitations under the License.
 namespace {
 
 static void DieWithSMDiagnosticError(llvm::SMDiagnostic* diagnostic) {
-  LOG(FATAL) << diagnostic->getLineNo() << ":" << diagnostic->getColumnNo()
+  LOG(FATAL) << diagnostic->getFilename().str() << ":"
+             << diagnostic->getLineNo() << ":" << diagnostic->getColumnNo()
              << ": " << diagnostic->getMessage().str();
 }
 

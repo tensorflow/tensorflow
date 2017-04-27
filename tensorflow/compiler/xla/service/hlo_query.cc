@@ -41,6 +41,15 @@ bool AllOperandsAreParameters(const HloInstruction& instruction) {
   return true;
 }
 
+bool AllOperandsAreConstants(const HloInstruction& instruction) {
+  for (const auto& operand : instruction.operands()) {
+    if (operand->opcode() != HloOpcode::kConstant) {
+      return false;
+    }
+  }
+  return true;
+}
+
 HloInstruction* GetMatchingOperand(
     std::function<bool(const HloInstruction*)> matcher,
     HloInstruction* instruction) {

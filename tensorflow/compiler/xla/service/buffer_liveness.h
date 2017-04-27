@@ -51,10 +51,19 @@ class BufferLiveness {
   // the entry computation.
   bool MaybeLiveOut(const LogicalBuffer& buffer) const;
 
+  // Returns the complete set of buffers that may be live out of the module.
+  const tensorflow::gtl::FlatSet<const LogicalBuffer*>& maybe_live_out_buffers()
+      const {
+    return maybe_live_out_buffers_;
+  }
+
   // Returns the underlying points-to analysis used for this liveness analysis.
   const TuplePointsToAnalysis& points_to_analysis() const {
     return *points_to_analysis_;
   }
+
+  // Returns the underlying hlo ordering used for this liveness analysis.
+  const HloOrdering& hlo_ordering() const { return *hlo_ordering_; }
 
   string ToString() const;
 

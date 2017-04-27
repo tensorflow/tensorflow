@@ -12,13 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for nccl AllReduce."""
+"""Functions for using NVIDIA nccl collective ops.
+
+@@all_max
+@@all_min
+@@all_prod
+@@all_sum
+@@broadcast
+
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.contrib.nccl.python.ops.nccl_ops import *
-# pylint: enable=wildcard-import
+from tensorflow.contrib.nccl.python.ops.nccl_ops import all_max
+from tensorflow.contrib.nccl.python.ops.nccl_ops import all_min
+from tensorflow.contrib.nccl.python.ops.nccl_ops import all_prod
+from tensorflow.contrib.nccl.python.ops.nccl_ops import all_sum
+from tensorflow.contrib.nccl.python.ops.nccl_ops import broadcast
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__)

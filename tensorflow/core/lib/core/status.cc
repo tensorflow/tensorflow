@@ -122,4 +122,14 @@ std::ostream& operator<<(std::ostream& os, const Status& x) {
   return os;
 }
 
+string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
+                                 const char* msg) {
+  string r("Non-OK-status: ");
+  r += msg;
+  r += " status: ";
+  r += v.ToString();
+  // Leaks string but this is only to be used in a fatal error message
+  return new string(r);
+}
+
 }  // namespace tensorflow

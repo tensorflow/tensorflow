@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -332,7 +333,7 @@ class ScopedMetaGraphTest(test.TestCase):
     del orig_meta_graphs[0].collection_def["unbound_inputs"]
     del new_meta_graphs[0].collection_def["unbound_inputs"]
     for a, b in zip(orig_meta_graphs, new_meta_graphs):
-      self.assertProtoEquals(a, b)
+      test_util.assert_meta_graph_protos_equal(self, a, b)
 
   def _testScopedExportWithQueue(self, test_dir, exported_filename):
     graph = ops.Graph()

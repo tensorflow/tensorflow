@@ -18,12 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import tf_inspect
 
 
 _DIVERGENCES = {}
@@ -31,8 +30,8 @@ _DIVERGENCES = {}
 
 def _registered_kl(type_a, type_b):
   """Get the KL function registered for classes a and b."""
-  hierarchy_a = inspect.getmro(type_a)
-  hierarchy_b = inspect.getmro(type_b)
+  hierarchy_a = tf_inspect.getmro(type_a)
+  hierarchy_b = tf_inspect.getmro(type_b)
   dist_to_children = None
   kl_fn = None
   for mro_to_a, parent_a in enumerate(hierarchy_a):

@@ -39,7 +39,7 @@ class Categorical(distribution.Distribution):
 
   #### Examples
 
-  Creates a 3-class distiribution, with the 2nd class, the most likely to be
+  Creates a 3-class distribution, with the 2nd class, the most likely to be
   drawn from.
 
   ```python
@@ -47,7 +47,7 @@ class Categorical(distribution.Distribution):
   dist = Categorical(probs=p)
   ```
 
-  Creates a 3-class distiribution, with the 2nd class the most likely to be
+  Creates a 3-class distribution, with the 2nd class the most likely to be
   drawn from, using logits.
 
   ```python
@@ -108,7 +108,7 @@ class Categorical(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs]) as ns:
+    with ops.name_scope(name, values=[logits, probs]):
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,
           probs=probs,
@@ -146,14 +146,13 @@ class Categorical(distribution.Distribution):
           self._batch_shape_val = logits_shape[:-1]
     super(Categorical, self).__init__(
         dtype=dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._logits,
                        self._probs],
-        name=ns)
+        name=name)
 
   @property
   def event_size(self):

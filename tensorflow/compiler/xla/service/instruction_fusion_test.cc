@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 
@@ -36,7 +39,9 @@ TEST_F(InstructionFusionTest,
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(broadcast2, computation->root_instruction());
   EXPECT_TRUE(
-      InstructionFusion(/*may_duplicate=*/true).Run(module.get()).ValueOrDie());
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
   EXPECT_EQ(broadcast2, computation->root_instruction());
 }
 
@@ -55,8 +60,10 @@ TEST_F(InstructionFusionTest,
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(broadcast2, computation->root_instruction());
   EXPECT_TRUE(
-      InstructionFusion(/*may_duplicate=*/true).Run(module.get()).ValueOrDie());
-  EXPECT_EQ(HloOpcode::kFusion, computation->root_instruction()->opcode());
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest,
@@ -73,8 +80,10 @@ TEST_F(InstructionFusionTest,
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape2, computation->root_instruction());
   EXPECT_TRUE(
-      InstructionFusion(/*may_duplicate=*/true).Run(module.get()).ValueOrDie());
-  EXPECT_EQ(HloOpcode::kFusion, computation->root_instruction()->opcode());
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest,
@@ -91,8 +100,10 @@ TEST_F(InstructionFusionTest,
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose2, computation->root_instruction());
   EXPECT_TRUE(
-      InstructionFusion(/*may_duplicate=*/true).Run(module.get()).ValueOrDie());
-  EXPECT_EQ(HloOpcode::kFusion, computation->root_instruction()->opcode());
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {
@@ -106,7 +117,9 @@ TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape1, computation->root_instruction());
   EXPECT_FALSE(
-      InstructionFusion(/*may_duplicate=*/true).Run(module.get()).ValueOrDie());
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
 }
 
 TEST_F(InstructionFusionTest, PotentialBitcastSimpleReshapeOfParameterUnfused) {
@@ -120,7 +133,9 @@ TEST_F(InstructionFusionTest, PotentialBitcastSimpleReshapeOfParameterUnfused) {
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape1, computation->root_instruction());
   EXPECT_FALSE(
-      InstructionFusion(/*may_duplicate=*/true).Run(module.get()).ValueOrDie());
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
 }
 
 TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfParameterUnfused) {
@@ -134,7 +149,9 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfParameterUnfused) {
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose1, computation->root_instruction());
   EXPECT_FALSE(
-      InstructionFusion(/*may_duplicate=*/true).Run(module.get()).ValueOrDie());
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
 }
 
 }  // namespace xla

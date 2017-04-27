@@ -41,6 +41,10 @@ _REF_OPS_WHITELIST = frozenset(['Variable', 'VariableV2', 'Assign', 'AssignAdd',
                                 'AssignSub', 'ScatterAdd', 'ScatterSub',
                                 'ScatterUpdate'])
 
+# These ops are returned as is in create_op without the extra logic. This
+# saves some space used for auxiliary variables.
+_PASS_THROUGH_OPS = frozenset(['Identity'])
+
 
 class ImperativeGraph(ops.Graph):
   """A class implementing an imperative mode TensorFlow graph.
@@ -98,7 +102,7 @@ class ImperativeGraph(ops.Graph):
     # calling the original gradient function.
     def _imperative_op_grad(op, *grad):
       with self.replace_outputs(op):
-        return self._gradient_function_map[op](op, *grad)
+        return self._gradient_function_map[op.name](op, *grad)
 
     ops.RegisterGradient(self._imperative_op_type)(_imperative_op_grad)
 
@@ -162,7 +166,7 @@ class ImperativeGraph(ops.Graph):
     """Replaces the outputs of `op` with values recorded in `_outputs_map`."""
     # pylint: disable=protected-access
     old_outputs = op._outputs
-    op._outputs = self._outputs_map[op]
+    op._outputs = self._outputs_map[op.name]
     yield
     op._outputs = old_outputs
     # pylint: enable=protected-access
@@ -205,6 +209,7 @@ class ImperativeGraph(ops.Graph):
     The above transformation is not performed and the original op is returned
     as is if any of the following is true:
     * `_return_as_is` flag is set to true.
+    * op_type is listed in _PASS_THROUGH_OPS
     * op has no outputs.
     * One of the op's return value has a ref type.
 
@@ -225,7 +230,7 @@ class ImperativeGraph(ops.Graph):
     output_dtypes = kwargs['dtypes'] if 'dtypes' in kwargs else args[2]
     output_dtypes = [dtypes.as_dtype(d) for d in output_dtypes]
 
-    if self._return_as_is:
+    if self._return_as_is or op_type in _PASS_THROUGH_OPS:
       return self._wrap(super(ImperativeGraph, self).create_op(*args, **kwargs))
 
     if not output_dtypes:
@@ -313,11 +318,11 @@ class ImperativeGraph(ops.Graph):
 
       for i, _ in enumerate(shapes):
         values[i].set_shape(shapes[i])
-      self._outputs_map[orig_op] = values
+      self._outputs_map[orig_op.name] = values
       try:
-        self._gradient_function_map[orig_op] = ops.get_gradient_function(
+        self._gradient_function_map[orig_op.name] = ops.get_gradient_function(
             orig_op)
-      except KeyError:
+      except (KeyError, LookupError):
         pass
       else:
         orig_op.node_def.attr['_gradient_op_type'].CopyFrom(

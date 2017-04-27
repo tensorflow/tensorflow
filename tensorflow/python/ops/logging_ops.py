@@ -42,6 +42,10 @@ def Print(input_, data, message=None, first_n=None, summarize=None,
   This is an identity op with the side effect of printing `data` when
   evaluating.
 
+  Note: This op prints to the standard error. It is not currently compatible
+    with jupyter notebook (printing to the notebook *server's* output, not into
+    the notebook).
+
   Args:
     input_: A tensor passed through this op.
     data: A list of tensors to print out when op is evaluated.

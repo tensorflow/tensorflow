@@ -20,13 +20,11 @@ from __future__ import print_function
 
 import abc
 import contextlib
-import inspect
 import types
 
 import numpy as np
 import six
 
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -34,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import tf_inspect
 
 
 _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
@@ -155,12 +154,12 @@ class _DistributionMeta(abc.ABCMeta):
       if class_special_attr_value is None:
         # No _special method available, no need to update the docstring.
         continue
-      class_special_attr_docstring = inspect.getdoc(class_special_attr_value)
+      class_special_attr_docstring = tf_inspect.getdoc(class_special_attr_value)
       if not class_special_attr_docstring:
         # No docstring to append.
         continue
       class_attr_value = _copy_fn(base_attr_value)
-      class_attr_docstring = inspect.getdoc(base_attr_value)
+      class_attr_docstring = tf_inspect.getdoc(base_attr_value)
       if class_attr_docstring is None:
         raise ValueError(
             "Expected base class fn to contain a docstring: %s.%s"
@@ -343,7 +342,6 @@ class Distribution(_BaseDistribution):
 
   def __init__(self,
                dtype,
-               is_continuous,
                reparameterization_type,
                validate_args,
                allow_nan_stats,
@@ -356,8 +354,6 @@ class Distribution(_BaseDistribution):
 
     Args:
       dtype: The type of the event samples. `None` implies no type-enforcement.
-      is_continuous: Python `bool`. If `True` this `Distribution` is continuous
-        over its supported domain.
       reparameterization_type: Instance of `ReparameterizationType`.
         If `distributions.FULLY_REPARAMETERIZED`, this
         `Distribution` can be reparameterized in terms of some standard
@@ -384,10 +380,9 @@ class Distribution(_BaseDistribution):
     """
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
-      if t is None or not contrib_framework.is_tensor(t):
+      if t is None or not tensor_util.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
     self._dtype = dtype
-    self._is_continuous = is_continuous
     self._reparameterization_type = reparameterization_type
     self._allow_nan_stats = allow_nan_stats
     self._validate_args = validate_args
@@ -478,10 +473,6 @@ class Distribution(_BaseDistribution):
                 if not k.startswith("__") and k != "self")
 
   @property
-  def is_continuous(self):
-    return self._is_continuous
-
-  @property
   def reparameterization_type(self):
     """Describes how samples from the distribution are reparameterized.
 
@@ -520,14 +511,14 @@ class Distribution(_BaseDistribution):
     """Creates a deep copy of the distribution.
 
     Note: the copy distribution may continue to depend on the original
-    intialization arguments.
+    initialization arguments.
 
     Args:
       **override_parameters_kwargs: String/value dictionary of initialization
         arguments to override with new values.
 
     Returns:
-      distribution: A new instance of `type(self)` intitialized from the union
+      distribution: A new instance of `type(self)` initialized from the union
         of self.parameters and override_parameters_kwargs, i.e.,
         `dict(self.parameters, **override_parameters_kwargs)`.
     """
@@ -681,7 +672,7 @@ class Distribution(_BaseDistribution):
           raise original_exception
 
   def log_prob(self, value, name="log_prob"):
-    """Log probability density/mass function (depending on `is_continuous`).
+    """Log probability density/mass function.
 
     Args:
       value: `float` or `double` `Tensor`.
@@ -708,7 +699,7 @@ class Distribution(_BaseDistribution):
           raise original_exception
 
   def prob(self, value, name="prob"):
-    """Probability density/mass function (depending on `is_continuous`).
+    """Probability density/mass function.
 
     Args:
       value: `float` or `double` `Tensor`.
@@ -878,6 +869,36 @@ class Distribution(_BaseDistribution):
     """Mean."""
     with self._name_scope(name):
       return self._mean()
+
+  def _quantile(self, value):
+    raise NotImplementedError("quantile is not implemented")
+
+  def _call_quantile(self, value, name, **kwargs):
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      try:
+        return self._quantile(value, **kwargs)
+      except NotImplementedError as original_exception:
+        raise original_exception
+
+  def quantile(self, value, name="quantile"):
+    """Quantile function. Aka "inverse cdf" or "percent point function".
+
+    Given random variable `X` and `p in [0, 1]`, the `quantile` is:
+
+    ```none
+    quantile(p) := x such that P[X <= x] == p
+    ```
+
+    Args:
+      value: `float` or `double` `Tensor`.
+      name: The name to give this op.
+
+    Returns:
+      quantile: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+        values of type `self.dtype`.
+    """
+    return self._call_quantile(value, name)
 
   def _variance(self):
     raise NotImplementedError("variance is not implemented")

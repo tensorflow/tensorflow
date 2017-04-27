@@ -24,6 +24,7 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -187,6 +188,36 @@ class DeviceFunctionsTest(test.TestCase):
     self.assertEqual("n3", sub_graph.node[2].name)
     self.assertEqual("n5", sub_graph.node[3].name)
 
+  def testConvertVariablesToConstsWithFunctions(self):
+    @function.Defun(dtypes.float32)
+    def plus_one(x):
+      return x + 1.0
+
+    with ops.Graph().as_default():
+      variable_node = variables.Variable(1.0, name="variable_node")
+      _ = variables.Variable(1.0, name="unused_variable_node")
+      defun_node = plus_one(variable_node)
+      output_node = math_ops_lib.multiply(
+          defun_node, 2.0, name="output_node")
+
+      with session.Session() as sess:
+        init = variables.initialize_variables([variable_node])
+        sess.run(init)
+        output = sess.run(output_node)
+        self.assertNear(4.0, output, 0.00001)
+        variable_graph_def = sess.graph.as_graph_def()
+
+        # First get the constant_graph_def when variable_names_whitelist is set,
+        # note that if variable_names_whitelist is not set an error will be
+        # thrown because unused_variable_node is not initialized.
+        constant_graph_def = graph_util.convert_variables_to_constants(
+            sess,
+            variable_graph_def, ["output_node"],
+            variable_names_whitelist=set(["variable_node"]))
+
+        self.assertEqual(variable_graph_def.library,
+                         constant_graph_def.library)
+
   def testConvertVariablesToConsts(self):
     with ops.Graph().as_default():
       variable_node = variables.Variable(1.0, name="variable_node")
@@ -317,6 +348,29 @@ class DeviceFunctionsTest(test.TestCase):
 
     output = graph_util.remove_training_nodes(graph_def)
     self.assertProtoEquals(expected_output, output)
+
+  def testRemoveIdentityChains(self):
+    """Check that chains of Identity nodes are correctly pruned.
+
+    Create a chain of four nodes, A, B, C, and D where A inputs B, B inputs C,
+    and C inputs D. Nodes B and C are "Identity" and should be pruned, resulting
+    in the nodes A and D, where A inputs D.
+    """
+    graph_def = graph_pb2.GraphDef()
+    graph_def.node.extend([
+        self.create_node_def("Aop", "A", ["B"]), self.create_node_def(
+            "Identity", "B", ["C"]), self.create_node_def(
+                "Identity", "C", ["D"]), self.create_node_def("Dop", "D", [])
+    ])
+
+    expected_graph_def = graph_pb2.GraphDef()
+    expected_graph_def.node.extend([
+        self.create_node_def("Aop", "A", ["D"]), self.create_node_def(
+            "Dop", "D", [])
+    ])
+
+    self.assertProtoEquals(expected_graph_def,
+                           graph_util.remove_training_nodes(graph_def))
 
 
 if __name__ == "__main__":

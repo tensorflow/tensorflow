@@ -50,12 +50,16 @@ void SplitCustom<Device, T>::operator()(
 #define DEFINE_GPU_KERNELS(T) template struct Split<Eigen::GpuDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
+TF_CALL_complex64(DEFINE_GPU_KERNELS);
+TF_CALL_complex128(DEFINE_GPU_KERNELS);
 DEFINE_GPU_KERNELS(bfloat16);
 
 #undef DEFINE_GPU_KERNELS
 #define DEFINE_GPU_KERNELS(T) template struct SplitCustom<Eigen::GpuDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
+TF_CALL_complex64(DEFINE_GPU_KERNELS);
+TF_CALL_complex128(DEFINE_GPU_KERNELS);
 DEFINE_GPU_KERNELS(bfloat16);
 
 #undef DEFINE_GPU_KERNELS
@@ -236,12 +240,16 @@ struct SplitVOpGPULaunch {
 #define REGISTER_GPU_KERNEL(T) template struct SplitOpGPULaunch<T>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_complex64(REGISTER_GPU_KERNEL);
+TF_CALL_complex128(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #define REGISTER_GPU_KERNEL(T)                 \
   template struct SplitVOpGPULaunch<T, int32>; \
   template struct SplitVOpGPULaunch<T, int64>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_complex64(REGISTER_GPU_KERNEL);
+TF_CALL_complex128(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(bfloat16);
 #undef REGISTER_GPU_KERNEL
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf.layers.core."""
+"""Tests for tf.layers.utils."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,6 +25,7 @@ from tensorflow.python.platform import test
 class ConvUtilsTest(test.TestCase):
 
   def testConvertDataFormat(self):
+    self.assertEqual(utils.convert_data_format('channels_first', 5), 'NCDHW')
     self.assertEqual(utils.convert_data_format('channels_first', 4), 'NCHW')
     self.assertEqual(utils.convert_data_format('channels_first', 3), 'NCW')
     self.assertEqual(utils.convert_data_format('channels_last', 4), 'NHWC')
@@ -61,6 +62,13 @@ class ConvUtilsTest(test.TestCase):
     with self.assertRaises(ValueError):
       utils.normalize_padding('invalid')
 
+  def testGetDeconvDim(self):
+    self.assertEqual(utils.get_deconv_dim(30, 1, 3, 'valid'), 32)
+    self.assertEqual(utils.get_deconv_dim(28, 1, 5, 'valid'), 32)
+    self.assertEqual(utils.get_deconv_dim(28, 2, 5, 'valid'), 59)
+    self.assertEqual(utils.get_deconv_dim(32, 1, 3, 'same'), 32)
+    self.assertEqual(utils.get_deconv_dim(32, 1, 5, 'same'), 32)
+    self.assertEqual(utils.get_deconv_dim(32, 2, 5, 'same'), 64)
 
 if __name__ == '__main__':
   test.main()

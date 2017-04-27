@@ -28,6 +28,8 @@ module TF.Backend {
     graph: (run: string, limit_attr_size?: number, large_attrs_key?: string)
         => string;
     runMetadata: RunTagUrlFn;
+    textRuns: () => string;
+    text: RunTagUrlFn;
     healthPills: () => string;
   };
 
@@ -100,6 +102,8 @@ module TF.Backend {
       audio: standardRoute('audio'),
       runMetadata: standardRoute('run_metadata', '.pbtxt'),
       healthPills: () => dataDir + '/plugin/debugger/health_pills',
+      textRuns: () => dataDir + '/plugin/text/runs' + (demoMode ? '.json' : ''),
+      text: standardRoute('plugin/text/text'),
     };
   };
 }

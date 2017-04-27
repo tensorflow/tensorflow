@@ -147,9 +147,10 @@ Status FoldConstants(const GraphDef& input_graph_def,
   TF_RETURN_IF_ERROR(
       ImportGraphDef(import_opts, cleaned_graph_def, &input_graph, nullptr));
   DeviceAttributes device_attributes;
+  subgraph::RewriteGraphMetadata metadata;
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
       &input_graph, context.input_names, context.output_names, {},
-      device_attributes));
+      device_attributes, false /* use_function_convention */, &metadata));
   bool was_mutated;
   TF_RETURN_IF_ERROR(DoConstantFoldingWithStatus(
       ConstantFoldingOptions(), nullptr, Env::Default(), nullptr, &input_graph,

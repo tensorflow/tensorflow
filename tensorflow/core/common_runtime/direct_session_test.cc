@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -625,7 +627,7 @@ TEST(DirectSessionTest, RunHandleTest) {
   value1.scalar<float>()() = 2.0;
   Node* const1 = test::graph::Constant(&g, value1);
   Node* node3 = test::graph::Add(&g, identity0, const1);
-  Node* node4 = test::graph::Unary(&g, "GetSessionHandle", node3);
+  Node* node4 = test::graph::Unary(&g, "GetSessionHandleV2", node3);
 
   Tensor value2(DT_STRING, TensorShape({}));
   Node* const2 = test::graph::Constant(&g, value2);
@@ -646,17 +648,21 @@ TEST(DirectSessionTest, RunHandleTest) {
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs.size());
 
+  ResourceHandle resource_handle = outputs[0].scalar<ResourceHandle>()();
+  Tensor string_handle(DT_STRING, {});
+  string_handle.flat<string>().setConstant(resource_handle.name());
+
   // Second run call: Use a handle.
   std::vector<Tensor> outputs1;
-  s = session->Run({{const2->name(), outputs[0]}}, {node6->name() + ":0"}, {},
-                   &outputs1);
+  s = session->Run({{const2->name(), string_handle}}, {node6->name() + ":0"},
+                   {}, &outputs1);
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs1.size());
   ASSERT_EQ(5.0, outputs1[0].flat<float>()(0));
 
   // Third run call: Delete a handle.
   std::vector<Tensor> outputs2;
-  s = session->Run({{const2->name(), outputs[0]}}, {}, {node7->name()},
+  s = session->Run({{const2->name(), string_handle}}, {}, {node7->name()},
                    &outputs2);
   ASSERT_TRUE(s.ok());
 }
@@ -1152,6 +1158,68 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
                           {var_assign->name()} /* target_nodes */, nullptr);
   EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
 }
+
+// A simple benchmark for the overhead of `DirectSession::Run()` calls
+// with varying numbers of feeds/fetches.
+void FeedFetchBenchmarkHelper(int num_feeds, int iters) {
+  testing::StopTiming();
+
+  Tensor value(DT_FLOAT, TensorShape());
+  value.flat<float>()(0) = 37.0;
+
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.reserve(num_feeds);
+  std::vector<string> outputs;
+
+  Graph g(OpRegistry::Global());
+  for (int i = 0; i < num_feeds; ++i) {
+    // NOTE(mrry): We pin nodes to the "/cpu:0" device, so as not to
+    // measure CPU<->GPU copying overhead. We should also optimize and
+    // monitor this overhead where possible, but that is not the
+    // object of study in this benchmark.
+    Node* placeholder;
+    TF_CHECK_OK(NodeBuilder(g.NewName("Placeholder"), "Placeholder")
+                    .Attr("shape", TensorShape())
+                    .Attr("dtype", DT_FLOAT)
+                    .Device("/cpu:0")
+                    .Finalize(&g, &placeholder));
+    Node* identity;
+    TF_CHECK_OK(NodeBuilder(g.NewName("Identity"), "Identity")
+                    .Input(placeholder)
+                    .Attr("T", DT_FLOAT)
+                    .Device("/cpu:0")
+                    .Finalize(&g, &identity));
+    inputs.push_back({placeholder->name() + ":0", value});
+    outputs.push_back(identity->name() + ":0");
+  }
+  GraphDef gd;
+  g.ToGraphDef(&gd);
+  SessionOptions opts;
+  std::unique_ptr<Session> sess(NewSession(opts));
+  TF_CHECK_OK(sess->Create(gd));
+  {
+    // NOTE(mrry): Ignore the first run, which will incur the graph
+    // partitioning/pruning overhead and skew the results.
+    //
+    // Note that we should also optimize and monitor the overhead on
+    // the first run, which will impact application startup times, but
+    // that is not the object of study in this benchmark.
+    std::vector<Tensor> output_values;
+    TF_CHECK_OK(sess->Run(inputs, outputs, {}, &output_values));
+  }
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    std::vector<Tensor> output_values;
+    TF_CHECK_OK(sess->Run(inputs, outputs, {}, &output_values));
+  }
+  testing::StopTiming();
+}
+
+void BM_FeedFetch(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds);
+}
+
+BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 
 }  // namespace
 }  // namespace tensorflow

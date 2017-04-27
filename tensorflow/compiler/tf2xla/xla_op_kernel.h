@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_
 
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/macros.h"
@@ -103,8 +104,14 @@ class XlaOpKernelContext {
   Status ConstantInputReshaped(int index, gtl::ArraySlice<int64> new_shape,
                                xla::Literal* constant_literal);
 
+  // Converts a constant 1D int32 or int64 tensor into an int64.
+  Status ConstantInputAsIntScalar(int index, int64* out);
+
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
+
+  // Converts a constant int32 or int64 Tensor into an xla int64 Literal.
+  Status ConstantInputAsInt64Literal(int index, xla::Literal* out);
 
   // Converts a constant 1D int32 or int64 tensor into a TensorShape.
   Status ConstantInputAsShape(int index, TensorShape* shape);
@@ -139,6 +146,29 @@ class XlaOpKernelContext {
   // Mark the op has having side effects (i.e., via Send).
   void SetOpHasSideEffects();
 
+  // Variables
+
+  // Sets `*type` and `*shape` to the current type and shape of a variable's
+  // value.
+  Status GetVariableTypeAndShape(int index, DataType* type,
+                                 TensorShape* shape) const;
+
+  // Reads the current value of the resouce variable referred to by input
+  // 'index'.
+  Status ReadVariableInput(int index, xla::ComputationDataHandle* value);
+
+  // Sets output 'index' to be a reference to variable 'variable_id'. Used
+  // to propagate resource variables through the compilation.
+  void SetVariableOutput(int index, int variable_id);
+
+  // Assigns the value `handle` to the variable referenced by input
+  // `variable_index`. Marks the operator as having side effects.
+  Status AssignVariable(int variable_index, DataType type,
+                        const xla::ComputationDataHandle& handle);
+
+  // Returns a human-readable debug string describing 'variable_index'.
+  string VariableDebugString(int variable_index);
+
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(Status s);
   void CtxFailureWithWarning(Status s);
@@ -155,6 +185,11 @@ class XlaOpKernelContext {
 
   // Returns the underlying OpKernelContext. Use rarely.
   OpKernelContext* op_kernel_context() const { return context_; }
+
+  // Returns the options passed to the XlaCompiler that is being
+  // run. Used for, e.g., While to inherit options needed for nested
+  // computation.
+  const XlaCompiler::Options& GetCompilerOptions() const;
 
   // TODO(phawkins): find a better home for these helpers.
 

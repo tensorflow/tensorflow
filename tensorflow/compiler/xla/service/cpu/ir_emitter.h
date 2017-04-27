@@ -125,14 +125,11 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       HloComputation* function,
       tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override;
   Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCall(HloInstruction* call,
-                    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                    HloComputation* computation) override;
+  Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call,
                           tensorflow::gtl::ArraySlice<HloInstruction*> operands,
                           tensorflow::StringPiece custom_call_target) override;
-  Status HandleWhile(HloInstruction* xla_while, HloInstruction* init,
-                     HloComputation* condition, HloComputation* body) override;
+  Status HandleWhile(HloInstruction* xla_while) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;

@@ -43,7 +43,9 @@ cc_binary(
         "manual",
         "notap",
     ],
-    deps = [LINKER_SCRIPT],
+    deps = [
+        LINKER_SCRIPT,
+    ],
 )
 
 cc_library(
@@ -67,14 +69,13 @@ android_binary(
     # (and corresponding Activities in source) to reduce APK size.
     assets = [
         "//tensorflow/examples/android/assets:asset_files",
-        "@inception5h//:model_files",
-        "@mobile_multibox//:model_files",
-        "@stylize//:model_files",
+        ":external_assets",
     ],
     assets_dir = "",
     custom_package = "org.tensorflow.demo",
     inline_constants = 1,
     manifest = "AndroidManifest.xml",
+    manifest_merger = "legacy",
     resource_files = glob(["res/**"]),
     tags = [
         "manual",
@@ -85,6 +86,17 @@ android_binary(
         "//tensorflow/contrib/android:android_tensorflow_inference_java",
     ],
 )
+
+# LINT.IfChange
+filegroup(
+    name = "external_assets",
+    srcs = [
+        "@inception5h//:model_files",
+        "@mobile_multibox//:model_files",
+        "@stylize//:model_files",
+    ],
+)
+# LINT.ThenChange(//tensorflow/examples/android/download-models.gradle)
 
 filegroup(
     name = "all_files",

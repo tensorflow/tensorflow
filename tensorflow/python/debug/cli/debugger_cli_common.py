@@ -23,6 +23,7 @@ import re
 import sre_constants
 import traceback
 
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.platform import gfile
@@ -89,7 +90,7 @@ class RichLine(object):
         attributes applied to the corresponding substrings.
     """
     ret = RichLine()
-    if isinstance(other, str):
+    if isinstance(other, six.string_types):
       ret.text = self.text + other
       ret.font_attr_segs = self.font_attr_segs[:]
       return ret
@@ -103,21 +104,28 @@ class RichLine(object):
     else:
       raise TypeError("%r cannot be concatenated with a RichLine" % other)
 
+  def __len__(self):
+    return len(self.text)
+
 
 def rich_text_lines_from_rich_line_list(rich_text_list):
-  """Convert a list of RichLine objects to a RichTextLines object.
+  """Convert a list of RichLine objects or strings to a RichTextLines object.
 
   Args:
-    rich_text_list: a list of RichLine objects
+    rich_text_list: a list of RichLine objects or strings
 
   Returns:
     A corresponding RichTextLines object.
   """
-  lines = [rl.text for rl in rich_text_list]
+  lines = []
   font_attr_segs = {}
   for i, rl in enumerate(rich_text_list):
-    if rl.font_attr_segs:
-      font_attr_segs[i] = rl.font_attr_segs
+    if isinstance(rl, RichLine):
+      lines.append(rl.text)
+      if rl.font_attr_segs:
+        font_attr_segs[i] = rl.font_attr_segs
+    else:
+      lines.append(rl)
   return RichTextLines(lines, font_attr_segs)
 
 
@@ -167,7 +175,7 @@ class RichTextLines(object):
     """
     if isinstance(lines, list):
       self._lines = lines
-    elif isinstance(lines, str):
+    elif isinstance(lines, six.string_types):
       self._lines = [lines]
     else:
       raise ValueError("Unexpected type in lines: %s" % type(lines))
@@ -313,6 +321,9 @@ class RichTextLines(object):
     self._lines.append(line)
     if font_attr_segs:
       self._font_attr_segs[len(self._lines) - 1] = font_attr_segs
+
+  def append_rich_line(self, rich_line):
+    self.append(rich_line.text, rich_line.font_attr_segs)
 
   def prepend(self, line, font_attr_segs=None):
     """Prepend (i.e., add to the front) a single line of text.
@@ -595,7 +606,7 @@ class CommandHandlerRegistry(object):
       raise ValueError("handler is not callable")
 
     # Make sure that help info is a string.
-    if not isinstance(help_info, str):
+    if not isinstance(help_info, six.string_types):
       raise ValueError("help_info is not a str")
 
     # Process prefix aliases.
@@ -1020,7 +1031,7 @@ class CommandHistory(object):
       # Ignore repeating commands in a row.
       return
 
-    if not isinstance(command, str):
+    if not isinstance(command, six.string_types):
       raise TypeError("Attempt to enter non-str entry to command history")
 
     self._commands.append(command)

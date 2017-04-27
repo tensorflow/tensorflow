@@ -160,6 +160,14 @@ class PyOpTest(test.TestCase):
         _ = script_ops.py_func(lambda x: x + 1, [c], [dtypes.float32])
     self.assertTrue(script_ops._py_funcs.size() < 100)
 
+  def testAlias(self):
+    with self.test_session():
+      np_array = np.array([1.0, 2.0], dtype=np.float32)
+      tf_array = script_ops.py_func(lambda: np_array, [], [dtypes.float32])
+      value = tf_array + constant_op.constant([2.0, 3.0], dtype=dtypes.float32)
+      value.op.run()
+      self.assertAllEqual(np_array, [1.0, 2.0])
+
   def testBadNumpyReturnType(self):
     with self.test_session():
 
@@ -274,6 +282,28 @@ class PyOpTest(test.TestCase):
         do_nothing, [constant_op.constant(3, dtypes.int64)], [], stateful=False)
     with self.test_session() as sess:
       self.assertEqual(sess.run(f), [])
+
+  def _testExceptionHandling(self, py_exp, tf_exp):
+
+    def raise_exception():
+      raise py_exp("blah")  # pylint: disable=not-callable
+
+    f = script_ops.py_func(raise_exception, [], [])
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(tf_exp, "blah"):
+        sess.run(f)
+
+  def testExceptionHandling(self):
+    self._testExceptionHandling(ValueError, errors.InvalidArgumentError)
+    self._testExceptionHandling(TypeError, errors.InvalidArgumentError)
+    self._testExceptionHandling(StopIteration, errors.OutOfRangeError)
+    self._testExceptionHandling(MemoryError, errors.ResourceExhaustedError)
+    self._testExceptionHandling(NotImplementedError, errors.UnimplementedError)
+
+    class WeirdError(Exception):
+      pass
+
+    self._testExceptionHandling(WeirdError, errors.UnknownError)
 
 
 if __name__ == "__main__":

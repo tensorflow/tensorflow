@@ -26,7 +26,6 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.training import input as input_ops
 
 __all__ = [
@@ -264,7 +263,7 @@ def _estimate_data_distribution(labels, num_classes, smoothing_constant=10):
   # slower convergence.
   if smoothing_constant <= 0:
     raise ValueError('smoothing_constant must be nonzero.')
-  num_examples_per_class_seen = variables.Variable(
+  num_examples_per_class_seen = variable_scope.variable(
       initial_value=[smoothing_constant] * num_classes,
       trainable=False,
       name='class_count',

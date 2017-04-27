@@ -33,7 +33,7 @@ Computation::Computation(Computation&& computation)
 }
 
 void Computation::Reset() {
-  // TODO(leary) deallocate any owned computation.
+  // TODO(b/34469253) deallocate any owned computation.
   ResetWithoutFreeing();
 }
 

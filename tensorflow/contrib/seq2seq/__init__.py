@@ -15,20 +15,37 @@
 
 """Ops for building neural network seq2seq decoders and losses.
 
-## Decoder base class and functions
+See the @{$python/contrib.seq2seq} guide.
+
 @@Decoder
 @@dynamic_decode
 
-## Basic Decoder
 @@BasicDecoderOutput
 @@BasicDecoder
 
-## Decoder Helpers
+@@BeamSearchDecoderOutput
+@@BeamSearchDecoderState
+@@BeamSearchDecoder
+@@FinalBeamSearchDecoderOutput
+
 @@Helper
 @@CustomHelper
 @@GreedyEmbeddingHelper
 @@ScheduledEmbeddingTrainingHelper
+@@ScheduledOutputTrainingHelper
 @@TrainingHelper
+
+@@BahdanauAttention
+@@LuongAttention
+
+@@hardmax
+
+@@AttentionWrapperState
+@@AttentionWrapper
+
+@@gather_tree
+
+@@tile_batch
 """
 
 from __future__ import absolute_import
@@ -36,13 +53,15 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long
+from tensorflow.contrib.seq2seq.python.ops.attention_wrapper import *
 from tensorflow.contrib.seq2seq.python.ops.basic_decoder import *
+from tensorflow.contrib.seq2seq.python.ops.beam_search_decoder import *
+from tensorflow.contrib.seq2seq.python.ops.beam_search_ops import *
 from tensorflow.contrib.seq2seq.python.ops.decoder import *
 from tensorflow.contrib.seq2seq.python.ops.helper import *
 from tensorflow.contrib.seq2seq.python.ops.loss import *
-# pylint: enable=unused-import,widcard-import,line-too-long
-
 from tensorflow.python.util.all_util import remove_undocumented
+# pylint: enable=unused-import,widcard-import,line-too-long
 
 _allowed_symbols = ["sequence_loss"]
 

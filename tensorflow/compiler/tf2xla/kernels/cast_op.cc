@@ -65,7 +65,7 @@ class CastOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(CastOp);
 };
 
-REGISTER_XLA_OP("Cast", CastOp);
+REGISTER_XLA_OP(Name("Cast"), CastOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

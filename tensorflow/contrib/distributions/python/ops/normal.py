@@ -23,7 +23,6 @@ import math
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.distributions.python.ops import special_math
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -131,21 +130,20 @@ class Normal(distribution.Distribution):
       TypeError: if `loc` and `scale` have different `dtype`.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]) as ns:
+    with ops.name_scope(name, values=[loc, scale]):
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        contrib_tensor_util.assert_same_float_dtype([self._loc, self._scale])
+        check_ops.assert_same_float_dtype([self._loc, self._scale])
     super(Normal, self).__init__(
         dtype=self._scale.dtype,
-        is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._loc, self._scale],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -217,6 +215,9 @@ class Normal(distribution.Distribution):
   def _mean(self):
     return self.loc * array_ops.ones_like(self.scale)
 
+  def _quantile(self, p):
+    return self._inv_z(special_math.ndtri(p))
+
   def _stddev(self):
     return self.scale * array_ops.ones_like(self.loc)
 
@@ -227,6 +228,11 @@ class Normal(distribution.Distribution):
     """Standardize input `x` to a unit normal."""
     with ops.name_scope("standardize", values=[x]):
       return (x - self.loc) / self.scale
+
+  def _inv_z(self, z):
+    """Reconstruct input `x` from a its normalized version."""
+    with ops.name_scope("reconstruct", values=[z]):
+      return z * self.scale + self.loc
 
 
 class NormalWithSoftplusScale(Normal):
@@ -239,13 +245,13 @@ class NormalWithSoftplusScale(Normal):
                allow_nan_stats=True,
                name="NormalWithSoftplusScale"):
     parameters = locals()
-    with ops.name_scope(name, values=[scale]) as ns:
+    with ops.name_scope(name, values=[scale]):
       super(NormalWithSoftplusScale, self).__init__(
           loc=loc,
           scale=nn.softplus(scale, name="softplus_scale"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
 
