@@ -21,8 +21,8 @@ findProject(":TensorFlow-Android-Inference").projectDir =
 * application's build.gradle (adding dependency):
 
 ```
-debugCompile project(path: ':tensorflow_inference', configuration: 'debug')
-releaseCompile project(path: ':tensorflow_inference', configuration: 'release')
+debugCompile project(path: ':TensorFlow-Android-Inference', configuration: 'debug')
+releaseCompile project(path: ':TensorFlow-Android-Inference', configuration: 'release')
 ```
 Note: this makes native code in the lib traceable from your app.
 
