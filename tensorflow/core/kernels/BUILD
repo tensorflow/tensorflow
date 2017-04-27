@@ -363,6 +363,18 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "split_lib_hdrs",
+    hdrs = [
+        "split_lib.h",
+    ],
+    deps = [
+        ":eigen_helpers",
+        ":ops_util_hdrs",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "typed_queue",
     hdrs = ["typed_queue.h"],
     deps = [

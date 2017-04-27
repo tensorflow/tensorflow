@@ -205,6 +205,7 @@ filegroup(
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/android:all_files",
         "//tensorflow/contrib/batching:all_files",
+        "//tensorflow/contrib/batching/kernels:all_files",
         "//tensorflow/contrib/batching/test_util:all_files",
         "//tensorflow/contrib/batching/util:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
