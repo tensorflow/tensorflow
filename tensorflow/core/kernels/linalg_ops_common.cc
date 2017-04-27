@@ -198,9 +198,7 @@ void LinearAlgebraOp<Scalar>::PrepareOutputs(
       // concatenated with the output_matrix_shape (if the output is not
       // scalar).
       output_tensor_shape = batch_shape;
-      for (int dim = 0; dim < output_matrix_shape.dims(); ++dim) {
-        output_tensor_shape.AddDim(output_matrix_shape.dim_size(dim));
-      }
+      output_tensor_shape.AppendShape(output_matrix_shape);
     }
     Tensor* out = nullptr;
     // See if there is an input buffer we can reuse for this output.
