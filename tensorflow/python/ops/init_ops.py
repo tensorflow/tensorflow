@@ -491,7 +491,7 @@ class Orthogonal(Initializer):
     a = random_ops.random_normal(flat_shape, dtype=dtype, seed=self.seed)
     # Compute the qr factorization
     q, r = linalg_ops.qr(a, full_matrices=False)
-    # Make q uniform
+    # Make Q uniform
     square_len = math_ops.minimum(num_rows, num_cols)
     d = array_ops.diag_part(r[:square_len, :square_len])
     ph = d / math_ops.abs(d)
