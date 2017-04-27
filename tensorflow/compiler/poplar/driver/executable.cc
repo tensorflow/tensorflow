@@ -52,6 +52,8 @@ PoplarExecutable::ExecuteOnStream(
     }
   }
 
+  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
+
   perftools::gputools::StreamExecutor* executor(stream->parent());
   sep::PoplarExecutor* poplarExecutor(
           static_cast<sep::PoplarExecutor*>(executor->implementation()));
@@ -62,6 +64,15 @@ PoplarExecutable::ExecuteOnStream(
                                                     result_shape(),
                                                     arguments,
                                                     output_map_));
+
+  uint64 end_micros = tensorflow::Env::Default()->NowMicros();
+
+  {
+    tensorflow::mutex_lock lock(mutex_);
+    const double nanoseconds = (end_micros - start_micros) * 1000.0;
+    execution_profile_.set_compute_time_ns(std::max(nanoseconds, 1.0));
+  }
+
   return retbuf;
 }
 
