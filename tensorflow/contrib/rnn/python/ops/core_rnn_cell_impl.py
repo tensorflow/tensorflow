@@ -866,11 +866,11 @@ class EmbeddingWrapper(RNNCell):
           # Default initializer for embeddings should have variance=1.
           sqrt3 = math.sqrt(3)  # Uniform(-sqrt(3), sqrt(3)) has variance=1.
           initializer = init_ops.random_uniform_initializer(-sqrt3, sqrt3)
-
-        if type(state) is tuple:
-          data_type = state[0].dtype
-        else:
-          data_type = state.dtype
+          
+        s = state
+        while type(s) is tuple:
+          s = s[0]
+        data_type = s.dtype
 
         embedding = vs.get_variable(
             "embedding", [self._embedding_classes, self._embedding_size],
