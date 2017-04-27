@@ -27,7 +27,6 @@ from tensorflow.contrib.framework.python.ops import arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import layers as _layers
 from tensorflow.contrib.layers.python.layers import regularizers
-from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1559,23 +1558,23 @@ class FCTest(test.TestCase):
         inputs, 32, scope='fc1', weights_regularizer=regularizer)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
-    self.assertEqual(len(loss_ops.get_regularization_losses()), 1)
+    self.assertEqual(len(tf.losses.get_regularization_losses()), 1)
     _layers.fully_connected(
         inputs, 32, scope='fc1', weights_regularizer=regularizer, reuse=True)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
-    self.assertEqual(len(loss_ops.get_regularization_losses()), 1)
+    self.assertEqual(len(tf.losses.get_regularization_losses()), 1)
 
     with variable_scope.variable_scope('outer', reuse=False):
       _layers.fully_connected(inputs, 32, weights_regularizer=regularizer)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 2)
-      self.assertEqual(len(loss_ops.get_regularization_losses()), 2)
+      self.assertEqual(len(tf.losses.get_regularization_losses()), 2)
     with variable_scope.variable_scope('outer', reuse=True):
       _layers.fully_connected(inputs, 32, weights_regularizer=regularizer)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 2)
-      self.assertEqual(len(loss_ops.get_regularization_losses()), 2)
+      self.assertEqual(len(tf.losses.get_regularization_losses()), 2)
 
   def testCreateFCWithoutActivation(self):
     height, width = 3, 3
