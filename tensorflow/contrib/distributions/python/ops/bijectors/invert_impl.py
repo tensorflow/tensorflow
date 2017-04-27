@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector as bijector_lib
 
 __all__ = [
     "Invert",

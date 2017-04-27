@@ -81,6 +81,7 @@ py_library(
         "//third_party/py/numpy",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/saved_model",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
