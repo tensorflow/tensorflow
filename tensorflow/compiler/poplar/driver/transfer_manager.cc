@@ -167,8 +167,7 @@ PoplarTransferManager::TransferLiteralFromOutfeed(
 Status PoplarTransferManager::ResetDevices(
         tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
         executors) {
-  return Unimplemented(
-          "Device reset is not yet supported on CPU and GPU (b/30481585)");
+  return Unimplemented("Device reset not supported");
 }
 
 int64 PoplarTransferManager::GetByteSizeRequirement(const Shape& shape) {
