@@ -1661,5 +1661,28 @@ TEST_F(AlgebraicSimplifierTest, Concatenate) {
   }
 }
 
+TEST_F(AlgebraicSimplifierTest, Slice) {
+  HloComputation::Builder builder(TestName());
+  const int64 dimensions[] = {11, 8, 7, 5, 9};
+  const int64 slice_start[] = {4, 2, 3, 1, 5};
+  const int64 slice_limits[] = {10, 8, 6, 5, 9};
+  auto literal = LiteralUtil::CreateFromDimensions(F32, dimensions);
+  HloInstruction* lit_insn = builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(literal)));
+  Shape shape = ShapeUtil::MakeShape(F32, {6, 6, 3, 4, 4});
+  builder.AddInstruction(
+      HloInstruction::CreateSlice(shape, lit_insn, slice_start, slice_limits));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConstant);
+  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), shape));
+}
+
 }  // namespace
 }  // namespace xla

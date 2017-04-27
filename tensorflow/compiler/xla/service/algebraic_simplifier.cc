@@ -1142,6 +1142,22 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice,
   if (ReplaceInstructionIfSameShape(slice, operand)) {
     return Status::OK();
   }
+  if (operand->opcode() == HloOpcode::kConstant) {
+    const Shape& shape = slice->shape();
+    auto literal = LiteralUtil::CreateFromDimensions(
+        shape.element_type(), AsInt64Slice(shape.dimensions()));
+    std::vector<int64> dest_indices(slice->slice_starts().size(), 0);
+    Status status = LiteralUtil::Copy(operand->literal(), slice->slice_starts(),
+                                      literal.get(), dest_indices,
+                                      AsInt64Slice(shape.dimensions()));
+    if (status.ok()) {
+      TF_CHECK_OK(computation_->ReplaceWithNewInstruction(
+          slice, HloInstruction::CreateConstant(std::move(literal))));
+      changed_ = true;
+    } else {
+      VLOG(1) << "Error while creating sliced literal : " << status;
+    }
+  }
   return Status::OK();
 }
 
