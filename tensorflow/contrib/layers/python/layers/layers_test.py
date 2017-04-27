@@ -48,7 +48,7 @@ from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
-from tensorflow.losses import get_regularization_losses
+from tensorflow.python.ops.losses.losses import get_regularization_losses
 
 
 class AvgPool2DTest(test.TestCase):
