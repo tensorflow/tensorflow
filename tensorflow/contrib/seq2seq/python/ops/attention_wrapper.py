@@ -478,7 +478,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         behavior is not guaranteed.
       name: Name to use when creating ops.
     """
-    super(AttentionWrapper, self).__init__()
+    super(AttentionWrapper, self).__init__(name=name)
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError(
           "cell must be an RNNCell, saw type: %s" % type(cell).__name__)
