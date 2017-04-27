@@ -118,7 +118,7 @@ def _kmeans_clustering_model_fn(features, labels, mode, params, config):
            'kmeans_plus_plus_num_retries')).training_graph()
   incr_step = state_ops.assign_add(variables.get_global_step(), 1)
   loss = math_ops.reduce_sum(losses, name=KMeansClustering.LOSS_OP_NAME)
-  logging_ops.scalar_summary('loss/raw', loss)
+  summary.scalar('loss/raw', loss)
   training_op = with_dependencies([training_op, incr_step], loss)
   predictions = {
       KMeansClustering.ALL_SCORES: all_scores[0],
