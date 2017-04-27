@@ -133,7 +133,10 @@ class HloComputation {
   }
 
   const string& name() const { return name_; }
-  void set_name(const string& name) { name_ = name; }
+
+  // Use the given NameUniquer to select a unique name for the computation based
+  // on the computation's existing name.
+  void UniquifyName(NameUniquer* name_uniquer);
 
   // Return a string representation of the computation.
   string ToString(int nested_level = 0) const;
