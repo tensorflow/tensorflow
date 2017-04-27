@@ -168,19 +168,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   try {
     TF_RETURN_IF_ERROR(entry->Accept(&visitor));
   }
-  catch (poplar::poplar_error e) {
+  catch (std::logic_error e) {
     return port::Status(port::error::UNKNOWN,
                         port::StrCat("[Poplar Compile] ",
-                                     e.what()));
-  }
-  catch (popstd::poplib_error e) {
-    return port::Status(port::error::UNKNOWN,
-                        port::StrCat("[Popnn Compile] ",
-                                     e.what()));
-  }
-  catch (xgraph_core::xgraph_core_error e) {
-    return port::Status(port::error::UNKNOWN,
-                        port::StrCat("[Xgraph Compile] ",
                                      e.what()));
   }
 
@@ -196,7 +186,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
       engine.reset(new poplar::Engine(*graph, progs));
     }
-    catch (poplar::poplar_error e) {
+    catch (std::logic_error e) {
       return port::Status(port::error::UNKNOWN,
                           port::StrCat("[Poplar Engine] ",
                                        e.what()));
