@@ -12,8 +12,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:framework",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
     ],
 )
@@ -25,11 +25,11 @@ cuda_py_tests(
     additional_deps = [
         ":signal_py",
         "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:platform_test",
     ],
 )
