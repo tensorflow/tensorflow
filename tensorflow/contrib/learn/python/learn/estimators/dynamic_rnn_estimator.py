@@ -540,20 +540,6 @@ def _get_dynamic_rnn_model_fn(
   return _dynamic_rnn_model_fn
 
 
-def _get_dropout_and_num_units(num_units,
-                               num_rnn_layers,
-                               input_keep_probability,
-                               output_keep_probability):
-  """Helper function for deprecated factory functions."""
-  dropout_keep_probabilities = None
-  num_units = [num_units for _ in range(num_rnn_layers)]
-  if input_keep_probability or output_keep_probability:
-    dropout_keep_probabilities = ([input_keep_probability]
-                                  + [1.0] * (num_rnn_layers - 1)
-                                  + [output_keep_probability])
-  return dropout_keep_probabilities, num_units
-
-
 class DynamicRnnEstimator(estimator.Estimator):
 
   def __init__(self,
