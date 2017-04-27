@@ -2219,6 +2219,8 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:bcast_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:concat_op",
