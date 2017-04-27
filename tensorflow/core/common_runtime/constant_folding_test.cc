@@ -104,8 +104,10 @@ TEST_F(ConstantFoldingTest, Basic) {
   Graph g(OpRegistry::Global());
   TF_ASSERT_OK(s.ToGraph(&g));
 
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                Env::Default(), nullptr, &g));
+  bool was_mutated;
+  TF_ASSERT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
+                            nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
 
   std::unordered_map<string, Node*> index = NodeNameIndex(g);
   Node* s1 = index.at("s1");
@@ -128,7 +130,10 @@ TEST_F(ConstantFoldingTest, ConsiderFunction) {
   ConstantFoldingOptions opts;
   // Do not allow constant folding of m2
   opts.consider = [](const Node* n) { return "m2" != n->name(); };
-  EXPECT_TRUE(DoConstantFolding(opts, nullptr, Env::Default(), nullptr, &g));
+  bool was_mutated;
+  TF_ASSERT_OK(
+      ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
 
   std::unordered_map<string, Node*> index = NodeNameIndex(g);
   Node* s1 = index.at("s1");
@@ -154,8 +159,10 @@ TEST_F(ConstantFoldingTest, TestNoReplaceAnotherConstant) {
     TF_ASSERT_OK(s.ToGraph(&g));
   }
 
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                Env::Default(), nullptr, &g));
+  bool was_mutated;
+  TF_ASSERT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
+                            nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
 
   std::unordered_map<string, Node*> index = NodeNameIndex(g);
   Node* d = index.at("d");
@@ -180,8 +187,11 @@ TEST_F(ConstantFoldingTest, TwoOutputs) {
     TF_ASSERT_OK(s.ToGraph(&g));
   }
 
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                Env::Default(), nullptr, &g));
+  bool was_mutated;
+  TF_ASSERT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
+                            nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
+
   std::unordered_map<string, Node*> index = NodeNameIndex(g);
   Node* b0 = index.at("b0");
   Node* b1 = index.at("b1");
@@ -209,7 +219,10 @@ TEST_F(ConstantFoldingTest, TwoOutputsFoldOneOutput) {
 
   ConstantFoldingOptions opts;
   opts.consider = [](const Node* n) { return "b1_ident" != n->name(); };
-  EXPECT_TRUE(DoConstantFolding(opts, nullptr, Env::Default(), nullptr, &g));
+  bool was_mutated;
+  TF_ASSERT_OK(
+      ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
 
   std::unordered_map<string, Node*> index = NodeNameIndex(g);
   Node* b0 = index.at("b0");
@@ -243,11 +256,9 @@ TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
 
   // The above concat should not have been constant folded.
   bool was_mutated;
-  Status status =
-      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
-                                  Env::Default(), nullptr, &g, &was_mutated);
+  TF_EXPECT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
+                            nullptr, &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
-  TF_EXPECT_OK(status);
 }
 
 TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
@@ -280,11 +291,9 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
 
   // The above function call should not have been constant folded.
   bool was_mutated;
-  Status status =
-      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
-                                  Env::Default(), nullptr, &g, &was_mutated);
+  TF_EXPECT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
+                            nullptr, &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
-  EXPECT_TRUE(status.ok());
 }
 
 REGISTER_OP("ConstantFoldingTestOp").Input("a: int64").Output("b: int64");
@@ -311,11 +320,9 @@ TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
 
   // The non-CPU op should not have been constant folded.
   bool was_mutated;
-  Status status =
-      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
-                                  Env::Default(), nullptr, &g, &was_mutated);
+  TF_EXPECT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
+                            nullptr, &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
-  TF_EXPECT_OK(status);
 }
 
 namespace {
@@ -392,15 +399,13 @@ TEST_F(ConstantFoldingTest, TestImmutableConst) {
   TF_ASSERT_OK(root.ToGraph(&g));
   TestTFEnvironment test_env;
   bool was_mutated;
-  Status status =
-      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
-                                  Env::Default(), nullptr, &g, &was_mutated);
+  Status status = ConstantFold(ConstantFoldingOptions{}, nullptr,
+                               Env::Default(), nullptr, &g, &was_mutated);
   EXPECT_FALSE(was_mutated);
   EXPECT_FALSE(status.ok());
-  status = DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
-                                       &test_env, nullptr, &g, &was_mutated);
+  TF_EXPECT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, &test_env,
+                            nullptr, &g, &was_mutated));
   EXPECT_TRUE(was_mutated);
-  TF_EXPECT_OK(status);
 }
 
 }  // namespace

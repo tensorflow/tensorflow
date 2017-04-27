@@ -122,6 +122,8 @@ void FindConstantFoldableNodes(const Graph* graph,
   }
 }
 
+typedef std::pair<Node*, int> NodeAndOutput;
+
 // Given the constant foldable nodes in 'nodes', returns a new graph 'g'. 'g'
 // will contain copies of the nodes in 'nodes'. In addition, if there is an edge
 // going from a node 'n' in 'nodes' to another node in 'orig_graph' but not in
@@ -170,8 +172,10 @@ int64 UniqueConstantId() {
   return id.fetch_add(1);
 }
 
-}  // namespace
-
+// Replaces the identified Tensor in 'graph' by a 'Const' node with
+// the value supplied in 'constant'. 'partition_device', if non-null
+// is the device where the graph executes. Returns true if the
+// replacement was successful, false otherwise.
 bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
                                NodeAndOutput tensor, const Tensor& constant) {
   // Be conservative when replacing a tensor with a constant, when not
@@ -254,19 +258,11 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
   return true;
 }
 
-bool DoConstantFolding(const ConstantFoldingOptions& opts,
-                       FunctionLibraryRuntime* function_library, Env* env,
-                       Device* partition_device, Graph* graph) {
-  bool was_mutated;
-  Status unused_status = DoConstantFoldingWithStatus(
-      opts, function_library, env, partition_device, graph, &was_mutated);
-  return was_mutated;
-}
+}  // namespace
 
-Status DoConstantFoldingWithStatus(const ConstantFoldingOptions& opts,
-                                   FunctionLibraryRuntime* function_library,
-                                   Env* env, Device* partition_device,
-                                   Graph* graph, bool* was_mutated) {
+Status ConstantFold(const ConstantFoldingOptions& opts,
+                    FunctionLibraryRuntime* function_library, Env* env,
+                    Device* partition_device, Graph* graph, bool* was_mutated) {
   DumpGraph("Before", graph);
 
   const FunctionLibraryDefinition* flib_def = nullptr;
