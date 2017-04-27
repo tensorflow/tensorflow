@@ -49,15 +49,18 @@ from tensorflow.python.training import moving_averages
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
 __all__ = ['avg_pool2d',
+           'avg_pool3d',
            'batch_norm',
            'bias_add',
            'conv2d',
            'conv2d_in_plane',
            'conv2d_transpose',
+           'conv3d',
            'convolution',
            'convolution2d',
            'convolution2d_in_plane',
            'convolution2d_transpose',
+           'convolution3d',
            'dropout',
            'elu',
            'flatten',
@@ -66,6 +69,7 @@ __all__ = ['avg_pool2d',
            'linear',
            'pool',
            'max_pool2d',
+           'max_pool3d',
            'one_hot_encoding',
            'relu',
            'relu6',
@@ -82,6 +86,8 @@ __all__ = ['avg_pool2d',
 
 DATA_FORMAT_NCHW = 'NCHW'
 DATA_FORMAT_NHWC = 'NHWC'
+DATA_FORMAT_NCDHW = 'NCDHW'
+DATA_FORMAT_NDHWC = 'NDHWC'
 
 
 @add_arg_scope
@@ -124,6 +130,54 @@ def avg_pool2d(inputs,
     df = ('channels_first' if data_format and data_format.startswith('NC')
           else 'channels_last')
     layer = pooling_layers.AveragePooling2D(pool_size=kernel_size,
+                                            strides=stride,
+                                            padding=padding,
+                                            data_format=df,
+                                            _scope=sc)
+    outputs = layer.apply(inputs)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
+def avg_pool3d(inputs,
+               kernel_size,
+               stride=2,
+               padding='VALID',
+               data_format=DATA_FORMAT_NDHWC,
+               outputs_collections=None,
+               scope=None):
+  """Adds a 3D average pooling op.
+
+  It is assumed that the pooling is done per image but not in batch or channels.
+
+  Args:
+    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]` if
+      `data_format` is `NDHWC`, and `[batch_size, channels, depth, height, width]` if
+      `data_format` is `NCDHW`.
+    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width] of the
+      pooling kernel over which the op is computed. Can be an int if both
+      values are the same.
+    stride: A list of length 3: [stride_depth, stride_height, stride_width].
+      Can be an int if both strides are the same. Note that presently
+      both strides must have the same value.
+    padding: The padding method, either 'VALID' or 'SAME'.
+    data_format: A string. `NDHWC` (default) and `NCDHW` are supported.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: If `data_format` is neither `NDHWC` nor `NCDHW`.
+  """
+  if data_format not in (DATA_FORMAT_NCDHW, DATA_FORMAT_NDHWC):
+    raise ValueError('data_format has to be either NCDHW or NDHWC.')
+  with ops.name_scope(scope, 'AvgPool3D', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = pooling_layers.AveragePooling3D(pool_size=kernel_size,
                                             strides=stride,
                                             padding=padding,
                                             data_format=df,
@@ -957,6 +1011,7 @@ def convolution(inputs,
                                        sc.original_name_scope, outputs)
 
 convolution2d = convolution
+convolution3d = convolution
 
 
 @add_arg_scope
@@ -1623,6 +1678,55 @@ def max_pool2d(inputs,
 
 
 @add_arg_scope
+def max_pool3d(inputs,
+               kernel_size,
+               stride=2,
+               padding='VALID',
+               data_format=DATA_FORMAT_NDHWC,
+               outputs_collections=None,
+               scope=None):
+  """Adds a 3D Max Pooling op.
+
+  It is assumed that the pooling is done per image but not in batch or channels.
+
+  Args:
+    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]` if
+      `data_format` is `NDHWC`, and `[batch_size, channels, depth, height, width]` if
+      `data_format` is `NCDHW`.
+    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width] of the
+      pooling kernel over which the op is computed. Can be an int if both
+      values are the same.
+    stride: A list of length 3: [stride_depth, stride_height, stride_width].
+      Can be an int if both strides are the same. Note that presently
+      both strides must have the same value.
+    padding: The padding method, either 'VALID' or 'SAME'.
+    data_format: A string. `NDHWC` (default) and `NCDHW` are supported.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: If `data_format` is neither `NDHWC` nor `NCDHW`.
+    ValueError: If 'kernel_size' is not a 3-D list
+  """
+  if data_format not in (DATA_FORMAT_NCDHW, DATA_FORMAT_NDHWC):
+    raise ValueError('data_format has to be either NCDHW or NDHWC.')
+  with ops.name_scope(scope, 'MaxPool3D', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = pooling_layers.MaxPooling3D(pool_size=kernel_size,
+                                        strides=stride,
+                                        padding=padding,
+                                        data_format=df,
+                                        _scope=sc)
+    outputs = layer.apply(inputs)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
 def pool(inputs,
          kernel_size,
          pooling_type,
@@ -2241,6 +2345,7 @@ linear = functools.partial(fully_connected, activation_fn=None)
 
 # Simple alias.
 conv2d = convolution2d
+conv3d = convolution3d
 conv2d_transpose = convolution2d_transpose
 conv2d_in_plane = convolution2d_in_plane
 separable_conv2d = separable_convolution2d

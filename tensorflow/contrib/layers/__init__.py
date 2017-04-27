@@ -17,8 +17,10 @@
 See the @{$python/contrib.layers} guide.
 
 @@avg_pool2d
+@@avg_pool3d
 @@batch_norm
 @@convolution2d
+@@convolution3d
 @@conv2d_in_plane
 @@convolution2d_in_plane
 @@conv2d_transpose
@@ -31,6 +33,7 @@ See the @{$python/contrib.layers} guide.
 @@layer_norm
 @@linear
 @@max_pool2d
+@@max_pool3d
 @@one_hot_encoding
 @@relu
 @@relu6
@@ -100,6 +103,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['bias_add',
                     'conv2d',
+                    'conv3d',
                     'elu',
                     'feature_column',
                     'legacy_fully_connected',
