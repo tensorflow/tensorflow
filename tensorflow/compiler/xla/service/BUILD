@@ -195,7 +195,6 @@ cc_library(
     deps = [
         ":hlo",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
@@ -624,6 +623,7 @@ cc_library(
         "buffer_liveness.h",
     ],
     deps = [
+        ":call_graph",
         ":hlo",
         ":hlo_ordering",
         ":liveness_util",
@@ -747,6 +747,7 @@ cc_library(
         "hlo_ordering.h",
     ],
     deps = [
+        ":call_graph",
         ":heap_simulator",
         ":hlo",
         ":logical_buffer",

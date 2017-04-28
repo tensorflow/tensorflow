@@ -930,9 +930,8 @@ StatusOr<int64> HloRematerialization::ComputePeakMemory(
 
 StatusOr<int64> HloRematerialization::CalledComputationsMemoryUsage(
     const HloInstruction* instruction) const {
-  TF_ASSIGN_OR_RETURN(const CallGraphNode* node,
-                      call_graph_->GetNode(instruction->parent()));
-  const CallSite* callsite = node->GetCallSite(instruction);
+  const CallSite* callsite =
+      call_graph_->GetNode(instruction->parent()).GetCallSite(instruction);
   if (callsite == nullptr || callsite->context() == CallContext::kParallel) {
     return 0;
   }
@@ -981,8 +980,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   // instructions which are dead.
   int64 net_instructions_added = 0;
 
-  TF_ASSIGN_OR_RETURN(const CallGraphNode* call_graph_node,
-                      call_graph_->GetNode(computation));
+  const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
 
   // Iterate through all instructions in the sequence. At each instruction
   // (program point) if memory_usage exceeds the specified limit then
@@ -1080,7 +1078,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
               << memory_tracker.memory_usage();
     }
 
-    const CallSite* callsite = call_graph_node->GetCallSite(instruction);
+    const CallSite* callsite = call_graph_node.GetCallSite(instruction);
     if (callsite != nullptr &&
         callsite->context() == CallContext::kSequential &&
         memory_tracker.memory_usage() + callee_usage > memory_limit_bytes) {
@@ -1194,7 +1192,7 @@ StatusOr<bool> HloRematerialization::Run(
                           }));
   // Compute peak memory usage of all computations in the module called in a
   // sequential context.
-  TF_ASSIGN_OR_RETURN(call_graph_, CallGraph::Build(module));
+  call_graph_ = CallGraph::Build(module);
   TF_RETURN_IF_ERROR(call_graph_->VisitNodes(
       [this, sequence](const CallGraphNode& node) -> Status {
         if (node.context() == CallContext::kSequential) {
