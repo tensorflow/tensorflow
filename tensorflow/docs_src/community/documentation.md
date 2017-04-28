@@ -14,9 +14,9 @@ so everybody can contribute. Whatever gets checked in tensorflow/docs_src will
 be published soon after on https://www.tensorflow.org. 
 
 Republishing TensorFlow documentation in different forms is absolutely allowed,
-but we unlikely to accept anything other than the sources into our repository.
-If you do choose to republish our documentation in another form, please be sure
-to include:
+but we are unlikely to accept other documentation formats (or the tooling to
+generate them) into our repository. If you do choose to republish our
+documentation in another form, please be sure to include:
 
 * The version of the API this represents (i.e. r1.0, master, etc.)
 * The commit or version from which the documentation was generated
