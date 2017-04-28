@@ -902,7 +902,7 @@ void Tensor::FillDescription(TensorDescription* description) const {
 }
 
 gtl::InlinedVector<int64, 4> Tensor::ComputeFlatInnerDims(
-    gtl::ArraySlice<int64>, int64 num_out_dims) {
+    gtl::ArraySlice<int64> orig, int64 num_out_dims) {
   if (num_out_dims == orig.size()) {
     return orig;
   }
