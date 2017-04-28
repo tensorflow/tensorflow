@@ -197,7 +197,10 @@ def string_input_producer(string_tensor,
     seed: An integer (optional). Seed used if shuffle == True.
     capacity: An integer. Sets the queue capacity.
     shared_name: (optional). If set, this queue will be shared under the given
-      name across multiple sessions.
+      name across multiple sessions. All sessions open to the device which has
+      this queue will be able to access it via the shared_name. Using this in
+      a distributed setting means each name will only be seen by one of the
+      sessions which has access to this operation.
     name: A name for the operations (optional).
     cancel_op: Cancel op for the queue (optional).
 
