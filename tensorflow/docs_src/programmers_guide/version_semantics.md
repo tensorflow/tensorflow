@@ -102,6 +102,12 @@ backward incompatible ways between minor releases. These include:
     optimizer. This may break code relying on the wrong behavior for
     convergence. We will note such changes in the release notes.
 
+*   **Error messages:** We reserve the right to change the text of error
+    messages (but not their type). For example, an error condition
+    raising `InvalidArgument` will continue to raise `InvalidArgument`,
+    but the human-readable message contents can change.
+
+
 Furthermore, any API methods marked "deprecated" in the 1.0 release can
 be deleted in any subsequent minor release.
 
