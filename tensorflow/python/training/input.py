@@ -885,7 +885,8 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
   Args:
     tensors: The list or dictionary of tensors to enqueue.
     batch_size: The new batch size pulled from the queue.
-    num_threads: The number of threads enqueuing `tensors`.
+    num_threads: The number of threads enqueuing `tensors`.  The batching will
+      be nondeterministic if `num_threads > 1`.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensors` is a single example.
     shapes: (Optional) The shapes for each example.  Defaults to the
@@ -937,7 +938,8 @@ def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
       corresponding value in `keep_input` is `True`. This tensor essentially
       acts as a filtering mechanism.
     batch_size: The new batch size pulled from the queue.
-    num_threads: The number of threads enqueuing `tensors`.
+    num_threads: The number of threads enqueuing `tensors`.  The batching will
+      be nondeterministic if `num_threads > 1`.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensors` is a single example.
     shapes: (Optional) The shapes for each example.  Defaults to the
@@ -980,6 +982,9 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
   The `tensors_list` argument is a list of tuples of tensors, or a list of
   dictionaries of tensors.  Each element in the list is treated similarly
   to the `tensors` argument of `tf.train.batch()`.
+
+  WARNING: This function is nondeterministic, since it starts a separate thread
+  for each tensor.
 
   Enqueues a different list of tensors in different threads.
   Implemented using a queue -- a `QueueRunner` for the queue
