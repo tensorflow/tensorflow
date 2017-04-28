@@ -173,6 +173,9 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
 // Shape function for AvgPool-like operations.
 Status AvgPoolShape(shape_inference::InferenceContext* c);
 
+// Shape function for AvgPoolV2-like operations.
+Status AvgPoolV2Shape(shape_inference::InferenceContext* c);
+
 // Shape function for MaxPool-like operations.
 Status MaxPoolShape(shape_inference::InferenceContext* c);
 

@@ -106,7 +106,7 @@ class MaxPoolingOp : public OpKernel {
     std::vector<int32> ksize = ksize_;
     std::vector<int32> stride = stride_;
 
-    if (context->num_inputs() != 1) {
+    if (context->num_inputs() == 3) {
       const Tensor& tensor_ksize = context->input(1);
       auto value_ksize = tensor_ksize.flat<int32>();
       ksize.resize(tensor_ksize.shape().num_elements());

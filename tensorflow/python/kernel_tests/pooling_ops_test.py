@@ -103,17 +103,18 @@ class PoolingTest(test.TestCase):
         t = test_util.NHWCToNCHW(t)
         ksize = test_util.NHWCToNCHW(ksize)
         strides = test_util.NHWCToNCHW(strides)
+      k = array_ops.placeholder(dtypes.int32, shape=[4])
+      s = array_ops.placeholder(dtypes.int32, shape=[4])
       t = pool_func(
           t,
-          ksize=ksize,
-          strides=strides,
+          ksize=k,
+          strides=s,
           padding=padding,
           data_format=data_format)
       if data_format == "NCHW":
         t = test_util.NCHWToNHWC(t)
-      actual = t.eval()
+      actual = t.eval(feed_dict={k: ksize, s: strides})
       self.assertAllCloseAccordingToType(expected, actual.flatten())
-      self.assertShapeEqual(actual, t)
 
   def _VerifyOneTest(self, pool_func, input_sizes, ksize, strides, padding,
                      data_format, expected, use_gpu):
@@ -500,8 +501,11 @@ class PoolingTest(test.TestCase):
     with self.test_session(use_gpu=use_gpu):
       t = constant_op.constant(1.0, shape=in_size)
       with self.assertRaisesRegexp(errors_impl.UnimplementedError, error_msg):
+        k = array_ops.placeholder(dtypes.int32, shape=[4])
+        s = array_ops.placeholder(dtypes.int32, shape=[4])
         t = nn_ops.max_pool(
-            t, ksize=ksize, strides=strides, padding="SAME").eval()
+            t, ksize=k, strides=s, padding="SAME").eval(
+                feed_dict={k: ksize, s: strides})
 
   def testDepthwiseMaxPoolInvalidConfigs(self):
     self._testDepthwiseMaxPoolInvalidConfig(
@@ -516,9 +520,12 @@ class PoolingTest(test.TestCase):
       with self.test_session(use_gpu=True):
         t = constant_op.constant(1.0, shape=[1, 2, 2, 4])
         with self.assertRaisesOpError("for CPU devices"):
+          k = array_ops.placeholder(dtypes.int32, shape=[4])
+          s = array_ops.placeholder(dtypes.int32, shape=[4])
           nn_ops.max_pool(
-              t, ksize=[1, 1, 1, 2], strides=[1, 1, 1, 2],
-              padding="SAME").eval()
+              t, ksize=k, strides=s,
+              padding="SAME").eval(
+                  feed_dict={k: [1, 1, 1, 2], s: [1, 1, 1, 2]})
 
   # The following are tests that verify that the CPU and GPU implementations
   # produce the same resuts.
@@ -1452,17 +1459,6 @@ class PoolingTest(test.TestCase):
       if test.is_gpu_available():
         pool_funcs.append(nn_ops.max_pool_with_argmax)
       for pool_func in pool_funcs:
-        # Illegal strides.
-        with self.assertRaisesRegexp(
-            errors_impl.UnimplementedError,
-            "Pooling is not yet supported on the batch"):
-          sess.run(
-              pool_func(
-                  array_ops.placeholder(dtypes.float32),
-                  ksize=[1, 1, 1, 1],
-                  strides=[2, 1, 1, 1],
-                  padding="SAME"))
-
         # Filter too large.
         with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
           sess.run(

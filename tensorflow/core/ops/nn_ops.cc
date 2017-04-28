@@ -90,7 +90,35 @@ REGISTER_OP("AvgPool")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {half, float, double}")
-    .SetShapeFn(shape_inference::AvgPoolShape)
+    .Deprecated(23, "Use AvgPoolV2 instead")
+    .SetShapeFn(shape_inference::AvgPoolV2Shape)
+    .Doc(R"doc(
+Performs average pooling on the input.
+
+Each entry in `output` is the mean of the corresponding size `ksize`
+window in `value`.
+
+value: 4-D with shape `[batch, height, width, channels]`.
+ksize: The size of the sliding window for each dimension of `value`.
+strides: The stride of the sliding window for each dimension of `value`.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+output: The average pooled output tensor.
+)doc");
+
+REGISTER_OP("AvgPoolV2")
+    .Input("value: T")
+    .Input("ksize: int32")
+    .Input("strides: int32")
+    .Output("output: T")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::AvgPoolV2Shape)
     .Doc(R"doc(
 Performs average pooling on the input.
 
@@ -118,6 +146,39 @@ REGISTER_OP("AvgPoolGrad")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {half, float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      // NOTE(mrry): We could in principle work out the shape from the
+      // gradients and the attrs, but if we do not know orig_input_shape
+      // statically, then we are unlikely to know the shape of the
+      // gradients either.
+      return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
+    })
+    .Doc(R"doc(
+Computes gradients of the average pooling function.
+
+orig_input_shape: 1-D.  Shape of the original input to `avg_pool`.
+grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t.
+  the output of `avg_pool`.
+ksize: The size of the sliding window for each dimension of the input.
+strides: The stride of the sliding window for each dimension of the input.
+padding: The type of padding algorithm to use.
+data_format: Specify the data format of the input and output data. With the
+    default format "NHWC", the data is stored in the order of:
+        [batch, in_height, in_width, in_channels].
+    Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, in_channels, in_height, in_width].
+output: 4-D.  Gradients w.r.t. the input of `avg_pool`.
+)doc");
+
+REGISTER_OP("AvgPoolGradV2")
+    .Input("orig_input_shape: int32")
+    .Input("grad: T")
+    .Input("ksize: int32")
+    .Input("strides: int32")
+    .Output("output: T")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       // NOTE(mrry): We could in principle work out the shape from the
       // gradients and the attrs, but if we do not know orig_input_shape
@@ -1502,7 +1563,7 @@ REGISTER_OP("MaxPoolGradGradV2")
     .Output("output: T")
     .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
-      TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolV2Shape(c));
       ShapeHandle unused;
       // Validate 'orig_input' is the same shape as 'grad'
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));

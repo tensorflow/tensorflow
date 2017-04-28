@@ -256,7 +256,7 @@ class MaxPoolingGradOp : public OpKernel {
                                                    &tensor_out_arg_max));
     std::vector<int32> ksize = ksize_;
     std::vector<int32> stride = stride_;
-    if (context->num_inputs() != 3) {
+    if (context->num_inputs() == 5) {
       const Tensor& tensor_ksize = context->input(3);
       auto value_ksize = tensor_ksize.flat<int32>();
       ksize.resize(tensor_ksize.shape().num_elements());
@@ -456,7 +456,7 @@ class MaxPoolingGradGradOp : public OpKernel {
 
     std::vector<int32> ksize = ksize_;
     std::vector<int32> stride = stride_;
-    if (context->num_inputs() != 3) {
+    if (context->num_inputs() == 5) {
       const Tensor& tensor_ksize = context->input(3);
       auto value_ksize = tensor_ksize.flat<int32>();
       ksize.resize(tensor_ksize.shape().num_elements());
@@ -467,7 +467,7 @@ class MaxPoolingGradGradOp : public OpKernel {
       stride.resize(tensor_stride.shape().num_elements());
       std::copy_n(&value_stride(0), stride.size(), stride.begin());
     }
- 
+
     OP_REQUIRES(context, ksize.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 4 dimensions"));
@@ -1031,10 +1031,13 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
       Name("MaxPoolGrad").Device(DEVICE_##D).TypeConstraint<T>("T"),     \
       MaxPoolingGradOp<D##Device, T>);                                   \
   REGISTER_KERNEL_BUILDER(                                               \
-      Name("MaxPoolGradV2").Device(DEVICE_##D).TypeConstraint<T>("T"),     \
+      Name("MaxPoolGradV2").Device(DEVICE_##D).TypeConstraint<T>("T"),   \
       MaxPoolingGradOp<D##Device, T>);                                   \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("MaxPoolGradGrad").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      MaxPoolingGradGradOp<D##Device, T>);                               \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("MaxPoolGradGradV2").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       MaxPoolingGradGradOp<D##Device, T>);
 
 // Below kernels implemented only for CPU device.

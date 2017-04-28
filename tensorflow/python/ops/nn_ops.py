@@ -1731,14 +1731,26 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Returns:
     A `Tensor` with the same type as `value`.  The average pooled output tensor.
   """
-  with ops.name_scope(name, "AvgPool", [value]) as name:
+  with ops.name_scope(name, "AvgPoolV2", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")
-    return gen_nn_ops._avg_pool(value,
-                                ksize=ksize,
-                                strides=strides,
-                                padding=padding,
-                                data_format=data_format,
-                                name=name)
+    try:
+      ksize = ops.convert_to_tensor(ksize, dtypes.int32, name='ksize')
+    except (TypeError, ValueError):
+      raise ValueError('\'ksize\' must be a 1-D int32 Tensor')
+    if not ksize.get_shape().is_compatible_with([4]):
+      raise ValueError('\'ksize\' must be a 1-D Tensor of 4 elements')
+    try:
+      strides = ops.convert_to_tensor(strides, dtypes.int32, name='strides')
+    except (TypeError, ValueError):
+      raise ValueError('\'strides\' must be a 1-D int32 Tensor')
+    if not strides.get_shape().is_compatible_with([4]):
+      raise ValueError('\'strides\' must be a 1-D Tensor of 4 elements')
+    return gen_nn_ops.avg_pool_v2(value,
+                                  ksize=ksize,
+                                  strides=strides,
+                                  padding=padding,
+                                  data_format=data_format,
+                                  name=name)
 
 
 def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
@@ -1759,7 +1771,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Returns:
     A `Tensor` with type `tf.float32`.  The max pooled output tensor.
   """
-  with ops.name_scope(name, "MaxPool", [value]) as name:
+  with ops.name_scope(name, "MaxPoolV2", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")
     try:
       ksize = ops.convert_to_tensor(ksize, dtypes.int32, name='ksize')
@@ -1768,7 +1780,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
     if not ksize.get_shape().is_compatible_with([4]):
       raise ValueError('\'ksize\' must be a 1-D Tensor of 4 elements')
     try:
-      strides = ops.convert_to_tensor(strides, dtypes.int32, name='ksize')
+      strides = ops.convert_to_tensor(strides, dtypes.int32, name='strides')
     except (TypeError, ValueError):
       raise ValueError('\'strides\' must be a 1-D int32 Tensor')
     if not strides.get_shape().is_compatible_with([4]):

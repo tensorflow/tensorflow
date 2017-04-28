@@ -504,12 +504,37 @@ def _AvgPoolGrad(op, grad):
       data_format=op.get_attr("data_format"))
 
 
+@ops.RegisterGradient("AvgPoolV2")
+def _AvgPoolGradV2(op, grad):
+  ksize = op.inputs[1]
+  strides = op.inputs[2]
+  return gen_nn_ops.avg_pool_grad_v2(
+      array_ops.shape(op.inputs[0]),
+      grad,
+      ksize,
+      strides,
+      op.get_attr("padding"),
+      data_format=op.get_attr("data_format")), None, None
+
+
 @ops.RegisterGradient("AvgPoolGrad")
 def _AvgPoolGradGrad(op, grad):
   return (array_ops.stop_gradient(op.inputs[0]), gen_nn_ops._avg_pool(
       grad,
       op.get_attr("ksize"),
       op.get_attr("strides"),
+      op.get_attr("padding"),
+      data_format=op.get_attr("data_format")))
+
+
+@ops.RegisterGradient("AvgPoolGradV2")
+def _AvgPoolGradGradV2(op, grad):
+  ksize = op.inputs[2]
+  strides = op.inputs[3]
+  return (array_ops.stop_gradient(op.inputs[0]), gen_nn_ops.avg_pool_v2(
+      grad,
+      ksize,
+      strides,
       op.get_attr("padding"),
       data_format=op.get_attr("data_format")))
 
@@ -579,7 +604,7 @@ def _MaxPoolGradGradV2(op, grad):
               ksize,
               strides,
               padding=op.get_attr("padding"),
-              data_format=op.get_attr("data_format")))
+              data_format=op.get_attr("data_format")), None, None)
 
 
 @ops.RegisterGradient("MaxPoolGradGrad")
