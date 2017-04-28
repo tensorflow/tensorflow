@@ -1946,20 +1946,17 @@ func Identity(scope *Scope, input tf.Output) (output tf.Output) {
 
 // Gather values or slices from `params` according to `indices`.
 //
-// `params` is a Tensor of rank `P` and `indices` is a Tensor of rank `Q`.
+// `indices` is an integer tensor containing indices into `params`.  The last
+// dimension of `indices` can be at most the rank of `params`:
 //
-// `indices` must be integer tensor, containing indices into `params`.
-// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+//     indices.shape[-1] <= params.rank
 //
-// The innermost dimension of `indices` (with length `K`) corresponds to
-// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-// dimension of `params`.
+// The last dimension of `indices` corresponds to elements
+// (if `indices.shape[-1] = params.rank`) or slices
+// (if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
+// of `params`.  The output tensor has shape
 //
-// Produces an output tensor with shape
-//
-// ```
-// [d_0, ..., d_{Q-2}, params.shape[K], ..., params.shape[P-1]].
-// ```
+//     indices.shape[:-1] + params.shape[indices.shape[-1]:]
 //
 // Some examples below.
 //
@@ -2039,11 +2036,11 @@ func Identity(scope *Scope, input tf.Output) (output tf.Output) {
 // ```
 //
 // Arguments:
-//	params: `P-D`.  The tensor from which to gather values.
-//	indices: `Q-D`.  Index tensor having shape `[d_0, ..., d_{Q-2}, K]`.
+//	params: The tensor from which to gather values.
+//	indices: Index tensor.
 //
-// Returns `(P+Q-K-1)-D`.  Values from `params` gathered from indices given by
-// `indices`.
+// Returns Values from `params` gathered from indices given by `indices`, with
+// shape `indices.shape[:-1] + params.shape[indices.shape[-1]:]`.
 func GatherNd(scope *Scope, params tf.Output, indices tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -3137,30 +3134,27 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 	return op.Output(0)
 }
 
-// Creates a new tensor by applying sparse `updates` to individual
+// Scatter `updates` into a new (initially zero) tensor according to `indices`.
 //
-// values or slices within a zero tensor of the given `shape` tensor according to
+// Creates a new tensor by applying sparse `updates` to individual
+// values or slices within a zero tensor of the given `shape` according to
 // indices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)
 // operator which extracts values or slices from a given tensor.
 //
-// TODO(simister): Add a link to Variable.__getitem__ documentation on slice
-// syntax.
+// **WARNING**: The order in which updates are applied is nondeterministic, so the
+// output will be nondeterministic if `indices` contains duplicates.
 //
-// `shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank
-// `Q`.
+// `indices` is an integer tensor containing indices into a new tensor of shape
+// `shape`.  The last dimension of `indices` can be at most the rank of `shape`:
 //
-// `indices` must be integer tensor, containing indices into `shape`.
-// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+//     indices.shape[-1] <= shape.rank
 //
-// The innermost dimension of `indices` (with length `K`) corresponds to
-// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-// dimension of `shape`.
+// The last dimension of `indices` corresponds to indices into elements
+// (if `indices.shape[-1] = shape.rank`) or slices
+// (if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
+// `shape`.  `updates` is a tensor with shape
 //
-// `updates` is Tensor of rank `Q-1+P-K` with shape:
-//
-// ```
-// [d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].
-// ```
+//     indices.shape[:-1] + shape[indices.shape[-1]:]
 //
 // The simplest form of scatter is to insert individual elements in a tensor by
 // index. For example, say we want to insert 4 scattered elements in a rank-1
@@ -3178,7 +3172,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //     shape = tf.constant([8])
 //     scatter = tf.scatter_nd(indices, updates, shape)
 //     with tf.Session() as sess:
-//       print sess.run(scatter)
+//       print(sess.run(scatter))
 // ```
 //
 // The resulting tensor would look like this:
@@ -3204,7 +3198,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //     shape = tf.constant([4, 4, 4])
 //     scatter = tf.scatter_nd(indices, updates, shape)
 //     with tf.Session() as sess:
-//       print sess.run(scatter)
+//       print(sess.run(scatter))
 // ```
 //
 // The resulting tensor would look like this:
@@ -3215,11 +3209,9 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
 //
 // Arguments:
-//	indices: A Tensor. Must be one of the following types: int32, int64.
-// A tensor of indices into ref.
-//	updates: A Tensor. Must have the same type as tensor. A tensor of updated values
-// to store in ref.
-//	shape: A vector. The shape of the resulting tensor.
+//	indices: Index tensor.
+//	updates: Updates to scatter into output.
+//	shape: 1-D. The shape of the resulting tensor.
 //
 // Returns A new tensor with the given shape and updates applied according
 // to the indices.
