@@ -488,6 +488,56 @@ op {
   }
 }
 op {
+  name: "AllCandidateSampler"
+  input_arg {
+    name: "true_classes"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sampled_candidates"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "true_expected_count"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "sampled_expected_count"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_true"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sampled"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "unique"
+    type: "bool"
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "Any"
   input_arg {
     name: "input"
@@ -7886,6 +7936,108 @@ op {
   }
 }
 op {
+  name: "FixedUnigramCandidateSampler"
+  input_arg {
+    name: "true_classes"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sampled_candidates"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "true_expected_count"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "sampled_expected_count"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_true"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sampled"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "unique"
+    type: "bool"
+  }
+  attr {
+    name: "range_max"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "vocab_file"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "distortion"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
+    name: "num_reserved_ids"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+    default_value {
+      i: 1
+    }
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shard"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "unigrams"
+    type: "list(float)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "Floor"
   input_arg {
     name: "x"
@@ -9560,6 +9712,62 @@ op {
   }
 }
 op {
+  name: "LearnedUnigramCandidateSampler"
+  input_arg {
+    name: "true_classes"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sampled_candidates"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "true_expected_count"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "sampled_expected_count"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_true"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sampled"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "unique"
+    type: "bool"
+  }
+  attr {
+    name: "range_max"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "Less"
   input_arg {
     name: "x"
@@ -9847,6 +10055,62 @@ op {
       i: 0
     }
   }
+}
+op {
+  name: "LogUniformCandidateSampler"
+  input_arg {
+    name: "true_classes"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sampled_candidates"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "true_expected_count"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "sampled_expected_count"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_true"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sampled"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "unique"
+    type: "bool"
+  }
+  attr {
+    name: "range_max"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "LogicalAnd"
@@ -24348,6 +24612,62 @@ op {
   }
 }
 op {
+  name: "ThreadUnsafeUnigramCandidateSampler"
+  input_arg {
+    name: "true_classes"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sampled_candidates"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "true_expected_count"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "sampled_expected_count"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_true"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sampled"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "unique"
+    type: "bool"
+  }
+  attr {
+    name: "range_max"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "Tile"
   input_arg {
     name: "input"
@@ -24685,6 +25005,62 @@ op {
       i: 0
     }
   }
+}
+op {
+  name: "UniformCandidateSampler"
+  input_arg {
+    name: "true_classes"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sampled_candidates"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "true_expected_count"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "sampled_expected_count"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_true"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sampled"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "unique"
+    type: "bool"
+  }
+  attr {
+    name: "range_max"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "Unique"

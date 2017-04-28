@@ -565,6 +565,7 @@ op {
   }
   summary: "Generates labels for candidate sampling with a learned unigram distribution."
   description: "See explanations of candidate sampling and the data formats at\ngo/candidate-sampling.\n\nFor each batch, this op picks a single set of sampled candidate labels.\n\nThe advantages of sampling candidates per-batch are simplicity and the\npossibility of efficient dense matrix multiplication. The disadvantage is that\nthe sampled candidates must be chosen independently of the context and of the\ntrue labels."
+  is_stateful: true
 }
 op {
   name: "Any"
@@ -7882,6 +7883,7 @@ op {
   }
   summary: "Generates labels for candidate sampling with a learned unigram distribution."
   description: "A unigram sampler could use a fixed unigram distribution read from a\nfile or passed in as an in-memory array instead of building up the distribution\nfrom data on the fly. There is also an option to skew the distribution by\napplying a distortion power to the weights.\n\nThe vocabulary file should be in CSV-like format, with the last field\nbeing the weight associated with the word.\n\nFor each batch, this op picks a single set of sampled candidate labels.\n\nThe advantages of sampling candidates per-batch are simplicity and the\npossibility of efficient dense matrix multiplication. The disadvantage is that\nthe sampled candidates must be chosen independently of the context and of the\ntrue labels."
+  is_stateful: true
 }
 op {
   name: "Floor"
@@ -9780,6 +9782,7 @@ op {
   }
   summary: "Generates labels for candidate sampling with a learned unigram distribution."
   description: "See explanations of candidate sampling and the data formats at\ngo/candidate-sampling.\n\nFor each batch, this op picks a single set of sampled candidate labels.\n\nThe advantages of sampling candidates per-batch are simplicity and the\npossibility of efficient dense matrix multiplication. The disadvantage is that\nthe sampled candidates must be chosen independently of the context and of the\ntrue labels."
+  is_stateful: true
 }
 op {
   name: "Less"
@@ -10106,6 +10109,7 @@ op {
   }
   summary: "Generates labels for candidate sampling with a log-uniform distribution."
   description: "See explanations of candidate sampling and the data formats at\ngo/candidate-sampling.\n\nFor each batch, this op picks a single set of sampled candidate labels.\n\nThe advantages of sampling candidates per-batch are simplicity and the\npossibility of efficient dense matrix multiplication. The disadvantage is that\nthe sampled candidates must be chosen independently of the context and of the\ntrue labels."
+  is_stateful: true
 }
 op {
   name: "LogicalAnd"
@@ -25891,6 +25895,7 @@ op {
   }
   summary: "Generates labels for candidate sampling with a learned unigram distribution."
   description: "See explanations of candidate sampling and the data formats at\ngo/candidate-sampling.\n\nFor each batch, this op picks a single set of sampled candidate labels.\n\nThe advantages of sampling candidates per-batch are simplicity and the\npossibility of efficient dense matrix multiplication. The disadvantage is that\nthe sampled candidates must be chosen independently of the context and of the\ntrue labels."
+  is_stateful: true
 }
 op {
   name: "Tile"
@@ -26277,6 +26282,7 @@ op {
   }
   summary: "Generates labels for candidate sampling with a uniform distribution."
   description: "See explanations of candidate sampling and the data formats at\ngo/candidate-sampling.\n\nFor each batch, this op picks a single set of sampled candidate labels.\n\nThe advantages of sampling candidates per-batch are simplicity and the\npossibility of efficient dense matrix multiplication. The disadvantage is that\nthe sampled candidates must be chosen independently of the context and of the\ntrue labels."
+  is_stateful: true
 }
 op {
   name: "Unique"
