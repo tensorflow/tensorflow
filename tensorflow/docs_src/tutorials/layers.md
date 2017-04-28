@@ -316,11 +316,11 @@ of 2, which indicates that the subregions extracted by the filter should be
 separated by 2 pixels in both the width and height dimensions (for a 2x2 filter,
 this means that none of the regions extracted will overlap). If you want to set
 different stride values for width and height, you can instead specify a tuple or
-list (e.g., `stride=[3,6]`).
+list (e.g., `stride=[3, 6]`).
 
 Our output tensor produced by `max_pooling2d()` (`pool1`) has a shape of
-<code>[<em>batch_size</em>, 14, 14, 1]</code>: the 2x2 filter reduces width and
-height by 50%.
+<code>[<em>batch_size</em>, 14, 14, 32]</code>: the 2x2 filter reduces width and
+height by 50% each.
 
 ### Convolutional Layer #2 and Pooling Layer #2
 
