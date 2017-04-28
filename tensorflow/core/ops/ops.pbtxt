@@ -538,7 +538,7 @@ op {
   attr {
     name: "num_sampled"
     type: "int"
-    description: "Number of candidates to produce per batch."
+    description: "Number of candidates to produce."
     has_minimum: true
     minimum: 1
   }
@@ -7797,7 +7797,7 @@ op {
   attr {
     name: "num_sampled"
     type: "int"
-    description: "Number of candidates to randomly sample per batch."
+    description: "Number of candidates to randomly sample."
     has_minimum: true
     minimum: 1
   }
@@ -9748,7 +9748,7 @@ op {
   attr {
     name: "num_sampled"
     type: "int"
-    description: "Number of candidates to randomly sample per batch."
+    description: "Number of candidates to randomly sample."
     has_minimum: true
     minimum: 1
   }
@@ -10075,7 +10075,7 @@ op {
   attr {
     name: "num_sampled"
     type: "int"
-    description: "Number of candidates to randomly sample per batch."
+    description: "Number of candidates to randomly sample."
     has_minimum: true
     minimum: 1
   }
@@ -25861,7 +25861,7 @@ op {
   attr {
     name: "num_sampled"
     type: "int"
-    description: "Number of candidates to randomly sample per batch."
+    description: "Number of candidates to randomly sample."
     has_minimum: true
     minimum: 1
   }
@@ -26248,7 +26248,7 @@ op {
   attr {
     name: "num_sampled"
     type: "int"
-    description: "Number of candidates to randomly sample per batch."
+    description: "Number of candidates to randomly sample."
     has_minimum: true
     minimum: 1
   }
