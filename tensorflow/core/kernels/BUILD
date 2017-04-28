@@ -4020,6 +4020,7 @@ filegroup(
         "relu_op.h",
         "relu_op_functor.h",
         "resize_bilinear_op.h",
+        "resize_nearest_neighbor_op.h",
         "reverse_op.h",
         "save_restore_tensor.h",
         "softplus_op.h",
