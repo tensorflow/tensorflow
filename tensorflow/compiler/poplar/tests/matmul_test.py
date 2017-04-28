@@ -10,6 +10,7 @@ import tensorflow as tf
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import special_math_ops
 
 class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
 
@@ -34,6 +35,39 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
                 fd = {pa: [[1.]], pb: [[4.]]}
                 result = sess.run(output, fd)
                 self.assertAllClose(result, [[4.]])
+
+    def testMatMulVec1(self):
+      with tf.device("/device:XLA_IPU:0"):
+        with tf.Session() as sess:
+          pa = tf.placeholder(tf.float32, [1,3], name="a")
+          pb = tf.placeholder(tf.float32, [3,1], name="b")
+          output = math_ops.matmul(pa, pb)
+
+          fd = {pa: [[1.,2.,3.]], pb: [[4.],[5.],[6.]]}
+          result = sess.run(output, fd)
+          self.assertAllClose(result, [[32.]])
+
+    def testMatMulVec2(self):
+      with tf.device("/device:XLA_IPU:0"):
+        with tf.Session() as sess:
+          pa = tf.placeholder(tf.float32, [3,1], name="a")
+          pb = tf.placeholder(tf.float32, [1,3], name="b")
+          output = math_ops.matmul(pa, pb)
+
+          fd = {pa: [[1.],[2.],[3.]], pb: [[4.,5.,6.]]}
+          result = sess.run(output, fd)
+          self.assertAllClose(result, [[4.,5.,6.],[8.,10.,12.],[12.,15.,18.]])
+
+    def testMatMulEinsumDot(self):
+      with tf.device("/device:XLA_IPU:0"):
+        with tf.Session() as sess:
+          pa = tf.placeholder(tf.float32, [3], name="a")
+          pb = tf.placeholder(tf.float32, [3], name="b")
+          output = special_math_ops.einsum('i,i->', pa, pb)
+
+          fd = {pa: [1.,2.,3.], pb: [4.,5.,6.]}
+          result = sess.run(output, fd)
+          self.assertAllClose(result, 32.)
 
     def testMatMul3x1x2(self):
         with tf.device("/device:XLA_IPU:0"):
