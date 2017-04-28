@@ -31,6 +31,7 @@ TEST(PathTest, JoinPath) {
 
   EXPECT_EQ("/foo/bar/baz/blah/blink/biz",
             JoinPath("/foo/bar/baz/", "/blah/blink/biz"));
+  EXPECT_EQ("/foo/bar/baz/blah", JoinPath("/foo", "bar", "baz", "blah"));
 }
 
 TEST(PathTest, IsAbsolutePath) {
@@ -44,6 +45,8 @@ TEST(PathTest, IsAbsolutePath) {
 }
 
 TEST(PathTest, Dirname) {
+  EXPECT_EQ("hdfs://127.0.0.1:9000/",
+            Dirname("hdfs://127.0.0.1:9000/train.csv.tfrecords"));
   EXPECT_EQ("/hello", Dirname("/hello/"));
   EXPECT_EQ("/", Dirname("/hello"));
   EXPECT_EQ("hello", Dirname("hello/world"));
@@ -75,6 +78,68 @@ TEST(PathTest, Extension) {
   EXPECT_EQ("", Extension("/a/path.bar/to/foo"));
   EXPECT_EQ("baz", Extension("/a/path.bar/to/foo.bar.baz"));
 }
+
+TEST(PathTest, CleanPath) {
+  EXPECT_EQ(".", CleanPath(""));
+  EXPECT_EQ("x", CleanPath("x"));
+  EXPECT_EQ("/a/b/c/d", CleanPath("/a/b/c/d"));
+  EXPECT_EQ("/a/b/c/d/*", CleanPath("/a/b/c/d/*"));
+  EXPECT_EQ("/a/b/c/d", CleanPath("/a/b/c/d/"));
+  EXPECT_EQ("/a/b", CleanPath("/a//b"));
+  EXPECT_EQ("/a/b", CleanPath("//a//b/"));
+  EXPECT_EQ("/", CleanPath("/.."));
+  EXPECT_EQ("/", CleanPath("/././././"));
+  EXPECT_EQ("/a", CleanPath("/a/b/.."));
+  EXPECT_EQ("/", CleanPath("/a/b/../../.."));
+  EXPECT_EQ("/", CleanPath("//a//b/..////../..//"));
+  EXPECT_EQ("/x", CleanPath("//a//../x//"));
+  EXPECT_EQ("x", CleanPath("x"));
+  EXPECT_EQ("../../a/c", CleanPath("../../a/b/../c"));
+  EXPECT_EQ("../..", CleanPath("../../a/b/../c/../.."));
+  EXPECT_EQ("../../bar", CleanPath("foo/../../../bar"));
+}
+
+#define EXPECT_PARSE_URI(uri, scheme, host, path)  \
+  do {                                             \
+    StringPiece u(uri);                            \
+    StringPiece s, h, p;                           \
+    ParseURI(u, &s, &h, &p);                       \
+    EXPECT_EQ(scheme, s.ToString());               \
+    EXPECT_EQ(host, h.ToString());                 \
+    EXPECT_EQ(path, p.ToString());                 \
+    EXPECT_EQ(uri, CreateURI(scheme, host, path)); \
+    EXPECT_LE(u.begin(), s.begin());               \
+    EXPECT_GE(u.end(), s.begin());                 \
+    EXPECT_LE(u.begin(), s.end());                 \
+    EXPECT_GE(u.end(), s.end());                   \
+    EXPECT_LE(u.begin(), h.begin());               \
+    EXPECT_GE(u.end(), h.begin());                 \
+    EXPECT_LE(u.begin(), h.end());                 \
+    EXPECT_GE(u.end(), h.end());                   \
+    EXPECT_LE(u.begin(), p.begin());               \
+    EXPECT_GE(u.end(), p.begin());                 \
+    EXPECT_LE(u.begin(), p.end());                 \
+    EXPECT_GE(u.end(), p.end());                   \
+  } while (0)
+
+TEST(PathTest, CreateParseURI) {
+  EXPECT_PARSE_URI("http://foo", "http", "foo", "");
+  EXPECT_PARSE_URI("/encrypted/://foo", "", "", "/encrypted/://foo");
+  EXPECT_PARSE_URI("/usr/local/foo", "", "", "/usr/local/foo");
+  EXPECT_PARSE_URI("file:///usr/local/foo", "file", "", "/usr/local/foo");
+  EXPECT_PARSE_URI("local.file:///usr/local/foo", "local.file", "",
+                   "/usr/local/foo");
+  EXPECT_PARSE_URI("a-b:///foo", "", "", "a-b:///foo");
+  EXPECT_PARSE_URI(":///foo", "", "", ":///foo");
+  EXPECT_PARSE_URI("9dfd:///foo", "", "", "9dfd:///foo");
+  EXPECT_PARSE_URI("file:", "", "", "file:");
+  EXPECT_PARSE_URI("file:/", "", "", "file:/");
+  EXPECT_PARSE_URI("hdfs://localhost:8020/path/to/file", "hdfs",
+                   "localhost:8020", "/path/to/file");
+  EXPECT_PARSE_URI("hdfs://localhost:8020", "hdfs", "localhost:8020", "");
+  EXPECT_PARSE_URI("hdfs://localhost:8020/", "hdfs", "localhost:8020", "/");
+}
+#undef EXPECT_PARSE_URI
 
 }  // namespace io
 }  // namespace tensorflow

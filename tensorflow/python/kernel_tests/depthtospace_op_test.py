@@ -20,14 +20,20 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class DepthToSpaceTest(tf.test.TestCase):
+class DepthToSpaceTest(test.TestCase):
 
   def _testOne(self, inputs, block_size, outputs):
-    with self.test_session():
-      x_tf = tf.depth_to_space(tf.to_float(inputs), block_size)
+    with self.test_session(use_gpu=True):
+      x_tf = array_ops.depth_to_space(math_ops.to_float(inputs), block_size)
       self.assertAllEqual(x_tf.eval(), outputs)
 
   def testBasic(self):
@@ -136,8 +142,8 @@ class DepthToSpaceTest(tf.test.TestCase):
     block_size = 4
     # Raise an exception, since th depth is only 4 and needs to be
     # divisible by 16.
-    with self.assertRaises(IndexError):
-      out_tf = tf.depth_to_space(x_np, block_size)
+    with self.assertRaises(ValueError):
+      out_tf = array_ops.depth_to_space(x_np, block_size)
       out_tf.eval()
 
   # Test when the block size is 0.
@@ -146,7 +152,7 @@ class DepthToSpaceTest(tf.test.TestCase):
              [[3], [4]]]]
     block_size = 0
     with self.assertRaises(ValueError):
-      out_tf = tf.depth_to_space(x_np, block_size)
+      out_tf = array_ops.depth_to_space(x_np, block_size)
       out_tf.eval()
 
   # Test when the block size is 1. The block size should be > 1.
@@ -157,7 +163,7 @@ class DepthToSpaceTest(tf.test.TestCase):
               [4, 4, 4, 4]]]]
     block_size = 1
     with self.assertRaises(ValueError):
-      out_tf = tf.depth_to_space(x_np, block_size)
+      out_tf = array_ops.depth_to_space(x_np, block_size)
       out_tf.eval()
 
   def testBlockSizeLargerThanInput(self):
@@ -165,8 +171,8 @@ class DepthToSpaceTest(tf.test.TestCase):
     x_np = [[[[1], [2]],
              [[3], [4]]]]
     block_size = 10
-    with self.assertRaises(IndexError):
-      out_tf = tf.space_to_depth(x_np, block_size)
+    with self.assertRaises(ValueError):
+      out_tf = array_ops.space_to_depth(x_np, block_size)
       out_tf.eval()
 
   def testBlockSizeNotDivisibleDepth(self):
@@ -176,24 +182,24 @@ class DepthToSpaceTest(tf.test.TestCase):
              [[3, 3, 3, 3],
               [4, 4, 4, 4]]]]
     block_size = 3
-    with self.assertRaises(IndexError):
-      _ = tf.space_to_depth(x_np, block_size)
+    with self.assertRaises(ValueError):
+      _ = array_ops.space_to_depth(x_np, block_size)
 
   def testUnknownShape(self):
-    t = tf.depth_to_space(tf.placeholder(tf.float32), block_size=4)
+    t = array_ops.depth_to_space(array_ops.placeholder(dtypes.float32), block_size=4)
     self.assertEqual(4, t.get_shape().ndims)
 
 
-class DepthToSpaceGradientTest(tf.test.TestCase):
+class DepthToSpaceGradientTest(test.TestCase):
 
   # Check the gradients.
   def _checkGrad(self, x, block_size):
     assert 4 == x.ndim
-    with self.test_session():
-      tf_x = tf.convert_to_tensor(x)
-      tf_y = tf.depth_to_space(tf_x, block_size)
+    with self.test_session(use_gpu=True):
+      tf_x = ops.convert_to_tensor(x)
+      tf_y = array_ops.depth_to_space(tf_x, block_size)
       epsilon = 1e-2
-      ((x_jacob_t, x_jacob_n)) = tf.test.compute_gradient(
+      ((x_jacob_t, x_jacob_n)) = gradient_checker.compute_gradient(
           tf_x,
           x.shape,
           tf_y,
@@ -225,4 +231,4 @@ class DepthToSpaceGradientTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

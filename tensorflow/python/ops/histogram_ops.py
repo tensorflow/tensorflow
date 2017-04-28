@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=g-short-docstring-punctuation
-"""## Histograms
+"""Histograms.
+
+Please see @{$python/histogram_ops} guide.
 
 @@histogram_fixed_width
 """
@@ -42,9 +44,9 @@ def histogram_fixed_width(values,
 
   Args:
     values:  Numeric `Tensor`.
-    value_range:  Shape [2] `Tensor`.  new_values <= value_range[0] will be
-      mapped to hist[0], values >= value_range[1] will be mapped to hist[-1].
-      Must be same dtype as new_values.
+    value_range:  Shape [2] `Tensor` of same `dtype` as `values`.
+      values <= value_range[0] will be mapped to hist[0],
+      values >= value_range[1] will be mapped to hist[-1].
     nbins:  Scalar `int32 Tensor`.  Number of histogram bins.
     dtype:  dtype for returned histogram.
     name:  A name for this operation (defaults to 'histogram_fixed_width').
@@ -62,7 +64,7 @@ def histogram_fixed_width(values,
 
   with tf.default_session() as sess:
     hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
-    variables.initialize_all_variables().run()
+    variables.global_variables_initializer().run()
     sess.run(hist) => [2, 1, 1, 0, 2]
   ```
   """
@@ -72,7 +74,7 @@ def histogram_fixed_width(values,
     values = array_ops.reshape(values, [-1])
     value_range = ops.convert_to_tensor(value_range, name='value_range')
     nbins = ops.convert_to_tensor(nbins, dtype=dtypes.int32, name='nbins')
-    nbins_float = math_ops.to_float(nbins)
+    nbins_float = math_ops.cast(nbins, values.dtype)
 
     # Map tensor values that fall within value_range to [0, 1].
     scaled_values = math_ops.truediv(values - value_range[0],

@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/prefetch.h"
 
 namespace tensorflow {
 
@@ -56,6 +56,9 @@ gtl::InlinedVector<int64, 4> IntTensorToInt64Vec(const Tensor& tensor) {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 // Shared code that is not dependent on the type of T.  We do this to reduce
 // code size by not duplicating all this for all T (float, double, int32, etc.)
@@ -136,7 +139,7 @@ class SliceOp : public OpKernel {
       return;
     }
 
-    if (slice_dim0 && IsInnerDimsSizeAligned<T>(input.shape())) {
+    if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], size[0])) {
       VLOG(1) << "Slice dim 0: " << input.shape().DebugString();
       CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
       context->set_output(0, input.Slice(begin[0], begin[0] + size[0]));
@@ -176,6 +179,7 @@ class SliceOp : public OpKernel {
       HANDLE_DIM(4);
       HANDLE_DIM(5);
       HANDLE_DIM(6);
+      HANDLE_DIM(7);
 
 #undef HANDLE_DIM
 
@@ -219,7 +223,8 @@ namespace functor {
   DECLARE_CPU_SPEC(T, 3); \
   DECLARE_CPU_SPEC(T, 4); \
   DECLARE_CPU_SPEC(T, 5); \
-  DECLARE_CPU_SPEC(T, 6);
+  DECLARE_CPU_SPEC(T, 6); \
+  DECLARE_CPU_SPEC(T, 7);
 
 TF_CALL_ALL_TYPES(DECLARE_FOR_N);
 DECLARE_FOR_N(bfloat16);
@@ -236,7 +241,8 @@ DECLARE_FOR_N(bfloat16);
                               .HostMemory("size"),       \
                           SliceOp<CPUDevice, type>)
 
-TF_CALL_ALL_TYPES(REGISTER_SLICE);
+TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
+TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
 REGISTER_SLICE(bfloat16);
 
 #undef REGISTER_SLICE
@@ -259,9 +265,12 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 3); \
   DECLARE_GPU_SPEC(T, 4); \
   DECLARE_GPU_SPEC(T, 5); \
-  DECLARE_GPU_SPEC(T, 6);
+  DECLARE_GPU_SPEC(T, 6); \
+  DECLARE_GPU_SPEC(T, 7);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
+TF_CALL_complex64(DECLARE_FOR_N);
+TF_CALL_complex128(DECLARE_FOR_N);
 DECLARE_FOR_N(int32);
 
 #undef DECLARE_FOR_N
@@ -278,6 +287,8 @@ DECLARE_FOR_N(int32);
                           SliceOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -296,4 +307,59 @@ REGISTER_KERNEL_BUILDER(Name("Slice")
 
 #endif  // GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+// Forward declarations of the functor specializations for SYCL.
+namespace functor {
+#define DECLARE_SYCL_SPEC(T, NDIM)                                 \
+  template <>                                                      \
+  void Slice<SYCLDevice, T, NDIM>::operator()(                     \
+      const SYCLDevice& d, typename TTypes<T, NDIM>::Tensor output,\
+      typename TTypes<T, NDIM>::ConstTensor input,                 \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,       \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes);        \
+  extern template struct Slice<SYCLDevice, T, NDIM>;
+
+#define DECLARE_FOR_N(T)   \
+  DECLARE_SYCL_SPEC(T, 1); \
+  DECLARE_SYCL_SPEC(T, 2); \
+  DECLARE_SYCL_SPEC(T, 3); \
+  DECLARE_SYCL_SPEC(T, 4); \
+  DECLARE_SYCL_SPEC(T, 5); \
+  DECLARE_SYCL_SPEC(T, 6); \
+  DECLARE_SYCL_SPEC(T, 7);
+
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
+DECLARE_FOR_N(int32);
+
+#undef DECLARE_FOR_N
+#undef DECLARE_SYCL_SPEC
+}  // namespace functor
+
+#define REGISTER_SYCL(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("Slice")                        \
+                              .Device(DEVICE_SYCL)             \
+                              .TypeConstraint<type>("T")       \
+                              .HostMemory("begin")             \
+                              .HostMemory("size")              \
+                              .TypeConstraint<int32>("Index"), \
+                          SliceOp<SYCLDevice, type>)
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Slice")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Index")
+                            .HostMemory("input")
+                            .HostMemory("begin")
+                            .HostMemory("size")
+                            .HostMemory("output"),
+                        SliceOp<CPUDevice, int32>);
+
+#undef REGISTER_SYCL
+
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

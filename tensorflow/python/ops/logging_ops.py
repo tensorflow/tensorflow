@@ -19,54 +19,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_logging_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_logging_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util.deprecation import deprecated
+
+# The python wrapper for Assert is in control_flow_ops, as the Assert
+# call relies on certain conditionals for its dependencies.  Use
+# control_flow_ops.Assert.
 
 
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
-def Assert(condition, data, summarize=None, name=None):
-  """Asserts that the given condition is true.
-
-  If `condition` evaluates to false, print the list of tensors in `data`.
-  `summarize` determines how many entries of the tensors to print.
-
-  NOTE: To ensure that Assert executes, one usually attaches a dependency:
-
-  ```python
-   # Ensure maximum element of x is smaller or equal to 1
-  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
-  x = tf.with_dependencies([assert_op], x)
-  ```
-
-  Args:
-    condition: The condition to evaluate.
-    data: The tensors to print out when condition is false.
-    summarize: Print this many entries of each tensor.
-    name: A name for this operation (optional).
-
-  Returns:
-    assert_op: An `Operation` that, when executed, raises a
-    `tf.errors.InvalidArgumentError` if `condition` is not true.
-  """
-  return gen_logging_ops._assert(condition, data, summarize, name)
-
-
-ops.RegisterShape("Assert")(common_shapes.no_outputs)
-
-
 def Print(input_, data, message=None, first_n=None, summarize=None,
           name=None):
   """Prints a list of tensors.
 
   This is an identity op with the side effect of printing `data` when
   evaluating.
+
+  Note: This op prints to the standard error. It is not currently compatible
+    with jupyter notebook (printing to the notebook *server's* output, not into
+    the notebook).
 
   Args:
     input_: A tensor passed through this op.
@@ -89,9 +67,6 @@ def _PrintGrad(op, *grad):
   return list(grad) + [None] * (len(op.inputs) - 1)
 
 
-ops.RegisterShape("Print")(common_shapes.unchanged_shape)
-
-
 def _Collect(val, collections, default_collections):
   if collections is None:
     collections = default_collections
@@ -99,8 +74,19 @@ def _Collect(val, collections, default_collections):
     ops.add_to_collection(key, val)
 
 
+@deprecated(
+    "2016-11-30", "Please switch to tf.summary.histogram. Note that "
+    "tf.summary.histogram uses the node name instead of the tag. "
+    "This means that TensorFlow will automatically de-duplicate summary "
+    "names based on the scope they are created in.")
 def histogram_summary(tag, values, collections=None, name=None):
+  # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with a histogram.
+
+  This ops is deprecated. Please switch to tf.summary.histogram.
+
+  For an explanation of why this op was deprecated, and information on how to
+  migrate, look ['here'](https://www.tensorflow.org/code/tensorflow/contrib/deprecated/__init__.py)
 
   The generated
   [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
@@ -127,8 +113,18 @@ def histogram_summary(tag, values, collections=None, name=None):
   return val
 
 
+@deprecated(
+    "2016-11-30", "Please switch to tf.summary.image. Note that "
+    "tf.summary.image uses the node name instead of the tag. "
+    "This means that TensorFlow will automatically de-duplicate summary "
+    "names based on the scope they are created in. Also, the max_images "
+    "argument was renamed to max_outputs.")
 def image_summary(tag, tensor, max_images=3, collections=None, name=None):
+  # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with images.
+
+  For an explanation of why this op was deprecated, and information on how to
+  migrate, look ['here'](https://www.tensorflow.org/code/tensorflow/contrib/deprecated/__init__.py)
 
   The summary has up to `max_images` summary values containing images. The
   images are built from `tensor` which must be 4-D with shape `[batch_size,
@@ -178,13 +174,23 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
   return val
 
 
+@deprecated(
+    "2016-11-30", "Please switch to tf.summary.audio. Note that "
+    "tf.summary.audio uses the node name instead of the tag. "
+    "This means that TensorFlow will automatically de-duplicate summary "
+    "names based on the scope they are created in.")
 def audio_summary(tag,
                   tensor,
                   sample_rate,
                   max_outputs=3,
                   collections=None,
                   name=None):
+  # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with audio.
+
+  This op is deprecated. Please switch to tf.summary.audio.
+  For an explanation of why this op was deprecated, and information on how to
+  migrate, look ['here'](https://www.tensorflow.org/code/tensorflow/contrib/deprecated/__init__.py)
 
   The summary has up to `max_outputs` summary values containing audio. The
   audio is built from `tensor` which must be 3-D with shape `[batch_size,
@@ -204,7 +210,8 @@ def audio_summary(tag,
       of the summary values.
     tensor: A 3-D `float32` `Tensor` of shape `[batch_size, frames, channels]`
       or a 2-D `float32` `Tensor` of shape `[batch_size, frames]`.
-    sample_rate: The sample rate of the signal in hertz.
+    sample_rate: A Scalar `float32` `Tensor` indicating the sample rate of the
+      signal in hertz.
     max_outputs: Max number of batch elements to generate audio for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [ops.GraphKeys.SUMMARIES]
@@ -215,18 +222,24 @@ def audio_summary(tag,
     buffer.
   """
   with ops.name_scope(name, "AudioSummary", [tag, tensor]) as scope:
-    val = gen_logging_ops._audio_summary(tag=tag,
-                                         tensor=tensor,
-                                         max_outputs=max_outputs,
-                                         sample_rate=sample_rate,
-                                         name=scope)
+    sample_rate = ops.convert_to_tensor(sample_rate, dtype=dtypes.float32,
+                                        name="sample_rate")
+    val = gen_logging_ops._audio_summary_v2(tag=tag,
+                                            tensor=tensor,
+                                            max_outputs=max_outputs,
+                                            sample_rate=sample_rate,
+                                            name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
 
 
+@deprecated("2016-11-30", "Please switch to tf.summary.merge.")
 def merge_summary(inputs, collections=None, name=None):
   # pylint: disable=line-too-long
   """Merges summaries.
+
+  This op is deprecated. Please switch to tf.summary.merge, which has identical
+  behavior.
 
   This op creates a
   [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
@@ -253,8 +266,12 @@ def merge_summary(inputs, collections=None, name=None):
   return val
 
 
+@deprecated("2016-11-30", "Please switch to tf.summary.merge_all.")
 def merge_all_summaries(key=ops.GraphKeys.SUMMARIES):
   """Merges all summaries collected in the default graph.
+
+  This op is deprecated. Please switch to tf.summary.merge_all, which has
+  identical behavior.
 
   Args:
     key: `GraphKey` used to collect the summaries.  Defaults to
@@ -296,8 +313,20 @@ def get_summary_op():
   return summary_op
 
 
+@deprecated(
+    "2016-11-30", "Please switch to tf.summary.scalar. Note that "
+    "tf.summary.scalar uses the node name instead of the tag. "
+    "This means that TensorFlow will automatically de-duplicate summary "
+    "names based on the scope they are created in. Also, passing a "
+    "tensor or list of tags to a scalar summary op is no longer "
+    "supported.")
 def scalar_summary(tags, values, collections=None, name=None):
+  # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with scalar values.
+
+  This ops is deprecated. Please switch to tf.summary.scalar.
+  For an explanation of why this op was deprecated, and information on how to
+  migrate, look ['here'](https://www.tensorflow.org/code/tensorflow/contrib/deprecated/__init__.py)
 
   The input `tags` and `values` must have the same shape.  The generated
   summary has a summary value for each tag-value pair in `tags` and `values`.
@@ -319,19 +348,9 @@ def scalar_summary(tags, values, collections=None, name=None):
   return val
 
 
-ops.NoGradient("HistogramAccumulatorSummary")
-ops.NoGradient("HistogramSummary")
-ops.NoGradient("ImageSummary")
-ops.NoGradient("AudioSummary")
-ops.NoGradient("MergeSummary")
-ops.NoGradient("ScalarSummary")
-
-
-@ops.RegisterShape("HistogramAccumulatorSummary")
-@ops.RegisterShape("HistogramSummary")
-@ops.RegisterShape("ImageSummary")
-@ops.RegisterShape("AudioSummary")
-@ops.RegisterShape("MergeSummary")
-@ops.RegisterShape("ScalarSummary")
-def _ScalarShape(unused_op):
-  return [tensor_shape.scalar()]
+ops.NotDifferentiable("HistogramSummary")
+ops.NotDifferentiable("ImageSummary")
+ops.NotDifferentiable("AudioSummary")
+ops.NotDifferentiable("AudioSummaryV2")
+ops.NotDifferentiable("MergeSummary")
+ops.NotDifferentiable("ScalarSummary")

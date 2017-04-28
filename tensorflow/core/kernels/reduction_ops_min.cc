@@ -17,9 +17,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define REGISTER_CPU_KERNELS(type)                              \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("Min").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+#define REGISTER_CPU_KERNELS(type)        \
+  REGISTER_KERNEL_BUILDER(                \
+      Name("Min")                         \
+          .Device(DEVICE_CPU)             \
+          .TypeConstraint<type>("T")      \
+          .TypeConstraint<int32>("Tidx"), \
       ReductionOp<CPUDevice, type, Eigen::internal::MinReducer<type>>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
@@ -31,6 +34,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       Name("Min")                           \
           .Device(DEVICE_GPU)               \
           .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
           .HostMemory("reduction_indices"), \
       ReductionOp<GPUDevice, type, Eigen::internal::MinReducer<type>>);
 REGISTER_GPU_KERNELS(float);
@@ -45,11 +49,35 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("reduction_indices")
         .HostMemory("input")
         .HostMemory("output")
-        .TypeConstraint<int32>("T"),
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx"),
     ReductionOp<CPUDevice, int32, Eigen::internal::MinReducer<int32>>);
 
 #undef REGISTER_GPU_KERNELS
 
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)         \
+  REGISTER_KERNEL_BUILDER(                  \
+      Name("Min")                           \
+          .Device(DEVICE_SYCL)              \
+          .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
+          .HostMemory("reduction_indices"), \
+      ReductionOp<SYCLDevice, type, Eigen::internal::MinReducer<type>>);
+REGISTER_SYCL_KERNELS(float);
+#undef REGISTER_SYCL_KERNELS
+
+REGISTER_KERNEL_BUILDER(
+    Name("Min")
+        .Device(DEVICE_SYCL)
+        .HostMemory("reduction_indices")
+        .HostMemory("input")
+        .HostMemory("output")
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx"),
+    ReductionOp<CPUDevice, int32, Eigen::internal::MinReducer<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

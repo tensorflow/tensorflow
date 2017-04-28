@@ -359,9 +359,9 @@ Status BatchExampleProtoToTensors(
   for (size_t b = 0; b < examples.size(); ++b) {
     const Example& ex = *(examples[b]);
     const string& example_name = (has_names) ? names[b] : "<unknown>";
-    SingleExampleProtoToTensors(
+    TF_RETURN_IF_ERROR(SingleExampleProtoToTensors(
         ex, example_name, b, fixed_len_features, var_len_features,
-        &output_dense_values_tensor_ptrs, &sparse_values_tmp);
+        &output_dense_values_tensor_ptrs, &sparse_values_tmp));
   }
 
   for (size_t d = 0; d < var_len_features.size(); ++d) {
@@ -370,8 +370,9 @@ Status BatchExampleProtoToTensors(
     const std::vector<Tensor>& sparse_values_tensor = sparse_values_tmp[d];
 
     VarLenFeatureBatchShapes sparse_tensor_batch_shapes;
-    GetSparseTensorShapes(feature_config, sparse_values_tensor, batch_size,
-                          &sparse_tensor_batch_shapes);
+    TF_RETURN_IF_ERROR(GetSparseTensorShapes(feature_config,
+                                             sparse_values_tensor, batch_size,
+                                             &sparse_tensor_batch_shapes));
     const TensorShape& indices_shape = sparse_tensor_batch_shapes.indices_shape;
     const TensorShape& values_shape = sparse_tensor_batch_shapes.values_shape;
 

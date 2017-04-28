@@ -62,6 +62,34 @@ TF_CALL_complex128(DEFINE_TYPE);
 #undef DEFINE_DIM
 #undef DEFINE_TYPE
 
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+
+// Register functors used for TileOp.
+#define DEFINE_DIM(T, NDIM) template struct Tile<SYCLDevice, T, NDIM>;
+#define DEFINE_TYPE(T) DEFINE_DIM(T, CPU_PROVIDED_IXDIM)
+
+TF_CALL_float(DEFINE_TYPE);
+TF_CALL_double(DEFINE_TYPE);
+TF_CALL_int32(DEFINE_TYPE);
+
+#undef DEFINE_DIM
+#undef DEFINE_TYPE
+
+// Register functors used for TileGradientOp.
+#define DEFINE_DIM(T, NDIM)                      \
+  template struct TileGrad<SYCLDevice, T, NDIM>; \
+  template struct ReduceAndReshape<SYCLDevice, T, NDIM, 1>;
+#define DEFINE_TYPE(T) DEFINE_DIM(T, CPU_PROVIDED_IXDIM)
+
+TF_CALL_float(DEFINE_TYPE);
+TF_CALL_double(DEFINE_TYPE);
+TF_CALL_int32(DEFINE_TYPE);
+
+#undef DEFINE_DIM
+#undef DEFINE_TYPE
+#endif // TENSORFLOW_USE_SYCL
+
 }  // end namespace functor
 }  // end namespace tensorflow
 

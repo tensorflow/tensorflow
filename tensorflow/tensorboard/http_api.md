@@ -28,6 +28,21 @@ from the `AudioSummary`, and the `images` from `ImageSummary`. The tag type
 boolean denoting if there is a graph definition associated with the run. The tag
 is provided to the summary op (usually as a constant).
 
+## `data/logdir`
+
+Returns a JSON object with a key "logdir" that maps to the `logdir` argument
+(string) with which Tensorboard started up. Example:
+`{logdir: '/foo/logdir/argument'}`
+
+The `logdir` argument is the path of the directory that contains events files.
+
+## `data/plugins_listing`
+
+Returns a dict mapping from plugin name to a boolean indicating whether the
+plugin is active. A plugin might be inactive, for instance, if it lacks relevant
+data. Every plugin has a key. This route helps the frontend avoid issuing
+requests to an inactive plugin - the routes of an inactive plugin do not work.
+
 ## `data/runs`
 
 Returns a dictionary mapping from `run name` (quoted string) to dictionaries

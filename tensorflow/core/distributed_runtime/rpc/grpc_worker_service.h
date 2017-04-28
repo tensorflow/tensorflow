@@ -16,18 +16,35 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
 
+#include "tensorflow/core/distributed_runtime/worker.h"
+
 namespace grpc {
+class ByteBuffer;
 class ServerBuilder;
 }  // namespace grpc
 
 namespace tensorflow {
 
 class AsyncServiceInterface;
-class WorkerEnv;
+struct WorkerEnv;
+struct WorkerSession;
+
+class GrpcWorker : public Worker {
+ public:
+  GrpcWorker(WorkerEnv* env);
+
+  // Specialized version of RecvTensor for gRPC, which avoids a copy.
+  void RecvTensorAsync(CallOptions* opts, const RecvTensorRequest* request,
+                       ::grpc::ByteBuffer* response, StatusCallback done);
+
+  WorkerEnv* env();
+};
+
+std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env);
 
 // Returns an implementation of WorkerService rpc service.
-AsyncServiceInterface* NewGrpcWorkerService(WorkerEnv* env,
-                                            ::grpc::ServerBuilder* builder);
+std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
+    GrpcWorker* worker, ::grpc::ServerBuilder* builder);
 
 }  // namespace tensorflow
 

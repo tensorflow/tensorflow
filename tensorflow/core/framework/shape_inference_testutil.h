@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/version.h"
 
 // Contains utilities for writing tests for shape inference functions.
 
@@ -33,6 +35,7 @@ struct ShapeInferenceTestOp {
   string name;
   NodeDef node_def;
   std::vector<const Tensor*> input_tensors;
+  int graph_def_version = TF_GRAPH_DEF_VERSION;
 };
 
 namespace shape_inference {
@@ -65,6 +68,10 @@ class ShapeInferenceTestutil {
 
  private:
   ShapeInferenceTestutil() {}
+
+  // Makes a shape out of 'spec'.
+  static Status MakeShapeFromString(InferenceContext::ShapeManager* manager,
+                                    const string& spec, ShapeHandle* output);
 };
 
 }  // namespace shape_inference

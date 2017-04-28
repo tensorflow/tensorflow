@@ -89,12 +89,32 @@ struct SetZeroFunctor<GPUDevice, T> {
 };
 
 #define DEFINE_SETZERO_GPU(T) template struct SetZeroFunctor<GPUDevice, T>
+DEFINE_SETZERO_GPU(bool);
 DEFINE_SETZERO_GPU(Eigen::half);
 DEFINE_SETZERO_GPU(float);
 DEFINE_SETZERO_GPU(double);
 DEFINE_SETZERO_GPU(complex64);
 DEFINE_SETZERO_GPU(complex128);
+DEFINE_SETZERO_GPU(int64);
 #undef DEFINE_SETZERO_GPU
+
+// Partial specialization of FillFunctor<Device=GPUDevice, T>.
+template <typename T>
+struct SetOneFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat out) {
+    To32Bit(out).device(d) = To32Bit(out).constant(T(1));
+  }
+};
+
+#define DEFINE_SETONE_GPU(T) template struct SetOneFunctor<GPUDevice, T>
+DEFINE_SETONE_GPU(bool);
+DEFINE_SETONE_GPU(Eigen::half);
+DEFINE_SETONE_GPU(float);
+DEFINE_SETONE_GPU(double);
+DEFINE_SETONE_GPU(complex64);
+DEFINE_SETONE_GPU(complex128);
+DEFINE_SETONE_GPU(int64);
+#undef DEFINE_SETONE_GPU
 
 }  // end namespace functor
 }  // end namespace tensorflow

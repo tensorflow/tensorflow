@@ -45,9 +45,9 @@ class NonMaxSuppressionOpTest : public OpsTestBase {
 TEST_F(NonMaxSuppressionOpTest, TestSelectFromThreeClusters) {
   MakeOp(.5);
   AddInputFromArray<float>(TensorShape({6, 4}),
-                           {0, 0,  1, 1,  0, 0.1,  1, 1.1,  0, -0.1, 1, 0.9,
-                            0, 10, 1, 11, 0, 10.1, 1, 11.1, 0, 100,  1, 101});
-  AddInputFromArray<float>(TensorShape({6}), {.9, .75, .6, .95, .5, .3});
+                           {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+                            0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,  1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
   AddInputFromArray<int>(TensorShape({}), {3});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -59,9 +59,9 @@ TEST_F(NonMaxSuppressionOpTest, TestSelectFromThreeClusters) {
 TEST_F(NonMaxSuppressionOpTest, TestSelectFromThreeClustersFlippedCoordinates) {
   MakeOp(.5);
   AddInputFromArray<float>(TensorShape({6, 4}),
-                           {1, 1,  0, 0,  0, 0.1,  1, 1.1,  0, .9,  1, -0.1,
-                            0, 10, 1, 11, 1, 10.1, 0, 11.1, 1, 101, 0, 100});
-  AddInputFromArray<float>(TensorShape({6}), {.9, .75, .6, .95, .5, .3});
+                           {1, 1,  0, 0,  0, 0.1f,  1, 1.1f,  0, .9f,  1, -0.1f,
+                            0, 10, 1, 11, 1, 10.1f, 0, 11.1f, 1, 101, 0, 100});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
   AddInputFromArray<int>(TensorShape({}), {3});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -73,9 +73,9 @@ TEST_F(NonMaxSuppressionOpTest, TestSelectFromThreeClustersFlippedCoordinates) {
 TEST_F(NonMaxSuppressionOpTest, TestSelectAtMostTwoBoxesFromThreeClusters) {
   MakeOp(.5);
   AddInputFromArray<float>(TensorShape({6, 4}),
-                           {0, 0,  1, 1,  0, 0.1,  1, 1.1,  0, -0.1, 1, 0.9,
-                            0, 10, 1, 11, 0, 10.1, 1, 11.1, 0, 100,  1, 101});
-  AddInputFromArray<float>(TensorShape({6}), {.9, .75, .6, .95, .5, .3});
+                           {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+                            0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,  1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
   AddInputFromArray<int>(TensorShape({}), {2});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -87,9 +87,9 @@ TEST_F(NonMaxSuppressionOpTest, TestSelectAtMostTwoBoxesFromThreeClusters) {
 TEST_F(NonMaxSuppressionOpTest, TestSelectAtMostThirtyBoxesFromThreeClusters) {
   MakeOp(.5);
   AddInputFromArray<float>(TensorShape({6, 4}),
-                           {0, 0,  1, 1,  0, 0.1,  1, 1.1,  0, -0.1, 1, 0.9,
-                            0, 10, 1, 11, 0, 10.1, 1, 11.1, 0, 100,  1, 101});
-  AddInputFromArray<float>(TensorShape({6}), {.9, .75, .6, .95, .5, .3});
+                           {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+                            0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,  1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
   AddInputFromArray<int>(TensorShape({}), {30});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -101,7 +101,7 @@ TEST_F(NonMaxSuppressionOpTest, TestSelectAtMostThirtyBoxesFromThreeClusters) {
 TEST_F(NonMaxSuppressionOpTest, TestSelectSingleBox) {
   MakeOp(.5);
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<float>(TensorShape({1}), {.9});
+  AddInputFromArray<float>(TensorShape({1}), {.9f});
   AddInputFromArray<int>(TensorShape({}), {3});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -136,9 +136,9 @@ TEST_F(NonMaxSuppressionOpTest, TestSelectFromTenIdenticalBoxes) {
 TEST_F(NonMaxSuppressionOpTest, TestInconsistentBoxAndScoreShapes) {
   MakeOp(.5);
   AddInputFromArray<float>(TensorShape({6, 4}),
-                           {0, 0,  1, 1,  0, 0.1,  1, 1.1,  0, -0.1, 1, 0.9,
-                            0, 10, 1, 11, 0, 10.1, 1, 11.1, 0, 100,  1, 101});
-  AddInputFromArray<float>(TensorShape({5}), {.9, .75, .6, .95, .5});
+                           {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+                            0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,  1, 101});
+  AddInputFromArray<float>(TensorShape({5}), {.9f, .75f, .6f, .95f, .5f});
   AddInputFromArray<int>(TensorShape({}), {30});
   Status s = RunOpKernel();
 
@@ -151,7 +151,7 @@ TEST_F(NonMaxSuppressionOpTest, TestInconsistentBoxAndScoreShapes) {
 TEST_F(NonMaxSuppressionOpTest, TestInvalidIOUThreshold) {
   MakeOp(1.2);
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<float>(TensorShape({1}), {.9});
+  AddInputFromArray<float>(TensorShape({1}), {.9f});
   AddInputFromArray<int>(TensorShape({}), {3});
   Status s = RunOpKernel();
 

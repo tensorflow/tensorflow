@@ -171,12 +171,6 @@ class OpListOpRegistry : public OpRegistryInterface {
   std::unordered_map<string, const OpRegistrationData*> index_;
 };
 
-// Treats 'registry_ptr' as a pointer to OpRegistry, and calls
-// registry_ptr->Register(op_def) for each op_def that has been registered with
-// the current library's global op registry (obtained by calling
-// OpRegistry::Global().
-extern "C" void RegisterOps(void* registry_ptr);
-
 // Support for defining the OpDef (specifying the semantics of the Op and how
 // it should be created) and registering it in the OpRegistry::Global()
 // registry.  Usage:
@@ -298,6 +292,18 @@ struct OpDefBuilderReceiver {
       TF_ATTRIBUTE_UNUSED =                                                  \
           ::tensorflow::register_op::OpDefBuilderWrapper<SHOULD_REGISTER_OP( \
               name)>(name)
+
+// The `REGISTER_SYSTEM_OP()` macro acts as `REGISTER_OP()` except
+// that the op is registered unconditionally even when selective
+// registration is used.
+#define REGISTER_SYSTEM_OP(name) \
+  REGISTER_SYSTEM_OP_UNIQ_HELPER(__COUNTER__, name)
+#define REGISTER_SYSTEM_OP_UNIQ_HELPER(ctr, name) \
+  REGISTER_SYSTEM_OP_UNIQ(ctr, name)
+#define REGISTER_SYSTEM_OP_UNIQ(ctr, name)                                \
+  static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr \
+      TF_ATTRIBUTE_UNUSED =                                               \
+          ::tensorflow::register_op::OpDefBuilderWrapper<true>(name)
 
 }  // namespace tensorflow
 

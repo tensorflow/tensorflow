@@ -17,11 +17,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define REGISTER_CPU_KERNELS(type)                               \
-  REGISTER_KERNEL_BUILDER(                                       \
-      Name("Prod").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+#define REGISTER_CPU_KERNELS(type)        \
+  REGISTER_KERNEL_BUILDER(                \
+      Name("Prod")                        \
+          .Device(DEVICE_CPU)             \
+          .TypeConstraint<type>("T")      \
+          .TypeConstraint<int32>("Tidx"), \
       ReductionOp<CPUDevice, type, Eigen::internal::ProdReducer<type>>);
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
+TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA
@@ -31,14 +34,39 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       Name("Prod")                          \
           .Device(DEVICE_GPU)               \
           .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
           .HostMemory("reduction_indices"), \
       ReductionOp<GPUDevice, type, Eigen::internal::ProdReducer<type>>);
-REGISTER_GPU_KERNELS(Eigen::half);
-REGISTER_GPU_KERNELS(int32);
-REGISTER_GPU_KERNELS(float);
-REGISTER_GPU_KERNELS(double);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_int32(REGISTER_GPU_KERNELS);
+TF_CALL_complex64(REGISTER_GPU_KERNELS);
+TF_CALL_complex128(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)         \
+  REGISTER_KERNEL_BUILDER(                  \
+      Name("Prod")                          \
+          .Device(DEVICE_SYCL)              \
+          .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
+          .HostMemory("reduction_indices"), \
+      ReductionOp<SYCLDevice, type, Eigen::internal::ProdReducer<type>>);
+REGISTER_SYCL_KERNELS(float);
+REGISTER_SYCL_KERNELS(double);
+#undef REGISTER_SYCL_KERNELS
+
+REGISTER_KERNEL_BUILDER(
+    Name("Prod")
+        .Device(DEVICE_SYCL)
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx")
+        .HostMemory("input")
+        .HostMemory("output")
+        .HostMemory("reduction_indices"),
+    ReductionOp<CPUDevice, int32, Eigen::internal::ProdReducer<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

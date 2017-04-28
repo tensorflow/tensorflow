@@ -602,5 +602,12 @@ TEST_F(OpDefBuilderTest, SetShapeFnCalledTwiceFailure) {
                 "SetShapeFn called twice for Op Test");
 }
 
+TEST_F(OpDefBuilderTest, ResourceIsStateful) {
+  OpRegistrationData op_reg_data;
+  TF_EXPECT_OK(b().Input("a: resource").Finalize(&op_reg_data));
+  const OpDef& op_def = op_reg_data.op_def;
+  EXPECT_TRUE(op_def.is_stateful());
+}
+
 }  // namespace
 }  // namespace tensorflow

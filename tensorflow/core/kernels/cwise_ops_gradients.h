@@ -114,8 +114,7 @@ template <typename T>
 struct functor_traits<scalar_sqrt_gradient_op<T>> {
   enum {
     PacketAccess = packet_traits<T>::HasMul & packet_traits<T>::HasDiv,
-    Cost =
-        NumTraits<T>::MulCost + NumTraits<T>::template Div<PacketAccess>::Cost,
+    Cost = NumTraits<T>::MulCost + scalar_div_cost<T, PacketAccess>::value,
   };
 };
 
@@ -171,6 +170,21 @@ struct SimpleBinaryFunctor<CPUDevice, Functor> {
     out.device(d) = in0.binaryExpr(in1, typename Functor::func());
   }
 };
+
+
+#ifdef TENSORFLOW_USE_SYCL
+// Partial specialization of BinaryFunctor for SYCL devices
+typedef Eigen::SyclDevice SYCLDevice;
+template <typename Functor>
+struct SimpleBinaryFunctor<SYCLDevice, Functor> {
+  void operator()(const SYCLDevice& d, typename Functor::tout_type out,
+                  typename Functor::tin_type in0,
+                  typename Functor::tin_type in1) {
+    out.device(d) = in0.binaryExpr(in1, typename Functor::func());
+  }
+};
+
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct tanh_grad : base<T, Eigen::internal::scalar_tanh_gradient_op<T>> {};

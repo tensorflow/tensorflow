@@ -23,14 +23,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.metrics.python.ops import metric_ops_util
+from tensorflow.contrib.framework.python.framework import tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import histogram_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
@@ -79,7 +79,7 @@ def auc_using_histogram(boolean_labels,
     collections = [ops.GraphKeys.LOCAL_VARIABLES]
   with variable_scope.variable_scope(
       name, 'auc_using_histogram', [boolean_labels, scores, score_range]):
-    scores, boolean_labels = metric_ops_util.remove_squeezable_dimensions(
+    scores, boolean_labels = tensor_util.remove_squeezable_dimensions(
         scores, boolean_labels)
     score_range = ops.convert_to_tensor(score_range, name='score_range')
     boolean_labels, scores = _check_labels_and_scores(
@@ -108,12 +108,12 @@ def _check_labels_and_scores(boolean_labels, scores, check_shape):
           boolean_labels.dtype)
 
     if check_shape:
-      labels_rank_1 = logging_ops.Assert(
+      labels_rank_1 = control_flow_ops.Assert(
           math_ops.equal(1, array_ops.rank(boolean_labels)),
           ['Argument boolean_labels should have rank 1.  Found: ',
            boolean_labels.name, array_ops.shape(boolean_labels)])
 
-      scores_rank_1 = logging_ops.Assert(
+      scores_rank_1 = control_flow_ops.Assert(
           math_ops.equal(1, array_ops.rank(scores)),
           ['Argument scores should have rank 1.  Found: ', scores.name,
            array_ops.shape(scores)])
@@ -153,17 +153,17 @@ def _auc_hist_accumulate(hist_true, hist_false, nbins, collections):
     # Holds running total histogram of scores for records labeled True.
     hist_true_acc = variable_scope.get_variable(
         'hist_true_acc',
-        initializer=array_ops.zeros_initializer(
-            [nbins],
-            dtype=hist_true.dtype),
+        shape=[nbins],
+        dtype=hist_true.dtype,
+        initializer=init_ops.zeros_initializer(),
         collections=collections,
         trainable=False)
     # Holds running total histogram of scores for records labeled False.
     hist_false_acc = variable_scope.get_variable(
         'hist_false_acc',
-        initializer=array_ops.zeros_initializer(
-            [nbins],
-            dtype=hist_false.dtype),
+        shape=[nbins],
+        dtype=hist_true.dtype,
+        initializer=init_ops.zeros_initializer(),
         collections=collections,
         trainable=False)
 
@@ -203,8 +203,8 @@ def _auc_convert_hist_to_auc(hist_true_acc, hist_false_acc, nbins):
                                        math_ops.reduce_sum(hist_false_acc))
 
   # These become delta x, delta y from the paper.
-  delta_y_t = array_ops.reverse(normed_hist_true, [True], name='delta_y_t')
-  delta_x_t = array_ops.reverse(normed_hist_false, [True], name='delta_x_t')
+  delta_y_t = array_ops.reverse_v2(normed_hist_true, [0], name='delta_y_t')
+  delta_x_t = array_ops.reverse_v2(normed_hist_false, [0], name='delta_x_t')
 
   # strict_1d_cumsum requires float32 args.
   delta_y_t = math_ops.cast(delta_y_t, dtypes.float32)

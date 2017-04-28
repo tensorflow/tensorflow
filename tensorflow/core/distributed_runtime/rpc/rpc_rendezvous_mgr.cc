@@ -38,9 +38,9 @@ namespace {
 
 class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  public:
-  RpcRemoteRendezvous(const WorkerEnv* env, WorkerCacheInterface* cache,
-                      int64 step_id)
-      : BaseRemoteRendezvous(env, step_id, false), cache_(cache) {}
+  RpcRemoteRendezvous(const WorkerEnv* env, const string& worker_name,
+                      WorkerCacheInterface* cache, int64 step_id)
+      : BaseRemoteRendezvous(env, worker_name, step_id, false), cache_(cache) {}
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
@@ -50,7 +50,7 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  private:
   ~RpcRemoteRendezvous() override {}
 
-  WorkerCacheInterface* cache_;  // Not owned.
+  WorkerCacheInterface* const cache_;  // Not owned.
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRemoteRendezvous);
 };
 
@@ -71,8 +71,8 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     req_.set_rendezvous_key(key.data(), key.size());
   }
 
-  void Reset() {
-    delete wi_;
+  void Reset(WorkerCacheInterface* wc) {
+    wc->ReleaseWorker(src_worker_, wi_);
     wi_ = nullptr;
     alloc_attrs_ = AllocatorAttributes();
     dst_device_ = nullptr;
@@ -87,7 +87,14 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     done_ = nullptr;
   }
 
-  ~RpcRecvTensorCall() override { delete wi_; }
+  ~RpcRecvTensorCall() override {
+    // Since only the RpcRecvTensorFreeList will delete an
+    // RpcRecvTensorCall, and it always sets this->wi_ to null when
+    // a call object is released to it, we can assert that this->wi_ is
+    // always null at the point of deletion.
+    CHECK_EQ(static_cast<WorkerInterface*>(nullptr), wi_)
+        << "Leaking WorkerInterface in RpcRecvTensorCall destructor.";
+  }
 
   void Start(std::function<void()> recv_done) override {
     StartRTCall(std::move(recv_done));
@@ -156,7 +163,7 @@ class RpcRecvTensorFreeList {
  public:
   RpcRecvTensorFreeList() {}
   ~RpcRecvTensorFreeList() {
-    for (int i = 0; i < objects_.size(); i++) {
+    for (size_t i = 0; i < objects_.size(); i++) {
       delete objects_[i];
     }
   }
@@ -173,8 +180,8 @@ class RpcRecvTensorFreeList {
     return new RpcRecvTensorCall;
   }
 
-  void Release(RpcRecvTensorCall* obj) {
-    obj->Reset();
+  void Release(RpcRecvTensorCall* obj, WorkerCacheInterface* wc) {
+    obj->Reset(wc);
     {
       mutex_lock l(mu_);
       if (objects_.size() < kMaxObjects) {
@@ -192,9 +199,12 @@ class RpcRecvTensorFreeList {
   std::vector<RpcRecvTensorCall*> objects_ GUARDED_BY(mu_);
 };
 
-static RpcRecvTensorFreeList call_freelist_;
+static RpcRecvTensorFreeList* get_call_freelist() {
+  static RpcRecvTensorFreeList* call_freelist = new RpcRecvTensorFreeList();
+  return call_freelist;
+}
 
-// A private cache that wraps env->worker_cache and allows reuse of
+// A private cache that wraps worker_cache and allows reuse of
 // WorkerInterface objects.
 class WorkerFreeListCache : public WorkerCacheInterface {
  public:
@@ -202,11 +212,11 @@ class WorkerFreeListCache : public WorkerCacheInterface {
 
   ~WorkerFreeListCache() {
     for (auto p : workers_) {
-      delete p.second.worker;
+      wrapped_->ReleaseWorker(p.first, p.second.worker);
     }
   }
 
-  void ListWorkers(std::vector<string>* workers) override {
+  void ListWorkers(std::vector<string>* workers) const override {
     wrapped_->ListWorkers(workers);
   }
 
@@ -219,7 +229,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     WorkerState state;
     state.worker = wrapped_->CreateWorker(target);
     if (state.worker != nullptr) {
-      workers_.insert(make_pair(target, state));
+      workers_.insert(std::make_pair(target, state));
     }
     return state.worker;
   }
@@ -228,14 +238,14 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     // TODO(jeff,sanjay): Should decrement ref-count when we implement eviction.
   }
 
-  bool GetDeviceBusNonBlocking(const string& device,
-                               BusAdjacency* ba) override {
-    return wrapped_->GetDeviceBusNonBlocking(device, ba);
+  bool GetDeviceLocalityNonBlocking(const string& device,
+                                    DeviceLocality* locality) override {
+    return wrapped_->GetDeviceLocalityNonBlocking(device, locality);
   }
 
-  void GetDeviceBusAsync(const string& device, BusAdjacency* ba,
-                         StatusCallback done) override {
-    wrapped_->GetDeviceBusAsync(device, ba, done);
+  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+                              StatusCallback done) override {
+    wrapped_->GetDeviceLocalityAsync(device, locality, done);
   }
 
   void SetLogging(bool active) override { wrapped_->SetLogging(active); }
@@ -265,17 +275,8 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     DoneCallback done) {
   Status s;
 
-  // TODO(jeff): Consider checking for a valid worker_cache during the
-  // constructor of RpcRemoteRendezvous, rather than here, to simplify
-  // the twisty logic below.
-  if (env_->worker_cache == nullptr) {
-    s = errors::Internal("No remote worker cache available.");
-    done(s, Args(), recv_args, Tensor{}, false);
-    return;
-  }
-
   // Prepare a RecvTensor call that can handle being aborted.
-  RpcRecvTensorCall* call = call_freelist_.New();
+  RpcRecvTensorCall* call = get_call_freelist()->New();
 
   // key.src_device identifies a remote device.
   if (!DeviceNameUtils::SplitDeviceName(parsed.src_device, &call->src_worker_,
@@ -293,7 +294,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     s = env_->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
   }
   if (!s.ok()) {
-    call_freelist_.Release(call);
+    get_call_freelist()->Release(call, cache_);
     done(s, Args(), recv_args, Tensor{}, false);
     return;
   }
@@ -315,20 +316,24 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     call->done()(s, Args(), call->recv_args(), call->tensor(), call->is_dead());
     cache_->ReleaseWorker(call->src_worker_, call->wi_);
     call->wi_ = nullptr;
-    call_freelist_.Release(call);
+    get_call_freelist()->Release(call, cache_);
     Unref();
   });
 }
 
 }  // namespace
 
-RpcRendezvousMgr::RpcRendezvousMgr(const WorkerEnv* env)
-    : BaseRendezvousMgr(env),
-      cache_(new WorkerFreeListCache(env->worker_cache)) {}
+RpcRendezvousMgr::RpcRendezvousMgr(const WorkerEnv* env,
+                                   const string& worker_name,
+                                   WorkerCacheInterface* worker_cache)
+    : BaseRendezvousMgr(env, worker_name),
+      cache_(new WorkerFreeListCache(worker_cache)) {}
 
 BaseRemoteRendezvous* RpcRendezvousMgr::Create(int64 step_id,
-                                               const WorkerEnv* worker_env) {
-  return new RpcRemoteRendezvous(worker_env, cache_.get(), step_id);
+                                               const WorkerEnv* worker_env,
+                                               const string& worker_name) {
+  return new RpcRemoteRendezvous(worker_env, worker_name, cache_.get(),
+                                 step_id);
 }
 
 }  // end namespace tensorflow

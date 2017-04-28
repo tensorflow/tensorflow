@@ -86,17 +86,17 @@ class SummaryHistoOp : public OpKernel {
     // Build histogram of values in "values" tensor
     histogram::Histogram histo;
     for (int64 i = 0; i < flat.size(); i++) {
-      T v = flat(i);
-      if (Eigen::numext::isnan(v)) {
+      const double double_val = static_cast<double>(flat(i));
+      if (Eigen::numext::isnan(double_val)) {
         c->SetStatus(
             errors::InvalidArgument("Nan in summary histogram for: ", name()));
         break;
-      } else if (Eigen::numext::isinf(v)) {
+      } else if (Eigen::numext::isinf(double_val)) {
         c->SetStatus(errors::InvalidArgument(
             "Infinity in summary histogram for: ", name()));
         break;
       }
-      histo.Add(static_cast<double>(v));
+      histo.Add(double_val);
     }
 
     Summary s;

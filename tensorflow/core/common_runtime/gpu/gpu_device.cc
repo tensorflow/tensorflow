@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -72,69 +73,20 @@ namespace tensorflow {
 // corresponding stream have completed.  The following two classes
 // serve this purpose in two different compilation environments.
 
-#if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
-class EigenAllocator : public ::Eigen::Allocator {
- public:
-  EigenAllocator() {}
-
-  void Reinitialize(OpKernelContext* context, gpu::Stream* stream,
-                    ::tensorflow::Allocator* alloc, EventMgr* em) {
-    if (LogMemory::IsEnabled()) {
-      operation_ = context->op_kernel().name() + "/EigenAllocator";
-      step_id_ = context->step_id();
-    }
-    stream_ = stream;
-    allocator_ = alloc;
-    em_ = em;
-  }
-
-  void* allocate(size_t num_bytes) const override {
-    void* ret = allocator_->AllocateRaw(32 /* alignment */, num_bytes);
-    // Eigen doesn't typically check the return pointer from allocate,
-    // so we do it here and die with a more helpful error message.
-    if (ret == nullptr) {
-      LOG(FATAL) << "EigenAllocator for GPU ran out of memory when allocating "
-                 << num_bytes << ". See error logs for more detailed info.";
-    }
-    if (LogMemory::IsEnabled()) {
-      LogMemory::RecordRawAllocation(operation_, step_id_, num_bytes, ret,
-                                     allocator_);
-    }
-    return ret;
-  }
-
-  void deallocate(void* buffer) const override {
-    if (LogMemory::IsEnabled()) {
-      LogMemory::RecordRawDeallocation(operation_, step_id_, buffer, allocator_,
-                                       true);
-    }
-    em_->ThenDeleteBuffer(stream_, {allocator_, buffer, operation_, step_id_});
-  }
-
- private:
-  string operation_;
-  int64 step_id_;
-  gpu::Stream* stream_;                 // Not owned.
-  ::tensorflow::Allocator* allocator_;  // Not owned.
-  ::tensorflow::EventMgr* em_;          // Not owned.
-
-  TF_DISALLOW_COPY_AND_ASSIGN(EigenAllocator);
-};
-
-#else
 class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
  public:
-  EigenCudaStreamDevice() : scratch_(nullptr), semaphore_(nullptr) {
+  EigenCudaStreamDevice()
+      : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {
     Eigen::initializeDeviceProp();
   }
-  ~EigenCudaStreamDevice() {
-  }
+  ~EigenCudaStreamDevice() {}
   void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
                     int gpu_id, ::tensorflow::Allocator* alloc, char* scratch) {
     if (LogMemory::IsEnabled()) {
       operation_ = context->op_kernel().name() + "/EigenAllocator";
       step_id_ = context->step_id();
     }
+    context_ = context;
     scratch_ = scratch;
     semaphore_ =
         reinterpret_cast<unsigned int*>(scratch + Eigen::kCudaScratchSize);
@@ -151,8 +103,15 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   void* allocate(size_t num_bytes) const override {
     void* ret = allocator_->AllocateRaw(32 /* alignment */, num_bytes);
     if (ret == nullptr) {
-      LOG(FATAL) << "EigenAllocator for GPU ran out of memory when allocating "
-                 << num_bytes << ". See error logs for more detailed info.";
+      if (context_) {
+        context_->SetStatus(errors::ResourceExhausted(
+            strings::StrCat("Ran out of GPU memory when allocating ", num_bytes,
+                            " bytes for ", operation_)));
+      } else {
+        LOG(FATAL)
+            << "EigenAllocator for GPU ran out of memory when allocating "
+            << num_bytes << ". See error logs for more detailed info.";
+      }
     }
     if (LogMemory::IsEnabled()) {
       LogMemory::RecordRawAllocation(operation_, step_id_, num_bytes, ret,
@@ -173,9 +132,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
 
   // Return a pointer to a per stream scratchpad of 1024 bytes residing
   // in global memory.
-  void* scratchpad() const {
-    return scratch_;
-  }
+  void* scratchpad() const { return scratch_; }
 
   // Return a semaphore. The semaphore is initially initialized to 0, and
   // each kernel using it is responsible for resetting to 0 upon completion
@@ -212,20 +169,19 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   ::tensorflow::Allocator* allocator_;  // Not owned.
   mutable char* scratch_;
   mutable unsigned int* semaphore_;
+  OpKernelContext* context_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenCudaStreamDevice);
 };
 
-#endif
-
 BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
-                             Bytes memory_limit, BusAdjacency bus_adjacency,
+                             Bytes memory_limit, const DeviceLocality& locality,
                              int gpu_id, const string& physical_device_desc,
                              Allocator* gpu_allocator, Allocator* cpu_allocator,
                              bool sync_every_op, int32 max_streams)
-    : LocalDevice(options, Device::BuildDeviceAttributes(
-                               name, DEVICE_GPU, memory_limit, bus_adjacency,
-                               physical_device_desc),
+    : LocalDevice(options,
+                  Device::BuildDeviceAttributes(name, DEVICE_GPU, memory_limit,
+                                                locality, physical_device_desc),
                   gpu_allocator),
       gpu_allocator_(gpu_allocator),
       cpu_allocator_(cpu_allocator),
@@ -312,6 +268,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   gpu_device_info_->stream = streams_[0].compute;
   gpu_device_info_->default_context = device_contexts_[0];
   gpu_device_info_->event_mgr = em_.get();
+  gpu_device_info_->gpu_id = gpu_id_;
   set_tensorflow_gpu_device_info(gpu_device_info_);
 
   return Status::OK();
@@ -328,14 +285,14 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
                                      DeviceContextMap* device_context_map) {
   VLOG(2) << "FillContextMap";
 
-  const auto num_streams = streams_.size();
+  const size_t num_streams = streams_.size();
   // Special case for single stream.
   if (num_streams == 1) {
     return Status::OK();
   }
   const int64 before = Env::Default()->NowMicros();
   gpu_stream_util::AssignStreamsOpts opts;
-  opts.max_streams = num_streams;
+  opts.max_streams = static_cast<int32>(num_streams);
   std::unordered_map<int, int> node_to_stream_id;
   TF_RETURN_IF_ERROR(
       gpu_stream_util::AssignStreams(graph, opts, &node_to_stream_id));
@@ -367,6 +324,29 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   port::Tracing::ScopedActivity region(port::Tracing::EventCategory::kCompute,
                                        id);
 
+  // NOTE(tucker): We need to discriminate between Eigen GPU
+  // operations and all others.  If an operation is Eigen
+  // implemented (or otherwise tries to launch a cuda kernel
+  // directly), we need to establish a stacked-scoped environment
+  // that directs it to execute on the proper device.  Otherwise we
+  // expect the Op to use StreamExecutor directly and correctly.  The
+  // way we make this discrimination is quite hacky: At the moment
+  // the only non-Eigen GPU Op is the recv-op, which is known to be
+  // asynchronous.
+  if (op_kernel->is_internal() && op_kernel->type_string() == "_Recv") {
+    context->SetStatus(errors::Internal(
+        "Invalid synchronous 'Compute' on GPU for '_Recv' op"));
+  } else if (port::Tracing::ScopedAnnotation::Enabled()) {
+    port::Tracing::ScopedAnnotation annotation(op_kernel->name(),
+                                               op_kernel->type_string());
+    ComputeHelper(op_kernel, context);
+  } else {
+    ComputeHelper(op_kernel, context);
+  }
+}
+
+void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
+                                  OpKernelContext* context) {
   GPUDeviceContext* gpu_device_context = device_contexts_[0];
   if (context->op_device_context() != nullptr) {
     gpu_device_context =
@@ -384,65 +364,47 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
             << stream_id << "]";
   }
 
-  // NOTE(tucker): We need to discriminate between Eigen GPU
-  // operations and all others.  If an operation is Eigen
-  // implemented (or otherwise tries to launch a cuda kernel
-  // directly), we need to establish a stacked-scoped environment
-  // that directs it to execute on the proper device.  Otherwise we
-  // expect the Op to use StreamExecutor directly and correctly.  The
-  // way we make this discrimination is quite hacky: At the moment
-  // the only non-Eigen GPU Op is the recv-op, which is known to be
-  // asynchronous.
-  if (op_kernel->is_internal() && op_kernel->type_string() == "_Recv") {
-    context->SetStatus(errors::Internal(
-        "Invalid synchronous 'Compute' on GPU for '_Recv' op"));
-  } else {
-    port::Tracing::ScopedAnnotation annotation(op_kernel->name(),
-                                               op_kernel->type_string());
-
-    const auto num_streams = streams_.size();
-    if (num_streams > 1) {
-      // If this op's device context is different from the other contexts,
-      // we must wait on the stream.
-      for (int i = 0; i < context->num_inputs(); ++i) {
-        const GPUDeviceContext* idc =
-            static_cast<GPUDeviceContext*>(context->input_device_context(i));
-        OP_REQUIRES(context, idc != nullptr,
-                    errors::Internal("Input device context ", i,
-                                     " was not set properly."));
-        if (vlog_2) {
-          const void* base;
-          size_t len;
-          if (context->has_input(i)) {
-            if (IsRefType(context->input_dtype(i))) {
-              Tensor tensor = context->mutable_input(i, false);
-              base = DMAHelper::base(&tensor);
-              len = tensor.TotalBytes();
-            } else {
-              const Tensor& tensor = context->input(i);
-              base = DMAHelper::base(&tensor);
-              len = tensor.TotalBytes();
-            }
-            VLOG(2) << "Input " << i << " " << base << "  " << len;
-            VLOG(2) << "  stream[" << stream_id << "].ThenWaitFor(stream["
+  const auto num_streams = streams_.size();
+  if (num_streams > 1) {
+    // If this op's device context is different from the other contexts,
+    // we must wait on the stream.
+    for (int i = 0; i < context->num_inputs(); ++i) {
+      const GPUDeviceContext* idc =
+          static_cast<GPUDeviceContext*>(context->input_device_context(i));
+      OP_REQUIRES(context, idc != nullptr,
+                  errors::Internal("Input device context ", i,
+                                   " was not set properly."));
+      if (vlog_2) {
+        const void* base;
+        size_t len;
+        if (context->has_input(i)) {
+          if (IsRefType(context->input_dtype(i))) {
+            Tensor tensor = context->mutable_input(i, false);
+            base = DMAHelper::base(&tensor);
+            len = tensor.TotalBytes();
+          } else {
+            const Tensor& tensor = context->input(i);
+            base = DMAHelper::base(&tensor);
+            len = tensor.TotalBytes();
+          }
+          LOG(INFO) << "Input " << i << " " << base << "  " << len;
+          LOG(INFO) << "  stream[" << stream_id << "].ThenWaitFor(stream["
                     << idc->stream_id() << "])"
                     << ((idc->stream() == stream) ? " not needed" : "");
-          }
         }
-        if (idc->stream() != stream) stream->ThenWaitFor(idc->stream());
       }
+      if (idc->stream() != stream) stream->ThenWaitFor(idc->stream());
     }
-    gpu::cuda::ScopedActivateExecutorContext scoped_activation{
-        stream->parent()};
-    op_kernel->Compute(context);
-    if (context->status().ok()) {
-      if (sync_every_op_) {
-        // Note: GPUUtil::Sync() only syncs the default stream.
-        // We need to either sync the stream used by this op, or
-        // all streams.  Given that this flag is typically used for
-        // debugging it makes more sense to sync all GPU activity.
-        context->SetStatus(GPUUtil::SyncAll(this));
-      }
+  }
+  gpu::cuda::ScopedActivateExecutorContext scoped_activation{stream->parent()};
+  op_kernel->Compute(context);
+  if (context->status().ok()) {
+    if (sync_every_op_) {
+      // Note: GPUUtil::Sync() only syncs the default stream.
+      // We need to either sync the stream used by this op, or
+      // all streams.  Given that this flag is typically used for
+      // debugging it makes more sense to sync all GPU activity.
+      context->SetStatus(GPUUtil::SyncAll(this));
     }
   }
 }
@@ -475,8 +437,10 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
           << op_kernel->def().op() << " on GPU" << gpu_id_ << " stream["
           << stream_id << "]";
 
-  port::Tracing::TraceMe activity(
-      strings::StrCat(op_kernel->name(), ":", op_kernel->type_string()));
+  // When TraceMe profiling is off (which is the default), the
+  // following TraceMe constructor is simply a conditional test of
+  // false value. Measurements show that its overhead is negligible.
+  port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string());
   op_kernel->ComputeAsync(context, done);
 }
 
@@ -515,24 +479,6 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
 }
 
 namespace {
-#if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
-class ConcretePerOpGpuDevice : public PerOpGpuDevice {
- public:
-  ConcretePerOpGpuDevice() : device_(nullptr) {}
-  void Reinitialize(OpKernelContext* context, gpu::Stream* stream,
-                    Allocator* base_allocator, ::tensorflow::EventMgr* em,
-                    char* scratch) {
-    allocator_.Reinitialize(context, stream, base_allocator, em);
-    device_.Reinitialize(stream, &allocator_, scratch);
-  }
-
-  const Eigen::GpuDevice& device() const override { return device_; }
-
- private:
-  EigenAllocator allocator_;
-  Eigen::GpuDevice device_;
-};
-#else
 class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
   ConcretePerOpGpuDevice() : device_(&stream_device_) {}
@@ -549,7 +495,6 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
   EigenCudaStreamDevice stream_device_;
   Eigen::GpuDevice device_;
 };
-#endif
 }  // namespace
 
 void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
@@ -558,15 +503,10 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
   ConcretePerOpGpuDevice* concrete_device =
       static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
-#if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
-  concrete_device->Reinitialize(context, streams_[stream_id].compute, allocator,
-                                em_.get(), scratch_[stream_id]);
-#else
   const cudaStream_t* cuda_stream = reinterpret_cast<const cudaStream_t*>(
       streams_[stream_id].compute->implementation()->CudaStreamMemberHack());
   concrete_device->Reinitialize(context, cuda_stream, gpu_id_, allocator,
                                 scratch_[stream_id]);
-#endif
 }
 
 PerOpGpuDevice* BaseGPUDevice::MakeGpuDevice() {
@@ -592,7 +532,7 @@ void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
 Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
                                            const string& name_prefix,
                                            std::vector<Device*>* devices) {
-  int n = INT_MAX;
+  size_t n = INT_MAX;
   auto iter = options.config.device_count().find("GPU");
   if (iter != options.config.device_count().end()) {
     n = iter->second;
@@ -659,9 +599,9 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
     // may run into trouble later with data transfer operations.  The
     // trouble may manifest as slower than expected performance, or
     // outright failures.
-    LOG(ERROR) << "Could not identify NUMA node of " << name
-               << ", defaulting to 0.  Your kernel may not have been built "
-                  "with NUMA support.";
+    LOG(INFO) << "Could not identify NUMA node of " << name
+              << ", defaulting to 0.  Your kernel may not have been built "
+              << "with NUMA support.";
     numa_node = 0;
   }
 
@@ -683,26 +623,17 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
 
   Bytes allocated_bytes = static_cast<Bytes>(allocated_memory);
 
-  // Get GPU BusAdjacency from its reported NUMA affinity.
-  // Because GPUs are virtualized in some environments, we can't just
-  // use the GPU id.
-  BusAdjacency bus_adjacency = BUS_ANY;
-  switch (numa_node) {
-    case 0:
-      bus_adjacency = BUS_0;
-      break;
-    case 1:
-      bus_adjacency = BUS_1;
-      break;
-    default:
-      bus_adjacency = BUS_ANY;
-  }
-  VLOG(1) << "GPUDevice id " << gpu_id << " on bus " << bus_adjacency
+  // Get GPU bus_id from its reported NUMA affinity.  Because GPUs are
+  // virtualized in some environments, we can't just use the GPU id.
+  // NUMA locales are indexed from 0, buses are indexed from 1.
+  DeviceLocality dev_locality;
+  dev_locality.set_bus_id(numa_node + 1);
+  VLOG(1) << "GPUDevice id " << gpu_id << " on bus " << dev_locality.bus_id()
           << " numa: " << numa_node << " pci: " << desc.pci_bus_id();
 
   ProcessState* process_state = ProcessState::singleton();
   *out_device = CreateGPUDevice(
-      options, name, allocated_bytes, bus_adjacency, gpu_id,
+      options, name, allocated_bytes, dev_locality, gpu_id,
       GetShortDeviceDescription(gpu_id, desc),
       process_state->GetGPUAllocator(options.config.gpu_options(), gpu_id,
                                      allocated_memory),
@@ -765,8 +696,8 @@ struct CudaVersion {
   // Initialize from version_name in the form of "3.5"
   explicit CudaVersion(const std::string& version_name) {
     size_t dot_pos = version_name.find('.');
-    CHECK(dot_pos != string::npos) << "Illegal version name: [" << version_name
-                                   << "]";
+    CHECK(dot_pos != string::npos)
+        << "Illegal version name: [" << version_name << "]";
     string major_str = version_name.substr(0, dot_pos);
     CHECK(strings::safe_strto32(major_str, &major_part))
         << "Illegal version name: [" << version_name << "]";
@@ -791,8 +722,7 @@ struct CudaVersion {
 };
 
 std::vector<CudaVersion> supported_cuda_compute_capabilities = {
-  TF_CUDA_CAPABILITIES,
-};
+    TF_CUDA_CAPABILITIES,};
 
 std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
   auto cuda_caps = supported_cuda_compute_capabilities;
@@ -835,6 +765,8 @@ std::unique_ptr<std::map<std::pair<int, int>, bool>> GetPeerAccessMap(
 
 Status EnablePeerAccess(gpu::Platform* platform,
                         const std::vector<int>& visible_gpu_order) {
+  int possible_peer_count = 0;
+  int enabled_peer_count = 0;
   for (int i = 0; i < visible_gpu_order.size(); ++i) {
     const int i_gpu_id = visible_gpu_order[i];
     for (int j = 0; j < visible_gpu_order.size(); ++j) {
@@ -847,15 +779,30 @@ Status EnablePeerAccess(gpu::Platform* platform,
           platform->ExecutorForDevice(j_gpu_id).ValueOrDie();
 
       if (from->CanEnablePeerAccessTo(to)) {
+        ++possible_peer_count;
         auto status = from->EnablePeerAccessTo(to);
         if (!status.ok()) {
-          return errors::Internal(status.ToString());
+          LOG(WARNING)
+              << "Unable to enable peer access between device ordinals "
+              << i_gpu_id << " and " << j_gpu_id;
+        } else {
+          ++enabled_peer_count;
         }
       } else {
-        LOG(INFO) << "cannot enable peer access from device ordinal "
-                  << i_gpu_id << " to device ordinal " << j_gpu_id;
+        LOG(INFO) << "Peer access not supported between device ordinals "
+                  << i_gpu_id << " and " << j_gpu_id;
       }
     }
+  }
+
+  // Return an error in the extreme failure case where the driver
+  // reported that peering was possible but not a single peering was
+  // successful.  This is to catch possible system misconfigurations
+  // or more fundamental issues.
+  if (possible_peer_count > 0 && enabled_peer_count == 0) {
+    return errors::Internal(possible_peer_count,
+                            " potential peer access pairs were reported by the "
+                            "driver, but no peering could be enabled.");
   }
   return Status::OK();
 }
@@ -882,7 +829,9 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
   if (visible_device_list.empty()) {
     visible_gpu_order.resize(gpu_manager->VisibleDeviceCount());
     // By default, visible to virtual mapping is unchanged.
-    std::iota(visible_gpu_order.begin(), visible_gpu_order.end(), 0);
+    int deviceNo = 0;
+    std::generate(visible_gpu_order.begin(), visible_gpu_order.end(),
+                  [&deviceNo] { return deviceNo++; });
   } else {
     std::vector<string> order_str = str_util::Split(visible_device_list, ',');
     for (int i = 0; i < order_str.size(); ++i) {
@@ -1035,7 +984,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       continue;
     }
 
-    int new_id = ids->size();
+    size_t new_id = ids->size();
     ids->push_back(visible_gpu_id);
 
     LOG(INFO) << "Creating TensorFlow device (/gpu:" << new_id << ") -> "

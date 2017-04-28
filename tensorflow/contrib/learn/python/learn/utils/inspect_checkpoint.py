@@ -12,22 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """A simple script for inspect checkpoint files."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import sys
 
-import tensorflow as tf
+from tensorflow.contrib.framework.python.framework import checkpoint_utils
+from tensorflow.python.platform import app
 
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
-
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string("file_name", "", "Checkpoint filename")
-tf.app.flags.DEFINE_string("tensor_name", "", "Name of the tensor to inspect")
+FLAGS = None
 
 
 def print_tensors_in_checkpoint_file(file_name, tensor_name):
@@ -44,12 +41,12 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name):
   """
   try:
     if not tensor_name:
-      variables = checkpoints.list_variables(file_name)
+      variables = checkpoint_utils.list_variables(file_name)
       for name, shape in variables:
         print("%s\t%s" % (name, str(shape)))
     else:
       print("tensor_name: ", tensor_name)
-      print(checkpoints.load_variable(file_name, tensor_name))
+      print(checkpoint_utils.load_variable(file_name, tensor_name))
   except Exception as e:  # pylint: disable=broad-except
     print(str(e))
     if "corrupted compressed block contents" in str(e):
@@ -65,5 +62,21 @@ def main(unused_argv):
   else:
     print_tensors_in_checkpoint_file(FLAGS.file_name, FLAGS.tensor_name)
 
+
 if __name__ == "__main__":
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.register("type", "bool", lambda v: v.lower() == "true")
+  parser.add_argument(
+      "--file_name",
+      type=str,
+      default="",
+      help="Checkpoint filename"
+  )
+  parser.add_argument(
+      "--tensor_name",
+      type=str,
+      default="",
+      help="Name of the tensor to inspect"
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

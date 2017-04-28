@@ -66,7 +66,11 @@ py_library(
     name = "util_py",
     srcs = glob(["**/*.py"]),
     srcs_version = "PY2AND3",
-    deps = [],
+    deps = [
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+    ],
 )
 
 filegroup(

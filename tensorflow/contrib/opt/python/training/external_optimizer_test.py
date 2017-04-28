@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for external_optimizer."""
 
 from __future__ import absolute_import
@@ -20,7 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.contrib.opt.python.training import external_optimizer
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 # pylint: disable=g-import-not-at-top,unused-import
 try:
@@ -29,7 +35,7 @@ except ImportError:
   import builtins
 
 
-class MockOptimizerInterface(tf.contrib.opt.ExternalOptimizerInterface):
+class MockOptimizerInterface(external_optimizer.ExternalOptimizerInterface):
 
   NUM_STEP_CALLS = 5
   NUM_LOSS_CALLS = 2
@@ -46,7 +52,7 @@ class MockOptimizerInterface(tf.contrib.opt.ExternalOptimizerInterface):
     return initial_val - grad
 
 
-class TestCase(tf.test.TestCase):
+class TestCase(test.TestCase):
 
   def assertAllClose(self, array1, array2):
     array1 = np.asarray(array1)
@@ -62,21 +68,24 @@ class TestCase(tf.test.TestCase):
 class ExternalOptimizerInterfaceTest(TestCase):
 
   def test_optimize(self):
-    scalar = tf.Variable(tf.random_normal([]), 'scalar')
-    vector = tf.Variable(tf.random_normal([2]), 'vector')
-    matrix = tf.Variable(tf.random_normal([2, 3]), 'matrix')
+    scalar = variables.Variable(random_ops.random_normal([]), 'scalar')
+    vector = variables.Variable(random_ops.random_normal([2]), 'vector')
+    matrix = variables.Variable(random_ops.random_normal([2, 3]), 'matrix')
 
-    minimum_location = tf.constant(np.arange(9), dtype=tf.float32)
+    minimum_location = constant_op.constant(np.arange(9), dtype=dtypes.float32)
 
-    loss = tf.reduce_sum(tf.square(vector - minimum_location[:2])) / 2.
-    loss += tf.reduce_sum(tf.square(scalar - minimum_location[2])) / 2.
-    loss += tf.reduce_sum(tf.square(
-        matrix - tf.reshape(minimum_location[3:], [2, 3]))) / 2.
+    loss = math_ops.reduce_sum(math_ops.square(vector -
+                                               minimum_location[:2])) / 2.
+    loss += math_ops.reduce_sum(math_ops.square(scalar - minimum_location[
+        2])) / 2.
+    loss += math_ops.reduce_sum(
+        math_ops.square(matrix - array_ops.reshape(minimum_location[3:],
+                                                   [2, 3]))) / 2.
 
     optimizer = MockOptimizerInterface(loss)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
 
       optimizer.minimize(sess)
 
@@ -86,31 +95,34 @@ class ExternalOptimizerInterfaceTest(TestCase):
 
   def test_callbacks(self):
     vector_val = np.array([7., -2.], dtype=np.float32)
-    vector = tf.Variable(vector_val, 'vector')
+    vector = variables.Variable(vector_val, 'vector')
 
     minimum_location_val = np.arange(2)
-    minimum_location = tf.constant(minimum_location_val, dtype=tf.float32)
+    minimum_location = constant_op.constant(
+        minimum_location_val, dtype=dtypes.float32)
 
-    loss = tf.reduce_sum(tf.square(vector - minimum_location)) / 2.
+    loss = math_ops.reduce_sum(math_ops.square(vector - minimum_location)) / 2.
     loss_val = ((vector_val - minimum_location_val)**2).sum() / 2.
 
     optimizer = MockOptimizerInterface(loss)
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
 
       initial_vector_val = sess.run(vector)
 
       extra_fetches = [loss]
 
-      step_callback = tf.test.mock.Mock()
-      loss_callback = tf.test.mock.Mock()
+      step_callback = test.mock.Mock()
+      loss_callback = test.mock.Mock()
 
       optimizer.minimize(
-          sess, fetches=extra_fetches, loss_callback=loss_callback,
+          sess,
+          fetches=extra_fetches,
+          loss_callback=loss_callback,
           step_callback=step_callback)
 
-      call = tf.test.mock.call(loss_val)
+      call = test.mock.call(loss_val)
       loss_calls = [call] * MockOptimizerInterface.NUM_LOSS_CALLS
       loss_callback.assert_has_calls(loss_calls)
 
@@ -133,41 +145,45 @@ class ScipyOptimizerInterfaceTest(TestCase):
         f: a tensor (objective value)
       """
 
-      d = tf.size(x)
-      s = tf.add(100 * tf.square(tf.sub(tf.slice(x, [1], [d - 1]),
-                                        tf.square(tf.slice(x, [0], [d - 1])))),
-                 tf.square(tf.sub(1.0, tf.slice(x, [0], [d - 1]))))
-      return tf.reduce_sum(s)
+      d = array_ops.size(x)
+      s = math_ops.add(
+          100 * math_ops.square(
+              math_ops.subtract(
+                  array_ops.strided_slice(x, [1], [d]),
+                  math_ops.square(array_ops.strided_slice(x, [0], [d - 1])))),
+          math_ops.square(
+              math_ops.subtract(1.0, array_ops.strided_slice(x, [0], [d - 1]))))
+      return math_ops.reduce_sum(s)
 
     dimension = 5
-    x = tf.Variable(tf.zeros(dimension))
-    optimizer = tf.contrib.opt.ScipyOptimizerInterface(objective(x))
+    x = variables.Variable(array_ops.zeros(dimension))
+    optimizer = external_optimizer.ScipyOptimizerInterface(objective(x))
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
 
       self.assertAllClose(np.ones(dimension), sess.run(x))
 
   def test_nonlinear_programming(self):
     vector_initial_value = [7., 7.]
-    vector = tf.Variable(vector_initial_value, 'vector')
+    vector = variables.Variable(vector_initial_value, 'vector')
 
     # Make norm as small as possible.
-    loss = tf.reduce_sum(tf.square(vector))
+    loss = math_ops.reduce_sum(math_ops.square(vector))
     # Ensure y = 1.
     equalities = [vector[1] - 1.]
     # Ensure x >= 1. Thus optimum should be at (1, 1).
     inequalities = [vector[0] - 1.]
 
-    optimizer = tf.contrib.opt.ScipyOptimizerInterface(
-        loss, equalities=equalities, inequalities=inequalities,
-        method='SLSQP')
+    optimizer = external_optimizer.ScipyOptimizerInterface(
+        loss, equalities=equalities, inequalities=inequalities, method='SLSQP')
 
     with self.test_session() as sess:
-      sess.run(tf.initialize_all_variables())
+      sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       self.assertAllClose(np.ones(2), sess.run(vector))
 
+
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

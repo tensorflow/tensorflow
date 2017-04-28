@@ -20,8 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
 
@@ -37,10 +35,16 @@ def _ResizeNearestNeighborGrad(op, grad):
   Returns:
     The gradients w.r.t. the input and the output.
   """
+  image = op.inputs[0]
+  if image.get_shape()[1:3].is_fully_defined():
+    image_shape = image.get_shape()[1:3]
+  else:
+    image_shape = array_ops.shape(image)[1:3]
+
   # pylint: disable=protected-access
   grads = gen_image_ops._resize_nearest_neighbor_grad(
       grad,
-      op.inputs[0].get_shape()[1:3],
+      image_shape,
       align_corners=op.get_attr("align_corners"))
   # pylint: enable=protected-access
   return [grads, None]
@@ -67,51 +71,6 @@ def _ResizeBilinearGrad(op, grad):
         align_corners=op.get_attr("align_corners"))
     # pylint: enable=protected-access
   return [grad0, None]
-
-
-@ops.RegisterShape("ResizeNearestNeighborGrad")
-def _ResizeShape(op):
-  """Shape function for the resize grad ops."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  size = tensor_util.constant_value(op.inputs[1])
-  if size is not None:
-    height = size[0]
-    width = size[1]
-  else:
-    height = None
-    width = None
-  return [
-      tensor_shape.TensorShape([input_shape[0], height, width, input_shape[3]])
-  ]
-
-
-@ops.RegisterShape("ResizeBilinearGrad")
-def _ResizeBilinearGradShape(op):
-  """Shape function for ResizeBilinearGrad."""
-  return [op.inputs[1].get_shape()]
-
-
-@ops.RegisterShape("CropAndResizeGradImage")
-def _CropAndResizeGradImageShape(op):
-  """Shape function for CropAndResizeGradImage."""
-  image_size = tensor_util.constant_value(op.inputs[3])
-  if image_size is not None:
-    batch = image_size[0]
-    height = image_size[1]
-    width = image_size[2]
-    depth = image_size[3]
-  else:
-    batch = None
-    height = None
-    width = None
-    depth = None
-  return [tensor_shape.TensorShape([batch, height, width, depth])]
-
-
-@ops.RegisterShape("CropAndResizeGradBoxes")
-def _CropAndResizeGradBoxesShape(op):
-  """Shape function for CropAndResizeGradBoxes."""
-  return [op.inputs[2].get_shape()]
 
 
 @ops.RegisterGradient("CropAndResize")

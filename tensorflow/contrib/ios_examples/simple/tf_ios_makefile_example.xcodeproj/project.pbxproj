@@ -274,14 +274,17 @@
 		591157B31CF4011D00C31E3A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_DEBUG_INFORMATION_LEVEL = default;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
+				GCC_ENABLE_CPP_RTTI = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../../..",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../makefile/downloads",
 					"$(SRCROOT)/../../makefile/gen/proto",
-					"$(SRCROOT)/../../makefile/downloads/eigen-latest",
+					"$(SRCROOT)/../../makefile/downloads/eigen",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
@@ -290,6 +293,7 @@
 					"$(SRCROOT)/../../makefile/gen/protobuf_ios/lib",
 					"$(SRCROOT)/../../makefile/gen/lib",
 				);
+				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
@@ -302,20 +306,24 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.google.TF-Test";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SEPARATE_STRIP = NO;
 			};
 			name = Debug;
 		};
 		591157B41CF4011D00C31E3A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_DEBUG_INFORMATION_LEVEL = default;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
+				GCC_ENABLE_CPP_EXCEPTIONS = YES;
+				GCC_ENABLE_CPP_RTTI = YES;
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../../..",
 					"$(SRCROOT)/../../makefile/downloads/protobuf/src/",
 					"$(SRCROOT)/../../makefile/downloads",
 					"$(SRCROOT)/../../makefile/gen/proto",
-					"$(SRCROOT)/../../makefile/downloads/eigen-latest",
+					"$(SRCROOT)/../../makefile/downloads/eigen",
 				);
 				INFOPLIST_FILE = "$(SRCROOT)/RunModel-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 9.2;
@@ -325,6 +333,7 @@
 					"$(SRCROOT)/../../makefile/gen/lib",
 				);
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(SRCROOT)/../../makefile/gen/lib/libtensorflow-core.a",
@@ -337,6 +346,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.google.TF-Test";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SEPARATE_STRIP = NO;
 			};
 			name = Release;
 		};

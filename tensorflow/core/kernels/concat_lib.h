@@ -29,22 +29,23 @@ void ConcatCPU(DeviceBase* d,
                const std::vector<
                    std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
                typename TTypes<T, 2>::Matrix* output);
-
-// Assumes all inputs are nonempty
+#if GOOGLE_CUDA
 template <typename T>
-void ConcatGPU32(
-    const Eigen::GpuDevice& d,
+void ConcatGPU(
+    OpKernelContext* c,
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
-        inputs,
-    typename TTypes<T, 2>::Matrix* output);
+        inputs_flat,
+    Tensor* output, typename TTypes<T, 2>::Tensor* output_flat);
 
+#endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-void ConcatGPU64(
-    const Eigen::GpuDevice& d,
-    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
-        inputs,
-    typename TTypes<T, 2>::Matrix* output);
-
+void ConcatSYCL(const Eigen::SyclDevice& d,
+               const std::vector<
+                   std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
+               typename TTypes<T, 2>::Matrix* output);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_CONCAT_LIB_H_

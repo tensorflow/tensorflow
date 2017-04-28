@@ -24,6 +24,37 @@ limitations under the License.
 namespace tensorflow {
 namespace shape_inference {
 
+namespace {
+
+TensorShapeProto S(std::initializer_list<int64> dims) {
+  PartialTensorShape shape(dims);
+  TensorShapeProto ret;
+  shape.AsProto(&ret);
+  return ret;
+}
+
+TensorShapeProto Unknown() {
+  PartialTensorShape shape;
+  TensorShapeProto ret;
+  shape.AsProto(&ret);
+  return ret;
+}
+
+OpDef MakeOpDef(int num_inputs, int num_outputs) {
+  OpRegistrationData op_reg_data;
+  OpDefBuilder b("dummy");
+  for (int i = 0; i < num_inputs; ++i) {
+    b.Input(strings::StrCat("i", i, ": float"));
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    b.Output(strings::StrCat("o", i, ": float"));
+  }
+  CHECK(b.Attr("foo:string").Finalize(&op_reg_data).ok());
+  return op_reg_data.op_def;
+}
+
+}  // namespace
+
 TEST(CommonShapeFnsTest, NoOutputShapeTest) {
   OpRegistrationData op_reg_data;
   TF_CHECK_OK(OpDefBuilder("Assert")
@@ -38,7 +69,8 @@ TEST(CommonShapeFnsTest, NoOutputShapeTest) {
                   .Input({{"data", 0, DT_FLOAT}})
                   .Finalize(&def));
 
-  InferenceContext c(&def, op_def, {"[]", "[10]"}, {});
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({}), S({10})}, {},
+                     {}, {}, {});
   TF_EXPECT_OK(NoOutputs(&c));
   EXPECT_EQ(0, c.num_outputs());
 }
@@ -56,14 +88,16 @@ TEST(CommonShapeFnsTest, ScalarShapeTest) {
       NodeDefBuilder("test", "L2Loss").Input("t", 0, DT_FLOAT).Finalize(&def));
 
   {
-    InferenceContext c(&def, op_def, {"[]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({})}, {}, {}, {},
+                       {});
     TF_EXPECT_OK(ScalarShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ(0, c.Rank(output));
   }
 
   {
-    InferenceContext c(&def, op_def, {"[1,23,4,4,2]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({1, 23, 4, 4, 2})}, {}, {}, {}, {});
     TF_EXPECT_OK(ScalarShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ(0, c.Rank(output));
@@ -90,7 +124,8 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                   .Finalize(&def));
 
   {
-    InferenceContext c(&def, op_def, {"[2,3]", "[3,4]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({2, 3}), S({3, 4})}, {}, {}, {}, {});
     TF_EXPECT_OK(MatMulShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
@@ -99,7 +134,8 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
 
   {
     // Unknown inner dimension for one
-    InferenceContext c(&def, op_def, {"[2,?]", "[3,4]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({2, -1}), S({3, 4})}, {}, {}, {}, {});
     TF_EXPECT_OK(MatMulShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
@@ -108,16 +144,19 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
 
   {
     // Invalid rank.
-    InferenceContext c(&def, op_def, {"[2]", "[3,4]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({2}), S({3, 4})},
+                       {}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_EQ("Invalid argument: Shape must be rank 2 but is rank 1",
-              s.ToString());
+    EXPECT_TRUE(
+        StringPiece(s.ToString())
+            .contains("Invalid argument: Shape must be rank 2 but is rank 1"));
   }
 
   {
     // Unknown outer dimension
-    InferenceContext c(&def, op_def, {"[2,3]", "[3,?]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({2, 3}), S({3, -1})}, {}, {}, {}, {});
     TF_EXPECT_OK(MatMulShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
@@ -126,20 +165,25 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
 
   {
     // Inner shapes not compatible
-    InferenceContext c(&def, op_def, {"[2,5]", "[3,4]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({2, 5}), S({3, 4})}, {}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_EQ("Invalid argument: Dimensions must be equal, but are 5 and 3",
-              s.ToString());
+    EXPECT_TRUE(
+        StringPiece(s.ToString())
+            .contains(
+                "Invalid argument: Dimensions must be equal, but are 5 and 3"));
   }
 
   {
     // Inner shapes not compatible
-    InferenceContext c(&def, op_def, {"[2,5,3]", "[3,5,4]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({2, 5, 3}), S({3, 5, 4})}, {}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_EQ("Invalid argument: Shape must be rank 2 but is rank 3",
-              s.ToString());
+    EXPECT_TRUE(
+        StringPiece(s.ToString())
+            .contains("Invalid argument: Shape must be rank 2 but is rank 3"));
   }
 
   {
@@ -152,7 +196,8 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                     .Attr("type", DT_FLOAT)
                     .Finalize(&def));
 
-    InferenceContext c(&def, op_def, {"[3,2]", "[3,4]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({3, 2}), S({3, 4})}, {}, {}, {}, {});
     auto s = MatMulShape(&c);
     ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
@@ -169,7 +214,8 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                     .Attr("type", DT_FLOAT)
                     .Finalize(&def));
 
-    InferenceContext c(&def, op_def, {"[2,3]", "[4,3]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({2, 3}), S({4, 3})}, {}, {}, {}, {});
     auto s = MatMulShape(&c);
     ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
@@ -193,7 +239,8 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                   .Finalize(&def));
 
   {
-    InferenceContext c(&def, op_def, {"[2,10]", "[10]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({2, 10}), S({10})}, {}, {}, {}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ(2, c.Value(c.Dim(output, 0)));
@@ -202,7 +249,8 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
 
   {
     // Unknown ranks.
-    InferenceContext c(&def, op_def, {"?", "?"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {Unknown(), Unknown()}, {}, {}, {}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_FALSE(c.RankKnown(output));
@@ -210,7 +258,8 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
 
   {
     // Rank > 2
-    InferenceContext c(&def, op_def, {"[4,3,4,2,15]", "[15]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({4, 3, 4, 2, 15}), S({15})}, {}, {}, {}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ("[4,3,4,2,15]", c.DebugString(output));
@@ -223,7 +272,8 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                     .Input("b", 0, DT_FLOAT)
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
-    InferenceContext c(&def, op_def, {"[2,3,4,5]", "[3]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({2, 3, 4, 5}), S({3})}, {}, {}, {}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ("[2,3,4,5]", c.DebugString(output));
@@ -236,15 +286,31 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                     .Input("b", 0, DT_FLOAT)
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
-    InferenceContext c(&def, op_def, {"[8,6,4,2,3,4,5]", "[3]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({8, 6, 4, 2, 3, 4, 5}), S({3})}, {}, {}, {}, {});
     TF_EXPECT_OK(BiasAddShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ("[8,6,4,2,3,4,5]", c.DebugString(output));
   }
 
   {
+    // NCHW format with input rank 3
+    TF_CHECK_OK(NodeDefBuilder("test", "BiasAdd")
+                    .Input("a", 0, DT_FLOAT)
+                    .Input("b", 0, DT_FLOAT)
+                    .Attr("data_format", "NCHW")
+                    .Finalize(&def));
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({10, 11, 12}), S({10})}, {}, {}, {}, {});
+    TF_EXPECT_OK(BiasAddShape(&c));
+    ShapeHandle output = c.output(0);
+    EXPECT_EQ("[10,11,12]", c.DebugString(output));
+  }
+
+  {
     // Input rank not high enough
-    InferenceContext c(&def, op_def, {"[3]", "[3]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({3}), S({3})}, {},
+                       {}, {}, {});
     EXPECT_FALSE(BiasAddShape(&c).ok());
   }
 
@@ -256,7 +322,8 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
     // NCHW format
-    InferenceContext c(&def, op_def, {"[2,3,4]", "[3]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({2, 3}), S({3})},
+                       {}, {}, {}, {});
     EXPECT_FALSE(BiasAddShape(&c).ok());
   }
 }
@@ -275,7 +342,8 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
                   .Finalize(&def));
 
   {
-    InferenceContext c(&def, op_def, {"[2,10]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({2, 10})}, {}, {},
+                       {}, {});
     TF_EXPECT_OK(BiasAddGradShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ(10, c.Value(c.Dim(output, 0)));
@@ -283,7 +351,8 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
 
   {
     // Rank > 2
-    InferenceContext c(&def, op_def, {"[5,7,2,10]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({5, 7, 2, 10})},
+                       {}, {}, {}, {});
     TF_EXPECT_OK(BiasAddGradShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ(10, c.Value(c.Dim(output, 0)));
@@ -295,7 +364,8 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
                     .Input("a", 0, DT_FLOAT)
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
-    InferenceContext c(&def, op_def, {"[2,3,4,5]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({2, 3, 4, 5})},
+                       {}, {}, {}, {});
     TF_EXPECT_OK(BiasAddGradShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ(3, c.Value(c.Dim(output, 0)));
@@ -307,15 +377,30 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
                     .Input("a", 0, DT_FLOAT)
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
-    InferenceContext c(&def, op_def, {"[8,6,4,2,3,4,5]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def,
+                       {S({8, 6, 4, 2, 3, 4, 5})}, {}, {}, {}, {});
     TF_EXPECT_OK(BiasAddGradShape(&c));
     ShapeHandle output = c.output(0);
     EXPECT_EQ(3, c.Value(c.Dim(output, 0)));
   }
 
   {
+    // NCHW format with input rank 3
+    TF_CHECK_OK(NodeDefBuilder("test", "BiasAddGrad")
+                    .Input("a", 0, DT_FLOAT)
+                    .Attr("data_format", "NCHW")
+                    .Finalize(&def));
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({10, 11, 12})},
+                       {}, {}, {}, {});
+    TF_EXPECT_OK(BiasAddGradShape(&c));
+    ShapeHandle output = c.output(0);
+    EXPECT_EQ(10, c.Value(c.Dim(output, 0)));
+  }
+
+  {
     // Input rank not high enough
-    InferenceContext c(&def, op_def, {"[3]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({3})}, {}, {}, {},
+                       {});
     EXPECT_FALSE(BiasAddGradShape(&c).ok());
   }
 
@@ -326,7 +411,8 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
     // NCHW format
-    InferenceContext c(&def, op_def, {"[2,3,4]"}, {});
+    InferenceContext c(TF_GRAPH_DEF_VERSION, &def, op_def, {S({2, 3})}, {}, {},
+                       {}, {});
     EXPECT_FALSE(BiasAddGradShape(&c).ok());
   }
 }
@@ -369,11 +455,13 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   // Invalid rank for filter
   INFER_ERROR("must be rank 4", op, "[1,4,4,1];[2,1,1]");
 
-  // No unknown dims in the critical fields.
-  INFER_ERROR("is not known", op, "[1,?,2,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[?,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,?,1,1]");
+  // Unknown dims in the critical fields lead to partial inference.
+  INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
+  INFER_OK(op, "[1,?,4,1];[2,1,1,1]", "[d0_0,?,2,d1_3]");
+  INFER_OK(op, "[1,4,?,1];[2,1,1,1]", "[d0_0,3,?,d1_3]");
+  INFER_OK(op, "[1,4,4,?];[2,1,1,1]", "[d0_0,3,2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,1,1,1]", "[d0_0,?,2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[2,?,1,1]", "[d0_0,3,?,d1_3]");
 
   // input depths must match.
   INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
@@ -404,11 +492,11 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
 
   // 4x4 input, 1x1 filter, 1x1 stride
   set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
-  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,4,4,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 3x3 input, 2x2 filter, 1x1 stride
   set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
-  INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,3,3,d1_3]");
+  INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 4x4 input, 2x2 filter, 2x2 stride
   set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
@@ -416,7 +504,25 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
 
   // 4x4 input, 2x2 filter, 1x1 stride
   set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
-  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,4,4,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
+
+  // With stride 1x1 and SAME, unknown dims don't matter - filter dims except
+  // for output channels are ignored for output, so all inputs are carried
+  // through to output.
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,?];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+
+  // With stride != 1, the input HW dims are divided to produce output dims.
+  set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[?,4,4,1];[?,?,?,?]", "[d0_0,2,2,d1_3]");
+  INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,?,2,d1_3]");
+  INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,2,?,d1_3]");
+  INFER_OK(op, "[1,4,4,?];[?,?,?,?]", "[d0_0,2,2,d1_3]");
 }
 
 TEST(CommonShapeFnsTest, Conv3DShapeTest) {
@@ -440,12 +546,16 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
   // Invalid rank for filter
   INFER_ERROR("must be rank 5", op, "[1,4,4,1];[2,1,1]");
 
-  // No unknown dims in the critical fields.
-  INFER_ERROR("is not known", op, "[1,?,2,2,1];[1,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,2,1];[1,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,?,1];[1,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,2,1];[?,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,2,1];[1,?,1,1,1]");
+  // unknown dims in the critical fields give partial inference.
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
+  INFER_OK(op, "[1,?,2,2,1];[1,1,1,1,1]", "[d0_0,?,2,2,d1_4]");
+  INFER_OK(op, "[1,2,?,2,1];[1,1,1,1,1]", "[d0_0,2,?,2,d1_4]");
+  INFER_OK(op, "[1,2,2,?,1];[1,1,1,1,1]", "[d0_0,2,2,?,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[?,1,1,1,1]", "[d0_0,?,2,2,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,?,1,1,1]", "[d0_0,2,?,2,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,?,1,1]", "[d0_0,2,2,?,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,?,1]", "[d0_0,2,2,2,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,?]", "[d0_0,2,2,2,d1_4]");
 
   // input depths must match.
   INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
@@ -465,7 +575,34 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
 
   // 4x4 input, 2x2 filter, 1x1 stride
   set_op({{1, 1, 1, 1, 1}}, "SAME");
-  INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,1]", "[d0_0,4,4,4,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // with SAME, filter doesn't matter except for last dim.
+  set_op({{1, 1, 1, 1, 1}}, "SAME");
+  INFER_OK(op, "[?,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,?,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,?,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,?,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,?];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[?,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,?,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,?,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,2,?,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,?]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // with SAME, and stride != 1, division happens to produce output.
+  set_op({{1, 2, 3, 4, 1}}, "SAME");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[?,4,9,4,1];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,?,9,4,1];[2,2,2,1,1]", "[d0_0,?,3,1,d1_4]");
+  INFER_OK(op, "[1,4,?,4,1];[2,2,2,1,1]", "[d0_0,2,?,1,d1_4]");
+  INFER_OK(op, "[1,4,9,?,1];[2,2,2,1,1]", "[d0_0,2,3,?,d1_4]");
+  INFER_OK(op, "[1,4,9,4,?];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[?,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,?,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,?,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,2,?,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,2,1,?]", "[d0_0,2,3,1,d1_4]");
 }
 
 TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
@@ -476,6 +613,7 @@ TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
                   .Input("filter", 0, DT_FLOAT)
                   .Attr("strides", strides)
                   .Attr("padding", "VALID")
+                  .Attr("data_format", "NHWC")
                   .Finalize(&op.node_def));
 
   // Most of DepthwiseConv2D is implicitly tested by Conv2D, so
@@ -489,12 +627,26 @@ TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
               "[1,2,2,3];[1,1,12,4]");
 
   // No unknown dims in the critical fields.
-  INFER_ERROR("is not known", op, "[1,?,2,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[?,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,?,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,1,?,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,1,1,?]");
+  INFER_OK(op, "[1,2,2,3];[1,1,3,4]", "[d0_0,2,2,12]");
+  INFER_OK(op, "[1,?,2,3];[1,1,3,4]", "[d0_0,?,2,12]");
+  INFER_OK(op, "[1,2,?,3];[1,1,3,4]", "[d0_0,2,?,12]");
+  INFER_OK(op, "[1,2,2,3];[?,1,3,4]", "[d0_0,?,2,12]");
+  INFER_OK(op, "[1,2,2,3];[1,?,3,4]", "[d0_0,2,?,12]");
+  INFER_OK(op, "[1,2,2,3];[1,1,?,4]", "[d0_0,2,2,12]");
+  INFER_OK(op, "[1,2,2,?];[1,1,?,4]", "[d0_0,2,2,?]");
+  INFER_OK(op, "[1,2,2,3];[1,1,3,?]", "[d0_0,2,2,?]");
+
+  // Test for NCHW format.
+  TF_CHECK_OK(NodeDefBuilder("test", "DepthwiseConv2dNative")
+                  .Input("input", 0, DT_FLOAT)
+                  .Input("filter", 0, DT_FLOAT)
+                  .Attr("strides", strides)
+                  .Attr("padding", "VALID")
+                  .Attr("data_format", "NCHW")
+                  .Finalize(&op.node_def));
+
+  // 1x1 filter, depth multiplication
+  INFER_OK(op, "[1,3,2,2];[1,1,3,4]", "[d0_0,12,2,2]");
 }
 
 TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
@@ -522,9 +674,11 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   set_op({1, 1, 2, 1}, {1, 2, 1, 1}, "VALID", "NHWC");
   INFER_OK(op, "[1,4,4,1]", "[d0_0,3,2,d0_3]");
 
-  // No unknown dims in the critical fields.  Assumes NHWC format.
-  INFER_ERROR("is not known", op, "[1,?,2,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,1]");
+  // 4x4 input, 2x1 ksize, 1x2 stride
+  // unknown dims in the critical fields lead to partial inference.
+  // Assumes NHWC format.
+  INFER_OK(op, "[1,?,4,1]", "[d0_0,?,2,d0_3]");
+  INFER_OK(op, "[1,4,?,1]", "[d0_0,3,?,d0_3]");
 
   // 4x4 input, 2x1 ksize, 1x2 stride, NCHW format
   set_op({{1, 1, 1, 2}}, {1, 1, 2, 1}, "VALID", "NCHW");
@@ -579,6 +733,10 @@ TEST(CommonShapeFnsTest, Pool3DShapeTest) {
   // 2x3x4 stride, 1x1x1 filter.
   set_op({1, 2, 3, 4, 1}, {1, 1, 1, 1, 1}, "VALID");
   INFER_OK(op, "[1,24,24,24,1]", "[d0_0,12,8,6,d0_4]");
+
+  // Test partially known dimensions
+  set_op({1, 1, 3, 4, 1}, {1, 1, 1, 1, 1}, "VALID");
+  INFER_OK(op, "[1,?,24,24,1]", "[d0_0,?,8,6,d0_4]");
 }
 
 TEST(CommonShapeFnsTest, UnknownShapeTest) {
@@ -615,15 +773,13 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
 
   // Reduction indices not available, so output is unknown.
   INFER_OK(op, "[2,4,5];[2]", "?");
+  INFER_OK(op, "?;[2]", "?");
 
   Tensor indices = test::AsTensor<int32>({1, 2});
   op.input_tensors[1] = &indices;
 
   // Reduction indices available
   INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
-
-  // Unknown input rank
-  INFER_OK(op, "?;[2]", "?");
 
   // Wrapped indices
   indices = test::AsTensor<int32>({-1, -2});
@@ -635,11 +791,6 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[]", "[d0_1,d0_2]");
 
-  // Cannot reduce 0 dimension
-  indices = test::AsTensor<int32>({-1, -2});
-  op.input_tensors[1] = &indices;
-  INFER_ERROR("Cannot reduce dimension -2 with size 0", op, "[2,0,5];[2]");
-
   indices = test::AsScalar<int32>(-4);
   op.input_tensors[1] = &indices;
   INFER_ERROR("Invalid reduction dimension", op, "[2,4,5];[]");
@@ -647,7 +798,7 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   // Empty reduction indices
   indices = test::AsTensor<int32>({});
   op.input_tensors[1] = &indices;
-  INFER_OK(op, "[2,4,5];[0]", "[]");
+  INFER_OK(op, "[2,4,5];[0]", "[d0_0,d0_1,d0_2]");
 
   // Keep dims = true
   TF_ASSERT_OK(NodeDefBuilder("test", "Sum")
@@ -658,6 +809,157 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   indices = test::AsTensor<int32>({-1, -2});
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[2]", "[d0_0, 1, 1]");
+
+  // input rank is known, but reduction indices are not (with keep_dim=true).
+  // The output rank matches input rank (because of keep_dims=true).
+  op.input_tensors[1] = nullptr;
+  INFER_OK(op, "[?,?,?];?", "[?,?,?]");
+  INFER_OK(op, "[?,?,?];[2]", "[?,?,?]");
+
+  // Reduction indices with too many dimensions.
+  INFER_ERROR("must be at most rank 1 but is rank 2", op, "[?,?,?];[?,?]");
+  // With older graph-def version, this is allowed.
+  op.graph_def_version = 20;
+  INFER_OK(op, "[?,?,?];[?,?]", "[?,?,?]");
+  // And when the tensor is specified, it's still allowed.
+  op.input_tensors[1] = &indices;
+  indices = test::AsTensor<int32>({-1, -2}, TensorShape({2, 1}));
+  INFER_OK(op, "[2,4,5];[2,1]", "[d0_0, 1, 1]");
+  indices = test::AsTensor<int32>({-1, -2}, TensorShape({1, 2}));
+  INFER_OK(op, "[2,4,5];[1,2]", "[d0_0, 1, 1]");
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownShapes) {
+  NodeDef def;
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, MakeOpDef(3, 1),
+                     {Unknown(), Unknown(), Unknown()}, {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownDims) {
+  NodeDef def;
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, MakeOpDef(3, 1),
+                     {S({-1, -1}), S({-1}), S({-1})}, {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_InvalidIndicesRank) {
+  NodeDef def;
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, MakeOpDef(3, 1),
+                     {S({-1}), S({-1}), S({-1})}, {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            ValidateSparseTensor(&c, indices, values, shape).code());
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_InvalidNumElements) {
+  NodeDef def;
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, MakeOpDef(3, 1),
+                     {S({5, 3}), S({4}), S({3})}, {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            ValidateSparseTensor(&c, indices, values, shape).code());
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_InvalidRank) {
+  NodeDef def;
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, MakeOpDef(3, 1),
+                     {S({5, 3}), S({5}), S({4})}, {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  EXPECT_EQ(error::INVALID_ARGUMENT,
+            ValidateSparseTensor(&c, indices, values, shape).code());
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownNumIndexElements) {
+  NodeDef def;
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, MakeOpDef(3, 1),
+                     {S({-1, 3}), S({5}), S({3})}, {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownNumValueElements) {
+  NodeDef def;
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, MakeOpDef(3, 1),
+                     {S({5, 3}), S({-1}), S({3})}, {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownIndexRank) {
+  NodeDef def;
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, MakeOpDef(3, 1),
+                     {S({5, -1}), S({5}), S({3})}, {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor_UnknownShapeRank) {
+  NodeDef def;
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, MakeOpDef(3, 1),
+                     {S({5, 3}), S({5}), S({-1})}, {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
+}
+
+TEST(CommonShapeFnsTest, ValidateSparseTensor) {
+  NodeDef def;
+  InferenceContext c(TF_GRAPH_DEF_VERSION, &def, MakeOpDef(3, 1),
+                     {S({5, 3}), S({5}), S({3})}, {}, {}, {}, {});
+  EXPECT_EQ(3, c.num_inputs());
+  EXPECT_EQ(1, c.num_outputs());
+
+  auto indices = c.input(0);
+  auto values = c.input(1);
+  auto shape = c.input(2);
+  TF_EXPECT_OK(ValidateSparseTensor(&c, indices, values, shape));
 }
 
 }  // namespace shape_inference

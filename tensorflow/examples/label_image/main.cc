@@ -32,6 +32,7 @@ limitations under the License.
 // The googlenet_graph.pb file included by default is created from Inception.
 
 #include <fstream>
+#include <vector>
 
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
@@ -92,10 +93,11 @@ Status ReadTensorFromImageFile(string file_name, const int input_height,
 
   string input_name = "file_reader";
   string output_name = "normalized";
-  auto file_reader = ReadFile(root.WithOpName(input_name), file_name);
+  auto file_reader =
+      tensorflow::ops::ReadFile(root.WithOpName(input_name), file_name);
   // Now try to figure out what kind of file it is and decode it.
   const int wanted_channels = 3;
-  Output image_reader;
+  tensorflow::Output image_reader;
   if (tensorflow::StringPiece(file_name).ends_with(".png")) {
     image_reader = DecodePng(root.WithOpName("png_reader"), file_reader,
                              DecodePng::Channels(wanted_channels));
@@ -161,7 +163,7 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
   string output_name = "top_k";
-  TopKV2(root.WithOpName(output_name), outputs[0], how_many_labels);
+  TopK(root.WithOpName(output_name), outputs[0], how_many_labels);
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensors.
   tensorflow::GraphDef graph;
@@ -230,43 +232,46 @@ int main(int argc, char* argv[]) {
   // These are the command-line flags the program can understand.
   // They define where the graph and input data is located, and what kind of
   // input the model expects. If you train your own model, or use something
-  // other than GoogLeNet you'll need to update these.
+  // other than inception_v3, then you'll need to update these.
   string image = "tensorflow/examples/label_image/data/grace_hopper.jpg";
   string graph =
-      "tensorflow/examples/label_image/data/"
-      "tensorflow_inception_graph.pb";
+      "tensorflow/examples/label_image/data/inception_v3_2016_08_28_frozen.pb";
   string labels =
-      "tensorflow/examples/label_image/data/"
-      "imagenet_comp_graph_label_strings.txt";
+      "tensorflow/examples/label_image/data/imagenet_slim_labels.txt";
   int32 input_width = 299;
   int32 input_height = 299;
-  int32 input_mean = 128;
-  int32 input_std = 128;
-  string input_layer = "Mul";
-  string output_layer = "softmax";
+  int32 input_mean = 0;
+  int32 input_std = 255;
+  string input_layer = "input";
+  string output_layer = "InceptionV3/Predictions/Reshape_1";
   bool self_test = false;
   string root_dir = "";
-  const bool parse_result = tensorflow::ParseFlags(
-      &argc, argv, {Flag("image", &image),                //
-                    Flag("graph", &graph),                //
-                    Flag("labels", &labels),              //
-                    Flag("input_width", &input_width),    //
-                    Flag("input_height", &input_height),  //
-                    Flag("input_mean", &input_mean),      //
-                    Flag("input_std", &input_std),        //
-                    Flag("input_layer", &input_layer),    //
-                    Flag("output_layer", &output_layer),  //
-                    Flag("self_test", &self_test),        //
-                    Flag("root_dir", &root_dir)});
+  std::vector<Flag> flag_list = {
+      Flag("image", &image, "image to be processed"),
+      Flag("graph", &graph, "graph to be executed"),
+      Flag("labels", &labels, "name of file containing labels"),
+      Flag("input_width", &input_width, "resize image to this width in pixels"),
+      Flag("input_height", &input_height,
+           "resize image to this height in pixels"),
+      Flag("input_mean", &input_mean, "scale pixel values to this mean"),
+      Flag("input_std", &input_std, "scale pixel values to this std deviation"),
+      Flag("input_layer", &input_layer, "name of input layer"),
+      Flag("output_layer", &output_layer, "name of output layer"),
+      Flag("self_test", &self_test, "run a self test"),
+      Flag("root_dir", &root_dir,
+           "interpret image and graph file names relative to this directory"),
+  };
+  string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {
-    LOG(ERROR) << "Error parsing command-line flags.";
+    LOG(ERROR) << usage;
     return -1;
   }
 
   // We need to call this to set up global state for TensorFlow.
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1];
+    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
     return -1;
   }
 

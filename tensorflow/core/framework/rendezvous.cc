@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/framework/rendezvous.h"
 
-#include <unordered_map>
+#include <functional>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -113,7 +114,7 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
 Rendezvous::~Rendezvous() {}
 
 Status Rendezvous::Recv(const ParsedKey& key, const Args& recv_args,
-                        Tensor* val, bool* is_dead) {
+                        Tensor* val, bool* is_dead, int64 timeout_ms) {
   Status ret;
   Notification n;
   RecvAsync(key, recv_args,
@@ -125,8 +126,23 @@ Status Rendezvous::Recv(const ParsedKey& key, const Args& recv_args,
               *is_dead = dead;
               n.Notify();
             });
-  n.WaitForNotification();
+  if (timeout_ms > 0) {
+    int64 timeout_us = timeout_ms * 1000;
+    bool notified = WaitForNotificationWithTimeout(&n, timeout_us);
+    if (!notified) {
+      return Status(error::DEADLINE_EXCEEDED,
+                    "Timed out waiting for notification");
+    }
+  } else {
+    n.WaitForNotification();
+  }
   return ret;
+}
+
+Status Rendezvous::Recv(const ParsedKey& key, const Args& args, Tensor* val,
+                        bool* is_dead) {
+  const int64 no_timeout = 0;
+  return Recv(key, args, val, is_dead, no_timeout);
 }
 
 class LocalRendezvousImpl : public Rendezvous {
@@ -317,7 +333,7 @@ class LocalRendezvousImpl : public Rendezvous {
     return Hash64(k.data(), k.size());
   }
 
-  typedef std::unordered_map<uint64, Item*> Table;
+  typedef gtl::FlatMap<uint64, Item*> Table;
 
   // TODO(zhifengc): shard table_.
   mutex mu_;

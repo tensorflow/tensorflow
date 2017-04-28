@@ -12,14 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# TODO(ptucker): deprecate string_to_index_table_from_file and
+# string_to_index_table_from_tensor 2017-04-10.
 """Ops for lookup operations.
 
 @@string_to_index
+@@string_to_index_table_from_file
+@@string_to_index_table_from_tensor
+@@index_table_from_file
+@@index_table_from_tensor
 @@index_to_string
+@@index_to_string_table_from_file
+@@index_to_string_table_from_tensor
 @@LookupInterface
 @@InitializableLookupTableBase
+@@IdTableWithHashBuckets
 @@HashTable
 @@MutableHashTable
+@@MutableDenseHashTable
 @@TableInitializerBase
 @@KeyValueTensorInitializer
 @@TextFileIndex
@@ -27,6 +37,9 @@
 @@TextFileIdTableInitializer
 @@TextFileStringTableInitializer
 
+@@HasherSpec
+@@StrongHashSpec
+@@FastHashSpec
 """
 
 from __future__ import absolute_import
@@ -35,3 +48,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.lookup.lookup_ops import *
+# pylint: enable=unused-import,wildcard-import
+
+from tensorflow.python.util.all_util import remove_undocumented
+remove_undocumented(__name__)

@@ -13,6 +13,149 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This is the common header for the input and filter backprop kernels.
+//
+// The operation to compute Conv2D gradients.
+//
+// To compute the gradients for Conv2D, we need three input tensors:
+//    input, filter, and backprop for output.
+// And we need to compute two backprops: one for input and one for filter. We
+// compute them in two different kernels.
+//
+// Both backprops can be computed as straightforward conv2d.
+//
+// Consider a case where the input is 3x3 and the filter is 2x1:
+//
+// INPUT = [ A  B  C ]
+//         [ D  E  F ]
+//         [ G  H  I ]
+//
+// where each "A", "B", etc is batch x in_depth
+//
+// FILTER = [ X  Y ]
+//
+// where both "X" and "Y" are in_depth x out_depth
+//
+// With VALID padding, the output is 3x2:
+//
+// OUTPUT = [ a  b ]
+//          [ c  d ]
+//          [ e  f ]
+//
+// where each "a", "b", etc is batch x out_depth
+//
+// So we have:
+//
+//   a = A * X + B * Y
+//   b = B * X + C * Y
+//   c = D * X + E * Y
+//   d = E * X + F * Y
+//   e = G * X + H * Y
+//   f = H * X + I * Y
+//
+// So when we have backprops for the outputs (we denote them by
+// a', b', ... ):
+//
+// The backprops for the input are:
+//
+//   A' = a' * X^t
+//   B' = a' * Y^t + b' * X^t
+//   C' = b' * Y^t
+//   ...
+//
+// This is essentially computing a 2d conv of
+//
+// INPUT = [ 0  a'  b'  0 ]
+//         [ 0  c'  d'  0 ]
+//         [ 0  e'  f'  0 ]
+// and
+//
+// FILTER = [ Y^t X^t ]
+//
+// The backprops for the filter are:
+//
+//   X' = A^t * a' + B^t * b' + D^t * c' + E^t * d' + G^t * e' + H^t * f'
+//   Y' = B^t * a' + C^t * b' + E^t + c' + F^t * d' + H^t * e' + I^t * f'
+//
+// This is essentially computing a 2d conv of
+//
+// INPUT = [ A^t  B^t  C^t ]
+//         [ D^t  E^t  F^t ]
+//         [ G^t  H^t  I^t ]
+//
+// and
+//
+// FILTER = [ a'  b' ]
+//          [ c'  d' ]
+//          [ e'  f' ]
+//
+//
+//////////////////////////////////////////////////////////
+//
+// With stride more than one, it's a bit more complicated (we will need to
+// create holes to the backprop).
+//
+// Consider the case where
+//
+// INPUT = [ A B C D E ]
+//         [ F G H I J ]
+//         [ K L M N O ]
+// and
+//
+// FILTER = [ X Y Z ]
+//
+// with stride 2.
+//
+// The output will be
+//
+// OUTPUT = [ a b ]
+//          [ c d ]
+//
+// where:
+//
+//   a = A * X + B * Y + C * Z
+//   b = C * X + D * Y + E * Z
+//   c = K * X + L * Y + M * Z
+//   d = M * X + N * Y + O * Z
+//
+//
+// To compute the backprop for INPUT, we need to convolve
+//
+// INPUT = [ 0  0  a' 0  b' 0  0 ]
+//         [ 0  0  0  0  0  0  0 ]
+//         [ 0  0  c' 0  d' 0  0 ]
+//
+// (notice the holes in INPUT)
+//
+// and
+//
+// FILTER = [ Z^t  Y^t  X^t ]
+//
+// with stride 1.
+//
+// To compute the backprop for FILTER, we need to convolve
+
+//
+// INPUT = [ A^t  B^t  C^t  D^t  E^t ]
+//         [ F^t  G^t  H^t  I^t  J^t ]
+//         [ K^t  L^t  M^t  N^t  O^t ]
+// and
+//
+// FILTER = [ a' 0  b' ]
+//          [ 0  0  0  ]
+//          [ c' 0  d' ]
+//
+// (notice the holes in FILTER)
+//
+//
+// with stride 1
+//
+//////////////////////////////////////////////////////////
+//
+//
+// The case for SAME padding is in fact very similar to VALID -- we just
+// need to pad the input tensor a bit when computing the filter_backprop.
+
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_GRAD_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_GRAD_OPS_H_
 
@@ -35,14 +178,14 @@ struct ConvBackpropSpatialDimension {
   int64 expanded_output_size;
 
   // Number of padding elements to be added before/after this dimension of
-  // the input when computing Conv2DBackpropInput.
+  // the input when computing Conv?DBackpropInput.
   int64 pad_before, pad_after;
 };
 
-// Computed dimensions for a Conv2D backpropagation.
-struct Conv2DBackpropDimensions {
+// Computed dimensions for a backwards convolution.
+struct ConvBackpropDimensions {
   // Information about each spatial dimension.
-  ConvBackpropSpatialDimension rows, cols;
+  gtl::InlinedVector<ConvBackpropSpatialDimension, 3> spatial_dims;
 
   // Batch size.
   int64 batch_size;
@@ -51,14 +194,16 @@ struct Conv2DBackpropDimensions {
   int64 in_depth, out_depth;
 };
 
-// Common code between implementations of Conv2DBackpropInput and
-// Conv2DBackpropFilter. Verifies that the dimensions all match, and computes
-// sizes/padding for rows and columns.
-Status Conv2DBackpropComputeDimensions(
-    StringPiece label, const TensorShape& input_shape,
-    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
-    const std::vector<int32>& strides, Padding padding,
-    TensorFormat data_format, Conv2DBackpropDimensions* dims);
+// Common code between implementations of Conv?DBackpropInput and
+// Conv?DBackpropFilter. Verifies that the dimensions all match, and computes
+// sizes/padding for the spatial dimensions.
+Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
+                                     const TensorShape& input_shape,
+                                     const TensorShape& filter_shape,
+                                     const TensorShape& out_backprop_shape,
+                                     const std::vector<int32>& strides,
+                                     Padding padding, TensorFormat data_format,
+                                     ConvBackpropDimensions* dims);
 
 }  // namespace tensorflow
 

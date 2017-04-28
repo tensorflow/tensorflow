@@ -23,6 +23,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import series
 from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_py
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
@@ -93,7 +94,7 @@ class BooleanMask(transform.TensorFlowTransform):
     if mask.get_shape().ndims > 1:
       mask = array_ops.squeeze(mask)
 
-    if isinstance(input_tensor, ops.SparseTensor):
+    if isinstance(input_tensor, sparse_tensor_py.SparseTensor):
       mask_fn = sparse_boolean_mask
     else:
       mask_fn = array_ops.boolean_mask

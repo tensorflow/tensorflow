@@ -13,30 +13,34 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for bucketization_op."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.contrib.layers.python.ops import bucketization_op
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.platform import test
 
 
-class BucketizationOpTest(tf.test.TestCase):
+class BucketizationOpTest(test.TestCase):
 
   def test_normal_usecase(self):
-    op = tf.contrib.layers.bucketize(
-        tf.constant([-5, 0, 2, 3, 5, 8, 10, 11, 12]),
+    op = bucketization_op.bucketize(
+        constant_op.constant([-5, 0, 2, 3, 5, 8, 10, 11, 12]),
         boundaries=[0, 3, 8, 11])
     expected_out = [0, 1, 1, 2, 2, 3, 3, 4, 4]
     with self.test_session() as sess:
       self.assertAllEqual(expected_out, sess.run(op))
 
   def test_invalid_boundaries_order(self):
-    op = tf.contrib.layers.bucketize(
-        tf.constant([-5, 0]), boundaries=[0, 8, 3, 11])
+    op = bucketization_op.bucketize(
+        constant_op.constant([-5, 0]), boundaries=[0, 8, 3, 11])
     with self.test_session() as sess:
-      with self.assertRaises(tf.errors.InvalidArgumentError):
+      with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(op)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

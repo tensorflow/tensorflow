@@ -262,6 +262,9 @@ FixedUnigramSampler::FixedUnigramSampler(int64 range,
 }
 
 float FixedUnigramSampler::Probability(int64 value) const {
+  if (value < 0 || static_cast<size_t>(value) >= weights_.size()) {
+    return 0.0;
+  }
   return weights_.at(value) / total_weight_;
 }
 

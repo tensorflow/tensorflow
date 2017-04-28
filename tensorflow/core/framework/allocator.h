@@ -17,11 +17,11 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
 
 #include <stdlib.h>
-#include <unistd.h>
 
 #include <limits>
 
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -66,8 +66,13 @@ struct AllocatorStats {
 // device memory.
 class Allocator {
  public:
+#ifdef EIGEN_VECTORIZE_AVX512
+  // Align to 64 byte boundary.
+  static constexpr size_t kAllocatorAlignment = 64;
+#else
   // Align to 32 byte boundary.
   static constexpr size_t kAllocatorAlignment = 32;
+#endif
 
   virtual ~Allocator();
 
@@ -152,6 +157,7 @@ class Allocator {
   // allocated by this allocator.
   virtual size_t RequestedSize(void* ptr) {
     CHECK(false) << "allocator doesn't track sizes";
+    return size_t(0);
   }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
@@ -188,19 +194,6 @@ class Allocator {
     return 0;
   }
 
-  // is_simple<T>::value if T[] can be safely constructed and destructed
-  // without running T() and ~T().  We do not use std::is_trivial<T>
-  // directly because std::complex<float> and std::complex<double> are
-  // not trival, but their arrays can be constructed and destructed
-  // without running their default ctors and dtors.
-  template <typename T>
-  struct is_simple {
-    static constexpr bool value =
-        std::is_trivial<T>::value || std::is_same<T, Eigen::half>::value ||
-        std::is_same<T, complex64>::value ||
-        std::is_same<T, complex128>::value || is_quantized<T>::value;
-  };
-
   // Fills in 'stats' with statistics collected by this allocator.
   virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
 
@@ -208,7 +201,7 @@ class Allocator {
   // No constructors or destructors are run for simple types
   template <typename T>
   void RunCtor(T* p, size_t n) {
-    static_assert(is_simple<T>::value, "T is not a simple type.");
+    static_assert(is_simple_type<T>::value, "T is not a simple type.");
   }
 
   template <typename T>
@@ -227,14 +220,18 @@ class Allocator {
     for (size_t i = 0; i < n; ++p, ++i) p->~string();
   }
 
+  virtual void RunResourceCtor(ResourceHandle* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) new (p) ResourceHandle();
+  }
+
+  // Runs string's default destructor for  p[0], p[1], ..., p[n-1].
+  virtual void RunResourceDtor(ResourceHandle* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
+  }
+
   // TODO(jeff): Maybe provide some interface to give info about
   // current allocation state (total number of bytes available for
   // allocation, number of bytes free on device, etc.)
-};
-
-template <>
-struct Allocator::is_simple<bfloat16> {
-  static const bool value = true;
 };
 
 // Allocator-specific constructors and destructors are used for
@@ -248,6 +245,68 @@ template <>
 inline void Allocator::RunDtor(string* p, size_t n) {
   RunStringDtor(p, n);
 }
+
+template <>
+inline void Allocator::RunCtor(ResourceHandle* p, size_t n) {
+  RunResourceCtor(p, n);
+}
+
+template <>
+inline void Allocator::RunDtor(ResourceHandle* p, size_t n) {
+  RunResourceDtor(p, n);
+}
+
+// An implementation of Allocator that delegates all calls to another Allocator.
+//
+// Useful to clients who want to override part of the functionality of another
+// allocator.
+class AllocatorWrapper : public Allocator {
+ public:
+  explicit AllocatorWrapper(Allocator* wrapped) : wrapped_(wrapped) {}
+
+  ~AllocatorWrapper() override {}
+
+  // Returns the wrapped allocator to which all calls are delegated.
+  Allocator* wrapped() const { return wrapped_; }
+
+  string Name() override { return wrapped_->Name(); }
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return wrapped_->AllocateRaw(alignment, num_bytes);
+  }
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes,
+                    const AllocationAttributes& allocation_attr) override {
+    return wrapped_->AllocateRaw(alignment, num_bytes, allocation_attr);
+  }
+
+  void DeallocateRaw(void* ptr) override { wrapped_->DeallocateRaw(ptr); }
+
+  bool TracksAllocationSizes() override {
+    return wrapped_->TracksAllocationSizes();
+  }
+
+  bool ShouldAllocateEmptyTensors() override {
+    return wrapped_->TracksAllocationSizes();
+  }
+
+  size_t RequestedSize(void* ptr) override {
+    return wrapped_->RequestedSize(ptr);
+  }
+
+  size_t AllocatedSize(void* ptr) override {
+    return wrapped_->AllocatedSize(ptr);
+  }
+
+  int64 AllocationId(void* ptr) override { return wrapped_->AllocationId(ptr); }
+
+  size_t AllocatedSizeSlow(void* ptr) override {
+    return wrapped_->AllocatedSizeSlow(ptr);
+  }
+
+ private:
+  Allocator* const wrapped_;
+};
 
 // A tensorflow Op may need access to different kinds of memory that
 // are not simply a function of the device to which the Op has been
@@ -279,6 +338,11 @@ struct AllocatorAttributes {
   void set_track_sizes(bool v) { value |= (static_cast<int>(v) << 3); }
   bool track_sizes() const { return value & (0x1 << 3); }
   void Merge(AllocatorAttributes other) { value |= other.value; }
+  // Returns true if the fields set in *this is a subset of or equal to
+  // those set in other.
+  bool IsEqualOrLessRestrictiveThan(const AllocatorAttributes& other) const {
+    return (value | other.value) == other.value;
+  }
 
   // NOTE: The upper 8 bits of the value are reserved for
   // device-specific uses.  Implementors of a device can interpret these

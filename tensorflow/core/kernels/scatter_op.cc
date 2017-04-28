@@ -15,12 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/state_ops.cc.
 
-#include "tensorflow/core/kernels/scatter_op.h"
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
@@ -29,34 +27,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-
-namespace {
-
-template <scatter_op::UpdateOp Op>
-struct Assign {};
-template <>
-struct Assign<scatter_op::UpdateOp::ASSIGN> {
-  template <typename Params, typename Update>
-  static void Run(Params p, Update u) {
-    p = u;
-  }
-};
-template <>
-struct Assign<scatter_op::UpdateOp::ADD> {
-  template <typename Params, typename Update>
-  static void Run(Params p, Update u) {
-    p += u;
-  }
-};
-template <>
-struct Assign<scatter_op::UpdateOp::SUB> {
-  template <typename Params, typename Update>
-  static void Run(Params p, Update u) {
-    p -= u;
-  }
-};
-
-}  // namespace
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 // Check whether updates.shape = indices.shape + params.shape[1:]
 static bool ValidShapes(const Tensor& params, const Tensor& updates,
@@ -158,32 +131,6 @@ class ScatterUpdateOp : public OpKernel {
   }
 };
 
-namespace functor {
-// Implementation of update functor for CPU.
-template <typename T, typename Index, scatter_op::UpdateOp op>
-struct ScatterFunctor<CPUDevice, T, Index, op> {
-  Index operator()(OpKernelContext* c, const CPUDevice& d,
-                   typename TTypes<T>::Matrix params,
-                   typename TTypes<T>::ConstMatrix updates,
-                   typename TTypes<Index>::ConstFlat indices) {
-    // indices and params sizes were validated in DoCompute().
-    const Index N = static_cast<Index>(indices.size());
-    const Index limit = static_cast<Index>(params.dimension(0));
-    for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  An earlier version of the
-      // code checked it and then grabbed it from memory a second time, which
-      // was a security risk since it could have changed in between.
-      const Index index = internal::SubtleMustCopy(indices(i));
-      if (!FastBoundsCheck(index, limit)) return i;
-      // Copy last Ndim-1 dimensions of updates[i] to params[index]
-      Assign<op>::Run(params.template chip<0>(index),
-                      updates.template chip<0>(i));
-    }
-    return -1;
-  }
-};
-}  // namespace functor
-
 #define REGISTER_SCATTER_KERNEL_INDEX(type, index_type, dev, name, op) \
   REGISTER_KERNEL_BUILDER(Name(name)                                   \
                               .Device(DEVICE_##dev)                    \
@@ -195,8 +142,10 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
   REGISTER_SCATTER_KERNEL_INDEX(type, int32, dev, name, op); \
   REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
 
-#define REGISTER_SCATTER_ADD_SUB(type, dev)                                    \
+#define REGISTER_SCATTER_ARITHEMTIC(type, dev)                                 \
   REGISTER_SCATTER_KERNEL(type, dev, "ScatterAdd", scatter_op::UpdateOp::ADD); \
+  REGISTER_SCATTER_KERNEL(type, dev, "ScatterDiv", scatter_op::UpdateOp::DIV); \
+  REGISTER_SCATTER_KERNEL(type, dev, "ScatterMul", scatter_op::UpdateOp::MUL); \
   REGISTER_SCATTER_KERNEL(type, dev, "ScatterSub", scatter_op::UpdateOp::SUB);
 
 #define REGISTER_SCATTER_UPDATE(type, dev)            \
@@ -204,63 +153,47 @@ struct ScatterFunctor<CPUDevice, T, Index, op> {
                           scatter_op::UpdateOp::ASSIGN);
 
 // Registers CPU kernels.
-#define REGISTER_SCATTER_ADD_SUB_CPU(type) REGISTER_SCATTER_ADD_SUB(type, CPU);
+#define REGISTER_SCATTER_ARITHEMTIC_CPU(type) \
+  REGISTER_SCATTER_ARITHEMTIC(type, CPU);
 
 #define REGISTER_SCATTER_UPDATE_CPU(type) REGISTER_SCATTER_UPDATE(type, CPU);
 
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ADD_SUB_CPU);
+TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHEMTIC_CPU);
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_UPDATE_CPU);
 
 // Registers GPU kernels.
 #if GOOGLE_CUDA
-#define REGISTER_SCATTER_ADD_SUB_GPU(type) REGISTER_SCATTER_ADD_SUB(type, GPU);
+#define REGISTER_SCATTER_ARITHEMTIC_GPU(type) \
+  REGISTER_SCATTER_ARITHEMTIC(type, GPU);
 
 #define REGISTER_SCATTER_UPDATE_GPU(type) REGISTER_SCATTER_UPDATE(type, GPU);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ADD_SUB_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHEMTIC_GPU);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_UPDATE_GPU);
 
 #endif  // GOOGLE_CUDA
 
-#undef REGISTER_SCATTER_ADD
-#undef REGISTER_SCATTER_ADD_SUB
-#undef REGISTER_SCATTER_ADD_SUB_CPU
-#undef REGISTER_SCATTER_ADD_SUB_GPU
+// Registers GPU kernels.
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SCATTER_ARITHEMTIC_SYCL(type) \
+  REGISTER_SCATTER_ARITHEMTIC(type, SYCL);
+
+#define REGISTER_SCATTER_UPDATE_SYCL(type) REGISTER_SCATTER_UPDATE(type, SYCL);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ARITHEMTIC_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_UPDATE_SYCL);
+
+#undef REGISTER_SCATTER_ARITHEMTIC_SYCL
+#undef REGISTER_SCATTER_UPDATE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
+
+#undef REGISTER_SCATTER_ARITHEMTIC
+#undef REGISTER_SCATTER_ARITHEMTIC_CPU
+#undef REGISTER_SCATTER_ARITHEMTIC_GPU
 #undef REGISTER_SCATTER_UPDATE
 #undef REGISTER_SCATTER_UPDATE_CPU
 #undef REGISTER_SCATTER_UPDATE_GPU
 #undef REGISTER_SCATTER_KERNEL
 #undef REGISTER_SCATTER_KERNEL_INDEX
-
-#if GOOGLE_CUDA
-// Forward declarations of the functor specializations for GPU.
-namespace functor {
-
-#define DECLARE_GPU_SPECS_OP(T, Index, op)                   \
-  template <>                                                \
-  Index ScatterFunctor<GPUDevice, T, Index, op>::operator()( \
-      OpKernelContext* c, const GPUDevice& d,                \
-      typename TTypes<T>::Matrix params,                     \
-      typename TTypes<T>::ConstMatrix updates,               \
-      typename TTypes<Index>::ConstFlat indices);            \
-  extern template struct ScatterFunctor<GPUDevice, T, Index, op>;
-
-#define DECLARE_GPU_SPECS_INDEX(T, Index)                       \
-  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ASSIGN); \
-  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ADD);    \
-  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::SUB);
-
-#define DECLARE_GPU_SPECS(T)         \
-  DECLARE_GPU_SPECS_INDEX(T, int32); \
-  DECLARE_GPU_SPECS_INDEX(T, int64);
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
-
-#undef DECLARE_GPU_SPECS
-#undef DECLARE_GPU_SPECS_INDEX
-#undef DECLARE_GPU_SPECS_OP
-
-}  // namespace functor
-#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

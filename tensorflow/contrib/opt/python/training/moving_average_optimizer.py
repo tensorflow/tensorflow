@@ -12,39 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Optimizer that computes a moving average of the variables.
+"""Moving average optimizer."""
 
-Empirically it has been found that using the moving average of the trained
-parameters of a deep network is better than using its trained parameters
-directly. This optimizer allows you to compute this moving average and swap the
-variables at save time so that any code outside of the training loop will use by
-default the averaged values instead of the original ones.
-
-Example of usage:
-
-```python
-
-// Encapsulate your favorite optimizer (here the momentum one)
-// inside the MovingAverageOptimizer.
-opt = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
-opt = tf.contrib.opt.MovingAverageOptimizer(opt)
-// Then create your model and all its variables.
-model = build_model()
-// Add the training op that optimizes using opt.
-// This needs to be called before swapping_saver().
-opt.minimize(cost, var_list)
-// Then create your saver like this:
-saver = opt.swapping_saver()
-// Pass it to your training loop.
-    slim.learning.train(
-        model,
-        ...
-        saver=saver)
-```
-
-Note that for evaluation, the normal saver should be used instead of
-swapping_saver().
-"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -60,9 +29,42 @@ from tensorflow.python.training import saver
 
 
 class MovingAverageOptimizer(optimizer.Optimizer):
-  """Optimizer wrapper that maintains a moving average of parameters."""
+  """Optimizer that computes a moving average of the variables.
 
-  def __init__(self, opt, average_decay=0.9999, sequential_update=True):
+  Empirically it has been found that using the moving average of the trained
+  parameters of a deep network is better than using its trained parameters
+  directly. This optimizer allows you to compute this moving average and swap
+  the variables at save time so that any code outside of the training loop will
+  use by default the averaged values instead of the original ones.
+
+  Example of usage:
+
+  ```python
+
+  // Encapsulate your favorite optimizer (here the momentum one)
+  // inside the MovingAverageOptimizer.
+  opt = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
+  opt = tf.contrib.opt.MovingAverageOptimizer(opt)
+  // Then create your model and all its variables.
+  model = build_model()
+  // Add the training op that optimizes using opt.
+  // This needs to be called before swapping_saver().
+  opt.minimize(cost, var_list)
+  // Then create your saver like this:
+  saver = opt.swapping_saver()
+  // Pass it to your training loop.
+      slim.learning.train(
+          model,
+          ...
+          saver=saver)
+  ```
+
+  Note that for evaluation, the normal saver should be used instead of
+  swapping_saver().
+  """
+
+  def __init__(self, opt, average_decay=0.9999, num_updates=None,
+               sequential_update=True):
     """Construct a new MovingAverageOptimizer.
 
     Args:
@@ -70,6 +72,8 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       average_decay: Float.  Decay to use to maintain the moving averages
                      of trained variables.
                      See tf.train.ExponentialMovingAverage for details.
+      num_updates: Optional count of number of updates applied to variables.
+                   See tf.train.ExponentialMovingAverage for details.
       sequential_update: Bool. If False, will compute the moving average at the
                          same time as the model is updated, potentially doing
                          benign data races.
@@ -77,7 +81,8 @@ class MovingAverageOptimizer(optimizer.Optimizer):
                          updates.
     """
     self._optimizer = opt
-    self._ema = moving_averages.ExponentialMovingAverage(average_decay)
+    self._ema = moving_averages.ExponentialMovingAverage(
+        average_decay, num_updates=num_updates)
     self._variable_map = None
     self._sequential_update = sequential_update
 
@@ -117,7 +122,7 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       **kwargs: Keyword arguments of `Saver()`.
 
     Returns:
-      A `tf.Saver` object.
+      A `tf.train.Saver` object.
 
     Raises:
       RuntimeError: If apply_gradients or minimize has not been called before.
@@ -127,7 +132,7 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       raise RuntimeError('Must call apply_gradients or minimize before '
                          'creating the swapping_saver')
     if var_list is None:
-      var_list = variables.all_variables()
+      var_list = variables.global_variables()
     if not isinstance(var_list, dict):
       var_list = saver.BaseSaverBuilder.OpListToDict(var_list)
     # Now swap variables and moving averages

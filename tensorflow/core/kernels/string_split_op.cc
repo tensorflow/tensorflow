@@ -30,7 +30,7 @@ namespace {
 
 std::vector<string> Split(const string& str, const string& delimiter) {
   if (delimiter.size()) {
-    return str_util::Split(str, delimiter[0], str_util::SkipEmpty());
+    return str_util::Split(str, delimiter, str_util::SkipEmpty());
   }
   std::vector<string> char_vector(str.size());
   for (size_t i = 0; i < str.size(); ++i) {
@@ -64,10 +64,6 @@ class StringSplitOp : public OpKernel {
     const auto delimiter_vec = delimiter_tensor->flat<string>();
     const string& delimiter = delimiter_vec(0);
     // Empty delimiter means split the input character by character.
-    OP_REQUIRES(ctx, delimiter.size() < 2,
-                errors::InvalidArgument("Delimiter must be a character, got",
-                                        delimiter));
-
     std::vector<string> tokens;
     // Guess that we'll be unpacking a handful of tokens per example.
     static constexpr int kReserveSize = 4;

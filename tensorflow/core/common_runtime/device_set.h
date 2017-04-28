@@ -61,12 +61,10 @@ class DeviceSet {
   // with more preferable devices earlier.
   std::vector<DeviceType> PrioritizedDeviceTypeList() const;
 
-  // A comparator to sort by device types according to
-  // system-determined priority.
+  // An order to sort by device types according to system-determined
+  // priority.
   //
-  // For internal-use only.
-  //
-  // Higher result implies lower priority.
+  // Higher result implies higher priority.
   static int DeviceTypeOrder(const DeviceType& d);
 
  private:

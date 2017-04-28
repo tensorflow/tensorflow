@@ -27,23 +27,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os.path
+import sys
 import time
+
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import mnist
 
-
 # Basic model parameters as external flags.
-flags = tf.app.flags
-FLAGS = flags.FLAGS
-flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
-flags.DEFINE_integer('num_epochs', 2, 'Number of epochs to run trainer.')
-flags.DEFINE_integer('hidden1', 128, 'Number of units in hidden layer 1.')
-flags.DEFINE_integer('hidden2', 32, 'Number of units in hidden layer 2.')
-flags.DEFINE_integer('batch_size', 100, 'Batch size.')
-flags.DEFINE_string('train_dir', '/tmp/data',
-                    'Directory with the training data.')
+FLAGS = None
 
 # Constants used for dealing with the files, matches convert_to_records.
 TRAIN_FILE = 'train.tfrecords'
@@ -144,8 +138,8 @@ def run_training():
     train_op = mnist.training(loss, FLAGS.learning_rate)
 
     # The op for initializing the variables.
-    init_op = tf.group(tf.initialize_all_variables(),
-                       tf.initialize_local_variables())
+    init_op = tf.group(tf.global_variables_initializer(),
+                       tf.local_variables_initializer())
 
     # Create a session for running operations in the Graph.
     sess = tf.Session()
@@ -194,4 +188,42 @@ def main(_):
 
 
 if __name__ == '__main__':
-  tf.app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--learning_rate',
+      type=float,
+      default=0.01,
+      help='Initial learning rate.'
+  )
+  parser.add_argument(
+      '--num_epochs',
+      type=int,
+      default=2,
+      help='Number of epochs to run trainer.'
+  )
+  parser.add_argument(
+      '--hidden1',
+      type=int,
+      default=128,
+      help='Number of units in hidden layer 1.'
+  )
+  parser.add_argument(
+      '--hidden2',
+      type=int,
+      default=32,
+      help='Number of units in hidden layer 2.'
+  )
+  parser.add_argument(
+      '--batch_size',
+      type=int,
+      default=100,
+      help='Batch size.'
+  )
+  parser.add_argument(
+      '--train_dir',
+      type=str,
+      default='/tmp/data',
+      help='Directory with the training data.'
+  )
+  FLAGS, unparsed = parser.parse_known_args()
+  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

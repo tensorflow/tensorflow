@@ -180,12 +180,6 @@ class Session {
 
 /// \brief Create a new session with the given options.
 ///
-/// If a new `Session` object could not be created, this function will
-/// return nullptr.
-Session* NewSession(const SessionOptions& options);
-
-/// \brief Create a new session with the given options.
-///
 /// If session creation succeeds, the new `Session` will be stored in
 /// `*out_session`, the caller will take ownership of the returned
 /// `*out_session`, and this function will return `OK()`. Otherwise, this
@@ -194,15 +188,40 @@ Status NewSession(const SessionOptions& options, Session** out_session);
 
 /// \brief Resets resource containers associated with a target.
 ///
+/// Reset() allows misbehaving or slow sessions to be aborted and closed, and
+/// causes their resources eventually to be released.  Reset() does not wait
+/// for the computations in old sessions to cease; it merely starts the
+/// process of tearing them down.  However, if a new session is started after
+/// a Reset(), the new session is isolated from changes that old sessions
+/// (started prior to the Reset()) may continue to make to resources, provided
+/// all those resources are in containers listed in "containers".
+///
+/// Old sessions may continue to have side-effects on resources not in
+/// containers listed in "containers", and thus may affect future
+/// sessions' results in ways that are hard to predict.  Thus, if well-defined
+/// behaviour is desired, it is recommended that all containers be listed in
+/// "containers".
+///
 /// `containers` is a vector of string representation of resource container
 /// names. When a resource container is reset, the resources held by the
 /// container will be released. In particular, all Variables in the container
-/// will become undefined.
+/// will become undefined.  If the "containers" vector is empty, the default
+/// container is assumed.  If the "containers" vector is non-empty, the
+/// default container should be listed explicitly.
 ///
 /// If Reset succeeds, this function will return `OK()`. Otherwise, this
 /// function will return an error status.
 Status Reset(const SessionOptions& options,
              const std::vector<string>& containers);
+
+/// \brief Create a new session with the given options.
+///
+/// If a new `Session` object could not be created, this function will
+/// return nullptr.
+///
+/// *Strongly prefer* the version of NewSession that returns Status,
+/// which contains more helpful error information.
+Session* NewSession(const SessionOptions& options);
 
 }  // end namespace tensorflow
 

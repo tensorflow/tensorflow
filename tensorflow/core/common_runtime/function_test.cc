@@ -44,7 +44,7 @@ Status GetOpSig(const string& op, const OpDef** sig) {
 void FunctionTestSchedClosure(std::function<void()> fn) {
   static thread::ThreadPool* w =
       new thread::ThreadPool(Env::Default(), "Test", 8);
-  w->Schedule(fn);
+  w->Schedule(std::move(fn));
 }
 
 void HasError(const Status& s, const string& substr) {
@@ -229,6 +229,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 TEST_F(FunctionLibraryRuntimeTest, IsStateful) {
   Init({});
   EXPECT_TRUE(lib_->IsStateful("Variable"));
+  EXPECT_TRUE(lib_->IsStateful("VariableV2"));
   EXPECT_FALSE(lib_->IsStateful("Matmul"));
 }
 
@@ -341,9 +342,9 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
-  Graph* g = GetFuncBody("XTimes16", {{"T", DT_FLOAT}});
+  std::unique_ptr<Graph> g(GetFuncBody("XTimes16", {{"T", DT_FLOAT}}));
   ASSERT_TRUE(g != nullptr);
-  ExpandInlineFunctions(lib_, g);
+  ExpandInlineFunctions(lib_, g.get());
   OptimizeGraph(lib_, &g);
   const char* e0 = R"P(
 (n2:float) -> (n7:float) {
@@ -354,41 +355,9 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   n7 = Mul[T=float](n6, n8)
 }
 )P";
-  EXPECT_EQ(e0, DebugString(g));
-  delete g;
+  EXPECT_EQ(e0, DebugString(g.get()));
 }
 
-TEST_F(FunctionLibraryRuntimeTest, ManySwapsOld) {
-  auto func = FDH::Define(  // Creates a FunctionDef using FunctionDef::Nodes
-      // Name
-      "ManySwapsFirst",
-      // Args
-      {"x: float", "y: float"},
-      // Return values
-      {"o: float"},
-      // attr def
-      {},
-      // Nodes
-      {{{"a0", "b0"}, "Swap", {"x", "y"}, {{"T", DT_FLOAT}}},
-       {{"a1", "b1"}, "Swap", {"a0", "b0"}, {{"T", DT_FLOAT}}},
-       {{"a2", "b2"}, "Swap", {"a1", "b1"}, {{"T", DT_FLOAT}}},
-       {{"a3", "b3"}, "Swap", {"a2", "b2"}, {{"T", DT_FLOAT}}},
-       {{"a4", "b4"}, "Swap", {"a3", "b3"}, {{"T", DT_FLOAT}}},
-       {{"a5", "b5"}, "Swap", {"a4", "b4"}, {{"T", DT_FLOAT}}},
-       {{"o"}, "Identity", {"a5"}, {{"T", DT_FLOAT}}}});
-  Init({test::function::Swap(), func});
-  Graph* g = GetFuncBody("ManySwapsFirst", {});
-  ASSERT_TRUE(g != nullptr);
-  OptimizeGraph(lib_, &g);
-  const char* e0 = R"P(
-(n3:float, n2:float) -> (n3:float) {
-}
-)P";
-  EXPECT_EQ(e0, DebugString(g));
-  delete g;
-}
-
-// Like the above test, but using NodeDefs in the FunctionDef.
 TEST_F(FunctionLibraryRuntimeTest, ManySwapsNodeDef) {
   auto func = FDH::Create(  // Creates a FunctionDef using NodeDefs
       // Name
@@ -410,19 +379,18 @@ TEST_F(FunctionLibraryRuntimeTest, ManySwapsNodeDef) {
       // Return
       {{"o", "g:output"}});
   Init({test::function::Swap(), func});
-  Graph* g = GetFuncBody("ManySwapsNodeDef", {});
+  std::unique_ptr<Graph> g(GetFuncBody("ManySwapsNodeDef", {}));
   ASSERT_TRUE(g != nullptr);
   OptimizeGraph(lib_, &g);
   const char* e0 = R"P(
 (n3:float, n2:float) -> (n3:float) {
 }
 )P";
-  EXPECT_EQ(e0, DebugString(g));
-  delete g;
+  EXPECT_EQ(e0, DebugString(g.get()));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
-  auto func = FDH::Define(
+  auto func = FDH::Create(
       // Name
       "ManySwapsFirst",
       // Args
@@ -437,13 +405,14 @@ TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
       // y2 depends on the 2nd swap.  The 2nd swap has data dependency
       // on the 1st swap. The optimization should maintain the control
       // dependencies.
-      {{{"a0", "b0"}, "Swap", {"x", "y"}, {{"T", DT_FLOAT}}, {"x2"}},
-       {{"a1", "b1"}, "Swap", {"a0", "b0"}, {{"T", DT_FLOAT}}},
+      {{{"a0"}, "Swap", {"x", "y"}, {{"T", DT_FLOAT}}, {"x2"}},
+       {{"a1"}, "Swap", {"a0:o0:0", "a0:o1:0"}, {{"T", DT_FLOAT}}},
        {{"x2"}, "Mul", {"x", "x"}, {{"T", DT_FLOAT}}},
        {{"y2"}, "Mul", {"y", "y"}, {{"T", DT_FLOAT}}, {"a1"}},
-       {{"o"}, "Add", {"x2", "y2"}, {{"T", DT_FLOAT}}}});
+       {{"o"}, "Add", {"x2:z:0", "y2:z:0"}, {{"T", DT_FLOAT}}}},
+      {{"o", "o:z:0"}});
   Init({test::function::Swap(), func});
-  Graph* g = GetFuncBody("ManySwapsFirst", {});
+  std::unique_ptr<Graph> g(GetFuncBody("ManySwapsFirst", {}));
   ASSERT_TRUE(g != nullptr);
   OptimizeGraph(lib_, &g);
 
@@ -460,8 +429,7 @@ TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
   n6 = Add[T=float](n4, n5)
 }
 )P";
-  EXPECT_EQ(e0, DebugString(g));
-  delete g;
+  EXPECT_EQ(e0, DebugString(g.get()));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Error_NotFound) {
@@ -518,7 +486,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
 )P";
   EXPECT_EQ(e0, DebugString(f));
   delete f;
-  auto g = GetGradBody("XTimesTwo", {{"T", DT_FLOAT}});
+  std::unique_ptr<Graph> g(GetGradBody("XTimesTwo", {{"T", DT_FLOAT}}));
   const char* e1 = R"P(
 (n4:float, n6:float) -> (n7:float) {
   n2 = Const[dtype=int64, value=Tensor<type: int64 shape: [] values: 2>]()
@@ -527,23 +495,21 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   n7 = SymbolicGradient[Tin={float, float, float}, Tout={float, float}, f=Mul[T=float]](n4, n3, n6)
 }
 )P";
-  EXPECT_EQ(e1, DebugString(g));
+  EXPECT_EQ(e1, DebugString(g.get()));
 
   OptimizeGraph(lib_, &g);
   const char* e2 = R"P(
 (n2:float, n3:float) -> (n9:float) {
   n11 = Const[dtype=int32, value=Tensor<type: int32 shape: [0] values: >]()
   n10 = Const[dtype=float, value=Tensor<type: float shape: [] values: 2>]()
-  n6 = Shape[T=float](n2)
+  n6 = Shape[T=float, out_type=int32](n2)
   n5 = Mul[T=float](n3, n10)
-  n7 = BroadcastGradientArgs(n6, n11)
-  n8 = Sum[T=float, keep_dims=false](n5, n7)
-  n9 = Reshape[T=float](n8, n6)
+  n7 = BroadcastGradientArgs[T=int32](n6, n11)
+  n8 = Sum[T=float, Tidx=int32, keep_dims=false](n5, n7)
+  n9 = Reshape[T=float, Tshape=int32](n8, n6)
 }
 )P";
-  EXPECT_EQ(e2, DebugString(g));
-
-  delete g;
+  EXPECT_EQ(e2, DebugString(g.get()));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Gradient_Add) {
@@ -555,13 +521,13 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_Add) {
 (n7:float, n5:float, n2:float) -> (n14:float, n11:float) {
   n3 = Identity[T=float](n2)
   n4 = Identity[T=float](n2)
-  n6 = Shape[T=float](n5)
-  n8 = Shape[T=float](n7)
-  n9 = BroadcastGradientArgs(n8, n6)
-  n10 = Sum[T=float, keep_dims=false](n3, n9:1)
-  n13 = Sum[T=float, keep_dims=false](n4, n9)
-  n11 = Reshape[T=float](n10, n6)
-  n14 = Reshape[T=float](n13, n8)
+  n6 = Shape[T=float, out_type=int32](n5)
+  n8 = Shape[T=float, out_type=int32](n7)
+  n9 = BroadcastGradientArgs[T=int32](n8, n6)
+  n10 = Sum[T=float, Tidx=int32, keep_dims=false](n3, n9:1)
+  n13 = Sum[T=float, Tidx=int32, keep_dims=false](n4, n9)
+  n11 = Reshape[T=float, Tshape=int32](n10, n6)
+  n14 = Reshape[T=float, Tshape=int32](n13, n8)
 }
 )P";
   EXPECT_EQ(e0, DebugString(g));
@@ -576,14 +542,14 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_Mul) {
   const char* e0 = R"P(
 (n6:float, n3:float, n2:float) -> (n14:float, n11:float) {
   n4 = Mul[T=float](n2, n3)
-  n5 = Shape[T=float](n3)
+  n5 = Shape[T=float, out_type=int32](n3)
   n7 = Mul[T=float](n6, n2)
-  n8 = Shape[T=float](n6)
-  n9 = BroadcastGradientArgs(n8, n5)
-  n10 = Sum[T=float, keep_dims=false](n7, n9:1)
-  n13 = Sum[T=float, keep_dims=false](n4, n9)
-  n11 = Reshape[T=float](n10, n5)
-  n14 = Reshape[T=float](n13, n8)
+  n8 = Shape[T=float, out_type=int32](n6)
+  n9 = BroadcastGradientArgs[T=int32](n8, n5)
+  n10 = Sum[T=float, Tidx=int32, keep_dims=false](n7, n9:1)
+  n13 = Sum[T=float, Tidx=int32, keep_dims=false](n4, n9)
+  n11 = Reshape[T=float, Tshape=int32](n10, n5)
+  n14 = Reshape[T=float, Tshape=int32](n13, n8)
 }
 )P";
   EXPECT_EQ(e0, DebugString(g));
@@ -607,7 +573,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   auto grad =
       FDH::Define("TestGrad", {"x:float", "y:float"}, {"dx:float", "dy:float"},
                   {}, {FDH::Const<float>("dz", 1),
-                       {{"grad"},
+                       {{"grad0", "grad1"},
                         "SymbolicGradient",
                         {"x", "y", "dz"},
                         {
@@ -615,12 +581,12 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
                             {"Tin", DataTypeSlice{T, T, T}},
                             {"Tout", DataTypeSlice{T, T}},
                         }},
-                       {{"dx"}, "Identity", {"grad:0"}, {{"T", DT_FLOAT}}},
-                       {{"dy"}, "Identity", {"grad:1"}, {{"T", DT_FLOAT}}}});
+                       {{"dx"}, "Identity", {"grad0"}, {{"T", DT_FLOAT}}},
+                       {{"dy"}, "Identity", {"grad1"}, {{"T", DT_FLOAT}}}});
 
   Init({test, grad});
 
-  Graph* g = GetFuncBody("TestGrad", {});
+  std::unique_ptr<Graph> g(GetFuncBody("TestGrad", {}));
   ASSERT_TRUE(g != nullptr);
   const char* e0 = R"P(
 (n4:float, n3:float) -> (n8:float, n6:float) {
@@ -630,9 +596,9 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   n8 = Identity[T=float](n5)
 }
 )P";
-  EXPECT_EQ(e0, DebugString(g));
+  EXPECT_EQ(e0, DebugString(g.get()));
 
-  ExpandInlineFunctions(lib_, g);
+  ExpandInlineFunctions(lib_, g.get());
   const char* e1 = R"P(
 (n4:float, n3:float) -> (n8:float, n6:float) {
   n10 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
@@ -643,10 +609,10 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   n24 = Identity[T=float](n4)
   n14 = Add[T=float](n24, n25)
   n15 = Rank[T=float](n14)
-  n16 = Range(n11, n15, n10)
+  n16 = Range[Tidx=int32](n11, n15, n10)
   n20 = ZerosLike[T=int32](n15)
-  n17 = Sum[T=float, keep_dims=false](n14, n16)
-  n19 = SymbolicGradient[Tin={float, int32, float}, Tout={float, int32}, f=Sum[T=float, keep_dims=false]](n14, n16, n26)
+  n17 = Sum[T=float, Tidx=int32, keep_dims=false](n14, n16)
+  n19 = SymbolicGradient[Tin={float, int32, float}, Tout={float, int32}, f=Sum[T=float, Tidx=int32, keep_dims=false]](n14, n16, n26)
   n21 = SymbolicGradient[Tin={float, float, float}, Tout={float, float}, f=Add[T=float]](n24, n25, n19)
   n28 = Identity[T=float](n21:1)
   n27 = Identity[T=float](n21)
@@ -654,42 +620,42 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   n8 = Identity[T=float](n27)
 }
 )P";
-  EXPECT_EQ(e1, DebugString(g));
+  EXPECT_EQ(e1, DebugString(g.get()));
 
   OptimizeGraph(lib_, &g);
   const char* e2 = R"P(
 (n4:float, n3:float) -> (n25:float, n23:float) {
-  n11 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
   n2 = Const[dtype=float, value=Tensor<type: float shape: [] values: 1>]()
-  n7 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n19 = Shape[T=float](n3)
-  n8 = Add[T=float](n4, n3)
-  n20 = Shape[T=float](n4)
-  n9 = Rank[T=float](n8)
-  n14 = Shape[T=float](n8)
-  n21 = BroadcastGradientArgs(n20, n19)
-  n10 = Range(n7, n9, n11)
-  n12 = Shape[T=int32](n10)
-  n13 = Fill[T=int32](n12, n11)
-  n15 = DynamicStitch[N=2, T=int32](n10, n10, n14, n13)
-  n16 = Reshape[T=float](n2, n15)
+  n8 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  n7 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
+  n19 = Shape[T=float, out_type=int32](n3)
+  n9 = Add[T=float](n4, n3)
+  n20 = Shape[T=float, out_type=int32](n4)
+  n10 = Rank[T=float](n9)
+  n14 = Shape[T=float, out_type=int32](n9)
+  n21 = BroadcastGradientArgs[T=int32](n20, n19)
+  n11 = Range[Tidx=int32](n8, n10, n7)
+  n12 = Shape[T=int32, out_type=int32](n11)
+  n13 = Fill[T=int32](n12, n7)
+  n15 = DynamicStitch[N=2, T=int32](n11, n11, n14, n13)
+  n16 = Reshape[T=float, Tshape=int32](n2, n15)
   n17 = Div[T=int32](n14, n15)
-  n18 = Tile[T=float](n16, n17)
-  n24 = Sum[T=float, keep_dims=false](n18, n21)
-  n22 = Sum[T=float, keep_dims=false](n18, n21:1)
-  n25 = Reshape[T=float](n24, n20)
-  n23 = Reshape[T=float](n22, n19)
+  n18 = Tile[T=float, Tmultiples=int32](n16, n17)
+  n24 = Sum[T=float, Tidx=int32, keep_dims=false](n18, n21)
+  n22 = Sum[T=float, Tidx=int32, keep_dims=false](n18, n21:1)
+  n25 = Reshape[T=float, Tshape=int32](n24, n20)
+  n23 = Reshape[T=float, Tshape=int32](n22, n19)
 }
 )P";
-  EXPECT_EQ(e2, DebugString(g));
-  delete g;
+  EXPECT_EQ(e2, DebugString(g.get()));
 }
 
 namespace {
 
 bool DoNothing(Graph* g) { return false; }
 
-string Optimize(std::function<bool(Graph* g)> pass, const FunctionDef& fdef) {
+string Optimize(const std::function<bool(Graph* g)>& pass,
+                const FunctionDef& fdef) {
   InstantiationResult result;
   InstantiateAttrValueMap empty;
   TF_CHECK_OK(InstantiateFunction(fdef, empty, GetOpSig, &result));
@@ -735,14 +701,14 @@ TEST(OptimizationTest, RemoveDeadNodes) {
        // y = Add<T>(a, o)
        {{"y"}, "Add", {"a", "o"}, {{"T", T}}}});
   const char* e0 = R"S(
-(n0:int32) -> (n7:int32) {
-  n2 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
-  n6 = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](n2)
-  n3 = Add[T=int32](n2, n2)
-  n1 = Square[T=int32](n0)
-  n7 = Add[T=int32](n1, n2)
-  n4 = Mul[T=int32](n1, n3)
-  n5 = Mul[T=int32](n3, n4)
+(x:int32) -> (y:int32) {
+  o = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
+  keep_me = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](o)
+  x1 = Add[T=int32](o, o)
+  a = Square[T=int32](x)
+  y = Add[T=int32](a, o)
+  x2 = Mul[T=int32](a, x1)
+  x3 = Mul[T=int32](x1, x2)
 }
 )S";
   EXPECT_EQ(Optimize(DoNothing, func), e0);
@@ -764,25 +730,25 @@ TEST(OptimizationTest, RemoveIdentityNodes_Ref) {
       {},
       // Nodes
       {// variable
-       {{"v"}, "Variable", {}, {{"dtype", T}, {"shape", TensorShape({})}}},
+       {{"v"}, "VariableV2", {}, {{"dtype", T}, {"shape", TensorShape({})}}},
        // read the variable. Shouldn't be removed.
        {{"v_read"}, "Identity", {"v"}, {{"T", T}}},
        // returns v + v
        {{"ret"}, "Add", {"v_read", "v_read"}, {{"T", T}}}});
   const char* e0 = R"S(
-() -> (n2:float) {
-  n0 = Variable[container="", dtype=float, shape=[], shared_name=""]()
-  n1 = Identity[T=float](n0)
-  n2 = Add[T=float](n1, n1)
+() -> (ret:float) {
+  v = VariableV2[container="", dtype=float, shape=[], shared_name=""]()
+  v_read = Identity[T=float](v)
+  ret = Add[T=float](v_read, v_read)
 }
 )S";
   EXPECT_EQ(Optimize(DoNothing, func), e0);
 
   const char* e1 = R"S(
-() -> (n2:float) {
-  n0 = Variable[container="", dtype=float, shape=[], shared_name=""]()
-  n1 = Identity[T=float](n0)
-  n2 = Add[T=float](n1, n1)
+() -> (ret:float) {
+  v = VariableV2[container="", dtype=float, shape=[], shared_name=""]()
+  v_read = Identity[T=float](v)
+  ret = Add[T=float](v_read, v_read)
 }
 )S";
   EXPECT_EQ(Optimize(::tensorflow::RemoveIdentityNodes, func), e1);
@@ -817,95 +783,100 @@ TEST(OptimizationTest, RemoveIdentityNodes) {
        // y = Add<T>(a, o)
        {{"y"}, "Add", {"a", "o"}, {{"T", T}}}});
   const char* e0 = R"S(
-(n0:int32) -> (n7:int32) {
-  n2 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
-  n1 = Square[T=int32](n0)
-  n7 = Add[T=int32](n1, n2)
-  n3 = Identity[T=int32](n1)
-  n4 = Identity[T=int32](n3)
-  n5 = Identity[T=int32](n4)
-  n6 = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](n2) @ n5
+(x:int32) -> (y:int32) {
+  o = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
+  a = Square[T=int32](x)
+  y = Add[T=int32](a, o)
+  x1 = Identity[T=int32](a)
+  x2 = Identity[T=int32](x1)
+  x3 = Identity[T=int32](x2)
+  keep_me = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](o) @ x3
 }
 )S";
   EXPECT_EQ(Optimize(DoNothing, func), e0);
 
   const char* e1 = R"S(
-(n0:int32) -> (n7:int32) {
-  n2 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
-  n1 = Square[T=int32](n0)
-  n7 = Add[T=int32](n1, n2)
-  n6 = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](n2) @ n1
+(x:int32) -> (y:int32) {
+  o = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
+  a = Square[T=int32](x)
+  y = Add[T=int32](a, o)
+  keep_me = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](o) @ a
 }
 )S";
   EXPECT_EQ(Optimize(::tensorflow::RemoveIdentityNodes, func), e1);
 }
 
 TEST(OptimizationTest, RemoveListArrayConverter) {
-  auto func = FDH::Define(
+  auto func = FDH::Create(
       // Name
       "Test",
       // Args
       {"i: float"},
-      // Return values
+      // Return signature
       {"o: float"},
       // Attrs
       {},
       // Nodes
       {FDH::Const("zero", 0),
-       {{"s"}, "Split", {"zero", "i"}, {{"num_split", 4}, {"T", DT_FLOAT}}},
+       {{"s"},
+        "Split",
+        {"zero:output:0", "i"},
+        {{"num_split", 4}, {"T", DT_FLOAT}}},
        {{"a"},
         "_ArrayToList",
-        {"s"},
+        {"s:output"},
         {{"N", 4},
          {"T", DT_FLOAT},
          {"out_types", DataTypeSlice{DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT}}}},
-       {{"l"}, "Mul", {"a:0", "a:1"}, {{"T", DT_FLOAT}}},
-       {{"r"}, "Mul", {"a:2", "a:3"}, {{"T", DT_FLOAT}}},
+       {{"l"}, "Mul", {"a:output:0", "a:output:1"}, {{"T", DT_FLOAT}}},
+       {{"r"}, "Mul", {"a:output:2", "a:output:3"}, {{"T", DT_FLOAT}}},
        {{"x"},
         "_ListToArray",
-        {"l", "r"},
+        {"l:z", "r:z"},
         {{"N", 2},
          {"T", DT_FLOAT},
          {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}}}},
-       {{"o"}, "AddN", {"x"}, {{"N", 2}, {"T", DT_FLOAT}}}});
+       {{"o"}, "AddN", {"x:output"}, {{"N", 2}, {"T", DT_FLOAT}}}},
+      // Return values
+      {{"o", "o:sum"}});
 
   const char* e0 = R"P(
-(n0:float) -> (n7:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n2 = Split[T=float, num_split=4](n1, n0)
-  n3 = _ArrayToList[N=4, T=float, out_types={float, float, float, float}](n2, n2:1, n2:2, n2:3)
-  n5 = Mul[T=float](n3:2, n3:3)
-  n4 = Mul[T=float](n3, n3:1)
-  n6 = _ListToArray[N=2, T=float, Tin={float, float}](n4, n5)
-  n7 = AddN[N=2, T=float](n6, n6:1)
+(i:float) -> (o:float) {
+  zero = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  s = Split[T=float, num_split=4](zero, i)
+  a = _ArrayToList[N=4, T=float, out_types={float, float, float, float}](s, s:1, s:2, s:3)
+  r = Mul[T=float](a:2, a:3)
+  l = Mul[T=float](a, a:1)
+  x = _ListToArray[N=2, T=float, Tin={float, float}](l, r)
+  o = AddN[N=2, T=float](x, x:1)
 }
 )P";
   EXPECT_EQ(Optimize(DoNothing, func), e0);
 
   const char* e1 = R"P(
-(n0:float) -> (n7:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n2 = Split[T=float, num_split=4](n1, n0)
-  n5 = Mul[T=float](Func/_2, Func/_3)
-  n4 = Mul[T=float](Func/_0, Func/_1)
-  n7 = AddN[N=2, T=float](Func/_4, Func/_5)
-  Func/_0 = Identity[T=float](n2)
-  Func/_1 = Identity[T=float](n2:1)
-  Func/_2 = Identity[T=float](n2:2)
-  Func/_3 = Identity[T=float](n2:3)
-  Func/_4 = Identity[T=float](n4)
-  Func/_5 = Identity[T=float](n5)
+(i:float) -> (o:float) {
+  zero = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  s = Split[T=float, num_split=4](zero, i)
+  r = Mul[T=float](Func/_2, Func/_3)
+  l = Mul[T=float](Func/_0, Func/_1)
+  o = AddN[N=2, T=float](Func/_4, Func/_5)
+  Func/_0 = Identity[T=float](s)
+  Func/_1 = Identity[T=float](s:1)
+  Func/_2 = Identity[T=float](s:2)
+  Func/_3 = Identity[T=float](s:3)
+  Func/_4 = Identity[T=float](l)
+  Func/_5 = Identity[T=float](r)
 }
 )P";
   EXPECT_EQ(Optimize(RemoveListArrayConverter, func), e1);
 
   const char* e2 = R"P(
-(n0:float) -> (n7:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n2 = Split[T=float, num_split=4](n1, n0)
-  n5 = Mul[T=float](n2:2, n2:3)
-  n4 = Mul[T=float](n2, n2:1)
-  n7 = AddN[N=2, T=float](n4, n5)
+(i:float) -> (o:float) {
+  zero = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  s = Split[T=float, num_split=4](zero, i)
+  r = Mul[T=float](s:2, s:3)
+  l = Mul[T=float](s, s:1)
+  o = AddN[N=2, T=float](l, r)
 }
 )P";
   auto remove_listarray_and_identity = [](Graph* g) {
@@ -915,7 +886,7 @@ TEST(OptimizationTest, RemoveListArrayConverter) {
 }
 
 TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
-  auto func = FDH::Define(
+  auto func = FDH::Create(
       // Name
       "Test",
       // Args
@@ -934,27 +905,28 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
         {"dummy"}},
        {{"o"},
         "AddN",
-        {"x"},
+        {"x:output"},
         {{"N", 2}, {"T", DT_FLOAT}},
         // Control dep
-        {"x"}}});
+        {"x"}}},
+      {{"o", "o:sum"}});
 
   const char* e0 = R"P(
-(n0:float) -> (n3:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n2 = _ListToArray[N=2, T=float, Tin={float, float}](n0, n0) @ n1
-  n3 = AddN[N=2, T=float](n2, n2:1) @ n2
+(i:float) -> (o:float) {
+  dummy = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  x = _ListToArray[N=2, T=float, Tin={float, float}](i, i) @ dummy
+  o = AddN[N=2, T=float](x, x:1) @ x
 }
 )P";
   EXPECT_EQ(Optimize(DoNothing, func), e0);
 
   const char* e1 = R"P(
-(n0:float) -> (n3:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n3 = AddN[N=2, T=float](Func/_0, Func/_1) @ Func/_3
-  Func/_0 = Identity[T=float](n0) @ Func/_2
-  Func/_1 = Identity[T=float](n0) @ Func/_2
-  Func/_2 = NoOp() @ n1
+(i:float) -> (o:float) {
+  dummy = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  o = AddN[N=2, T=float](Func/_0, Func/_1) @ Func/_3
+  Func/_0 = Identity[T=float](i) @ Func/_2
+  Func/_1 = Identity[T=float](i) @ Func/_2
+  Func/_2 = NoOp() @ dummy
   Func/_3 = NoOp() @ Func/_0, Func/_1
 }
 )P";

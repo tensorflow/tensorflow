@@ -34,6 +34,7 @@ cc_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
+            "//tensorflow/core:framework_lite",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
             "//tensorflow/core:test",
@@ -44,6 +45,7 @@ cc_library(
 tf_cc_test(
     name = "benchmark_model_test",
     size = "medium",
+    srcs = ["benchmark_model_test.cc"],
     deps = [
         ":benchmark_model_lib",
         "//tensorflow/cc:cc_ops",
@@ -77,7 +79,6 @@ cc_binary(
             "-lm",
             "-z defs",
             "-s",
-            "-Wl,--icf=all",  # Identical Code Folding
             "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
         ],
         "//conditions:default": [],

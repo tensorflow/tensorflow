@@ -47,6 +47,17 @@ class BufferedInputStream : public InputStreamInterface {
 
   int64 Tell() const override;
 
+  // Seek to this offset within the file.
+  //
+  // If we seek to somewhere within our pre-buffered data, we will re-use what
+  // data we can.  Otherwise, Seek() throws out the current buffer and the next
+  // read will trigger an underlying read.
+  //
+  // Note: When seeking backwards in a stream, this implementation uses
+  // Reset() + SkipNBytes(), so its performance will be dependent
+  // largely on the performance of SkipNBytes().
+  Status Seek(int64 position);
+
   // Read one text line of data into "*result" until end-of-file or a
   // \n is read.  (The \n is not included in the result.)  Overwrites
   // any existing data in *result.
@@ -63,6 +74,8 @@ class BufferedInputStream : public InputStreamInterface {
   // Also, '\0's are treated like any other character within the line and given
   // no special treatment.
   string ReadLineAsString();
+
+  Status Reset() override;
 
  private:
   Status FillBuffer();

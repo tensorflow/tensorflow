@@ -24,35 +24,42 @@
 # 3) Call a script to launch a k8s TensorFlow GRPC cluster inside the container
 #    and run the distributed test suite.
 #
-# Usage: local_test.sh [--leave-container-running]
-#                      [--model-name <MODEL_NAME>]
-#                      [--num-workers <NUM_WORKERS>]
-#                      [--num-parameter-servers <NUM_PARAMETER_SERVERS>]
-#                      [--sync-replicas]
+# Usage: local_test.sh <whl_url>
+#                      [--leave_container_running]
+#                      [--model_name <MODEL_NAME>]
+#                      [--num_workers <NUM_WORKERS>]
+#                      [--num_parameter_servers <NUM_PARAMETER_SERVERS>]
+#                      [--sync_replicas]
 #
-# E.g., local_test.sh --model-name CENSUS_WIDENDEEP
-#       local_test.sh --num-workers 3 --num-parameter-servers 3
+# E.g., local_test.sh <whl_url> --model_name CENSUS_WIDENDEEP
+#       local_test.sh <whl_url> --num_workers 3 --num_parameter_servers 3
 #
 # Arguments:
-# --leave-container-running:  Do not stop the docker-in-docker container after
+# <whl_url>
+#   Specify custom TensorFlow whl file URL to install in the test Docker image.
+#
+# --leave_container_running:  Do not stop the docker-in-docker container after
 #                             the termination of the tests, e.g., for debugging
 #
-# --num-workers <NUM_WORKERS>:
+# --num_workers <NUM_WORKERS>:
 #   Specifies the number of worker pods to start
 #
-# --num-parameter-server <NUM_PARAMETER_SERVERS>:
+# --num_parameter_server <NUM_PARAMETER_SERVERS>:
 #   Specifies the number of parameter servers to start
 #
-# --sync-replicas
+# --sync_replicas
 #   Use the synchronized-replica mode. The parameter updates from the replicas
 #   (workers) will be aggregated before applied, which avoids stale parameter
 #   updates.
 #
+#
 # In addition, this script obeys the following environment variables:
-# TF_DIST_SERVER_DOCKER_IMAGE:  overrides the default docker image to launch
-#                               TensorFlow (GRPC) servers with
 # TF_DIST_DOCKER_NO_CACHE:      do not use cache when building docker images
 
+die() {
+  echo $@
+  exit 1
+}
 
 # Configurations
 DOCKER_IMG_NAME="tensorflow/tf-dist-test-local-cluster"
@@ -72,20 +79,27 @@ MODEL_NAME=""
 MODEL_NAME_FLAG=""
 NUM_WORKERS=2
 NUM_PARAMETER_SERVERS=2
-SYNC_REPLICAS=0
+SYNC_REPLICAS_FLAG=""
+
+WHL_URL=${1}
+if [[ -z "${WHL_URL}" ]]; then
+  die "whl file URL is not specified"
+fi
 
 while true; do
-  if [[ $1 == "--leave-container-running" ]]; then
+  if [[ $1 == "--leave_container_running" ]]; then
     LEAVE_CONTAINER_RUNNING=1
-  elif [[ $1 == "--model-name" ]]; then
+  elif [[ $1 == "--model_name" ]]; then
     MODEL_NAME="$2"
-    MODEL_NAME_FLAG="--model-name ${MODEL_NAME}"
-  elif [[ $1 == "--num-workers" ]]; then
+    MODEL_NAME_FLAG="--model_name ${MODEL_NAME}"
+  elif [[ $1 == "--num_workers" ]]; then
     NUM_WORKERS=$2
-  elif [[ $1 == "--num-parameter-servers" ]]; then
+  elif [[ $1 == "--num_parameter_servers" ]]; then
     NUM_PARAMETER_SERVERS=$2
-  elif [[ $1 == "--sync-replicas" ]]; then
-    SYNC_REPLICAS=1
+  elif [[ $1 == "--sync_replicas" ]]; then
+    SYNC_REPLICAS_FLAG="--sync_replicas"
+  elif [[ $1 == "--whl_url" ]]; then
+    WHL_URL=$2
   fi
 
   shift
@@ -98,7 +112,7 @@ echo "LEAVE_CONTAINER_RUNNING: ${LEAVE_CONTAINER_RUNNING}"
 echo "MODEL_NAME: \"${MODEL_NAME}\""
 echo "NUM_WORKERS: ${NUM_WORKERS}"
 echo "NUM_PARAMETER_SERVERS: ${NUM_PARAMETER_SERVERS}"
-echo "SYNC_REPLICAS: \"${SYNC_REPLICAS}\""
+echo "SYNC_REPLICAS_FLAG: \"${SYNC_REPLICAS_FLAG}\""
 
 # Current script directory
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -106,106 +120,39 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Get utility functions
 source ${DIR}/scripts/utils.sh
 
-
-# First, make sure that no docker-in-docker container of the same image
-# is already running
-if [[ ! -z $(get_container_id_by_image_name ${DOCKER_IMG_NAME}) ]]; then
-    die "It appears that there is already at least one Docker container "\
-"of image name ${DOCKER_IMG_NAME} running. Please stop it before trying again"
-fi
-
-# Build docker-in-docker image for local k8s cluster
+# Build docker-in-docker image for local k8s cluster.
 NO_CACHE_FLAG=""
 if [[ ! -z "${TF_DIST_DOCKER_NO_CACHE}" ]] &&
    [[ "${TF_DIST_DOCKER_NO_CACHE}" != "0" ]]; then
   NO_CACHE_FLAG="--no-cache"
 fi
 
+# Create docker build context directory.
+BUILD_DIR=$(mktemp -d)
+echo ""
+echo "Using whl file URL: ${WHL_URL}"
+echo "Building in temporary directory: ${BUILD_DIR}"
+
+cp -r ${DIR}/* "${BUILD_DIR}"/ || \
+  die "Failed to copy files to ${BUILD_DIR}"
+
+# Download whl file into the build context directory.
+wget -P "${BUILD_DIR}" ${WHL_URL} || \
+  die "Failed to download tensorflow whl file from URL: ${WHL_URL}"
+
+# Build docker image for test.
 docker build ${NO_CACHE_FLAG} -t ${DOCKER_IMG_NAME} \
-   -f ${DIR}/Dockerfile.local ${DIR}
+   -f "${BUILD_DIR}/Dockerfile.local" "${BUILD_DIR}" || \
+   die "Failed to build docker image: ${DOCKER_IMG_NAME}"
 
+# Clean up docker build context directory.
+rm -rf "${BUILD_DIR}"
 
-# Attempt to start the docker container with docker, which will run the k8s
-# cluster inside.
-
-# Get current script directory
-CONTAINER_START_LOG=$(mktemp --suffix=.log)
-echo "Log file for starting cluster container: ${CONTAINER_START_LOG}"
-echo ""
-
-${DIR}/local/start_tf_cluster_container.sh \
-      ${LOCAL_K8S_CACHE} \
-      ${DOCKER_IMG_NAME} | \
-    tee ${CONTAINER_START_LOG} &
-
-# Poll start log until the k8s service is started properly or when maximum
-# attempt count is reached.
-MAX_SERVER_POLLING_ATTEMPTS=600
-
-echo "Waiting for docker-in-docker container for local k8s TensorFlow "\
-"cluster to start and launch Kubernetes..."
-
-COUNTER=0
-while true; do
-  sleep 1
-
-  ((COUNTER++))
-  if [[ "${COUNTER}" -ge "${MAX_SERVER_POLLING_ATTEMPTS}" ]]; then
-    die "Reached maximum number of attempts (${MAX_SERVER_POLLING_ATTEMPTS}) "\
-"while waiting for docker-in-docker for local k8s TensorFlow cluster to start"
-  fi
-
-  # Check for hitting max attempt while trying to start docker-in-docker
-  if [[ $(grep -i "Reached maximum number of attempts" \
-                  "${CONTAINER_START_LOG}" | wc -l) == "1" ]]; then
-    die "Docker-in-docker container for local k8s TensorFlow cluster "\
-"FAILED to start"
-  fi
-
-  if [[ $(grep -i "Local Kubernetes cluster is running" \
-          "${CONTAINER_START_LOG}" | wc -l) == "1" ]]; then
-    break
-  fi
-done
-
-# Determine the id of the docker-in-docker container
-DIND_ID=$(get_container_id_by_image_name ${DOCKER_IMG_NAME})
-
-echo "Docker-in-docker container for local k8s TensorFlow cluster has been "\
-"started successfully."
-echo "Docker-in-docker container ID: ${DIND_ID}"
-echo "Launching k8s tf cluster and tests in container ${DIND_ID} ..."
-echo ""
-
-# Launch k8s tf cluster in the docker-in-docker container and perform tests
-SYNC_REPLICAS_FLAG=""
-if [[ ${SYNC_REPLICAS} == "1" ]]; then
-  SYNC_REPLICAS_FLAG="--sync-replicas"
-fi
-
-docker exec ${DIND_ID} \
-       /var/tf-k8s/local/test_local_tf_cluster.sh \
-       ${NUM_WORKERS} ${NUM_PARAMETER_SERVERS} \
-       ${MODEL_NAME_FLAG} ${SYNC_REPLICAS_FLAG}
-TEST_RES=$?
-
-# Tear down: stop docker-in-docker container
-if [[ ${LEAVE_CONTAINER_RUNNING} == "0" ]]; then
-  echo ""
-  echo "Stopping docker-in-docker container ${DIND_ID}"
-
-  docker stop --time=1 ${DIND_ID} || \
-      echo "WARNING: Failed to stop container ${DIND_ID} !!"
-
-  echo ""
-else
-  echo "Will NOT terminate DIND container ${DIND_ID}"
-fi
-
-if [[ "${TEST_RES}" != "0" ]]; then
-    die "Test of distributed TensorFlow runtime on docker-in-docker local "\
-"k8s cluster FAILED"
-else
-    echo "Test of distributed TensorFlow runtime on docker-in-docker local "\
-"k8s cluster PASSED"
-fi
+# Run docker image for test.
+docker run ${DOCKER_IMG_NAME} \
+    /var/tf_dist_test/scripts/dist_mnist_test.sh \
+    --ps_hosts $(seq -f "localhost:%g" -s "," \
+                 2000 $((2000 + ${NUM_PARAMETER_SERVERS} - 1))) \
+    --worker_hosts $(seq -f "localhost:%g" -s "," \
+                     3000 $((3000 + ${NUM_WORKERS} - 1))) \
+    --num_gpus 0 ${SYNC_REPLICAS_FLAG}

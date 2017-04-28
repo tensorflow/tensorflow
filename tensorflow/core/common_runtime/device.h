@@ -111,10 +111,10 @@ class Device : public DeviceBase {
   //
   // 'library' provides access to the function library which is shared
   // between all device partitions.
-  // 'graphdef' supplies the partition of the graph assigned to this
+  // 'graph' supplies the partition of the graph assigned to this
   // device.
   virtual Status MaybeRewriteGraph(const FunctionDefLibrary& /*library*/,
-                                   GraphDef* /*graphdef*/) {
+                                   std::unique_ptr<Graph>* /*graph*/) {
     return Status::OK();
   }
 
@@ -141,14 +141,13 @@ class Device : public DeviceBase {
   // Assembles the parameter components into a complete DeviceAttributes value.
   static DeviceAttributes BuildDeviceAttributes(
       const string& name, DeviceType device, Bytes memory_limit,
-      BusAdjacency bus_adjacency, const string& physical_device_desc);
+      const DeviceLocality& locality, const string& physical_device_desc);
 
-  static DeviceAttributes BuildDeviceAttributes(const string& name,
-                                                DeviceType device,
-                                                Bytes memory_limit,
-                                                BusAdjacency bus_adjacency) {
+  static DeviceAttributes BuildDeviceAttributes(
+      const string& name, DeviceType device, Bytes memory_limit,
+      const DeviceLocality& locality) {
     // Pass in an empty string as physical device name.
-    return BuildDeviceAttributes(name, device, memory_limit, bus_adjacency, "");
+    return BuildDeviceAttributes(name, device, memory_limit, locality, "");
   }
 
  private:

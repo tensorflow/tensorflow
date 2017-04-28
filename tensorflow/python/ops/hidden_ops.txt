@@ -1,17 +1,27 @@
 # array_ops
+BatchToSpace
+BroadcastArgs
 BroadcastGradientArgs
 ConcatOffset
 Concat
+ConcatV2
 Const
 EditDistance
+ExpandDims
+ListDiff
 MirrorPad
 MirrorPadGrad
 OneHot
 Pack
 Pad
+ParallelConcat
 Placeholder
 RefIdentity
+Reverse
+SpaceToBatch
 Split
+SplitV
+Squeeze
 Slice
 TileGrad  # Exported through array_grad instead of array_ops.
 ZerosLike  # TODO(josh11b): Use this instead of the Python version.
@@ -45,8 +55,13 @@ BarrierIncompleteSize
 BarrierInsertMany
 BarrierReadySize
 BarrierTakeMany
-PriorityQueue
+DeleteSessionTensor
+FakeQueue
 FIFOQueue
+FIFOQueueV2
+GetSessionHandle
+GetSessionHandleV2
+GetSessionTensor
 HashTable
 InitializeTable
 InitializeTableFromTextFile
@@ -55,37 +70,72 @@ LookupTableFind
 LookupTableImport
 LookupTableInsert
 LookupTableSize
+MutableDenseHashTable
 MutableHashTable
 MutableHashTableOfTensors
 Mutex
 MutexAcquire
 MutexRelease
 PaddingFIFOQueue
+PaddingFIFOQueueV2
+PriorityQueue
+PriorityQueueV2
 QueueClose
+QueueCloseV2
 QueueDequeue
+QueueDequeueV2
 QueueDequeueMany
+QueueDequeueManyV2
 QueueDequeueUpTo
+QueueDequeueUpToV2
 QueueEnqueue
+QueueEnqueueV2
 QueueEnqueueMany
+QueueEnqueueManyV2
 QueueSize
+QueueSizeV2
 RandomShuffleQueue
+RandomShuffleQueueV2
 Stack
+StackClose
 StackPop
 StackPush
-StackClose
 TensorArray
 TensorArrayClose
+TensorArrayCloseV2
 TensorArrayConcat
+TensorArrayConcatV2
+TensorArrayGather
+TensorArrayGatherV2
 TensorArrayGrad
-TensorArrayRead
+TensorArrayGradV2
 TensorArrayPack
+TensorArrayPackV2
+TensorArrayRead
+TensorArrayReadV2
+TensorArrayScatter
+TensorArrayScatterV2
 TensorArraySize
+TensorArraySizeV2
 TensorArraySplit
+TensorArraySplitV2
 TensorArrayUnpack
+TensorArrayUnpackV2
+TensorArrayV2
 TensorArrayWrite
-GetSessionHandle
-GetSessionTensor
-DeleteSessionTensor
+TensorArrayWriteV2
+TensorArrayV3
+TensorArrayCloseV3
+TensorArrayConcatV3
+TensorArrayGatherV3
+TensorArrayGradV3
+TensorArrayReadV3
+TensorArrayPackV3
+TensorArrayScatterV3
+TensorArraySizeV3
+TensorArraySplitV3
+TensorArrayUnpackV3
+TensorArrayWriteV3
 
 # functional_ops
 SymbolicGradient
@@ -100,8 +150,6 @@ ScaleImageGrad
 # io_ops
 FixedLengthRecordReader
 IdentityReader
-ReaderClose
-ReaderEnqueueWork
 ReaderNumRecordsProduced
 ReaderNumWorkUnitsCompleted
 ReaderRead
@@ -110,6 +158,16 @@ ReaderReset
 ReaderRestoreState
 ReaderSerializeState
 ReaderWorkQueueLength
+FixedLengthRecordReaderV2
+IdentityReaderV2
+ReaderNumRecordsProducedV2
+ReaderNumWorkUnitsCompletedV2
+ReaderReadV2
+ReaderReadUpToV2
+ReaderResetV2
+ReaderRestoreStateV2
+ReaderSerializeStateV2
+ReaderWorkQueueLengthV2
 Restore
 RestoreSlice
 Save
@@ -119,9 +177,18 @@ ShardedFilespec
 TextLineReader
 TFRecordReader
 WholeFileReader
+TextLineReaderV2
+TFRecordReaderV2
+WholeFileReaderV2
 
 # linalg_ops
+BatchCholesky
+BatchCholeskyGrad
+BatchMatrixDeterminant
+BatchMatrixInverse
+BatchMatrixSolve
 BatchMatrixSolveLs
+BatchMatrixTriangularSolve
 BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
@@ -133,7 +200,7 @@ Svd
 # logging_ops
 Assert
 AudioSummary
-HistogramAccumulatorSummary
+AudioSummaryV2
 HistogramSummary
 ImageSummary
 MergeSummary
@@ -147,15 +214,29 @@ AddN
 All
 Any
 BatchMatMul
+BatchFFT
+BatchFFT2D
+BatchFFT3D
+BatchIFFT
+BatchIFFT2D
+BatchIFFT3D
 Complex
+ComplexAbs
 Conj
+FloorDiv
+FloorMod
 Max
 Mean
 Min
+Mul
+Neg
 Pow
 Prod
 Range
+RealDiv
+Select
 SparseMatMul
+Sub
 Sum
 MatMul
 Sigmoid
@@ -163,18 +244,27 @@ Tanh
 SigmoidGrad
 TanhGrad
 InvGrad
+ReciprocalGrad
 SqrtGrad
 RsqrtGrad
+TruncateDiv
+TruncateMod
 
 # nn_ops
 AvgPoolGrad  # "*Grad" accessible through nn_grad instead of nn_ops.
+AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
+FusedBatchNorm
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad
 MaxPoolGrad
 MaxPoolGradWithArgmax
+MaxPoolGradGrad
+MaxPoolGradGradWithArgmax
+MaxPool3DGrad
+MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad
@@ -198,6 +288,7 @@ ParseSingleSequenceExample
 
 # random_ops
 RandomGamma
+RandomPoisson
 RandomUniform
 RandomUniformInt
 RandomShuffle
@@ -209,12 +300,18 @@ TruncatedNormal
 PyFunc
 PyFuncStateless
 
+# sdca_ops
+
 # state_ops
 Variable
+VariableV2
 TemporaryVariable
 DestroyTemporaryVariable
 
 # sparse_ops
+AddSparseToTensorsMap
+AddManySparseToTensorsMap
+TakeManySparseFromTensorsMap
 DeserializeManySparse
 SerializeManySparse
 SerializeSparse
@@ -237,3 +334,7 @@ Fact
 
 # training_ops
 # (None)
+
+# word2vec deprecated ops
+NegTrain
+Skipgram

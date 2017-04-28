@@ -31,54 +31,62 @@ from tensorflow.python.framework.op_def_library import OpDefLibrary
 from tensorflow.python.platform import googletest
 
 
-# NOTE(mrry): Dummy shape registrations for ops used in the tests.
-ops.RegisterShape("Attr")(None)
-ops.RegisterShape("AttrBool")(None)
-ops.RegisterShape("AttrBoolList")(None)
-ops.RegisterShape("AttrDefault")(None)
-ops.RegisterShape("AttrEmptyListDefault")(None)
-ops.RegisterShape("AttrEnum")(None)
-ops.RegisterShape("AttrEnumList")(None)
-ops.RegisterShape("AttrFloat")(None)
-ops.RegisterShape("AttrListDefault")(None)
-ops.RegisterShape("AttrListMin")(None)
-ops.RegisterShape("AttrMin")(None)
-ops.RegisterShape("AttrShape")(None)
-ops.RegisterShape("AttrShapeList")(None)
-ops.RegisterShape("AttrPartialShape")(None)
-ops.RegisterShape("AttrPartialShapeList")(None)
-ops.RegisterShape("Binary")(None)
-ops.RegisterShape("ComplexStruct")(None)
-ops.RegisterShape("InPolymorphicTwice")(None)
-ops.RegisterShape("MixedStruct")(None)
-ops.RegisterShape("NInPolymorphicTwice")(None)
-ops.RegisterShape("NInTwice")(None)
-ops.RegisterShape("NInTwoTypeVariables")(None)
-ops.RegisterShape("NIntsIn")(None)
-ops.RegisterShape("NIntsOut")(None)
-ops.RegisterShape("NIntsOutDefault")(None)
-ops.RegisterShape("NPolymorphicIn")(None)
-ops.RegisterShape("NPolymorphicOut")(None)
-ops.RegisterShape("NPolymorphicOutDefault")(None)
-ops.RegisterShape("NPolymorphicRestrictIn")(None)
-ops.RegisterShape("NPolymorphicRestrictOut")(None)
-ops.RegisterShape("OutT")(None)
-ops.RegisterShape("OutTypeList")(None)
-ops.RegisterShape("OutTypeListRestrict")(None)
-ops.RegisterShape("Polymorphic")(None)
-ops.RegisterShape("PolymorphicDefaultOut")(None)
-ops.RegisterShape("PolymorphicOut")(None)
-ops.RegisterShape("RefIn")(None)
-ops.RegisterShape("RefOut")(None)
-ops.RegisterShape("ReservedAttr")(None)
-ops.RegisterShape("ReservedInput")(None)
-ops.RegisterShape("Restrict")(None)
-ops.RegisterShape("Simple")(None)
-ops.RegisterShape("SimpleStruct")(None)
-ops.RegisterShape("TwoRefsIn")(None)
-ops.RegisterShape("TypeList")(None)
-ops.RegisterShape("TypeListRestrict")(None)
-ops.RegisterShape("TypeListTwice")(None)
+def _unknown_shape(op):
+  """Shape function for use with ops whose output shapes are unknown."""
+  return [tensor_shape.unknown_shape() for _ in op.outputs]
+
+
+# NOTE(mrry): Dummy shape registrations for ops used in the tests, since they
+# don't have C++ op registrations on which to attach C++ shape fns.
+ops.RegisterShape("Attr")(_unknown_shape)
+ops.RegisterShape("AttrBool")(_unknown_shape)
+ops.RegisterShape("AttrBoolList")(_unknown_shape)
+ops.RegisterShape("AttrDefault")(_unknown_shape)
+ops.RegisterShape("AttrEmptyListDefault")(_unknown_shape)
+ops.RegisterShape("AttrEnum")(_unknown_shape)
+ops.RegisterShape("AttrEnumList")(_unknown_shape)
+ops.RegisterShape("AttrFloat")(_unknown_shape)
+ops.RegisterShape("AttrListDefault")(_unknown_shape)
+ops.RegisterShape("AttrListMin")(_unknown_shape)
+ops.RegisterShape("AttrMin")(_unknown_shape)
+ops.RegisterShape("AttrShape")(_unknown_shape)
+ops.RegisterShape("AttrShapeList")(_unknown_shape)
+ops.RegisterShape("AttrPartialShape")(_unknown_shape)
+ops.RegisterShape("AttrPartialShapeList")(_unknown_shape)
+ops.RegisterShape("AttrTypeDefault")(_unknown_shape)
+ops.RegisterShape("AttrListTypeDefault")(_unknown_shape)
+ops.RegisterShape("Binary")(_unknown_shape)
+ops.RegisterShape("ComplexStruct")(_unknown_shape)
+ops.RegisterShape("InPolymorphicTwice")(_unknown_shape)
+ops.RegisterShape("MixedStruct")(_unknown_shape)
+ops.RegisterShape("NInPolymorphicTwice")(_unknown_shape)
+ops.RegisterShape("NInTwice")(_unknown_shape)
+ops.RegisterShape("NInTwoTypeVariables")(_unknown_shape)
+ops.RegisterShape("NIntsIn")(_unknown_shape)
+ops.RegisterShape("NIntsOut")(_unknown_shape)
+ops.RegisterShape("NIntsOutDefault")(_unknown_shape)
+ops.RegisterShape("NPolymorphicIn")(_unknown_shape)
+ops.RegisterShape("NPolymorphicOut")(_unknown_shape)
+ops.RegisterShape("NPolymorphicOutDefault")(_unknown_shape)
+ops.RegisterShape("NPolymorphicRestrictIn")(_unknown_shape)
+ops.RegisterShape("NPolymorphicRestrictOut")(_unknown_shape)
+ops.RegisterShape("OutT")(_unknown_shape)
+ops.RegisterShape("OutTypeList")(_unknown_shape)
+ops.RegisterShape("OutTypeListRestrict")(_unknown_shape)
+ops.RegisterShape("Polymorphic")(_unknown_shape)
+ops.RegisterShape("PolymorphicDefaultOut")(_unknown_shape)
+ops.RegisterShape("PolymorphicOut")(_unknown_shape)
+ops.RegisterShape("RefIn")(_unknown_shape)
+ops.RegisterShape("RefOut")(_unknown_shape)
+ops.RegisterShape("ReservedAttr")(_unknown_shape)
+ops.RegisterShape("ReservedInput")(_unknown_shape)
+ops.RegisterShape("Restrict")(_unknown_shape)
+ops.RegisterShape("Simple")(_unknown_shape)
+ops.RegisterShape("SimpleStruct")(_unknown_shape)
+ops.RegisterShape("TwoRefsIn")(_unknown_shape)
+ops.RegisterShape("TypeList")(_unknown_shape)
+ops.RegisterShape("TypeListRestrict")(_unknown_shape)
+ops.RegisterShape("TypeListTwice")(_unknown_shape)
 
 
 class OpDefLibraryTest(test_util.TensorFlowTestCase):
@@ -194,7 +202,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Simple", a="Bad string")
     self.assertEqual(str(cm.exception),
-                     "Expected int32, got 'Bad string' of type 'str' instead.")
+                     "Expected int32 passed to parameter 'a' of op 'Simple', "
+                     "got 'Bad string' of type 'str' instead.")
 
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Simple", a=self.Tensor(dtypes.string))
@@ -220,6 +229,12 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Simple", wrong=7)
     self.assertEqual(str(cm.exception), "No argument for input a")
+
+    with self.assertRaises(TypeError) as cm:
+      self._lib.apply_op("Simple", a={"label": 1})
+    self.assertEqual(str(cm.exception),
+                     "Expected int32 passed to parameter 'a' of op 'Simple', "
+                     "got {'label': 1} of type 'dict' instead.")
 
   def testReservedInput(self):
     self._add_op("name: 'ReservedInput' "
@@ -334,7 +349,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Binary", a="left", b=12)
     self.assertEqual(str(cm.exception),
-                     "Expected string, got 12 of type 'int' instead.")
+                     "Expected string passed to parameter 'b' of op 'Binary', "
+                     "got 12 of type 'int' instead.")
 
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Binary",
@@ -368,9 +384,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("Restrict", a=17)
     self.assertEqual(str(cm.exception),
-                     "DataType int32 for attr 'T' "
-                     "not in list of allowed values: "
-                     "string, bool")
+                     "Value passed to parameter 'a' has DataType int32 "
+                     "not in list of allowed values: string, bool")
 
   def testTypeList(self):
     self._add_op("name: 'TypeList' "
@@ -478,7 +493,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("TypeListRestrict", a=[True, 12])
     self.assertEqual(str(cm.exception),
-                     "DataType int32 for attr 'T' "
+                     "Value passed to parameter 'a' has DataType int32 "
                      "not in list of allowed values: string, bool")
 
   def testOutTypeListRestrict(self):
@@ -500,7 +515,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("OutTypeListRestrict", t=[dtypes.string, dtypes.int32])
     self.assertEqual(str(cm.exception),
-                     "DataType int32 for attr 't' "
+                     "Value passed to parameter 't' has DataType int32 "
                      "not in list of allowed values: string, bool")
 
   def testAttr(self):
@@ -868,6 +883,44 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
       name: 'x' op: 'ReservedAttr' attr { key: 'range' value { i: 7 } }
       """, op.node_def)
 
+  def testDefaultAttrType(self):
+    self._add_op("name: 'AttrTypeDefault' "
+                 "input_arg { name: 'a' type_attr: 'T' } "
+                 "attr { name: 'T' type: 'type' "
+                 "       default_value { type: DT_INT32 } }")
+
+    # Give an input whose type has no obvious output type.
+    op = self._lib.apply_op("AttrTypeDefault", a=[], name="n")
+    self.assertProtoEquals("""
+      name: 'n' op: 'AttrTypeDefault' input: 'n/a'
+      attr { key: 'T' value { type: DT_INT32 } }
+      """, op.node_def)
+
+    # Give an input whose type can be inferred as different
+    # than the default.
+    op = self._lib.apply_op("AttrTypeDefault", a=[1.0], name="f")
+    self.assertProtoEquals("""
+      name: 'f' op: 'AttrTypeDefault' input: 'f/a'
+      attr { key: 'T' value { type: DT_FLOAT } }
+      """, op.node_def)
+
+  def testDefaultListAttrType(self):
+    self._add_op("name: 'AttrListTypeDefault' "
+                 "input_arg { name: 'a' type_attr: 'T' number_attr: 'N' } "
+                 "input_arg { name: 'b' type_attr: 'T' number_attr: 'N' } "
+                 "attr { name: 'T' type: 'type' "
+                 "       default_value { type: DT_INT32 } }"
+                 "attr { name: 'N' type: 'int' }")
+
+    # Give an input whose type can be inferred as different
+    # than the default.
+    op = self._lib.apply_op("AttrListTypeDefault", a=[1.0], b=[2.0], name="n")
+    self.assertProtoEquals("""
+      name: 'n' op: 'AttrListTypeDefault' input: 'n/a_0' input: 'n/b_0'
+      attr { key: 'T' value { type: DT_FLOAT } }
+      attr { key: 'N' value { i: 1 } }
+      """, op.node_def)
+
   def testNIntsIn(self):
     self._add_op("name: 'NIntsIn' "
                  "input_arg { name: 'a' type: DT_INT32 number_attr: 'N' } "
@@ -1042,8 +1095,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("NPolymorphicRestrictIn", a=[1, 2])
     self.assertEqual(str(cm.exception),
-                     "DataType int32 for attr 'T' "
-                     "not in list of allowed values: string, bool")
+                     "Value passed to parameter 'a' has DataType int32 not in "
+                     "list of allowed values: string, bool")
 
   def testNInTwice(self):
     self._add_op("name: 'NInTwice' "
@@ -1369,7 +1422,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("NPolymorphicRestrictOut", N=2, T=dtypes.int32)
     self.assertEqual(str(cm.exception),
-                     "DataType int32 for attr 'T' "
+                     "Value passed to parameter 'T' has DataType int32 "
                      "not in list of allowed values: string, bool")
 
   def testRef(self):
@@ -1409,7 +1462,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with self.assertRaises(TypeError) as cm:
       self._lib.apply_op("RefIn", a=2)
     self.assertEqual(str(cm.exception),
-                     "Input 'a' of 'RefIn' Op requires l-value input")
+                     "'RefIn' Op requires that input 'a' be a mutable tensor " +
+                     "(e.g.: a tf.Variable)")
 
     input_a = self._lib.apply_op("RefOut", T=dtypes.int32, name="t")
     input_b = self._lib.apply_op("RefOut", T=dtypes.int32, name="u")

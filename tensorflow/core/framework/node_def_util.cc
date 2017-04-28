@@ -33,6 +33,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char* const kColocationAttrName = "_class";
+const char* const kColocationGroupPrefix = "loc:@";
+
 AttrSlice::AttrSlice(const NodeDef& node_def)
     : ndef_(&node_def), attrs_(&ndef_->attr()) {}
 
@@ -182,6 +185,17 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   return Status::OK();
 }
 
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   std::vector<NameAttrList>* value) {
+  const AttrValue* attr_value;
+  TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
+  TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "list(func)"));
+  for (const auto& v : attr_value->list().func()) {
+    value->emplace_back(v);
+  }
+  return Status::OK();
+}
+
 namespace {  // Helper for InOutTypesForNode().
 
 Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
@@ -292,9 +306,18 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
     }
     auto iter = op_attrs.find(attr.first);
     if (iter == op_attrs.end()) {
-      return errors::InvalidArgument("NodeDef mentions attr '", attr.first,
-                                     "' not in ", SummarizeOpDef(op_def),
-                                     "; NodeDef: ", SummarizeNodeDef(node_def));
+      // A common cause of this error is that TensorFlow has made a
+      // backwards-compatible change to the NodeDef (e.g., adding a
+      // new attr with a default value), but the binary consuming the
+      // NodeDef does not know about the new attribute; the solution
+      // in these cases is to ensure that the binary consuming the
+      // NodeDef is built with a version of TensorFlow no earlier than
+      // the binary producing it.
+      return errors::InvalidArgument(
+          "NodeDef mentions attr '", attr.first, "' not in ",
+          SummarizeOpDef(op_def), "; NodeDef: ", SummarizeNodeDef(node_def),
+          ". (Check whether your GraphDef-interpreting binary is up to date "
+          "with your GraphDef-generating binary.).");
     }
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         ValidateAttrValue(attr.second, *iter->second), "; NodeDef: ",

@@ -35,7 +35,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* env) : worker_env_(env) {}
+BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* worker_env,
+                                     const string& worker_name)
+    : worker_env_(worker_env), worker_name_(worker_name) {}
 
 BaseRendezvousMgr::~BaseRendezvousMgr() {
   for (auto& p : table_) {
@@ -53,7 +55,7 @@ BaseRemoteRendezvous* BaseRendezvousMgr::FindOrCreate(int64 step_id) {
   mutex_lock l(mu_);
   Table::iterator iter = table_.find(step_id);
   if (iter == table_.end()) {
-    auto rr = Create(step_id, worker_env_);
+    auto rr = Create(step_id, worker_env_, worker_name_);
     iter = table_.insert({step_id, rr}).first;
   }
   iter->second->Ref();
@@ -126,11 +128,13 @@ void BaseRendezvousMgr::CleanupAll() {
   }
 }
 
-BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id,
+BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
+                                           const string& worker_name,
+                                           int64 step_id,
                                            bool tolerate_dup_recv)
     : env_(env),
+      worker_name_(worker_name),
       step_id_(step_id),
-      tolerate_dup_recv_(tolerate_dup_recv),
       local_(NewLocalRendezvous(tolerate_dup_recv)) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
@@ -141,9 +145,9 @@ BaseRemoteRendezvous::~BaseRemoteRendezvous() {
 // Returns true if "device_name" is a valid full name of local device
 // of the "worker".  This helper is purely based on the worker name
 // and device name and does no lookups in the worker->device_mgr.
-static bool IsLocalDevice(const WorkerEnv& worker,
+static bool IsLocalDevice(const string& worker_name,
                           const StringPiece device_name) {
-  return device_name.starts_with(worker.worker_name);
+  return device_name.starts_with(worker_name);
 }
 
 Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
@@ -154,9 +158,9 @@ Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
     mutex_lock l(mu_);
     if (!status_.ok()) return status_;
   }
-  if (!IsLocalDevice(*env_, parsed.src_device)) {
+  if (!IsLocalDevice(worker_name_, parsed.src_device)) {
     return errors::InvalidArgument("Invalid rendezvous key (src): ",
-                                   parsed.FullKey(), " @ ", env_->worker_name);
+                                   parsed.FullKey(), " @ ", worker_name_);
   }
   // Buffers "val" and "device_context" in local_.
   return local_->Send(parsed, args, val, is_dead);
@@ -168,13 +172,13 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
     mutex_lock l(mu_);
     if (!status_.ok()) return status_;
   }
-  if (is_src && !IsLocalDevice(*env_, parsed.src_device)) {
+  if (is_src && !IsLocalDevice(worker_name_, parsed.src_device)) {
     return errors::InvalidArgument("Invalid rendezvous key (src): ",
-                                   parsed.FullKey(), " @ ", env_->worker_name);
+                                   parsed.FullKey(), " @ ", worker_name_);
   }
-  if (!is_src && !IsLocalDevice(*env_, parsed.dst_device)) {
+  if (!is_src && !IsLocalDevice(worker_name_, parsed.dst_device)) {
     return errors::InvalidArgument("Invalid rendezvous key (dst): ",
-                                   parsed.FullKey(), " @ ", env_->worker_name);
+                                   parsed.FullKey(), " @ ", worker_name_);
   }
   return Status::OK();
 }
@@ -248,14 +252,12 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
 
   // Are src and dst in the same worker?
   if (IsSameWorker(parsed.src, parsed.dst)) {
-    Rendezvous::ParsedKey parsed_copy = parsed;
     // Recv the tensor from local_.
     local_->RecvAsync(
-        parsed_copy, recv_args,
-        [this, parsed_copy, done](
+        parsed, recv_args,
+        [this, parsed, done](
             const Status& status, const Rendezvous::Args& send_args,
             const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
-          Status s = status;
           Tensor* out = new Tensor;
           StatusCallback final_callback = [done, send_args, recv_args, out,
                                            is_dead](const Status& s) {
@@ -263,11 +265,11 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
             delete out;
           };
 
-          if (s.ok()) {
-            SameWorkerRecvDone(parsed_copy, send_args, recv_args, in, out,
+          if (status.ok()) {
+            SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
                                std::move(final_callback));
           } else {
-            final_callback(s);
+            final_callback(status);
           }
         });
     return;

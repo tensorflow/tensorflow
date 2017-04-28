@@ -4,8 +4,8 @@
 
 ## Overview
 
-This document describes the data formats and layouts for exporting [TensorFlow]
-(https://www.tensorflow.org/) models for inference.
+This document describes the data formats and layouts for exporting
+[TensorFlow](https://www.tensorflow.org/) models for inference.
 
 These exports have the following properties:
 
@@ -13,6 +13,11 @@ These exports have the following properties:
     *   given an export the graph can easily be initialized and run
 *   Hermetic
     *   an export directory is self-contained to facilitate distribution
+
+The TensorFlow `Saver` writes **checkpoints** (graph variables) while training
+so it can recover if it crashes. A TensorFlow Serving **export** contains a
+checkpoint with the current state of the graph variables along with a MetaGraph
+definition that's needed for serving.
 
 ## Directory Structure
 
@@ -29,12 +34,10 @@ These exports have the following properties:
 *   `assets` -- Asset file directory
     *   Holds auxiliary files for the graph (e.g., vocabularies)
 *   `export.meta` -- MetaGraph Definition
-    *   Binary [`tensorflow::MetaGraphDef`]
-        (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/protobuf/meta_graph.proto)
+    *   Binary [`tensorflow::MetaGraphDef`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/protobuf/meta_graph.proto)
 *   `export-?????-of-?????`
-    *   Graph Variables
-    *   Outputs from Python [`Saver`]
-        (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/training/saver.py)
+    *   A checkpoint of the Graph Variables
+    *   Outputs from Python [`Saver`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/training/saver.py)
         with `sharded=True`.
 
 ## Exporting (Python code)
@@ -42,6 +45,13 @@ These exports have the following properties:
 The [`Exporter`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/session_bundle/exporter.py)
 class can be used to export a model in the above format from a TensorFlow Python
 binary.
+
+### Exporting TF.learn models
+
+TF.learn uses an
+[Exporter wrapper](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/utils/export.py)
+that can be used for building signatures. Use the `BaseEstimator.export`
+function to export your Estimator with a signature.
 
 ## Importing (C++ code)
 
@@ -89,6 +99,23 @@ export = exporter.Exporter(saver)
 export.init(sess.graph.as_graph_def(), default_graph_signature=signature)
 export.export(export_path, global_step_tensor, sess)
 ~~~
+
+#### TF.learn signatures
+
+TF.learn models can use the `BaseEstimator.export` function directly to export.
+To specify a Signature, use the [Exporter wrapper](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/utils/export.py)
+helpers (e.g. `classification_signature_fn`).
+
+~~~python
+estimator = tf.contrib.learn.Estimator(...)
+...
+# Other possible parameters omitted for the sake of brevity.
+estimator.export(
+    export_path,
+    signature_fn=tf.contrib.learn.utils.export.classification_signature_fn)
+~~~
+
+#### Recovering signatures
 
 These can be recovered at serving time using utilities in [`signature.h`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/session_bundle/signature.h)
 

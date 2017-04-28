@@ -28,6 +28,7 @@ limitations under the License.
 // clang-format on
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -67,8 +68,9 @@ class DeviceType {
 std::ostream& operator<<(std::ostream& os, const DeviceType& d);
 
 // Convenient constants that can be passed to a DeviceType constructor
-extern const char* const DEVICE_CPU;  // "CPU"
-extern const char* const DEVICE_GPU;  // "GPU"
+TF_EXPORT extern const char* const DEVICE_CPU;   // "CPU"
+TF_EXPORT extern const char* const DEVICE_GPU;   // "GPU"
+TF_EXPORT extern const char* const DEVICE_SYCL;  // "SYCL"
 
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
 typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
@@ -158,13 +160,6 @@ struct EnumToDataType {};  // Specializations below
     typedef TYPE Type;                                  \
   }
 
-// We use Eigen's QInt implementations for our quantized int types.
-typedef Eigen::QInt8 qint8;
-typedef Eigen::QUInt8 quint8;
-typedef Eigen::QInt32 qint32;
-typedef Eigen::QInt16 qint16;
-typedef Eigen::QUInt16 quint16;
-
 MATCH_TYPE_AND_ENUM(float, DT_FLOAT);
 MATCH_TYPE_AND_ENUM(double, DT_DOUBLE);
 MATCH_TYPE_AND_ENUM(int32, DT_INT32);
@@ -184,8 +179,19 @@ MATCH_TYPE_AND_ENUM(quint16, DT_QUINT16);
 MATCH_TYPE_AND_ENUM(qint32, DT_QINT32);
 MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
+MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
 
 #undef MATCH_TYPE_AND_ENUM
+
+// All types not specialized are marked invalid.
+template <class T>
+struct IsValidDataType {
+  static constexpr bool value = false;
+};
+
+// Extra validity checking; not part of public API.
+static_assert(IsValidDataType<int64>::value, "Incorrect impl for int64");
+static_assert(IsValidDataType<int32>::value, "Incorrect impl for int32");
 
 bool DataTypeCanUseMemcpy(DataType dt);
 

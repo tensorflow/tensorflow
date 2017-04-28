@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
 
 #include <errno.h>
+#ifndef _MSC_VER
 #include <strings.h>
 #include <sys/mman.h>  // for munmap
+#endif
 
 #include <map>
 #include <utility>

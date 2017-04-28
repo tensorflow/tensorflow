@@ -52,6 +52,20 @@ class DeviceFactory {
   virtual Status CreateDevices(const SessionOptions& options,
                                const string& name_prefix,
                                std::vector<Device*>* devices) = 0;
+
+  // Return the device priority number for a "device_type" string.
+  //
+  // Higher number implies higher priority.
+  //
+  // In standard TensorFlow distributions, GPU device types are
+  // preferred over CPU, and by default, custom devices that don't set
+  // a custom priority during registration will be prioritized lower
+  // than CPU.  Custom devices that want a higher priority can set the
+  // 'priority' field when registering their device to something
+  // higher than the packaged devices.  See calls to
+  // REGISTER_LOCAL_DEVICE_FACTORY to see the existing priorities used
+  // for built-in devices.
+  static int32 DevicePriority(const string& device_type);
 };
 
 namespace dfactory {
@@ -60,8 +74,37 @@ template <class Factory>
 class Registrar {
  public:
   // Multiple registrations for the same device type with different priorities
-  // are allowed. The registration with the highest priority will be used.
-  explicit Registrar(const string& device_type, int priority = 0) {
+  // are allowed.  Priorities are used in two different ways:
+  //
+  // 1) When choosing which factory (that is, which device
+  //    implementation) to use for a specific 'device_type', the
+  //    factory registered with the highest priority will be chosen.
+  //    For example, if there are two registrations:
+  //
+  //      Registrar<CPUFactory1>("CPU", 125);
+  //      Registrar<CPUFactory2>("CPU", 150);
+  //
+  //    then CPUFactory2 will be chosen when
+  //    DeviceFactory::GetFactory("CPU") is called.
+  //
+  // 2) When choosing which 'device_type' is preferred over other
+  //    DeviceTypes in a DeviceSet, the ordering is determined
+  //    by the 'priority' set during registration.  For example, if there
+  //    are two registrations:
+  //
+  //      Registrar<CPUFactory>("CPU", 100);
+  //      Registrar<GPUFactory>("GPU", 200);
+  //
+  //    then DeviceType("GPU") will be prioritized higher than
+  //    DeviceType("CPU").
+  //
+  // The default priority values for built-in devices is:
+  // GPU: 210
+  // SYCL: 200
+  // GPUCompatibleCPU: 70
+  // ThreadPoolDevice: 60
+  // Default: 50
+  explicit Registrar(const string& device_type, int priority = 50) {
     DeviceFactory::Register(device_type, new Factory(), priority);
   }
 };

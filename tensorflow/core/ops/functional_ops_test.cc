@@ -24,22 +24,27 @@ namespace tensorflow {
 
 TEST(FunctionalOpsTest, SymbolicGradient_ShapeFn) {
   ShapeInferenceTestOp op("SymbolicGradient");
-  int n = 4;
+  int num_inputs = 4;
+  int num_outputs = 3;
   std::vector<NodeDefBuilder::NodeOut> src_list;
-  std::vector<DataType> type_list;
-  for (int i = 0; i < n; ++i) {
-    type_list.emplace_back(DT_FLOAT);
+  std::vector<DataType> in_type_list;
+  std::vector<DataType> out_type_list;
+  for (int i = 0; i < num_inputs; ++i) {
+    in_type_list.emplace_back(DT_FLOAT);
     src_list.emplace_back("a", 0, DT_FLOAT);
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    out_type_list.emplace_back(DT_FLOAT);
   }
   TF_ASSERT_OK(NodeDefBuilder("test", "SymbolicGradient")
                    .Input(src_list)
-                   .Attr("Tin", type_list)
-                   .Attr("Tout", type_list)
+                   .Attr("Tin", in_type_list)
+                   .Attr("Tout", out_type_list)
                    .Finalize(&op.node_def));
 
   // Inputs transferred to outputs.
-  INFER_OK(op, "?;?;?;?", "in0;in1;in2;in3");
-  INFER_OK(op, "[];[2];?;?", "in0;in1;in2;in3");
+  INFER_OK(op, "?;?;?;?", "in0;in1;in2");
+  INFER_OK(op, "[];[2];?;?", "in0;in1;in2");
 }
 
 }  // end namespace tensorflow

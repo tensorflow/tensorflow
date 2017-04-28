@@ -99,8 +99,13 @@ class ExternalOptimizerInterface(object):
         slice(start, end) for start, end in zip(accumulated_dims[:-1],
                                                 accumulated_dims[1:])]
 
-  def minimize(self, session=None, feed_dict=None, fetches=None,
-               step_callback=None, loss_callback=None, grad_callback=None):
+  def minimize(self,
+               session=None,
+               feed_dict=None,
+               fetches=None,
+               step_callback=None,
+               loss_callback=None,
+               **run_kwargs):
     """Minimize a scalar `Tensor`.
 
     Variables subject to optimization are updated in-place at the end of
@@ -113,14 +118,14 @@ class ExternalOptimizerInterface(object):
     Args:
       session: A `Session` instance.
       feed_dict: A feed dict to be passed to calls to `session.run`.
-      fetches: A list of `Tensor`s to fetch and supply to `loss_callback` and
-        `grad_callback` as positional arguments.
+      fetches: A list of `Tensor`s to fetch and supply to `loss_callback`
+        as positional arguments.
       step_callback: A function to be called at each optimization step;
         arguments are the current values of all optimization variables
         flattened into a single vector.
       loss_callback: A function to be called every time the loss and gradients
         are computed, with evaluated fetches supplied as positional arguments.
-      grad_callback: Deprecated.
+      **run_kwargs: kwargs to pass to `session.run`.
     """
     session = session or ops.get_default_session()
     feed_dict = feed_dict or {}
@@ -128,9 +133,6 @@ class ExternalOptimizerInterface(object):
 
     loss_callback = loss_callback or (lambda *fetches: None)
     step_callback = step_callback or (lambda xk: None)
-    # TODO(chapelle): Remove grad_callback (b/30590858)
-    if grad_callback:
-      logging.warn('grad_callback is deprecated. Please use loss_callback.')
 
     # Construct loss function and associated gradient.
     loss_grad_func = self._make_eval_func(
@@ -164,8 +166,10 @@ class ExternalOptimizerInterface(object):
                 for packing_slice in self._packing_slices]
 
     # Set optimization variables to their new values.
-    session.run(self._var_updates,
-                feed_dict=dict(zip(self._update_placeholders, var_vals)))
+    session.run(
+        self._var_updates,
+        feed_dict=dict(zip(self._update_placeholders, var_vals)),
+        **run_kwargs)
 
   def _minimize(self, initial_val, loss_grad_func, equality_funcs,
                 equality_grad_funcs, inequality_funcs, inequality_grad_funcs,
@@ -207,7 +211,7 @@ class ExternalOptimizerInterface(object):
       return array_ops.reshape(tensors[0], [-1])
     else:
       flattened = [array_ops.reshape(tensor, [-1]) for tensor in tensors]
-      return array_ops.concat(0, flattened)
+      return array_ops.concat(flattened, 0)
 
   def _make_eval_func(self, tensors, session, feed_dict, fetches,
                       callback=None):

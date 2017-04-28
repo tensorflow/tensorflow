@@ -24,40 +24,30 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
 namespace {
-RE2* kTargetRE = new RE2("^/job:([^/]+)/replica:([0-9]+)/task:([0-9]+)$");
-RE2* kHostPortRE = new RE2("([^:/]+):(\\d+)");
 
 string MakeAddress(const string& job, int task) {
   return strings::StrCat("/job:", job, "/replica:0/task:", task);
 }
 
-}  // namespace
-
-SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target) {
-  // TODO(mrry): Implement secure channels.
-  ::grpc::ChannelArguments args;
-  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
-  return ::grpc::CreateCustomChannel(
-      target, ::grpc::InsecureChannelCredentials(), args);
-}
-
-namespace {
 Status ValidateHostPortPair(const string& host_port) {
-  string host;
-  int port;
-  if (!RE2::FullMatch(host_port, *kHostPortRE, &host, &port)) {
+  uint32 port;
+  std::vector<string> parts = str_util::Split(host_port, ':');
+  // Must be host:port, port must be a number, host must not contain a '/'.
+  if (parts.size() != 2 || !strings::safe_strtou32(parts[1], &port) ||
+      parts[0].find("/") != string::npos) {
     return errors::InvalidArgument("Could not interpret \"", host_port,
                                    "\" as a host-port pair.");
   }
@@ -65,10 +55,39 @@ Status ValidateHostPortPair(const string& host_port) {
 }
 }  // namespace
 
+Status NewHostPortGrpcChannel(const string& target,
+                              SharedGrpcChannelPtr* channel_pointer) {
+  // Minimally ensure that the target is valid
+  TF_RETURN_IF_ERROR(ValidateHostPortPair(target));
+
+  // TODO(mrry): Implement secure channels.
+  ::grpc::ChannelArguments args;
+  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  // NOTE(mrry): Some versions of gRPC use a 20-second minimum backoff
+  // on connection failure, which makes our tests time out.
+  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  *channel_pointer = ::grpc::CreateCustomChannel(
+      target, ::grpc::InsecureChannelCredentials(), args);
+  return Status::OK();
+}
+
+ChannelCreationFunction ConvertToChannelCreationFunction(
+    const std::function<Status(string, SharedGrpcChannelPtr*)>&
+        new_channel_func_ptr) {
+  return [new_channel_func_ptr](const string& target) -> SharedGrpcChannelPtr {
+    SharedGrpcChannelPtr channel_ptr;
+    if (new_channel_func_ptr(target, &channel_ptr).ok()) {
+      return channel_ptr;
+    } else {
+      return nullptr;
+    }
+  };
+}
+
 Status GrpcChannelSpec::AddHostPortsJob(const string& job_id,
                                         const std::vector<string>& host_ports) {
   std::map<int, string> host_ports_map;
-  for (int i = 0; i < host_ports.size(); ++i) {
+  for (size_t i = 0; i < host_ports.size(); ++i) {
     host_ports_map[i] = host_ports[i];
   }
   return AddHostPortsJob(job_id, host_ports_map);
@@ -138,7 +157,7 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
     }
   }
 
-  void ListWorkers(std::vector<string>* workers) override {
+  void ListWorkers(std::vector<string>* workers) const override {
     for (GrpcChannelCache* cache : caches_) {
       cache->ListWorkers(workers);
     }
@@ -197,7 +216,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
   }
   ~SparseGrpcChannelCache() override {}
 
-  void ListWorkers(std::vector<string>* workers) override {
+  void ListWorkers(std::vector<string>* workers) const override {
     workers->reserve(workers->size() + host_ports_.size());
     for (const auto& id_host_port : host_ports_) {
       workers->emplace_back(MakeAddress(job_id_, id_host_port.first));
@@ -205,20 +224,20 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
   }
 
   string TranslateTask(const string& target) override {
-    RegexpStringPiece job;
-    int32 replica;
-    int32 task;
-    if (!RE2::FullMatch(target, *kTargetRE, &job, &replica, &task)) {
+    DeviceNameUtils::ParsedName parsed;
+    if (!DeviceNameUtils::ParseFullName(target, &parsed)) {
       LOG(WARNING) << "Invalid target: " << target;
       return "";
     }
-    if (job != job_id_) {
+
+    if (!parsed.has_job || parsed.job != job_id_) {
       return "";
     }
-    if (replica != 0) {
+    if (!parsed.has_replica || parsed.replica != 0) {
       LOG(WARNING) << "Replica ID must be 0 in target: " << target;
       return "";
     }
+    int32 task = parsed.has_task ? parsed.task : -1;
     auto iter = host_ports_.find(task);
     if (iter == host_ports_.end()) {
       LOG(WARNING) << "Task " << task << " was not defined in sparse job "

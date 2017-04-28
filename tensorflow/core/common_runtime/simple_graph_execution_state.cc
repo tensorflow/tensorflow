@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/graph/validate.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -40,33 +42,68 @@ limitations under the License.
 namespace tensorflow {
 
 SimpleGraphExecutionState::SimpleGraphExecutionState(
-    const FunctionDefLibrary& func_def_lib,
-    const SimpleGraphExecutionStateOptions& options)
-    : device_set_(options.device_set),
+    GraphDef* graph_def, const SimpleGraphExecutionStateOptions& options)
+    : stateful_placements_(options.stateful_placements),
+      device_set_(options.device_set),
       session_options_(options.session_options),
       costs_(true /*is_global*/),
-      flib_def_(
-          new FunctionLibraryDefinition(OpRegistry::Global(), func_def_lib)),
+      flib_def_(new FunctionLibraryDefinition(OpRegistry::Global(),
+                                              graph_def->library())),
       graph_(nullptr) {
+  // NOTE(mrry): GraphDef does not have a move constructor, so we pass
+  // a non-const pointer and use `Swap()` to transfer the contents
+  // without copying.
+  original_graph_def_.Swap(graph_def);
   // TODO(mrry): Publish placement visualizations or handle the log
   // placement option.
 }
 
 SimpleGraphExecutionState::~SimpleGraphExecutionState() {
-  mutex_lock l(mu_);
   node_name_to_cost_id_map_.clear();
   delete graph_;
 }
 
-Status SimpleGraphExecutionState::Create(GraphDef* graph_def) {
-  if (original_graph_def_.node_size() > 0) {
-    return errors::InvalidArgument(
-        "Cannot call Create on SimpleGraphExecutionState twice");
-  }
+/* static */ Status SimpleGraphExecutionState::MakeForBaseGraph(
+    GraphDef* graph_def, const SimpleGraphExecutionStateOptions& options,
+    std::unique_ptr<SimpleGraphExecutionState>* out_state) {
+  std::unique_ptr<SimpleGraphExecutionState> ret(
+      new SimpleGraphExecutionState(graph_def, options));
 
-  original_graph_def_.Swap(graph_def);
-  VLOG(2) << "Incoming def: " << ProtoDebugString(original_graph_def_);
-  return AddDefaultAttrsToGraphDef(&original_graph_def_, *flib_def_.get(), 0);
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&ret->original_graph_def_,
+                                               *ret->flib_def_.get(), 0));
+  // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
+  // pass an empty BuildGraphOptions (that isn't going to be used when
+  // place_pruned_graph is false).
+  if (!ret->session_options_->config.graph_options().place_pruned_graph()) {
+    TF_RETURN_IF_ERROR(ret->InitBaseGraph(BuildGraphOptions()));
+  }
+  *out_state = std::move(ret);
+  return Status::OK();
+}
+
+/* static */ Status SimpleGraphExecutionState::MakeForPrunedGraph(
+    const FunctionDefLibrary& func_def_lib,
+    const SimpleGraphExecutionStateOptions& options, const GraphDef& graph_def,
+    const BuildGraphOptions& subgraph_options,
+    std::unique_ptr<SimpleGraphExecutionState>* out_state,
+    std::unique_ptr<SimpleClientGraph>* out_client_graph) {
+  DCHECK(options.session_options->config.graph_options().place_pruned_graph());
+  // NOTE(mrry): This makes a copy of `graph_def`, which is
+  // regrettable. We could make `GraphDef` objects sharable between
+  // execution states to optimize pruned graph execution, but since
+  // this case is primarily used for interactive sessions, we make the
+  // bet that graph construction is not performance-critical. (Note
+  // also that the previous version used `Extend()`, which is strictly
+  // more expensive than copying a `GraphDef`.)
+  GraphDef temp(graph_def);
+  std::unique_ptr<SimpleGraphExecutionState> ret(
+      new SimpleGraphExecutionState(&temp, options));
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&ret->original_graph_def_,
+                                               *ret->flib_def_.get(), 0));
+  TF_RETURN_IF_ERROR(ret->InitBaseGraph(subgraph_options));
+  TF_RETURN_IF_ERROR(ret->BuildGraph(subgraph_options, out_client_graph));
+  *out_state = std::move(ret);
+  return Status::OK();
 }
 
 Status SimpleGraphExecutionState::Extend(
@@ -129,6 +166,12 @@ Status SimpleGraphExecutionState::Extend(
     gdef.mutable_versions()->CopyFrom(extension_def.versions());
   }
 
+  // 4. Copy the function library from this execution state.
+  // NOTE(mrry): To match the previous behavior, the first GraphDef
+  // passed to a session will contain the function library that is
+  // used for all subsequent execution states.
+  *gdef.mutable_library() = flib_def_->ToProto();
+
   // 5. Validate that the final graphdef is valid.
   if (gdef.versions().producer() >= 5) {
     // Validate the graph: we assume that merging two valid graphs
@@ -140,11 +183,21 @@ Status SimpleGraphExecutionState::Extend(
   SimpleGraphExecutionStateOptions combined_options;
   combined_options.device_set = device_set_;
   combined_options.session_options = session_options_;
+  combined_options.stateful_placements = stateful_placements_;
 
+  // NOTE(mrry): `gdef` is no longer valid after the constructor
+  // executes.
   std::unique_ptr<SimpleGraphExecutionState> new_execution_state(
-      new SimpleGraphExecutionState(flib_def_->ToProto(), combined_options));
-  TF_RETURN_IF_ERROR(new_execution_state->Create(&gdef));
-  new_execution_state->SetStatefulPlacements(GetStatefulPlacements());
+      new SimpleGraphExecutionState(&gdef, combined_options));
+
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(
+      &new_execution_state->original_graph_def_, *flib_def_.get(), 0));
+  if (!session_options_->config.graph_options().place_pruned_graph()) {
+    // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
+    // pass an empty BuildGraphOptions (that isn't going to be used
+    // when place_pruned_graph is false).
+    TF_RETURN_IF_ERROR(new_execution_state->InitBaseGraph(BuildGraphOptions()));
+  }
   *out = std::move(new_execution_state);
 
   // TODO(mrry): This is likely to be used for non-throughput-sensitive
@@ -176,10 +229,54 @@ void SimpleGraphExecutionState::RestoreStatefulNodes(Graph* graph) {
 
 Status SimpleGraphExecutionState::InitBaseGraph(
     const BuildGraphOptions& options) {
-  std::unique_ptr<Graph> new_graph(new Graph(flib_def_.get()));
+  const GraphDef* graph_def = &original_graph_def_;
+
+  GraphDef optimized_graph;
+  const RewriterConfig& rewrite_options =
+      session_options_->config.graph_options().rewrite_options();
+  if (grappler::MetaOptimizerEnabled(rewrite_options)) {
+    // Adding this functionalty in steps. The first step is to make sure
+    // we don't break dependencies. The second step will be to turn the
+    // functionality on by default.
+    grappler::GrapplerItem item;
+    item.id = "tf_graph";
+    item.graph = original_graph_def_;
+
+    item.fetch = options.fetch_endpoints;
+    item.fetch.insert(item.fetch.end(), options.target_nodes.begin(),
+                      options.target_nodes.end());
+
+    Status s;
+    if (!options.feed_endpoints.empty()) {
+      std::unordered_set<string> feeds(options.feed_endpoints.begin(),
+                                       options.feed_endpoints.end());
+      for (const NodeDef& node : original_graph_def_.node()) {
+        if (feeds.find(node.name()) == feeds.end()) {
+          continue;
+        }
+        if (node.attr().count("dtype") == 0 ||
+            node.attr().count("shape") == 0) {
+          s = errors::InvalidArgument("Missing node shape or type");
+          break;
+        }
+        TensorShape shape(node.attr().at("shape").shape());
+        DataType type = node.attr().at("dtype").type();
+        Tensor fake_input(type, shape);
+        item.feed.emplace_back(node.name(), fake_input);
+      }
+    }
+
+    if (s.ok()) {
+      s = grappler::RunMetaOptimizer(item, rewrite_options, &optimized_graph);
+    }
+    if (s.ok()) {
+      graph_def = &optimized_graph;
+    }
+  }
+
+  std::unique_ptr<Graph> new_graph(new Graph(OpRegistry::Global()));
   GraphConstructorOptions opts;
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(opts, original_graph_def_, new_graph.get()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, *graph_def, new_graph.get()));
   for (const Node* n : new_graph->nodes()) {
     VLOG(2) << "Mapping " << n->name() << " to " << n->cost_id();
     node_name_to_cost_id_map_[n->name()] = n->cost_id();
@@ -187,22 +284,28 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   if (session_options_ &&
       session_options_->config.graph_options().place_pruned_graph()) {
     // Rewrite the graph before placement.
+    rewrite_metadata_.reset(new subgraph::RewriteGraphMetadata);
     TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
         new_graph.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes()));
+        options.target_nodes, device_set_->client_device()->attributes(),
+        options.use_function_convention, rewrite_metadata_.get()));
   }
 
   // Save stateful placements before placing.
   RestoreStatefulNodes(new_graph.get());
 
   CostModel costs(true /*is_global*/);
-  costs_.InitFromGraph(*new_graph.get());
-  costs.MergeFromGlobal(costs_);
+  {
+    mutex_lock l(mu_);
+    costs_.InitFromGraph(*new_graph.get());
+    costs.MergeFromGlobal(costs_);
+  }
 
   GraphOptimizationPassOptions optimization_options;
   optimization_options.session_options = session_options_;
   optimization_options.graph = &new_graph;
   optimization_options.flib_def = flib_def_.get();
+  optimization_options.device_set = device_set_;
   optimization_options.cost_model = &costs;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -220,51 +323,37 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   return Status::OK();
 }
 
-void SimpleGraphExecutionState::UpdateCostsFromStats(const StepStats& ss) {
-  mutex_lock l(mu_);
-  costs_.MergeFromStats(node_name_to_cost_id_map_, ss);
-}
-
-void SimpleGraphExecutionState::MergeCostsFromGlobal(CostModel* costs) {
-  mutex_lock l(mu_);
-  costs->MergeFromGlobal(costs_);
-}
-
-Status SimpleGraphExecutionState::GlobalNodeDefByName(const string& name,
-                                                      NodeDef* out) {
-  NodeNameToCostIdMap::const_iterator iter =
-      node_name_to_cost_id_map_.find(name);
-  if (iter != node_name_to_cost_id_map_.end()) {
-    mutex_lock l(mu_);  // could use reader lock
-    const Node* node = graph_->FindNodeId(iter->second);
-    if (node) {
-      *out = node->def();
-      return Status::OK();
-    }
-  }
-  return errors::NotFound("Node name: ", name);
-}
-
 Status SimpleGraphExecutionState::BuildGraph(
     const BuildGraphOptions& options, std::unique_ptr<SimpleClientGraph>* out) {
   VLOG(1) << "BuildGraph";
-  mutex_lock l(mu_);
-  // Lazily initialize the base graph.
   if (!graph_) {
-    TF_RETURN_IF_ERROR(InitBaseGraph(options));
+    // It is only valid to call this method directly when the original graph
+    // was created with the option `place_pruned_graph == false`.
+    return errors::Internal(
+        "Attempted to prune a graph that has not been fully initialized.");
   }
-
   std::unique_ptr<Graph> ng(new Graph(flib_def_.get()));
   CopyGraph(*graph_, ng.get());
 
+  subgraph::RewriteGraphMetadata rewrite_metadata;
   if (session_options_ == nullptr ||
       !session_options_->config.graph_options().place_pruned_graph()) {
     // Extract the subset of the graph that needs to be run, adding feed/fetch
     // ops as needed.
     TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
         ng.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes()));
+        options.target_nodes, device_set_->client_device()->attributes(),
+        options.use_function_convention, &rewrite_metadata));
+  } else {
+    // This SimpleGraphExecutionState represents a graph that was
+    // pruned when this was constructed, so we copy the metadata from
+    // a member variable.
+    CHECK(rewrite_metadata_);
+    rewrite_metadata = *rewrite_metadata_;
   }
+
+  CHECK_EQ(options.feed_endpoints.size(), rewrite_metadata.feed_types.size());
+  CHECK_EQ(options.fetch_endpoints.size(), rewrite_metadata.fetch_types.size());
 
   // Make a fresh copy of the function library for the client graph.
   std::unique_ptr<FunctionLibraryDefinition> flib(
@@ -277,6 +366,7 @@ Status SimpleGraphExecutionState::BuildGraph(
   optimization_options.session_options = session_options_;
   optimization_options.graph = &ng;
   optimization_options.flib_def = flib.get();
+  optimization_options.device_set = device_set_;
   optimization_options.cost_model = &costs;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -286,7 +376,8 @@ Status SimpleGraphExecutionState::BuildGraph(
   // since the local CostModel used to record its stats is sized by
   // the largest node id.
   std::unique_ptr<SimpleClientGraph> dense_copy(
-      new SimpleClientGraph(std::move(flib)));
+      new SimpleClientGraph(std::move(flib), rewrite_metadata.feed_types,
+                            rewrite_metadata.fetch_types));
   CopyGraph(*ng, &dense_copy->graph);
 
   // TODO(vrv): We should check invariants of the graph here.

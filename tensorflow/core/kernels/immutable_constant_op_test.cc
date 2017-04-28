@@ -63,18 +63,16 @@ class TestFileSystem : public NullFileSystem {
       const string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     float val = 0;
+    StringPiece scheme, host, path;
+    io::ParseURI(fname, &scheme, &host, &path);
     // For the tests create in-memory regions with float values equal to the
-    // first letter of the region name.
-    switch (GetNameFromURI(fname).front()) {
-      case '2':
-        val = 2.0f;
-        break;
-      case '3':
-        val = 3.0f;
-        break;
-      default:
-        val = 0.0f;
-        break;
+    // region name.
+    if (path == "/2") {
+      val = 2.0f;
+    } else if (path == "/3") {
+      val = 3.0f;
+    } else {
+      val = 0.0f;
     }
 
     auto region = new TestReadOnlyMemoryRegion(kTestTensorSizeBytes);
@@ -93,9 +91,9 @@ TEST(ImmutableConstantOpTest, Simple) {
   const TensorShape kTestTensorShapeT({1, 4});
   auto root = Scope::NewRootScope().ExitOnError();
   auto node1 =
-      ops::ImmutableConst(root, DT_FLOAT, kTestTensorShape, "test://2");
+      ops::ImmutableConst(root, DT_FLOAT, kTestTensorShape, "test:///2");
   auto node2 =
-      ops::ImmutableConst(root, DT_FLOAT, kTestTensorShapeT, "test://3");
+      ops::ImmutableConst(root, DT_FLOAT, kTestTensorShapeT, "test:///3");
   auto result = ops::MatMul(root, node1, node2);
   GraphDef graph_def;
   TF_ASSERT_OK(root.ToGraphDef(&graph_def));
@@ -124,9 +122,10 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
   const TensorShape kTestTensorShapeT({1, 4});
 
   auto root = Scope::NewRootScope().ExitOnError();
-  auto node1 = ops::ImmutableConst(root, DT_FLOAT, kBadTensorShape, "test://2");
+  auto node1 =
+      ops::ImmutableConst(root, DT_FLOAT, kBadTensorShape, "test:///2");
   auto node2 =
-      ops::ImmutableConst(root, DT_FLOAT, kTestTensorShapeT, "test://3");
+      ops::ImmutableConst(root, DT_FLOAT, kTestTensorShapeT, "test:///3");
   auto result = ops::MatMul(root, node1, node2);
   GraphDef graph_def;
   TF_ASSERT_OK(root.ToGraphDef(&graph_def));

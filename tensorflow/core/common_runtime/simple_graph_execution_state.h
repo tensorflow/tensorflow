@@ -39,21 +39,34 @@ struct SessionOptions;
 class StepStats;
 class Timeline;
 
+namespace subgraph {
+struct RewriteGraphMetadata;
+}
+
 struct SimpleGraphExecutionStateOptions {
   const DeviceSet* device_set = nullptr;
   const SessionOptions* session_options = nullptr;
+  // A map from node name to device name, representing the unchangeable
+  // placement of stateful nodes.
+  std::unordered_map<string, string> stateful_placements;
 };
 
 // A SimpleClientGraph is simply a sub-graph of the full graph as induced by
 // BuildGraphOptions.
 struct SimpleClientGraph {
-  explicit SimpleClientGraph(std::unique_ptr<FunctionLibraryDefinition> flib)
-      : flib_def(std::move(flib)), graph(flib_def.get()) {}
+  explicit SimpleClientGraph(std::unique_ptr<FunctionLibraryDefinition> flib,
+                             DataTypeVector feed_types,
+                             DataTypeVector fetch_types)
+      : flib_def(std::move(flib)),
+        graph(flib_def.get()),
+        feed_types(std::move(feed_types)),
+        fetch_types(std::move(fetch_types)) {}
   // Each client-graph gets its own function library since optimization passes
   // post rewrite for execution might want to introduce new functions.
   std::unique_ptr<FunctionLibraryDefinition> flib_def;
   Graph graph;
-  int32 placement_version;
+  DataTypeVector feed_types;
+  DataTypeVector fetch_types;
 };
 
 // SimpleGraphExecutionState is responsible for generating an
@@ -82,15 +95,29 @@ struct SimpleClientGraph {
 
 class SimpleGraphExecutionState {
  public:
-  SimpleGraphExecutionState(const FunctionDefLibrary& func_def_lib,
-                            const SimpleGraphExecutionStateOptions& options);
-
   virtual ~SimpleGraphExecutionState();
 
-  // Initializes the SimpleGraphExecutionState with 'graph_def'.  Can only be
-  // called once on an original SimpleGraphExecutionState.  Callee may modify
-  // 'graph_def'.
-  Status Create(GraphDef* graph_def);
+  // Creates a new `SimpleGraphExecutionState` for the given
+  // `graph_def`, which represents the entire graph for a session.
+  //
+  // N.B. This method uses `GraphDef::Swap()` and leaves `graph_def`
+  // in an undefined state. If it is necessary to use `*graph_def`
+  // after this call, make an explicit copy of the graph before
+  // calling this method.
+  static Status MakeForBaseGraph(
+      GraphDef* graph_def, const SimpleGraphExecutionStateOptions& options,
+      std::unique_ptr<SimpleGraphExecutionState>* out_state);
+
+  // Creates a new `SimpleGraphExecutionState` and `SimpleClientGraph`
+  // for the subgraph of `original_graph_def` defined by
+  // `subgraph_options`.
+  static Status MakeForPrunedGraph(
+      const FunctionDefLibrary& func_def_lib,
+      const SimpleGraphExecutionStateOptions& options,
+      const GraphDef& original_graph_def,
+      const BuildGraphOptions& subgraph_options,
+      std::unique_ptr<SimpleGraphExecutionState>* out_state,
+      std::unique_ptr<SimpleClientGraph>* out_client_graph);
 
   // Creates a new SimpleGraphExecutionState representing the
   // concatenation of this graph, and the graph defined by
@@ -99,6 +126,9 @@ class SimpleGraphExecutionState {
   //
   // If successful, returns OK and the caller takes ownership of "*out".
   // Otherwise returns an error and does not modify "*out".
+  //
+  // After calling `old_state->Extend()`, `old_state` may no longer be
+  // used.
   //
   // NOTE(mrry): This method respects the placement of stateful nodes in
   // in *this, but currently does not transfer any other placement
@@ -113,33 +143,21 @@ class SimpleGraphExecutionState {
   Status BuildGraph(const BuildGraphOptions& options,
                     std::unique_ptr<SimpleClientGraph>* out);
 
-  // Returns OK if the named node is found in the placed full graph owned
-  // by this execution_state, and sets *out to the NodeDef for that node.
-  // It may not exist if name is of a Node added for a particular subgraph
-  // execution, e.g. a send, recv or feed node.
-  Status GlobalNodeDefByName(const string& name, NodeDef* out);
-
-  // Sums execution statistics in "ss" into the CostModel.
-  void UpdateCostsFromStats(const StepStats& ss);
-
-  Microseconds TimeEstimate(const Node* n) {
-    mutex_lock l(mu_);  // could use reader lock
-    return costs_.TimeEstimate(n);
-  }
-
-  Bytes SizeEstimate(const Node* n, int output_slot) {
-    mutex_lock l(mu_);  // could use reader lock
-    return costs_.SizeEstimate(n, output_slot);
-  }
-
-  // Merge the cost model maintained by this graph_execution_state to 'costs'.
-  void MergeCostsFromGlobal(CostModel* costs);
-
   // The graph returned by BuildGraph may contain only the pruned
   // graph, whereas some clients may want access to the full graph.
   const Graph* full_graph() {
-    mutex_lock l(mu_);
     return graph_;
+  }
+
+  // Returns the node with the given name, or null if it does not exist.
+  const Node* get_node_by_name(const string& name) const {
+    NodeNameToCostIdMap::const_iterator iter =
+        node_name_to_cost_id_map_.find(name);
+    if (iter != node_name_to_cost_id_map_.end()) {
+      return graph_->FindNodeId(iter->second);
+    } else {
+      return nullptr;
+    }
   }
 
   // Returns a reference to the current graph_def.  Use must
@@ -153,31 +171,26 @@ class SimpleGraphExecutionState {
     return stateful_placements_;
   }
 
-  // Restores the map of stateful placements as a map of
-  // node name to placement string.
-  void SetStatefulPlacements(const std::unordered_map<string, string>& sp) {
-    mutex_lock l(mu_);
-    stateful_placements_ = sp;
-  }
-
  private:
-  mutable mutex mu_;
+  SimpleGraphExecutionState(GraphDef* graph_def,
+                            const SimpleGraphExecutionStateOptions& options);
 
-  Status InitBaseGraph(const BuildGraphOptions& options)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status InitBaseGraph(const BuildGraphOptions& options);
 
   // Map of placed stateful nodes, i.e. nodes for which is_stateful()
   // is true, such as "params" and "queue" nodes.  Once placed these
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
-  std::unordered_map<string, string> stateful_placements_ GUARDED_BY(mu_);
-  void SaveStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  void RestoreStatefulNodes(Graph* graph) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  std::unordered_map<string, string> stateful_placements_;  // Immutable after
+                                                            // ctor.
+  void SaveStatefulNodes(Graph* graph);
+  void RestoreStatefulNodes(Graph* graph);
 
   GraphDef original_graph_def_;            // Immutable after ctor.
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned
 
+  mutable mutex mu_;
   CostModel costs_ GUARDED_BY(mu_);
 
   // Map from name to Node for the full graph in placed_.
@@ -187,8 +200,12 @@ class SimpleGraphExecutionState {
   // and may be updated by a graph optimization pass.
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
 
+  // `rewrite_metadata_` is only set for SimpleGraphExecutionState
+  // objects created by `MakeForPrunedGraph()`.
+  std::unique_ptr<subgraph::RewriteGraphMetadata> rewrite_metadata_;
+
   // The dataflow graph owned by this object.
-  Graph* graph_ GUARDED_BY(mu_);
+  Graph* graph_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SimpleGraphExecutionState);
 };

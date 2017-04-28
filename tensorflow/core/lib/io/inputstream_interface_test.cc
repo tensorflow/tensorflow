@@ -39,6 +39,11 @@ class TestStringStream : public InputStreamInterface {
 
   int64 Tell() const override { return pos_; }
 
+  Status Reset() override {
+    pos_ = 0;
+    return Status::OK();
+  }
+
  private:
   string content_;
   int64 pos_ = 0;
@@ -54,6 +59,10 @@ TEST(InputStreamInterface, Basic) {
   EXPECT_EQ("test string", res);
   // Skipping past end of the file causes OutOfRange error.
   EXPECT_TRUE(errors::IsOutOfRange(ss.SkipNBytes(1)));
+
+  TF_ASSERT_OK(ss.Reset());
+  TF_ASSERT_OK(ss.ReadNBytes(4, &res));
+  EXPECT_EQ("This", res);
 }
 
 }  // anonymous namespace

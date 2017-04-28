@@ -83,9 +83,9 @@ class OperatorPDFull(operator_pd_cholesky.OperatorPDCholesky):
         matrix = ops.convert_to_tensor(matrix)
         # Check symmetric here.  Positivity will be verified by checking the
         # diagonal of the Cholesky factor inside the parent class.  The Cholesky
-        # factorization .batch_cholesky() does not always fail for non PSD
+        # factorization linalg_ops.cholesky() does not always fail for non PSD
         # matrices, so don't rely on that.
         if verify_pd:
           matrix = distribution_util.assert_symmetric(matrix)
-        chol = linalg_ops.batch_cholesky(matrix)
+        chol = linalg_ops.cholesky(matrix)
         super(OperatorPDFull, self).__init__(chol, verify_pd=verify_pd)

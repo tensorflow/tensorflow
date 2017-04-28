@@ -23,16 +23,16 @@ limitations under the License.
 #define TF_ATTRIBUTE_NOINLINE __attribute__((noinline))
 #define TF_ATTRIBUTE_UNUSED __attribute__((unused))
 #define TF_ATTRIBUTE_COLD __attribute__((cold))
+#define TF_ATTRIBUTE_WEAK __attribute__((weak))
 #define TF_PACKED __attribute__((packed))
 #define TF_MUST_USE_RESULT __attribute__((warn_unused_result))
 #define TF_PRINTF_ATTRIBUTE(string_index, first_to_check) \
   __attribute__((__format__(__printf__, string_index, first_to_check)))
 #define TF_SCANF_ATTRIBUTE(string_index, first_to_check) \
   __attribute__((__format__(__scanf__, string_index, first_to_check)))
-
-#else
+#elif defined(COMPILER_MSVC)
 // Non-GCC equivalents
-#define TF_ATTRIBUTE_NORETURN
+#define TF_ATTRIBUTE_NORETURN __declspec(noreturn)
 #define TF_ATTRIBUTE_NOINLINE
 #define TF_ATTRIBUTE_UNUSED
 #define TF_ATTRIBUTE_COLD
@@ -40,7 +40,29 @@ limitations under the License.
 #define TF_PACKED
 #define TF_PRINTF_ATTRIBUTE(string_index, first_to_check)
 #define TF_SCANF_ATTRIBUTE(string_index, first_to_check)
+#else
+// Non-GCC equivalents
+#define TF_ATTRIBUTE_NORETURN
+#define TF_ATTRIBUTE_NOINLINE
+#define TF_ATTRIBUTE_UNUSED
+#define TF_ATTRIBUTE_COLD
+#define TF_ATTRIBUTE_WEAK
+#define TF_MUST_USE_RESULT
+#define TF_PACKED
+#define TF_PRINTF_ATTRIBUTE(string_index, first_to_check)
+#define TF_SCANF_ATTRIBUTE(string_index, first_to_check)
 #endif
+
+// Control visiblity outside .so
+#if defined(COMPILER_MSVC)
+#ifdef TF_COMPILE_LIBRARY
+#define TF_EXPORT __declspec(dllexport)
+#else
+#define TF_EXPORT __declspec(dllimport)
+#endif  // TF_COMPILE_LIBRARY
+#else
+#define TF_EXPORT __attribute__((visibility("default")))
+#endif  // COMPILER_MSVC
 
 // GCC can be told that a certain branch is not likely to be taken (for
 // instance, a CHECK failure), and use that information in static analysis.

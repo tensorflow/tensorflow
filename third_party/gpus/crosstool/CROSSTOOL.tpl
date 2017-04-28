@@ -54,6 +54,7 @@ toolchain {
   # Use "-std=c++11" for nvcc. For consistency, force both the host compiler
   # and the device compiler to use "-std=c++11".
   cxx_flag: "-std=c++11"
+  linker_flag: "-Wl,-no-as-needed"
   linker_flag: "-lstdc++"
   linker_flag: "-B/usr/bin/"
 
@@ -120,7 +121,7 @@ toolchain {
   # linker_flag: "-Wl,--detect-odr-violations"
 
   # Include directory for cuda headers.
-  cxx_builtin_include_directory: "/usr/local/cuda%{cuda_version}/include"
+  cxx_builtin_include_directory: "%{cuda_include_path}"
 
   compilation_mode_flags {
     mode: DBG
@@ -219,7 +220,7 @@ toolchain {
   linker_flag: "-no-canonical-prefixes"
 
   # Include directory for cuda headers.
-  cxx_builtin_include_directory: "/usr/local/cuda%{cuda_version}/include"
+  cxx_builtin_include_directory: "%{cuda_include_path}"
 
   compilation_mode_flags {
     mode: DBG

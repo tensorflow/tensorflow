@@ -115,7 +115,7 @@ Status Base64Decode(StringPiece data, string* decoded) {
     }
   }
 
-  const int remain = end - b64;
+  const int remain = static_cast<int>(end - b64);
   if (TF_PREDICT_FALSE(remain == 1)) {
     // We may check this condition early by checking data.size() % 4 == 1.
     return errors::InvalidArgument(

@@ -19,28 +19,18 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/stream_executor.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/stream_executor.h
 
+#include "tensorflow/core/platform/default/from_stream_executor_status.h"
+#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/event.h"
+#include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor.h"
-
-namespace tensorflow {
-
-namespace gpu = ::perftools::gputools;
-
-// On the open-source platform, stream_executor currently uses
-// tensorflow::Status
-inline Status FromStreamExecutorStatus(
-    const perftools::gputools::port::Status& s) {
-  return s;
-}
-
-}  // namespace tensorflow
 
 #endif  // TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_H_

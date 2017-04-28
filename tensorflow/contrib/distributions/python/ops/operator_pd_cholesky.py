@@ -102,9 +102,10 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
     """Log determinant of every batch member."""
     # Note that array_ops.diag_part does not seem more efficient for non-batch,
     # and would give a bad result for a batch matrix, so aways use
-    # batch_matrix_diag_part.
-    diag = array_ops.batch_matrix_diag_part(self._chol)
-    det = 2.0 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
+    # matrix_diag_part.
+    diag = array_ops.matrix_diag_part(self._chol)
+    det = 2.0 * math_ops.reduce_sum(math_ops.log(math_ops.abs(diag)),
+                                    reduction_indices=[-1])
     det.set_shape(self.get_shape()[:-2])
     return det
 
@@ -121,39 +122,33 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
 
   def _matmul(self, x, transpose_x=False):
     # tf.matmul is defined a * b.
-    chol = array_ops.batch_matrix_band_part(self._chol, -1, 0)
+    chol = array_ops.matrix_band_part(self._chol, -1, 0)
     chol_times_x = math_ops.matmul(
         chol, x, transpose_a=True, transpose_b=transpose_x)
     return math_ops.matmul(chol, chol_times_x)
 
   def _batch_matmul(self, x, transpose_x=False):
-    # tf.batch_matmul is defined x * y, so "y" is on the right, not "x".
-    chol = array_ops.batch_matrix_band_part(self._chol, -1, 0)
-    chol_times_x = math_ops.batch_matmul(
-        chol, x, adj_x=True, adj_y=transpose_x)
-    return math_ops.batch_matmul(chol, chol_times_x)
+    # tf.matmul is defined x * y, so "y" is on the right, not "x".
+    chol = array_ops.matrix_band_part(self._chol, -1, 0)
+    chol_times_x = math_ops.matmul(
+        chol, x, adjoint_a=True, adjoint_b=transpose_x)
+    return math_ops.matmul(chol, chol_times_x)
 
   def _sqrt_matmul(self, x, transpose_x=False):
-    chol = array_ops.batch_matrix_band_part(self._chol, -1, 0)
+    chol = array_ops.matrix_band_part(self._chol, -1, 0)
     # tf.matmul is defined a * b
-    return math_ops.matmul(chol, x, transpose_b=transpose_x)
+    return math_ops.matmul(chol, x, adjoint_b=transpose_x)
 
   def _batch_sqrt_matmul(self, x, transpose_x=False):
-    chol = array_ops.batch_matrix_band_part(self._chol, -1, 0)
+    chol = array_ops.matrix_band_part(self._chol, -1, 0)
     # tf.batch_matmul is defined x * y, so "y" is on the right, not "x".
-    return math_ops.batch_matmul(chol, x, adj_y=transpose_x)
-
-  def _solve(self, rhs):
-    return linalg_ops.cholesky_solve(self._chol, rhs)
+    return math_ops.matmul(chol, x, adjoint_b=transpose_x)
 
   def _batch_solve(self, rhs):
-    return linalg_ops.batch_cholesky_solve(self._chol, rhs)
-
-  def _sqrt_solve(self, rhs):
-    return linalg_ops.matrix_triangular_solve(self._chol, rhs, lower=True)
+    return linalg_ops.cholesky_solve(self._chol, rhs)
 
   def _batch_sqrt_solve(self, rhs):
-    return linalg_ops.batch_matrix_triangular_solve(self._chol, rhs, lower=True)
+    return linalg_ops.matrix_triangular_solve(self._chol, rhs, lower=True)
 
   def get_shape(self):
     """`TensorShape` giving static shape."""
@@ -176,15 +171,15 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
         array_ops.gather(shape, rank - 2), array_ops.gather(shape, rank - 1))
 
     deps = [is_matrix, is_square]
-    diag = array_ops.batch_matrix_diag_part(chol)
+    diag = array_ops.matrix_diag_part(chol)
     deps.append(check_ops.assert_positive(diag))
 
     return control_flow_ops.with_dependencies(deps, chol)
 
   def _sqrt_to_dense(self):
-    chol = array_ops.batch_matrix_band_part(self._chol, -1, 0)
+    chol = array_ops.matrix_band_part(self._chol, -1, 0)
     return array_ops.identity(chol)
 
   def _to_dense(self):
-    chol = array_ops.batch_matrix_band_part(self._chol, -1, 0)
-    return math_ops.batch_matmul(chol, chol, adj_y=True)
+    chol = array_ops.matrix_band_part(self._chol, -1, 0)
+    return math_ops.matmul(chol, chol, adjoint_b=True)

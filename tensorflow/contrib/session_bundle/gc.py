@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""System for specifying garbage collection (GC) of path based data.
+r"""System for specifying garbage collection (GC) of path based data.
 
 This framework allows for GC of data specified by path names, for example files
 on disk.  gc.Path objects each represent a single item stored at a path and may
@@ -72,10 +72,12 @@ import os
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.platform import gfile
+from tensorflow.python.util.deprecation import deprecated
 
 Path = collections.namedtuple('Path', 'path export_version')
 
 
+@deprecated('2017-06-30', 'Please use SavedModel instead.')
 def largest_export_versions(n):
   """Creates a filter that keeps the largest n export versions.
 
@@ -96,8 +98,9 @@ def largest_export_versions(n):
   return keep
 
 
+@deprecated('2017-06-30', 'Please use SavedModel instead.')
 def one_of_every_n_export_versions(n):
-  """Creates a filter that keeps one of every n export versions.
+  r"""Creates a filter that keeps one of every n export versions.
 
   Args:
     n: interval size.
@@ -125,6 +128,7 @@ def one_of_every_n_export_versions(n):
   return keep
 
 
+@deprecated('2017-06-30', 'Please use SavedModel instead.')
 def mod_export_version(n):
   """Creates a filter that keeps every export that is a multiple of n.
 
@@ -143,6 +147,7 @@ def mod_export_version(n):
   return keep
 
 
+@deprecated('2017-06-30', 'Please use SavedModel instead.')
 def union(lf, rf):
   """Creates a filter that keeps the union of two filters.
 
@@ -160,6 +165,7 @@ def union(lf, rf):
   return keep
 
 
+@deprecated('2017-06-30', 'Please use SavedModel instead.')
 def negation(f):
   """Negate a filter.
 
@@ -176,6 +182,7 @@ def negation(f):
   return keep
 
 
+@deprecated('2017-06-30', 'Please use SavedModel instead.')
 def get_paths(base_dir, parser):
   """Gets a list of Paths in a given directory.
 

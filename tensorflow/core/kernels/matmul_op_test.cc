@@ -36,6 +36,7 @@ static Graph* Matmul(int m, int k, int n, bool transpose_a, bool transpose_b,
 #define BM_MatmulDev(M, K, N, TA, TB, T, TFTYPE, DEVICE)                       \
   static void BM_Matmul##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE( \
       int iters) {                                                             \
+    testing::UseRealTime();                                                    \
     testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2);        \
     test::Benchmark(#DEVICE, Matmul<T>(M, K, N, TA, TB, TFTYPE)).Run(iters);   \
   }                                                                            \
@@ -84,8 +85,32 @@ BM_Matmul(8, 10000, 200, false, true);
 BM_Matmul(20, 10000, 200, false, true);
 BM_Matmul(20, 20000, 200, false, true);
 
-// Test some other matrix-vector multiplies.
-BM_Matmul(10000, 200, 1, false, false);
-BM_Matmul(10000, 200, 1, true, false);
+// Test some matrix-vector multiplies.
+BM_Matmul(50, 50, 1, false, false);
+BM_Matmul(50, 50, 1, true, false);
+BM_Matmul(50, 50, 1, false, true);
+BM_Matmul(50, 50, 1, true, true);
+BM_Matmul(500, 500, 1, false, false);
+BM_Matmul(500, 500, 1, true, false);
+BM_Matmul(500, 500, 1, false, true);
+BM_Matmul(500, 500, 1, true, true);
+BM_Matmul(2000, 2000, 1, false, false);
+BM_Matmul(2000, 2000, 1, true, false);
+BM_Matmul(2000, 2000, 1, false, true);
+BM_Matmul(2000, 2000, 1, true, true);
+
+// Test some vector-matrix multiplies.
+BM_Matmul(1, 50, 50, false, false);
+BM_Matmul(1, 50, 50, true, false);
+BM_Matmul(1, 50, 50, false, true);
+BM_Matmul(1, 50, 50, true, true);
+BM_Matmul(1, 500, 500, false, false);
+BM_Matmul(1, 500, 500, true, false);
+BM_Matmul(1, 500, 500, false, true);
+BM_Matmul(1, 500, 500, true, true);
+BM_Matmul(1, 2000, 2000, false, false);
+BM_Matmul(1, 2000, 2000, true, false);
+BM_Matmul(1, 2000, 2000, false, true);
+BM_Matmul(1, 2000, 2000, true, true);
 
 }  // end namespace tensorflow

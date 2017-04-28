@@ -19,10 +19,24 @@ limitations under the License.
 #include <array>
 #include <vector>
 
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 namespace monitoring {
+
+// The different metric kinds available.
+//
+// Gauge indicates that the metric's values are instantaneous measurements of a
+// (typically) continuously varying quantity. Examples: a process's current heap
+// size, a queue's current length.
+//
+// Cumulative indicates that the metric's values represent non-negative changes
+// over specified time periods. Example: the number of rpc calls to a service.
+enum class MetricKind : int { kGauge = 0, kCumulative };
+
+// The type of the metric values.
+enum class ValueType : int { kInt64 = 0, kHistogram };
 
 // Everything in the internal namespace is implementation details. Do not depend
 // on this.
@@ -46,17 +60,20 @@ class StringLiteral {
   const StringPiece literal_;
 };
 
-}  // namespace internal
+template <typename Value>
+ValueType GetValueType();
 
-// The different metric kinds available.
-//
-// Gauge indicates that the metric's values are instantaneous measurements of a
-// (typically) continuously varying quantity. Examples: a process's current heap
-// size, a queue's current length.
-//
-// Cumulative indicates that the metric's values represent non-negative changes
-// over specified time periods. Example: the number of rpc calls to a service.
-enum class MetricKind : int { kGauge = 0, kCumulative };
+template <>
+inline ValueType GetValueType<int64>() {
+  return ValueType::kInt64;
+}
+
+template <>
+inline ValueType GetValueType<HistogramProto>() {
+  return ValueType::kHistogram;
+}
+
+}  // namespace internal
 
 // Abstract base class for a metric definition.
 //
@@ -68,6 +85,8 @@ enum class MetricKind : int { kGauge = 0, kCumulative };
 class AbstractMetricDef {
  public:
   MetricKind kind() const { return kind_; }
+
+  ValueType value_type() const { return value_type_; }
 
   StringPiece name() const { return name_; }
 
@@ -82,16 +101,19 @@ class AbstractMetricDef {
   friend class MetricDef;
 
   AbstractMetricDef(
-      const MetricKind kind, const internal::StringLiteral name,
+      const MetricKind kind, const ValueType value_type,
+      const internal::StringLiteral name,
       const internal::StringLiteral description,
       const std::vector<internal::StringLiteral>& label_descriptions)
       : kind_(kind),
+        value_type_(value_type),
         name_(name),
         description_(description),
-        label_descriptions_(
-            {label_descriptions.begin(), label_descriptions.end()}) {}
+        label_descriptions_(std::vector<StringPiece>(
+            label_descriptions.begin(), label_descriptions.end())) {}
 
   const MetricKind kind_;
+  const ValueType value_type_;
   const StringPiece name_;
   const StringPiece description_;
   const std::vector<StringPiece> label_descriptions_;
@@ -108,14 +130,12 @@ class AbstractMetricDef {
 template <MetricKind metric_kind, typename Value, int NumLabels>
 class MetricDef : public AbstractMetricDef {
  public:
-  using value_type = Value;
-
   template <typename... LabelDesc>
   MetricDef(const internal::StringLiteral name,
             const internal::StringLiteral description,
             const LabelDesc&... label_descriptions)
-      : AbstractMetricDef(metric_kind, name, description,
-                          {label_descriptions...}) {
+      : AbstractMetricDef(metric_kind, internal::GetValueType<Value>(), name,
+                          description, {label_descriptions...}) {
     static_assert(sizeof...(LabelDesc) == NumLabels,
                   "Mismatch between Counter<NumLabels> and number of label "
                   "descriptions.");

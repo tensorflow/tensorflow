@@ -15,24 +15,28 @@
 
 # Bring in all of the public TensorFlow interface into this
 # module.
-# pylint: disable=wildcard-import
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=wildcard-import
 from tensorflow.python import *
+# pylint: enable=wildcard-import
 
+from tensorflow.python.util.lazy_loader import LazyLoader
+contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
+del LazyLoader
 
-# Lazily import the `tf.contrib` module. This avoids loading all of the
-# dependencies of `tf.contrib` at `import tensorflow` time.
-class _LazyContribLoader(object):
+del absolute_import
+del division
+del print_function
 
-  def __getattr__(self, item):
-    global contrib
-    # Replace the lazy loader with the imported module itself.
-    import importlib  # pylint: disable=g-import-not-at-top
-    contrib = importlib.import_module('tensorflow.contrib')
-    return getattr(contrib, item)
-
-
-contrib = _LazyContribLoader()
+# These symbols appear because we import the python package which
+# in turn imports from tensorflow.core and tensorflow.python. They
+# must come from this module. So python adds these symbols for the
+# resolution to succeed.
+# pylint: disable=undefined-variable
+del python
+del core
+# pylint: enable=undefined-variable

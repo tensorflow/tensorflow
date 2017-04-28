@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -24,9 +27,45 @@ REGISTER_OP("KernelLabel")
     .Output("result: string")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("GraphDefVersion").Output("version: int32").SetIsStateful();
+REGISTER_OP("GraphDefVersion")
+    .Output("version: int32")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("Old").Deprecated(8, "For reasons");
+REGISTER_OP("RequiresOlderGraphVersion")
+    .Output("version: int32")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      if (c->graph_def_version() != TF_GRAPH_DEF_VERSION - 1) {
+        return errors::InvalidArgument("Wrong graph version for shape");
+      }
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("Old")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Deprecated(8, "For reasons");
+
+REGISTER_RESOURCE_HANDLE_OP(StubResource);
+
+REGISTER_OP("ResourceInitializedOp")
+    .Input("resource: resource")
+    .Output("initialized: bool")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("ResourceCreateOp")
+    .Input("resource: resource")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("ResourceUsingOp")
+    .Input("resource: resource")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("TestStringOutput")
+    .Input("input: float")
+    .Output("output1: float")
+    .Output("output2: string")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 namespace {
 enum KernelLabel { DEFAULT_LABEL, OVERLOAD_1_LABEL, OVERLOAD_2_LABEL };
@@ -92,5 +131,44 @@ class OldOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Old").Device(DEVICE_CPU), OldOp);
+
+// Stubbed-out resource to test resource handle ops.
+class StubResource : public ResourceBase {
+ public:
+  string DebugString() override { return ""; }
+};
+
+REGISTER_RESOURCE_HANDLE_KERNEL(StubResource);
+
+REGISTER_KERNEL_BUILDER(Name("ResourceInitializedOp").Device(DEVICE_CPU),
+                        IsResourceInitialized<StubResource>);
+
+class ResourceCreateOp : public OpKernel {
+ public:
+  ResourceCreateOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* c) override {
+    OP_REQUIRES_OK(c,
+                   CreateResource(c, HandleFromInput(c, 0), new StubResource));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("ResourceCreateOp").Device(DEVICE_CPU),
+                        ResourceCreateOp);
+
+// Uses a ResourceHandle to check its validity.
+class ResourceUsingOp : public OpKernel {
+ public:
+  explicit ResourceUsingOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* ctx) {
+    StubResource* unused;
+    OP_REQUIRES_OK(ctx, LookupResource<StubResource>(
+                            ctx, HandleFromInput(ctx, 0), &unused));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("ResourceUsingOp").Device(DEVICE_CPU),
+                        ResourceUsingOp);
 
 }  // end namespace tensorflow

@@ -17,16 +17,35 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/op_kernel.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/sparse_xent_op.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+
+template <typename Index>
+Status CheckInvalidLabelIndex(const Tensor& labels, int64 max_index) {
+  if (labels.NumElements() == 0) return Status::OK();
+  const auto label_values = labels.vec<Index>();
+  int64 bad_index;
+  auto min_max_dim_value = std::minmax_element(
+      label_values.data(), label_values.data() + label_values.size());
+  if (*min_max_dim_value.first < 0 || *min_max_dim_value.second >= max_index) {
+    bad_index = (*min_max_dim_value.first < 0) ? *min_max_dim_value.first
+                                               : *min_max_dim_value.second;
+    return errors::InvalidArgument("Received a label value of ", bad_index,
+                                   " which is outside the valid range of [0, ",
+                                   max_index, ").  Label values: ",
+                                   labels.SummarizeValue(labels.NumElements()));
+  }
+  return Status::OK();
+}
 
 template <typename Device, typename T, typename Index>
 class SparseSoftmaxXentWithLogitsOp : public OpKernel {
@@ -59,13 +78,17 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
                                                    labels.shape(), &scratch));
 
     Tensor* loss_out = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, labels.shape(), &loss_out));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {1}, 0, labels.shape(), &loss_out));
     Tensor* back_out = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(1, logits.shape(), &back_out));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 1, logits.shape(), &back_out));
 
     if (logits.dim_size(0) > 0) {
+      if (std::is_same<Device, CPUDevice>::value) {
+        OP_REQUIRES_OK(
+            context, CheckInvalidLabelIndex<Index>(labels, logits.dim_size(1)));
+      }
       functor::SparseXentFunctor<Device, T, Index> functor;
       functor(context->eigen_device<Device>(), logits.matrix<T>(),
               labels.vec<Index>(), scratch.vec<T>(), loss_out->vec<T>(),

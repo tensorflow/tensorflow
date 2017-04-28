@@ -51,9 +51,6 @@ class OAuthClient {
                                     uint64 request_timestamp_sec, string* token,
                                     uint64* expiration_timestamp_sec);
 
-  /// The max size of the JSON response from an OAuth 2.0 server, in bytes.
-  static constexpr size_t kResponseBufferSize = 1000;
-
  private:
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
   Env* env_;

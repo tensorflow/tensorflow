@@ -19,6 +19,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
@@ -215,6 +216,14 @@ template <>
 inline void CollectValue(const int64& value, Point* const point) {
   point->value_type = ValueType::kInt64;
   point->int64_value = value;
+}
+
+template <>
+inline void CollectValue(const HistogramProto& value, Point* const point) {
+  point->value_type = ValueType::kHistogram;
+  // This is inefficient. If and when we hit snags, we can change the API to do
+  // this more efficiently.
+  point->histogram_value = value;
 }
 
 // Used by the CollectionRegistry class to collect all the values of all the

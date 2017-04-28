@@ -211,43 +211,6 @@ TEST_F(ConstantFoldingTest, TwoOutputsFoldOneOutput) {
   ExpectNodeEqual<int>(*(b1_ident->in_nodes().begin()), {}, {0});
 }
 
-TEST_F(ConstantFoldingTest, TestNoReplaceOnGPU) {
-#if GOOGLE_CUDA
-  Device* device = nullptr;
-  std::vector<Device*> devices;
-  DeviceFactory::GetFactory(DEVICE_GPU)
-      ->CreateDevices(SessionOptions{}, "", &devices);
-  if (devices.size() > 0) {
-    device = devices[0];
-  }
-  if (!device) {
-    // Don't run the test if not GPUs found.
-    return;
-  }
-  Reset();
-  Graph* g = g_.get();
-  Node* s0 = Constant<float>({42.0f}, {1});
-  g->AddControlEdge(g->source_node(), s0);
-  Node* cast = test::graph::Cast(g, s0, DT_BFLOAT16);
-  Node* send = test::graph::Send(g, cast, "cast", "sender", 0, "receiver");
-
-  g->AddControlEdge(send, g->sink_node());
-
-  // No ops should be replaced, as there is no kernel for BFLOAT16 on GPU.
-  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                 Env::Default(), device, g));
-
-  // But constant folding should have replaced the cast op with a constant when
-  // running on CPU.
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                Env::Default(), nullptr, g));
-
-  for (auto d : devices) {
-    delete d;
-  }
-#endif  // GOOGLE_CUDA
-}
-
 TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
   Reset();
   Graph* g = g_.get();
@@ -265,8 +228,12 @@ TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
   g->AddControlEdge(concat_send, g->sink_node());
 
   // The above concat should not have been constant folded.
-  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                 Env::Default(), nullptr, g));
+  bool was_mutated;
+  Status status =
+      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
+                                  Env::Default(), nullptr, g, &was_mutated);
+  EXPECT_FALSE(was_mutated);
+  TF_EXPECT_OK(status);
 }
 
 TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
@@ -294,10 +261,45 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
   g->AddControlEdge(times_two_send, g->sink_node());
 
   // The above function call should not have been constant folded.
-  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                 Env::Default(), nullptr, g));
+  bool was_mutated;
+  status =
+      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
+                                  Env::Default(), nullptr, g, &was_mutated);
+  EXPECT_FALSE(was_mutated);
+  EXPECT_TRUE(status.ok());
 
   g_ = nullptr;
+}
+
+REGISTER_OP("ConstantFoldingTestOp").Input("a: int64").Output("b: int64");
+
+TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
+  Graph* g = g_.get();
+
+  Node* aconst = Constant<int64>(std::vector<int64>(5, 0), {5});
+  g->AddControlEdge(g->source_node(), aconst);
+
+  NodeDef def;
+  TF_ASSERT_OK(
+      NodeDefBuilder("testop", "ConstantFoldingTestOp", g->op_registry())
+          .Input(aconst->name(), 0, DT_INT64)
+          .Finalize(&def));
+  Status status;
+  Node* non_cpu = g->AddNode(def, &status);
+  TF_ASSERT_OK(status);
+  g->AddEdge(aconst, 0, non_cpu, 0);
+
+  Node* non_cpu_send =
+      test::graph::Send(g, non_cpu, "non_cpu_send", "sender", 0, "receiver");
+  g->AddControlEdge(non_cpu_send, g->sink_node());
+
+  // The non-CPU op should not have been constant folded.
+  bool was_mutated;
+  status =
+      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
+                                  Env::Default(), nullptr, g, &was_mutated);
+  EXPECT_FALSE(was_mutated);
+  EXPECT_TRUE(status.ok());
 }
 
 namespace {
@@ -374,10 +376,16 @@ TEST_F(ConstantFoldingTest, TestImmutableConst) {
   auto result2 = ops::MatMul(root, result1, c);
   TF_ASSERT_OK(root.ToGraph(g));
   TestTFEnvironment test_env;
-  EXPECT_FALSE(DoConstantFolding(ConstantFoldingOptions{}, nullptr,
-                                 Env::Default(), nullptr, g));
-  EXPECT_TRUE(DoConstantFolding(ConstantFoldingOptions{}, nullptr, &test_env,
-                                nullptr, g));
+  bool was_mutated;
+  Status status =
+      DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
+                                  Env::Default(), nullptr, g, &was_mutated);
+  EXPECT_FALSE(was_mutated);
+  EXPECT_FALSE(status.ok());
+  status = DoConstantFoldingWithStatus(ConstantFoldingOptions{}, nullptr,
+                                       &test_env, nullptr, g, &was_mutated);
+  EXPECT_TRUE(was_mutated);
+  TF_EXPECT_OK(status);
 }
 
 }  // namespace

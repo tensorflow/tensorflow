@@ -19,28 +19,34 @@ from __future__ import print_function
 
 import fnmatch
 import os
-import platform
 import re
 import sys
 
-from setuptools import find_packages, setup, Command, Extension
+from setuptools import find_packages, setup, Command
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.10.0rc0'
-
-numpy_version = "1.8.2"
-if platform.system() == "Darwin":
-  # There are bugs with numpy pip installation on OS X prior to
-  # 1.10.1, so on mac we require a higher version than on other
-  # platforms.
-  numpy_version = "1.10.1"
+# This version string is semver compatible, but incompatible with pip.
+# For pip, we will remove all '-' characters from this string, and use the
+# result for pip.
+_VERSION = '1.1.0'
 
 REQUIRED_PACKAGES = [
-    'numpy >= %s' % numpy_version,
+    'numpy >= 1.11.0',
     'six >= 1.10.0',
-    'protobuf == 3.0.0b2',
+    'protobuf >= 3.2.0',
+    'werkzeug >= 0.11.10',
+    'html5lib == 0.9999999',  # identical to 1.0b8
+    'markdown == 2.2.0',
+    'bleach == 1.5.0',
 ]
+
+project_name = 'tensorflow'
+if '--project_name' in sys.argv:
+  project_name_idx = sys.argv.index('--project_name')
+  project_name = sys.argv[project_name_idx + 1]
+  sys.argv.remove('--project_name')
+  sys.argv.pop(project_name_idx)
 
 # python3 requires wheel 0.26
 if sys.version_info.major == 3:
@@ -53,6 +59,7 @@ else:
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'tensorboard = tensorflow.tensorboard.tensorboard:main',
+    'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
 ]
 # pylint: enable=line-too-long
 
@@ -61,8 +68,8 @@ TEST_PACKAGES = [
 ]
 
 class BinaryDistribution(Distribution):
-  def is_pure(self):
-    return False
+  def has_ext_modules(self):
+    return True
 
 
 class InstallCommand(InstallCommandBase):
@@ -148,17 +155,23 @@ def find_files(pattern, root):
 
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
+matches += ['../' + x for x in find_files('*', '_solib_k8') if '.py' not in x]
 
+if os.name == 'nt':
+  EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
+else:
+  EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (list(find_files('*.h', 'tensorflow/core')) +
+           list(find_files('*.h', 'tensorflow/stream_executor')) +
            list(find_files('*.h', 'google/protobuf/src')) +
            list(find_files('*', 'third_party/eigen3')) +
            list(find_files('*', 'external/eigen_archive')))
 
 
 setup(
-    name='tensorflow',
-    version=_VERSION,
+    name=project_name,
+    version=_VERSION.replace('-', ''),
     description='TensorFlow helps the tensors flow',
     long_description='',
     url='http://tensorflow.org/',
@@ -175,12 +188,14 @@ setup(
     # Add in any packaged data.
     include_package_data=True,
     package_data={
-        'tensorflow': ['python/_pywrap_tensorflow.so',
-                       'tensorboard/dist/index.html',
-                       'tensorboard/dist/tf-tensorboard.html',
-                       'tensorboard/lib/css/global.css',
-                       'tensorboard/TAG',
-                     ] + matches,
+        'tensorflow': [
+            EXTENSION_NAME,
+            'tensorboard/dist/bazel-html-imports.html',
+            'tensorboard/dist/index.html',
+            'tensorboard/dist/tf-tensorboard.html',
+            'tensorboard/lib/css/global.css',
+            'tensorboard/TAG',
+        ] + matches,
     },
     zip_safe=False,
     distclass=BinaryDistribution,
@@ -199,7 +214,6 @@ setup(
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Software Development :: Libraries',
-        ],
+    ],
     license='Apache 2.0',
-    keywords='tensorflow tensor machine learning',
-    )
+    keywords='tensorflow tensor machine learning',)

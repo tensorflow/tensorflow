@@ -22,11 +22,14 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
 
 import "google/protobuf/any.proto";
+import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/protobuf/named_tensor.proto";
+import "tensorflow/core/protobuf/tensorflow_server.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -39,6 +42,25 @@ message GetStatusRequest {
 
 message GetStatusResponse {
   repeated DeviceAttributes device_attributes = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// CreateSession method request/response messages
+//
+// For each session,
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message CreateWorkerSessionRequest {
+  // Sessions are identified by a given handle.
+  string session_handle = 1;
+
+  // Defines the configuration of a TensorFlow worker.
+  ServerDef server_def = 2;
+}
+
+message CreateWorkerSessionResponse {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -129,17 +151,10 @@ message CleanupAllResponse {
 // The worker executes all subgraphs registered under graph_handle.
 // RunGraph returns after the execution finishes or an error is
 // encountered.
+// A sequence of RunGraphRequests with is_partial may be sent to RunGraph for
+// partial graph execution.
 //
 ////////////////////////////////////////////////////////////////////////////////
-
-// A pair of tensor name and tensor values.
-message NamedTensor {
-  // The name of the named tensor.
-  string key = 1;
-
-  // The value of the named tensor.
-  TensorProto val = 2;
-}
 
 // Options specific to the execution of a single step.
 message ExecutorOpts {
@@ -167,17 +182,24 @@ message RunGraphRequest {
   //
   // Sends the tensors in "send" into the graph before the run and
   // fetches the keys into `RunGraphResponse.recv` after the run.
-  repeated NamedTensor send = 3;
+  repeated NamedTensorProto send = 3;
   repeated string recv_key = 4;
+
+  // True if the RunGraphRequest is a partial run request.
+  bool is_partial = 6;
+  // True if this is the last partial run request in a sequence of requests.
+  bool is_last_partial_run = 7;
 }
 
 message RunGraphResponse {
   // A list of tensors corresponding to those requested by
   // `RunGraphRequest.recv_key`.
-  repeated NamedTensor recv = 1;
+  repeated NamedTensorProto recv = 1;
 
-  // If the request asked for execution stats, these are returned here.
+  // If the request asked for execution stats or cost graph, these are returned
+  // here.
   StepStats step_stats = 2;
+  CostGraphDef cost_graph = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -221,10 +243,15 @@ message RecvTensorRequest {
   // If true, use an out-of-band DMA mechanism to transfer the
   // received tensor.
   bool dma_ok = 3;
-  // NIC bus preference on the request originator side
-  BusAdjacency client_bus_adjacency = 4;
-  // NIC bus preference on the request receiver side
-  BusAdjacency server_bus_adjacency = 5;
+
+  // Optional information on client-side device locality.
+  DeviceLocality client_locality = 4;
+
+  // Optional information on server-side device locality.
+  DeviceLocality server_locality = 5;
+
+  // Optional information needed by the RPC subsystem.
+  google.protobuf.Any transport_options = 6;
 }
 
 message RecvTensorResponse {
@@ -239,7 +266,7 @@ message RecvTensorResponse {
   int64 send_start_micros = 3;
 
   // Optional additional information about how to receive the tensor,
-  // in the event that `RecvTensorRequest.dma_ok` was true.
+  // e.g. in the event that `RecvTensorRequest.dma_ok` was true.
   google.protobuf.Any transport_options = 4;
 }
 

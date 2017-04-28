@@ -26,12 +26,20 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#ifdef TENSORFLOW_USE_LIBXSMM
+#include "include/libxsmm_intrinsics_x86.h"
+#include "include/libxsmm_malloc.h"
+#include "include/libxsmm_spmdm.h"
+#endif
 
 namespace tensorflow {
 
@@ -133,7 +141,7 @@ struct SparseSlice {
 
 template <typename T>
 template <bool Transpose>
-void SparseSlice<T>::Initialize(const SparseSlice<T>::ConstMatrixMap& mat,
+void SparseSlice<T>::Initialize(const typename SparseSlice<T>::ConstMatrixMap& mat,
                                 int col_offset) {
   const int mat_rows = Transpose ? mat.dimension(1) : mat.dimension(0);
   const int mat_cols = Transpose ? mat.dimension(0) : mat.dimension(1);
@@ -251,7 +259,11 @@ static const int kNumOperands = (sizeof(Packet) / sizeof(float));
 ALWAYS_INLINE float ConvertBfloat16ToFloat(const bfloat16* src) {
   float out = 0;
   auto tmp = reinterpret_cast<bfloat16*>(&out);
-  tmp[1] = *src;
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    tmp[0] = *src;
+#else
+    tmp[1] = *src;
+#endif
   return out;
 }
 
@@ -751,10 +763,16 @@ class SparseMatMul {
   typedef Eigen::TensorMap<Eigen::Tensor<TR, 2, Eigen::RowMajor>,
                            Eigen::Aligned>
       MatrixMapR;
+
+ public:
+  // Not used; added to match interface of LibxsmmSparseMatMul
+  struct TensorInfoCache {};
+
   // Perform matrix multiplication of "left" and "right", and store the result
   // in *"output".
  public:
-  static inline void Compute(const ConstMatrixMapL& left,
+  static inline void Compute(TensorInfoCache* cache,
+                             const ConstMatrixMapL& left,
                              const ConstMatrixMapR& right, bool transpose_left,
                              const DeviceBase::CpuWorkerThreads* thread_pool,
                              bool transpose_output, MatrixMap* output);
@@ -818,7 +836,108 @@ class SparseMatMul {
   TF_DISALLOW_COPY_AND_ASSIGN(SparseMatMul);
 };
 
+#ifdef TENSORFLOW_USE_LIBXSMM
 template <typename TL, typename TR>
+class LibxsmmSparseMatMul {
+  typedef Eigen::Tensor<TL, 2, Eigen::RowMajor> MatrixL;
+  typedef Eigen::Tensor<TR, 2, Eigen::RowMajor> MatrixR;
+  typedef Eigen::TensorMap<Eigen::Tensor<const TL, 2, Eigen::RowMajor>,
+                           Eigen::Aligned>
+      ConstMatrixMapL;
+  typedef Eigen::TensorMap<Eigen::Tensor<const TR, 2, Eigen::RowMajor>,
+                           Eigen::Aligned>
+      ConstMatrixMapR;
+  typedef Eigen::TensorMap<Eigen::Tensor<TR, 2, Eigen::RowMajor>,
+                           Eigen::Aligned>
+      MatrixMapR;
+
+ public:
+  // This structure contains a set of libxsmm kernels for sizes that have been
+  // encountered previously by this operator so that libxsmm does not need to
+  // reallocate its scratchpad memory each time (which hurts performance
+  // substantially).
+  struct TensorInfoCache {
+    struct TensorInfoCacheEntry {
+      // Parameters for kernel
+      int M;
+      int K;
+      int N;
+      int max_threads;
+      // libxsmm handle and matrix data
+      libxsmm_spmdm_handle handle;
+      libxsmm_CSR_sparseslice* output_csr;
+      // Chain to non-libxsmm implementation's cache in case that ever becomes
+      // useful (it is an empty struct right now)
+      typename SparseMatMul<TL, TR>::TensorInfoCache
+          non_libxsmm_cache;  // Currently not used
+    };
+    // protects entries; invariant: entries is a valid std::multimap
+    tensorflow::mutex lock;
+    // Because there could be multiple matrix multiplies with the same sizes
+    // going on at the same time, we need to allow multiple cache entries for a
+    // given set of parameters. Taking and returning entries is used to make
+    // sure the same cache entry is not used from two threads at a time.
+    std::multimap<std::tuple<int, int, int, int>,
+                  std::unique_ptr<TensorInfoCacheEntry>>
+        entries GUARDED_BY(lock);
+
+    TensorInfoCache() : lock(), entries() {}
+    // Look up and remove first entry with these parameters, creating one if
+    // there isn't one
+    std::unique_ptr<TensorInfoCacheEntry> take_cache_entry(int M, int K, int N,
+                                                           int max_threads)
+        LOCKS_EXCLUDED(lock) {
+      tensorflow::mutex_lock ml(lock);
+      auto key = std::make_tuple(M, K, N, max_threads);
+      auto it = entries.find(key);
+      if (it != entries.end()) {
+        auto val = std::move(it->second);
+        entries.erase(it);
+        return val;
+      } else {
+        std::unique_ptr<TensorInfoCacheEntry> e{
+            new TensorInfoCacheEntry{M, K, N, max_threads, {}, nullptr}};
+        // setup scoped allocator, which uses cpu_allocator() for this scope
+        const libxsmm_tf_allocator<libxsmm_scratch_allocator> tf_allocator;
+        libxsmm_spmdm_init(M, N, K, max_threads, &e->handle, &e->output_csr);
+        return e;
+      }
+    }
+    // Add a cache entry with certain parameters
+    void return_cache_entry(std::unique_ptr<TensorInfoCacheEntry> e)
+        LOCKS_EXCLUDED(lock) {
+      tensorflow::mutex_lock ml(lock);
+      auto key = std::make_tuple(e->M, e->K, e->N, e->max_threads);
+      entries.insert(std::make_pair(key, std::move(e)));
+    }
+    ~TensorInfoCache() {
+      tensorflow::mutex_lock ml(lock);
+      for (auto& p : entries) {
+        libxsmm_spmdm_destroy(&p.second->handle);
+      }
+      entries.clear();
+    }
+
+   private:
+    TF_DISALLOW_COPY_AND_ASSIGN(TensorInfoCache);
+  };
+
+  // Perform matrix multiplication of "left" and "right", and store the result
+  // in *"output".
+ public:
+  static inline void Compute(TensorInfoCache* cache,
+                             const ConstMatrixMapL& left,
+                             const ConstMatrixMapR& right, bool transpose_left,
+                             const DeviceBase::CpuWorkerThreads* thread_pool,
+                             bool transpose_output, MatrixMap* output);
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(LibxsmmSparseMatMul);
+};
+#endif
+
+template <typename TL, typename TR,
+          template <typename TL2, typename TR2> class DoMatMul>
 class SparseMatMulOp : public OpKernel {
   typedef Eigen::Tensor<TR, 2, Eigen::RowMajor> MatrixR;
   typedef Eigen::TensorMap<Eigen::Tensor<const TR, 2, Eigen::RowMajor>,
@@ -852,6 +971,15 @@ class SparseMatMulOp : public OpKernel {
                                         b.shape().DebugString()));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({m, n}), &output));
+
+    if (k == 0) {
+      // If the inner dimension k in the matrix multiplication is zero, we fill
+      // the output with zeros.
+      functor::SetZeroFunctor<CPUDevice, float> f;
+      f(ctx->eigen_device<CPUDevice>(), output->flat<float>());
+      return;
+    }
+
     auto out = output->matrix<float>();
 
     std::unique_ptr<Tensor> a_float;
@@ -916,15 +1044,15 @@ class SparseMatMulOp : public OpKernel {
     }
 
     if (transpose_output) {
-      SparseMatMul<TR, TL>::Compute(
-          left->matrix<TR>(), right->matrix<TL>(), transpose_a,
-          ctx->device()->tensorflow_cpu_worker_threads(), transpose_output,
-          &out);
+      DoMatMul<TR, TL>::Compute(&this->cache_tr_, left->matrix<TR>(),
+                                right->matrix<TL>(), transpose_a,
+                                ctx->device()->tensorflow_cpu_worker_threads(),
+                                transpose_output, &out);
     } else {
-      SparseMatMul<TL, TR>::Compute(
-          left->matrix<TL>(), right->matrix<TR>(), transpose_a,
-          ctx->device()->tensorflow_cpu_worker_threads(), transpose_output,
-          &out);
+      DoMatMul<TL, TR>::Compute(&this->cache_nt_, left->matrix<TL>(),
+                                right->matrix<TR>(), transpose_a,
+                                ctx->device()->tensorflow_cpu_worker_threads(),
+                                transpose_output, &out);
     }
   }
 
@@ -934,13 +1062,18 @@ class SparseMatMulOp : public OpKernel {
   bool a_is_sparse_;
   bool b_is_sparse_;
 
+  // Cache for non-transposed-output multiply
+  typename DoMatMul<TL, TR>::TensorInfoCache cache_nt_;
+  // Cache for transposed-output multiply
+  typename DoMatMul<TR, TL>::TensorInfoCache cache_tr_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(SparseMatMulOp);
 };
 
 template <typename TL, typename TR>
 inline void SparseMatMul<TL, TR>::ComputeOutputBlock(
     const std::vector<SparseSlice<TL>*>& left,
-    const SparseMatMul<TL, TR>::ConstMatrixMapR& right, int num_cols,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& right, int num_cols,
     int output_row_offset, int output_col_offset, bool assign,
     bool transpose_output, MatrixMap* output) {
   static const Eigen::array<int, 2> perm({1, 0});
@@ -990,7 +1123,7 @@ inline void SparseMatMul<TL, TR>::ComputeOutputBlock(
 
 template <typename TL, typename TR>
 inline BlockingCounter* SparseMatMul<TL, TR>::CreateSparseSlices(
-    const SparseMatMul<TL, TR>::ConstMatrixMapL& mat, bool transpose,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapL& mat, bool transpose,
     int slice_num_rows, int slice_block_size, int slice_num_cols,
     std::vector<std::vector<SparseSlice<TL>*>>* mat_slices,
     const DeviceBase::CpuWorkerThreads* thread_pool) {
@@ -1034,7 +1167,7 @@ inline BlockingCounter* SparseMatMul<TL, TR>::CreateSparseSlices(
           new SparseSlice<TL>(num_rows, num_cols, slice_block_size);
       (*mat_slices)[i][j] = sparse_slice;
       thread_pool->workers->Schedule(
-          std::bind(work, sparse_slice, slice, slice_num_cols * j));
+          [=]() { work(sparse_slice, slice, slice_num_cols * j); });
     }
   }
   return counter;
@@ -1086,7 +1219,7 @@ ALWAYS_INLINE void CopyAndMayBeInterleave(void* dst, const void* src,
 
 template <typename TL, typename TR>
 inline BlockingCounter* SparseMatMul<TL, TR>::ShuffleMatrix(
-    const SparseMatMul<TL, TR>::ConstMatrixMapR& mat, int slice_row_start,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& mat, int slice_row_start,
     int slice_num_rows, int slice_col_start, int slice_num_cols, const int N,
     const DeviceBase::CpuWorkerThreads* thread_pool, MatrixR* buffer) {
   DCHECK_EQ(N % 2, 0);
@@ -1133,7 +1266,7 @@ inline BlockingCounter* SparseMatMul<TL, TR>::ShuffleMatrix(
   DCHECK_LE(num_out_rows, buffer->dimension(0));
   for (int i = std::max(1, num_threads); i > 0; --i) {
     end = start + num_out_rows / i;
-    thread_pool->workers->Schedule(std::bind(shuffle_work, start, end));
+    thread_pool->workers->Schedule([=]() { shuffle_work(start, end); });
     num_out_rows -= (end - start);
     start = end;
   }
@@ -1143,7 +1276,7 @@ inline BlockingCounter* SparseMatMul<TL, TR>::ShuffleMatrix(
 template <typename TL, typename TR>
 inline void SparseMatMul<TL, TR>::SliceMatrix(
     const MatrixR& mat, const int num_rows, const int num_slices,
-    std::vector<SparseMatMul<TL, TR>::ConstMatrixMapR*>* slices) {
+    std::vector<typename SparseMatMul<TL, TR>::ConstMatrixMapR*>* slices) {
   slices->resize(num_slices);
   DSizes d(num_rows, mat.dimension(1));
   DCHECK_LE(num_rows * num_slices, mat.dimension(0));
@@ -1154,10 +1287,10 @@ inline void SparseMatMul<TL, TR>::SliceMatrix(
 
 template <typename TL, typename TR>
 inline BlockingCounter* SparseMatMul<TL, TR>::CreateDenseSlices(
-    const SparseMatMul<TL, TR>::ConstMatrixMapR& mat, int row_start,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& mat, int row_start,
     int num_rows, int col_start, int num_cols,
     const DeviceBase::CpuWorkerThreads* thread_pool, MatrixR* buffer,
-    std::vector<SparseMatMul<TL, TR>::ConstMatrixMapR*>* slices) {
+    std::vector<typename SparseMatMul<TL, TR>::ConstMatrixMapR*>* slices) {
   BlockingCounter* shuffle_counter = ShuffleMatrix(
       mat, row_start, num_rows, col_start, num_cols, N, thread_pool, buffer);
   const int num_slices = (num_cols + N - 1) / N;
@@ -1167,8 +1300,8 @@ inline BlockingCounter* SparseMatMul<TL, TR>::CreateDenseSlices(
 
 template <typename TL, typename TR>
 inline void SparseMatMul<TL, TR>::ComputeBlockSizes(
-    const SparseMatMul<TL, TR>::ConstMatrixMapL& left,
-    const SparseMatMul<TL, TR>::ConstMatrixMapR& right, bool transpose_left,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapL& left,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& right, bool transpose_left,
     int num_threads, int* KR, int* NR, int* KL, int* JB, int* IB) {
   // Heuristics for calculating block sizes
   // Assume two hyperthreads per core.
@@ -1208,6 +1341,178 @@ inline void SparseMatMul<TL, TR>::ComputeBlockSizes(
   DCHECK_EQ(N * sizeof(float) % 64, size_t{0});
 }
 
+#ifdef TENSORFLOW_USE_LIBXSMM
+
+template <typename F>
+void do_on_all_threads(const DeviceBase::CpuWorkerThreads* thread_pool,
+                       const F& f) {
+  int num_threads = thread_pool->num_threads;
+  if (num_threads == 0) {
+    LOG(FATAL) << "Have 0 threads in thread pool";
+  } else if (num_threads == 1) {
+    f(0);
+  } else {
+    BlockingCounter counter(num_threads - 1);
+    for (int i = 1; i < num_threads; ++i) {
+      thread_pool->workers->Schedule([&, i]() {
+        f(i);
+        counter.DecrementCount();
+      });
+    }
+    f(0);
+    counter.Wait();
+  }
+}
+
+template <typename T>
+struct empty_type_wrapper {};
+
+// Copies of interface to libxsmm_spmdm_createSparseSlice_*_notrans_thread to
+// allow overloading
+void wrapper_libxsmm_spmdm_createSparseSlice_generic_thread(
+    empty_type_wrapper<float>, const libxsmm_spmdm_handle* handle, char transA,
+    const float* A, libxsmm_CSR_sparseslice* libxsmm_output_csr_a, int block_id,
+    int tid, int nthreads) {
+  return libxsmm_spmdm_createSparseSlice_fp32_thread(
+      handle, transA, A, libxsmm_output_csr_a, block_id, tid, nthreads);
+}
+void wrapper_libxsmm_spmdm_createSparseSlice_generic_thread(
+    empty_type_wrapper<bfloat16>, const libxsmm_spmdm_handle* handle,
+    char transA, const bfloat16* A,
+    libxsmm_CSR_sparseslice* libxsmm_output_csr_a, int block_id, int tid,
+    int nthreads) {
+  return libxsmm_spmdm_createSparseSlice_bfloat16_thread(
+      handle, transA, reinterpret_cast<const uint16*>(A), libxsmm_output_csr_a,
+      block_id, tid, nthreads);
+}
+
+void wrapper_libxsmm_spmdm_compute_generic_thread(
+    empty_type_wrapper<bfloat16>, const libxsmm_spmdm_handle* handle,
+    char transA, char transB, const bfloat16* alpha,
+    libxsmm_CSR_sparseslice* A_sparse, const bfloat16* B, char transC,
+    const bfloat16* beta, float* C, int block_id, int tid, int nthreads) {
+  return libxsmm_spmdm_compute_bfloat16_thread(
+      handle, transA, transB, reinterpret_cast<const uint16*>(alpha), A_sparse,
+      reinterpret_cast<const uint16*>(B), transC,
+      reinterpret_cast<const uint16*>(beta), C, block_id, tid, nthreads);
+}
+void wrapper_libxsmm_spmdm_compute_generic_thread(
+    empty_type_wrapper<float>, const libxsmm_spmdm_handle* handle, char transA,
+    char transB, const float* alpha, libxsmm_CSR_sparseslice* A_sparse,
+    const float* B, char transC, const float* beta, float* C, int block_id,
+    int tid, int nthreads) {
+  return libxsmm_spmdm_compute_fp32_thread(handle, transA, transB, alpha,
+                                           A_sparse, B, transC, beta, C,
+                                           block_id, tid, nthreads);
+}
+
+class PinnedToCurrentCPU {
+  bool valid;
+  cpu_set_t old_cpu_set;
+
+ public:
+  PinnedToCurrentCPU() : valid(false) {
+    int ret = 0;
+    ret = sched_getaffinity(0, sizeof(cpu_set_t), &old_cpu_set);
+    if (ret != 0) {
+      VLOG(WARNING) << "sched_getaffinity";
+      return;
+    }
+    valid = true;
+    cpu_set_t new_cpu_set;
+    CPU_ZERO(&new_cpu_set);
+    CPU_SET(sched_getcpu(), &new_cpu_set);
+    ret = sched_setaffinity(0, sizeof(cpu_set_t), &new_cpu_set);
+    if (ret != 0) {
+      VLOG(WARNING) << "sched_setaffinity";
+    }
+  }
+  ~PinnedToCurrentCPU() {
+    if (!valid) return;
+    // No reason to trap errors here
+    sched_setaffinity(0, sizeof(cpu_set_t), &old_cpu_set);
+  }
+};
+
+template <typename TL, typename TR>
+inline void LibxsmmSparseMatMul<TL, TR>::Compute(
+    typename LibxsmmSparseMatMul<TL, TR>::TensorInfoCache* cache,
+    const typename LibxsmmSparseMatMul<TL, TR>::ConstMatrixMapL& left,
+    const typename LibxsmmSparseMatMul<TL, TR>::ConstMatrixMapR& right,
+    bool transpose_left, const DeviceBase::CpuWorkerThreads* thread_pool,
+    bool transpose_output, MatrixMap* output) {
+  if (false) {
+    // Not handled by libxsmm currently
+    SparseMatMul<TL, TR>::Compute(
+        nullptr /* Assumes no cached data for fallback */, left, right,
+        transpose_left, thread_pool, transpose_output, output);
+    return;
+  }
+  const int num_threads = thread_pool->num_threads;
+  const int left_dim0 = transpose_left ? left.dimension(1) : left.dimension(0);
+  const int left_dim1 = transpose_left ? left.dimension(0) : left.dimension(1);
+  const int right_dim0 = right.dimension(0);
+  const int right_dim1 = right.dimension(1);
+  CHECK_EQ(left_dim1, right_dim0);
+  CHECK_EQ(left_dim0,
+           (transpose_output ? output->dimension(1) : output->dimension(0)));
+  CHECK_EQ(right_dim1,
+           (transpose_output ? output->dimension(0) : output->dimension(1)));
+  if (left_dim0 < 32 || left_dim1 < 32 || right_dim1 < 32) {
+    // Causes problems in libxsmm
+    SparseMatMul<TL, TR>::Compute(
+        nullptr /* Assumes no cached data for fallback */, left, right,
+        transpose_left, thread_pool, transpose_output, output);
+    return;
+  }
+  auto left_data = left.data();
+  auto right_data = right.data();
+  auto output_data = output->data();
+  // Initialize libxsmm for this matrix; make sure another thread doesn't use
+  // this handle
+  auto entry =
+      cache->take_cache_entry(left_dim0, right_dim0, right_dim1, num_threads);
+  // Convert the left matrix to compressed sparse row (CSR) format
+  ptrdiff_t total_num_creation_blocks =
+      libxsmm_spmdm_get_num_createSparseSlice_blocks(&entry->handle);
+  std::atomic<int> cur_create_block_number;
+  cur_create_block_number.store(0);
+  do_on_all_threads(thread_pool, [&](int i) {
+    PinnedToCurrentCPU pin;
+    while (true) {
+      int work_item = cur_create_block_number.fetch_add(1);
+      if (work_item >= total_num_creation_blocks) break;
+      wrapper_libxsmm_spmdm_createSparseSlice_generic_thread(
+          empty_type_wrapper<TL>{}, &entry->handle,
+          (transpose_left ? 'T' : 'N'), left_data, entry->output_csr, work_item,
+          i, num_threads);
+    }
+  });
+  // Do matrix-matrix multiplication
+  ptrdiff_t total_num_mult_blocks =
+      libxsmm_spmdm_get_num_compute_blocks(&entry->handle);
+  std::atomic<int> cur_mult_block_number;
+  cur_mult_block_number.store(0);
+  do_on_all_threads(thread_pool, [&](int i) {
+    PinnedToCurrentCPU pin;
+    while (true) {
+      int work_item = cur_mult_block_number.fetch_add(1);
+      if (work_item >= total_num_mult_blocks) break;
+      const TL alpha(1.0);  // Stored in a variable so we can get a pointer
+      const TL beta(0.0);   // Stored in a variable so we can get a pointer
+      wrapper_libxsmm_spmdm_compute_generic_thread(
+          empty_type_wrapper<TL>{}, &entry->handle,
+          (transpose_left ? 'T' : 'N'), 'N', &alpha, entry->output_csr,
+          right_data, (transpose_output ? 'T' : 'N'), &beta, output_data,
+          work_item, i, num_threads);
+    }
+  });
+  // Put handle + CSR storage back into cache
+  cache->return_cache_entry(std::move(entry));
+}
+
+#endif  // TENSORFLOW_USE_LIBXSMM
+
 // Here is a an overview of the SparseMatMul code. Note that we assume that the
 // left matrix is sparse.
 //
@@ -1238,10 +1543,11 @@ inline void SparseMatMul<TL, TR>::ComputeBlockSizes(
 //    {l_i} and JB elements from {r_j} and compute the IB * JB inner products.
 template <typename TL, typename TR>
 inline void SparseMatMul<TL, TR>::Compute(
-    const SparseMatMul<TL, TR>::ConstMatrixMapL& left,
-    const SparseMatMul<TL, TR>::ConstMatrixMapR& right, bool transpose_left,
-    const DeviceBase::CpuWorkerThreads* thread_pool, bool transpose_output,
-    MatrixMap* output) {
+    typename SparseMatMul<TL, TR>::TensorInfoCache* /*cache*/,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapL& left,
+    const typename SparseMatMul<TL, TR>::ConstMatrixMapR& right,
+    bool transpose_left, const DeviceBase::CpuWorkerThreads* thread_pool,
+    bool transpose_output, MatrixMap* output) {
   const int num_threads = thread_pool->num_threads;
   int KR, NR, KL, JB, IB;
   ComputeBlockSizes(left, right, transpose_left, num_threads, &KR, &NR, &KL,
@@ -1336,12 +1642,27 @@ inline void SparseMatMul<TL, TR>::Compute(
                               .Device(DEVICE_CPU)        \
                               .TypeConstraint<TA>("Ta")  \
                               .TypeConstraint<TB>("Tb"), \
-                          SparseMatMulOp<TA, TB>);
+                          SparseMatMulOp<TA, TB, SparseMatMul>);
+#ifdef TENSORFLOW_USE_LIBXSMM
+#define REGISTER_SPARSE_MATMUL_LIBXSMM(TA, TB)           \
+  REGISTER_KERNEL_BUILDER(Name("SparseMatMul")           \
+                              .Device(DEVICE_CPU)        \
+                              .TypeConstraint<TA>("Ta")  \
+                              .TypeConstraint<TB>("Tb"), \
+                          SparseMatMulOp<TA, TB, LibxsmmSparseMatMul>);
+#endif
 
 REGISTER_SPARSE_MATMUL(bfloat16, bfloat16);
+
 REGISTER_SPARSE_MATMUL(float, bfloat16);
+
 REGISTER_SPARSE_MATMUL(bfloat16, float);
+
+#ifdef TENSORFLOW_USE_LIBXSMM
+REGISTER_SPARSE_MATMUL_LIBXSMM(float, float);
+#else
 REGISTER_SPARSE_MATMUL(float, float);
+#endif
 
 #undef REGISTER_SPARSE_MATMUL
 

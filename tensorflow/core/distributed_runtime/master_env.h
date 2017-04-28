@@ -19,13 +19,14 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
+#include "tensorflow/core/distributed_runtime/master_session.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
 class Device;
 class Env;
-class MasterSessionInterface;
+class MasterSession;
 class OpRegistryInterface;
 class WorkerCacheInterface;
 
@@ -52,12 +53,11 @@ struct MasterEnv {
   // vector of devices.
   //
   // The caller of the function takes ownership of the returned
-  // `MasterSessionInterface`, which may not be null. Ownership of the
-  // `MasterEnv*` is retained by the caller. The callee takes
-  // ownership of the `std::vector<Device*>*` argument, but does not
-  // take ownership of the `Device*` objects in the vector.
-  std::function<MasterSessionInterface*(const SessionOptions&, MasterEnv*,
-                                        std::vector<Device*>*)>
+  // `MasterSession`, which may not be null. Ownership of the
+  // `MasterEnv*` is retained by the caller.
+  std::function<MasterSession*(
+      SessionOptions, MasterEnv*,
+      std::unique_ptr<std::vector<std::unique_ptr<Device>>>)>
       master_session_factory;
 };
 

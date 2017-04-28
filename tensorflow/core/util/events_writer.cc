@@ -35,7 +35,7 @@ EventsWriter::EventsWriter(const string& file_prefix)
       file_prefix_(file_prefix),
       num_outstanding_events_(0) {}
 
-bool EventsWriter::Init() {
+bool EventsWriter::InitIfNeeded() {
   if (recordio_writer_.get() != nullptr) {
     CHECK(!filename_.empty());
     if (FileHasDisappeared()) {
@@ -52,10 +52,10 @@ bool EventsWriter::Init() {
 
   int64 time_in_seconds = env_->NowMicros() / 1000000;
 
-  filename_ = strings::Printf(
-      "%s.out.tfevents.%010lld.%s", file_prefix_.c_str(),
-      static_cast<long long>(time_in_seconds), port::Hostname().c_str());
-  port::AdjustFilenameForLogging(&filename_);
+  filename_ =
+      strings::Printf("%s.out.tfevents.%010lld.%s%s", file_prefix_.c_str(),
+                      static_cast<int64>(time_in_seconds),
+                      port::Hostname().c_str(), file_suffix_.c_str());
 
   Status s = env_->NewWritableFile(filename_, &recordio_file_);
   if (!s.ok()) {
@@ -84,20 +84,20 @@ bool EventsWriter::Init() {
 
 string EventsWriter::FileName() {
   if (filename_.empty()) {
-    Init();
+    InitIfNeeded();
   }
   return filename_;
 }
 
 void EventsWriter::WriteSerializedEvent(StringPiece event_str) {
   if (recordio_writer_.get() == NULL) {
-    if (!Init()) {
+    if (!InitIfNeeded()) {
       LOG(ERROR) << "Write failed because file could not be opened.";
       return;
     }
   }
   num_outstanding_events_++;
-  recordio_writer_->WriteRecord(event_str);
+  recordio_writer_->WriteRecord(event_str).IgnoreError();
 }
 
 // NOTE(touts); This is NOT the function called by the Python code.
@@ -154,7 +154,7 @@ bool EventsWriter::Close() {
 }
 
 bool EventsWriter::FileHasDisappeared() {
-  if (env_->FileExists(filename_)) {
+  if (env_->FileExists(filename_).ok()) {
     return false;
   } else {
     // This can happen even with non-null recordio_writer_ if some other

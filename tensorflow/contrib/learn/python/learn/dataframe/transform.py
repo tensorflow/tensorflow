@@ -24,10 +24,11 @@ from abc import abstractmethod
 from abc import abstractproperty
 
 import collections
-import inspect
 
 from .series import Series
 from .series import TransformedSeries
+
+from tensorflow.python.util import tf_inspect
 
 
 def _make_list_of_series(x):
@@ -120,7 +121,7 @@ class Transform(object):
   def parameters(self):
     """A dict of names to values of properties marked with `@parameter`."""
     property_param_names = [name
-                            for name, func in inspect.getmembers(type(self))
+                            for name, func in tf_inspect.getmembers(type(self))
                             if (hasattr(func, "fget") and hasattr(
                                 getattr(func, "fget"), "is_parameter"))]
     return {name: getattr(self, name) for name in property_param_names}

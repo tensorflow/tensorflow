@@ -49,32 +49,45 @@ Rendezvous::ParsedKey MakeKey(const string& s) {
 namespace {
 // Fake cache implementation for WorkerEnv.
 class DummyWorkerCache : public WorkerCacheInterface {
-  void ListWorkers(std::vector<string>* workers) override {}
+  void ListWorkers(std::vector<string>* workers) const override {}
   WorkerInterface* CreateWorker(const string& target) override {
     return nullptr;
   }
-  bool GetDeviceBusNonBlocking(const string& device,
-                               BusAdjacency* ba) override {
+  bool GetDeviceLocalityNonBlocking(const string& device,
+                                    DeviceLocality* locality) override {
     return false;
   }
-  void GetDeviceBusAsync(const string& device, BusAdjacency* ba,
-                         StatusCallback done) override {}
+  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+                              StatusCallback done) override {}
 };
 }  // namespace
 
-TEST(RpcRendezvousMgrTest, LocalSendRecv) {
-  DummyWorkerCache cache;
+class RpcRendezvousMgrTest : public ::testing::Test {
+ protected:
+  RpcRendezvousMgrTest()
+      : cache_(new DummyWorkerCache),
+        worker_session_("/job:mnist/replica:1/task:2",
+                        std::unique_ptr<WorkerCacheInterface>(cache_),
+                        std::unique_ptr<RendezvousMgrInterface>(),
+                        std::unique_ptr<GraphMgr>()),
+        rmgr_(&env, worker_session_.worker_name, cache_) {
+    env.env = Env::Default();
+  }
+
+  DummyWorkerCache* cache_;  // Managed by worker_session.
   WorkerEnv env;
-  env.env = Env::Default();
-  env.worker_name = "/job:mnist/replica:1/task:2";
-  env.worker_cache = &cache;
-  RpcRendezvousMgr rmgr(&env);
+
+  WorkerSession worker_session_;
+  RpcRendezvousMgr rmgr_;
+};
+
+TEST_F(RpcRendezvousMgrTest, LocalSendRecv) {
   const int64 step_id = 123;
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
   {
-    Rendezvous* rendez = rmgr.Find(step_id);
+    Rendezvous* rendez = rmgr_.Find(step_id);
     core::ScopedUnref unref(rendez);
     Rendezvous::Args args;
     TF_ASSERT_OK(rendez->Send(key, args, V("peach"), false));
@@ -82,27 +95,21 @@ TEST(RpcRendezvousMgrTest, LocalSendRecv) {
   {
     Tensor val(DT_FLOAT);
     bool val_dead = false;
-    TF_ASSERT_OK(rmgr.RecvLocal(step_id, key, &val, &val_dead));
+    TF_ASSERT_OK(rmgr_.RecvLocal(step_id, key, &val, &val_dead));
     EXPECT_EQ(V(val), "peach");
   }
-  rmgr.Cleanup(step_id);
+  rmgr_.Cleanup(step_id);
 }
 
-TEST(RpcRendezvousMgrTest, LocalAbort) {
-  DummyWorkerCache cache;
-  WorkerEnv env;
-  env.env = Env::Default();
-  env.worker_name = "/job:mnist/replica:1/task:2";
-  env.worker_cache = &cache;
-  RpcRendezvousMgr rmgr(&env);
+TEST_F(RpcRendezvousMgrTest, LocalAbort) {
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
   {  // Explicit Abort().
     const int64 step_id = 123;
-    Rendezvous* rendez = rmgr.Find(step_id);
+    Rendezvous* rendez = rmgr_.Find(step_id);
     core::ScopedUnref unref(rendez);
-    SchedClosure([env, rendez]() {
+    SchedClosure([this, rendez]() {
       env.env->SleepForMicroseconds(100 * 1000);
       rendez->StartAbort(errors::Aborted(""));
     });
@@ -113,11 +120,11 @@ TEST(RpcRendezvousMgrTest, LocalAbort) {
   }
   {  // Cleanup causes Abort().
     const int64 step_id = 321;
-    Rendezvous* rendez = rmgr.Find(step_id);
+    Rendezvous* rendez = rmgr_.Find(step_id);
     core::ScopedUnref unref(rendez);
-    SchedClosure([env, &rmgr, step_id]() {
+    SchedClosure([this, step_id]() {
       env.env->SleepForMicroseconds(100 * 1000);
-      rmgr.Cleanup(step_id);
+      rmgr_.Cleanup(step_id);
     });
     Tensor val(DT_STRING);
     bool val_dead = false;
@@ -126,23 +133,17 @@ TEST(RpcRendezvousMgrTest, LocalAbort) {
   }
 }
 
-TEST(RpcRendezvousMgrTest, CleanupAll) {
-  DummyWorkerCache cache;
-  WorkerEnv env;
-  env.env = Env::Default();
-  env.worker_name = "/job:mnist/replica:1/task:2";
-  env.worker_cache = &cache;
-  RpcRendezvousMgr rmgr(&env);
+TEST_F(RpcRendezvousMgrTest, CleanupAll) {
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
   {
     const int64 step_id = 123;
-    Rendezvous* rendez = rmgr.Find(step_id);
+    Rendezvous* rendez = rmgr_.Find(step_id);
     core::ScopedUnref unref(rendez);
     Rendezvous::Args args;
     TF_ASSERT_OK(rendez->Send(key, args, V("peach"), false));
-    rmgr.CleanupAll();
+    rmgr_.CleanupAll();
     Tensor val(DT_STRING);
     bool val_dead = false;
     EXPECT_TRUE(errors::IsAborted(rendez->Recv(key, args, &val, &val_dead)));
@@ -159,21 +160,15 @@ class DummyDeviceContext : public DeviceContext {
   const int stream_id_;
 };
 
-TEST(RpcRendezvousMgrTest, TransferDummyDeviceContext) {
+TEST_F(RpcRendezvousMgrTest, TransferDummyDeviceContext) {
   DummyDeviceContext* dc = new DummyDeviceContext(123);
 
-  DummyWorkerCache cache;
-  WorkerEnv env;
-  env.env = Env::Default();
-  env.worker_name = "/job:mnist/replica:1/task:2";
-  env.worker_cache = &cache;
-  RpcRendezvousMgr rmgr(&env);
   const int64 step_id = 123;
   const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/cpu:0", 7890,
       "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
   {
-    Rendezvous* rendez = rmgr.Find(step_id);
+    Rendezvous* rendez = rmgr_.Find(step_id);
     core::ScopedUnref unref(rendez);
     Rendezvous::Args args;
     args.device_context = dc;
@@ -181,10 +176,11 @@ TEST(RpcRendezvousMgrTest, TransferDummyDeviceContext) {
   }
   {
     Notification n;
-    rmgr.RecvLocalAsync(
-        step_id, key, [&n](const Status& s, const Rendezvous::Args send_args,
-                           const Rendezvous::Args recv_args, const Tensor& val,
-                           bool is_dead) {
+    rmgr_.RecvLocalAsync(
+        step_id, key,
+        [&n](const Status& s, const Rendezvous::Args send_args,
+             const Rendezvous::Args recv_args, const Tensor& val,
+             bool is_dead) {
           auto send_dev_context =
               static_cast<DummyDeviceContext*>(send_args.device_context);
           CHECK_EQ(123, send_dev_context->stream_id());
@@ -193,7 +189,7 @@ TEST(RpcRendezvousMgrTest, TransferDummyDeviceContext) {
         });
     n.WaitForNotification();
   }
-  rmgr.Cleanup(step_id);
+  rmgr_.Cleanup(step_id);
   dc->Unref();
 }
 

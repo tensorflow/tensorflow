@@ -19,16 +19,13 @@ from __future__ import print_function
 import random
 
 # pylint: disable=unused-import
-import tensorflow as tf
 
 from tensorflow.contrib.tensor_forest.hybrid.python.layers import decisions_to_data
 from tensorflow.contrib.tensor_forest.python import tensor_forest
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor
-
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import googletest
 
@@ -61,11 +58,10 @@ class DecisionsToDataTest(test_util.TensorFlowTestCase):
   def testInferenceConstruction(self):
     with variable_scope.variable_scope(
         "DecisionsToDataTest_testInferenceContruction"):
-      graph_builder = decisions_to_data.DecisionsToDataLayer(
-          self.params, 0, None)
+      graph_builder = decisions_to_data.DecisionsToDataLayer(self.params, 0,
+                                                             None)
       unused_graph = graph_builder.inference_graph(self.input_data)
 
 
 if __name__ == "__main__":
   googletest.main()
-

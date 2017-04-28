@@ -1,0 +1,352 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-slider/paper-slider.html">
+<link rel="import" href="../paper-spinner/paper-spinner-lite.html">
+<link rel="import" href="../tf-graph-common/tf-graph-common.html">
+<link rel="import" href="tf-node-info.html">
+
+<dom-module id="tf-graph-info">
+<template>
+<style>
+:host {
+  font-size: 12px;
+  margin: 0;
+  padding: 0;
+  display: block;
+}
+
+h2 {
+  padding: 0;
+  text-align: center;
+  margin: 0;
+}
+
+.health-pill-legend {
+  padding: 15px;
+}
+
+.health-pill-legend h2 {
+  text-align: left;
+}
+
+.health-pill-entry {
+  margin: 10px 10px 10px 0;
+}
+
+.health-pill-entry .color-preview {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  display: inline-block;
+  margin: 0 10px 0 0;
+}
+
+.health-pill-entry .color-label, .health-pill-entry .tensor-count {
+  color: #777;
+  display: inline-block;
+  height: 26px;
+  font-size: 22px;
+  line-height: 26px;
+  vertical-align: top;
+}
+
+.health-pill-entry .tensor-count {
+  float: right;
+}
+
+#health-pill-step-slider {
+  width: 100%;
+  margin: 0 0 0 -15px;
+  /* 31 comes from adding a padding of 15px from both sides of the paper-slider, subtracting
+   * 1px so that the slider width aligns with the image (the last slider marker takes up 1px),
+   * and adding 2px to account for a border of 1px on both sides of the image. 30 - 1 + 2.
+   * Apparently, the paper-slider lacks a mixin for those padding values. */
+  width: calc(100% + 31px);
+}
+
+#health-pills-loading-spinner {
+  width: 20px;
+  height: 20px;
+  vertical-align: top;
+}
+
+#health-pill-step-number-input {
+  text-align: center;
+  vertical-align: top;
+}
+</style>
+<template is="dom-if" if="{{selectedNode}}">
+  <paper-material elevation="1" class="card">
+    <tf-node-info graph-hierarchy="[[graphHierarchy]]"
+                  render-hierarchy="[[renderHierarchy]]"
+                  flat-graph="[[graph]]"
+                  node-name="[[selectedNode]]"
+                  node-include="[[selectedNodeInclude]]"
+                  highlighted-node="{{highlightedNode}}"
+                  color-by="[[colorBy]]">
+    </tf-node-info>
+  </paper-material>
+</template>
+<template is="dom-if" if="[[_healthPillsAvailable(debuggerDataEnabled, nodeNamesToHealthPills)]]">
+  <paper-material elevation="1" class="card health-pill-legend">
+    <div class="title">
+      Enable all (not just sampled) steps. Requires slow disk read.
+    </div>
+    <paper-toggle-button id="enableAllStepsModeToggle" checked="{{allStepsModeEnabled}}">
+    </paper-toggle-button>
+    <h2>
+      Step of Health Pills:
+      <template is="dom-if" if="[[allStepsModeEnabled]]">
+        <input type="number"
+               id="health-pill-step-number-input"
+               min="0"
+               max="[[_biggestStepEverSeen]]"
+               value="{{specificHealthPillStep::input}}">
+      </template>
+      <template is="dom-if" if="[[!allStepsModeEnabled]]">
+        [[_currentStepDisplayValue]]
+      </template>
+
+      <paper-spinner-lite active
+                          hidden$=[[!areHealthPillsLoading]]
+                          id="health-pills-loading-spinner"></paper-spinner-lite>
+    </h2>
+    <template is="dom-if" if="[[allStepsModeEnabled]]">
+      <paper-slider
+            id="health-pill-step-slider"
+            immediate-value="{{specificHealthPillStep}}"
+            max="[[_biggestStepEverSeen]]"
+            snaps
+            step="1"
+            value="{{specificHealthPillStep}}"></paper-slider>
+    </template>
+    <template is="dom-if" if="[[!allStepsModeEnabled]]">
+      <template is="dom-if" if="[[_maxStepIndex]]">
+        <paper-slider
+              id="health-pill-step-slider"
+              immediate-value="{{healthPillStepIndex}}"
+              max="[[_maxStepIndex]]"
+              snaps
+              step="1"
+              value="{{healthPillStepIndex}}"></paper-slider>
+      </template>
+    </template>
+    <h2>
+      Health Pill
+      <template is="dom-if" if="[[healthPillValuesForSelectedNode]]">
+        Counts for Selected Node
+      </template>
+      <template is="dom-if" if="[[!healthPillValuesForSelectedNode]]">
+        Legend
+      </template>
+    </h2>
+    <template is="dom-repeat" items="[[healthPillEntries]]">
+      <div class="health-pill-entry">
+        <div class="color-preview" style="background:[[item.background_color]]"></div>
+        <div class="color-label">[[item.label]]</div>
+        <div class="tensor-count">
+          [[_computeTensorCountString(healthPillValuesForSelectedNode, index)]]
+        </div>
+      </div>
+    </template>
+  </paper-material>
+</template>
+</template>
+<script>
+(function() {
+  Polymer({
+    is: 'tf-graph-info',
+
+    properties: {
+      title: String,
+      graphHierarchy: Object,
+      graph: Object,
+      renderHierarchy: Object,
+      nodeNamesToHealthPills: Object,
+      healthPillStepIndex: {
+        type: Number,
+        notify: true,
+      },
+      // Only relevant if we are in all steps mode, in which case the user may want to view health
+      // pills for a specific step.
+      specificHealthPillStep: {
+        type: Number,
+        value: 0,
+        notify: true,
+      },
+      colorBy: String,
+      // Two-ways
+      selectedNode: {
+        type: String,
+        notify: true
+      },
+      highlightedNode: {
+        type: String,
+        notify: true
+      },
+      // The enum value of the include property of the selected node.
+      selectedNodeInclude: {
+        type: Number,
+        notify: true
+      },
+      // Whether debugger data is enabled for this instance of Tensorboard.
+      debuggerDataEnabled: Boolean,
+      // Whether health pills are currently being loaded, in which case we show a spinner (and the
+      // current health pills shown might be out of date).
+      areHealthPillsLoading: Boolean,
+      healthPillEntries: {
+        type: Array,
+        value: tf.graph.scene.healthPillEntries,
+        readOnly: true,
+      },
+      healthPillValuesForSelectedNode: {
+        type: Array,
+        computed: '_computeHealthPillForNode(nodeNamesToHealthPills, healthPillStepIndex, selectedNode, allStepsModeEnabled, areHealthPillsLoading)',
+      },
+      // When all-steps mode is enabled, the user can request health pills for any step. In this
+      // mode, Tensorboard makes a request every time the user drags the slider to a different step.
+      allStepsModeEnabled: {
+        type: Boolean,
+        notify: true,
+      },
+      // The biggest step value ever seen. Used to determine what steps of health pills to let the
+      // user fetch in all steps mode.
+      _biggestStepEverSeen: {
+        type: Number,
+        computed: '_computeBiggestStepEverSeen(nodeNamesToHealthPills)',
+      },
+      _maxStepIndex: {
+        type: Number,
+        computed: '_computeMaxStepIndex(nodeNamesToHealthPills)',
+      },
+      _currentStepDisplayValue: {
+        type: String,
+        computed: '_computeCurrentStepDisplayValue(nodeNamesToHealthPills, healthPillStepIndex, allStepsModeEnabled, specificHealthPillStep, areHealthPillsLoading)',
+      },
+    },
+    listeners: {
+      'node-list-item-click': '_nodeListItemClicked',
+      'node-list-item-mouseover': '_nodeListItemMouseover',
+      'node-list-item-mouseout': '_nodeListItemMouseout'
+    },
+    _nodeListItemClicked: function(event) {
+      this.selectedNode = event.detail.nodeName;
+    },
+    _nodeListItemMouseover: function(event) {
+      this.highlightedNode = event.detail.nodeName;
+    },
+    _nodeListItemMouseout: function() {
+      this.highlightedNode = null;
+    },
+    _healthPillsAvailable: function(debuggerDataEnabled, nodeNamesToHealthPills) {
+      // So long as there is a mapping (even if empty) from node name to health pills, show the
+      // legend and slider. We do that because, even if no health pills exist at the current step,
+      // the user may desire to change steps, and the slider must show for the user to do that.
+      return debuggerDataEnabled && nodeNamesToHealthPills;
+    },
+    _computeTensorCountString: function(healthPillValuesForSelectedNode, valueIndex) {
+      if (!healthPillValuesForSelectedNode) {
+        // No health pill data is available.
+        return '';
+      }
+
+      return healthPillValuesForSelectedNode[valueIndex].toFixed(0);
+    },
+    _computeHealthPillForNode: function(
+        nodeNamesToHealthPills, healthPillStepIndex, selectedNode, allStepsModeEnabled, areHealthPillsLoading) {
+      if (areHealthPillsLoading) {
+        // Health pills are loading. Do not render data that is out of date.
+        return null;
+      }
+
+      if (!selectedNode) {
+        // No node is selected.
+        return null;
+      }
+
+      const healthPills = nodeNamesToHealthPills[selectedNode];
+      if (!healthPills) {
+        // This node lacks a health pill.
+        return null;
+      }
+
+      // If all steps mode is enabled, we use the first health pill in the list because the JSON
+      // response from the server is a mapping between node name and a list of 1 health pill.
+      const healthPill = healthPills[allStepsModeEnabled ? 0 : healthPillStepIndex];
+      if (!healthPill) {
+        // This node lacks a health pill at the current step.
+        return null;
+      }
+
+      // The health pill count values start at 2. Each health pill contains 6 values.
+      return healthPill.value.slice(2, 8);
+    },
+    _computeCurrentStepDisplayValue: function(
+        nodeNamesToHealthPills,
+        healthPillStepIndex,
+        allStepsModeEnabled,
+        specificHealthPillStep,
+        areHealthPillsLoading) {
+      if (allStepsModeEnabled) {
+        // The user seeks health pills for specific step from the server.
+        return specificHealthPillStep.toFixed(0);
+      }
+
+      if (areHealthPillsLoading) {
+        // The current step is undefined.
+        return 0;
+      }
+
+      for (let nodeName in nodeNamesToHealthPills) {
+        // All nodes have the same number of steps stored, so only examine 1 node. We cannot
+        // directly index into the nodeNamesToHealthPills object because we do not have a key.
+        // If all steps mode is enabled, we only have 1 step to show.
+        return nodeNamesToHealthPills[nodeName][healthPillStepIndex].step.toFixed(0);
+      }
+
+      // The current step could not be computed.
+      return 0;
+    },
+    _computeBiggestStepEverSeen: function(nodeNamesToHealthPills) {
+      for (let nodeName in nodeNamesToHealthPills) {
+        // All nodes have the same number of steps stored, so only examine 1 node.
+        // The index is 1 less than the count. Tensorboard backend logic guarantees that the length
+        // of the array will be greater than 1.
+        var healthPills = nodeNamesToHealthPills[nodeName];
+        return Math.max(this._biggestStepEverSeen, healthPills[healthPills.length - 1].step);
+      }
+
+      // No steps seen so far. Default to 0.
+      return this._biggestStepEverSeen || 0;
+    },
+    _computeMaxStepIndex: function(nodeNamesToHealthPills) {
+      for (let nodeName in nodeNamesToHealthPills) {
+        // All nodes have the same number of steps stored, so only examine 1 node.
+        // The index is 1 less than the count. Tensorboard backend logic guarantees that the length
+        // of the array will be greater than 1.
+        return nodeNamesToHealthPills[nodeName].length - 1;
+      }
+
+      // Return a falsy value. The slider should be hidden.
+      return 0;
+    },
+  });
+})();
+</script>
+</dom-module>

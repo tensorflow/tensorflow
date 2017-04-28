@@ -17,17 +17,23 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <numeric>
+
 #include "tensorflow/core/kernels/aggregate_ops.h"
 #include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
-
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class AddNOp : public OpKernel {
@@ -45,11 +51,29 @@ class AddNOp : public OpKernel {
       return;
     }
 
+    // Try to forward and accumulate the result in one of the input buffers.
+    int reused_input = -1;
+    gtl::InlinedVector<int, 8> input_indices(num);
+    std::iota(input_indices.begin(), input_indices.end(), 0);
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
+    for (int input_idx = 0; input_idx < num; ++input_idx) {
+      if (ctx->forward_input_to_output_with_shape(input_idx, 0, input0.shape(),
+                                                  &output)) {
+        reused_input = input_idx;
+        break;
+      }
+    }
+    if (reused_input == -1) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input0.shape(), &output));
+    } else if (reused_input > 0) {
+      // Move the forwarded buffer to the front so we don't double count
+      // anything if there are more than 8 inputs.
+      input_indices[0] = reused_input;
+      input_indices[reused_input] = 0;
+    }
     auto To = output->flat<T>();
 
-#define I(IDX) ctx->input(IDX).flat<T>()
+#define I(IDX) ctx->input(input_indices[IDX]).flat<T>()
 
 #if defined(__ANDROID_TYPES_SLIM__)
     // On Android by default,we only support additions of two arguments, so we
@@ -137,8 +161,11 @@ TF_CALL_NUMBER_TYPES(REGISTER_ADDN_CPU);
 #undef REGISTER_ADDN_CPU
 
 #if GOOGLE_CUDA
-REGISTER_ADDN(Eigen::half, GPU);
-REGISTER_ADDN(float, GPU);
+#define REGISTER_ADDN_GPU(type) REGISTER_ADDN(type, GPU)
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_ADDN_GPU);
+TF_CALL_complex64(REGISTER_ADDN_GPU);
+TF_CALL_complex128(REGISTER_ADDN_GPU);
+#undef REGISTER_ADDN_GPU
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -150,6 +177,21 @@ REGISTER_KERNEL_BUILDER(Name("AddN")
                             .HostMemory("sum"),
                         AddNOp<CPUDevice, int32>);
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_ADDN(float, SYCL);
+REGISTER_ADDN(double, SYCL);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("AddN")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("inputs")
+                            .HostMemory("sum"),
+                        AddNOp<CPUDevice, int32>);
+#endif // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_ADDN
 

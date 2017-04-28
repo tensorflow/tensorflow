@@ -73,6 +73,9 @@ class InputBuffer {
   // Returns the position in the file.
   int64 Tell() const { return file_pos_ - (limit_ - pos_); }
 
+  // Returns the underlying RandomAccessFile.
+  RandomAccessFile* file() const { return file_; }
+
  private:
   Status FillBuffer();
 

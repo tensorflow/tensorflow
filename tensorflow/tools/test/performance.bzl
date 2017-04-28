@@ -8,7 +8,8 @@ def tf_cc_logged_benchmark(
     target=None,
     benchmarks="..",
     tags=[],
-    test_log_output_prefix=""):
+    test_log_output_prefix="",
+    benchmark_type="cpp_microbenchmark"):
   if not name:
     fail("Must provide a name")
   if not target:
@@ -21,14 +22,18 @@ def tf_cc_logged_benchmark(
                    "//path/to:test. Received: %s" % target)))
 
   all_tags = list(set(tags) + \
-                  set(["benchmark-test", "local", "regression-test"]))
+                  set(["benchmark-test", "local", "manual", "regression-test"]))
 
   tf_py_test(
       name = name,
       tags = all_tags,
+      size = "large",
       srcs = ["//tensorflow/tools/test:run_and_gather_logs.py"],
       args = [
-          "--test_name=" + target
+          "--name=//%s:%s" % (PACKAGE_NAME, name),
+          "--test_name=" + target,
+          "--test_args=--benchmarks=%s" % benchmarks,
+          "--benchmark_type=%s" % benchmark_type,
       ],
       data = [
         target,
@@ -53,4 +58,5 @@ def tf_py_logged_benchmark(
     target=target,
     benchmarks=benchmarks,
     tags=tags,
-    test_log_output_prefix=test_log_output_prefix)
+    test_log_output_prefix=test_log_output_prefix,
+    benchmark_type="python_benchmark")

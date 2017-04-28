@@ -89,6 +89,7 @@ void PrintAllPythonOps(const std::vector<string>& hidden_ops,
 
 int main(int argc, char* argv[]) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
+
   // Usage:
   //   gen_main [ @FILENAME | OpName[,OpName]* ] (0 | 1)
   if (argc == 2) {

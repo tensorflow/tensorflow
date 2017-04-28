@@ -27,6 +27,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Note that this op is subclassed for QuantizedReshapeOp.
 class ReshapeOp : public OpKernel {
  public:
   explicit ReshapeOp(OpKernelConstruction* context) : OpKernel(context) {}

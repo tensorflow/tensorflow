@@ -14,6 +14,7 @@ import "tensorflow/core/framework/types.proto";
 // Comment indicates the corresponding attr type.  Only the field matching the
 // attr type may be filled.
 message AttrValue {
+  // LINT.IfChange
   message ListValue {
     repeated bytes s = 2;                        // "list(string)"
     repeated int64 i = 3 [packed = true];        // "list(int)"
@@ -22,8 +23,9 @@ message AttrValue {
     repeated DataType type = 6 [packed = true];  // "list(type)"
     repeated TensorShapeProto shape = 7;         // "list(shape)"
     repeated TensorProto tensor = 8;             // "list(tensor)"
-    // TODO(zhifengc/josh11b): implements list(func) if needed.
+    repeated NameAttrList func = 9;              // "list(attr)"
   }
+  // LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/c/c_api.cc)
 
   oneof value {
     bytes s = 2;                 // "string"

@@ -1,0 +1,62 @@
+path: "tensorflow.PriorityQueue"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.data_flow_ops.PriorityQueue\'>"
+  is_instance: "<class \'tensorflow.python.ops.data_flow_ops.QueueBase\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "dtypes"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "names"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "queue_ref"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shapes"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'capacity\', \'types\', \'shapes\', \'names\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'priority_queue\'], "
+  }
+  member_method {
+    name: "close"
+    argspec: "args=[\'self\', \'cancel_pending_enqueues\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "dequeue"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "dequeue_many"
+    argspec: "args=[\'self\', \'n\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "dequeue_up_to"
+    argspec: "args=[\'self\', \'n\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "enqueue"
+    argspec: "args=[\'self\', \'vals\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "enqueue_many"
+    argspec: "args=[\'self\', \'vals\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_list"
+    argspec: "args=[\'index\', \'queues\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "size"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

@@ -208,16 +208,16 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
 
   // Send the request to the Google OAuth 2.0 server to get the token.
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  std::unique_ptr<char[]> response_buffer(new char[kResponseBufferSize]);
-  StringPiece response;
+  std::vector<char> response_buffer;
   TF_RETURN_IF_ERROR(request->Init());
   TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
   TF_RETURN_IF_ERROR(
-      request->SetPostRequest(request_body.c_str(), request_body.size()));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(response_buffer.get(),
-                                              kResponseBufferSize, &response));
+      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
+  TF_RETURN_IF_ERROR(request->SetResultBuffer(&response_buffer));
   TF_RETURN_IF_ERROR(request->Send());
 
+  StringPiece response =
+      StringPiece(response_buffer.data(), response_buffer.size());
   TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
                                         expiration_timestamp_sec));
   return Status::OK();
@@ -242,16 +242,16 @@ Status OAuthClient::GetTokenFromRefreshTokenJson(
   const uint64 request_timestamp_sec = env_->NowSeconds();
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  std::unique_ptr<char[]> response_buffer(new char[kResponseBufferSize]);
-  StringPiece response;
+  std::vector<char> response_buffer;
   TF_RETURN_IF_ERROR(request->Init());
   TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
   TF_RETURN_IF_ERROR(
-      request->SetPostRequest(request_body.c_str(), request_body.size()));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(response_buffer.get(),
-                                              kResponseBufferSize, &response));
+      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
+  TF_RETURN_IF_ERROR(request->SetResultBuffer(&response_buffer));
   TF_RETURN_IF_ERROR(request->Send());
 
+  StringPiece response =
+      StringPiece(response_buffer.data(), response_buffer.size());
   TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
                                         expiration_timestamp_sec));
   return Status::OK();

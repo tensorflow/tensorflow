@@ -72,6 +72,8 @@ class FractionalMaxPoolOp : public OpKernel {
     }
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
+      // This must match the same logic in the shape function in
+      // core/ops/nn_ops.cc.
       output_size_.push_back(
           static_cast<int>(floor(input_size_[i] / pooling_ratio_[i])));
       DCHECK_GT(output_size_[i], 0);
@@ -254,9 +256,9 @@ class FractionalMaxPoolGradOp : public OpKernel {
     // Step 1
     // ---------
     Tensor tensor_out_dup;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<T>::v(),
-                                          tensor_out.shape(), &tensor_out_dup));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_temp(
+                                {1}, DataTypeToEnum<T>::v(), tensor_out.shape(),
+                                &tensor_out_dup));
     Tensor tensor_out_arg_max;
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64>::v(),
                                                    tensor_out.shape(),
@@ -341,8 +343,8 @@ class FractionalMaxPoolGradOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, tensor_in.shape(), &output));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, tensor_in.shape(), &output));
     output->flat<T>().setZero();
 
     auto out_backprop_flat = out_backprop.flat<T>();

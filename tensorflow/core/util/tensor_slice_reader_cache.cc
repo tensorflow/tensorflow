@@ -52,7 +52,7 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     TensorSliceReader::OpenTableFunction open_function, int preferred_shard) {
   mutex_lock l(mu_);
 
-#ifdef __GXX_RTTI
+#if defined(__GXX_RTTI) ||  defined(_CPPRTTI)
   // Get the function pointer from the open_function value.
   TensorSliceReaderCache::OpenFuncType* func_ptr =
       open_function.target<TensorSliceReaderCache::OpenFuncType>();
@@ -88,7 +88,7 @@ const TensorSliceReader* TensorSliceReaderCache::GetReader(
     mu_.lock();
     if (tmp_reader->status().ok()) {
       reader = tmp_reader;
-      readers_[filepattern] = make_pair(*func_ptr, reader);
+      readers_[filepattern] = std::make_pair(*func_ptr, reader);
     } else {
       delete tmp_reader;
     }
