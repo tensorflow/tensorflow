@@ -4129,6 +4129,7 @@ filegroup(
         "queue_base.cc",
         "queue_ops.cc",
         "random_op.cc",
+        "reduction_ops_all.cc",
         "reduction_ops_any.cc",
         "reduction_ops_common.cc",
         "reduction_ops_max.cc",
