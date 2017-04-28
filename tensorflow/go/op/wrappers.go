@@ -2721,7 +2721,7 @@ func AllCandidateSamplerSeed2(value int64) AllCandidateSamplerAttr {
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to produce per batch.
+//	num_sampled: Number of candidates to produce.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -2879,7 +2879,7 @@ func FixedUnigramCandidateSamplerSeed2(value int64) FixedUnigramCandidateSampler
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -2952,7 +2952,7 @@ func UniformCandidateSamplerSeed2(value int64) UniformCandidateSamplerAttr {
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -3766,7 +3766,7 @@ func LearnedUnigramCandidateSamplerSeed2(value int64) LearnedUnigramCandidateSam
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -12221,7 +12221,7 @@ func ThreadUnsafeUnigramCandidateSamplerSeed2(value int64) ThreadUnsafeUnigramCa
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -18098,7 +18098,7 @@ func LogUniformCandidateSamplerSeed2(value int64) LogUniformCandidateSamplerAttr
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
