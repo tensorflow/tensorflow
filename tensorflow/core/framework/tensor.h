@@ -441,12 +441,11 @@ class Tensor {
       gtl::ArraySlice<int64> new_sizes,
       Eigen::array<Eigen::DenseIndex, NDIMS>* dims) const;
 
-  // TODO(rmlarsen): These shouldn't hardcode '4' so that it lines up with
   // TensorShape's InlineVector.
   static gtl::InlinedVector<int64, 4> ComputeFlatInnerDims(
-      gtl::InlinedVector<int64, 4> orig, int64 num_out_dims);
+      gtl::ArraySlice<int64> orig, int64 num_out_dims);
   static gtl::InlinedVector<int64, 4> ComputeFlatOuterDims(
-      gtl::InlinedVector<int64, 4> orig, int64 num_out_dims);
+      gtl::ArraySlice<int64> orig, int64 num_out_dims);
 
   TensorShape shape_;
   TensorBuffer* buf_;
@@ -662,8 +661,9 @@ typename TTypes<T, NDIMS>::Tensor Tensor::flat_outer_dims() {
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::flat_inner_outer_dims(int64 begin) {
-  gtl::InlinedVector<int64, 4> o = ComputeFlatOuterDims(shape_.dim_sizes(), begin+NDIMS);
-  return shaped<T, NDIMS>(ComputeFlatInnerDims(o, NDIMS));
+  gtl::InlinedVector<int64, 4> flat_outer = ComputeFlatOuterDims(
+      shape_.dim_sizes(), begin + NDIMS);
+  return shaped<T, NDIMS>(ComputeFlatInnerDims(flat_outer, NDIMS));
 }
 
 template <typename T, size_t NDIMS>
@@ -678,8 +678,9 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::flat_outer_dims() const {
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::flat_inner_outer_dims(int64 begin) const {
-  gtl::InlinedVector<int64, 4> o = ComputeFlatOuterDims(shape_.dim_sizes(), begin+NDIMS);
-  return shaped<T, NDIMS>(ComputeFlatInnerDims(o, NDIMS));
+  gtl::InlinedVector<int64, 4> flat_outer = ComputeFlatOuterDims(
+      shape_.dim_sizes(), begin + NDIMS);
+  return shaped<T, NDIMS>(ComputeFlatInnerDims(flat_outer, NDIMS));
 }
 
 inline Tensor::Tensor(const Tensor& other)
