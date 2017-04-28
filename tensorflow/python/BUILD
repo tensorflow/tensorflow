@@ -42,6 +42,7 @@ py_library(
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
+        ":tf_optimizer",
         ":array_ops",
         ":check_ops",
         ":client",
