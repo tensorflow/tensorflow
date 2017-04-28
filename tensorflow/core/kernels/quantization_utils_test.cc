@@ -355,6 +355,20 @@ TEST_F(QuantizationUtilsTest, AvoidBias) {
     const int back_to_int = FloatToQuantized<quint8>(as_float, 0.0f, 2.0f);
     EXPECT_EQ(i, back_to_int);
   }
+
+  // All perfectly representable floats should survive quantization, even
+  // if we pick a range where min is not itself perfectly representable.
+  const float min = -0.1375f;
+  const float max = 1.1385f;
+  const float step_size = (max - min) / 255.0f;
+  const float tolerance = step_size / 1000.0f;
+  // This is the smallest perfectly representable float in the range.
+  float first_float = ceil(min / step_size) * step_size;
+  for (float f = first_float; f <= max; f += step_size) {
+    const int as_int = FloatToQuantized<quint8>(f, min, max);
+    const float back_to_float = QuantizedToFloat<quint8>(as_int, min, max);
+    EXPECT_NEAR(f, back_to_float, tolerance);
+  }
 }
 
 TEST_F(QuantizationUtilsTest, RequantizeInNewRange) {
@@ -394,11 +408,16 @@ TEST_F(QuantizationUtilsTest, RequantizeInNewRange) {
 }
 
 TEST_F(QuantizationUtilsTest, RequantizeInNewRangeRealData) {
-  const float value_as_float = -0.290169f;
   const float input_min = -0.739539f;
   const float input_max = 0.641057f;
   const float output_min = -2381.49f;
   const float output_max = 2207.6f;
+
+  // Start with a value that can be perfectly represented in 8 bits. This
+  // ensures minimal quantization error, and allows us to use EXPECT_LT below.
+  const float value_as_float =
+      QuantizedToFloat<quint8>(83, input_min, input_max);
+
   const quint8 value_as_quint8 =
       FloatToQuantized<quint8>(value_as_float, input_min, input_max);
   EXPECT_EQ(quint8(83), value_as_quint8);

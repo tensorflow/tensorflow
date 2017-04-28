@@ -39,6 +39,11 @@ _DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
 # BEGIN cc_configure common functions.
 def find_cc(repository_ctx):
   """Find the C++ compiler."""
+  # On Windows, we use Bazel's MSVC CROSSTOOL for GPU build
+  # Return a dummy value for GCC detection here to avoid error
+  if _cpu_value(repository_ctx) == "Windows":
+    return "/use/--config x64_windows_msvc/instead"
+
   if _use_cuda_clang(repository_ctx):
     target_cc_name = "clang"
     cc_path_envvar = _CLANG_CUDA_COMPILER_PATH
@@ -536,6 +541,9 @@ def _find_libs(repository_ctx, cuda_config):
       "cublas": _find_cuda_lib(
           "cublas", repository_ctx, cpu_value, cuda_config.cuda_toolkit_path,
           cuda_config.cuda_version),
+      "cusolver": _find_cuda_lib(
+          "cusolver", repository_ctx, cpu_value, cuda_config.cuda_toolkit_path,
+          cuda_config.cuda_version),
       "curand": _find_cuda_lib(
           "curand", repository_ctx, cpu_value, cuda_config.cuda_toolkit_path,
           cuda_config.cuda_version),
@@ -680,29 +688,13 @@ def _create_dummy_repository(repository_ctx):
        })
   _tpl(repository_ctx, "cuda:BUILD",
        {
-           "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
-       })
-  _tpl(repository_ctx, "cuda:BUILD",
-       {
            "%{cuda_driver_lib}": _lib_name("cuda", cpu_value),
            "%{cudart_static_lib}": _lib_name("cudart_static", cpu_value,
                                              static=True),
            "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
            "%{cudart_lib}": _lib_name("cudart", cpu_value),
            "%{cublas_lib}": _lib_name("cublas", cpu_value),
-           "%{cudnn_lib}": _lib_name("cudnn", cpu_value),
-           "%{cufft_lib}": _lib_name("cufft", cpu_value),
-           "%{curand_lib}": _lib_name("curand", cpu_value),
-           "%{cupti_lib}": _lib_name("cupti", cpu_value),
-       })
-  _tpl(repository_ctx, "cuda:BUILD",
-       {
-           "%{cuda_driver_lib}": _lib_name("cuda", cpu_value),
-           "%{cudart_static_lib}": _lib_name("cudart_static", cpu_value,
-                                             static=True),
-           "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
-           "%{cudart_lib}": _lib_name("cudart", cpu_value),
-           "%{cublas_lib}": _lib_name("cublas", cpu_value),
+           "%{cusolver_lib}": _lib_name("cusolver", cpu_value),
            "%{cudnn_lib}": _lib_name("cudnn", cpu_value),
            "%{cufft_lib}": _lib_name("cufft", cpu_value),
            "%{curand_lib}": _lib_name("curand", cpu_value),
@@ -725,6 +717,7 @@ def _create_dummy_repository(repository_ctx):
   repository_ctx.file("cuda/lib/%s" % _lib_name("cudart", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("cudart_static", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("cublas", cpu_value))
+  repository_ctx.file("cuda/lib/%s" % _lib_name("cusolver", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("cudnn", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("curand", cpu_value))
   repository_ctx.file("cuda/lib/%s" % _lib_name("cufft", cpu_value))
@@ -817,6 +810,7 @@ def _create_cuda_repository(repository_ctx):
                cuda_config.cpu_value),
            "%{cudart_lib}": cuda_libs["cudart"].file_name,
            "%{cublas_lib}": cuda_libs["cublas"].file_name,
+           "%{cusolver_lib}": cuda_libs["cusolver"].file_name,
            "%{cudnn_lib}": cuda_libs["cudnn"].file_name,
            "%{cufft_lib}": cuda_libs["cufft"].file_name,
            "%{curand_lib}": cuda_libs["curand"].file_name,

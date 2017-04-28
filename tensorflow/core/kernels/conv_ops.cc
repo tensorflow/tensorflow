@@ -117,6 +117,12 @@ class LaunchConv2DOp<CPUDevice, T> {
               const Tensor& input, const Tensor& filter, int row_stride,
               int col_stride, const Eigen::PaddingType& padding, Tensor* output,
               TensorFormat data_format) {
+    if (data_format != FORMAT_NHWC) {
+      ctx->SetStatus(
+          errors::Unimplemented("Generic conv implementation only supports "
+                                "NHWC tensor format for now."));
+      return;
+    }
     LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, row_stride,
                                         col_stride, padding, output,
                                         data_format);

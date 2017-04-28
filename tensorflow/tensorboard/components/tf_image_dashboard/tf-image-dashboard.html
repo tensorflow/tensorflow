@@ -106,8 +106,11 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
     </style>
   </template>
   <script>
-    Polymer({
+    TF.Dashboard.TfImageDashboard = Polymer({
       is: "tf-image-dashboard",
+      factoryImpl: function(backend) {
+        this.backend = backend;
+      },
       properties: {
         backend: Object,
         dataType: {
@@ -116,8 +119,9 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
         },
       },
       behaviors: [
-          TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
-          TF.Backend.Behavior,
+        TF.Dashboard.DashboardBehavior("images"),
+        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
+        TF.Backend.Behavior,
       ],
       attached: function() {
         this.async(function() {

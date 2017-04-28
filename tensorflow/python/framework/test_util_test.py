@@ -196,7 +196,47 @@ class TestUtilTest(test_util.TensorFlowTestCase):
   def testAllCloseScalars(self):
     self.assertAllClose(7, 7 + 1e-8)
     with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
-      self.assertAllClose(7, 8)
+      self.assertAllClose(7, 7 + 1e-5)
+
+  def testAllCloseDictToNonDict(self):
+    with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
+      self.assertAllClose(1, {"a": 1})
+    with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
+      self.assertAllClose({"a": 1}, 1)
+
+  def testAllCloseDicts(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    expected = {"a": a, "b": b, "c": c}
+
+    # Identity.
+    self.assertAllClose(expected, expected)
+    self.assertAllClose(expected, dict(expected))
+
+    # With each item removed.
+    for k in expected:
+      actual = dict(expected)
+      del actual[k]
+      with self.assertRaisesRegexp(AssertionError, r"mismatched keys"):
+        self.assertAllClose(expected, actual)
+
+    # With each item changed.
+    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+      self.assertAllClose(expected, {"a": a + 1e-5, "b": b, "c": c})
+    with self.assertRaisesRegexp(AssertionError, r"Shape mismatch"):
+      self.assertAllClose(expected, {"a": a, "b": b + (4.,), "c": c})
+    c_copy = np.array(c)
+    c_copy[1, 1, 1] += 1e-5
+    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+      self.assertAllClose(expected, {"a": a, "b": b, "c": c_copy})
+
+  def testAllCloseNestedDicts(self):
+    a = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"inputs could not be safely coerced to any supported types"):
+      self.assertAllClose(a, a)
 
   def testArrayNear(self):
     a = [1, 2]

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -604,6 +605,10 @@ void GraphConstructor::AddPrefixToNodeDef(
 }
 
 Status GraphConstructor::Convert() {
+  // Import functions before adding nodes, since imported nodes may refer to
+  // functions
+  TF_RETURN_IF_ERROR(g_->AddFunctionLibrary(gdef_->library()));
+
   std::vector<InputInfo> inputs;
   int processed = 0;
   // Process the NodeDefs in topological order.
@@ -705,7 +710,12 @@ Status GraphConstructor::Convert() {
         TF_RETURN_IF_ERROR(MakeEdge(inputs[i].node, inputs[i].index, node, i));
       }
     }
-    TF_RETURN_IF_ERROR(ValidateShape(node));
+
+    // TODO(skyewm): remove conditional when b/35715995 ("Functions lack shape
+    // inference") is resolved.
+    if (g_->flib_def().Find(node_def->name()) == nullptr) {
+      TF_RETURN_IF_ERROR(ValidateShape(node));
+    }
 
     // Update pending_count_ for outputs.
     for (size_t i = 0; i < outputs_[o].size(); ++i) {
@@ -829,11 +839,6 @@ Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
 Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
                       Graph* g, ShapeRefiner* refiner,
                       std::vector<std::pair<Node*, int>>* return_tensors) {
-  ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
-  if (refiner == nullptr) {
-    refiner = &default_refiner;
-  }
-
   if (!opts.return_tensors.empty()) {
     if (return_tensors == nullptr) {
       return errors::InvalidArgument(
@@ -847,10 +852,36 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
           return_tensors->size(), ")");
     }
   }
-  if (gdef.library().function_size() != 0) {
-    return errors::Unimplemented(
-        "Importing GraphDefs containing functions not yet implemented");
+
+  ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
+  if (refiner == nullptr) {
+    refiner = &default_refiner;
+  } else {
+    // Log a warning if we are importing a GraphDef at an older
+    // producer version after already having added non-source/sink
+    // nodes to the graph in the past.
+    if (gdef.versions().producer() > 0 &&
+        gdef.versions().producer() < refiner->graph_def_version() &&
+        g->num_nodes() > 2) {
+      LOG(WARNING) << "Importing a graph with a lower producer version "
+                   << gdef.versions().producer()
+                   << " into an existing graph with producer version "
+                   << refiner->graph_def_version() << ". Shape inference will "
+                   << "have run different parts of the graph with different "
+                   << "producer versions.";
+    }
   }
+
+  // Set the graph def version of the refiner as the min of the
+  // current value and the version from the graph we are about to
+  // import.
+  //
+  // Note: to match Run() semantics, we should re-run shape inference
+  // on the entire graph if the producer version has changed.  For now
+  // we log the warning above.
+  refiner->set_graph_def_version(
+      std::min(refiner->graph_def_version(), gdef.versions().producer()));
+
   return GraphConstructor::Construct(opts, &gdef, g, refiner, return_tensors);
 }
 

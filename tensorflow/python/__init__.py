@@ -26,10 +26,8 @@ import tensorflow as tf
 
 import ctypes
 import importlib
-import inspect
 import sys
 import traceback
-
 
 # TODO(drpng): write up instructions for editing this file in a doc and point to
 # the doc instead.
@@ -80,7 +78,6 @@ from tensorflow.python.layers import layers
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import spectral_ops as spectral
 from tensorflow.python.ops.losses import losses
@@ -132,6 +129,7 @@ from tensorflow.python.ops import tensor_array_ops
 # documentation, or remove.
 _allowed_symbols = [
     'AttrValue',
+    'AutoParallelOptions',
     'ConfigProto',
     'DeviceSpec',
     'Event',
@@ -170,7 +168,7 @@ _allowed_symbols.extend([
     'parse_single_sequence_example',
     'serialize_many_sparse',
     'serialize_sparse',
-    'sparse_matmul',   ## use tf.matmul instead.
+    'sparse_matmul',  ## use tf.matmul instead.
 ])
 
 # This is needed temporarily because we import it explicitly.
@@ -224,7 +222,6 @@ _allowed_symbols.extend([
     'python_io',
     'resource_loader',
     'saved_model',
-    'sdca',
     'sets',
     'spectral',
     'summary',

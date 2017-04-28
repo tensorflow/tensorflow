@@ -120,7 +120,7 @@ REGISTER_OP("DynamicStitch")
       TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
 
       ShapeHandle extra_shape = c->UnknownShape();
-      for (int i = 0; i < num_partitions; ++i) {
+      for (int64 i = 0; i < num_partitions; ++i) {
         ShapeHandle indices_shape = c->input(i);
         ShapeHandle data_shape = c->input(i + num_partitions);
         if (!c->RankKnown(indices_shape)) {
@@ -2154,7 +2154,13 @@ REGISTER_OP("GetSessionHandle")
     .Output("handle: string")
     .Attr("T: type")
     .SetShapeFn(shape_inference::ScalarShape)
-    .Deprecated(23, "Use GetSessionHandleV2");
+    .Doc(R"doc(
+Store the input tensor in the state of the current session.
+
+value: The tensor to be stored.
+handle: The handle for the tensor stored in the session state, represented
+  as a string.
+)doc");
 
 REGISTER_OP("GetSessionHandleV2")
     .Input("value: T")

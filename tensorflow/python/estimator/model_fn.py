@@ -51,6 +51,7 @@ class ModeKeys(object):
 class MetricKeys(object):
   """Metric key strings."""
   LOSS = 'loss'
+  AVERAGE_LOSS = 'average_loss'
 
 
 class EstimatorSpec(
@@ -142,10 +143,10 @@ class EstimatorSpec(
         Multi-headed models should specify one entry for each head, one of
         which must be named using
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.
-      training_chief_hooks: A list of `tf.train.SessionRunHook` objects to
+      training_chief_hooks: Iterable of `tf.train.SessionRunHook` objects to
         run on the chief worker during training.
-      training_hooks: A list of `tf.train.SessionRunHook` objects that to run on
-        all workers during training.
+      training_hooks: Iterable of `tf.train.SessionRunHook` objects that to run
+        on all workers during training.
       scaffold: A `tf.train.Scaffold` object that can be used to set
         initialization, saver, and more to be used in training.
 
@@ -251,10 +252,8 @@ class EstimatorSpec(
             'eval_metric_ops values must be from the default graph.')
 
     # Validate hooks.
-    if training_chief_hooks is None:
-      training_chief_hooks = []
-    if training_hooks is None:
-      training_hooks = []
+    training_chief_hooks = tuple(training_chief_hooks or [])
+    training_hooks = tuple(training_hooks or [])
     for hook in training_hooks + training_chief_hooks:
       if not isinstance(hook, session_run_hook.SessionRunHook):
         raise TypeError(

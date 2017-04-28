@@ -135,6 +135,21 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
 
 bool BufferLiveness::MayInterfere(const LogicalBuffer& a,
                                   const LogicalBuffer& b) const {
+  // Entry parameters live for the entire execution, thus always interfere with
+  // all other instructions.
+  const HloInstruction* a_instruction = a.instruction();
+  const HloComputation* a_computation = a_instruction->parent();
+  if (a_instruction->opcode() == HloOpcode::kParameter &&
+      a_computation == a_computation->parent()->entry_computation()) {
+    return true;
+  }
+  const HloInstruction* b_instruction = b.instruction();
+  const HloComputation* b_computation = b_instruction->parent();
+  if (b_instruction->opcode() == HloOpcode::kParameter &&
+      b_computation == b_computation->parent()->entry_computation()) {
+    return true;
+  }
+  // Buffers without disjoint liveness may interfere.
   return (!live_range_strictly_before(a, b) &&
           !live_range_strictly_before(b, a));
 }

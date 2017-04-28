@@ -125,7 +125,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
@@ -133,9 +132,9 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:tensorflow_opensource",
-        "//tensorflow/core/kernels:assign_op",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:identity_op",
@@ -177,21 +176,32 @@ cc_library(
 )
 
 cc_library(
+    name = "graph_to_functiondef",
+    srcs = ["graph_to_functiondef.cc"],
+    hdrs = ["graph_to_functiondef.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_launch_ops_pass.cc",
         "encapsulate_subgraphs_pass.cc",
-        "graph_to_functiondef.cc",
         "mark_for_compilation_pass.cc",
     ],
     hdrs = [
         "build_xla_launch_ops_pass.h",
         "encapsulate_subgraphs_pass.h",
-        "graph_to_functiondef.h",
         "mark_for_compilation_pass.h",
     ],
     deps = [
         ":common",
+        ":graph_to_functiondef",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
@@ -222,6 +232,7 @@ cc_test(
     deps = [
         ":common",
         ":compilation_passes",
+        ":graph_to_functiondef",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

@@ -101,12 +101,12 @@ std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
 }  // namespace
 
 // User and operand can share buffers iff both instructions emit the same shape
-// and layout, and 'user' meets one of the following two qualifications:
-// *) Is element-wise.
+// and layout, and 'user' meets one of the following qualifications:
+// *) Is element-wise. Or...
 // *) Is a loop fusion instruction where the only use of 'operand' at 'index'
 //    in the set 'user.fused_instructions' is a DynamicUpdateSlice fused root
-//    at operand 0.
-// *) Use of 'operand' is DynamicUpdateSlice at operand index 0.
+//    at operand 0. Or...
+// *) The 'user' of 'operand' is DynamicUpdateSlice or While at operand index 0.
 bool CanShareOperandBufferWithUser(
     HloInstruction* operand, const ShapeIndex& operand_index,
     HloInstruction* user, const ShapeIndex& user_index,
@@ -118,6 +118,11 @@ bool CanShareOperandBufferWithUser(
   Shape user_subshape = ShapeUtil::GetSubshape(user->shape(), user_index);
   // Check that operand and user emit the same shape and layout.
   if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
+    return false;
+  }
+  // Copy instructions are explicitly added by CopyInsertion to prevent liveness
+  // issues, so they should never re-use their operand buffer.
+  if (user->opcode() == HloOpcode::kCopy) {
     return false;
   }
   // Check if 'user' is a loop fusion instruction with a kDynamicUpdateSlice
@@ -144,7 +149,9 @@ bool CanShareOperandBufferWithUser(
       break;
     }
     return false;
-  } else if (user->opcode() == HloOpcode::kDynamicUpdateSlice) {
+  }
+  if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
+      user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in BufferLiveness::live_range_strictly_before,
     // so here we just need to check that the use is at operand index 0.
     std::vector<int64> operand_indices = user->OperandIndices(operand);

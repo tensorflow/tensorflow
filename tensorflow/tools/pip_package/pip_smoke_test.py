@@ -31,7 +31,8 @@ PIP_PACKAGE_QUERY = """bazel query \
 PY_TEST_QUERY = """bazel query 'filter("^((?!(benchmark|manual|no_pip)).)*$", \
   deps(kind(py_test,\
   //tensorflow/python/... + \
-  //tensorflow/tensorboard/...), 1))'"""
+  //tensorflow/tensorboard/... + \
+  //tensorflow/contrib/...), 1))'"""
 
 # Hard-coded blacklist of files if not included in pip package
 # TODO(amitpatankar): Clean up blacklist.
@@ -40,10 +41,20 @@ BLACKLIST = [
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     "//tensorflow:no_tensorflow_py_deps",
     "//tensorflow/python:test_ops_2",
+    "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/core:image_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
-    "//tensorflow/python:framework/test_file_system.so"
+    "//tensorflow/python:framework/test_file_system.so",
+    # contrib
+    "//tensorflow/contrib/session_bundle:session_bundle_half_plus_two",
+    "//tensorflow/contrib/keras:testing_utils",
+    "//tensorflow/contrib/ffmpeg:test_data",
+    "//tensorflow/contrib/factorization/examples:mnist",
+    "//tensorflow/contrib/factorization/examples:mnist.py",
+    "//tensorflow/contrib/factorization:factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/bayesflow:reinforce_simple_example",
+    "//tensorflow/contrib/bayesflow:examples/reinforce_simple/reinforce_simple_example.py"  # pylint:disable=line-too-long
 ]
 
 

@@ -22,12 +22,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_tracker.h"
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -208,30 +214,6 @@ class BufferAssignmentTest : public HloTestBase {
     return total_size;
   }
 
-  // Returns true if the buffers assigned to instructions in "a" are distinct
-  // from the buffers assigned to those in "b" (ie, intersection is empty).
-  bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
-                       const std::vector<const HloInstruction*>& b,
-                       const BufferAssignment& assignment) {
-    std::set<BufferAllocation::Slice> a_slices;
-    for (const HloInstruction* instruction : a) {
-      if (assignment.HasTopLevelAllocation(instruction)) {
-        a_slices.insert(
-            assignment.GetUniqueTopLevelSlice(instruction).ConsumeValueOrDie());
-      }
-    }
-
-    for (const HloInstruction* instruction : b) {
-      if (assignment.HasTopLevelAllocation(instruction)) {
-        if (a_slices.count(assignment.GetUniqueTopLevelSlice(instruction)
-                               .ConsumeValueOrDie())) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
   // Computation tracker for nested computations.
   ComputationTracker computation_tracker_;
 
@@ -245,6 +227,30 @@ class BufferAssignmentTest : public HloTestBase {
   Shape t_s32_f32v4_ = ShapeUtil::MakeTupleShape({s32_, f32vec4_});
   Shape t_s32_f32v10_ = ShapeUtil::MakeTupleShape({s32_, f32vec10_});
 };
+
+// Returns true if the buffers assigned to instructions in "a" are distinct
+// from the buffers assigned to those in "b" (ie, intersection is empty).
+static bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
+                            const std::vector<const HloInstruction*>& b,
+                            const BufferAssignment& assignment) {
+  std::set<BufferAllocation::Slice> a_slices;
+  for (const HloInstruction* instruction : a) {
+    if (assignment.HasTopLevelAllocation(instruction)) {
+      a_slices.insert(
+          assignment.GetUniqueTopLevelSlice(instruction).ConsumeValueOrDie());
+    }
+  }
+
+  for (const HloInstruction* instruction : b) {
+    if (assignment.HasTopLevelAllocation(instruction)) {
+      if (a_slices.count(assignment.GetUniqueTopLevelSlice(instruction)
+                             .ConsumeValueOrDie())) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 // Tests a computation consisting of a single scalar constant node.
 TEST_F(BufferAssignmentTest, ScalarConstant) {
@@ -1144,12 +1150,12 @@ TEST_F(BufferAssignmentTest, AmbiguousBufferAsOutput) {
   // should include the slices of both of the elements in the parameters.
   auto element_slices = assignment->GetAllSlices(select, /*index=*/{0});
   EXPECT_EQ(2, element_slices.size());
-  EXPECT_MATCH(testing::SetToVec<BufferAllocation::Slice>(element_slices),
-               testing::UnorderedMatcher<BufferAllocation::Slice>(
-                   assignment->GetUniqueSlice(tuple_param0, /*index=*/{0})
-                       .ConsumeValueOrDie(),
-                   assignment->GetUniqueSlice(tuple_param1, /*index=*/{0})
-                       .ConsumeValueOrDie()));
+  EXPECT_THAT(element_slices,
+              ::testing::UnorderedElementsAre(
+                  assignment->GetUniqueSlice(tuple_param0, /*index=*/{0})
+                      .ConsumeValueOrDie(),
+                  assignment->GetUniqueSlice(tuple_param1, /*index=*/{0})
+                      .ConsumeValueOrDie()));
 }
 
 // TODO(b/34669761): Remove this test when buffers are allowed to share
@@ -1245,6 +1251,258 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
   }
 }
 
-}  // namespace
+class WhileBufferAssignmentTest : public HloTestBase {
+ protected:
+  std::unique_ptr<HloComputation> BuildWhileConditionComputation(
+      const string& name) {
+    auto builder = HloComputation::Builder(name);
+    builder.AddInstruction(
+        HloInstruction::CreateParameter(0, loop_state_shape_, "loop_state"));
+    auto zero = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(0)));
+    auto ten = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(10)));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, zero, ten));
+    return builder.Build();
+  }
 
+  std::unique_ptr<HloComputation> BuildWhileBodyComputation(
+      const string& name) {
+    auto builder = HloComputation::Builder(name);
+    auto loop_state = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, loop_state_shape_, "loop_state"));
+    auto input = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 0));
+    auto weights = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 1));
+    auto output = builder.AddInstruction(HloInstruction::CreateBinary(
+        data_shape_, HloOpcode::kMultiply, input, weights));
+    builder.AddInstruction(
+        HloInstruction::CreateTuple({input, weights, output}));
+    return builder.Build();
+  }
+
+  std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
+                                                        int64 alignment = 1) {
+    auto sequence =
+        CreateMemoryMinimizingSequence(*module, ByteSizeOf).ConsumeValueOrDie();
+    return BufferAssigner::Run(
+               module, MakeUnique<SequentialHloOrdering>(module, sequence),
+               ByteSizeOf, alignment)
+        .ConsumeValueOrDie();
+  }
+
+  static int64 ByteSizeOf(const LogicalBuffer& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+  }
+
+  Shape data_shape_ = ShapeUtil::MakeShape(F32, {4});
+  Shape loop_state_shape_ =
+      ShapeUtil::MakeTupleShape({data_shape_, data_shape_, data_shape_});
+};
+
+static void RunCopyInsertion(HloModule* module) {
+  CopyInsertion copy_insertion;
+  EXPECT_IS_OK(copy_insertion.Run(module).status());
+}
+
+TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
+  auto module = MakeUnique<HloModule>(TestName());
+  auto builder = HloComputation::Builder("entry");
+
+  auto input0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape_, "input0"));
+  auto weights0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, data_shape_, "weights0"));
+  auto weights1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, data_shape_, "weights1"));
+
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+  auto output0 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+  auto output1 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+
+  auto cond0 =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body0 =
+      module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+
+  auto tuple0 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input0, weights0, output0}));
+  auto while0 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond0, body0, tuple0));
+
+  auto cond1 =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body1 =
+      module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+  auto input1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape_, while0, 2));
+  auto tuple1 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input1, weights1, output1}));
+  auto while1 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond1, body1, tuple1));
+
+  module->AddEntryComputation(builder.Build());
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
+
+  // While instruction 'while0' has no predecessor while instructions with
+  // which to share allocations.
+
+  // While instruction 'while1' can share allocations with the following
+  // buffers:
+  // *) while0[2], while1[0]
+  // *) while0[1], while1[1]
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {2}).ConsumeValueOrDie(),
+            assignment->GetUniqueSlice(while1, {0}).ConsumeValueOrDie());
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {1}).ConsumeValueOrDie(),
+            assignment->GetUniqueSlice(while1, {1}).ConsumeValueOrDie());
+}
+
+TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
+  auto module = MakeUnique<HloModule>(TestName());
+  auto builder = HloComputation::Builder("entry");
+
+  auto input0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape_, "input0"));
+  auto weights0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, data_shape_, "weights0"));
+
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+  auto output0 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+  auto output1 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+
+  auto cond0 =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body0 =
+      module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+
+  auto tuple0 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input0, weights0, output0}));
+  auto while0 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond0, body0, tuple0));
+
+  auto cond1 =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body1 =
+      module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+
+  auto tuple1 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input0, weights0, output1}));
+  auto while1 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond1, body1, tuple1));
+
+  module->AddEntryComputation(builder.Build());
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
+
+  // while0 and while1 buffers should be completely aligned.
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {0}).ConsumeValueOrDie(),
+            assignment->GetUniqueSlice(while1, {0}).ConsumeValueOrDie());
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {1}).ConsumeValueOrDie(),
+            assignment->GetUniqueSlice(while1, {1}).ConsumeValueOrDie());
+  EXPECT_EQ(assignment->GetUniqueSlice(while0, {2}).ConsumeValueOrDie(),
+            assignment->GetUniqueSlice(while1, {2}).ConsumeValueOrDie());
+}
+
+TEST_F(BufferAssignmentTest, TwoCalls) {
+  auto module = MakeUnique<HloModule>(TestName());
+  Shape r0f32 = ShapeUtil::MakeShape(xla::F32, {});
+  HloComputation* sub_computation;
+  {
+    auto builder = HloComputation::Builder(TestName() + "_sub_comp");
+    auto param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, r0f32, "param"));
+    auto constant1 = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+    auto add = builder.AddInstruction(
+        HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, param, constant1));
+    sub_computation = module->AddEmbeddedComputation(builder.Build(add));
+  }
+  auto builder = HloComputation::Builder(TestName());
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+  auto constant3 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
+  auto call1 = builder.AddInstruction(
+      HloInstruction::CreateCall(r0f32, {constant2}, sub_computation));
+  auto call2 = builder.AddInstruction(
+      HloInstruction::CreateCall(r0f32, {constant3}, sub_computation));
+  auto add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, call1, constant2));
+  auto add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, call2, add1));
+  module->AddEntryComputation(builder.Build(add2));
+
+  {
+    FlattenCallGraph flatten;
+    TF_ASSIGN_OR_ASSERT_OK(bool result, flatten.Run(module.get()));
+    EXPECT_TRUE(result);
+    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
+                           CallGraph::Build(module.get()));
+  }
+
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
+
+  EXPECT_TRUE(BuffersDistinct({call1}, {call2}, *assignment));
+}
+
+// Test buffer assignment for while nodes with multiple uses.
+// TODO(b/37245345): Fix buffer assignment for this case.
+TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
+  auto module = MakeUnique<HloModule>(TestName());
+  auto builder = HloComputation::Builder(TestName());
+
+  auto input0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape_, "input0"));
+  auto weights0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, data_shape_, "weights0"));
+
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+  auto output0 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+
+  auto cond0 =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body0 =
+      module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+
+  auto tuple0 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input0, weights0, output0}));
+  auto while0 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond0, body0, tuple0));
+  auto while1 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond0, body0, while0));
+
+  auto get0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape_, while0, 2));
+  auto get1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape_, while1, 2));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape_, HloOpcode::kAdd, get0, get1));
+  module->AddEntryComputation(builder.Build());
+
+  RunCopyInsertion(module.get());
+
+  {
+    FlattenCallGraph flatten;
+    TF_ASSIGN_OR_ASSERT_OK(bool result, flatten.Run(module.get()));
+    EXPECT_TRUE(result);
+  }
+
+  auto assignment = RunBufferAssignment(module.get());
+
+  EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
+}
+
+}  // namespace
 }  // namespace xla

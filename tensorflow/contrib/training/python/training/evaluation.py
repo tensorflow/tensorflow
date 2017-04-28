@@ -299,10 +299,12 @@ class SummaryAtEndHook(session_run_hook.SessionRunHook):
     self._global_step = variables.get_or_create_global_step()
 
   def begin(self):
-    if self._summary_writer is None and self._log_dir:
-      self._summary_writer = summary.FileWriterCache.get(self._log_dir)
     if self._summary_op is None:
       self._summary_op = summary.merge_all()
+
+  def after_create_session(self, session, coord):
+    if self._summary_writer is None and self._log_dir:
+      self._summary_writer = summary.FileWriterCache.get(self._log_dir)
 
   def end(self, session):
     global_step = training_util.global_step(session, self._global_step)
@@ -453,7 +455,8 @@ def evaluate_repeatedly(checkpoint_dir,
           '%Y-%m-%d-%H:%M:%S', time.gmtime()))
     num_evaluations += 1
 
-    if max_number_of_evaluations is not None and num_evaluations >= max_number_of_evaluations:
+    if (max_number_of_evaluations is not None and
+        num_evaluations >= max_number_of_evaluations):
       return final_ops_hook.final_ops_values
 
   return final_ops_hook.final_ops_values

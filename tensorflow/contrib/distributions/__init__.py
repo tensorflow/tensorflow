@@ -90,10 +90,9 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
-
+from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.beta import *
-from tensorflow.contrib.distributions.python.ops.bijectors import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.categorical import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
@@ -135,8 +134,12 @@ from tensorflow.contrib.distributions.python.ops.wishart import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['ConditionalDistribution',
-                    'ConditionalTransformedDistribution',
-                    'FULLY_REPARAMETERIZED', 'NOT_REPARAMETERIZED']
+_allowed_symbols = [
+    'bijectors',
+    'ConditionalDistribution',
+    'ConditionalTransformedDistribution',
+    'FULLY_REPARAMETERIZED',
+    'NOT_REPARAMETERIZED',
+]
 
 remove_undocumented(__name__, _allowed_symbols)

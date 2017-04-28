@@ -711,8 +711,8 @@ class ImageDataGenerator(object):
           'following the data format convention "' + self.data_format + '" '
           '(channels on axis ' + str(self.channel_axis) + '), i.e. expected '
           'either 1, 3 or 4 channels on axis ' + str(self.channel_axis) + '. '
-          'However, it was passed an array with shape ' + str(
-              x.shape) + ' (' + str(x.shape[self.channel_axis]) + ' channels).')
+          'However, it was passed an array with shape ' + str(x.shape) + ' (' +
+          str(x.shape[self.channel_axis]) + ' channels).')
 
     if seed is not None:
       np.random.seed(seed)
@@ -785,7 +785,7 @@ class Iterator(object):
           index_array = np.random.permutation(n)
 
       current_index = (self.batch_index * batch_size) % n
-      if n >= current_index + batch_size:
+      if n > current_index + batch_size:
         current_batch_size = batch_size
         self.batch_index += 1
       else:

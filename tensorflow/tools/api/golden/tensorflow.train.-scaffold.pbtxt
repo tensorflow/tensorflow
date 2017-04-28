@@ -1,0 +1,49 @@
+path: "tensorflow.train.Scaffold"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.monitored_session.Scaffold\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "init_feed_dict"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "init_fn"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "init_op"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "local_init_op"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "ready_for_local_init_op"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "ready_op"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "saver"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "summary_op"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'init_op\', \'init_feed_dict\', \'init_fn\', \'ready_op\', \'ready_for_local_init_op\', \'local_init_op\', \'summary_op\', \'saver\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "finalize"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_or_default"
+    argspec: "args=[\'arg_name\', \'collection_key\', \'default_constructor\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Seq2seq layer operations for use in neural networks.
-"""
+"""Seq2seq layer operations for use in neural networks."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import abc
-
 import six
 
 from tensorflow.python.framework import constant_op
@@ -31,50 +29,36 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import rnn
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
 
+
 __all__ = ["Decoder", "dynamic_decode"]
 
 
-def _transpose_batch_time(x):
-  """Transpose the batch and time dimensions of a Tensor.
-
-  Retains as much of the static shape information as possible.
-
-  Args:
-    x: A tensor of rank 2 or higher.
-
-  Returns:
-    x transposed along the first two dimensions.
-
-  Raises:
-    ValueError: if `x` is rank 1 or lower.
-  """
-  x_static_shape = x.get_shape()
-  if x_static_shape.ndims is not None and x_static_shape.ndims < 2:
-    raise ValueError(
-        "Expected input tensor %s to have rank at least 2, but saw shape: %s" %
-        (x, x_static_shape))
-  x_rank = array_ops.rank(x)
-  x_t = array_ops.transpose(
-      x, array_ops.concat(
-          ([1, 0], math_ops.range(2, x_rank)), axis=0))
-  x_t.set_shape(
-      tensor_shape.TensorShape([
-          x_static_shape[1].value, x_static_shape[0].value
-      ]).concatenate(x_static_shape[2:]))
-  return x_t
+_transpose_batch_time = rnn._transpose_batch_time  # pylint: disable=protected-access
 
 
 @six.add_metaclass(abc.ABCMeta)
 class Decoder(object):
-  """An RNN Decoder abstract interface object."""
+  """An RNN Decoder abstract interface object.
+
+  Concepts used by this interface:
+  - `inputs`: (structure of) tensors and TensorArrays that is passed as input to
+    the RNNCell composing the decoder, at each time step.
+  - `state`: (structure of) tensors and TensorArrays that is passed to the
+    RNNCell instance as the state.
+  - `finished`: boolean tensor telling whether each sequence in the batch is
+    finished.
+  - `outputs`: Instance of BasicDecoderOutput. Result of the decoding, at each
+    time step.
+  """
 
   @property
   def batch_size(self):
-    """The batch size of the inputs returned by `sample`."""
+    """The batch size of input values."""
     raise NotImplementedError
 
   @property
@@ -91,11 +75,14 @@ class Decoder(object):
   def initialize(self, name=None):
     """Called before any decoding iterations.
 
+    This methods must compute initial input values and initial state.
+
     Args:
       name: Name scope for any created operations.
 
     Returns:
-      `(finished, first_inputs, initial_state)`.
+      `(finished, initial_inputs, initial_state)`: initial values of
+      'finished' flags, inputs and state.
     """
     raise NotImplementedError
 
@@ -104,13 +91,19 @@ class Decoder(object):
     """Called per step of decoding (but only once for dynamic decoding).
 
     Args:
-      time: Scalar `int32` tensor.
-      inputs: Input (possibly nested tuple of) tensor[s] for this time step.
-      state: State (possibly nested tuple of) tensor[s] from previous time step.
+      time: Scalar `int32` tensor. Current step number.
+      inputs: RNNCell input (possibly nested tuple of) tensor[s] for this time
+        step.
+      state: RNNCell state (possibly nested tuple of) tensor[s] from previous
+        time step.
       name: Name scope for any created operations.
 
     Returns:
-      `(outputs, next_state, next_inputs, finished)`.
+      `(outputs, next_state, next_inputs, finished)`: `outputs` is an instance
+      of BasicDecoderOutput, `next_state` is a (structure of) state tensors and
+      TensorArrays, `next_inputs` is the tensor that should be used as input for
+      the next step, `finished` is a boolean tensor telling whether the sequence
+      is complete, for each sequence in the batch.
     """
     raise NotImplementedError
 
@@ -140,6 +133,8 @@ def dynamic_decode(decoder,
                    scope=None):
   """Perform dynamic decoding with `decoder`.
 
+  Calls initialize() once and step() repeatedly on the Decoder object.
+
   Args:
     decoder: A `Decoder` instance.
     output_time_major: Python boolean.  Default: `False` (batch major).  If
@@ -159,11 +154,11 @@ def dynamic_decode(decoder,
     scope: Optional variable scope to use.
 
   Returns:
-    `(final_outputs, final_state)`.
+    `(final_outputs, final_state, final_sequence_lengths)`.
 
   Raises:
     TypeError: if `decoder` is not an instance of `Decoder`.
-    ValueError: if maximum_iterations is provided but is not a scalar.
+    ValueError: if `maximum_iterations` is provided but is not a scalar.
   """
   if not isinstance(decoder, Decoder):
     raise TypeError("Expected decoder to be type Decoder, but saw: %s" %
@@ -189,6 +184,8 @@ def dynamic_decode(decoder,
     if maximum_iterations is not None:
       initial_finished = math_ops.logical_or(
           initial_finished, 0 >= maximum_iterations)
+    initial_sequence_lengths = array_ops.zeros_like(
+        initial_finished, dtype=dtypes.int32)
     initial_time = constant_op.constant(0, dtype=dtypes.int32)
 
     def _shape(batch_size, from_shape):
@@ -211,10 +208,10 @@ def dynamic_decode(decoder,
                                             decoder.output_dtype)
 
     def condition(unused_time, unused_outputs_ta, unused_state, unused_inputs,
-                  finished):
+                  finished, unused_sequence_lengths):
       return math_ops.logical_not(math_ops.reduce_all(finished))
 
-    def body(time, outputs_ta, state, inputs, finished):
+    def body(time, outputs_ta, state, inputs, finished, sequence_lengths):
       """Internal while_loop body.
 
       Args:
@@ -222,10 +219,13 @@ def dynamic_decode(decoder,
         outputs_ta: structure of TensorArray.
         state: (structure of) state tensors and TensorArrays.
         inputs: (structure of) input tensors.
-        finished: 1-D bool tensor.
+        finished: bool tensor (keeping track of what's finished).
+        sequence_lengths: int32 tensor (keeping track of time of finish).
 
       Returns:
-        `(time + 1, outputs_ta, next_state, next_inputs, next_finished)`.
+        `(time + 1, outputs_ta, next_state, next_inputs, next_finished,
+          next_sequence_lengths)`.
+        ```
       """
       (next_outputs, decoder_state, next_inputs,
        decoder_finished) = decoder.step(time, inputs, state)
@@ -233,6 +233,10 @@ def dynamic_decode(decoder,
       if maximum_iterations is not None:
         next_finished = math_ops.logical_or(
             next_finished, time + 1 >= maximum_iterations)
+      next_sequence_lengths = array_ops.where(
+          math_ops.logical_and(math_ops.logical_not(finished), next_finished),
+          array_ops.fill(array_ops.shape(sequence_lengths), time + 1),
+          sequence_lengths)
 
       nest.assert_same_structure(state, decoder_state)
       nest.assert_same_structure(outputs_ta, next_outputs)
@@ -265,23 +269,30 @@ def dynamic_decode(decoder,
 
       outputs_ta = nest.map_structure(lambda ta, out: ta.write(time, out),
                                       outputs_ta, emit)
-      return (time + 1, outputs_ta, next_state, next_inputs, next_finished)
+      return (time + 1, outputs_ta, next_state, next_inputs, next_finished,
+              next_sequence_lengths)
 
     res = control_flow_ops.while_loop(
         condition,
         body,
         loop_vars=[
             initial_time, initial_outputs_ta, initial_state, initial_inputs,
-            initial_finished
+            initial_finished, initial_sequence_lengths,
         ],
         parallel_iterations=parallel_iterations,
         swap_memory=swap_memory)
 
     final_outputs_ta = res[1]
     final_state = res[2]
+    final_sequence_lengths = res[5]
 
     final_outputs = nest.map_structure(lambda ta: ta.stack(), final_outputs_ta)
+
+    if hasattr(decoder, "finalize"):
+      final_outputs, final_state = decoder.finalize(
+          final_outputs, final_state, final_sequence_lengths)
+
     if not output_time_major:
       final_outputs = nest.map_structure(_transpose_batch_time, final_outputs)
 
-  return final_outputs, final_state
+  return final_outputs, final_state, final_sequence_lengths

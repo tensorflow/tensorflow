@@ -941,7 +941,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
   // keep interoperability with float ops.
   TF_RETURN_IF_ERROR(RemoveRedundantQuantizations(deduped_graph_def, context,
                                                   output_graph_def));
-  TF_RETURN_IF_ERROR(IsGraphValid(merged_graph_def));
+  TF_RETURN_IF_ERROR(IsGraphValid(*output_graph_def));
 
   return Status::OK();
 }

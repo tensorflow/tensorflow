@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A powerful dynamic attention wrapper object.
-"""
+"""A powerful dynamic attention wrapper object."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,6 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base as layers_base
 from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -73,6 +73,8 @@ def _prepare_memory(memory, memory_sequence_length, check_inner_dims_defined):
   """
   memory = nest.map_structure(
       lambda m: ops.convert_to_tensor(m, name="memory"), memory)
+  memory_sequence_length = ops.convert_to_tensor(
+      memory_sequence_length, name="memory_sequence_length")
   if check_inner_dims_defined:
     def _check_dims(m):
       if not m.get_shape()[2:].is_fully_defined():
@@ -86,15 +88,24 @@ def _prepare_memory(memory, memory_sequence_length, check_inner_dims_defined):
         memory_sequence_length,
         maxlen=array_ops.shape(nest.flatten(memory)[0])[1],
         dtype=nest.flatten(memory)[0].dtype)
+    seq_len_batch_size = (
+        memory_sequence_length.shape[0].value
+        or array_ops.shape(memory_sequence_length)[0])
   def _maybe_mask(m, seq_len_mask):
     rank = m.get_shape().ndims
     rank = rank if rank is not None else array_ops.rank(m)
     extra_ones = array_ops.ones(rank - 2, dtype=dtypes.int32)
+    m_batch_size = m.shape[0].value or array_ops.shape(m)[0]
     if memory_sequence_length is not None:
-      seq_len_mask = array_ops.reshape(
-          seq_len_mask,
-          array_ops.concat((array_ops.shape(seq_len_mask), extra_ones), 0))
-      return m * seq_len_mask
+      message = ("memory_sequence_length and memory tensor batch sizes do not "
+                 "match.")
+      with ops.control_dependencies([
+          check_ops.assert_equal(
+              seq_len_batch_size, m_batch_size, message=message)]):
+        seq_len_mask = array_ops.reshape(
+            seq_len_mask,
+            array_ops.concat((array_ops.shape(seq_len_mask), extra_ones), 0))
+        return m * seq_len_mask
     else:
       return m
   return nest.map_structure(lambda m: _maybe_mask(m, seq_len_mask), memory)
@@ -109,7 +120,8 @@ class _BaseAttentionMechanism(AttentionMechanism):
   """
 
   def __init__(self, query_layer, memory, memory_sequence_length=None,
-               memory_layer=None, check_inner_dims_defined=True, name=None):
+               memory_layer=None, check_inner_dims_defined=True,
+               name=None):
     """Construct base AttentionMechanism class.
 
     Args:
@@ -148,6 +160,8 @@ class _BaseAttentionMechanism(AttentionMechanism):
       self._keys = (
           self.memory_layer(self._values) if self.memory_layer  # pylint: disable=not-callable
           else self._values)
+      self._batch_size = (
+          self._keys.shape[0].value or array_ops.shape(self._keys)[0])
 
   @property
   def memory_layer(self):
@@ -164,6 +178,10 @@ class _BaseAttentionMechanism(AttentionMechanism):
   @property
   def keys(self):
     return self._keys
+
+  @property
+  def batch_size(self):
+    return self._batch_size
 
 
 class LuongAttention(_BaseAttentionMechanism):
@@ -332,6 +350,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
       dtype = processed_query.dtype
       # Reshape from [batch_size, ...] to [batch_size, 1, ...] for broadcasting.
       processed_query = array_ops.expand_dims(processed_query, 1)
+      keys = self._keys
       v = variable_scope.get_variable(
           "attention_v", [self._num_units], dtype=dtype)
       if self._normalize:
@@ -347,18 +366,18 @@ class BahdanauAttention(_BaseAttentionMechanism):
         normed_v = g * v * math_ops.rsqrt(
             math_ops.reduce_sum(math_ops.square(v)))
         score = math_ops.reduce_sum(
-            normed_v * math_ops.tanh(self.keys + processed_query + b), [2])
+            normed_v * math_ops.tanh(keys + processed_query + b), [2])
       else:
-        score = math_ops.reduce_sum(
-            v * math_ops.tanh(self.keys + processed_query), [2])
+        score = math_ops.reduce_sum(v * math_ops.tanh(keys + processed_query),
+                                    [2])
 
     return score
 
 
 class AttentionWrapperState(
-    collections.namedtuple(
-        "AttentionWrapperState", (
-            "cell_state", "attention", "time", "attention_history"))):
+    collections.namedtuple("AttentionWrapperState",
+                           ("cell_state", "attention", "time",
+                            "alignment_history"))):
   """`namedtuple` storing the state of a `AttentionWrapper`.
 
   Contains:
@@ -366,10 +385,29 @@ class AttentionWrapperState(
     - `cell_state`: The state of the wrapped `RNNCell`.
     - `attention`: The attention emitted at the previous time step.
     - `time`: int32 scalar containing the current time step.
-    - `attention_history`: (if enabled) a `TensorArray` containing attention
+    - `alignment_history`: (if enabled) a `TensorArray` containing alignment
        matrices from all time steps.  Call `stack()` to convert to a `Tensor`.
   """
-  pass
+
+  def clone(self, **kwargs):
+    """Clone this object, overriding components provided by kwargs.
+
+    Example:
+
+    ```python
+    initial_state = attention_wrapper.zero_state(dtype=..., batch_size=...)
+    initial_state = initial_state.clone(cell_state=encoder_state)
+    ```
+
+    Args:
+      **kwargs: Any properties of the state object to replace in the returned
+        `AttentionWrapperState`.
+
+    Returns:
+      A new `AttentionWrapperState` whose properties are the same as
+      this one, except any overriden properties as provided in `kwargs`.
+    """
+    return super(AttentionWrapperState, self)._replace(**kwargs)
 
 
 def hardmax(logits, name=None):
@@ -400,20 +438,23 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
   def __init__(self,
                cell,
                attention_mechanism,
-               attention_size,
-               attention_history=False,
+               attention_layer_size=None,
+               alignment_history=False,
                cell_input_fn=None,
                probability_fn=None,
                output_attention=True,
+               initial_cell_state=None,
                name=None):
     """Construct the `AttentionWrapper`.
 
     Args:
       cell: An instance of `RNNCell`.
       attention_mechanism: An instance of `AttentionMechanism`.
-      attention_size: Python integer, the depth of the attention (output)
-        tensor.
-      attention_history: Python boolean, whether to store attention history
+      attention_layer_size: Python integer, the depth of the attention (output)
+        layer. If None (default), use the context as attention at each time
+        step. Otherwise, feed the context and cell output into the attention
+        layer to generate attention at each time step.
+      alignment_history: Python boolean, whether to store alignment history
         from all time steps in the final output state (currently stored as a
         time major `TensorArray` on which you must call `stack()`).
       cell_input_fn: (optional) A `callable`.  The default is:
@@ -429,8 +470,14 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         propagated to the next time step via the state and is used there.
         This flag only controls whether the attention mechanism is propagated
         up to the next cell in an RNN stack or to the top RNN output.
+      initial_cell_state: The initial state value to use for the cell when
+        the user calls `zero_state()`.  Note that if this value is provided
+        now, and the user uses a `batch_size` argument of `zero_state` which
+        does not match the batch size of `initial_cell_state`, proper
+        behavior is not guaranteed.
       name: Name to use when creating ops.
     """
+    super(AttentionWrapper, self).__init__()
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError(
           "cell must be an RNNCell, saw type: %s" % type(cell).__name__)
@@ -453,15 +500,43 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         raise TypeError(
             "probability_fn must be callable, saw type: %s"
             % type(probability_fn).__name__)
+
+    if attention_layer_size is not None:
+      self._attention_layer = layers_core.Dense(
+          attention_layer_size, name="attention_layer", use_bias=False)
+      self._attention_size = attention_layer_size
+    else:
+      self._attention_layer = None
+      self._attention_size = attention_mechanism.values.get_shape()[-1].value
+
     self._cell = cell
     self._attention_mechanism = attention_mechanism
-    self._attention_size = attention_size
-    self._attention_layer = layers_core.Dense(
-        attention_size, name="attention_layer", use_bias=False)
     self._cell_input_fn = cell_input_fn
     self._probability_fn = probability_fn
     self._output_attention = output_attention
-    self._attention_history = attention_history
+    self._alignment_history = alignment_history
+    with ops.name_scope(name, "AttentionWrapperInit"):
+      if initial_cell_state is None:
+        self._initial_cell_state = None
+      else:
+        final_state_tensor = nest.flatten(initial_cell_state)[-1]
+        state_batch_size = (
+            final_state_tensor.shape[0].value
+            or array_ops.shape(final_state_tensor)[0])
+        error_message = (
+            "When constructing AttentionWrapper %s: " % self._base_name +
+            "Non-matching batch sizes between the memory "
+            "(encoder output) and initial_cell_state.  Are you using "
+            "the BeamSearchDecoder?  You may need to tile your initial state "
+            "via the tf.contrib.seq2seq.tile_batch function with argument "
+            "multiple=beam_width.")
+        with ops.control_dependencies(
+            [check_ops.assert_equal(state_batch_size,
+                                    self._attention_mechanism.batch_size,
+                                    message=error_message)]):
+          self._initial_cell_state = nest.map_structure(
+              lambda s: array_ops.identity(s, name="check_initial_cell_state"),
+              initial_cell_state)
 
   @property
   def output_size(self):
@@ -476,23 +551,42 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         cell_state=self._cell.state_size,
         time=tensor_shape.TensorShape([]),
         attention=self._attention_size,
-        attention_history=())  # attention_history is sometimes a TensorArray
+        alignment_history=())  # alignment_history is sometimes a TensorArray
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      if self._attention_history:
-        attention_history = tensor_array_ops.TensorArray(
+      if self._initial_cell_state is not None:
+        cell_state = self._initial_cell_state
+      else:
+        cell_state = self._cell.zero_state(batch_size, dtype)
+      error_message = (
+          "When calling zero_state of AttentionWrapper %s: " % self._base_name +
+          "Non-matching batch sizes between the memory "
+          "(encoder output) and the requested batch size.  Are you using "
+          "the BeamSearchDecoder?  If so, make sure your encoder output has "
+          "been tiled to beam_width via tf.contrib.seq2seq.tile_batch, and "
+          "the batch_size= argument passed to zero_state is "
+          "batch_size * beam_width.")
+      with ops.control_dependencies(
+          [check_ops.assert_equal(batch_size,
+                                  self._attention_mechanism.batch_size,
+                                  message=error_message)]):
+        cell_state = nest.map_structure(
+            lambda s: array_ops.identity(s, name="checked_cell_state"),
+            cell_state)
+      if self._alignment_history:
+        alignment_history = tensor_array_ops.TensorArray(
             dtype=dtype, size=0, dynamic_size=True)
       else:
-        attention_history = ()
+        alignment_history = ()
       return AttentionWrapperState(
-          cell_state=self._cell.zero_state(batch_size, dtype),
+          cell_state=cell_state,
           time=array_ops.zeros([], dtype=dtypes.int32),
-          attention=_zero_state_tensors(
-              self._attention_size, batch_size, dtype),
-          attention_history=attention_history)
+          attention=_zero_state_tensors(self._attention_size, batch_size,
+                                        dtype),
+          alignment_history=alignment_history)
 
-  def __call__(self, inputs, state, scope=None):
+  def call(self, inputs, state):
     """Perform a step of attention-wrapped RNN.
 
     - Step 1: Mix the `inputs` and previous step's `attention` output via
@@ -511,7 +605,6 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       inputs: (Possibly nested tuple of) Tensor, the input at this time step.
       state: An instance of `AttentionWrapperState` containing
         tensors from the previous time step.
-      scope: Must be `None`.
 
     Returns:
       A tuple `(attention_or_cell_output, next_state)`, where:
@@ -519,26 +612,35 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       - `attention_or_cell_output` depending on `output_attention`.
       - `next_state` is an instance of `DynamicAttentionWrapperState`
          containing the state calculated at this time step.
-
-    Raises:
-      NotImplementedError: if `scope` is not `None`.
     """
-    if scope is not None:
-      raise NotImplementedError("scope not None is not supported")
-
     with variable_scope.variable_scope("attention"):
       # Step 1: Calculate the true inputs to the cell based on the
       # previous attention value.
       cell_inputs = self._cell_input_fn(inputs, state.attention)
       cell_state = state.cell_state
-
       cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
+
+      cell_batch_size = (
+          cell_output.shape[0].value or array_ops.shape(cell_output)[0])
+      error_message = (
+          "When applying AttentionWrapper %s: " % self.name +
+          "Non-matching batch sizes between the memory "
+          "(encoder output) and the query (decoder output).  Are you using "
+          "the BeamSearchDecoder?  You may need to tile your memory input via "
+          "the tf.contrib.seq2seq.tile_batch function with argument "
+          "multiple=beam_width.")
+      with ops.control_dependencies(
+          [check_ops.assert_equal(cell_batch_size,
+                                  self._attention_mechanism.batch_size,
+                                  message=error_message)]):
+        cell_output = array_ops.identity(
+            cell_output, name="checked_cell_output")
 
       score = self._attention_mechanism(cell_output)
       alignments = self._probability_fn(score)
 
       # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
-      alignments = array_ops.expand_dims(alignments, 1)
+      expanded_alignments = array_ops.expand_dims(alignments, 1)
       # Context is the inner product of alignments and values along the
       # memory time dimension.
       # alignments shape is
@@ -548,22 +650,27 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       # the batched matmul is over memory_time, so the output shape is
       #   [batch_size, 1, attention_mechanism.num_units].
       # we then squeeze out the singleton dim.
-      context = math_ops.matmul(alignments, self._attention_mechanism.values)
+      attention_mechanism_values = self._attention_mechanism.values
+      context = math_ops.matmul(expanded_alignments, attention_mechanism_values)
       context = array_ops.squeeze(context, [1])
 
-      attention = self._attention_layer(
-          array_ops.concat([cell_output, context], 1))
-
-      if self._attention_history:
-        attention_history = state.attention_history.write(state.time, attention)
+      if self._attention_layer is not None:
+        attention = self._attention_layer(
+            array_ops.concat([cell_output, context], 1))
       else:
-        attention_history = ()
+        attention = context
+
+      if self._alignment_history:
+        alignment_history = state.alignment_history.write(
+            state.time, alignments)
+      else:
+        alignment_history = ()
 
       next_state = AttentionWrapperState(
           time=state.time + 1,
           cell_state=next_cell_state,
           attention=attention,
-          attention_history=attention_history)
+          alignment_history=alignment_history)
 
     if self._output_attention:
       return attention, next_state

@@ -261,7 +261,7 @@ class PoolingTest(test.TestCase):
           padding=padding,
           data_format=data_format,
           name=func_name)
-      t_g = gradients_impl.gradients(t ** 2, input_tensor)[0]
+      t_g = gradients_impl.gradients(t**2, input_tensor)[0]
 
       err_g = gradient_checker.compute_gradient_error(
           input_tensor,

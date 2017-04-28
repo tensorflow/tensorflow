@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
@@ -44,16 +45,26 @@ namespace tensorflow {
 // to be particularly lightweight, fast, or efficient.
 class GraphRunner {
  public:
+  // REQUIRES: `env` is not nullptr.
+  GraphRunner(Env* env);
+  ~GraphRunner();
+
   // Function semantics for `inputs`, `output_names` and `outputs`
   // matches those from Session::Run().
+  //
+  // NOTE: The output tensors share lifetime with the GraphRunner, and could
+  // be destroyed once the GraphRunner is destroyed.
   //
   // REQUIRES: `graph`, `env`, and `outputs` are not nullptr.
   // `function_library` may be nullptr.
   typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
-  static Status Run(Graph* graph, FunctionLibraryRuntime* function_library,
-                    Env* env, const NamedTensorList& inputs,
-                    const std::vector<string>& output_names,
-                    std::vector<Tensor>* outputs);
+  Status Run(Graph* graph, FunctionLibraryRuntime* function_library,
+             const NamedTensorList& inputs,
+             const std::vector<string>& output_names,
+             std::vector<Tensor>* outputs);
+
+ private:
+  std::unique_ptr<Device> cpu_device_;
 };
 
 }  // namespace tensorflow

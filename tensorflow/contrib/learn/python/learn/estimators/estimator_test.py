@@ -50,8 +50,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -62,7 +62,6 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import compat
@@ -78,18 +77,6 @@ def boston_input_fn(num_epochs=None):
           constant_op.constant(boston.data), [-1, _BOSTON_INPUT_DIM]),
       num_epochs=num_epochs)
   labels = array_ops.reshape(constant_op.constant(boston.target), [-1, 1])
-  return features, labels
-
-
-def boston_input_fn_with_queue(num_epochs=None):
-  features, labels = boston_input_fn(num_epochs=num_epochs)
-
-  # Create a minimal queue runner.
-  fake_queue = data_flow_ops.FIFOQueue(30, dtypes.int32)
-  queue_runner = queue_runner_impl.QueueRunner(fake_queue,
-                                               [constant_op.constant(0)])
-  queue_runner_impl.add_queue_runner(queue_runner)
-
   return features, labels
 
 
@@ -295,33 +282,93 @@ class CheckCallsMonitor(monitors_lib.BaseMonitor):
             self.begin_calls == self.expect_calls)
 
 
-class EstimatorTest(test.TestCase):
+def _model_fn_ops(
+    expected_features, expected_labels, actual_features, actual_labels, mode):
+  assert_ops = tuple([
+      check_ops.assert_equal(
+          expected_features[k], actual_features[k], name='assert_%s' % k)
+      for k in expected_features
+  ] + [
+      check_ops.assert_equal(
+          expected_labels, actual_labels, name='assert_labels')
+  ])
+  with ops.control_dependencies(assert_ops):
+    return model_fn.ModelFnOps(
+        mode=mode,
+        predictions=constant_op.constant(0.),
+        loss=constant_op.constant(0.),
+        train_op=constant_op.constant(0.))
 
-  def testExperimentIntegration(self):
-    exp = experiment.Experiment(
-        estimator=estimator.Estimator(model_fn=linear_model_fn),
-        train_input_fn=boston_input_fn,
-        eval_input_fn=boston_input_fn)
-    exp.test()
+
+def _make_input_fn(features, labels):
+  def _input_fn():
+    return {
+        k: constant_op.constant(v)
+        for k, v in six.iteritems(features)
+    }, constant_op.constant(labels)
+  return _input_fn
+
+
+class EstimatorModelFnTest(test.TestCase):
 
   def testModelFnArgs(self):
-    expected_param = {'some_param': 'some_value'}
+    features = {'x': 42., 'y': 43.}
+    labels = 44.
+    expected_params = {'some_param': 'some_value'}
     expected_config = run_config.RunConfig()
     expected_config.i_am_test = True
 
-    def _argument_checker(features, labels, mode, params, config):
-      _, _ = features, labels
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    # `features` and `labels` are passed by position, `arg0` and `arg1` here.
+    def _model_fn(arg0, arg1, mode, params, config):
+      model_fn_call_count[0] += 1
+      self.assertItemsEqual(features.keys(), arg0.keys())
       self.assertEqual(model_fn.ModeKeys.TRAIN, mode)
-      self.assertEqual(expected_param, params)
+      self.assertEqual(expected_params, params)
       self.assertTrue(config.i_am_test)
-      return constant_op.constant(0.), constant_op.constant(
-          0.), constant_op.constant(0.)
+      return _model_fn_ops(features, labels, arg0, arg1, mode)
 
     est = estimator.Estimator(
-        model_fn=_argument_checker,
-        params=expected_param,
+        model_fn=_model_fn, params=expected_params, config=expected_config)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.fit(input_fn=_make_input_fn(features, labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
+
+  def testPartialModelFnArgs(self):
+    features = {'x': 42., 'y': 43.}
+    labels = 44.
+    expected_params = {'some_param': 'some_value'}
+    expected_config = run_config.RunConfig()
+    expected_config.i_am_test = True
+    expected_foo = 45.
+    expected_bar = 46.
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    # `features` and `labels` are passed by position, `arg0` and `arg1` here.
+    def _model_fn(arg0, arg1, foo, mode, params, config, bar):
+      model_fn_call_count[0] += 1
+      self.assertEqual(expected_foo, foo)
+      self.assertEqual(expected_bar, bar)
+      self.assertItemsEqual(features.keys(), arg0.keys())
+      self.assertEqual(model_fn.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_params, params)
+      self.assertTrue(config.i_am_test)
+      return _model_fn_ops(features, labels, arg0, arg1, mode)
+    partial_model_fn = functools.partial(
+        _model_fn, foo=expected_foo, bar=expected_bar)
+
+    est = estimator.Estimator(
+        model_fn=partial_model_fn, params=expected_params,
         config=expected_config)
-    est.fit(input_fn=boston_input_fn, steps=1)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.fit(input_fn=_make_input_fn(features, labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
 
   def testModelFnWithModelDir(self):
     expected_param = {'some_param': 'some_value'}
@@ -446,6 +493,16 @@ class EstimatorTest(test.TestCase):
 
     est.export_savedmodel(est.model_dir + '/export', serving_input_fn)
     self.assertTrue(self.mock_saver.restore.called)
+
+
+class EstimatorTest(test.TestCase):
+
+  def testExperimentIntegration(self):
+    exp = experiment.Experiment(
+        estimator=estimator.Estimator(model_fn=linear_model_fn),
+        train_input_fn=boston_input_fn,
+        eval_input_fn=boston_input_fn)
+    exp.test()
 
   def testCheckpointSaverHookSuppressesTheDefaultOne(self):
     saver_hook = test.mock.Mock(

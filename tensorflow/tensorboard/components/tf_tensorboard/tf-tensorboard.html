@@ -57,9 +57,9 @@ allows the user to toggle between various dashboards.
         <div id="toolbar-content">
           <div class="toolbar-title">TensorBoard</div>
           <paper-tabs selected="{{modeIndex}}" noink class="tabs" id="tabs">
-            <template is="dom-repeat" items="[[tabs]]">
-              <template is="dom-if" if="[[_isTabEnabled(item)]]">
-                <paper-tab data-mode="[[item]]">[[item]]</paper-tab>
+            <template is="dom-repeat" items="[[_dashboards]]">
+              <template is="dom-if" if="[[_isTabEnabled(item.name)]]">
+                <paper-tab data-mode="[[item.name]]">[[item.name]]</paper-tab>
               </template>
             </template>
           </paper-tabs>
@@ -82,67 +82,7 @@ allows the user to toggle between various dashboards.
         </div>
       </paper-toolbar>
 
-      <div id="content" class="fit">
-        <content id="injected-overview"></content>
-
-        <template is="dom-if" if="[[_modeIsScalars(mode)]]">
-          <tf-scalar-dashboard
-            id="scalars"
-            backend="[[_backend]]"
-            router="[[router]]"
-          ></tf-scalar-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsImages(mode)]]">
-          <tf-image-dashboard
-            id="images"
-            backend="[[_backend]]"
-          ></tf-image-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsAudio(mode)]]">
-          <tf-audio-dashboard
-            id="audio"
-            backend="[[_backend]]"
-          ></tf-audio-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsGraphs(mode)]]">
-          <tf-graph-dashboard
-            id="graphs"
-            backend="[[_backend]]"
-            debugger-data-enabled="[[_debuggerDataEnabled]]"
-          ></tf-graph-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsDistributions(mode)]]">
-          <tf-distribution-dashboard
-            id="distributions"
-            backend="[[_backend]]"
-          ></tf-distribution-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
-          <tf-histogram-dashboard
-            id="histograms"
-            backend="[[_backend]]"
-          ></tf-histogram-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsEmbeddings(mode)]]">
-          <vz-projector-dashboard
-            id="projector"
-            route-prefix="/data/plugin/projector">
-          </vz-projector-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsText(mode)]]">
-          <tf-text-dashboard
-            id="text"
-            backend="[[_backend]]">
-          </tf-text-dashboard>
-        </template>
-      </div>
+      <div id="content" class="fit"></div>
     </paper-header-panel>
 
     <style>
@@ -233,16 +173,21 @@ allows the user to toggle between various dashboards.
             return match && match.length == 1;
           },
         },
+        _dashboards: {
+          type: Array,
+          computed: "_makeDashboardList(_backend, router, _debuggerDataEnabled)",
+        },
+        // Maps dashboard name to dashboard object.
+        _dashboardMapping: {
+          type: Object,
+          computed: "_makeDashboardMapping(_dashboards)",
+        },
         // Which tab is selected (scalars, graph, images etc).
         mode: {
           type: String,
           computed: '_getModeFromIndex(modeIndex)',
           notify: true,
-        },
-        tabs: {
-          type: Array,
-          readOnly: true,
-          value: TF.Globals.TABS,
+          observer: '_modeChanged',
         },
         // If this is set to a string, TensorBoard will switch to "demo mode"
         // and attempt to load serialized json data from that directory. You can
@@ -267,7 +212,7 @@ allows the user to toggle between various dashboards.
         return true;
       },
       _getModeFromIndex: function(modeIndex) {
-        var mode = this.tabs[modeIndex];
+        var mode = this._dashboards[modeIndex].name;
         TF.URIStorage.setString(TF.URIStorage.TAB, mode);
         return mode;
       },
@@ -279,34 +224,10 @@ allows the user to toggle between various dashboards.
         return new TF.Backend.Backend(router);
       },
       _isReloadDisabled: function(mode) {
-        return !this._debuggerDataEnabled && this._modeIsGraphs(mode);
-      },
-      _modeIsScalars: function(mode) {
-        return mode === "scalars";
-      },
-      _modeIsImages: function(mode) {
-        return mode === "images";
-      },
-      _modeIsAudio: function(mode) {
-        return mode === "audio";
-      },
-      _modeIsGraphs: function(mode) {
-        return mode === "graphs";
-      },
-      _modeIsEmbeddings: function(mode) {
-        return mode === "embeddings";
-      },
-      _modeIsDistributions: function(mode) {
-        return mode === "distributions";
-      },
-      _modeIsHistograms: function(mode) {
-        return mode === "histograms";
-      },
-      _modeIsText: function(mode) {
-        return mode === "text";
+        return !this._debuggerDataEnabled && mode == 'graphs';
       },
       selectedDashboard: function() {
-        var dashboard = this.$$("#" + this.mode);
+        var dashboard = this._dashboardMapping[this.mode];
         if (dashboard == null) {
           throw new Error(`Unable to find dashboard for mode: ${this.mode}`);
         }
@@ -320,24 +241,67 @@ allows the user to toggle between various dashboards.
           this._getModeFromHash();
         }.bind(this));
       },
+      _makeDashboardList: function(backend, router, debuggerDataEnabled) {
+        if (!backend || !router) {
+          // The dashboards require these entities. We are not ready to construct dashboards.
+          return null;
+        }
+
+        return [
+          new TF.Dashboard.TfScalarDashboard(backend, router),
+          new TF.Dashboard.TfImageDashboard(backend),
+          new TF.Dashboard.TfAudioDashboard(backend),
+          new TF.Dashboard.TfGraphDashboard(backend, debuggerDataEnabled),
+          new TF.Dashboard.TfDistributionDashboard(backend),
+          new TF.Dashboard.TfHistogramDashboard(backend),
+          new TF.Dashboard.VzProjectorDashboard('data/plugin/projector'),
+          new TF.Dashboard.TfTextDashboard(backend),
+        ];
+      },
+      _makeDashboardMapping: function(dashboards) {
+        if (!dashboards) {
+          return null;
+        }
+
+        let mapping = {};
+        dashboards.forEach(function(dashboard) {
+          mapping[dashboard.name] = dashboard;
+        });
+        return mapping;
+      },
       _getModeFromHash: function() {
         var tabName = TF.URIStorage.getString(TF.URIStorage.TAB);
-        var modeIndex = this.tabs.indexOf(tabName);
-        if (modeIndex == -1 && this.modeIndex == null) {
+        var modeIndex;
+        for (var i = 0; i < this._dashboards.length; i++) {
+          if (this._dashboards[i].name == tabName) {
+            modeIndex = i;
+            break;
+          }
+        }
+
+        if (modeIndex === undefined && this.modeIndex == null) {
           // Select the first tab as default.
           this.set('modeIndex', 0);
         }
-        if (modeIndex != -1 && modeIndex != this.modeIndex) {
+        if (modeIndex !== undefined && modeIndex != this.modeIndex) {
           this.set('modeIndex', modeIndex);
         }
       },
+      _modeChanged: function(mode) {
+        let currentDashboard = this.$.content.firstChild;
+        if (currentDashboard) {
+          this.$.content.removeChild(currentDashboard);
+        }
+
+        if (!mode || !this._dashboardMapping) {
+          return;
+        }
+
+        // Append the new dashboard.
+        const newDashboard = this.selectedDashboard();
+        this.$.content.appendChild(newDashboard);
+      },
       reload: function() {
-        if (this._modeIsEmbeddings(this.mode)) {
-          return;
-        }
-        if (!this._debuggerDataEnabled && this._modeIsGraphs(this.mode)) {
-          return;
-        }
         this.selectedDashboard().reload();
       },
       openSettings: function() {

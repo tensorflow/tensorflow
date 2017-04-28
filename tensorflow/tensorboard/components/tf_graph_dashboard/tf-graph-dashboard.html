@@ -104,20 +104,28 @@ out-hierarchy-params="{{_hierarchyParams}}"
 
 <script>
 (function() {
-Polymer({
+TF.Dashboard.TfGraphDashboard = Polymer({
   is: 'tf-graph-dashboard',
+  factoryImpl: function(backend, debuggerDataEnabled) {
+    this.backend = backend;
+    this.debuggerDataEnabled = debuggerDataEnabled;
+  },
   behaviors: [
+    TF.Dashboard.DashboardBehavior("graphs"),
     TF.Dashboard.ReloadBehavior("tf-graph-dashboard"),
     TF.Backend.Behavior,
   ],
   properties: {
     _datasets: Object,
     _renderHierarchy: {type: Object, observer: '_renderHierarchyChanged'},
-    backend: {type: Object, observer: '_backendChanged'},
+    backend: Object,
     debuggerDataEnabled: Boolean,
     allStepsModeEnabled: Boolean,
     specificHealthPillStep: {type: Number, value: 0},
     healthPillsToggledOn: {type: Boolean, value: true, observer: '_healthPillsToggledOnChanged'},
+    _isAttached: Boolean,
+    // Whether this dashboard is initialized. This dashboard should only be initialized once.
+    _initialized: Boolean,
     // Whether health pills are currently being loaded, in which case we may want to say show a
     // spinner.
     _areHealthPillsLoading: Boolean,
@@ -146,7 +154,14 @@ Polymer({
   },
   observers: [
     '_maybeFetchHealthPillsAtSpecificStep(allStepsModeEnabled, specificHealthPillStep)',
+    '_maybeInitializeDashboard(backend, _isAttached)',
   ],
+  attached: function() {
+    this.set('_isAttached', true);
+  },
+  detached: function() {
+    this.set('_isAttached', false);
+  },
   reload: function() {
     if (!this.debuggerDataEnabled ||
         !this.healthPillsToggledOn ||
@@ -162,7 +177,16 @@ Polymer({
     // would not change across reloads.
     this._requestHealthPills();
   },
-  _backendChanged: function(backend) {
+  _maybeInitializeDashboard: function(backend, isAttached) {
+    if (this._initialized || !backend || !isAttached) {
+      // Either this dashboard is already initialized ... or we are not yet ready to initialize.
+      return;
+    }
+    if (typeof ga !== 'undefined' && ga != null) {
+      ga('send', {hitType: 'pageview', page: '/v/graph'});
+    }
+    // Set this to true so we only initialize once.
+    this._initialized = true;
     Promise.all([backend.graphRuns(), backend.runMetadataRuns()])
       .then(function(result) {
         var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);

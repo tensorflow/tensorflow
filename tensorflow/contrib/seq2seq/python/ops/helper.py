@@ -57,11 +57,17 @@ def _unstack_ta(inp):
 
 @six.add_metaclass(abc.ABCMeta)
 class Helper(object):
-  """Helper interface.  Helper instances are used by SamplingDecoder."""
+  """Interface for implementing sampling in seq2seq decoders.
+
+  Helper instances are used by `BasicDecoder`.
+  """
 
   @abc.abstractproperty
   def batch_size(self):
-    """Returns a scalar int32 tensor."""
+    """Batch size of tensor returned by `sample`.
+
+    Returns a scalar int32 tensor.
+    """
     raise NotImplementedError("batch_size has not been implemented")
 
   @abc.abstractmethod
@@ -431,7 +437,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
                                        shape=base_shape))
 
       all_finished = math_ops.reduce_all(finished)
-      no_samples = math_ops.equal(array_ops.shape(sample_ids)[0], 0)
+      no_samples = math_ops.logical_not(math_ops.reduce_any(sample_ids))
       next_inputs = control_flow_ops.cond(
           math_ops.logical_or(all_finished, no_samples),
           lambda: base_next_inputs, maybe_sample)
@@ -450,12 +456,14 @@ class GreedyEmbeddingHelper(Helper):
 
     Args:
       embedding: A callable that takes a vector tensor of `ids` (argmax ids),
-        or the `params` argument for `embedding_lookup`.
+        or the `params` argument for `embedding_lookup`. The returned tensor
+        will be passed to the decoder input.
       start_tokens: `int32` vector shaped `[batch_size]`, the start tokens.
       end_token: `int32` scalar, the token that marks end of decoding.
 
     Raises:
-      ValueError: if `sequence_length` is not a 1D tensor.
+      ValueError: if `start_tokens` is not a 1D tensor or `end_token` is not a
+        scalar.
     """
     if callable(embedding):
       self._embedding_fn = embedding

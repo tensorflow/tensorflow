@@ -241,5 +241,19 @@ class ZerosLikeOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("ZerosLike"), ZerosLikeOp);
 
+class OnesLikeOp : public XlaOpKernel {
+ public:
+  explicit OnesLikeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const TensorShape input_shape = ctx->InputShape(0);
+
+    auto one = XlaHelpers::One(ctx->builder(), input_type(0));
+    ctx->SetOutput(0, ctx->builder()->Broadcast(one, input_shape.dim_sizes()));
+  }
+};
+
+REGISTER_XLA_OP(Name("OnesLike"), OnesLikeOp);
+
 }  // namespace
 }  // namespace tensorflow

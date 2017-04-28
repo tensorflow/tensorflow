@@ -150,6 +150,25 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
                                              *points_to_analysis_));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, CopyNeverShares) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param));
+  auto copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCopy, exp));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_TRUE(
+      CanShareOperandBufferWithUser(param, {}, exp, {}, *points_to_analysis_));
+  EXPECT_FALSE(
+      CanShareOperandBufferWithUser(exp, {}, copy, {}, *points_to_analysis_));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
   auto builder = HloComputation::Builder(TestName());
 
@@ -183,6 +202,74 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
                                              *points_to_analysis_));
   EXPECT_TRUE(CanShareOperandBufferWithUser(tuple, {1}, fusion, {},
                                             *points_to_analysis_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape update_shape = ShapeUtil::MakeShape(F32, {4});
+  Shape starts_shape = ShapeUtil::MakeShape(S32, {1});
+  auto data = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape, "data"));
+  auto update = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, update_shape, "update"));
+  auto starts = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, starts_shape, "starts"));
+  auto dus = builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      data_shape, data, update, starts));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  // The DynamicUpdateSlice instruction can share with the data operand, but not
+  // with update or starts.
+  EXPECT_TRUE(
+      CanShareOperandBufferWithUser(data, {}, dus, {}, *points_to_analysis_));
+  EXPECT_FALSE(
+      CanShareOperandBufferWithUser(update, {}, dus, {}, *points_to_analysis_));
+  EXPECT_FALSE(
+      CanShareOperandBufferWithUser(starts, {}, dus, {}, *points_to_analysis_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
+  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+
+  auto make_cond = [this, &data_shape]() {
+    auto builder = HloComputation::Builder(TestName() + ".Cond");
+    auto data = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, data_shape, "data"));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kEq, data, data));
+    return builder.Build();
+  };
+
+  auto make_body = [this, &data_shape]() {
+    auto builder = HloComputation::Builder(TestName() + ".Body");
+    auto data = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, data_shape, "data"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, data, data));
+    return builder.Build();
+  };
+
+  module_ = MakeUnique<HloModule>(TestName());
+  HloComputation* cond_computation =
+      module_->AddEmbeddedComputation(make_cond());
+  HloComputation* body_computation =
+      module_->AddEmbeddedComputation(make_body());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto data = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape, "data"));
+  auto whil = builder.AddInstruction(HloInstruction::CreateWhile(
+      data_shape, cond_computation, body_computation, data));
+  computation_ = module_->AddEntryComputation(builder.Build());
+
+  RunAnalysis();
+
+  // The While instruction can share with the data operand.
+  EXPECT_TRUE(
+      CanShareOperandBufferWithUser(data, {}, whil, {}, *points_to_analysis_));
 }
 
 }  // namespace

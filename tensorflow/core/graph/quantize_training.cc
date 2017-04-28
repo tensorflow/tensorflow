@@ -247,7 +247,7 @@ Status ConnectVariablesToSaveOp(Graph* graph, Node* save_op,
 // Add a restore subgraph for each variable and connect to the restore_all op.
 // For each variable we add the following subgraph:
 //           Assign----restore_all
-//          /      \
+//          |      |
 //   RestoreV2    Variable
 Status AddRestoreVariableSubgraphs(Graph* graph, Node* save_op,
                                    const std::vector<const Edge*>& in_edges,
@@ -311,7 +311,7 @@ Status AddRestoreVariableSubgraphs(Graph* graph, Node* save_op,
 // Adds new variables to save and restore ops matching the Save and Restore
 // graphs created in tensorflow/python/training/saver.py.
 Status AddSaveAndRestore(Graph* graph, const std::vector<Node*>& variables) {
-  Node* save_op;
+  Node* save_op = nullptr;
   std::vector<const Edge*> in_edges;
   bool found = false;
   TF_RETURN_IF_ERROR(FindSaveOp(graph, &save_op, &in_edges, &found));

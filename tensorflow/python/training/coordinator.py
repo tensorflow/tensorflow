@@ -106,7 +106,7 @@ class Coordinator(object):
   After a thread has called `coord.request_stop()` the other threads have a
   fixed time to stop, this is called the 'stop grace period' and defaults to 2
   minutes.  If any of the threads is still alive after the grace period expires
-  `coord.join()` raises a RuntimeException reporting the laggards.
+  `coord.join()` raises a RuntimeError reporting the laggards.
 
   ```python
   try:
@@ -117,7 +117,7 @@ class Coordinator(object):
     ...start thread N...(coord, ...)
     # Wait for all the threads to terminate, give them 10s grace period
     coord.join(threads, stop_grace_period_secs=10)
-  except RuntimeException:
+  except RuntimeError:
     ...one of the threads took more than 10s to stop after request_stop()
     ...was called.
   except Exception:

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/hlo_graph_dumper_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -190,7 +191,7 @@ string InstructionSequenceGraph(
                   RandomDistribution_Name(instruction->random_distribution()));
         break;
       case HloOpcode::kConstant:
-        shape = "boxed";
+        shape = "box";
         color = "palegreen";
         if (ShapeUtil::IsScalar(instruction->shape())) {
           StrAppend(&name, "\\n", "value=", LiteralUtil::GetAsString(
@@ -414,14 +415,24 @@ namespace {
 
 class FileGraphRenderer : public GraphRendererInterface {
  public:
-  string RenderGraph(const string& graph) override {
+  string RenderGraph(const string& graph, GraphKind graph_kind) override {
     static std::atomic<int> output_num(0);
     legacy_flags::HloGraphDumperFlags* flags =
         legacy_flags::GetHloGraphDumperFlags();
-    string path = StrCat(flags->xla_hlo_dump_graph_path, "hlo_graph_",
-                         output_num++, ".XXXXXX.dot");
+    string file_extension;
+    switch (graph_kind) {
+      case DOT_GRAPH:
+        file_extension = ".dot";
+        break;
+      case TF_GRAPHDEF:
+        file_extension = ".pbtxt";
+        break;
+    }
+    string path =
+        JoinPath(flags->xla_hlo_dump_graph_path,
+                 StrCat("hlo_graph_", output_num++, ".XXXXXX", file_extension));
     auto status = Status::OK();
-    int fd = mkstemps(&path[0], 4);
+    int fd = mkstemps(&path[0], file_extension.length());
     if (fd < 0) {
       status =
           Status(tensorflow::error::Code::UNKNOWN,
@@ -446,10 +457,26 @@ XLA_REGISTER_GRAPH_RENDERER(FileGraphRenderer, 0);
 string DumpGraph(const HloComputation& computation, const string& label,
                  bool show_addresses, bool show_layouts,
                  const HloExecutionProfile* hlo_execution_profile) {
-  string graph = ComputationToDotGraph(computation, label, show_addresses,
-                                       show_layouts, hlo_execution_profile);
-
-  string graph_url = GetGraphRenderer()->RenderGraph(graph);
+  string graph;
+  string graph_url;
+  legacy_flags::HloGraphDumperFlags* flags =
+      legacy_flags::GetHloGraphDumperFlags();
+  if (flags->xla_hlo_dump_as_graphdef) {
+    HloTfGraphBuilder builder;
+    TF_CHECK_OK(builder.AddComputation(computation));
+    CHECK(tensorflow::protobuf::TextFormat::PrintToString(builder.GetGraphDef(),
+                                                          &graph));
+    // TODO(b/37198616): Use the default registered renderers when all
+    // renderers support rendering GraphDefs. Always dump GraphDefs to files
+    // for now.
+    graph_url = FileGraphRenderer().RenderGraph(
+        graph, GraphRendererInterface::TF_GRAPHDEF);
+  } else {
+    graph = ComputationToDotGraph(computation, label, show_addresses,
+                                  show_layouts, hlo_execution_profile);
+    graph_url = GetGraphRenderer()->RenderGraph(
+        graph, GraphRendererInterface::DOT_GRAPH);
+  }
   LOG(INFO) << "computation " << computation.name() << " [" << label
             << "]: " << graph_url;
   return graph_url;
@@ -467,5 +494,4 @@ void DumpText(const HloModule& module, const string& label,
 }
 
 }  // namespace hlo_graph_dumper
-
 }  // namespace xla

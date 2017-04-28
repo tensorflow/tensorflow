@@ -484,6 +484,25 @@ class ExperimentTest(test.TestCase):
       self.assertAllEqual([noop_hook, another_noop_hook], ex._train_monitors)
       self.assertAllEqual([noop_hook], input_hooks)
 
+  def test_invalid_export_strategies(self):
+    for est in self._estimators_for_tests():
+      with self.assertRaisesRegexp(ValueError, 'ExportStrategy'):
+        experiment.Experiment(
+            est,
+            train_input_fn='train_input',
+            eval_input_fn='eval_input',
+            train_steps=100,
+            eval_steps=100,
+            export_strategies='not_an_export_strategy')
+      with self.assertRaisesRegexp(ValueError, 'ExportStrategy'):
+        experiment.Experiment(
+            est,
+            train_input_fn='train_input',
+            eval_input_fn='eval_input',
+            train_steps=100,
+            eval_steps=100,
+            export_strategies=['not_an_export_srategy'])
+
   def test_export_strategies_reset(self):
     for est in self._estimators_for_tests():
       eval_metrics = 'eval_metrics' if not isinstance(
@@ -498,7 +517,7 @@ class ExperimentTest(test.TestCase):
           eval_metrics=eval_metrics,
           train_steps=100,
           eval_steps=100,
-          export_strategies=[export_strategy_1])
+          export_strategies=(export_strategy_1,))
       ex.train_and_evaluate()
       self.assertEqual(1, est.export_count)
 
@@ -545,6 +564,59 @@ class ExperimentTest(test.TestCase):
       self.assertEqual(1, len(est.monitors))
       self.assertEqual([noop_hook], est.eval_hooks)
       self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
+
+  def test_train_and_evaluate_with_no_eval_during_training(self):
+    for est in self._estimators_for_tests():
+      eval_metrics = 'eval_metrics' if not isinstance(
+          est, core_estimator.Estimator) else None
+      noop_hook = _NoopHook()
+      ex = experiment.Experiment(
+          est,
+          train_input_fn='train_input',
+          eval_input_fn='eval_input',
+          eval_metrics=eval_metrics,
+          eval_hooks=[noop_hook],
+          train_steps=100,
+          eval_steps=100,
+          min_eval_frequency=0)
+      ex.train_and_evaluate()
+      self.assertEqual(1, est.fit_count)
+      self.assertEqual(1, est.eval_count)
+      self.assertEqual(0, len(est.monitors))
+
+  def test_min_eval_frequency_defaults(self):
+    def dummy_model_fn(features, labels):  # pylint: disable=unused-argument
+      pass
+
+    # The default value when model_dir is on GCS is 1000
+    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
+    ex = experiment.Experiment(
+        estimator, train_input_fn=None, eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 1000)
+
+    # The default value when model_dir is not on GCS is 1
+    estimator = core_estimator.Estimator(dummy_model_fn, '/tmp/dummy')
+    ex = experiment.Experiment(
+        estimator, train_input_fn=None, eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 1)
+
+    # Make sure default not used when explicitly set
+    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
+    ex = experiment.Experiment(
+        estimator,
+        min_eval_frequency=123,
+        train_input_fn=None,
+        eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 123)
+
+    # Make sure default not used when explicitly set as 0
+    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
+    ex = experiment.Experiment(
+        estimator,
+        min_eval_frequency=0,
+        train_input_fn=None,
+        eval_input_fn=None)
+    self.assertEquals(ex._min_eval_frequency, 0)
 
   def test_continuous_train_and_eval(self):
     for est in self._estimators_for_tests(eval_dict={'global_step': 100}):
@@ -728,7 +800,7 @@ class ExperimentTest(test.TestCase):
           est,
           train_input_fn='train_input',
           eval_input_fn='eval_input',
-          export_strategies=[exp_strategy])
+          export_strategies=(exp_strategy,))
       ex.test()
       self.assertEqual(1, est.fit_count)
       self.assertEqual(1, est.eval_count)

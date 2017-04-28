@@ -996,6 +996,91 @@ class BaseSession(SessionInterface):
       results = []
     return fetch_handler.build_results(self, results)
 
+  def make_callable(self, fetches, feed_list=None):
+    """Returns a Python callable that runs a particular step.
+
+    The returned callable will take `len(feed_list)` arguments whose types
+    must be compatible feed values for the respective elements of `feed_list`.
+    For example, if element `i` of `feed_list` is a `tf.Tensor`, the `i`th
+    argument to the returned callable must be a numpy ndarray (or something
+    convertible to an ndarray) with matching element type and shape. See
+    @{tf.Session.run} for details of the allowable feed key and value types.
+
+    The returned callable will have the same return type as
+    `tf.Session.run(fetches, ...)`. For example, if `fetches` is a `tf.Tensor`,
+    the callable will return a numpy ndarray; if `fetches` is a `tf.Operation`,
+    it will return `None`.
+
+    Args:
+      fetches: A value or list of values to fetch. See @{tf.Session.run}
+        for details of the allowable fetch types.
+      feed_list: (Optional.) A list of `feed_dict` keys. See
+        @{tf.Session.run} for details of the allowable feed key types.
+
+    Returns:
+      A function that when called will execute the step defined by
+      `feed_list` and `fetches` in this session.
+
+    Raises:
+      TypeError: If `fetches` or `feed_list` cannot be interpreted
+        as arguments to @{tf.Session.run}.
+    """
+    if feed_list is not None:
+      if not isinstance(feed_list, (list, tuple)):
+        raise TypeError('`feed_list` must be a list or tuple.')
+      # Delegate any non-empty feed lists to the existing `run()` logic.
+      # TODO(mrry): Refactor the feed handling logic from
+      # `Session._run()` so that we can convert the feeds to a list of
+      # strings here.
+      def _generic_run(*feed_args):
+        feed_dict = {feed: feed_val
+                     for feed, feed_val in zip(feed_list, feed_args)}
+        return self.run(fetches, feed_dict=feed_dict)
+      return _generic_run
+
+    # Ensure any changes to the graph are reflected in the runtime.
+    # Note that we don't need to do this on subsequent calls to the
+    # returned object, because the arguments to `fetches` must already be
+    # in the graph.
+    self._extend_graph()
+
+    # Create a fetch handler to take care of the structure of fetches.
+    fetch_handler = _FetchHandler(self._graph, fetches, {})
+    fetch_list_as_strings = fetch_handler.fetches()
+    target_list_as_strings = fetch_handler.targets()
+
+    if isinstance(fetches, ops.Operation):
+      # Special case for fetching a single operation, because the
+      # function will have no return value.
+      assert not fetch_list_as_strings
+      assert len(target_list_as_strings) == 1
+      def _single_operation_run():
+        with errors.raise_exception_on_not_ok_status() as status:
+          tf_session.TF_Run(self._session, None, {}, [],
+                            target_list_as_strings, status, None)
+      return _single_operation_run
+    elif isinstance(fetches, ops.Tensor):
+      # Special case for fetching a single tensor, because the
+      # function can return the result of `TF_Run()` directly.
+      assert len(fetch_list_as_strings) == 1
+      assert not target_list_as_strings
+      def _single_tensor_run():
+        with errors.raise_exception_on_not_ok_status() as status:
+          results = tf_session.TF_Run(self._session, None, {},
+                                      fetch_list_as_strings, [], status, None)
+        return results[0]
+      return _single_tensor_run
+    else:
+      # In all other cases, we must use `fetch_handler` to build the
+      # results for us.
+      def _fetch_handler_run():
+        with errors.raise_exception_on_not_ok_status() as status:
+          results = tf_session.TF_Run(self._session, None, {},
+                                      fetch_list_as_strings,
+                                      target_list_as_strings, status, None)
+        return fetch_handler.build_results(self, results)
+      return _fetch_handler_run
+
   # Captures the name of a node in an error status.
   _NODEDEF_NAME_RE = re.compile(r'\[\[Node: ([^ ]*?) =')
 
@@ -1094,8 +1179,9 @@ class BaseSession(SessionInterface):
     if tensors_to_delete:
       feeds = {}
       fetches = []
-      for tensor_handle in tensors_to_delete:
+      for deleter_key, tensor_handle in enumerate(tensors_to_delete):
         holder, deleter = session_ops._get_handle_deleter(self.graph,
+                                                          deleter_key,
                                                           tensor_handle)
         feeds[holder] = tensor_handle
         fetches.append(deleter)

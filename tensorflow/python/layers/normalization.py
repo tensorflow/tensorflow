@@ -69,6 +69,19 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     name: A string, the name of the layer.
+    renorm: Whether to use Batch Renormalization
+      (https://arxiv.org/abs/1702.03275). This adds extra variables during
+      training. The inference is the same for either value of this parameter.
+    renorm_clipping: A dictionary that may map keys 'rmax', 'rmin', 'dmax' to
+      scalar `Tensors` used to clip the renorm correction. The correction
+      `(r, d)` is used as `corrected_value = normalized_value * r + d`, with
+      `r` clipped to [rmin, rmax], and `d` to [-dmax, dmax]. Missing rmax, rmin,
+      dmax are set to inf, 0, inf, respectively.
+    renorm_momentum: Momentum used to update the moving means and standard
+      deviations with renorm. Unlike `momentum`, this affects training
+      and should be neither too small (which would add noise) nor too large
+      (which would give stale estimates). Note that `momentum` is still applied
+      to get the means and variances for inference.
   """
 
   def __init__(self,
@@ -85,6 +98,9 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
                gamma_regularizer=None,
                trainable=True,
                name=None,
+               renorm=False,
+               renorm_clipping=None,
+               renorm_momentum=0.99,
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
@@ -99,6 +115,15 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
     self.moving_variance_initializer = moving_variance_initializer
     self.beta_regularizer = beta_regularizer
     self.gamma_regularizer = gamma_regularizer
+    self.renorm = renorm
+    if renorm:
+      renorm_clipping = renorm_clipping or {}
+      keys = ['rmax', 'rmin', 'dmax']
+      if set(renorm_clipping) - set(keys):
+        raise ValueError('renorm_clipping %s contains keys not in %s' %
+                         (renorm_clipping, keys))
+      self.renorm_clipping = renorm_clipping
+      self.renorm_momentum = renorm_momentum
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -148,8 +173,93 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
           shape=(param_dim,),
           initializer=self.moving_variance_initializer,
           trainable=False)
+      if self.renorm:
+        # Create variables to maintain the moving mean and standard deviation.
+        # These are used in training and thus are different from the moving
+        # averages above. The renorm variables are colocated with moving_mean
+        # and moving_variance.
+        # NOTE: below, the outer `with device` block causes the current device
+        # stack to be cleared. The nested ones use a `lambda` to set the desired
+        # device and ignore any devices that may be set by the custom getter.
+        def _renorm_variable(name, shape):
+          var = vs.get_variable(name,
+                                shape=shape,
+                                initializer=init_ops.zeros_initializer(),
+                                trainable=False)
+          return var
+        with ops.device(None):
+          with ops.device(lambda _: self.moving_mean.device):
+            self.renorm_mean = _renorm_variable('renorm_mean', (param_dim,))
+            self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
+          # We initialize renorm_stddev to 0, and maintain the (0-initialized)
+          # renorm_stddev_weight. This allows us to (1) mix the average
+          # stddev with the minibatch stddev early in training, and (2) compute
+          # the unbiased average stddev by dividing renorm_stddev by the weight.
+          with ops.device(lambda _: self.moving_variance.device):
+            self.renorm_stddev = _renorm_variable('renorm_stddev', (param_dim,))
+            self.renorm_stddev_weight = _renorm_variable(
+                'renorm_stddev_weight', ())
     finally:
       vs.get_variable_scope().set_partitioner(partitioner)
+
+  def _renorm_correction_and_moments(self, mean, variance, training):
+    """Returns the correction and update values for renorm."""
+    stddev = math_ops.sqrt(variance + self.epsilon)
+    # Compute the average mean and standard deviation, as if they were
+    # initialized with this batch's moments.
+    mixed_renorm_mean = (self.renorm_mean +
+                         (1. - self.renorm_mean_weight) * mean)
+    mixed_renorm_stddev = (self.renorm_stddev +
+                           (1. - self.renorm_stddev_weight) * stddev)
+    # Compute the corrections for batch renorm.
+    r = stddev / mixed_renorm_stddev
+    d = (mean - mixed_renorm_mean) / mixed_renorm_stddev
+    # Ensure the corrections use pre-update moving averages.
+    with ops.control_dependencies([r, d]):
+      mean = array_ops.identity(mean)
+      stddev = array_ops.identity(stddev)
+    rmin, rmax, dmax = [self.renorm_clipping.get(key)
+                        for key in ['rmin', 'rmax', 'dmax']]
+    if rmin is not None:
+      r = math_ops.maximum(r, rmin)
+    if rmax is not None:
+      r = math_ops.minimum(r, rmax)
+    if dmax is not None:
+      d = math_ops.maximum(d, -dmax)
+      d = math_ops.minimum(d, dmax)
+    # When not training, use r=1, d=0, and decay=1 meaning no updates.
+    r = _smart_select(training, lambda: r, lambda: array_ops.ones_like(r))
+    d = _smart_select(training, lambda: d, lambda: array_ops.zeros_like(d))
+    decay = _smart_select(training, lambda: self.renorm_momentum, lambda: 1.)
+    def _update_renorm_variable(var, weight, value):
+      """Updates a moving average and weight, returns the unbiased value."""
+      # Update the variables without zero debiasing. The debiasing will be
+      # accomplished by dividing the exponential moving average by the weight.
+      # For example, after a single update, the moving average would be
+      # (1-decay) * value. and the weight will be 1-decay, with their ratio
+      # giving value.
+      # Make sure the weight is not updated until before r and d computation.
+      value = array_ops.identity(value)
+      with ops.control_dependencies([value]):
+        weight_value = array_ops.constant(1., dtype=weight.dtype)
+      new_var = moving_averages.assign_moving_average(
+          var, value, decay, zero_debias=False)
+      new_weight = moving_averages.assign_moving_average(
+          weight, weight_value, decay, zero_debias=False)
+      return new_var / new_weight
+
+    with ops.colocate_with(self.moving_mean):
+      new_mean = _update_renorm_variable(self.renorm_mean,
+                                         self.renorm_mean_weight,
+                                         mean)
+    with ops.colocate_with(self.moving_variance):
+      new_stddev = _update_renorm_variable(self.renorm_stddev,
+                                           self.renorm_stddev_weight,
+                                           stddev)
+      # Make sqrt(moving_variance + epsilon) = new_stddev.
+      new_variance = math_ops.square(new_stddev) - self.epsilon
+
+    return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=False):
     # First, compute the axes along which to reduce the mean / variance,
@@ -164,82 +274,66 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
     # Determines whether broadcasting is needed.
     needs_broadcasting = (sorted(reduction_axes) != list(range(ndim))[:-1])
 
+    scale, offset = self.gamma, self.beta
+
     # Determine a boolean value for `training`: could be True, False, or None.
     training_value = utils.constant_value(training)
-
-    if needs_broadcasting:
-      # In this case we must explictly broadcast all parameters.
-      if self.center:
-        broadcast_beta = array_ops.reshape(self.beta, broadcast_shape)
-      else:
-        broadcast_beta = None
-      if self.scale:
-        broadcast_gamma = array_ops.reshape(self.gamma, broadcast_shape)
-      else:
-        broadcast_gamma = None
-
     if training_value is not False:
-      if needs_broadcasting:
-        broadcast_mean, broadcast_variance = nn.moments(
-            inputs, reduction_axes, keep_dims=True)
-        mean = array_ops.reshape(broadcast_mean, [-1])
-        variance = array_ops.reshape(broadcast_variance, [-1])
-      else:
-        mean, variance = nn.moments(inputs, reduction_axes)
+      # Some of the computations here are not necessary when training==False
+      # but not a constant. However, this makes the code simpler.
+      mean, variance = nn.moments(inputs, reduction_axes)
+      mean = _smart_select(training,
+                           lambda: mean,
+                           lambda: self.moving_mean)
+      variance = _smart_select(training,
+                               lambda: variance,
+                               lambda: self.moving_variance)
 
-      # Prepare updates if necessary.
+      if self.renorm:
+        r, d, new_mean, new_variance = self._renorm_correction_and_moments(
+            mean, variance, training)
+        # When training, the normalized values (say, x) will be transformed as
+        # x * gamma + beta without renorm, and (x * r + d) * gamma + beta
+        # = x * (r * gamma) + (d * gamma + beta) with renorm.
+        scale = array_ops.stop_gradient(r, name='renorm_r')
+        offset = array_ops.stop_gradient(d, name='renorm_d')
+        if self.gamma is not None:
+          scale *= self.gamma
+          offset *= self.gamma
+        if self.beta is not None:
+          offset += self.beta
+      else:
+        new_mean, new_variance = mean, variance
+
+      # Update moving averages when training, and prevent updates otherwise.
+      decay = _smart_select(training, lambda: self.momentum, lambda: 1.)
+      mean_update = moving_averages.assign_moving_average(
+          self.moving_mean, new_mean, decay, zero_debias=False)
+      variance_update = moving_averages.assign_moving_average(
+          self.moving_variance, new_variance, decay, zero_debias=False)
+
       if not self.updates:
-        mean_update = moving_averages.assign_moving_average(
-            self.moving_mean, mean, self.momentum, zero_debias=False)
-        variance_update = moving_averages.assign_moving_average(
-            self.moving_variance, variance, self.momentum, zero_debias=False)
         # In the future this should be refactored into a self.add_update
         # methods in order to allow for instance-based BN layer sharing
         # across unrelated input streams (e.g. like in Keras).
         self.updates.append(mean_update)
         self.updates.append(variance_update)
 
-    # Normalize batch. We do this inside separate functions for training
-    # and inference so as to avoid evaluating both branches.
-    def normalize_in_test():
-      if needs_broadcasting:
-        broadcast_moving_mean = array_ops.reshape(self.moving_mean,
-                                                  broadcast_shape)
-        broadcast_moving_variance = array_ops.reshape(self.moving_variance,
-                                                      broadcast_shape)
-        return nn.batch_normalization(inputs,
-                                      broadcast_moving_mean,
-                                      broadcast_moving_variance,
-                                      broadcast_beta,
-                                      broadcast_gamma,
-                                      self.epsilon)
-      else:
-        return nn.batch_normalization(inputs,
-                                      self.moving_mean,
-                                      self.moving_variance,
-                                      self.beta if self.center else None,
-                                      self.gamma if self.scale else None,
-                                      self.epsilon)
+    else:
+      mean, variance = self.moving_mean, self.moving_variance
 
-    def normalize_in_training():
-      if needs_broadcasting:
-        return nn.batch_normalization(inputs,
-                                      broadcast_mean,
-                                      broadcast_variance,
-                                      broadcast_beta,
-                                      broadcast_gamma,
-                                      self.epsilon)
-      else:
-        return nn.batch_normalization(inputs,
-                                      mean,
-                                      variance,
-                                      self.beta if self.center else None,
-                                      self.gamma if self.scale else None,
-                                      self.epsilon)
+    def _broadcast(v):
+      if needs_broadcasting and v is not None:
+        # In this case we must explictly broadcast all parameters.
+        return array_ops.reshape(v, broadcast_shape)
+      return v
 
-    return utils.smart_cond(training,
-                            normalize_in_training,
-                            normalize_in_test)
+    return nn.batch_normalization(inputs,
+                                  _broadcast(mean),
+                                  _broadcast(variance),
+                                  _broadcast(offset),
+                                  _broadcast(scale),
+                                  self.epsilon)
 
 
 def batch_normalization(inputs,
@@ -257,7 +351,10 @@ def batch_normalization(inputs,
                         training=False,
                         trainable=True,
                         name=None,
-                        reuse=None):
+                        reuse=None,
+                        renorm=False,
+                        renorm_clipping=None,
+                        renorm_momentum=0.99):
   """Functional interface for the batch normalization layer.
 
   Reference: http://arxiv.org/abs/1502.03167
@@ -266,6 +363,23 @@ def batch_normalization(inputs,
   Internal Covariate Shift"
 
   Sergey Ioffe, Christian Szegedy
+
+  Note: the operations which update the `moving_mean` and `moving_variance`
+  variables will not be added as dependencies of your training operation and so
+  must be run separately. For example:
+  ```
+  extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+  sess.run([train_op, extra_update_ops], ...)
+  ```
+  Alternatively, add the operations as a dependency to your training operation
+  manually, and then just run your training operation as normal:
+  ```
+  extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+  with tf.control_dependencies(extra_update_ops):
+    train_op = optimizer.minimize(loss)
+  ...
+  sess.run([train_op], ...)
+  ```
 
   Arguments:
     inputs: Tensor input.
@@ -294,6 +408,19 @@ def batch_normalization(inputs,
     name: String, the name of the layer.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
+    renorm: Whether to use Batch Renormalization
+      (https://arxiv.org/abs/1702.03275). This adds extra variables during
+      training. The inference is the same for either value of this parameter.
+    renorm_clipping: A dictionary that may map keys 'rmax', 'rmin', 'dmax' to
+      scalar `Tensors` used to clip the renorm correction. The correction
+      `(r, d)` is used as `corrected_value = normalized_value * r + d`, with
+      `r` clipped to [rmin, rmax], and `d` to [-dmax, dmax]. Missing rmax, rmin,
+      dmax are set to inf, 0, inf, respectively.
+    renorm_momentum: Momentum used to update the moving means and standard
+      deviations with renorm. Unlike `momentum`, this affects training
+      and should be neither too small (which would add noise) nor too large
+      (which would give stale estimates). Note that `momentum` is still applied
+      to get the means and variances for inference.
 
   Returns:
     Output tensor.
@@ -311,6 +438,9 @@ def batch_normalization(inputs,
       beta_regularizer=beta_regularizer,
       gamma_regularizer=gamma_regularizer,
       trainable=trainable,
+      renorm=renorm,
+      renorm_clipping=renorm_clipping,
+      renorm_momentum=renorm_momentum,
       name=name,
       _reuse=reuse,
       _scope=name)
@@ -321,3 +451,39 @@ def batch_normalization(inputs,
 
 BatchNorm = BatchNormalization
 batch_norm = batch_normalization
+
+
+# Helper function
+
+
+def _smart_select(pred, fn_then, fn_else):
+  """Selects fn_then() or fn_else() based on the value of pred.
+
+  The purpose of this function is the same as `utils.smart_cond`. However, at
+  the moment there is a bug (b/36297356) that seems to kick in only when
+  `smart_cond` delegates to `tf.cond`, which sometimes results in the training
+  hanging when using parameter servers. This function will output the result
+  of `fn_then` or `fn_else` if `pred` is known at graph construction time.
+  Otherwise, it will use `tf.where` which will result in some redundant work
+  (both branches will be computed but only one selected). However, the tensors
+  involved will usually be small (means and variances in batchnorm), so the
+  cost will be small and will not be incurred at all if `pred` is a constant.
+
+  Args:
+    pred: A boolean scalar `Tensor`.
+    fn_then: A callable to use when pred==True.
+    fn_else: A callable to use when pred==False.
+
+  Returns:
+    A `Tensor` whose value is fn_then() or fn_else() based on the value of pred.
+  """
+  pred_value = utils.constant_value(pred)
+  if pred_value:
+    return fn_then()
+  elif pred_value is False:
+    return fn_else()
+  t_then = array_ops.expand_dims(fn_then(), 0)
+  t_else = array_ops.expand_dims(fn_else(), 0)
+  pred = array_ops.reshape(pred, [1])
+  result = array_ops.where(pred, t_then, t_else)
+  return array_ops.squeeze(result, [0])

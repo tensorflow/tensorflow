@@ -837,6 +837,19 @@ py_test(
 )
 
 py_test(
+    name = "model_fn_test",
+    size = "small",
+    srcs = ["python/learn/estimators/model_fn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "multioutput_test",
     size = "small",
     srcs = ["python/learn/estimators/multioutput_test.py"],

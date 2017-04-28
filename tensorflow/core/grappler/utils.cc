@@ -97,10 +97,10 @@ int NodePosition(const string& name) {
 string AddPrefixToNodeName(const string& name, const string& prefix) {
   if (!name.empty()) {
     if (name[0] == '^') {
-      return strings::StrCat("^", prefix, "-", name.substr(1));
+      return strings::StrCat("^", prefix, "/", name.substr(1));
     }
   }
-  return strings::StrCat(prefix, "-", name);
+  return strings::StrCat(prefix, "/", name);
 }
 
 bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,

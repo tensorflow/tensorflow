@@ -398,29 +398,16 @@ class BufferAssigner {
   // which returns the size of a LogicalBuffer. Alignment is the the minimum
   // alignment of any buffer. If hlos_to_allocate is not null then only
   // instructions in this vector are considered for buffer assignment. If
-  // hlos_to_allocate is null then all instructions are considered. If
-  // 'colocate_related_buffers' is true, related LogicalBuffers will be
-  // colocated in the same allocation (i.e buffers for while result will share
-  // an allocation with buffers related to that same while instruction: init
-  // operand, condition/body parameter and body result).
+  // hlos_to_allocate is null then all instructions are considered.
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       LogicalBuffer::SizeFunction buffer_size, int64 alignment,
-      bool colocate_related_buffers,
       const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
-
-  // Overload of Run which uses ShapeUtil::ByteSizeOf to determine buffer size
-  // and assigns buffers to all HLO instructions in the module.
-  static StatusOr<std::unique_ptr<BufferAssignment>> Run(
-      const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      LogicalBuffer::SizeFunction buffer_size, int64 alignment);
 
  private:
   explicit BufferAssigner(LogicalBuffer::SizeFunction buffer_size,
-                          int64 alignment, bool colocate_related_buffers)
-      : buffer_size_(std::move(buffer_size)),
-        alignment_(alignment),
-        colocate_related_buffers_(colocate_related_buffers) {}
+                          int64 alignment)
+      : buffer_size_(std::move(buffer_size)), alignment_(alignment) {}
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
@@ -465,7 +452,7 @@ class BufferAssigner {
   // ColocatedBufferSet aggregates a set of related LogicalBuffers from 'module'
   // which should be colocated in the same buffer allocation.
   void BuildColocatedBufferSets(
-      const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
+      const HloModule* module, const BufferLiveness& buffer_liveness,
       std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
   // For each buffer set in 'colocated_buffer_sets', assigns all buffers in the
@@ -482,6 +469,14 @@ class BufferAssigner {
       const std::vector<const LogicalBuffer*>& colocated_set,
       std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
+  // Conceptually the same as AddSetToColocatedBufferSets, but specific to the
+  // colocated buffers for while instructions.
+  void AddWhileSetToColocatedBufferSets(
+      const std::vector<const LogicalBuffer*>& colocated_set,
+      const LogicalBuffer* while_init_buffer, const HloInstruction* while_hlo,
+      const HloComputation& computation, const BufferLiveness& buffer_liveness,
+      std::vector<ColocatedBufferSet>* colocated_buffer_sets);
+
   const HloModule* module_;
 
   // Function which returns the buffer size for a given logical buffer (shape).
@@ -489,9 +484,6 @@ class BufferAssigner {
 
   // Minimum alignment of any buffer.
   int64 alignment_;
-
-  // Indicates whether related buffers should share the same buffer allocation.
-  const bool colocate_related_buffers_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };

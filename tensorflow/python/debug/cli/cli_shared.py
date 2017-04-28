@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 import numpy as np
 import six
 
@@ -31,6 +33,16 @@ RL = debugger_cli_common.RichLine
 # Default threshold number of elements above which ellipses will be used
 # when printing the value of the tensor.
 DEFAULT_NDARRAY_DISPLAY_THRESHOLD = 2000
+
+COLOR_BLACK = "black"
+COLOR_BLUE = "blue"
+COLOR_CYAN = "cyan"
+COLOR_GRAY = "gray"
+COLOR_GREEN = "green"
+COLOR_MAGENTA = "magenta"
+COLOR_RED = "red"
+COLOR_WHITE = "white"
+COLOR_YELLOW = "yellow"
 
 
 def bytes_to_readable_str(num_bytes, include_b=False):
@@ -61,6 +73,14 @@ def bytes_to_readable_str(num_bytes, include_b=False):
   if include_b:
     result += "B"
   return result
+
+
+def time_to_readable_str(value):
+  if not value:
+    return "0"
+  suffixes = ["us", "ms", "s"]
+  order = min(len(suffixes) - 1, int(math.log(value, 10) / 3))
+  return "{:.3g}{}".format(value / math.pow(10.0, 3*order), suffixes[order])
 
 
 def parse_ranges_highlight(ranges_string):
@@ -154,7 +174,7 @@ def error(msg):
   """
 
   return debugger_cli_common.rich_text_lines_from_rich_line_list([
-      RL("ERROR: " + msg, "red")])
+      RL("ERROR: " + msg, COLOR_RED)])
 
 
 def _get_fetch_name(fetch):

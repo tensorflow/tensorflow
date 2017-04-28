@@ -1,0 +1,32 @@
+path: "tensorflow.losses.Reduction"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.losses.losses_impl.Reduction\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "MEAN"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "NONE"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SUM"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SUM_BY_NONZERO_WEIGHTS"
+    mtype: "<type \'str\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "all"
+    argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "validate"
+    argspec: "args=[\'cls\', \'key\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1,10 +1,11 @@
 # TensorFlow external dependencies that can be loaded in WORKSPACE files.
 
+load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles_external")
-load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
-load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
+load("//third_party/py:python_configure.bzl", "python_configure")
 
 
 # Parse the bazel version string from `native.bazel_version`.
@@ -14,20 +15,23 @@ def _parse_bazel_version(bazel_version):
 
   # Split into (release, date) parts and only return the release
   # as a tuple of integers.
-  parts = version.split('-', 1)
+  parts = version.split("-", 1)
 
   # Turn "release" into a tuple of strings
   version_tuple = ()
-  for number in parts[0].split('.'):
+  for number in parts[0].split("."):
     version_tuple += (str(number),)
   return version_tuple
+
 
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
   if "bazel_version" not in dir(native):
-    fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" % bazel_version)
+    fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" %
+         bazel_version)
   elif not native.bazel_version:
-    print("\nCurrent Bazel is not a release version, cannot check for compatibility.")
+    print("\nCurrent Bazel is not a release version, cannot check for " +
+          "compatibility.")
     print("Make sure that you are running at least Bazel %s.\n" % bazel_version)
   else:
     current_bazel_version = _parse_bazel_version(native.bazel_version)
@@ -35,91 +39,103 @@ def check_version(bazel_version):
     if minimum_bazel_version > current_bazel_version:
       fail("\nCurrent Bazel version is {}, expected at least {}\n".format(
           native.bazel_version, bazel_version))
-  pass
+
 
 def _repos_are_siblings():
   return Label("@foo//bar").workspace_root.startswith("../")
 
+
 # Temporary workaround to support including TensorFlow as a submodule until this
 # use-case is supported in the next Bazel release.
 def _temp_workaround_http_archive_impl(repo_ctx):
-   repo_ctx.template("BUILD", repo_ctx.attr.build_file,
-                     {
-                         "%prefix%" : ".." if _repos_are_siblings() else "external",
-                         "%ws%": repo_ctx.attr.repository
-                     }, False)
-   repo_ctx.download_and_extract(repo_ctx.attr.urls, "", repo_ctx.attr.sha256,
-                                 "", repo_ctx.attr.strip_prefix)
-   if repo_ctx.attr.patch_file != None:
-     _apply_patch(repo_ctx, repo_ctx.attr.patch_file)
+  repo_ctx.template("BUILD", repo_ctx.attr.build_file, {
+      "%prefix%": ".." if _repos_are_siblings() else "external",
+      "%ws%": repo_ctx.attr.repository
+  }, False)
+  repo_ctx.download_and_extract(repo_ctx.attr.urls, "", repo_ctx.attr.sha256,
+                                "", repo_ctx.attr.strip_prefix)
+  if repo_ctx.attr.patch_file != None:
+    _apply_patch(repo_ctx, repo_ctx.attr.patch_file)
+
 
 temp_workaround_http_archive = repository_rule(
-   implementation=_temp_workaround_http_archive_impl,
-   attrs = {
-      "build_file": attr.label(),
-      "repository": attr.string(),
-      "patch_file": attr.label(default = None),
-      "urls": attr.string_list(default = []),
-      "sha256": attr.string(default = ""),
-      "strip_prefix": attr.string(default = ""),
-   })
+    implementation = _temp_workaround_http_archive_impl,
+    attrs = {
+        "build_file": attr.label(),
+        "repository": attr.string(),
+        "patch_file": attr.label(default = None),
+        "urls": attr.string_list(default = []),
+        "sha256": attr.string(default = ""),
+        "strip_prefix": attr.string(default = ""),
+    },
+)
 
-# Executes specified command with arguments and calls 'fail' if it exited with non-zero code
+
+# Executes specified command with arguments and calls 'fail' if it exited with
+# non-zero code
 def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
   result = repo_ctx.execute(cmd_and_args)
   if result.return_code != 0:
-    fail(("Non-zero return code({1}) when executing '{0}':\n" +
-          "Stdout: {2}\n" +
-          "Stderr: {3}").format(" ".join(cmd_and_args),
-                                result.return_code, result.stdout, result.stderr))
+    fail(("Non-zero return code({1}) when executing '{0}':\n" + "Stdout: {2}\n"
+          + "Stderr: {3}").format(" ".join(cmd_and_args), result.return_code,
+                                  result.stdout, result.stderr))
+
 
 # Apply a patch_file to the repository root directory
 # Runs 'patch -p1'
 def _apply_patch(repo_ctx, patch_file):
-  _execute_and_check_ret_code(repo_ctx, ["patch", "-p1",
-                                         "-d", repo_ctx.path("."),
-                                         "-i", repo_ctx.path(patch_file)])
+  _execute_and_check_ret_code(repo_ctx, [
+      "patch", "-p1", "-d", repo_ctx.path("."), "-i", repo_ctx.path(patch_file)
+  ])
+
 
 # Download the repository and apply a patch to its root
 def _patched_http_archive_impl(repo_ctx):
-  repo_ctx.download_and_extract(repo_ctx.attr.urls,
-                                sha256 = repo_ctx.attr.sha256,
-                                stripPrefix = repo_ctx.attr.strip_prefix)
+  repo_ctx.download_and_extract(
+      repo_ctx.attr.urls,
+      sha256=repo_ctx.attr.sha256,
+      stripPrefix=repo_ctx.attr.strip_prefix)
   _apply_patch(repo_ctx, repo_ctx.attr.patch_file)
+
 
 patched_http_archive = repository_rule(
     implementation = _patched_http_archive_impl,
     attrs = {
-      "patch_file": attr.label(),
-      "build_file": attr.label(),
-      "repository": attr.string(),
-      "urls": attr.string_list(default = []),
-      "sha256": attr.string(default = ""),
-      "strip_prefix": attr.string(default = ""),
-    })
+        "patch_file": attr.label(),
+        "build_file": attr.label(),
+        "repository": attr.string(),
+        "urls": attr.string_list(default = []),
+        "sha256": attr.string(default = ""),
+        "strip_prefix": attr.string(default = ""),
+    },
+)
+
 
 # If TensorFlow is linked as a submodule.
 # path_prefix and tf_repo_name are no longer used.
-def tf_workspace(path_prefix = "", tf_repo_name = ""):
+def tf_workspace(path_prefix="", tf_repo_name=""):
   # We must check the bazel version before trying to parse any other BUILD
   # files, in case the parsing of those build files depends on the bazel
   # version we require here.
   check_version("0.4.5")
-  cuda_configure(name = "local_config_cuda")
-  sycl_configure(name = "local_config_sycl")
+  cuda_configure(name="local_config_cuda")
+  sycl_configure(name="local_config_sycl")
+  python_configure(name="local_config_python")
   if path_prefix:
-    print("path_prefix was specified to tf_workspace but is no longer used and will be removed in the future.")
+    print("path_prefix was specified to tf_workspace but is no longer used " +
+          "and will be removed in the future.")
   if tf_repo_name:
-    print("tf_repo_name was specified to tf_workspace but is no longer used and will be removed in the future.")
+    print("tf_repo_name was specified to tf_workspace but is no longer used " +
+          "and will be removed in the future.")
 
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/deff8b280204.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/deff8b280204.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/f3a22f35b044.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/f3a22f35b044.tar.gz",
       ],
-      sha256 = "a39834683eb5bdb9a7434f0ab3621d2cbc3b07e8002db6de101e45ec536723eb",
-      strip_prefix = "eigen-eigen-deff8b280204",
+      sha256 = "ca7beac153d4059c02c8fc59816c82d54ea47fe58365e8aded4082ded0b820c4",
+      strip_prefix = "eigen-eigen-f3a22f35b044",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -268,11 +284,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.new_http_archive(
       name = "org_html5lib",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/html5lib/html5lib-python/archive/1.0b8.tar.gz",
-          "https://github.com/html5lib/html5lib-python/archive/1.0b8.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/html5lib/html5lib-python/archive/0.9999999.tar.gz",
+          "https://github.com/html5lib/html5lib-python/archive/0.9999999.tar.gz",  # identical to 1.0b8
       ],
-      sha256 = "adb36c879264e8880b92589c4c4fe0814cd9d157b73328b14d728f48a6bab0a4",
-      strip_prefix = "html5lib-python-1.0b8",
+      sha256 = "184257f98539159a433e2a2197309657ae1283b4c44dbd9c87b2f02ff36adce8",
+      strip_prefix = "html5lib-python-0.9999999",
       build_file = str(Label("//third_party:html5lib.BUILD")),
   )
 
@@ -362,10 +378,14 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@gmock_archive//:gtest_main",
   )
 
-  native.git_repository(
-    name   = "com_github_gflags_gflags",
-    commit = "f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
-    remote = "https://github.com/gflags/gflags.git",
+  native.http_archive(
+      name = "com_github_gflags_gflags",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/gflags/gflags/archive/f8a0efe03aa69b3336d8e228b37d4ccb17324b88.tar.gz",
+          "https://github.com/gflags/gflags/archive/f8a0efe03aa69b3336d8e228b37d4ccb17324b88.tar.gz",
+      ],
+      sha256 = "4d222fab8f1ede4709cdff417d15a1336f862d7334a81abf76d09c15ecf9acd1",
+      strip_prefix = "gflags-f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
   )
 
   native.bind(
@@ -459,11 +479,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/5d2b26453d4bca5a13b69b0130e4369d1fcd393d.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/5d2b26453d4bca5a13b69b0130e4369d1fcd393d.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/8a1f075c93565dd665a10ac38490f644b2c02037.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/8a1f075c93565dd665a10ac38490f644b2c02037.tar.gz",
       ],
-      sha256 = "3cecf39bf4b3854629d610bb321bb57e0e46bda9110bd51c3bae5a4171c82bab",
-      strip_prefix = "llvm-5d2b26453d4bca5a13b69b0130e4369d1fcd393d",
+      sha256 = "d9ebd0b49544f3b20ee2a412aac18ed8899b8eef376343a6ba8e179563cbfd86",
+      strip_prefix = "llvm-8a1f075c93565dd665a10ac38490f644b2c02037",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
@@ -526,6 +546,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       actual = "@zlib_archive//:zlib",
   )
 
+  native.new_http_archive(
+      name = "fft2d",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/www.kurims.kyoto-u.ac.jp/~ooura/fft.tgz",
+          "http://www.kurims.kyoto-u.ac.jp/~ooura/fft.tgz",
+      ],
+      sha256 = "52bb637c70b971958ec79c9c8752b1df5ff0218a4db4510e60826e0cb79b5296",
+      build_file = str(Label("//third_party/fft2d:fft2d.BUILD")),
+  )
+
   temp_workaround_http_archive(
       name = "snappy",
       urls = [
@@ -541,14 +571,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   temp_workaround_http_archive(
       name = "nccl_archive",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
-          "https://github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/nvidia/nccl/archive/ccfc4567dc3e2a37fb42cfbc64d10eb526e7da7b.tar.gz",
+          "https://github.com/nvidia/nccl/archive/ccfc4567dc3e2a37fb42cfbc64d10eb526e7da7b.tar.gz",
       ],
-      sha256 = "6787f0eed88d52ee8e32956fa4947d92c139da469f1d8e311c307f27d641118e",
-      strip_prefix = "nccl-024d1e267845f2ed06f3e2e42476d50f04a00ee6",
-      build_file = str(Label("//third_party/nccl:nccl.BUILD")),
-      # TODO: Remove patching after the fix is merged into nccl(see https://github.com/NVIDIA/nccl/pull/78)
-      patch_file = str(Label("//third_party/nccl:fix_clang_compilation.patch")),
+      sha256 = "6c34a0862d9f8ed4ad5984c6a8206b351957bb14cf6ad7822720f285f4aada04",
+      strip_prefix = "nccl-ccfc4567dc3e2a37fb42cfbc64d10eb526e7da7b",
+      build_file = str(Label("//third_party:nccl.BUILD")),
       repository = tf_repo_name,
   )
 
@@ -640,13 +668,13 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       name = "com_microsoft_typescript",
       licenses = ["notice"],  # Apache 2.0
       sha256_urls = {
-          "e3d9e320a2cae99be4aaa37953961a48323cdf16ba9aa2557a44d69571cd9b8d": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/tsc.js",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/tsc.js",
+          "43a7c763fe024d5add8d5365e5a7981f4a359ba5bf86481f545a0db8f60d48cc": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/tsc.js",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/tsc.js",
           ],
-          "f189cebe96eb76b238c6e364e72d4b0324e699f83eeae5deac23506cb3764fc6": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/lib.es6.d.ts",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.1.6/lib/lib.es6.d.ts",
+          "aecec1e47a3b3d872e214cb9adb82b30d6bd0471ea0aad7311ad81428566627c": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/lib.es6.d.ts",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/lib.es6.d.ts",
           ],
       },
       extra_build_file_content = "\n".join([
@@ -788,6 +816,14 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
           "695a03dd2ccb238161d97160b239ab841562710e5c4e42886aefd4ace2ce152e": [
               "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/mocha/mocha.d.ts",
               "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/mocha/mocha.d.ts",
+          ],
+          "44eba36339bd1c0792072b7b204ee926fe5ffe1e9e2da916e67ac55548e3668a": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/a872802c0c84ba98ff207d5e673a1fa867c67fd6/polymer/polymer.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/a872802c0c84ba98ff207d5e673a1fa867c67fd6/polymer/polymer.d.ts",
+          ],
+          "691756a6eb455f340c9e834de0d49fff269e7b8c1799c2454465dcd6a4435b80": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/46719185c564694c5583c4b7ad94dbb786ecad46/webcomponents.js/webcomponents.js.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/46719185c564694c5583c4b7ad94dbb786ecad46/webcomponents.js/webcomponents.js.d.ts",
           ],
       },
   )
@@ -1835,10 +1871,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       strip_prefix = "paper-spinner-1.1.1",
       path = "/paper-spinner",
       srcs = [
-          "paper-spinner.html",
-          "paper-spinner-behavior.html",
-          "paper-spinner-lite.html",
-          "paper-spinner-styles.html"
+          "paper-spinner.html", "paper-spinner-behavior.html",
+          "paper-spinner-lite.html", "paper-spinner-styles.html"
       ],
       deps = [
           "@org_polymer",
@@ -2043,9 +2077,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
       ],
       path = "/promise-polyfill",
       srcs = [
-          "Promise.js",
-          "Promise-Statics.js",
-          "promise-polyfill.html",
+          "Promise.js", "Promise-Statics.js", "promise-polyfill.html",
           "promise-polyfill-lite.html"
       ],
       deps = ["@org_polymer"],

@@ -182,19 +182,16 @@ class InferenceContext {
     if (!s.ok()) {
       return AttachContext(s);
     }
-#if 0
-    // TODO(cwhipkey): enable this check
 #ifndef NDEBUG
     for (int i = 0; i < num_outputs(); ++i) {
       DCHECK(output(i).IsSet()) << i << " for " << node_def().name()
                                 << " of type " << node_def().op();
     }
 #endif  // NDEBUG
-#endif
     return s;
   }
 
-  ShapeHandle input(int idx) const { return inputs_[idx]; }
+  ShapeHandle input(int64 idx) const { return inputs_[idx]; }
   Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
 
@@ -237,7 +234,7 @@ class InferenceContext {
 
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).
-  DimensionHandle Dim(ShapeHandle s, int32 idx) {
+  DimensionHandle Dim(ShapeHandle s, int64 idx) {
     if (s->rank_ == kUnknownRank) {
       return UnknownDim();
     }
@@ -277,11 +274,11 @@ class InferenceContext {
   // the shape with asserted rank in <*out>. Otherwise return an error.
   //
   // Note that <*out> may be set to <shape>.
-  Status WithRank(ShapeHandle shape, int32 rank,
+  Status WithRank(ShapeHandle shape, int64 rank,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
-  Status WithRankAtLeast(ShapeHandle shape, int32 rank,
+  Status WithRankAtLeast(ShapeHandle shape, int64 rank,
                          ShapeHandle* out) TF_MUST_USE_RESULT;
-  Status WithRankAtMost(ShapeHandle shape, int32 rank,
+  Status WithRankAtMost(ShapeHandle shape, int64 rank,
                         ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // If <dim> has value <value>, or its value is unknown, returns OK and returns
@@ -332,7 +329,7 @@ class InferenceContext {
 
   // Returns in <out> the shape from replacing <s.dim[dim_index]> with
   // <new_dim>.
-  Status ReplaceDim(ShapeHandle s, int dim_index, DimensionHandle new_dim,
+  Status ReplaceDim(ShapeHandle s, int64 dim_index, DimensionHandle new_dim,
                     ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns a new shape with the given dims. The returned value is owned by
@@ -344,7 +341,7 @@ class InferenceContext {
   ShapeHandle UnknownShape();
 
   // Returns a shape with specified rank but unknown dims.
-  ShapeHandle UnknownShapeOfRank(int32 rank);
+  ShapeHandle UnknownShapeOfRank(int64 rank);
 
   // Returns a new shape of zero dimensions.
   ShapeHandle Scalar();

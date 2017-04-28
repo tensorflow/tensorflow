@@ -39,6 +39,30 @@ FETCHES_INFO_FILE_TAG = "fetches_info_"
 FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"
 
 
+class InconvertibleTensorProto(object):
+  """Represents a TensorProto that cannot be converted to np.ndarray."""
+
+  def __init__(self, tensor_proto, initialized=True):
+    """Constructor.
+
+    Args:
+      tensor_proto: the `TensorProto` object that cannot be represented as a
+        `np.ndarray` object.
+      initialized: (`bool`) whether the Tensor is initialized.
+    """
+    self._tensor_proto = tensor_proto
+    self._initialized = initialized
+
+  def __str__(self):
+    output = "" if self._initialized else "Uninitialized tensor:\n"
+    output += str(self._tensor_proto)
+    return output
+
+  @property
+  def initialized(self):
+    return self._initialized
+
+
 def load_tensor_from_event_file(event_file_path):
   """Load a tensor from an event file.
 
@@ -69,26 +93,27 @@ def load_tensor_from_event(event):
         summary.value[0] field.
 
   Returns:
-    The tensor value loaded from the event file, as a `numpy.ndarray`. For
-    uninitialized Tensors, returns `None`. For Tensors of data types that
-    cannot be converted to `numpy.ndarray` (e.g., `tf.resource`), return
-    `None`.
+    The tensor value loaded from the event file, as a `numpy.ndarray`, if
+    representation of the tensor value by a `numpy.ndarray` is possible.
+    For uninitialized Tensors, returns `None`. For Tensors of data types that
+    cannot be represented as `numpy.ndarray` (e.g., `tf.resource`), return
+    the `TensorProto` protobuf object without converting it to a
+    `numpy.ndarray`.
   """
 
-  if (event.summary.value[0].tensor.tensor_content or
-      event.summary.value[0].tensor.string_val):
+  tensor_proto = event.summary.value[0].tensor
+  if tensor_proto.tensor_content or tensor_proto.string_val:
     # Initialized tensor.
-    tensor_proto = event.summary.value[0].tensor
     if tensor_proto.dtype == types_pb2.DT_RESOURCE:
-      return None
+      tensor_value = InconvertibleTensorProto(tensor_proto)
     else:
       try:
         tensor_value = tensor_util.MakeNdarray(tensor_proto)
       except KeyError:
-        tensor_value = None
+        tensor_value = InconvertibleTensorProto(tensor_proto)
   else:
     # Uninitialized tensor or tensor of unconvertible data type.
-    tensor_value = None
+    tensor_value = InconvertibleTensorProto(tensor_proto, False)
 
   return tensor_value
 
@@ -199,7 +224,7 @@ def _get_tensor_watch_key(node_name, output_slot, debug_op):
   return "%s:%s" % (_get_tensor_name(node_name, output_slot), debug_op)
 
 
-def _is_copy_node(node_name):
+def is_copy_node(node_name):
   """Determine whether a node name is that of a debug Copy node.
 
   Such nodes are inserted by TensorFlow core upon request in
@@ -215,7 +240,7 @@ def _is_copy_node(node_name):
   return node_name.startswith("__copy_")
 
 
-def _is_debug_node(node_name):
+def is_debug_node(node_name):
   """Determine whether a node name is that of a debug node.
 
   Such nodes are inserted by TensorFlow core upon request in
@@ -230,7 +255,7 @@ def _is_debug_node(node_name):
   return node_name.startswith("__dbg_")
 
 
-def _parse_debug_node_name(node_name):
+def parse_debug_node_name(node_name):
   """Parse the name of a debug node.
 
   Args:
@@ -290,8 +315,10 @@ def has_inf_or_nan(datum, tensor):
 
   _ = datum  # Datum metadata is unused in this predicate.
 
-  if tensor is None:
+  if isinstance(tensor, InconvertibleTensorProto):
     # Uninitialized tensor doesn't have bad numerical values.
+    # Also return False for data types that cannot be represented as numpy
+    # arrays.
     return False
   elif (np.issubdtype(tensor.dtype, np.float) or
         np.issubdtype(tensor.dtype, np.complex) or
@@ -791,12 +818,12 @@ class DebugDumpDir(object):
       ValueError: If duplicate node names are encountered.
     """
 
-    if _is_debug_node(node.name):
+    if is_debug_node(node.name):
       # This is a debug node. Parse the node name and retrieve the
       # information about debug watches on tensors. But do not include
       # the node in the graph.
       (watched_node_name, watched_output_slot, _,
-       debug_op) = _parse_debug_node_name(node.name)
+       debug_op) = parse_debug_node_name(node.name)
 
       self._debug_watches[watched_node_name][watched_output_slot].add(
           debug_op)
@@ -820,7 +847,7 @@ class DebugDumpDir(object):
     self._node_op_types[node.name] = node.op
 
     for inp in node.input:
-      if _is_copy_node(inp) and node.op == "_Send":
+      if is_copy_node(inp) and (node.op == "_Send" or node.op == "_Retval"):
         self._copy_send_nodes.append(node.name)
 
       if inp.startswith("^"):
@@ -855,14 +882,14 @@ class DebugDumpDir(object):
       if node in self._copy_send_nodes:
         continue
 
-      if _is_copy_node(node):
+      if is_copy_node(node):
         copy_nodes.append(node)
 
       inputs = self._node_inputs[node]
 
       for i in xrange(len(inputs)):
         inp = inputs[i]
-        if _is_copy_node(inp):
+        if is_copy_node(inp):
           # Find the input to the Copy node, which should be the original
           # input to the node.
           orig_inp = self._node_inputs[inp][0]
@@ -878,7 +905,7 @@ class DebugDumpDir(object):
       ctrl_inputs = self._node_ctrl_inputs[node]
       debug_op_inputs = []
       for ctrl_inp in ctrl_inputs:
-        if _is_debug_node(ctrl_inp):
+        if is_debug_node(ctrl_inp):
           debug_op_inputs.append(ctrl_inp)
       for debug_op_inp in debug_op_inputs:
         ctrl_inputs.remove(debug_op_inp)

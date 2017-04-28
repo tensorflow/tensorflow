@@ -23,6 +23,11 @@ See the @{$python/contrib.seq2seq} guide.
 @@BasicDecoderOutput
 @@BasicDecoder
 
+@@BeamSearchDecoderOutput
+@@BeamSearchDecoderState
+@@BeamSearchDecoder
+@@FinalBeamSearchDecoderOutput
+
 @@Helper
 @@CustomHelper
 @@GreedyEmbeddingHelper
@@ -37,6 +42,10 @@ See the @{$python/contrib.seq2seq} guide.
 
 @@AttentionWrapperState
 @@AttentionWrapper
+
+@@gather_tree
+
+@@tile_batch
 """
 
 from __future__ import absolute_import
@@ -46,12 +55,13 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import,line-too-long
 from tensorflow.contrib.seq2seq.python.ops.attention_wrapper import *
 from tensorflow.contrib.seq2seq.python.ops.basic_decoder import *
+from tensorflow.contrib.seq2seq.python.ops.beam_search_decoder import *
+from tensorflow.contrib.seq2seq.python.ops.beam_search_ops import *
 from tensorflow.contrib.seq2seq.python.ops.decoder import *
 from tensorflow.contrib.seq2seq.python.ops.helper import *
 from tensorflow.contrib.seq2seq.python.ops.loss import *
-# pylint: enable=unused-import,widcard-import,line-too-long
-
 from tensorflow.python.util.all_util import remove_undocumented
+# pylint: enable=unused-import,widcard-import,line-too-long
 
 _allowed_symbols = ["sequence_loss"]
 

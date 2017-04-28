@@ -145,7 +145,7 @@ svg.icon {
 .title small {
   font-weight: normal;
 }
-.deviceList {
+.deviceList, .xlaClusterList {
   max-height: 200px;
   overflow-y: auto;
 }
@@ -235,6 +235,12 @@ table.control-holder {
 table.tf-graph-controls td.input-element-table-data {
   padding: 0 0 0 20px;
 }
+
+/** Override inline styles that suppress pointer events for disabled buttons. Otherwise, the */
+/*  tooltips do not appear. */
+#color-by-radio-group paper-radio-button {
+  pointer-events: auto !important;
+}
 </style>
 <svg width="0" height="0">
   <defs>
@@ -317,13 +323,39 @@ table.tf-graph-controls td.input-element-table-data {
   </table>
   <div class="control-holder">
     <div class="title">Color</div>
-    <paper-radio-group selected="{{colorBy}}">
+    <paper-radio-group id="color-by-radio-group" selected="{{colorBy}}">
       <paper-radio-button name="structure">Structure</paper-radio-button>
+
       <paper-radio-button name="device">Device</paper-radio-button>
-      <template is="dom-if" if="[[_statsNotNull(stats)]]">
-        <paper-radio-button name="compute_time">Compute time</paper-radio-button>
-        <paper-radio-button name="memory">Memory</paper-radio-button>
-      </template>
+
+      <paper-radio-button id="xla-cluster-radio-button"
+                          name="xla_cluster"
+                          disabled="[[!_xlaClustersProvided(renderHierarchy)]]">
+        XLA Cluster
+      </paper-radio-button>
+      <paper-tooltip for="xla-cluster-radio-button" position="right">
+        Coloring by XLA cluster is only enabled if at least 1 op specifies an XLA cluster.
+      </paper-tooltip>
+
+      <paper-radio-button id="compute-time-radio-button"
+                          name="compute_time"
+                          disabled="[[!stats]]">
+        Compute time
+      </paper-radio-button>
+      <paper-tooltip for="compute-time-radio-button" position="right">
+        Coloring by compute time is only enabled if the RunMetadata proto is passed to the
+        FileWriter when a specific session is run.
+      </paper-tooltip>
+
+      <paper-radio-button id="memory-radio-button"
+                          name="memory"
+                          disabled="[[!stats]]">
+        Memory
+      </paper-radio-button>
+      <paper-tooltip for="memory-radio-button" position="right">
+        Coloring by memory is only enabled if the RunMetadata proto is passed to the
+        FileWriter when a specific session is run.
+      </paper-tooltip>
     </paper-radio-group>
   </div>
   <div>
@@ -407,6 +439,32 @@ table.tf-graph-controls td.input-element-table-data {
                  xlink:href="#grey-rect" x="0" y="0"/>
           </svg>
           <span class="color-legend-value">unknown device</span>
+        </div>
+      </div>
+    </template>
+    <template is="dom-if" if="[[_equals(colorBy, 'xla_cluster')]]">
+      <div class="color-text">
+        <div class="xlaClusterList">
+          <table>
+          <template is="dom-repeat" items="[[colorByParams.xla_cluster]]">
+            <tr>
+              <td style$="[[_getBackgroundColor(item.color)]]">
+                <div class="colorBox"></div>
+              </td>
+              <td>
+                <div>[[item.xla_cluster]]</div>
+              </td>
+            </tr>
+          </template>
+          </table>
+        </div>
+        <br/>
+        <div class="color-legend-row">
+          <svg>
+            <use xmlns:xlink="http://www.w3.org/1999/xlink"
+                 xlink:href="#grey-rect" x="0" y="0"/>
+          </svg>
+          <span class="color-legend-value">unknown XLA cluster</span>
         </div>
       </div>
     </template>
@@ -620,8 +678,10 @@ Polymer({
     this.renderHierarchy.traceInputs = event.target.active;
     tf.graph.scene.node.traceInputs(this.renderHierarchy);
   },
-  _statsNotNull: function(stats) {
-    return stats != null;
+  _xlaClustersProvided: function(renderHierarchy) {
+    return renderHierarchy &&
+        renderHierarchy.hierarchy &&
+        renderHierarchy.hierarchy.xlaClusters.length > 0;
   },
   _statsChanged: function(stats) {
     if (stats == null) {

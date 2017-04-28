@@ -31,8 +31,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
-from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.platform import test
@@ -145,8 +146,8 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       self.assertAllClose(
           embedding_lookup_result,
           [(embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4,
-           [0] * 4, embedding_weights[0][2],
-           (embedding_weights[0][0] + embedding_weights[0][1]) / 2.0])
+           [0] * 4, embedding_weights[0][2], (
+               embedding_weights[0][0] + embedding_weights[0][1]) / 2.0])
 
   def test_safe_embedding_lookup_sparse_partitioned(self):
     with self.test_session():
@@ -171,8 +172,8 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids)
       embedding_weights = [
-          constant_op.constant(
-              w, dtype=dtypes.float64) for w in embedding_weights
+          constant_op.constant(w, dtype=dtypes.float64)
+          for w in embedding_weights
       ]
       self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids, sparse_weights)
@@ -185,11 +186,10 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
           embedding_weights, sparse_ids, sparse_weights).eval())
 
-      self.assertAllClose(
-          embedding_lookup_result,
-          [[(1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) /
-            3.0, [0] * 4, [0] * 4],
-           [embedding_weights[0][2], [0] * 4, [0] * 4]])
+      self.assertAllClose(embedding_lookup_result, [[
+          (1.0 * embedding_weights[0][0] + 2.0 * embedding_weights[0][1]) / 3.0,
+          [0] * 4, [0] * 4
+      ], [embedding_weights[0][2], [0] * 4, [0] * 4]])
 
   def test_safe_embedding_lookup_sparse_3d_return_special_vector(self):
     with self.test_session():
@@ -215,14 +215,13 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       embedding_lookup_result = (embedding_ops.safe_embedding_lookup_sparse(
           embedding_weights, sparse_ids, None).eval())
 
-      self.assertAllClose(
-          embedding_lookup_result,
-          [[(embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4,
-            [0] * 4], [
-                embedding_weights[0][2],
-                (embedding_weights[0][0] + embedding_weights[0][1]) / 2.0,
-                [0] * 4
-            ]])
+      self.assertAllClose(embedding_lookup_result, [[(
+          embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4, [
+              0
+          ] * 4], [
+              embedding_weights[0][2],
+              (embedding_weights[0][0] + embedding_weights[0][1]) / 2.0, [0] * 4
+          ]])
 
   def test_safe_embedding_lookup_sparse_3d_partitioned(self):
     with self.test_session():
@@ -233,13 +232,12 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
           embedding_weights, sparse_ids, None).eval())
 
       embedding_weights = list(itertools.chain(*embedding_weights))
-      self.assertAllClose(embedding_lookup_result,
-                          [[(embedding_weights[0] + embedding_weights[1]) / 2.0,
-                            [0] * 4, [0] * 4], [
-                                embedding_weights[2],
-                                (embedding_weights[0] + embedding_weights[1]) /
-                                2.0, [0] * 4
-                            ]])
+      self.assertAllClose(embedding_lookup_result, [[
+          (embedding_weights[0] + embedding_weights[1]) / 2.0, [0] * 4, [0] * 4
+      ], [
+          embedding_weights[2],
+          (embedding_weights[0] + embedding_weights[1]) / 2.0, [0] * 4
+      ]])
 
   def test_safe_embedding_lookup_sparse_3d_partitioned_inconsistent_weights(
       self):
@@ -251,8 +249,8 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
       self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids)
       embedding_weights = [
-          constant_op.constant(
-              w, dtype=dtypes.float64) for w in embedding_weights
+          constant_op.constant(w, dtype=dtypes.float64)
+          for w in embedding_weights
       ]
       self.assertRaises(ValueError, embedding_ops.safe_embedding_lookup_sparse,
                         embedding_weights, sparse_ids, sparse_weights)
@@ -301,8 +299,8 @@ class ScatteredEmbeddingLookupTest(test.TestCase):
       self.assertAllEqual(embedding_lookup_result[0],
                           embedding_lookup_result[1])
       # Different embedding expected for different value.
-      embedding_diff = np.min((embedding_lookup_result[2] -
-                               embedding_lookup_result[0])**2)
+      embedding_diff = np.min(
+          (embedding_lookup_result[2] - embedding_lookup_result[0])**2)
       self.assertGreater(embedding_diff, 0)
 
   def test_scattered_embedding_coverage(self):
@@ -320,8 +318,8 @@ class ScatteredEmbeddingLookupTest(test.TestCase):
   def test_scattered_embedding_multi_dimension(self):
     with self.test_session():
       embedding_weights = self._random_weights()
-      values = constant_op.constant(
-          [["foo", "bar", "bar"], ["bar", "bar", "foo"]])
+      values = constant_op.constant([["foo", "bar", "bar"],
+                                     ["bar", "bar", "foo"]])
 
       embedding_lookup_result = embedding_ops.scattered_embedding_lookup(
           embedding_weights, values, dimension=10).eval()
@@ -340,8 +338,8 @@ class ScatteredEmbeddingLookupTest(test.TestCase):
 
       embedding_lookup_result = (
           embedding_ops.scattered_embedding_lookup_sparse(
-              embedding_weights, sparse_tensor, dimension=5, combiner="mean")
-          .eval())
+              embedding_weights, sparse_tensor, dimension=5,
+              combiner="mean").eval())
 
       self.assertAllEqual(embedding_lookup_result.shape, [5, 5])
       # Same non-zero embedding for the empty rows filled with a default value.
@@ -433,8 +431,8 @@ class SampledScatteredEmbeddingLookupTest(test.TestCase):
   def test_hashed_embedding_multi_dimension(self):
     with self.test_session():
       embedding_weights = self._random_weights()
-      values = constant_op.constant(
-          [["foo", "bar", "bar"], ["bar", "bar", "foo"]])
+      values = constant_op.constant([["foo", "bar", "bar"],
+                                     ["bar", "bar", "foo"]])
       sampled_candidates = constant_op.constant(
           [[[1, 3, 4, 6], [1, 7, 8, 9], [1, 7, 8, 9]],
            [[1, 7, 8, 9], [1, 7, 8, 9], [1, 3, 4, 6]]])
@@ -491,8 +489,8 @@ class SampledScatteredEmbeddingLookupSparseTest(test.TestCase):
       result = embedding_ops._sampled_scattered_embedding_lookup_sparse(
           params, sp_values, dimension=5, hash_key=self._hash_key)
 
-      self.assertAllClose(result.eval(), [[0., 0., 0., 0., 0.],
-                                          [.3, .2, .2, .3, .1],
+      self.assertAllClose(result.eval(), [[0., 0., 0., 0.,
+                                           0.], [.3, .2, .2, .3, .1],
                                           [0., 0., 0., 0., 0.]])
 
   def test_output_values_with_sampled_candidates(self):
@@ -631,8 +629,8 @@ def _EmbeddingResult(params,
         else:
           partition = extras + (i - threshold) // ids_per_partition
           offset = (i - threshold) % ids_per_partition
-        val = np.copy(params[_PName(partition) + ":0"][
-            offset, :]) * weight_value
+        val = np.copy(
+            params[_PName(partition) + ":0"][offset, :]) * weight_value
       else:
         assert False
       if value_aggregation is None:
@@ -707,19 +705,19 @@ class EmbeddingLookupSparseWithDistributedAggregationTest(test.TestCase):
     grouped_ignored_weights = self._GroupByBatchEntry(
         np.ones(np.sum(vals_per_batch_entry)), vals_per_batch_entry)
 
-    for num_shards, combiner, dtype, ignore_weights in itertools.product([1, 5],
-        ["sum", "mean", "sqrtn"], [dtypes.float32, dtypes.float64],
-        [True, False]):
+    for num_shards, combiner, dtype, ignore_weights in itertools.product(
+        [1, 5], ["sum", "mean", "sqrtn"], [dtypes.float32,
+                                           dtypes.float64], [True, False]):
 
       with self.test_session():
         p, params, feed_dict = _EmbeddingParams(
             num_shards, vocab_size, shape=param_shape, dtype=dtype)
         embedding_sum = \
             embedding_ops.embedding_lookup_sparse_with_distributed_aggregation(
-            p,
-            sp_ids,
-            None if ignore_weights else sp_weights,
-            combiner=combiner)
+                p,
+                sp_ids,
+                None if ignore_weights else sp_weights,
+                combiner=combiner)
 
         self.assertEqual(embedding_sum.get_shape().as_list(),
                          expected_lookup_result_shape)
@@ -731,8 +729,8 @@ class EmbeddingLookupSparseWithDistributedAggregationTest(test.TestCase):
             grouped_ids,
             num_shards,
             vocab_size,
-            weight_vals=grouped_ignored_weights if ignore_weights else
-            grouped_weights)
+            weight_vals=grouped_ignored_weights
+            if ignore_weights else grouped_weights)
         if combiner == "mean":
           np_embedding_sum /= np.reshape(np_weight_sum, (batch_size, 1, 1))
         if combiner == "sqrtn":
@@ -744,12 +742,12 @@ class EmbeddingLookupSparseWithDistributedAggregationTest(test.TestCase):
     vocab_size = 12
     batch_size = 4
     param_shape = [2, 3]
-    sp_ids, sp_weights, _, _, _ = (
-        self._RandomIdsAndWeights(batch_size, vocab_size))
+    sp_ids, sp_weights, _, _, _ = (self._RandomIdsAndWeights(
+        batch_size, vocab_size))
 
-    for num_shards, combiner, dtype, ignore_weights in itertools.product([1, 3],
-        ["sum", "mean", "sqrtn"], [dtypes.float32, dtypes.float64],
-        [True, False]):
+    for num_shards, combiner, dtype, ignore_weights in itertools.product(
+        [1, 3], ["sum", "mean", "sqrtn"], [dtypes.float32,
+                                           dtypes.float64], [True, False]):
       with self.test_session():
         x, params, _ = _EmbeddingParams(
             num_shards, vocab_size, shape=param_shape, dtype=dtype)

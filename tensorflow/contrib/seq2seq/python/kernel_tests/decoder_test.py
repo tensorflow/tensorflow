@@ -44,7 +44,7 @@ class DynamicDecodeRNNTest(test.TestCase):
     cell_depth = 10
     max_out = max(sequence_length)
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       if time_major:
         inputs = np.random.randn(max_time, batch_size,
                                  input_depth).astype(np.float32)
@@ -60,9 +60,9 @@ class DynamicDecodeRNNTest(test.TestCase):
           initial_state=cell.zero_state(
               dtype=dtypes.float32, batch_size=batch_size))
 
-      final_outputs, final_state = decoder.dynamic_decode(
-          my_decoder, output_time_major=time_major,
-          maximum_iterations=maximum_iterations)
+      final_outputs, final_state, final_sequence_length = (
+          decoder.dynamic_decode(my_decoder, output_time_major=time_major,
+                                 maximum_iterations=maximum_iterations))
 
       def _t(shape):
         if time_major:
@@ -74,6 +74,9 @@ class DynamicDecodeRNNTest(test.TestCase):
       self.assertTrue(isinstance(final_state, core_rnn_cell.LSTMStateTuple))
 
       self.assertEqual(
+          (batch_size,),
+          tuple(final_sequence_length.get_shape().as_list()))
+      self.assertEqual(
           _t((batch_size, None, cell_depth)),
           tuple(final_outputs.rnn_output.get_shape().as_list()))
       self.assertEqual(
@@ -83,7 +86,8 @@ class DynamicDecodeRNNTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       sess_results = sess.run({
           "final_outputs": final_outputs,
-          "final_state": final_state
+          "final_state": final_state,
+          "final_sequence_length": final_sequence_length,
       })
 
       # Mostly a smoke test
@@ -118,7 +122,7 @@ class DynamicDecodeRNNTest(test.TestCase):
     cell_depth = 10
     max_out = max(sequence_length)
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
 
@@ -131,7 +135,7 @@ class DynamicDecodeRNNTest(test.TestCase):
       # Match the variable scope of dynamic_rnn below so we end up
       # using the same variables
       with vs.variable_scope("root") as scope:
-        final_decoder_outputs, final_decoder_state = decoder.dynamic_decode(
+        final_decoder_outputs, final_decoder_state, _ = decoder.dynamic_decode(
             my_decoder,
             # impute_finished=True ensures outputs and final state
             # match those of dynamic_rnn called with sequence_length not None

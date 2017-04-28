@@ -44,7 +44,7 @@ Status GetOpSig(const string& op, const OpDef** sig) {
 void FunctionTestSchedClosure(std::function<void()> fn) {
   static thread::ThreadPool* w =
       new thread::ThreadPool(Env::Default(), "Test", 8);
-  w->Schedule(fn);
+  w->Schedule(std::move(fn));
 }
 
 void HasError(const Status& s, const string& substr) {
@@ -654,7 +654,8 @@ namespace {
 
 bool DoNothing(Graph* g) { return false; }
 
-string Optimize(std::function<bool(Graph* g)> pass, const FunctionDef& fdef) {
+string Optimize(const std::function<bool(Graph* g)>& pass,
+                const FunctionDef& fdef) {
   InstantiationResult result;
   InstantiateAttrValueMap empty;
   TF_CHECK_OK(InstantiateFunction(fdef, empty, GetOpSig, &result));
@@ -700,14 +701,14 @@ TEST(OptimizationTest, RemoveDeadNodes) {
        // y = Add<T>(a, o)
        {{"y"}, "Add", {"a", "o"}, {{"T", T}}}});
   const char* e0 = R"S(
-(n0:int32) -> (n7:int32) {
-  n2 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
-  n6 = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](n2)
-  n3 = Add[T=int32](n2, n2)
-  n1 = Square[T=int32](n0)
-  n7 = Add[T=int32](n1, n2)
-  n4 = Mul[T=int32](n1, n3)
-  n5 = Mul[T=int32](n3, n4)
+(x:int32) -> (y:int32) {
+  o = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
+  keep_me = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](o)
+  x1 = Add[T=int32](o, o)
+  a = Square[T=int32](x)
+  y = Add[T=int32](a, o)
+  x2 = Mul[T=int32](a, x1)
+  x3 = Mul[T=int32](x1, x2)
 }
 )S";
   EXPECT_EQ(Optimize(DoNothing, func), e0);
@@ -735,19 +736,19 @@ TEST(OptimizationTest, RemoveIdentityNodes_Ref) {
        // returns v + v
        {{"ret"}, "Add", {"v_read", "v_read"}, {{"T", T}}}});
   const char* e0 = R"S(
-() -> (n2:float) {
-  n0 = VariableV2[container="", dtype=float, shape=[], shared_name=""]()
-  n1 = Identity[T=float](n0)
-  n2 = Add[T=float](n1, n1)
+() -> (ret:float) {
+  v = VariableV2[container="", dtype=float, shape=[], shared_name=""]()
+  v_read = Identity[T=float](v)
+  ret = Add[T=float](v_read, v_read)
 }
 )S";
   EXPECT_EQ(Optimize(DoNothing, func), e0);
 
   const char* e1 = R"S(
-() -> (n2:float) {
-  n0 = VariableV2[container="", dtype=float, shape=[], shared_name=""]()
-  n1 = Identity[T=float](n0)
-  n2 = Add[T=float](n1, n1)
+() -> (ret:float) {
+  v = VariableV2[container="", dtype=float, shape=[], shared_name=""]()
+  v_read = Identity[T=float](v)
+  ret = Add[T=float](v_read, v_read)
 }
 )S";
   EXPECT_EQ(Optimize(::tensorflow::RemoveIdentityNodes, func), e1);
@@ -782,24 +783,24 @@ TEST(OptimizationTest, RemoveIdentityNodes) {
        // y = Add<T>(a, o)
        {{"y"}, "Add", {"a", "o"}, {{"T", T}}}});
   const char* e0 = R"S(
-(n0:int32) -> (n7:int32) {
-  n2 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
-  n1 = Square[T=int32](n0)
-  n7 = Add[T=int32](n1, n2)
-  n3 = Identity[T=int32](n1)
-  n4 = Identity[T=int32](n3)
-  n5 = Identity[T=int32](n4)
-  n6 = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](n2) @ n5
+(x:int32) -> (y:int32) {
+  o = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
+  a = Square[T=int32](x)
+  y = Add[T=int32](a, o)
+  x1 = Identity[T=int32](a)
+  x2 = Identity[T=int32](x1)
+  x3 = Identity[T=int32](x2)
+  keep_me = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](o) @ x3
 }
 )S";
   EXPECT_EQ(Optimize(DoNothing, func), e0);
 
   const char* e1 = R"S(
-(n0:int32) -> (n7:int32) {
-  n2 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
-  n1 = Square[T=int32](n0)
-  n7 = Add[T=int32](n1, n2)
-  n6 = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](n2) @ n1
+(x:int32) -> (y:int32) {
+  o = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
+  a = Square[T=int32](x)
+  y = Add[T=int32](a, o)
+  keep_me = RandomUniform[T=int32, dtype=float, seed2=0, seed=0](o) @ a
 }
 )S";
   EXPECT_EQ(Optimize(::tensorflow::RemoveIdentityNodes, func), e1);
@@ -840,42 +841,42 @@ TEST(OptimizationTest, RemoveListArrayConverter) {
       {{"o", "o:sum"}});
 
   const char* e0 = R"P(
-(n0:float) -> (n7:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n2 = Split[T=float, num_split=4](n1, n0)
-  n3 = _ArrayToList[N=4, T=float, out_types={float, float, float, float}](n2, n2:1, n2:2, n2:3)
-  n5 = Mul[T=float](n3:2, n3:3)
-  n4 = Mul[T=float](n3, n3:1)
-  n6 = _ListToArray[N=2, T=float, Tin={float, float}](n4, n5)
-  n7 = AddN[N=2, T=float](n6, n6:1)
+(i:float) -> (o:float) {
+  zero = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  s = Split[T=float, num_split=4](zero, i)
+  a = _ArrayToList[N=4, T=float, out_types={float, float, float, float}](s, s:1, s:2, s:3)
+  r = Mul[T=float](a:2, a:3)
+  l = Mul[T=float](a, a:1)
+  x = _ListToArray[N=2, T=float, Tin={float, float}](l, r)
+  o = AddN[N=2, T=float](x, x:1)
 }
 )P";
   EXPECT_EQ(Optimize(DoNothing, func), e0);
 
   const char* e1 = R"P(
-(n0:float) -> (n7:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n2 = Split[T=float, num_split=4](n1, n0)
-  n5 = Mul[T=float](Func/_2, Func/_3)
-  n4 = Mul[T=float](Func/_0, Func/_1)
-  n7 = AddN[N=2, T=float](Func/_4, Func/_5)
-  Func/_0 = Identity[T=float](n2)
-  Func/_1 = Identity[T=float](n2:1)
-  Func/_2 = Identity[T=float](n2:2)
-  Func/_3 = Identity[T=float](n2:3)
-  Func/_4 = Identity[T=float](n4)
-  Func/_5 = Identity[T=float](n5)
+(i:float) -> (o:float) {
+  zero = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  s = Split[T=float, num_split=4](zero, i)
+  r = Mul[T=float](Func/_2, Func/_3)
+  l = Mul[T=float](Func/_0, Func/_1)
+  o = AddN[N=2, T=float](Func/_4, Func/_5)
+  Func/_0 = Identity[T=float](s)
+  Func/_1 = Identity[T=float](s:1)
+  Func/_2 = Identity[T=float](s:2)
+  Func/_3 = Identity[T=float](s:3)
+  Func/_4 = Identity[T=float](l)
+  Func/_5 = Identity[T=float](r)
 }
 )P";
   EXPECT_EQ(Optimize(RemoveListArrayConverter, func), e1);
 
   const char* e2 = R"P(
-(n0:float) -> (n7:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n2 = Split[T=float, num_split=4](n1, n0)
-  n5 = Mul[T=float](n2:2, n2:3)
-  n4 = Mul[T=float](n2, n2:1)
-  n7 = AddN[N=2, T=float](n4, n5)
+(i:float) -> (o:float) {
+  zero = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  s = Split[T=float, num_split=4](zero, i)
+  r = Mul[T=float](s:2, s:3)
+  l = Mul[T=float](s, s:1)
+  o = AddN[N=2, T=float](l, r)
 }
 )P";
   auto remove_listarray_and_identity = [](Graph* g) {
@@ -911,21 +912,21 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
       {{"o", "o:sum"}});
 
   const char* e0 = R"P(
-(n0:float) -> (n3:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n2 = _ListToArray[N=2, T=float, Tin={float, float}](n0, n0) @ n1
-  n3 = AddN[N=2, T=float](n2, n2:1) @ n2
+(i:float) -> (o:float) {
+  dummy = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  x = _ListToArray[N=2, T=float, Tin={float, float}](i, i) @ dummy
+  o = AddN[N=2, T=float](x, x:1) @ x
 }
 )P";
   EXPECT_EQ(Optimize(DoNothing, func), e0);
 
   const char* e1 = R"P(
-(n0:float) -> (n3:float) {
-  n1 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
-  n3 = AddN[N=2, T=float](Func/_0, Func/_1) @ Func/_3
-  Func/_0 = Identity[T=float](n0) @ Func/_2
-  Func/_1 = Identity[T=float](n0) @ Func/_2
-  Func/_2 = NoOp() @ n1
+(i:float) -> (o:float) {
+  dummy = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
+  o = AddN[N=2, T=float](Func/_0, Func/_1) @ Func/_3
+  Func/_0 = Identity[T=float](i) @ Func/_2
+  Func/_1 = Identity[T=float](i) @ Func/_2
+  Func/_2 = NoOp() @ dummy
   Func/_3 = NoOp() @ Func/_0, Func/_1
 }
 )P";

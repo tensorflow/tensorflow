@@ -35,13 +35,32 @@ class CopyOp : public OpKernel {
  public:
   explicit CopyOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
+
+    std::vector<string> debug_ops_spec;
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("debug_ops_spec", &debug_ops_spec));
+    for (const string& debug_op_spec : debug_ops_spec) {
+      // Assume debug_op_spec has the format
+      // <debug_op>;<debug_url>;<gated_grpc>, e.g.,
+      // DebugIdentity;grpc://localhost:3333;1
+      const std::vector<string> items = str_util::Split(debug_op_spec, ";");
+      OP_REQUIRES(
+          context, items.size() == 3,
+          errors::Internal(
+              "Unexpected number of semicolons in debug_ops_spec element: ",
+              debug_op_spec));
+      debug_op_and_url_specs_.push_back(
+          DebugWatchAndURLSpec(strings::StrCat(tensor_name_, ":", items[0]),
+                               items[1], items[2] == "1"));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& src_tensor = context->input(0);
 
     if (src_tensor.IsInitialized() &&
-        DataTypeCanUseMemcpy(src_tensor.dtype())) {
+        DataTypeCanUseMemcpy(src_tensor.dtype()) &&
+        DebugIO::IsCopyNodeGateOpen(debug_op_and_url_specs_)) {
       // Source tensor is initialized and is mem-copyable. Make a copy.
       Tensor* copied_tensor;
       OP_REQUIRES_OK(context, context->allocate_output(0, src_tensor.shape(),
@@ -79,48 +98,101 @@ class CopyOp : public OpKernel {
 
  private:
   string tensor_name_;
+  std::vector<DebugWatchAndURLSpec> debug_op_and_url_specs_;
+};
+
+// Base class of all debug ops.
+class BaseDebugOp : public OpKernel {
+ public:
+  explicit BaseDebugOp(const string& debug_op_name,
+                       OpKernelConstruction* context)
+      : OpKernel(context), debug_op_name_(debug_op_name) {
+    OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
+    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
+    OP_REQUIRES_OK(context, context->GetAttr("gated_grpc", &gated_grpc_));
+    watch_key_ = strings::StrCat(tensor_name_, ":", debug_op_name_);
+  }
+
+  bool IsExpensive() override { return false; }
+
+ protected:
+  // Apply gRPC gating (if gated_grpc_ attribute is true).
+  //
+  // Returns false if and only if all grpc:// debug URLs of the debug op are
+  // disabled currently (i.e., gated off), in which case the debug op will emit
+  // an empty (size {0}) tensor of undefined data type.
+  bool ApplyGrpcGating(OpKernelContext* context) {
+    if (gated_grpc_ && !DebugIO::IsDebugNodeGateOpen(watch_key_, debug_urls_)) {
+      // The entire node is gated off: Output an empty tensor and avoid
+      // expensive computation.
+      Tensor* output_tensor;
+      TensorShape shape({0});
+      if (!context->allocate_output(0, shape, &output_tensor).ok()) {
+        LOG(ERROR) << "Debug node of watch key " << watch_key_
+                   << "failed to allocate empty tensor under gated-off state.";
+      }
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+  // Publish a tensor to all debug URLs of the debug op.
+  // Log an error if the publishing failed.
+  void PublishTensor(const Tensor& tensor) {
+    if (!debug_urls_.empty()) {
+      Status status = DebugIO::PublishDebugTensor(
+          tensor_name_, debug_op_name_, tensor, Env::Default()->NowMicros(),
+          debug_urls_, gated_grpc_);
+      if (!status.ok()) {
+        LOG(ERROR) << "Debug node of watch key " << watch_key_
+                   << "failed to publish debug tensor data to all URLs "
+                   << str_util::Join(debug_urls_, ", ")
+                   << ", due to: " << status.error_message();
+      }
+    }
+  }
+
+ private:
+  string debug_op_name_;
+  string tensor_name_;
+  string watch_key_;
+  std::vector<string> debug_urls_;
+  bool gated_grpc_;
 };
 
 // Identity op for debugging.
 //   Output slot 0 carries the debug signal and is always allocated on the
 //   host (CPU) as a non-Ref tensor. In the case of DebugIdentityOp,
 //   the debug signal is equal to the input tensor.
-class DebugIdentityOp : public OpKernel {
+class DebugIdentityOp : public BaseDebugOp {
  public:
-  explicit DebugIdentityOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
-    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
-  }
+  explicit DebugIdentityOp(OpKernelConstruction* context)
+      : BaseDebugOp("DebugIdentity", context) {}
 
   void Compute(OpKernelContext* context) override {
-    if (!debug_urls_.empty()) {
-      // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-      DebugIO::PublishDebugTensor(tensor_name_, "DebugIdentity",
-                                  context->input(0),
-                                  Env::Default()->NowMicros(), debug_urls_)
-          .IgnoreError();
+    if (!ApplyGrpcGating(context)) {
+      return;
     }
 
+    PublishTensor(context->input(0));
     context->set_output(0, context->input(0));
   }
-
-  bool IsExpensive() override { return false; }
-
- private:
-  string tensor_name_;
-  std::vector<string> debug_urls_;
 };
 
 // NaN-counter op for debugging.
 template <typename T>
-class DebugNanCountOp : public OpKernel {
+class DebugNanCountOp : public BaseDebugOp {
  public:
-  explicit DebugNanCountOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
-    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
-  }
+  explicit DebugNanCountOp(OpKernelConstruction* context)
+      : BaseDebugOp("DebugNanCount", context) {}
 
   void Compute(OpKernelContext* context) override {
+    if (!ApplyGrpcGating(context)) {
+      return;
+    }
+
+    Tensor* output_tensor;
     const Tensor& input = context->input(0);
 
     // Use DT_INT64/int64 to be consistent with TensorShape::num_elements().
@@ -140,34 +212,18 @@ class DebugNanCountOp : public OpKernel {
     }
 
     TensorShape shape({1});
-
-    Tensor* output_tensor;
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
     output_tensor->vec<int64>()(0) = nan_count;
-
-    if (!debug_urls_.empty()) {
-      // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-      DebugIO::PublishDebugTensor(tensor_name_, "DebugNanCount", *output_tensor,
-                                  Env::Default()->NowMicros(), debug_urls_)
-          .IgnoreError();
-    }
+    PublishTensor(*output_tensor);
   }
-
-  bool IsExpensive() override { return false; }
-
- private:
-  string tensor_name_;
-  std::vector<string> debug_urls_;
 };
 
 // Numeric summary op for debugging.
 template <typename T>
-class DebugNumericSummaryOp : public OpKernel {
+class DebugNumericSummaryOp : public BaseDebugOp {
  public:
   explicit DebugNumericSummaryOp(OpKernelConstruction* context)
-      : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
-    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
+      : BaseDebugOp("DebugNumericSummary", context) {
     OP_REQUIRES_OK(context, context->GetAttr("lower_bound", &lower_bound_));
     OP_REQUIRES_OK(context, context->GetAttr("upper_bound", &upper_bound_));
     OP_REQUIRES_OK(context,
@@ -175,6 +231,11 @@ class DebugNumericSummaryOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    if (!ApplyGrpcGating(context)) {
+      return;
+    }
+
+    Tensor* output_tensor;
     const Tensor& input = context->input(0);
 
     int64 is_initialized = 0;
@@ -254,8 +315,6 @@ class DebugNumericSummaryOp : public OpKernel {
     }
 
     TensorShape shape({12});
-
-    Tensor* output_tensor;
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
     output_tensor->vec<double>()(0) = static_cast<double>(is_initialized);
     output_tensor->vec<double>()(1) = static_cast<double>(element_count);
@@ -272,20 +331,12 @@ class DebugNumericSummaryOp : public OpKernel {
 
     bool mute = mute_if_healthy_ && nan_count == 0 && negative_inf_count == 0 &&
                 positive_inf_count == 0;
-    if (!mute && !debug_urls_.empty()) {
-      // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-      DebugIO::PublishDebugTensor(tensor_name_, "DebugNumericSummary",
-                                  *output_tensor, Env::Default()->NowMicros(),
-                                  debug_urls_)
-          .IgnoreError();
+    if (!mute) {
+      PublishTensor(*output_tensor);
     }
   }
 
-  bool IsExpensive() override { return false; }
-
  private:
-  string tensor_name_;
-  std::vector<string> debug_urls_;
   float lower_bound_;
   float upper_bound_;
   bool mute_if_healthy_;

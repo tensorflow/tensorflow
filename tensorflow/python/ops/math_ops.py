@@ -56,6 +56,7 @@ See the @{$python/math_ops} guide.
 @@acos
 @@asin
 @@atan
+@@atan2
 @@lgamma
 @@digamma
 @@erf
@@ -151,6 +152,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gen_state_ops
@@ -817,7 +819,16 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
       if not isinstance(y, sparse_tensor.SparseTensor):
-        y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+        try:
+          y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+        except TypeError:
+          # If the RHS is not a tensor, it might be a tensor aware object
+          # that can implement the operator with knowledge of itself
+          # and the tensor.
+          if hasattr(type(y), "__r%s__" % op_name):
+            return NotImplemented
+          else:
+            raise
       return func(x, y, name=name)
 
   def binary_op_wrapper_sparse(sp_x, y):
@@ -2004,6 +2015,24 @@ def sigmoid(x, name=None):
     return gen_math_ops._sigmoid(x, name=name)
 
 
+def log_sigmoid(x, name=None):
+  """Computes log sigmoid of `x` element-wise.
+
+  Specifically, `y = log(1 / (1 + exp(-x)))`.  For numerical stability,
+  we use `y = -tf.nn.softplus(-x)`.
+
+  Args:
+    x: A Tensor with type `float32` or `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x`.
+  """
+  with ops.name_scope(name, "LogSigmoid", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._neg(gen_nn_ops.softplus(-x), name=name)
+
+
 def tanh(x, name=None):
   """Computes hyperbolic tangent of `x` element-wise.
 
@@ -2026,9 +2055,9 @@ def tanh(x, name=None):
 
 
 def bincount(arr,
+             weights=None,
              minlength=None,
              maxlength=None,
-             weights=None,
              dtype=dtypes.int32):
   """Counts the number of occurrences of each value in an integer array.
 
@@ -2040,13 +2069,13 @@ def bincount(arr,
 
   Args:
     arr: An int32 tensor of non-negative values.
+    weights: If non-None, must be the same shape as arr. For each value in
+        `arr`, the bin will be incremented by the corresponding weight instead
+        of 1.
     minlength: If given, ensures the output has length at least `minlength`,
         padding with zeros at the end if necessary.
     maxlength: If given, skips values in `arr` that are equal or greater than
         `maxlength`, ensuring that the output has length at most `maxlength`.
-    weights: If non-None, must be the same shape as arr. For each value in
-        `arr`, the bin will be incremented by the corresponding weight instead
-        of 1.
     dtype: If `weights` is None, determines the type of the output bins.
 
   Returns:

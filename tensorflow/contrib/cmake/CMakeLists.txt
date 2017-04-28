@@ -29,6 +29,7 @@ option(tensorflow_BUILD_ALL_KERNELS "Build all OpKernels" ON)
 option(tensorflow_BUILD_CONTRIB_KERNELS "Build OpKernels from tensorflow/contrib/..." ON)
 option(tensorflow_BUILD_CC_TESTS "Build cc unit tests " OFF)
 option(tensorflow_BUILD_PYTHON_TESTS "Build python unit tests " OFF)
+option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 
@@ -108,6 +109,7 @@ include(eigen)
 include(gemmlowp)
 include(jsoncpp)
 include(farmhash)
+include(fft2d)
 include(highwayhash)
 include(protobuf)
 if (tensorflow_BUILD_CC_TESTS)
@@ -121,6 +123,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${jpeg_STATIC_LIBRARIES}
     ${jsoncpp_STATIC_LIBRARIES}
     ${farmhash_STATIC_LIBRARIES}
+    ${fft2d_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
 )
@@ -135,6 +138,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     protobuf
     eigen
     gemmlowp
+    fft2d
 )
 
 include_directories(
@@ -195,7 +199,7 @@ if (tensorflow_ENABLE_GPU)
     # add cudnn
     include_directories(${CUDNN_HOME})
     set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_CUFFT_LIBRARIES}
-      ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
+      ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDA_cusolver_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
 
     # create cuda_config.h
     FILE(WRITE ${tensorflow_source_dir}/third_party/gpus/cuda/cuda_config.h
@@ -216,6 +220,7 @@ if (tensorflow_ENABLE_GPU)
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h ${CUDNN_HOME}/include/cudnn.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
+      ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
       DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
     )
     include_directories(${tensorflow_source_dir}/third_party/gpus)
@@ -241,7 +246,9 @@ include(tf_core_kernels.cmake)
 if(tensorflow_ENABLE_GRPC_SUPPORT)
   include(tf_core_distributed_runtime.cmake)
 endif()
+# We include tf_cc_ops first, because tf_c depends on tf_cc.
 include(tf_cc_ops.cmake)
+include(tf_c.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)
@@ -251,6 +258,9 @@ if(tensorflow_BUILD_PYTHON_BINDINGS)
   include(tensorboard)
   include(tf_python.cmake)
 endif()
-if (tensorflow_BUILD_CC_TESTS OR tensorflow_BUILD_PYTHON_TESTS)
+if(tensorflow_BUILD_SHARED_LIB)
+  include(tf_shared_lib.cmake)
+endif()
+if(tensorflow_BUILD_CC_TESTS OR tensorflow_BUILD_PYTHON_TESTS)
   include(tf_tests.cmake)
 endif()

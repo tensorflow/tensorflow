@@ -46,6 +46,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -155,6 +156,18 @@ class SaverTest(test.TestCase):
 
   def testResourceBasic(self):
     self.basicSaveRestore(resource_variable_ops.ResourceVariable)
+
+  def testResourceSaveRestoreCachingDevice(self):
+    save_path = os.path.join(self.get_temp_dir(), "resource_cache")
+    v = resource_variable_ops.ResourceVariable([1], caching_device="/cpu:0")
+    with self.test_session() as sess:
+      variables.global_variables_initializer().run()
+      save = saver_module.Saver()
+      save.save(sess, save_path)
+    with self.test_session() as sess:
+      save2 = saver_module.Saver()
+      save2.restore(sess, save_path)
+      self.assertEquals(v.eval(), [1])
 
   def testSaveCopyRestoreWithSaveRelativePaths(self):
     """Save, copy checkpoint dir and restore from copied dir.
@@ -1470,7 +1483,9 @@ class MetaGraphTest(test.TestCase):
       # Generates a new MetaGraphDef.
       new_meta_graph_def = new_saver.export_meta_graph()
       # It should be the same as the original.
-      self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
+
+    test_util.assert_meta_graph_protos_equal(
+        self, meta_graph_def, new_meta_graph_def)
 
   def testAddCollectionDefFails(self):
     with self.test_session():
@@ -1785,11 +1800,9 @@ class MetaGraphTest(test.TestCase):
     # Test that we can import a meta graph into a namescope.
     test_dir = self._get_test_dir("import_into_namescope")
     filename = os.path.join(test_dir, "ckpt")
-    image = array_ops.placeholder(dtypes.float32, [None, 784])
-    label = array_ops.placeholder(dtypes.float32, [None, 10])
+    image = array_ops.placeholder(dtypes.float32, [None, 784], name="image")
+    label = array_ops.placeholder(dtypes.float32, [None, 10], name="label")
     with session.Session() as sess:
-      label = array_ops.identity(label, name="label")
-      image = array_ops.identity(image, name="image")
       weights = variables.Variable(
           random_ops.random_uniform([784, 10]), name="weights")
       bias = variables.Variable(array_ops.zeros([10]), name="bias")

@@ -19,7 +19,6 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -33,7 +32,15 @@ using shape_inference::ShapeHandle;
 
 ShapeRefiner::ShapeRefiner(int graph_def_version,
                            const OpRegistryInterface* ops)
-    : graph_def_version_(graph_def_version), ops_registry_(ops) {}
+    : graph_def_version_(graph_def_version),
+      ops_registry_(ops),
+      graph_runner_(Env::Default()) {}
+
+ShapeRefiner::~ShapeRefiner() {
+  // The lifetime of the tensors are bound to the GraphRunner, so the tensors
+  // should be deleted before it.
+  const_tensor_map_.clear();
+}
 
 Status ShapeRefiner::AddNode(const Node* node) {
   // For each 'input' of this node, fetch the corresponding shape
@@ -223,9 +230,8 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
   std::vector<Tensor> outputs;
   // NOTE; we should pass in a function library runtime if we want
   // to support constant-expression evaluation on functions.
-  Status s = GraphRunner::Run(&subgraph, nullptr /* function_library */,
-                              Env::Default(), const_inputs,
-                              {output_tensor_name}, &outputs);
+  Status s = graph_runner_.Run(&subgraph, nullptr /* function_library */,
+                               const_inputs, {output_tensor_name}, &outputs);
 
   // If all kernels in the constant graph are not registered
   // in the process, GraphRunner::Run may fail, in which case
@@ -289,6 +295,13 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     // During construction or import from GraphConstructor, back edges may not
     // be filled in.  Don't constant fold through merges at all for now.
     if (IsMerge(current_node)) {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
+    // Don't constant fold enter/exit currently either, as it's easy to end
+    // up with a partial frame.
+    if (IsEnter(current_node) || IsExit(current_node)) {
       *is_constant_graph = false;
       return Status::OK();
     }
