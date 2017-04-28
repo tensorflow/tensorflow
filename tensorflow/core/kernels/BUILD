@@ -392,6 +392,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "warn_about_ints",
+    srcs = ["warn_about_ints.cc"],
+    hdrs = ["warn_about_ints.h"],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
+
 # Private support libraries ---------------------------------------------------
 
 cc_header_only_library(
@@ -2711,13 +2720,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "softplus_op",
     prefix = "softplus_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [":warn_about_ints"],
 )
 
 tf_kernel_library(
     name = "softsign_op",
     prefix = "softsign_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [":warn_about_ints"],
 )
 
 tf_kernel_library(
@@ -4033,6 +4042,7 @@ filegroup(
         "training_ops.h",
         "transpose_functor.h",
         "transpose_op.h",
+        "warn_about_ints.h",
         "where_op.h",
         "xent_op.h",
     ],
@@ -4169,6 +4179,7 @@ filegroup(
         "training_ops.cc",
         "transpose_functor_cpu.cc",
         "transpose_op.cc",
+        "warn_about_ints.cc",
         "where_op.cc",
         "xent_op.cc",
         ":android_extended_ops_headers",
