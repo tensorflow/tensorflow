@@ -55,6 +55,7 @@ REGISTER_OP("UniformCandidateSampler")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .SetShapeFn(CandidateSamplerShapeFn)
+    .SetIsStateful()
     .Doc(R"doc(
 Generates labels for candidate sampling with a uniform distribution.
 
@@ -103,6 +104,7 @@ REGISTER_OP("LogUniformCandidateSampler")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .SetShapeFn(CandidateSamplerShapeFn)
+    .SetIsStateful()
     .Doc(R"doc(
 Generates labels for candidate sampling with a log-uniform distribution.
 
@@ -152,6 +154,7 @@ REGISTER_OP("LearnedUnigramCandidateSampler")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .SetShapeFn(CandidateSamplerShapeFn)
+    .SetIsStateful()
     .Doc(R"doc(
 Generates labels for candidate sampling with a learned unigram distribution.
 
@@ -200,6 +203,7 @@ REGISTER_OP("ThreadUnsafeUnigramCandidateSampler")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .SetShapeFn(CandidateSamplerShapeFn)
+    .SetIsStateful()
     .Doc(R"doc(
 Generates labels for candidate sampling with a learned unigram distribution.
 
@@ -254,6 +258,7 @@ REGISTER_OP("FixedUnigramCandidateSampler")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .SetShapeFn(CandidateSamplerShapeFn)
+    .SetIsStateful()
     .Doc(R"doc(
 Generates labels for candidate sampling with a learned unigram distribution.
 
@@ -329,6 +334,7 @@ REGISTER_OP("AllCandidateSampler")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .SetShapeFn(CandidateSamplerShapeFn)
+    .SetIsStateful()
     .Doc(R"doc(
 Generates labels for candidate sampling with a learned unigram distribution.
 

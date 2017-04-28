@@ -230,14 +230,14 @@ TEST_F(ConstantFoldingTest, TwoOutputsFoldOneOutput) {
   Node* b1_ident = index.at("b1_ident");
 
   // 0th output of b should have been folded.
-  EXPECT_EQ(1, b0->num_inputs());
+  ASSERT_EQ(1, b0->num_inputs());
   ExpectNodeEqual<int>(*(b0->in_nodes().begin()), {0, 1}, {2});
   // 1st output of b should still be b1_ident. However, b1_ident's input must
   // have been replaced with a constant.
-  EXPECT_EQ(1, b1->num_inputs());
+  ASSERT_EQ(1, b1->num_inputs());
   EXPECT_EQ(*(b1->in_nodes().begin()), b1_ident);
 
-  EXPECT_EQ(1, b1_ident->num_inputs());
+  ASSERT_EQ(1, b1_ident->num_inputs());
   ExpectNodeEqual<int>(*(b1_ident->in_nodes().begin()), {}, {0});
 }
 
@@ -323,6 +323,43 @@ TEST_F(ConstantFoldingTest, TestNoReplaceNonCPUOp) {
   TF_EXPECT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
                             nullptr, &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
+}
+
+TEST_F(ConstantFoldingTest, ControlDependencies) {
+  Graph g(OpRegistry::Global());
+  {
+    Scope s = Scope::NewRootScope();
+    auto c0 = ops::Const<int>(s, 1);
+    auto recv1 = ops::_Recv(s.WithOpName("recv1"), DT_FLOAT, "recv1", "sender",
+                            0, "receiver");
+    auto c1 = ops::Const<int>(s.WithControlDependencies(recv1), 2);
+    auto recv2 = ops::_Recv(s.WithOpName("recv2"), DT_FLOAT, "recv2", "sender",
+                            0, "receiver");
+    auto c2 = ops::Const<int>(s.WithControlDependencies(recv2), 3);
+    auto add = ops::Add(s.WithControlDependencies(c2), c0, c1);
+    auto send =
+        ops::_Send(s.WithOpName("send"), add, "send", "sender", 0, "receiver");
+    TF_ASSERT_OK(s.ToGraph(&g));
+  }
+  bool was_mutated;
+  TF_EXPECT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
+                            nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
+
+  std::unordered_map<string, Node*> index = NodeNameIndex(g);
+  Node* recv1 = index.at("recv1");
+  Node* recv2 = index.at("recv2");
+  Node* send = index.at("send");
+
+  ASSERT_EQ(1, send->num_inputs());
+  Node* p = *(send->in_nodes().begin());
+  ExpectNodeEqual<int>(p, {3}, {});
+
+  ASSERT_EQ(2, p->in_edges().size());
+  for (const Edge* e : p->in_edges()) {
+    EXPECT_TRUE(e->IsControlEdge());
+    EXPECT_TRUE(e->src() == recv1 || e->src() == recv2) << e->src()->name();
+  }
 }
 
 namespace {
