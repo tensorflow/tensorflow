@@ -101,6 +101,12 @@ CreateConv2D(poplar::Graph &graph,
                                                       f_y, f_x, n_o,
                                                       s_y, s_x, p_y, p_x,
                                                       false, opts);
+  
+  popconv::mapActivations(graph, conv_in, conv_kernel,
+                          s_y, s_x, p_y, p_x, false, opts);
+
+  popconv::mapWeights(conv_kernel, graph, conv_in,
+                      s_y, s_x, p_y, p_x, false, opts);
 
   poplar::program::Sequence prog;
 
