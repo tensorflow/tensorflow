@@ -81,7 +81,7 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
-num_sampled: Number of candidates to randomly sample per batch.
+num_sampled: Number of candidates to randomly sample.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
   estimate the post-rejection sampling probabilities.
@@ -131,7 +131,7 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
-num_sampled: Number of candidates to randomly sample per batch.
+num_sampled: Number of candidates to randomly sample.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
   estimate the post-rejection sampling probabilities.
@@ -180,7 +180,7 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
-num_sampled: Number of candidates to randomly sample per batch.
+num_sampled: Number of candidates to randomly sample.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
   estimate the post-rejection sampling probabilities.
@@ -229,7 +229,7 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
-num_sampled: Number of candidates to randomly sample per batch.
+num_sampled: Number of candidates to randomly sample.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
   estimate the post-rejection sampling probabilities.
@@ -289,7 +289,7 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
-num_sampled: Number of candidates to randomly sample per batch.
+num_sampled: Number of candidates to randomly sample.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
   estimate the post-rejection sampling probabilities.
@@ -360,7 +360,7 @@ sampled_expected_count: A vector of length num_sampled, for each sampled
   to occur in a batch of sampled candidates.  If unique=true, then this is a
   probability.
 num_true: Number of true labels per context.
-num_sampled: Number of candidates to produce per batch.
+num_sampled: Number of candidates to produce.
 unique: If unique is true, we sample with rejection, so that all sampled
   candidates in a batch are unique. This requires some approximation to
   estimate the post-rejection sampling probabilities.
