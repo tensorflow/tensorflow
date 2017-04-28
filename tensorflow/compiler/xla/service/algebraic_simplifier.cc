@@ -51,6 +51,16 @@ bool IsLiteralWithValue(const HloInstruction* operand, int8 value) {
          LiteralUtil::IsAll(operand->literal(), value);
 }
 
+bool IsAll(const HloInstruction* op, int8 value) {
+  if (IsLiteralWithValue(op, value)) {
+    return true;
+  }
+  if (op->opcode() == HloOpcode::kBroadcast && IsAll(op->operand(0), value)) {
+    return true;
+  }
+  return false;
+}
+
 // Returns whether the given transpose produces a result which is bit-wise
 // identical to its operand and thus may be replaced with a bitcast.
 bool TransposeIsBitcast(const HloInstruction* transpose) {
@@ -300,12 +310,12 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add,
                                              HloInstruction* rhs) {
   // A + 0 => A
   VLOG(10) << "trying transform [A + 0 => A]: " << add->ToString();
-  if (IsLiteralWithValue(rhs, 0) && ReplaceInstructionIfSameShape(add, lhs)) {
+  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(add, lhs)) {
     return Status::OK();
   }
   // 0 + A => A
   VLOG(10) << "trying transform [0 + A => A]: " << add->ToString();
-  if (IsLiteralWithValue(lhs, 0) && ReplaceInstructionIfSameShape(add, rhs)) {
+  if (IsAll(lhs, 0) && ReplaceInstructionIfSameShape(add, rhs)) {
     return Status::OK();
   }
 
@@ -421,7 +431,7 @@ Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub,
                                                   HloInstruction* rhs) {
   // A - 0 => A
   VLOG(10) << "trying transform [A - 0 => A]: " << sub->ToString();
-  if (IsLiteralWithValue(rhs, 0) && ReplaceInstructionIfSameShape(sub, lhs)) {
+  if (IsAll(rhs, 0) && ReplaceInstructionIfSameShape(sub, lhs)) {
     return Status::OK();
   }
 
@@ -433,8 +443,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
                                                 HloInstruction* rhs) {
   // A/1 => A
   VLOG(10) << "trying transform [A/1 => A]: " << divide->ToString();
-  if (IsLiteralWithValue(rhs, 1) &&
-      ReplaceInstructionIfSameShape(divide, lhs)) {
+  if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(divide, lhs)) {
     return Status::OK();
   }
 
@@ -589,14 +598,12 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply,
                                                   HloInstruction* rhs) {
   // A*1 => A
   VLOG(10) << "trying transform [A*1 => A]: " << multiply->ToString();
-  if (IsLiteralWithValue(rhs, 1) &&
-      ReplaceInstructionIfSameShape(multiply, lhs)) {
+  if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(multiply, lhs)) {
     return Status::OK();
   }
   // 1*A => A
   VLOG(10) << "trying transform [1*A => A]: " << multiply->ToString();
-  if (IsLiteralWithValue(lhs, 1) &&
-      ReplaceInstructionIfSameShape(multiply, rhs)) {
+  if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(multiply, rhs)) {
     return Status::OK();
   }
   return Status::OK();
@@ -962,7 +969,7 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
                                                HloInstruction* lhs,
                                                HloInstruction* rhs) {
   VLOG(10) << "trying transform [pow(A, 0) => 1]: " << power->ToString();
-  if (IsLiteralWithValue(rhs, 0)) {
+  if (IsAll(rhs, 0)) {
     auto one = HloInstruction::CreateConstant(LiteralUtil::CloneToUnique(
         LiteralUtil::One(power->shape().element_type())));
     std::unique_ptr<HloInstruction> ones;
@@ -976,19 +983,19 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
   }
 
   VLOG(10) << "trying transform [pow(A, 1) => A]: " << power->ToString();
-  if (IsLiteralWithValue(rhs, 1) && ReplaceInstructionIfSameShape(power, lhs)) {
+  if (IsAll(rhs, 1) && ReplaceInstructionIfSameShape(power, lhs)) {
     return Status::OK();
   }
 
   VLOG(10) << "trying transform [pow(A, 2) => A*A]: " << power->ToString();
-  if (IsLiteralWithValue(rhs, 2)) {
+  if (IsAll(rhs, 2)) {
     return ReplaceWithNewInstruction(
         power, HloInstruction::CreateBinary(power->shape(),
                                             HloOpcode::kMultiply, lhs, lhs));
   }
 
   VLOG(10) << "trying transform [pow(A, -1) => 1/A]: " << power->ToString();
-  if (IsLiteralWithValue(rhs, -1)) {
+  if (IsAll(rhs, -1)) {
     auto* one = computation_->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CloneToUnique(
             LiteralUtil::One(rhs->shape().element_type()))));
