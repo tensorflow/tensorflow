@@ -175,7 +175,8 @@ def _get_python_include(repository_ctx, python_bin):
                      'print(sysconfig.get_python_inc())'],
                     error_msg="Problem getting python include path.",
                     error_details=("Is the Python binary path set up right? " +
-                                   "(./configure). Is distutils installed?"))
+                                   "(See ./configure or BAZEL_BIN_PATH.) " +
+                                   "Is distutils installed?"))
   return result.stdout.splitlines()[0]
 
 
