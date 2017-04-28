@@ -30,8 +30,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 
 trunc_normal = lambda stddev: init_ops.truncated_normal_initializer(0.0, stddev)
-# Set use_5x5 to True to use the same filter sizes (5x5) as specified in the paper. 3x3 filter is the default.
-use_5x5 = None
+# Required to be able to switch between (3x3) and (5x5) as specified in the paper, Figure 2(b).
 filter_size = [3, 3]
 filter_size_str=str(filter_size[0])+'x'+str(filter_size[1])
 
@@ -311,7 +310,8 @@ def inception_v1(inputs,
                  prediction_fn=layers_lib.softmax,
                  spatial_squeeze=True,
                  reuse=None,
-                 scope='InceptionV1'):
+                 scope='InceptionV1',
+                 use_5x5=None):
   """Defines the Inception V1 architecture.
 
   This architecture is defined in:
@@ -334,7 +334,11 @@ def inception_v1(inputs,
     reuse: whether or not the network and its variables should be reused. To be
       able to reuse 'scope' must be given.
     scope: Optional variable_scope.
-
+    use_5x5: If True, the inception filter sizes will be set to 5x5 
+      as specified in Figure 2(b) of the paper. The default behavior is to continue
+      with 3x3 filter sizes.
+      Note: This invalidates all current checkpoints and the saved models will 
+      be incompatible as well. The training would have to be done from the beginning.
   Returns:
     logits: the pre-softmax activations, a tensor of size
       [batch_size, num_classes]
