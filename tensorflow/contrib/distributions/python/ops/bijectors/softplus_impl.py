@@ -96,7 +96,7 @@ class Softplus(bijector.Bijector):
             ops.convert_to_tensor(
                 0, dtype=self.hinge_softness.dtype), self.hinge_softness)
         self._hinge_softness = control_flow_ops.with_dependencies(
-            [nonzero_check, self.hinge_softness])
+            [nonzero_check], self.hinge_softness)
 
     super(Softplus, self).__init__(
         event_ndims=event_ndims,
