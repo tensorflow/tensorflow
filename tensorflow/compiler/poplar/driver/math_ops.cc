@@ -300,6 +300,10 @@ CreateMatMulOp(poplar::Graph &graph,
     in0 = in0.reshape({1, in0.dim(0)});
   }
 
+  if (in1.rank() == 1) {
+    in1 = in1.reshape({in1.dim(0), 1});
+  }
+
   out = poplin::matMul(graph, in0, in1, seq);
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
