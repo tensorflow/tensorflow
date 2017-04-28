@@ -5,7 +5,7 @@ TF Learn is a simplified interface for TensorFlow, to get people started on pred
 ### Why *TensorFlow*?
 
 * TensorFlow provides a good backbone for building different shapes of machine learning applications.
-* It will continue to evolve both in the distributed direction and as general pipelinining machinery.
+* It will continue to evolve both in the distributed direction and as general pipelining machinery.
 
 ### Why *TensorFlow Learn*?
 
