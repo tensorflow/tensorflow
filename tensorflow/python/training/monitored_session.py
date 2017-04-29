@@ -422,7 +422,9 @@ class WorkerSessionCreator(SessionCreator):
   def create_session(self):
     self._scaffold.finalize()
     return self._get_session_manager().wait_for_session(
-        self._master, config=self._config)
+        self._master, config=self._config,
+        max_wait_secs=30 * 60  # Wait up to 30 mins for the session to be ready.
+    )
 
 
 class _MonitoredSession(object):

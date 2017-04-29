@@ -288,7 +288,7 @@ for each value is undefined.
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterUpdate.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterUpdate.png" alt>
 </div>
 
 ref: Should be from a `Variable` node.
@@ -332,7 +332,7 @@ the same location, their contributions add.
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterAdd.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
 </div>
 
 ref: Should be from a `Variable` node.
@@ -376,7 +376,7 @@ the same location, their (negated) contributions add.
 Requires `updates.shape = indices.shape + ref.shape[1:]`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/ScatterSub.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/ScatterSub.png" alt>
 </div>
 
 ref: Should be from a `Variable` node.

@@ -28,10 +28,10 @@ from __future__ import print_function
 
 from tensorflow.contrib.bayesflow.python.ops import stochastic_graph_impl as sg
 from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor_impl as st
-from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.platform import tf_logging as logging
 
 VI_PRIORS = "__vi_priors__"

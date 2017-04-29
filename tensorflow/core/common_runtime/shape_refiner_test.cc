@@ -126,6 +126,27 @@ TEST(ShapeRefinerTest, SetShape) {
   ASSERT_FALSE(m.SetShape(a.node(), 0, h).ok());
 }
 
+namespace {
+
+// An op with no shape function.
+REGISTER_OP("TestOpWithNoShapeFn").Input("a: int32").Output("o: int32");
+
+}  // namespace
+
+TEST(ShapeRefinerTest, MissingShapeInferenceFns) {
+  Scope root = Scope::NewRootScope();
+  auto a = ops::Const(root, 42);
+  Node* b;
+  TF_ASSERT_OK(NodeBuilder("b", "TestOpWithNoShapeFn")
+                   .Input(a.node())
+                   .Finalize(root.graph(), &b));
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(a.node()));
+  EXPECT_FALSE(m.AddNode(b).ok());
+  m.set_require_shape_inference_fns(false);
+  TF_EXPECT_OK(m.AddNode(b));
+}
+
 TEST(ShapeRefinerTest, PropagateConstants) {
   // Reduction dimension is a variable, so we don't know its value.
   // So the output shape value is unknown (though its rank is known).

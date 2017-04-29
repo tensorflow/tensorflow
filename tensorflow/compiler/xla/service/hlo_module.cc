@@ -46,8 +46,7 @@ HloModule::HloModule(const string& name)
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
-  computation->set_name(
-      computation_name_uniquer_.GetUniqueName(computation->name()));
+  computation->UniquifyName(&computation_name_uniquer_);
   computation->set_parent(this);
   computations_.push_back(std::move(computation));
   return computations_.back().get();

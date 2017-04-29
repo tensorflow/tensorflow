@@ -390,6 +390,19 @@ class ShapeUtil {
   static Shape FilterDimensions(const std::function<bool(int64)>& p,
                                 Shape shape);
 
+  // Iterates through all the shape indexes, in minor to major order, starting
+  // from the base indexes, incrementing by the incr steps, up to count
+  // (index[i] < base[i] + count[i]), and calls the visitor_function with the
+  // current index.
+  // The visitor_function visitor function should return true if it wants to
+  // continue, or false otherwise.
+  using IndexVisitorFunction = std::function<bool(const std::vector<int64>&)>;
+  static void ForEachIndex(const Shape& shape,
+                           tensorflow::gtl::ArraySlice<int64> base,
+                           tensorflow::gtl::ArraySlice<int64> count,
+                           tensorflow::gtl::ArraySlice<int64> incr,
+                           const IndexVisitorFunction& visitor_function);
+
  private:
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.

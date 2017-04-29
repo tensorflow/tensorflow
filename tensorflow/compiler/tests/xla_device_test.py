@@ -18,15 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.python.client import session as session_lib
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -47,34 +42,6 @@ class XlaDeviceTest(test.TestCase):
         w = y + z
       result = sess.run(w, {x: [1.5, 0.5]})
     self.assertAllClose(result, [12., 2.], rtol=1e-3)
-
-  def testLoops(self):
-    """Tests that loops work on XLA devices."""
-
-    with session_lib.Session() as session:
-      x = array_ops.placeholder(dtypes.float32)
-      with ops.device("device:XLA_CPU:0"):
-        c = lambda i, _: math_ops.less(i, 5)
-        b = lambda i, x: (i + 1, x * 2.0 + 1.0)
-        _, y = control_flow_ops.while_loop(c, b, (constant_op.constant(0), x))
-
-      result = session.run(y, {x: np.float32(2)})
-      self.assertAllClose(result, np.float32(95), rtol=1e-3)
-
-  def testCond(self):
-    """Tests that tf.cond works on XLA devices."""
-
-    with session_lib.Session() as session:
-      x = array_ops.placeholder(dtypes.float32)
-      y = array_ops.placeholder(dtypes.float32)
-      c = array_ops.placeholder(dtypes.bool)
-      with ops.device("device:XLA_CPU:0"):
-        z = x + 1.0
-        w = control_flow_ops.cond(c, lambda: z, lambda: y)
-        t = math_ops.add(z, w)
-
-      result = session.run(t, {x: np.float32(2), y: np.float32(4), c: True})
-      self.assertAllClose(result, np.float32(6), rtol=1e-3)
 
 
 if __name__ == "__main__":

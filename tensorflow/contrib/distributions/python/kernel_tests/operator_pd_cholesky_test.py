@@ -19,15 +19,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib import distributions as distributions_lib
-from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib import distributions
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops.distributions import util as distribution_util
 from tensorflow.python.platform import test
-
-distributions = distributions_lib
 
 
 def softplus(x):

@@ -75,7 +75,7 @@ def _zero_state_tensors(state_size, batch_size, dtype):
   return zeros
 
 
-class _RNNCell(base_layer._Layer):  # pylint: disable=protected-access
+class _RNNCell(base_layer.Layer):  # pylint: disable=protected-access
   """Abstract object representing an RNN cell.
 
   Every `RNNCell` must have the properties below and implement `__call__` with

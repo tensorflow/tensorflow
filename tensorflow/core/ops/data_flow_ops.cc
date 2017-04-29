@@ -102,7 +102,7 @@ For example:
 ```
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/DynamicPartition.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/DynamicPartition.png" alt>
 </div>
 
 partitions: Any shape.  Indices in the range `[0, num_partitions)`.
@@ -190,7 +190,7 @@ For example:
 ```
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/DynamicStitch.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
 </div>
 )doc");
 
@@ -1043,7 +1043,10 @@ REGISTER_OP("StackPush")
     .Output("output: T")
     .Attr("T: type")
     .Attr("swap_memory: bool = false")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Push an element onto the stack.
 

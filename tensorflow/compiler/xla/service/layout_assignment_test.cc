@@ -45,6 +45,8 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
+
 class LayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* module,
@@ -421,8 +423,8 @@ TEST_F(LayoutAssignmentTest, BroadcastAndTranspose) {
       ShapeLayout(output_shape_with_layout);
   AssignLayouts(&module, &computation_layout);
 
-  EXPECT_TRUE(
-      ContainersEqual(broadcast->shape().layout().minor_to_major(), {0, 1, 2}));
+  EXPECT_THAT(broadcast->shape().layout().minor_to_major(),
+              ElementsAre(0, 1, 2));
 }
 
 TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
@@ -474,11 +476,9 @@ TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
           {transpose_shape_with_layout, broadcast2_shape_with_layout}));
   AssignLayouts(&module, &computation_layout);
 
-  EXPECT_TRUE(
-      ContainersEqual(broadcast->shape().layout().minor_to_major(), {0, 1}));
-  EXPECT_TRUE(
-      ContainersEqual(transpose->shape().layout().minor_to_major(), {1, 0}));
-  EXPECT_TRUE(ContainersEqual(tanh->shape().layout().minor_to_major(), {0, 1}));
+  EXPECT_THAT(broadcast->shape().layout().minor_to_major(), ElementsAre(0, 1));
+  EXPECT_THAT(transpose->shape().layout().minor_to_major(), ElementsAre(1, 0));
+  EXPECT_THAT(tanh->shape().layout().minor_to_major(), ElementsAre(0, 1));
 }
 
 // Add test which fails due to copy tuple.
