@@ -14,7 +14,7 @@ that takes an item off the queue, adds one to that item, and puts it back on the
 end of the queue. Slowly, the numbers on the queue increase.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/IncremeterFifoQueue.gif">
+<img style="width:100%" src="https://www.tensorflow.org/images/IncremeterFifoQueue.gif">
 </div>
 
 `Enqueue`, `EnqueueMany`, and `Dequeue` are special nodes. They take a pointer

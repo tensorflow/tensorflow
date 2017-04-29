@@ -57,7 +57,7 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 // Requires `updates.shape = indices.shape + ref.shape[1:]`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/ScatterAdd.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
 // </div>
 //
 // Arguments:
@@ -3161,7 +3161,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // tensor with 8 elements.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/ScatterNd1.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
 // </div>
 //
 // In Python, this scatter operation would look like this:
@@ -3184,7 +3184,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // rank-3 tensor with two matrices of new values.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/ScatterNd2.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
 // </div>
 //
 // In Python, this scatter operation would look like this:
@@ -4940,7 +4940,7 @@ func TensorArrayGatherV2(scope *Scope, handle tf.Output, indices tf.Output, flow
 // ```
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/DynamicStitch.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
 // </div>
 func DynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged tf.Output) {
 	if scope.Err() != nil {
@@ -13758,7 +13758,7 @@ func GatherValidateIndices(value bool) GatherAttr {
 // raising an error.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../../images/Gather.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
 // </div>
 func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...GatherAttr) (output tf.Output) {
 	if scope.Err() != nil {
@@ -19994,7 +19994,7 @@ func Sum(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 // ```
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/DynamicPartition.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/DynamicPartition.png" alt>
 // </div>
 //
 // Arguments:

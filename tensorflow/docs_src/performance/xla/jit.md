@@ -124,7 +124,7 @@ open the timeline file created when the script finishes: `timeline.ctf.json`.
 The rendered timeline should look similar to the picture below with multiple
 green boxes labeled `MatMul`, possibly across multiple CPUs.
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/jit_timeline_gpu.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/jit_timeline_gpu.png">
 </div>
 
 ### Step #3 Run with XLA
@@ -139,7 +139,7 @@ TF_XLA_FLAGS=--xla_generate_hlo_graph=.* python mnist_softmax_xla.py
 Open the timeline file created (`timeline.ctf.json`).  The rendered timeline
 should look similar to the picture below with one long bar labeled `_XlaLaunch`.
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/jit_timeline_gpu_xla.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/jit_timeline_gpu_xla.png">
 </div>
 
 To understand what is happening in `_XlaLaunch`, look at the console output for
@@ -165,5 +165,5 @@ dot -Tpng hlo_graph_80.dot -o hlo_graph_80.png
 
 The result will look like the following:
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/jit_gpu_xla_graph.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/jit_gpu_xla_graph.png">
 </div>

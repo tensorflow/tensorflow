@@ -123,7 +123,7 @@ TensorFlow provides a utility called TensorBoard that can display a picture of
 the computational graph. Here is a screenshot showing how TensorBoard
 visualizes the graph:
 
-![TensorBoard screenshot](../images/getting_started_add.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_add.png)
 
 As it stands, this graph is not especially interesting because it always
 produces a constant result. A graph can be parameterized to accept external
@@ -154,7 +154,7 @@ resulting in the output
 
 In TensorBoard, the graph looks like this:
 
-![TensorBoard screenshot](../images/getting_started_adder.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_adder.png)
 
 We can make the computational graph more complex by adding another operation.
 For example,
@@ -170,7 +170,7 @@ produces the output
 
 The preceding computational graph would look as follows in TensorBoard:
 
-![TensorBoard screenshot](../images/getting_started_triple.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_triple.png)
 
 In machine learning we will typically want a model that can take arbitrary
 inputs, such as the one above.  To make the model trainable, we need to be able
@@ -336,7 +336,7 @@ program your loss will not be exactly the same, because the model is initialized
 with random values.
 
 This more complicated program can still be visualized in TensorBoard
-![TensorBoard final model visualization](../images/getting_started_final.png)
+![TensorBoard final model visualization](https://www.tensorflow.org/images/getting_started_final.png)
 
 ## `tf.contrib.learn`
 

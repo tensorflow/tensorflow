@@ -51,7 +51,7 @@ means that we may need more data in order to successfully train statistical
 models.  Using vector representations can overcome some of these obstacles.
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/audio-image-text.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/audio-image-text.png" alt>
 </div>
 
 [Vector space models](https://en.wikipedia.org/wiki/Vector_space_model) (VSMs)
@@ -125,7 +125,7 @@ probability using the score for all other \\(V\\) words \\(w'\\) in the current
 context \\(h\\), *at every training step*.
 
 <div style="width:60%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/softmax-nplm.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/softmax-nplm.png" alt>
 </div>
 
 On the other hand, for feature learning in word2vec we do not need a full
@@ -136,7 +136,7 @@ same context. We illustrate this below for a CBOW model. For skip-gram the
 direction is simply inverted.
 
 <div style="width:60%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/nce-nplm.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/nce-nplm.png" alt>
 </div>
 
 Mathematically, the objective (for each example) is to maximize
@@ -233,7 +233,7 @@ below (see also for example
 [Mikolov et al., 2013](http://www.aclweb.org/anthology/N13-1090)).
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/linear-relationships.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/linear-relationships.png" alt>
 </div>
 
 This explains why these vectors are also useful as features for many canonical
@@ -335,7 +335,7 @@ After training has finished we can visualize the learned embeddings using
 t-SNE.
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/tsne.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/tsne.png" alt>
 </div>
 
 Et voila! As expected, words that are similar end up clustering nearby each
