@@ -688,14 +688,14 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // For example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3, 4]]]]
 //
 // ```
 //
 // This operation will output a tensor of shape `[1, 2, 2, 1]`:
 //
-// ```prettyprint
+// ```
 //    [[[[1], [2]],
 //      [[3], [4]]]]
 // ```
@@ -707,14 +707,14 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // For an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
 // ```
 //
 // This operation, for block size of 2, will return the following tensor of shape
 // `[1, 2, 2, 3]`
 //
-// ```prettyprint
+// ```
 //    [[[[1, 2, 3], [4, 5, 6]],
 //      [[7, 8, 9], [10, 11, 12]]]]
 //
@@ -722,7 +722,7 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // Similarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:
 //
-// ```prettyprint
+// ```
 // x =  [[[[1, 2, 3, 4],
 //        [5, 6, 7, 8]],
 //       [[9, 10, 11, 12],
@@ -731,7 +731,7 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // the operator will return the following tensor of shape `[1 4 4 1]`:
 //
-// ```prettyprint
+// ```
 // x = [[ [1],   [2],  [5],  [6]],
 //      [ [3],   [4],  [7],  [8]],
 //      [ [9],  [10], [13],  [14]],
@@ -819,26 +819,26 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // (1) For the following input of shape `[4, 1, 1, 1]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // (2) For the following input of shape `[4, 1, 1, 3]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 3]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
@@ -846,7 +846,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // (3) For the following input of shape `[4, 2, 2, 1]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -855,7 +855,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //
 // The output tensor has shape `[1, 4, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[1],   [2],  [3],  [4]],
 //      [[5],   [6],  [7],  [8]],
 //      [[9],  [10], [11],  [12]],
@@ -865,7 +865,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // (4) For the following input of shape `[8, 1, 3, 1]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [2, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
 //      [[[0], [2], [4]]], [[[0], [10], [12]]],
 //      [[[0], [5], [7]]], [[[0], [13], [15]]],
@@ -874,7 +874,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //
 // The output tensor has shape `[2, 2, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]]],
 //      [[[9],  [10], [11],  [12]],
@@ -932,32 +932,32 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // (1) For the following input of shape `[1, 2, 2, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 1]` and value:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // (2) For the following input of shape `[1, 2, 2, 3]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 3]` and value:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // (3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]],
 //       [[9],  [10], [11],  [12]],
@@ -966,7 +966,7 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // The output tensor has shape `[4, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -975,7 +975,7 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // (4) For the following input of shape `[2, 2, 4, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]]],
 //      [[[9],  [10], [11],  [12]],
@@ -984,7 +984,7 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // The output tensor has shape `[8, 1, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
 //      [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]
 // ```
@@ -1177,34 +1177,34 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 // (1) For the following input of shape `[1, 2, 2, 1]`, `block_shape = [2, 2]`, and
 //     `paddings = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 1]` and value:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // (2) For the following input of shape `[1, 2, 2, 3]`, `block_shape = [2, 2]`, and
 //     `paddings = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 3]` and value:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // (3) For the following input of shape `[1, 4, 4, 1]`, `block_shape = [2, 2]`, and
 //     `paddings = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]],
 //       [[9],  [10], [11],  [12]],
@@ -1213,7 +1213,7 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 //
 // The output tensor has shape `[4, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -1223,7 +1223,7 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 // (4) For the following input of shape `[2, 2, 4, 1]`, block_shape = `[2, 2]`, and
 //     paddings = `[[0, 0], [2, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]]],
 //      [[[9],  [10], [11],  [12]],
@@ -1232,7 +1232,7 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 //
 // The output tensor has shape `[8, 1, 3, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
 //      [[[0], [2], [4]]], [[[0], [10], [12]]],
 //      [[[0], [5], [7]]], [[[0], [13], [15]]],
@@ -1278,14 +1278,14 @@ func ListDiffOutIdx(value tf.DataType) ListDiffAttr {
 //
 // For example, given this input:
 //
-// ```prettyprint
+// ```
 // x = [1, 2, 3, 4, 5, 6]
 // y = [1, 3, 5]
 // ```
 //
 // This operation would return:
 //
-// ```prettyprint
+// ```
 // out ==> [2, 4, 6]
 // idx ==> [1, 3, 5]
 // ```
@@ -1339,14 +1339,14 @@ func SqueezeSqueezeDims(value []int64) SqueezeAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
 // shape(squeeze(t)) ==> [2, 3]
 // ```
 //
 // Or, to remove specific size 1 dimensions:
 //
-// ```prettyprint
+// ```
 // # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
 // shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 // ```
@@ -1461,7 +1461,7 @@ func Placeholder(scope *Scope, dtype tf.DataType, optional ...PlaceholderAttr) (
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[1, 2, 3], [4, 5, 6]].
 // # 'paddings' is [[1, 1]], [2, 2]].
 // # 'mode' is SYMMETRIC.
@@ -1545,7 +1545,7 @@ func BroadcastArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'input' tensor is [[True, False]
 // #                    [True, False]]
 // # 'input' has two true values, so output has two coordinates.
@@ -1762,7 +1762,7 @@ func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []t
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 't' is [1, 2, 3, 4, 5, 6, 7, 8, 9]
 // # tensor 't' has shape [9]
 // reshape(t, [3, 3]) ==> [[1, 2, 3],
@@ -2187,7 +2187,7 @@ func MatrixSetDiag(scope *Scope, input tf.Output, diagonal tf.Output) (output tf
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'input' is [[1, 0, 0, 0]
 //               [0, 2, 0, 0]
 //               [0, 0, 3, 0]
@@ -2383,7 +2383,7 @@ func Split(scope *Scope, split_dim tf.Output, value tf.Output, num_split int64) 
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'x' is [2, 2, 7]
 // # 'y' is [2, 3, 7]
 // # 'z' is [2, 5, 7]
@@ -2452,7 +2452,7 @@ func Concat(scope *Scope, concat_dim tf.Output, values []tf.Output) (output tf.O
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'x' is [[1, 4]]
 // # 'y' is [[2, 5]]
 // # 'z' is [[3, 6]]
@@ -2587,7 +2587,7 @@ func UniqueOutIdx(value tf.DataType) UniqueAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
 // y, idx = unique(x)
 // y ==> [1, 2, 4, 7, 8]
@@ -3067,14 +3067,14 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 //
 // For example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]],
 //       [[3], [4]]]]
 // ```
 //
 // This operation will output a tensor of shape `[1, 1, 1, 4]`:
 //
-// ```prettyprint
+// ```
 // [[[[1, 2, 3, 4]]]]
 // ```
 //
@@ -3085,7 +3085,7 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 //
 // For an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
@@ -3093,13 +3093,13 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 // This operation, for block_size of 2, will return the following tensor of shape
 // `[1, 1, 1, 12]`
 //
-// ```prettyprint
+// ```
 // [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
 // ```
 //
 // Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [5],  [6]],
 //       [[3],   [4],  [7],  [8]],
 //       [[9],  [10], [13],  [14]],
@@ -3108,7 +3108,7 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 //
 // the operator will return the following tensor of shape `[1 2 2 4]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3, 4],
 //        [5, 6, 7, 8]],
 //       [[9, 10, 11, 12],
@@ -3852,7 +3852,7 @@ func TensorArraySplitV3(scope *Scope, handle tf.Output, value tf.Output, lengths
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'diagonal' is [1, 2, 3, 4]
 // tf.diag(diagonal) ==> [[1, 0, 0, 0]
 //                        [0, 2, 0, 0]
@@ -4087,7 +4087,7 @@ func TensorArrayConcatV2(scope *Scope, handle tf.Output, flow_in tf.Output, dtyp
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'input' is [[[1, 0, 0, 0]
 //                [0, 2, 0, 0]
 //                [0, 0, 3, 0]
@@ -4788,7 +4788,7 @@ func StridedSliceShrinkAxisMask(value int64) StridedSliceAttr {
 // particular,
 // `foo[1, 2:4, None, ..., :-3:-1, :]` will be encoded as
 //
-// ```prettyprint
+// ```
 // begin = [1, 2, x, x, 0, x] # x denotes don't care (usually 0)
 // end = [2, 4, x, x, -3, x]
 // strides = [1, 1, x, x, -1, 1]
@@ -6014,7 +6014,7 @@ func ReverseSequenceBatchDim(value int64) ReverseSequenceAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # Given this:
 // batch_dim = 0
 // seq_dim = 1
@@ -6036,7 +6036,7 @@ func ReverseSequenceBatchDim(value int64) ReverseSequenceAttr {
 //
 // In contrast, if:
 //
-// ```prettyprint
+// ```
 // # Given this:
 // batch_dim = 2
 // seq_dim = 0
@@ -6916,7 +6916,7 @@ func SaveSlices(scope *Scope, filename tf.Output, tensor_names tf.Output, shapes
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
 // # shape of tensor 't' is [2, 2, 3]
 // rank(t) ==> 3
@@ -7126,7 +7126,7 @@ func Acos(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # if 'input' is [[ 0,  1,  2, 3]
 //                  [-1,  0,  1, 2]
 //                  [-2, -1,  0, 1]
@@ -7145,7 +7145,7 @@ func Acos(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // Useful special cases:
 //
-// ```prettyprint
+// ```
 //  tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
 //  tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
 //  tf.matrix_band_part(input, 0, 0) ==> Diagonal.
@@ -9933,7 +9933,7 @@ func PackAxis(value int64) PackAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'x' is [1, 4]
 // # 'y' is [2, 5]
 // # 'z' is [3, 6]
@@ -10166,7 +10166,7 @@ func WriteFile(scope *Scope, filename tf.Output, contents tf.Output) (o *tf.Oper
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 't' is [[[[ 0,  1,  2,  3],
 // #                  [ 4,  5,  6,  7],
 // #                  [ 8,  9, 10, 11]],
@@ -10638,7 +10638,7 @@ func SizeOutType(value tf.DataType) SizeAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
 // size(t) ==> 12
 // ```
@@ -10820,7 +10820,7 @@ func FFT2D(scope *Scope, input tf.Output) (output tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # Output tensor has shape [2, 3].
 // fill([2, 3], 9) ==> [[9, 9, 9]
 //                      [9, 9, 9]]
@@ -11617,7 +11617,7 @@ func SparseAdd(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[1, 2, 3], [4, 5, 6], [7, 8, 9]].
 // # 'paddings' is [[0, 1]], [0, 1]].
 // # 'mode' is SYMMETRIC.
@@ -11662,7 +11662,7 @@ func MirrorPadGrad(scope *Scope, input tf.Output, paddings tf.Output, mode strin
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor `x` is [3, 4, 0, 2, 1]
 // invert_permutation(x) ==> [2, 4, 3, 0, 1]
 // ```
@@ -11698,7 +11698,7 @@ func InvertPermutation(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 't' is [[[[ 0,  1,  2,  3],
 // #                  [ 4,  5,  6,  7],
 // #                  [ 8,  9, 10, 11]],
@@ -13533,7 +13533,7 @@ func LogicalNot(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[1, 1], [2, 2]]
 // # 'paddings' is [[1, 1], [2, 2]]
 // # rank of 't' is 2
@@ -15420,7 +15420,7 @@ func UniqueWithCountsOutIdx(value tf.DataType) UniqueWithCountsAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
 // y, idx, count = unique_with_counts(x)
 // y ==> [1, 2, 4, 7, 8]
@@ -15728,7 +15728,7 @@ func NotEqual(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
 //
 // and diagonal.shape = (2, 4)
@@ -16704,7 +16704,7 @@ func Sqrt(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // Other examples:
 //
-// ```prettyprint
+// ```
 // # 't' is a tensor of shape [2]
 // shape(expand_dims(t, 0)) ==> [1, 2]
 // shape(expand_dims(t, 1)) ==> [2, 1]
@@ -17478,32 +17478,32 @@ func Tan(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // (1) For the following input of shape `[4, 1, 1, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // (2) For the following input of shape `[4, 1, 1, 3]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 3]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
 //
 // (3) For the following input of shape `[4, 2, 2, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -17512,7 +17512,7 @@ func Tan(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // The output tensor has shape `[1, 4, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[1],   [2],  [3],  [4]],
 //      [[5],   [6],  [7],  [8]],
 //      [[9],  [10], [11],  [12]],
@@ -17521,14 +17521,14 @@ func Tan(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // (4) For the following input of shape `[8, 1, 2, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
 //      [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]
 // ```
 //
 // The output tensor has shape `[2, 2, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[5], [7]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -20468,7 +20468,7 @@ func ShapeOutType(value tf.DataType) ShapeAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
 // shape(t) ==> [2, 2, 3]
 // ```
