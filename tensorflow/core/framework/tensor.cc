@@ -901,11 +901,8 @@ void Tensor::FillDescription(TensorDescription* description) const {
   }
 }
 
-gtl::ArraySlice<int64> Tensor::ComputeFlatInnerDims(
+gtl::InlinedVector<int64, 4> Tensor::ComputeFlatInnerDims(
     gtl::ArraySlice<int64> orig, int64 num_out_dims) {
-  if (num_out_dims == orig.size()) {
-    return orig;
-  }
   gtl::InlinedVector<int64, 4> out_dims(num_out_dims, 0);
   int64 offset = orig.size() - num_out_dims;
   for (int64 out_dim = num_out_dims - 1; out_dim >= 0; --out_dim) {
@@ -918,11 +915,8 @@ gtl::ArraySlice<int64> Tensor::ComputeFlatInnerDims(
   return out_dims;
 }
 
-gtl::ArraySlice<int64> Tensor::ComputeFlatOuterDims(
+gtl::InlinedVector<int64, 4> Tensor::ComputeFlatOuterDims(
     gtl::ArraySlice<int64> orig, int64 num_out_dims) {
-  if (num_out_dims == orig.size()) {
-    return orig;
-  }
   gtl::InlinedVector<int64, 4> out_dims(num_out_dims, 0);
   for (int64 out_dim = 0; out_dim <= num_out_dims - 1; ++out_dim) {
     out_dims[out_dim] = out_dim >= orig.size() ? 1 : orig[out_dim];
