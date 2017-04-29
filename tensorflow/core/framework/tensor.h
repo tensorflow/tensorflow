@@ -442,9 +442,9 @@ class Tensor {
       Eigen::array<Eigen::DenseIndex, NDIMS>* dims) const;
 
   // TensorShape's InlineVector.
-  static gtl::ArraySlice<int64> ComputeFlatInnerDims(
+  static gtl::InlinedVector<int64, 4> ComputeFlatInnerDims(
       gtl::ArraySlice<int64> orig, int64 num_out_dims);
-  static gtl::ArraySlice<int64> ComputeFlatOuterDims(
+  static gtl::InlinedVector<int64, 4> ComputeFlatOuterDims(
       gtl::ArraySlice<int64> orig, int64 num_out_dims);
 
   TensorShape shape_;
