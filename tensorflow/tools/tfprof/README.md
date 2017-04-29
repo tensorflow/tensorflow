@@ -30,7 +30,7 @@ statistics.
 
 tfprof is part of TensorFlow core. Simply ```import tensorflow as tf```.
 
-### Examine the shapes and sizes of all trainiable Variables.
+### Examine the shapes and sizes of all trainable Variables.
 ```python
 # Print trainable variable parameter statistics to stdout.
 param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
