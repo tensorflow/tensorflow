@@ -17,7 +17,38 @@ limitations under the License.
 
 namespace tensorflow {
 
+// static
 DebuggerStateFactory* DebuggerStateRegistry::factory_ = nullptr;
+
+// static
+DebugGraphDecoratorFactory* DebugGraphDecoratorRegistry::factory_ = nullptr;
+
+const string SummarizeDebugTensorWatches(
+    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches) {
+  std::ostringstream oss;
+
+  for (const DebugTensorWatch& watch : watches) {
+    string tensor_name =
+        strings::StrCat(watch.node_name(), ":", watch.output_slot());
+    if (watch.tolerate_debug_op_creation_failures()) {
+      oss << "(TOL)";  // Shorthand for "tolerate".
+    }
+    oss << tensor_name << "|";
+
+    for (const string& debug_op : watch.debug_ops()) {
+      oss << debug_op << ",";
+    }
+
+    oss << "@";
+    for (const string& debug_url : watch.debug_urls()) {
+      oss << debug_url << ",";
+    }
+
+    oss << ";";
+  }
+
+  return oss.str();
+}
 
 // static
 void DebuggerStateRegistry::RegisterFactory(
@@ -32,6 +63,20 @@ std::unique_ptr<DebuggerStateInterface> DebuggerStateRegistry::CreateState(
   return (factory_ == nullptr || *factory_ == nullptr)
              ? nullptr
              : (*factory_)(debug_options);
+}
+
+// static
+void DebugGraphDecoratorRegistry::RegisterFactory(
+    const DebugGraphDecoratorFactory& factory) {
+  delete factory_;
+  factory_ = new DebugGraphDecoratorFactory(factory);
+}
+
+// static
+std::unique_ptr<DebugGraphDecoratorInterface>
+DebugGraphDecoratorRegistry::CreateDecorator(const DebugOptions& options) {
+  return (factory_ == nullptr || *factory_ == nullptr) ? nullptr
+                                                       : (*factory_)(options);
 }
 
 }  // end namespace tensorflow

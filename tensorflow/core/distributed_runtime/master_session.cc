@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
+#include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/distributed_runtime/scheduler.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -67,6 +68,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
         client_graph_(std::move(cg)),
         session_opts_(session_opts),
         is_partial_(is_partial),
+        debug_opts_(bopts.debug_options),
         worker_cache_(worker_cache) {
     VLOG(1) << "Created ReffedClientGraph for node with "
             << client_graph_->graph.num_node_ids();
@@ -206,6 +208,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const std::unique_ptr<SimpleClientGraph> client_graph_;
   const SessionOptions session_opts_;
   const bool is_partial_;
+  const DebugOptions& debug_opts_;
   WorkerCacheInterface* const worker_cache_;  // Not owned.
   std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node_;
 
@@ -406,6 +409,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     // For simplicity, we ship the library completely to every worker.
     *c->req.mutable_graph_def()->mutable_library() = func_def_lib;
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
+    *c->req.mutable_debug_options() = debug_opts_;
     VLOG(2) << "Register " << c->req.graph_def().DebugString();
     auto cb = [c, &done](const Status& s) {
       c->status = s;
@@ -899,6 +903,10 @@ void BuildBuildGraphOptions(const RunStepRequestWrapper& req,
     opts->target_nodes.push_back(req.target_name(i));
   }
 
+  if (!req.options().debug_options().debug_tensor_watch_opts().empty()) {
+    opts->debug_options = req.options().debug_options();
+  }
+
   std::sort(opts->feed_endpoints.begin(), opts->feed_endpoints.end());
   std::sort(opts->target_nodes.begin(), opts->target_nodes.end());
   std::sort(opts->fetch_endpoints.begin(), opts->fetch_endpoints.end());
@@ -916,6 +924,8 @@ void BuildBuildGraphOptions(const PartialRunSetupRequest& req,
     opts->target_nodes.push_back(target);
   }
 
+  // TODO(cais): Add TFDBG support to partial runs.
+
   std::sort(opts->feed_endpoints.begin(), opts->feed_endpoints.end());
   std::sort(opts->target_nodes.begin(), opts->target_nodes.end());
   std::sort(opts->fetch_endpoints.begin(), opts->fetch_endpoints.end());
@@ -932,6 +942,13 @@ uint64 HashBuildGraphOptions(const BuildGraphOptions& opts) {
   for (const string& name : opts.fetch_endpoints) {
     h = Hash64(name.c_str(), name.size(), h);
   }
+
+  if (!opts.debug_options.debug_tensor_watch_opts().empty()) {
+    const string watch_summary = SummarizeDebugTensorWatches(
+        opts.debug_options.debug_tensor_watch_opts());
+    h = Hash64(watch_summary.c_str(), watch_summary.size(), h);
+  }
+
   return h;
 }
 
@@ -1069,6 +1086,7 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
           handle_, opts, std::move(client_graph), session_opts_,
           stats_publisher_factory_, execution_state_.get(), is_partial,
           env_->worker_cache);
+
       iter = m->insert({hash, entry}).first;
       VLOG(1) << "Preparing to execute new graph";
     }
@@ -1315,6 +1333,43 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
   return s;
 }
 
+Status MasterSession::CreateDebuggerState(
+    const DebugOptions& debug_options, const RunStepRequestWrapper& req,
+    int64 rcg_execution_count,
+    std::unique_ptr<DebuggerStateInterface>* debugger_state) {
+  std::unique_ptr<DebuggerStateInterface> state =
+      DebuggerStateRegistry::CreateState(debug_options);
+  if (!state) {
+    return errors::Internal(
+        "Debugger options are set, but creation of debugger state failed. "
+        "It appears that debugger is not linked in this TensorFlow build.");
+  }
+
+  std::vector<string> input_names;
+  for (size_t i = 0; i < req.num_feeds(); ++i) {
+    input_names.push_back(req.feed_name(i));
+  }
+  std::vector<string> output_names;
+  for (size_t i = 0; i < req.num_fetches(); ++i) {
+    output_names.push_back(req.fetch_name(i));
+  }
+  std::vector<string> target_names;
+  for (size_t i = 0; i < req.num_targets(); ++i) {
+    target_names.push_back(req.target_name(i));
+  }
+
+  // TODO(cais): We currently use -1 as a dummy value for session run count.
+  // While this counter value is straightforward to define and obtain for
+  // DirectSessions, it is less so for non-direct Sessions. Devise a better
+  // way to get its value when the need arises.
+  TF_RETURN_IF_ERROR(state->PublishDebugMetadata(
+      debug_options.global_step(), -1, rcg_execution_count, input_names,
+      output_names, target_names));
+
+  *debugger_state = std::move(state);
+  return Status::OK();
+}
+
 Status MasterSession::DoRunWithLocalExecution(
     CallOptions* opts, const RunStepRequestWrapper& req,
     MutableRunStepResponseWrapper* resp) {
@@ -1333,6 +1388,13 @@ Status MasterSession::DoRunWithLocalExecution(
   // Unref "rcg" when out of scope.
   core::ScopedUnref unref(rcg);
 
+  std::unique_ptr<DebuggerStateInterface> debugger_state;
+  const DebugOptions& debug_options = req.options().debug_options();
+
+  if (!debug_options.debug_tensor_watch_opts().empty()) {
+    TF_RETURN_IF_ERROR(
+        CreateDebuggerState(debug_options, req, count, &debugger_state));
+  }
   TF_RETURN_IF_ERROR(BuildAndRegisterPartitions(rcg));
 
   // Keeps the highest 8 bits 0x01: we reserve some bits of the

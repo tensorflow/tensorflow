@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
@@ -192,6 +193,11 @@ class MasterSession : public core::RefCounted {
   void UpdateLastAccessTime();
 
   Status BuildAndRegisterPartitions(ReffedClientGraph* rcg);
+
+  Status CreateDebuggerState(
+      const DebugOptions& debug_options, const RunStepRequestWrapper& req,
+      int64 rcg_execution_count,
+      std::unique_ptr<DebuggerStateInterface>* debugger_state);
 
   TF_DISALLOW_COPY_AND_ASSIGN(MasterSession);
 };
