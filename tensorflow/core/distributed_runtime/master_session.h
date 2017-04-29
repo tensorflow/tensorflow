@@ -141,8 +141,8 @@ class MasterSession : public core::RefCounted {
   };
 
   struct RunState {
-    std::unordered_set<string> pending_inputs;
-    std::unordered_set<string> pending_outputs;
+    std::unordered_map<string, bool> pending_inputs;   // true if fed
+    std::unordered_map<string, bool> pending_outputs;  // true if fetched
     ReffedClientGraph* rcg = nullptr;
     uint64 step_id;
     int64 count = 0;
@@ -153,6 +153,8 @@ class MasterSession : public core::RefCounted {
     RunState(const std::vector<string>& input_names,
              const std::vector<string>& output_names, ReffedClientGraph* rcg,
              const uint64 step_id, const int64 count);
+
+    bool PendingDone() const;
 
     ~RunState();
   };

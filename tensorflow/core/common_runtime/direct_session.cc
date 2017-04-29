@@ -720,16 +720,21 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
       if (it == run_state->pending_inputs.end()) {
         return errors::InvalidArgument(
             "The feed ", input.first,
-            " has already been fed or was not specified in partial_run_setup.");
+            " was not specified in partial_run_setup.");
+      } else if (it->second) {
+        return errors::InvalidArgument("The feed ", input.first,
+                                       " has already been fed.");
       }
     }
     // Check that this is a new set of fetches that are still pending.
     for (const auto& output : output_names) {
       auto it = run_state->pending_outputs.find(output);
       if (it == run_state->pending_outputs.end()) {
+        return errors::InvalidArgument(
+            "The fetch ", output, " was not specified in partial_run_setup.");
+      } else if (it->second) {
         return errors::InvalidArgument("The fetch ", output,
-                                       " has already been fetched or was not "
-                                       "specified in partial_run_setup.");
+                                       " has already been fetched.");
       }
     }
   }
@@ -764,14 +769,15 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
                        << run_state->status;
         }
       }
-      for (const auto& it : inputs) {
-        run_state->pending_inputs.erase(it.first);
+      for (const auto& input : inputs) {
+        auto it = run_state->pending_inputs.find(input.first);
+        it->second = true;
       }
       for (const auto& name : output_names) {
-        run_state->pending_outputs.erase(name);
+        auto it = run_state->pending_outputs.find(name);
+        it->second = true;
       }
-      done = (run_state->pending_inputs.size() == 0 &&
-              run_state->pending_outputs.size() == 0);
+      done = run_state->PendingDone();
     }
     if (done) {
       WaitForNotification(run_state, cancellation_manager_,
@@ -900,11 +906,13 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
   std::unordered_set<TensorId, TensorId::Hasher> pending_feeds;
   {
     mutex_lock l(executor_lock_);
-    for (const string& feed : run_state->pending_inputs) {
-      TensorId id(ParseTensorName(feed));
+    for (const auto& input : run_state->pending_inputs) {
+      // Skip if the feed has already been fed.
+      if (input.second) continue;
+      TensorId id(ParseTensorName(input.first));
       auto it = name_to_node->find(id.first);
       if (it == name_to_node->end()) {
-        return errors::NotFound("Feed ", feed, ": not found");
+        return errors::NotFound("Feed ", input.first, ": not found");
       }
       pending_feeds.insert(id);
     }
@@ -1351,10 +1359,10 @@ DirectSession::RunState::RunState(
       }) {
   // Initially all the feeds and fetches are pending.
   for (auto& name : pending_input_names) {
-    pending_inputs.emplace(name);
+    pending_inputs[name] = false;
   }
   for (auto& name : pending_output_names) {
-    pending_outputs.emplace(name);
+    pending_outputs[name] = false;
   }
 }
 
@@ -1370,6 +1378,16 @@ DirectSession::RunState::~RunState() {
     }
     rendez->Unref();
   }
+}
+
+bool DirectSession::RunState::PendingDone() const {
+  for (const auto& it : pending_inputs) {
+    if (!it.second) return false;
+  }
+  for (const auto& it : pending_outputs) {
+    if (!it.second) return false;
+  }
+  return true;
 }
 
 void DirectSession::WaitForNotification(RunState* run_state,

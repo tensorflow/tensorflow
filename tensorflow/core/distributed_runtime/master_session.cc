@@ -803,11 +803,13 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
     SimpleGraphExecutionState* execution_state) {
   // Build the set of pending feeds that we haven't seen.
   std::unordered_set<TensorId, TensorId::Hasher> pending_feeds;
-  for (const string& feed : run_state->pending_inputs) {
-    TensorId id(ParseTensorName(feed));
+  for (const auto& input : run_state->pending_inputs) {
+    // Skip if already fed.
+    if (input.second) continue;
+    TensorId id(ParseTensorName(input.first));
     auto it = name_to_node_.find(id.first);
     if (it == name_to_node_.end()) {
-      return errors::NotFound("Feed ", feed, ": not found");
+      return errors::NotFound("Feed ", input.first, ": not found");
     }
     pending_feeds.insert(id);
   }
@@ -1247,11 +1249,14 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
 
   // Make sure that this is a new set of feeds that are still pending.
   for (size_t i = 0; i < req.num_feeds(); ++i) {
-    auto it = run_state->pending_inputs.find(req.feed_name(i));
+    const string& feed = req.feed_name(i);
+    auto it = run_state->pending_inputs.find(feed);
     if (it == run_state->pending_inputs.end()) {
       return errors::InvalidArgument(
-          "The feed ", req.feed_name(i),
-          " has already been fed or was not specified in partial_run_setup.");
+          "The feed ", feed, " was not specified in partial_run_setup.");
+    } else if (it->second) {
+      return errors::InvalidArgument("The feed ", feed,
+                                     " has already been fed.");
     }
   }
   // Check that this is a new set of fetches that are still pending.
@@ -1259,9 +1264,11 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     const string& fetch = req.fetch_name(i);
     auto it = run_state->pending_outputs.find(fetch);
     if (it == run_state->pending_outputs.end()) {
+      return errors::InvalidArgument(
+          "The fetch ", fetch, " was not specified in partial_run_setup.");
+    } else if (it->second) {
       return errors::InvalidArgument("The fetch ", fetch,
-                                     " had already been fetched or was not "
-                                     "specified in partial_run_setup.");
+                                     " has already been fetched.");
     }
   }
 
@@ -1274,13 +1281,14 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
 
   // Determine if this partial run satisfies all the pending inputs and ouputs.
   for (size_t i = 0; i < req.num_feeds(); ++i) {
-    run_state->pending_inputs.erase(req.feed_name(i));
+    auto it = run_state->pending_inputs.find(req.feed_name(i));
+    it->second = true;
   }
   for (size_t i = 0; i < req.num_fetches(); ++i) {
-    run_state->pending_outputs.erase(req.fetch_name(i));
+    auto it = run_state->pending_outputs.find(req.fetch_name(i));
+    it->second = true;
   }
-  bool is_last_partial_run =
-      (run_state->pending_inputs.empty() && run_state->pending_outputs.empty());
+  bool is_last_partial_run = run_state->PendingDone();
 
   Status s = run_state->rcg->RunPartitions(
       env_, run_state->step_id, run_state->count, &run_state->pss, opts, req,
@@ -1418,15 +1426,25 @@ MasterSession::RunState::RunState(const std::vector<string>& input_names,
     : rcg(rcg), step_id(step_id), count(count) {
   // Initially all the feeds and fetches are pending.
   for (auto& name : input_names) {
-    pending_inputs.emplace(name);
+    pending_inputs[name] = false;
   }
   for (auto& name : output_names) {
-    pending_outputs.emplace(name);
+    pending_outputs[name] = false;
   }
 }
 
 MasterSession::RunState::~RunState() {
   if (rcg) rcg->Unref();
+}
+
+bool MasterSession::RunState::PendingDone() const {
+  for (const auto& it : pending_inputs) {
+    if (!it.second) return false;
+  }
+  for (const auto& it : pending_outputs) {
+    if (!it.second) return false;
+  }
+  return true;
 }
 
 }  // end namespace tensorflow
