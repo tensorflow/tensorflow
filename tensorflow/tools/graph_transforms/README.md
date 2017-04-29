@@ -169,7 +169,7 @@ then you'll need to make local modifications to the build files to include the
 right .cc file that defines it. In a lot of cases the op is just a vestigial
 remnant from the training process though, and if that's true then you can run
 the [strip_unused_nodes](#strip_unused_nodes), specifying the inputs and outputs
-of your inference usage, to remove those unneccessary nodes:
+of your inference usage, to remove those unnecessary nodes:
 
 ```bash
 bazel build tensorflow/tools/graph_transforms:transform_graph
