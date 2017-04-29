@@ -410,7 +410,9 @@ HloInstruction::CreateSelectAndScatter(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReshape(
     const Shape& shape, HloInstruction* operand) {
   CHECK_EQ(ShapeUtil::ElementsIn(shape),
-           ShapeUtil::ElementsIn(operand->shape()));
+           ShapeUtil::ElementsIn(operand->shape()))
+      << "shape: " << ShapeUtil::HumanString(shape)
+      << " operand: " << ShapeUtil::HumanString(operand->shape());
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kReshape, shape));
   instruction->AppendOperand(operand);
   return instruction;
@@ -1428,7 +1430,8 @@ string HloInstruction::ExtendedOpcodeStr() const {
   return opc_name;
 }
 
-string HloInstruction::ToString(bool compact_operands) const {
+string HloInstruction::ToString(bool compact_operands,
+                                bool include_metadata) const {
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
@@ -1509,8 +1512,9 @@ string HloInstruction::ToString(bool compact_operands) const {
   if (opcode() == HloOpcode::kGetTupleElement) {
     StrAppend(&extra, ", index=", tuple_index());
   }
-  if (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
-      !metadata_.source_file().empty()) {
+  if (include_metadata &&
+      (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
+       !metadata_.source_file().empty())) {
     StrAppend(&extra, " # metadata=", metadata_.ShortDebugString());
   }
 
