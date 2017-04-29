@@ -503,9 +503,36 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     ...
   def input_fn_eval: # returns x, y (where y represents label's class index).
     ...
+  def input_fn_predict: # returns x, None.
+    ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
+  # predict_classes returns class indices.
+  estimator.predict_classes(input_fn=input_fn_predict)
+  ```
+
+  If the user specifies `label_keys` in constructor, labels must be strings from
+  the `label_keys` vocabulary. Example:
+
+  ```python
+  label_keys = ['label0', 'label1', 'label2']
+  estimator = DNNLinearCombinedClassifier(
+      n_classes=n_classes,
+      linear_feature_columns=[sparse_feature_a_x_sparse_feature_b],
+      dnn_feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      dnn_hidden_units=[1000, 500, 100],
+      label_keys=label_keys)
+
+  def input_fn_train: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.fit(input_fn=input_fn_train)
+
+  def input_fn_eval: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  def input_fn_predict: # returns x, None
+  # predict_classes returns one of label_keys.
+  estimator.predict_classes(input_fn=input_fn_predict)
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -545,6 +572,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                feature_engineering_fn=None,
                embedding_lr_multipliers=None,
                input_layer_min_slice_size=None,
+               label_keys=None,
                fix_global_step_increment_bug=False):
     """Constructs a DNNLinearCombinedClassifier instance.
 
@@ -596,6 +624,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         learning rate for the embedding variables.
       input_layer_min_slice_size: Optional. The min slice size of input layer
         partitions. If not provided, will use the default of 64M.
+      label_keys: Optional list of strings with size `[n_classes]` defining the
+        label vocabulary. Only supported for `n_classes` > 2.
       fix_global_step_increment_bug: If `False`, the estimator needs two fit
         steps to optimize both linear and dnn parts. If `True`, this bug is
         fixed. New users must set this to `True`, but it the default value is
@@ -609,7 +639,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     head = head_lib.multi_class_head(
         n_classes=n_classes,
         weight_column_name=weight_column_name,
-        enable_centered_bias=enable_centered_bias)
+        enable_centered_bias=enable_centered_bias,
+        label_keys=label_keys)
     linear_feature_columns = tuple(linear_feature_columns or [])
     dnn_feature_columns = tuple(dnn_feature_columns or [])
     self._feature_columns = linear_feature_columns + dnn_feature_columns
@@ -820,9 +851,11 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
     ...
   def input_fn_eval: # returns x, y
     ...
+  def input_fn_predict: # returns x, None
+    ...
   estimator.train(input_fn_train)
   estimator.evaluate(input_fn_eval)
-  estimator.predict(x)
+  estimator.predict(input_fn_predict)
   ```
 
   Input of `fit`, `train`, and `evaluate` should have following features,

@@ -313,6 +313,16 @@ class SwitchTestCase(TensorFlowTestCase):
         self.assertEquals(o, 6)
         self.assertAllEqual(grad, [1] * 3)
 
+  def testGradientThroughSingleBranchOutsideOfContext(self):
+    with self.test_session():
+      x = constant_op.constant(2.)
+      s = constant_op.constant(True)
+      x_false, x_true = control_flow_ops.switch(x, s)
+      grad_x_true = gradients_impl.gradients(x_true, x)[0]
+      grad_x_false = gradients_impl.gradients(x_false, x)[0]
+      self.assertEquals(grad_x_true.eval(), 1.)
+      self.assertEquals(grad_x_false.eval(), 0.)
+
 
 class ContextTest(TensorFlowTestCase):
 

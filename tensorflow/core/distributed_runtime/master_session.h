@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
@@ -141,8 +142,8 @@ class MasterSession : public core::RefCounted {
   };
 
   struct RunState {
-    std::unordered_set<string> pending_inputs;
-    std::unordered_set<string> pending_outputs;
+    std::unordered_map<string, bool> pending_inputs;   // true if fed
+    std::unordered_map<string, bool> pending_outputs;  // true if fetched
     ReffedClientGraph* rcg = nullptr;
     uint64 step_id;
     int64 count = 0;
@@ -153,6 +154,8 @@ class MasterSession : public core::RefCounted {
     RunState(const std::vector<string>& input_names,
              const std::vector<string>& output_names, ReffedClientGraph* rcg,
              const uint64 step_id, const int64 count);
+
+    bool PendingDone() const;
 
     ~RunState();
   };
@@ -190,6 +193,11 @@ class MasterSession : public core::RefCounted {
   void UpdateLastAccessTime();
 
   Status BuildAndRegisterPartitions(ReffedClientGraph* rcg);
+
+  Status CreateDebuggerState(
+      const DebugOptions& debug_options, const RunStepRequestWrapper& req,
+      int64 rcg_execution_count,
+      std::unique_ptr<DebuggerStateInterface>* debugger_state);
 
   TF_DISALLOW_COPY_AND_ASSIGN(MasterSession);
 };

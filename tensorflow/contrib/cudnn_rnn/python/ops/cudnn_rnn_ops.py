@@ -48,8 +48,8 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
   def __init__(self,
                params_to_canonical,
                canonical_to_params,
-               name="params_canonical",
-               *param_variables):
+               param_variables,
+               name="params_canonical"):
     """Creates a RNNParamsSaveable object.
 
        RNNParamsSaveable is saveable/restorable in a checkpoint file and is used
@@ -83,11 +83,11 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
           must return a scalar (e.g. in the case of cuDNN) or a tuple. This
           function could be _CudnnRNN.canonical_to_params() or a
           user-defined function.
-      name: the name of the RNNParamsSaveable object.
-      *param_variables: a list of Variables for parameters in a specific form.
+      param_variables: a list of Variables for parameters in a specific form.
           For cuDNN RNN ops, this is a single merged variable for both weights
           and biases; for other RNN ops, this might be multiple unmerged or
           partially merged variables respectively for weights and biases.
+      name: the name of the RNNParamsSaveable object.
     """
     # There is only a single merged parameter variable for cuDNN when saving.
     weights, biases = params_to_canonical(param_variables[0])
@@ -411,7 +411,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
       output_h: the final state for h.
     """
     output, output_h, _ = super(_CudnnRNNNoInputC, self).__call__(
-        input_data, input_h, None, params, is_training=True)
+        input_data, input_h, None, params, is_training=is_training)
     return (output, output_h)
 
 

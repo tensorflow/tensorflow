@@ -34,6 +34,7 @@ from tensorflow.contrib.keras.python.keras.utils.generic_utils import deserializ
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import func_dump
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import func_load
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.layers import core as tf_core_layers
 from tensorflow.python.util import tf_inspect
 
 
@@ -643,7 +644,7 @@ class Lambda(Layer):
     return cls(**config)
 
 
-class Dense(Layer):
+class Dense(tf_core_layers.Dense, Layer):
   """Just your regular densely-connected NN layer.
 
   `Dense` implements the operation:
@@ -712,15 +713,20 @@ class Dense(Layer):
                **kwargs):
     if 'input_shape' not in kwargs and 'input_dim' in kwargs:
       kwargs['input_shape'] = (kwargs.pop('input_dim'),)
-    super(Dense, self).__init__(**kwargs)
-    self.units = units
-    self.activation = activations.get(activation)
-    self.use_bias = use_bias
-    self.kernel_initializer = initializers.get(kernel_initializer)
-    self.bias_initializer = initializers.get(bias_initializer)
-    self.kernel_regularizer = regularizers.get(kernel_regularizer)
-    self.bias_regularizer = regularizers.get(bias_regularizer)
-    self.activity_regularizer = regularizers.get(activity_regularizer)
+
+    # Inheritance call order:
+    # 1) tf.layers.Dense, 2) keras.layers.Layer, 3) tf.layers.Layer
+    super(Dense, self).__init__(
+        units,
+        activation=activations.get(activation),
+        use_bias=use_bias,
+        kernel_initializer=initializers.get(kernel_initializer),
+        bias_initializer=initializers.get(bias_initializer),
+        kernel_regularizer=regularizers.get(kernel_regularizer),
+        bias_regularizer=regularizers.get(bias_regularizer),
+        activity_regularizer=regularizers.get(activity_regularizer),
+        **kwargs)
+
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.bias_constraint = constraints.get(bias_constraint)
     self.input_spec = InputSpec(min_ndim=2)
@@ -729,40 +735,12 @@ class Dense(Layer):
   def build(self, input_shape):
     assert len(input_shape) >= 2
     input_dim = input_shape[-1]
-
-    self.kernel = self.add_weight(
-        (input_dim, self.units),
-        initializer=self.kernel_initializer,
-        name='kernel',
-        regularizer=self.kernel_regularizer,
-        constraint=self.kernel_constraint)
-    if self.use_bias:
-      self.bias = self.add_weight(
-          (self.units,),
-          initializer=self.bias_initializer,
-          name='bias',
-          regularizer=self.bias_regularizer,
-          constraint=self.bias_constraint)
-    else:
-      self.bias = None
+    super(Dense, self).build(input_shape)
     self.input_spec = InputSpec(min_ndim=2, axes={-1: input_dim})
-    self.built = True
-
-  def call(self, inputs):
-    output = K.dot(inputs, self.kernel)
-    if self.use_bias:
-      output = K.bias_add(output, self.bias)
-    if self.activation is not None:
-      output = self.activation(output)
-    return output
-
-  def _compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    assert input_shape and len(input_shape) >= 2
-    assert input_shape[-1]
-    output_shape = list(input_shape)
-    output_shape[-1] = self.units
-    return tensor_shape.TensorShape(output_shape)
+    if self.kernel_constraint:
+      self.constraints[self.kernel] = self.kernel_constraint
+    if self.use_bias and self.bias_constraint:
+      self.constraints[self.bias] = self.bias_constraint
 
   def get_config(self):
     config = {

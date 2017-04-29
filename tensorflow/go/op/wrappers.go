@@ -57,7 +57,7 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 // Requires `updates.shape = indices.shape + ref.shape[1:]`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/ScatterAdd.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
 // </div>
 //
 // Arguments:
@@ -195,6 +195,19 @@ func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...Va
 	return op.Output(0)
 }
 
+// FakeQuantWithMinMaxVarsPerChannelGradientAttr is an optional argument to FakeQuantWithMinMaxVarsPerChannelGradient.
+type FakeQuantWithMinMaxVarsPerChannelGradientAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsPerChannelGradientNumBits sets the optional num_bits attribute to value.
+//
+// value: The bitwidth of the quantization; between 2 and 8, inclusive.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsPerChannelGradientNumBits(value int64) FakeQuantWithMinMaxVarsPerChannelGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
 //
 // Arguments:
@@ -211,18 +224,34 @@ func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...Va
 //   `gradients * (inputs >= min && inputs <= max)`.Backpropagated gradients w.r.t. min parameter, shape `[d]`:
 // `sum_per_d(gradients * (inputs < min))`.Backpropagated gradients w.r.t. max parameter, shape `[d]`:
 // `sum_per_d(gradients * (inputs > max))`.
-func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
+func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelGradientAttr) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVarsPerChannelGradient",
 		Input: []tf.Input{
 			gradients, inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// FakeQuantWithMinMaxVarsAttr is an optional argument to FakeQuantWithMinMaxVars.
+type FakeQuantWithMinMaxVarsAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsNumBits(value int64) FakeQuantWithMinMaxVarsAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
 }
 
 // Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
@@ -232,17 +261,23 @@ func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output
 // [min; max] is the clamping range for the 'inputs' data.  Op divides this range
 // into 255 steps (total of 256 values), then replaces each 'inputs' value with the
 // closest of the quantized step values.
+// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
 // This operation has a gradient and thus allows for training `min` and `max` values.
-func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output) (outputs tf.Output) {
+func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVars",
 		Input: []tf.Input{
 			inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -653,14 +688,14 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // For example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3, 4]]]]
 //
 // ```
 //
 // This operation will output a tensor of shape `[1, 2, 2, 1]`:
 //
-// ```prettyprint
+// ```
 //    [[[[1], [2]],
 //      [[3], [4]]]]
 // ```
@@ -672,14 +707,14 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // For an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
 // ```
 //
 // This operation, for block size of 2, will return the following tensor of shape
 // `[1, 2, 2, 3]`
 //
-// ```prettyprint
+// ```
 //    [[[[1, 2, 3], [4, 5, 6]],
 //      [[7, 8, 9], [10, 11, 12]]]]
 //
@@ -687,7 +722,7 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // Similarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:
 //
-// ```prettyprint
+// ```
 // x =  [[[[1, 2, 3, 4],
 //        [5, 6, 7, 8]],
 //       [[9, 10, 11, 12],
@@ -696,7 +731,7 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // the operator will return the following tensor of shape `[1 4 4 1]`:
 //
-// ```prettyprint
+// ```
 // x = [[ [1],   [2],  [5],  [6]],
 //      [ [3],   [4],  [7],  [8]],
 //      [ [9],  [10], [13],  [14]],
@@ -784,26 +819,26 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // (1) For the following input of shape `[4, 1, 1, 1]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // (2) For the following input of shape `[4, 1, 1, 3]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 3]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
@@ -811,7 +846,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // (3) For the following input of shape `[4, 2, 2, 1]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -820,7 +855,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //
 // The output tensor has shape `[1, 4, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[1],   [2],  [3],  [4]],
 //      [[5],   [6],  [7],  [8]],
 //      [[9],  [10], [11],  [12]],
@@ -830,7 +865,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // (4) For the following input of shape `[8, 1, 3, 1]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [2, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
 //      [[[0], [2], [4]]], [[[0], [10], [12]]],
 //      [[[0], [5], [7]]], [[[0], [13], [15]]],
@@ -839,7 +874,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //
 // The output tensor has shape `[2, 2, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]]],
 //      [[[9],  [10], [11],  [12]],
@@ -897,32 +932,32 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // (1) For the following input of shape `[1, 2, 2, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 1]` and value:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // (2) For the following input of shape `[1, 2, 2, 3]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 3]` and value:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // (3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]],
 //       [[9],  [10], [11],  [12]],
@@ -931,7 +966,7 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // The output tensor has shape `[4, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -940,7 +975,7 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // (4) For the following input of shape `[2, 2, 4, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]]],
 //      [[[9],  [10], [11],  [12]],
@@ -949,7 +984,7 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // The output tensor has shape `[8, 1, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
 //      [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]
 // ```
@@ -1142,34 +1177,34 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 // (1) For the following input of shape `[1, 2, 2, 1]`, `block_shape = [2, 2]`, and
 //     `paddings = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 1]` and value:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // (2) For the following input of shape `[1, 2, 2, 3]`, `block_shape = [2, 2]`, and
 //     `paddings = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 3]` and value:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // (3) For the following input of shape `[1, 4, 4, 1]`, `block_shape = [2, 2]`, and
 //     `paddings = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]],
 //       [[9],  [10], [11],  [12]],
@@ -1178,7 +1213,7 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 //
 // The output tensor has shape `[4, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -1188,7 +1223,7 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 // (4) For the following input of shape `[2, 2, 4, 1]`, block_shape = `[2, 2]`, and
 //     paddings = `[[0, 0], [2, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]]],
 //      [[[9],  [10], [11],  [12]],
@@ -1197,7 +1232,7 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 //
 // The output tensor has shape `[8, 1, 3, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
 //      [[[0], [2], [4]]], [[[0], [10], [12]]],
 //      [[[0], [5], [7]]], [[[0], [13], [15]]],
@@ -1243,14 +1278,14 @@ func ListDiffOutIdx(value tf.DataType) ListDiffAttr {
 //
 // For example, given this input:
 //
-// ```prettyprint
+// ```
 // x = [1, 2, 3, 4, 5, 6]
 // y = [1, 3, 5]
 // ```
 //
 // This operation would return:
 //
-// ```prettyprint
+// ```
 // out ==> [2, 4, 6]
 // idx ==> [1, 3, 5]
 // ```
@@ -1304,14 +1339,14 @@ func SqueezeSqueezeDims(value []int64) SqueezeAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
 // shape(squeeze(t)) ==> [2, 3]
 // ```
 //
 // Or, to remove specific size 1 dimensions:
 //
-// ```prettyprint
+// ```
 // # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
 // shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 // ```
@@ -1426,7 +1461,7 @@ func Placeholder(scope *Scope, dtype tf.DataType, optional ...PlaceholderAttr) (
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[1, 2, 3], [4, 5, 6]].
 // # 'paddings' is [[1, 1]], [2, 2]].
 // # 'mode' is SYMMETRIC.
@@ -1510,7 +1545,7 @@ func BroadcastArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'input' tensor is [[True, False]
 // #                    [True, False]]
 // # 'input' has two true values, so output has two coordinates.
@@ -1727,7 +1762,7 @@ func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []t
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 't' is [1, 2, 3, 4, 5, 6, 7, 8, 9]
 // # tensor 't' has shape [9]
 // reshape(t, [3, 3]) ==> [[1, 2, 3],
@@ -1911,20 +1946,17 @@ func Identity(scope *Scope, input tf.Output) (output tf.Output) {
 
 // Gather values or slices from `params` according to `indices`.
 //
-// `params` is a Tensor of rank `P` and `indices` is a Tensor of rank `Q`.
+// `indices` is an integer tensor containing indices into `params`.  The last
+// dimension of `indices` can be at most the rank of `params`:
 //
-// `indices` must be integer tensor, containing indices into `params`.
-// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+//     indices.shape[-1] <= params.rank
 //
-// The innermost dimension of `indices` (with length `K`) corresponds to
-// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-// dimension of `params`.
+// The last dimension of `indices` corresponds to elements
+// (if `indices.shape[-1] = params.rank`) or slices
+// (if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
+// of `params`.  The output tensor has shape
 //
-// Produces an output tensor with shape
-//
-// ```
-// [d_0, ..., d_{Q-2}, params.shape[K], ..., params.shape[P-1]].
-// ```
+//     indices.shape[:-1] + params.shape[indices.shape[-1]:]
 //
 // Some examples below.
 //
@@ -2004,11 +2036,11 @@ func Identity(scope *Scope, input tf.Output) (output tf.Output) {
 // ```
 //
 // Arguments:
-//	params: `P-D`.  The tensor from which to gather values.
-//	indices: `Q-D`.  Index tensor having shape `[d_0, ..., d_{Q-2}, K]`.
+//	params: The tensor from which to gather values.
+//	indices: Index tensor.
 //
-// Returns `(P+Q-K-1)-D`.  Values from `params` gathered from indices given by
-// `indices`.
+// Returns Values from `params` gathered from indices given by `indices`, with
+// shape `indices.shape[:-1] + params.shape[indices.shape[-1]:]`.
 func GatherNd(scope *Scope, params tf.Output, indices tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -2155,7 +2187,7 @@ func MatrixSetDiag(scope *Scope, input tf.Output, diagonal tf.Output) (output tf
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'input' is [[1, 0, 0, 0]
 //               [0, 2, 0, 0]
 //               [0, 0, 3, 0]
@@ -2351,7 +2383,7 @@ func Split(scope *Scope, split_dim tf.Output, value tf.Output, num_split int64) 
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'x' is [2, 2, 7]
 // # 'y' is [2, 3, 7]
 // # 'z' is [2, 5, 7]
@@ -2420,7 +2452,7 @@ func Concat(scope *Scope, concat_dim tf.Output, values []tf.Output) (output tf.O
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'x' is [[1, 4]]
 // # 'y' is [[2, 5]]
 // # 'z' is [[3, 6]]
@@ -2555,7 +2587,7 @@ func UniqueOutIdx(value tf.DataType) UniqueAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
 // y, idx = unique(x)
 // y ==> [1, 2, 4, 7, 8]
@@ -2689,7 +2721,7 @@ func AllCandidateSamplerSeed2(value int64) AllCandidateSamplerAttr {
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to produce per batch.
+//	num_sampled: Number of candidates to produce.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -2847,7 +2879,7 @@ func FixedUnigramCandidateSamplerSeed2(value int64) FixedUnigramCandidateSampler
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -2920,7 +2952,7 @@ func UniformCandidateSamplerSeed2(value int64) UniformCandidateSamplerAttr {
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -3035,14 +3067,14 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 //
 // For example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]],
 //       [[3], [4]]]]
 // ```
 //
 // This operation will output a tensor of shape `[1, 1, 1, 4]`:
 //
-// ```prettyprint
+// ```
 // [[[[1, 2, 3, 4]]]]
 // ```
 //
@@ -3053,7 +3085,7 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 //
 // For an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
@@ -3061,13 +3093,13 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 // This operation, for block_size of 2, will return the following tensor of shape
 // `[1, 1, 1, 12]`
 //
-// ```prettyprint
+// ```
 // [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
 // ```
 //
 // Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [5],  [6]],
 //       [[3],   [4],  [7],  [8]],
 //       [[9],  [10], [13],  [14]],
@@ -3076,7 +3108,7 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 //
 // the operator will return the following tensor of shape `[1 2 2 4]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3, 4],
 //        [5, 6, 7, 8]],
 //       [[9, 10, 11, 12],
@@ -3102,37 +3134,34 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 	return op.Output(0)
 }
 
-// Creates a new tensor by applying sparse `updates` to individual
+// Scatter `updates` into a new (initially zero) tensor according to `indices`.
 //
-// values or slices within a zero tensor of the given `shape` tensor according to
+// Creates a new tensor by applying sparse `updates` to individual
+// values or slices within a zero tensor of the given `shape` according to
 // indices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)
 // operator which extracts values or slices from a given tensor.
 //
-// TODO(simister): Add a link to Variable.__getitem__ documentation on slice
-// syntax.
+// **WARNING**: The order in which updates are applied is nondeterministic, so the
+// output will be nondeterministic if `indices` contains duplicates.
 //
-// `shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank
-// `Q`.
+// `indices` is an integer tensor containing indices into a new tensor of shape
+// `shape`.  The last dimension of `indices` can be at most the rank of `shape`:
 //
-// `indices` must be integer tensor, containing indices into `shape`.
-// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+//     indices.shape[-1] <= shape.rank
 //
-// The innermost dimension of `indices` (with length `K`) corresponds to
-// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-// dimension of `shape`.
+// The last dimension of `indices` corresponds to indices into elements
+// (if `indices.shape[-1] = shape.rank`) or slices
+// (if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
+// `shape`.  `updates` is a tensor with shape
 //
-// `updates` is Tensor of rank `Q-1+P-K` with shape:
-//
-// ```
-// [d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].
-// ```
+//     indices.shape[:-1] + shape[indices.shape[-1]:]
 //
 // The simplest form of scatter is to insert individual elements in a tensor by
 // index. For example, say we want to insert 4 scattered elements in a rank-1
 // tensor with 8 elements.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/ScatterNd1.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
 // </div>
 //
 // In Python, this scatter operation would look like this:
@@ -3143,7 +3172,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //     shape = tf.constant([8])
 //     scatter = tf.scatter_nd(indices, updates, shape)
 //     with tf.Session() as sess:
-//       print sess.run(scatter)
+//       print(sess.run(scatter))
 // ```
 //
 // The resulting tensor would look like this:
@@ -3155,7 +3184,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // rank-3 tensor with two matrices of new values.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/ScatterNd2.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
 // </div>
 //
 // In Python, this scatter operation would look like this:
@@ -3169,7 +3198,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //     shape = tf.constant([4, 4, 4])
 //     scatter = tf.scatter_nd(indices, updates, shape)
 //     with tf.Session() as sess:
-//       print sess.run(scatter)
+//       print(sess.run(scatter))
 // ```
 //
 // The resulting tensor would look like this:
@@ -3180,11 +3209,9 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
 //
 // Arguments:
-//	indices: A Tensor. Must be one of the following types: int32, int64.
-// A tensor of indices into ref.
-//	updates: A Tensor. Must have the same type as tensor. A tensor of updated values
-// to store in ref.
-//	shape: A vector. The shape of the resulting tensor.
+//	indices: Index tensor.
+//	updates: Updates to scatter into output.
+//	shape: 1-D. The shape of the resulting tensor.
 //
 // Returns A new tensor with the given shape and updates applied according
 // to the indices.
@@ -3514,11 +3541,20 @@ func FakeQuantWithMinMaxArgsMax(value float32) FakeQuantWithMinMaxArgsAttr {
 	}
 }
 
+// FakeQuantWithMinMaxArgsNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxArgsNumBits(value int64) FakeQuantWithMinMaxArgsAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
 //
 // Attributes [min; max] define the clamping range for the 'inputs' data.  Op
 // divides this range into 255 steps (total of 256 values), then replaces each
 // 'inputs' value with the closest of the quantized step values.
+// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
 // Quantization is called fake since the output is still in floating point.
 func FakeQuantWithMinMaxArgs(scope *Scope, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsAttr) (outputs tf.Output) {
@@ -3730,7 +3766,7 @@ func LearnedUnigramCandidateSamplerSeed2(value int64) LearnedUnigramCandidateSam
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -3816,7 +3852,7 @@ func TensorArraySplitV3(scope *Scope, handle tf.Output, value tf.Output, lengths
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'diagonal' is [1, 2, 3, 4]
 // tf.diag(diagonal) ==> [[1, 0, 0, 0]
 //                        [0, 2, 0, 0]
@@ -4051,7 +4087,7 @@ func TensorArrayConcatV2(scope *Scope, handle tf.Output, flow_in tf.Output, dtyp
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'input' is [[[1, 0, 0, 0]
 //                [0, 2, 0, 0]
 //                [0, 0, 3, 0]
@@ -4752,7 +4788,7 @@ func StridedSliceShrinkAxisMask(value int64) StridedSliceAttr {
 // particular,
 // `foo[1, 2:4, None, ..., :-3:-1, :]` will be encoded as
 //
-// ```prettyprint
+// ```
 // begin = [1, 2, x, x, 0, x] # x denotes don't care (usually 0)
 // end = [2, 4, x, x, -3, x]
 // strides = [1, 1, x, x, -1, 1]
@@ -4904,7 +4940,7 @@ func TensorArrayGatherV2(scope *Scope, handle tf.Output, indices tf.Output, flow
 // ```
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/DynamicStitch.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
 // </div>
 func DynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged tf.Output) {
 	if scope.Err() != nil {
@@ -5618,6 +5654,14 @@ func FakeQuantWithMinMaxArgsGradientMax(value float32) FakeQuantWithMinMaxArgsGr
 	}
 }
 
+// FakeQuantWithMinMaxArgsGradientNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxArgsGradientNumBits(value int64) FakeQuantWithMinMaxArgsGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxArgs operation.
 //
 // Arguments:
@@ -5970,7 +6014,7 @@ func ReverseSequenceBatchDim(value int64) ReverseSequenceAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # Given this:
 // batch_dim = 0
 // seq_dim = 1
@@ -5992,7 +6036,7 @@ func ReverseSequenceBatchDim(value int64) ReverseSequenceAttr {
 //
 // In contrast, if:
 //
-// ```prettyprint
+// ```
 // # Given this:
 // batch_dim = 2
 // seq_dim = 0
@@ -6872,7 +6916,7 @@ func SaveSlices(scope *Scope, filename tf.Output, tensor_names tf.Output, shapes
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
 // # shape of tensor 't' is [2, 2, 3]
 // rank(t) ==> 3
@@ -7082,7 +7126,7 @@ func Acos(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # if 'input' is [[ 0,  1,  2, 3]
 //                  [-1,  0,  1, 2]
 //                  [-2, -1,  0, 1]
@@ -7101,7 +7145,7 @@ func Acos(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // Useful special cases:
 //
-// ```prettyprint
+// ```
 //  tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
 //  tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
 //  tf.matrix_band_part(input, 0, 0) ==> Diagonal.
@@ -7513,6 +7557,17 @@ func RandomShuffle(scope *Scope, value tf.Output, optional ...RandomShuffleAttr)
 	return op.Output(0)
 }
 
+// FakeQuantWithMinMaxVarsPerChannelAttr is an optional argument to FakeQuantWithMinMaxVarsPerChannel.
+type FakeQuantWithMinMaxVarsPerChannelAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsPerChannelNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsPerChannelNumBits(value int64) FakeQuantWithMinMaxVarsPerChannelAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
 //
 // `[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
@@ -7521,17 +7576,23 @@ func RandomShuffle(scope *Scope, value tf.Output, optional ...RandomShuffleAttr)
 // [min; max] is the clamping range for the 'inputs' data in the corresponding
 // depth channel.  Op divides this range into 255 steps (total of 256 values), then
 // replaces each 'inputs' value with the closest of the quantized step values.
+// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
 // This operation has a gradient and thus allows for training `min` and `max` values.
-func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output) (outputs tf.Output) {
+func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVarsPerChannel",
 		Input: []tf.Input{
 			inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -9872,7 +9933,7 @@ func PackAxis(value int64) PackAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'x' is [1, 4]
 // # 'y' is [2, 5]
 // # 'z' is [3, 6]
@@ -10105,7 +10166,7 @@ func WriteFile(scope *Scope, filename tf.Output, contents tf.Output) (o *tf.Oper
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 't' is [[[[ 0,  1,  2,  3],
 // #                  [ 4,  5,  6,  7],
 // #                  [ 8,  9, 10, 11]],
@@ -10577,7 +10638,7 @@ func SizeOutType(value tf.DataType) SizeAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
 // size(t) ==> 12
 // ```
@@ -10759,7 +10820,7 @@ func FFT2D(scope *Scope, input tf.Output) (output tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # Output tensor has shape [2, 3].
 // fill([2, 3], 9) ==> [[9, 9, 9]
 //                      [9, 9, 9]]
@@ -11556,7 +11617,7 @@ func SparseAdd(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[1, 2, 3], [4, 5, 6], [7, 8, 9]].
 // # 'paddings' is [[0, 1]], [0, 1]].
 // # 'mode' is SYMMETRIC.
@@ -11601,7 +11662,7 @@ func MirrorPadGrad(scope *Scope, input tf.Output, paddings tf.Output, mode strin
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor `x` is [3, 4, 0, 2, 1]
 // invert_permutation(x) ==> [2, 4, 3, 0, 1]
 // ```
@@ -11637,7 +11698,7 @@ func InvertPermutation(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 't' is [[[[ 0,  1,  2,  3],
 // #                  [ 4,  5,  6,  7],
 // #                  [ 8,  9, 10, 11]],
@@ -12160,7 +12221,7 @@ func ThreadUnsafeUnigramCandidateSamplerSeed2(value int64) ThreadUnsafeUnigramCa
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -13472,7 +13533,7 @@ func LogicalNot(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[1, 1], [2, 2]]
 // # 'paddings' is [[1, 1], [2, 2]]
 // # rank of 't' is 2
@@ -13697,7 +13758,7 @@ func GatherValidateIndices(value bool) GatherAttr {
 // raising an error.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../../images/Gather.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
 // </div>
 func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...GatherAttr) (output tf.Output) {
 	if scope.Err() != nil {
@@ -15359,7 +15420,7 @@ func UniqueWithCountsOutIdx(value tf.DataType) UniqueWithCountsAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
 // y, idx, count = unique_with_counts(x)
 // y ==> [1, 2, 4, 7, 8]
@@ -15667,7 +15728,7 @@ func NotEqual(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
 //
 // and diagonal.shape = (2, 4)
@@ -16643,7 +16704,7 @@ func Sqrt(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // Other examples:
 //
-// ```prettyprint
+// ```
 // # 't' is a tensor of shape [2]
 // shape(expand_dims(t, 0)) ==> [1, 2]
 // shape(expand_dims(t, 1)) ==> [2, 1]
@@ -17417,32 +17478,32 @@ func Tan(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // (1) For the following input of shape `[4, 1, 1, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // (2) For the following input of shape `[4, 1, 1, 3]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 3]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
 //
 // (3) For the following input of shape `[4, 2, 2, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -17451,7 +17512,7 @@ func Tan(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // The output tensor has shape `[1, 4, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[1],   [2],  [3],  [4]],
 //      [[5],   [6],  [7],  [8]],
 //      [[9],  [10], [11],  [12]],
@@ -17460,14 +17521,14 @@ func Tan(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // (4) For the following input of shape `[8, 1, 2, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
 //      [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]
 // ```
 //
 // The output tensor has shape `[2, 2, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[5], [7]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -18037,7 +18098,7 @@ func LogUniformCandidateSamplerSeed2(value int64) LogUniformCandidateSamplerAttr
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -18087,6 +18148,19 @@ func Less(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// FakeQuantWithMinMaxVarsGradientAttr is an optional argument to FakeQuantWithMinMaxVarsGradient.
+type FakeQuantWithMinMaxVarsGradientAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsGradientNumBits sets the optional num_bits attribute to value.
+//
+// value: The bitwidth of the quantization; between 2 and 8, inclusive.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsGradientNumBits(value int64) FakeQuantWithMinMaxVarsGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxVars operation.
 //
 // Arguments:
@@ -18100,15 +18174,20 @@ func Less(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 // `gradients * (inputs >= min && inputs <= max)`.Backpropagated gradients w.r.t. min parameter:
 // `sum(gradients * (inputs < min))`.Backpropagated gradients w.r.t. max parameter:
 // `sum(gradients * (inputs > max))`.
-func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
+func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsGradientAttr) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVarsGradient",
 		Input: []tf.Input{
 			gradients, inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
@@ -19915,7 +19994,7 @@ func Sum(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 // ```
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/DynamicPartition.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/DynamicPartition.png" alt>
 // </div>
 //
 // Arguments:
@@ -20389,7 +20468,7 @@ func ShapeOutType(value tf.DataType) ShapeAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
 // shape(t) ==> [2, 2, 3]
 // ```

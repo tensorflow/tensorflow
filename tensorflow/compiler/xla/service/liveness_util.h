@@ -32,8 +32,9 @@ namespace xla {
 // 'operand'. Returns false otherwise.
 //
 // REQUIRES: 'operand' is an operand of 'user'.
-bool DoesNotUseOperandBuffer(HloInstruction* operand, const ShapeIndex& index,
-                             HloInstruction* user,
+bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                             const ShapeIndex& index,
+                             const HloInstruction* user,
                              const TuplePointsToAnalysis& points_to_analysis);
 
 // Returns true if 'user' (at 'user_index') can share a buffer with its operand

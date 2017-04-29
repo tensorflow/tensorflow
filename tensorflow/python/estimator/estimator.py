@@ -91,7 +91,9 @@ class Estimator(object):
 
     Args:
       model_fn: Model function. Follows the signature:
+
         * Args:
+
           * `features`: single `Tensor` or `dict` of `Tensor`s
                  (depending on data passed to `train`),
           * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
@@ -111,6 +113,7 @@ class Estimator(object):
 
         * Returns:
           `EstimatorSpec`
+
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model. If `None`, the model_dir in

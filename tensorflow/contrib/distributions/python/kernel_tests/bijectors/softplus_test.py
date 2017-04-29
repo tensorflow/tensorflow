@@ -51,6 +51,15 @@ class SoftplusBijectorTest(test.TestCase):
       self.assertAllClose(y, bijector.forward(x).eval())
       self.assertAllClose(x, bijector.inverse(y).eval())
 
+  def testBijectorForwardInverseWithHingeSoftnessEventDimsZero(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=1.5)
+      x = 2 * rng.randn(2, 10)
+      y = 1.5 * self._softplus(x / 1.5)
+
+      self.assertAllClose(y, bijector.forward(x).eval())
+      self.assertAllClose(x, bijector.inverse(y).eval())
+
   def testBijectorLogDetJacobianEventDimsZero(self):
     with self.test_session():
       bijector = Softplus(event_ndims=0)
@@ -85,11 +94,39 @@ class SoftplusBijectorTest(test.TestCase):
       assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=2.)
 
+  def testScalarCongruencyWithPositiveHingeSoftness(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=1.3)
+      assert_scalar_congruency(
+          bijector, lower_x=-2., upper_x=2.)
+
+  def testScalarCongruencyWithNegativeHingeSoftness(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=-1.3)
+      assert_scalar_congruency(
+          bijector, lower_x=-2., upper_x=2.)
+
   def testBijectiveAndFinite32bit(self):
     with self.test_session():
       bijector = Softplus(event_ndims=0)
       x = np.linspace(-20., 20., 100).astype(np.float32)
       y = np.logspace(-10, 10, 100).astype(np.float32)
+      assert_bijective_and_finite(
+          bijector, x, y, rtol=1e-2, atol=1e-2)
+
+  def testBijectiveAndFiniteWithPositiveHingeSoftness32Bit(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=1.23)
+      x = np.linspace(-20., 20., 100).astype(np.float32)
+      y = np.logspace(-10, 10, 100).astype(np.float32)
+      assert_bijective_and_finite(
+          bijector, x, y, rtol=1e-2, atol=1e-2)
+
+  def testBijectiveAndFiniteWithNegativeHingeSoftness32Bit(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=-0.7)
+      x = np.linspace(-20., 20., 100).astype(np.float32)
+      y = -np.logspace(-10, 10, 100).astype(np.float32)
       assert_bijective_and_finite(
           bijector, x, y, rtol=1e-2, atol=1e-2)
 

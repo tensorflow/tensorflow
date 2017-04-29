@@ -1431,6 +1431,55 @@ class SessionTest(test_util.TensorFlowTestCase):
                                  'You must feed a value for placeholder'):
       sess.partial_run(handle, fetches[0])
 
+  def runTestPartialRunUnspecifiedFeed(self, sess):
+    a = array_ops.placeholder(dtypes.float32, shape=[])
+    b = array_ops.placeholder(dtypes.float32, shape=[])
+    c = array_ops.placeholder(dtypes.float32, shape=[])
+    r1 = math_ops.add(a, b)
+
+    h = sess.partial_run_setup([r1], [a, b])
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 'was not specified in partial_run_setup.$'):
+      sess.partial_run(h, r1, feed_dict={a: 1, b: 2, c: 3})
+
+  def runTestPartialRunUnspecifiedFetch(self, sess):
+    a = array_ops.placeholder(dtypes.float32, shape=[])
+    b = array_ops.placeholder(dtypes.float32, shape=[])
+    c = array_ops.placeholder(dtypes.float32, shape=[])
+    r1 = math_ops.add(a, b)
+    r2 = math_ops.multiply(a, c)
+
+    h = sess.partial_run_setup([r1], [a, b, c])
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 'was not specified in partial_run_setup.$'):
+      sess.partial_run(h, r2, feed_dict={a: 1, c: 3})
+
+  def runTestPartialRunAlreadyFed(self, sess):
+    a = array_ops.placeholder(dtypes.float32, shape=[])
+    b = array_ops.placeholder(dtypes.float32, shape=[])
+    c = array_ops.placeholder(dtypes.float32, shape=[])
+    r1 = math_ops.add(a, b)
+    r2 = math_ops.multiply(a, c)
+
+    h = sess.partial_run_setup([r1, r2], [a, b, c])
+    sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 'has already been fed.$'):
+      sess.partial_run(h, r2, feed_dict={a: 1, c: 3})
+
+  def runTestPartialRunAlreadyFetched(self, sess):
+    a = array_ops.placeholder(dtypes.float32, shape=[])
+    b = array_ops.placeholder(dtypes.float32, shape=[])
+    c = array_ops.placeholder(dtypes.float32, shape=[])
+    r1 = math_ops.add(a, b)
+    r2 = math_ops.multiply(a, c)
+
+    h = sess.partial_run_setup([r1, r2], [a, b, c])
+    sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 'has already been fetched.$'):
+      sess.partial_run(h, r1, feed_dict={c: 3})
+
   def testInvalidPartialRunSetup(self):
     sess = session.Session()
     x = array_ops.placeholder(dtypes.float32, shape=[])
@@ -1457,6 +1506,18 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testPartialRunMissingPlaceholderFeedExceptionDirect(self):
     self.runTestPartialRunMissingPlaceholderFeedException(session.Session())
 
+  def testPartialRunUnspecifiedFeedDirect(self):
+    self.runTestPartialRunUnspecifiedFeed(session.Session())
+
+  def testPartialRunUnspecifiedFetchDirect(self):
+    self.runTestPartialRunUnspecifiedFetch(session.Session())
+
+  def testPartialRunAlreadyFedDirect(self):
+    self.runTestPartialRunAlreadyFed(session.Session())
+
+  def testPartialRunAlreadyFetchedDirect(self):
+    self.runTestPartialRunAlreadyFetched(session.Session())
+
   def testPartialRunDist(self):
     server = server_lib.Server.create_local_server()
     self.runTestPartialRun(session.Session(server.target))
@@ -1481,6 +1542,22 @@ class SessionTest(test_util.TensorFlowTestCase):
     server = server_lib.Server.create_local_server()
     self.runTestPartialRunMissingPlaceholderFeedException(
         session.Session(server.target))
+
+  def testPartialRunUnspecifiedFeedDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestPartialRunUnspecifiedFeed(session.Session(server.target))
+
+  def testPartialRunUnspecifiedFetchDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestPartialRunUnspecifiedFetch(session.Session(server.target))
+
+  def testPartialRunAlreadyFedDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestPartialRunAlreadyFed(session.Session(server.target))
+
+  def testPartialRunAlreadyFetchedDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestPartialRunAlreadyFetched(session.Session(server.target))
 
   def testFeedDictKeyException(self):
     with session.Session() as sess:

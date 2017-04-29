@@ -69,6 +69,52 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   EXPECT_EQ(root, param0);
 }
 
+TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {3, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  HloInstruction* bcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(r2f32, zero, {0, 1}));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, bcast, param0));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
+TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {3, 2});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({0, 0, 0})));
+  HloInstruction* bcast =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(r2f32, zero, {1}));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, bcast, param0));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_EQ(root, param0);
+}
+
 // Test that A - 0 is simplified to A
 TEST_F(AlgebraicSimplifierTest, SubZero) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -529,6 +575,68 @@ TEST_F(AlgebraicSimplifierTest, RemoveUnaryConcatenate) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), param0);
+}
+
+// Test that empty operands of concatenates are removed.
+TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
+  const int kParamLength = 100;
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {kParamLength});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r1f32, "param1"));
+  HloInstruction* empty_literal = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({})));
+  HloInstruction* empty_slice =
+      builder.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {0}), param1, {42}, {42}));
+  Shape result_shape = ShapeUtil::MakeShape(F32, {3 * kParamLength});
+  builder.AddInstruction(HloInstruction::CreateConcatenate(
+      result_shape, {empty_literal, param0, param0, empty_slice, param1}, 0));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      op::Concatenate(empty_literal, param0, param0, empty_slice, param1));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Concatenate(param0, param0, param1));
+}
+
+// Test a concatenate with only empty operands is removed.
+TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
+  const int kParamLength = 100;
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {kParamLength});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  HloInstruction* empty_literal = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({})));
+  HloInstruction* empty_slice =
+      builder.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {0}), param0, {42}, {42}));
+  Shape result_shape = ShapeUtil::MakeShape(F32, {0});
+  builder.AddInstruction(HloInstruction::CreateConcatenate(
+      result_shape, {empty_literal, empty_slice}, 0));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Concatenate(empty_literal, empty_slice));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_EQ(computation->root_instruction(), empty_literal);
 }
 
 // Test that a simplification which changes layouts is not performed if layout
@@ -1556,6 +1664,70 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
                                  non_bitcasting_callback());
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, Concatenate) {
+  const struct TestConfig {
+    int concat_dimension;
+    tensorflow::gtl::ArraySlice<int64> dimensions;
+    tensorflow::gtl::ArraySlice<int64> concat_sizes;
+  } test_configs[] = {
+      {1, {11, 0, 7, 5, 9}, {2, 5, 7, 11}},
+      {3, {1, 4, 17, 0, 8}, {1, 3, 9, 12}},
+  };
+
+  for (auto& test_config : test_configs) {
+    HloComputation::Builder builder(TestName());
+    std::vector<int64> dimensions(test_config.dimensions.begin(),
+                                  test_config.dimensions.end());
+    int64 concat_size = 0;
+    std::vector<HloInstruction*> operands;
+    for (auto csize : test_config.concat_sizes) {
+      dimensions[test_config.concat_dimension] = csize;
+      concat_size += csize;
+      auto literal = LiteralUtil::CreateFromDimensions(F32, dimensions);
+      HloInstruction* insn = builder.AddInstruction(
+          HloInstruction::CreateConstant(std::move(literal)));
+      operands.push_back(insn);
+    }
+    dimensions[test_config.concat_dimension] = concat_size;
+    Shape shape = ShapeUtil::MakeShape(F32, dimensions);
+    builder.AddInstruction(HloInstruction::CreateConcatenate(
+        shape, operands, test_config.concat_dimension));
+    HloModule module(TestName());
+    auto computation = module.AddEntryComputation(builder.Build());
+
+    AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                   non_bitcasting_callback());
+    ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
+
+    HloInstruction* root = computation->root_instruction();
+    EXPECT_EQ(root->opcode(), HloOpcode::kConstant);
+    EXPECT_TRUE(ShapeUtil::Equal(root->shape(), shape));
+  }
+}
+
+TEST_F(AlgebraicSimplifierTest, Slice) {
+  HloComputation::Builder builder(TestName());
+  const int64 dimensions[] = {11, 8, 7, 5, 9};
+  const int64 slice_start[] = {4, 2, 3, 1, 5};
+  const int64 slice_limits[] = {10, 8, 6, 5, 9};
+  auto literal = LiteralUtil::CreateFromDimensions(F32, dimensions);
+  HloInstruction* lit_insn = builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(literal)));
+  Shape shape = ShapeUtil::MakeShape(F32, {6, 6, 3, 4, 4});
+  builder.AddInstruction(
+      HloInstruction::CreateSlice(shape, lit_insn, slice_start, slice_limits));
+  HloModule module(TestName());
+  auto computation = module.AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module).ValueOrDie());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConstant);
+  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), shape));
 }
 
 }  // namespace

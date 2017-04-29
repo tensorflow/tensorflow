@@ -121,7 +121,7 @@ toolchain {
   # linker_flag: "-Wl,--detect-odr-violations"
 
   # Include directory for cuda headers.
-  cxx_builtin_include_directory: "%{cuda_include_path}"
+%{cuda_include_path}
 
   compilation_mode_flags {
     mode: DBG
@@ -220,7 +220,7 @@ toolchain {
   linker_flag: "-no-canonical-prefixes"
 
   # Include directory for cuda headers.
-  cxx_builtin_include_directory: "%{cuda_include_path}"
+%{cuda_include_path}
 
   compilation_mode_flags {
     mode: DBG

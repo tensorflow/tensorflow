@@ -73,8 +73,9 @@ def _prepare_memory(memory, memory_sequence_length, check_inner_dims_defined):
   """
   memory = nest.map_structure(
       lambda m: ops.convert_to_tensor(m, name="memory"), memory)
-  memory_sequence_length = ops.convert_to_tensor(
-      memory_sequence_length, name="memory_sequence_length")
+  if memory_sequence_length is not None:
+    memory_sequence_length = ops.convert_to_tensor(
+        memory_sequence_length, name="memory_sequence_length")
   if check_inner_dims_defined:
     def _check_dims(m):
       if not m.get_shape()[2:].is_fully_defined():
@@ -143,11 +144,11 @@ class _BaseAttentionMechanism(AttentionMechanism):
       name: Name to use when creating ops.
     """
     if (query_layer is not None
-        and not isinstance(query_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(query_layer, layers_base.Layer)):
       raise TypeError(
           "query_layer is not a Layer: %s" % type(query_layer).__name__)
     if (memory_layer is not None
-        and not isinstance(memory_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(memory_layer, layers_base.Layer)):
       raise TypeError(
           "memory_layer is not a Layer: %s" % type(memory_layer).__name__)
     self._query_layer = query_layer
@@ -477,7 +478,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         behavior is not guaranteed.
       name: Name to use when creating ops.
     """
-    super(AttentionWrapper, self).__init__()
+    super(AttentionWrapper, self).__init__(name=name)
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError(
           "cell must be an RNNCell, saw type: %s" % type(cell).__name__)
@@ -620,39 +621,39 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       cell_state = state.cell_state
       cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
 
-      cell_batch_size = (
-          cell_output.shape[0].value or array_ops.shape(cell_output)[0])
-      error_message = (
-          "When applying AttentionWrapper %s: " % self.name +
-          "Non-matching batch sizes between the memory "
-          "(encoder output) and the query (decoder output).  Are you using "
-          "the BeamSearchDecoder?  You may need to tile your memory input via "
-          "the tf.contrib.seq2seq.tile_batch function with argument "
-          "multiple=beam_width.")
-      with ops.control_dependencies(
-          [check_ops.assert_equal(cell_batch_size,
-                                  self._attention_mechanism.batch_size,
-                                  message=error_message)]):
-        cell_output = array_ops.identity(
-            cell_output, name="checked_cell_output")
+    cell_batch_size = (
+        cell_output.shape[0].value or array_ops.shape(cell_output)[0])
+    error_message = (
+        "When applying AttentionWrapper %s: " % self.name +
+        "Non-matching batch sizes between the memory "
+        "(encoder output) and the query (decoder output).  Are you using "
+        "the BeamSearchDecoder?  You may need to tile your memory input via "
+        "the tf.contrib.seq2seq.tile_batch function with argument "
+        "multiple=beam_width.")
+    with ops.control_dependencies(
+        [check_ops.assert_equal(cell_batch_size,
+                                self._attention_mechanism.batch_size,
+                                message=error_message)]):
+      cell_output = array_ops.identity(
+          cell_output, name="checked_cell_output")
 
-      score = self._attention_mechanism(cell_output)
-      alignments = self._probability_fn(score)
+    score = self._attention_mechanism(cell_output)
+    alignments = self._probability_fn(score)
 
-      # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
-      expanded_alignments = array_ops.expand_dims(alignments, 1)
-      # Context is the inner product of alignments and values along the
-      # memory time dimension.
-      # alignments shape is
-      #   [batch_size, 1, memory_time]
-      # attention_mechanism.values shape is
-      #   [batch_size, memory_time, attention_mechanism.num_units]
-      # the batched matmul is over memory_time, so the output shape is
-      #   [batch_size, 1, attention_mechanism.num_units].
-      # we then squeeze out the singleton dim.
-      attention_mechanism_values = self._attention_mechanism.values
-      context = math_ops.matmul(expanded_alignments, attention_mechanism_values)
-      context = array_ops.squeeze(context, [1])
+    # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
+    expanded_alignments = array_ops.expand_dims(alignments, 1)
+    # Context is the inner product of alignments and values along the
+    # memory time dimension.
+    # alignments shape is
+    #   [batch_size, 1, memory_time]
+    # attention_mechanism.values shape is
+    #   [batch_size, memory_time, attention_mechanism.num_units]
+    # the batched matmul is over memory_time, so the output shape is
+    #   [batch_size, 1, attention_mechanism.num_units].
+    # we then squeeze out the singleton dim.
+    attention_mechanism_values = self._attention_mechanism.values
+    context = math_ops.matmul(expanded_alignments, attention_mechanism_values)
+    context = array_ops.squeeze(context, [1])
 
       if self._attention_layer is not None:
         attention = self._attention_layer(
