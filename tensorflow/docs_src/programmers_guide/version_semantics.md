@@ -103,9 +103,10 @@ backward incompatible ways between minor releases. These include:
     convergence. We will note such changes in the release notes.
 
 *   **Error messages:** We reserve the right to change the text of error
-    messages (but not their type). For example, an error condition
-    raising `InvalidArgument` will continue to raise `InvalidArgument`,
-    but the human-readable message contents can change.
+    messages. In addition, the type of an error may change unless the type is
+    specified in the documentation. For example, a function that says in some
+    condition it will raise an `InvalidArgument` exception, it will continue to
+    raise `InvalidArgument`, but the human-readable message contents can change.
 
 
 Furthermore, any API methods marked "deprecated" in the 1.0 release can
