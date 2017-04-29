@@ -1239,7 +1239,45 @@ def sparse_tensor_dense_matmul(sp_a,
     A should be sorted in order of increasing dimension 1 (i.e., "column major"
     order instead of "row major" order).
 
-  Deciding when to use sparse_tensor_dense_matmul vs. matmul(a_is_sparse=True):
+  Using `tf.nn.embedding_lookup_sparse` for sparse multiplication:
+
+  It's not obvious but you can consider `embedding_lookup_sparse` as another
+  sparse and dense multiplication. In some situations, you may prefer to use
+  `embedding_lookup_sparse` even though you're not dealing with embeddings.
+
+  There are two questions to ask in the decision process: Do you need gradients
+  computed as sparse too? Is your sparse data represented as two
+  `SparseTensor`s: ids and values? There is more explanation about data format
+  below. If you answer any of these questions as yes, consider using
+  `tf.nn.embedding_lookup_sparse`.
+
+  Following explains differences between the expected SparseTensors:
+  For example if dense form of your sparse data has shape `[3, 5]` and values:
+
+      [[  a      ]
+       [b       c]
+       [    d    ]]
+
+
+  `SparseTensor` format expected by `sparse_tensor_dense_matmul`:
+   `sp_a` (indices, values):
+
+      [0, 1]: a
+      [1, 0]: b
+      [1, 4]: c
+      [2, 2]: d
+
+  `SparseTensor` format expected by `embedding_lookup_sparse`:
+   `sp_ids`                 `sp_weights`
+
+      [0, 0]: 1                [0, 0]: a
+      [1, 0]: 0                [1, 0]: b
+      [1, 1]: 4                [1, 1]: c
+      [2, 0]: 2                [2, 0]: d
+
+
+  Deciding when to use `sparse_tensor_dense_matmul` vs.
+  `matmul`(a_is_sparse=True):
 
   There are a number of questions to ask in the decision process, including:
 
@@ -1255,10 +1293,10 @@ def sparse_tensor_dense_matmul(sp_a,
   of the product is small (e.g. matrix-vector multiplication), if
   `sp_a.dense_shape` takes on large values.
 
-  Below is a rough speed comparison between sparse_tensor_dense_matmul,
-  labelled 'sparse', and matmul(a_is_sparse=True), labelled 'dense'.  For purposes of
-  the comparison, the time spent converting from a SparseTensor to a dense
-  Tensor is not included, so it is overly conservative with respect to
+  Below is a rough speed comparison between `sparse_tensor_dense_matmul`,
+  labelled 'sparse', and `matmul`(a_is_sparse=True), labelled 'dense'.  For
+  purposes of the comparison, the time spent converting from a `SparseTensor` to
+  a dense `Tensor` is not included, so it is overly conservative with respect to
   the time ratio.
 
   Benchmark system:

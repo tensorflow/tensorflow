@@ -24,6 +24,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
+
 TEST(ShapeUtilTest, GetDimensionHelperCanNegativeIndex) {
   Shape matrix = ShapeUtil::MakeShape(F32, {2, 3});
   EXPECT_EQ(3, ShapeUtil::GetDimension(matrix, -1));
@@ -446,21 +448,21 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
 TEST(ShapeUtilTest, DimensionsUnmodifiedByReshape_1x1x1x1_to_1x1x1) {
   // All output dimensions should be unmodified. One of the input dimensions is
   // modified because the input rank is larger by one.
-  EXPECT_EQ(3,
-            ShapeUtil::DimensionsUnmodifiedByReshape(
-                ShapeUtil::MakeShape(S32, {1, 1, 1, 1}),
-                ShapeUtil::MakeShape(S32, {1, 1, 1}))
-                .size());
+  EXPECT_THAT(ShapeUtil::DimensionsUnmodifiedByReshape(
+                  ShapeUtil::MakeShape(S32, {1, 1, 1, 1}),
+                  ShapeUtil::MakeShape(S32, {1, 1, 1})),
+              ElementsAre(std::make_pair(0, 0), std::make_pair(1, 1),
+                          std::make_pair(2, 2)));
 }
 
 TEST(ShapeUtilTest, DimensionsUnmodifiedByReshape_1x1x1_to_1x1x1x1) {
   // All input dimensions should be unmodified. One of the output dimensions is
   // modified because the output rank is larger by one.
-  EXPECT_EQ(3,
-            ShapeUtil::DimensionsUnmodifiedByReshape(
-                ShapeUtil::MakeShape(S32, {1, 1, 1}),
-                ShapeUtil::MakeShape(S32, {1, 1, 1, 1}))
-                .size());
+  EXPECT_THAT(ShapeUtil::DimensionsUnmodifiedByReshape(
+                  ShapeUtil::MakeShape(S32, {1, 1, 1}),
+                  ShapeUtil::MakeShape(S32, {1, 1, 1, 1})),
+              ElementsAre(std::make_pair(0, 0), std::make_pair(1, 1),
+                          std::make_pair(2, 2)));
 }
 
 TEST(ShapeUtilTest, DimensionsUnmodifiedByReshape_4x1x3x5x6x7_to_2x6x1x5x1x42) {
@@ -468,11 +470,10 @@ TEST(ShapeUtilTest, DimensionsUnmodifiedByReshape_4x1x3x5x6x7_to_2x6x1x5x1x42) {
   // 4, 1, 3, 5, 6, 7
   //          |
   // 2, 6, 1, 5, 1, 42
-  EXPECT_TRUE(
-      ContainersEqual(ShapeUtil::DimensionsUnmodifiedByReshape(
-                          ShapeUtil::MakeShape(S32, {4, 1, 3, 5, 6, 7}),
-                          ShapeUtil::MakeShape(S32, {2, 6, 1, 5, 1, 42})),
-                      std::vector<std::pair<int64, int64>>({{3, 3}})));
+  EXPECT_THAT(ShapeUtil::DimensionsUnmodifiedByReshape(
+                  ShapeUtil::MakeShape(S32, {4, 1, 3, 5, 6, 7}),
+                  ShapeUtil::MakeShape(S32, {2, 6, 1, 5, 1, 42})),
+              ElementsAre(std::make_pair(3, 3)));
 }
 
 TEST(ShapeUtilTest, ReshapeIsBitcast_3x4_6x2) {

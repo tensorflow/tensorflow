@@ -31,7 +31,7 @@ get_cpu_count() {
 }
 
 get_job_count() {
-  echo $(($(get_cpu_count) * 2))
+  echo $(($(get_cpu_count)))
 }
 
 make_host_protoc() {

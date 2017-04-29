@@ -213,10 +213,10 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kConvolution, shape));
   if (window_util::HasBaseDilation(window)) {
-    instruction->set_name(instruction->name() + "-base-dilated");
+    instruction->name_ = instruction->name() + "-base-dilated";
   }
   if (window_util::HasWindowDilation(window)) {
-    instruction->set_name(instruction->name() + "-window-dilated");
+    instruction->name_ = instruction->name() + "-window-dilated";
   }
   instruction->AppendOperand(lhs);
   instruction->AppendOperand(rhs);
@@ -505,16 +505,8 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
   HloInstruction* clone = nullptr;
   if (fused_instructions_computation_ == nullptr) {
     // New fusion instruction.
-    string computation_name;
-    HloModule* module = GetModule();
-    if (module) {
-      computation_name = module->GetUniqueCompuationName(
-          instruction_to_fuse->name() + ".fusion");
-    } else {
-      computation_name = instruction_to_fuse->name() + ".fusion";
-    }
-    auto builder = HloComputation::Builder(computation_name, true);
-    builder.AddInstruction(instruction_to_fuse->Clone());
+    auto builder = HloComputation::Builder("fused_computation", true);
+    builder.AddInstruction(instruction_to_fuse->Clone(/*suffix=*/""));
     fused_instructions_computation_ = builder.Build();
     clone = fused_expression_root();
     clone->parent_fusion_instruction_ = this;
@@ -522,7 +514,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     CHECK(fused_instructions_computation_ != nullptr &&
           fused_instructions_computation_->IsFusionComputation());
     clone = fused_instructions_computation_->AddInstruction(
-        instruction_to_fuse->Clone());
+        instruction_to_fuse->Clone(/*suffix=*/""));
     clone->parent_fusion_instruction_ = this;
     // instruction_to_fuse is necessarily an operand of the fusion instruction.
     // After fusion this will no longer be the case. Remove the operand from the
@@ -578,8 +570,13 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       // instruction. Add it as an operand and add a corresponding fused
       // parameter instruction.
       int64 param_no = fused_parameters_.size();
-      std::unique_ptr<HloInstruction> param_instruction = CreateParameter(
-          param_no, operand->shape(), StrCat("fusion_param.", param_no));
+      // Name the parameter after the instruction it represents in the outer
+      // (non-fusion) computation. Strip the leading "%" from the operand name
+      // to avoid a double %%.
+      string param_name =
+          StrCat(operand->name().substr(1), ".param_", param_no);
+      std::unique_ptr<HloInstruction> param_instruction =
+          CreateParameter(param_no, operand->shape(), param_name);
 
       param_instruction->parent_fusion_instruction_ = this;
       fused_param = fused_instructions_computation_->AddParameter(
@@ -858,32 +855,36 @@ HloInstruction::~HloInstruction() {}
 std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape_, operands_);
-  // If an instruction is cloned multiple times avoid names like
-  // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
-  // suffix. Specifically, the clone of foo.suffix is named foo.suffix2, the
-  // clone of foo.suffix2 is named foo.suffix3 and so on.
-  const string dot_suffix = "." + suffix;
-  size_t index = name().rfind(dot_suffix);
-  if (index == string::npos) {
-    // Existing name does not include ".suffix".
-    clone->name_ = name() + dot_suffix;
+  if (suffix.empty()) {
+    clone->name_ = name();
   } else {
-    // Existing name includes ".suffix". Determine if substring after ".suffix"
-    // is numeric and should be replaced with an incremented number.
-    string after_suffix = name().substr(index + dot_suffix.size());
-    if (after_suffix.empty()) {
-      // Existing name ends in ".suffix". New name should end in ".suffix2".
-      clone->name_ = name() + "2";
+    // If an instruction is cloned multiple times avoid names like
+    // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
+    // suffix. Specifically, the clone of foo.suffix is named foo.suffix2, the
+    // clone of foo.suffix2 is named foo.suffix3 and so on.
+    const string dot_suffix = "." + suffix;
+    size_t index = name().rfind(dot_suffix);
+    if (index == string::npos) {
+      // Existing name does not include ".suffix".
+      clone->name_ = name() + dot_suffix;
     } else {
-      // If names ends with .suffix[0-9]+ then replace with a suffix with the
-      // numeric value incremented.
-      int64 numeric_suffix;
-      if (tensorflow::strings::safe_strto64(after_suffix, &numeric_suffix)) {
-        clone->name_ =
-            StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
+      // Existing name includes ".suffix". Determine if substring after
+      // ".suffix" is numeric and should be replaced with an incremented number.
+      string after_suffix = name().substr(index + dot_suffix.size());
+      if (after_suffix.empty()) {
+        // Existing name ends in ".suffix". New name should end in ".suffix2".
+        clone->name_ = name() + "2";
       } else {
-        // Substring after ".suffix" is non-numeric.
-        clone->name_ = name() + dot_suffix;
+        // If names ends with .suffix[0-9]+ then replace with a suffix with the
+        // numeric value incremented.
+        int64 numeric_suffix;
+        if (tensorflow::strings::safe_strto64(after_suffix, &numeric_suffix)) {
+          clone->name_ =
+              StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
+        } else {
+          // Substring after ".suffix" is non-numeric.
+          clone->name_ = name() + dot_suffix;
+        }
       }
     }
   }
@@ -2256,4 +2257,9 @@ HloModule* HloInstruction::GetModule() const {
   }
   return nullptr;
 }
+
+void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
+  name_ = name_uniquer->GetUniqueName(name_);
+}
+
 }  // namespace xla

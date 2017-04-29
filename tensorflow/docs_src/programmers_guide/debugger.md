@@ -24,7 +24,7 @@ This code trains a simple NN for MNIST digit image recognition. Notice that the
 accuracy increases slightly after the first training step, but then gets stuck
 at a low (near-chance) level:
 
-![debug_mnist training fails](../images/tfdbg_screenshot_mnist_symptom.png)
+![debug_mnist training fails](https://www.tensorflow.org/images/tfdbg_screenshot_mnist_symptom.png)
 
 Scratching your head, you suspect that certain nodes in the training graph
 generated bad numeric values such as `inf`s and `nan`s. The computation-graph
@@ -89,7 +89,7 @@ The debug wrapper session will prompt you when it is about to execute the first
 `run()` call, with information regarding the fetched tensor and feed
 dictionaries displayed on the screen.
 
-![tfdbg run-start UI](../images/tfdbg_screenshot_run_start.png)
+![tfdbg run-start UI](https://www.tensorflow.org/images/tfdbg_screenshot_run_start.png)
 
 This is what we refer to as the *run-start UI*. If the screen size is
 too small to display the content of the message in its entirety, you can resize
@@ -108,7 +108,7 @@ intermediate tensors from the run. (These tensors can also be obtained by
 running the command `lt` after you executed `run`.) This is called the
 **run-end UI**:
 
-![tfdbg run-end UI: accuracy](../images/tfdbg_screenshot_run_end_accuracy.png)
+![tfdbg run-end UI: accuracy](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_accuracy.png)
 
 ### tfdbg CLI Frequently-Used Commands
 
@@ -181,7 +181,7 @@ screen with a red-colored title line indicating **tfdbg** stopped immediately
 after a `run()` call generated intermediate tensors that passed the specified
 filter `has_inf_or_nan`:
 
-![tfdbg run-end UI: infs and nans](../images/tfdbg_screenshot_run_end_inf_nan.png)
+![tfdbg run-end UI: infs and nans](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_inf_nan.png)
 
 As the screen display indicates, the `has_inf_or_nan` filter is first passed
 during the fourth `run()` call: an [Adam optimizer](https://arxiv.org/abs/1412.6980)
@@ -220,7 +220,7 @@ item on the top or entering the equivalent command:
 tfdbg> ni cross_entropy/Log
 ```
 
-![tfdbg run-end UI: infs and nans](../images/tfdbg_screenshot_run_end_node_info.png)
+![tfdbg run-end UI: infs and nans](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_node_info.png)
 
 You can see that this node has the op type `Log`
 and that its input is the node `softmax/Softmax`. Run the following command to
@@ -263,7 +263,7 @@ simply click the underlined line numbers in the stack trace output of the
 `ni -t <op_name>` commands, or use the `ps` (or `print_source`) command such as:
 `ps /path/to/source.py`. See the screenshot below for an example of `ps` output:
 
-![tfdbg run-end UI: annotated Python source file](../images/tfdbg_screenshot_run_end_annotated_source.png)
+![tfdbg run-end UI: annotated Python source file](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_annotated_source.png)
 
 Apply a value clipping on the input to @{tf.log}
 to resolve this problem:

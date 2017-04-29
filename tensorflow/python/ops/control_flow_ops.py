@@ -1301,11 +1301,15 @@ def ZerosLikeOutsideLoop(op, index):
     return array_ops.zeros_like(val, optimize=False)
   else:
     op_ctxt = op._get_control_flow_context()
-    pred = op_ctxt.pred
-    branch = op_ctxt.branch
-    switch_val = switch(op.inputs[0], pred)[1 - branch]
-    zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
-    return array_ops.zeros(zeros_shape, dtype=val.dtype)
+    if op_ctxt:
+      # We are in a cond context. Use a switch to create zeros only when needed.
+      pred = op_ctxt.pred
+      branch = op_ctxt.branch
+      switch_val = switch(op.inputs[0], pred)[1 - branch]
+      zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
+      return array_ops.zeros(zeros_shape, dtype=val.dtype)
+    else:
+      return array_ops.zeros_like(val, optimize=False)
 
 
 class ControlFlowContext(object):

@@ -32,7 +32,8 @@ bool IsPlaceholder(const NodeDef& node) {
 
 bool IsVariable(const NodeDef& node) {
   const auto op = node.op();
-  return op == "Variable" || op == "VariableV2";
+  return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
+         op == "VarHandleOp";
 }
 
 }  // end namespace grappler

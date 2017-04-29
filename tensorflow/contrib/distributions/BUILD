@@ -29,6 +29,7 @@ py_library(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:special_math_ops",
+        "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -54,6 +55,7 @@ py_library(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:special_math_ops",
+        "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -812,25 +814,6 @@ filegroup(
 )
 
 # === Bijector Tests ==========================================================
-
-cuda_py_test(
-    name = "bijector_test",
-    size = "small",
-    srcs = ["python/kernel_tests/bijectors/bijector_test.py"],
-    additional_deps = [
-        ":bijectors_py",
-        ":distributions_py",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
-        "//tensorflow/contrib/linalg:linalg_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-    ],
-)
 
 cuda_py_test(
     name = "conditional_bijector_test",

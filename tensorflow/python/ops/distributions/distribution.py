@@ -25,13 +25,13 @@ import types
 import numpy as np
 import six
 
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import util
 from tensorflow.python.util import tf_inspect
 
 
@@ -241,7 +241,7 @@ class Distribution(_BaseDistribution):
   docstrings for their method specializations. For example:
 
   ```python
-  @distribution_util.AppendDocstring("Some other details.")
+  @util.AppendDocstring("Some other details.")
   def _log_prob(self, value):
     ...
   ```
@@ -1033,10 +1033,9 @@ class Distribution(_BaseDistribution):
     if ndims is None:
       # Maybe expand_dims.
       ndims = array_ops.rank(x)
-      expanded_shape = distribution_util.pick_vector(
+      expanded_shape = util.pick_vector(
           math_ops.equal(ndims, 0),
-          np.array([1], dtype=np.int32),
-          array_ops.shape(x))
+          np.array([1], dtype=np.int32), array_ops.shape(x))
       x = array_ops.reshape(x, expanded_shape)
     elif ndims == 0:
       # Definitely expand_dims.

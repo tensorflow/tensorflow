@@ -90,6 +90,8 @@ struct Costs {
   int64 max_per_op_buffers;    // Sum of all buffers used by the ops.
   int64 max_per_op_streaming;  // Ignore largest input buffer, assuming it
                                // streams from main memory.
+  // If the time estimation is inaccurate.
+  bool inaccurate = false;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Costs::MicroSeconds d) {

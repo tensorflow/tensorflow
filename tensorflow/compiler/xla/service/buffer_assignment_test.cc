@@ -856,8 +856,7 @@ TEST_F(BufferAssignmentTest, EmbeddedComputationBuffers) {
   EXPECT_FALSE(map_root_alloc.maybe_live_out());
   EXPECT_TRUE(map_root_alloc.is_thread_local());
 
-  // Allocations for the call computation should not be thread-local and not
-  // live-out.
+  // Allocations for the call computation should not be thread-local.
   auto& call_param_alloc = GetTopLevelAllocation(*assignment, call_param);
   EXPECT_FALSE(call_param_alloc.is_entry_computation_parameter());
   EXPECT_FALSE(call_param_alloc.maybe_live_out());
@@ -865,7 +864,6 @@ TEST_F(BufferAssignmentTest, EmbeddedComputationBuffers) {
 
   auto& call_root_alloc = GetTopLevelAllocation(*assignment, call_root);
   EXPECT_FALSE(call_root_alloc.is_entry_computation_parameter());
-  EXPECT_FALSE(call_root_alloc.maybe_live_out());
   EXPECT_FALSE(call_root_alloc.is_thread_local());
 
   // Entry computation allocations can be marked liveout and
@@ -1445,8 +1443,7 @@ TEST_F(BufferAssignmentTest, TwoCalls) {
     FlattenCallGraph flatten;
     TF_ASSIGN_OR_ASSERT_OK(bool result, flatten.Run(module.get()));
     EXPECT_TRUE(result);
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
-                           CallGraph::Build(module.get()));
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   }
 
   RunCopyInsertion(module.get());

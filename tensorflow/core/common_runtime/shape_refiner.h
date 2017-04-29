@@ -68,6 +68,10 @@ class ShapeRefiner {
   int32 graph_def_version() { return graph_def_version_; }
   void set_graph_def_version(int32 version) { graph_def_version_ = version; }
 
+  void set_require_shape_inference_fns(bool require_shape_inference_fns) {
+    require_shape_inference_fns_ = require_shape_inference_fns;
+  }
+
  private:
   // Extracts the subgraph ending at 'node' that is statically
   // computable and inserts into 'out_graph'. If statically computable,
@@ -128,6 +132,8 @@ class ShapeRefiner {
   // Only tensors less than 1KiB are currently stored in the cache.
   static constexpr int64 kMaxTensorSize = 1024;
   std::unordered_map<string, Tensor> const_tensor_map_;
+
+  bool require_shape_inference_fns_ = true;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
 };

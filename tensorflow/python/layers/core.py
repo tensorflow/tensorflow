@@ -38,7 +38,7 @@ from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 
 
-class Dense(base._Layer):  # pylint: disable=protected-access
+class Dense(base.Layer):
   """Densely-connected layer class.
 
   This layer implements the operation:
@@ -115,19 +115,19 @@ class Dense(base._Layer):  # pylint: disable=protected-access
     # weight of the layer. If the layer is not trainable
     # (self.trainable = False), the variable will not be added to
     # tf.trainable_variables(), and self.trainable_weights will be empty.
-    self.kernel = vs.get_variable('kernel',
-                                  shape=[input_shape[-1].value, self.units],
-                                  initializer=self.kernel_initializer,
-                                  regularizer=self.kernel_regularizer,
-                                  dtype=self.dtype,
-                                  trainable=True)
+    self.kernel = self.add_variable('kernel',
+                                    shape=[input_shape[-1].value, self.units],
+                                    initializer=self.kernel_initializer,
+                                    regularizer=self.kernel_regularizer,
+                                    dtype=self.dtype,
+                                    trainable=True)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=[self.units,],
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  dtype=self.dtype,
-                                  trainable=True)
+      self.bias = self.add_variable('bias',
+                                    shape=[self.units,],
+                                    initializer=self.bias_initializer,
+                                    regularizer=self.bias_regularizer,
+                                    dtype=self.dtype,
+                                    trainable=True)
     else:
       self.bias = None
 
@@ -219,7 +219,7 @@ def dense(
   return layer.apply(inputs)
 
 
-class Dropout(base._Layer):  # pylint: disable=protected-access
+class Dropout(base.Layer):
   """Applies Dropout to the input.
 
   Dropout consists in randomly setting a fraction `rate` of input units to 0
