@@ -383,6 +383,19 @@ cc_library(
 )
 
 cc_library(
+    name = "training_op_helpers",
+    srcs = ["training_op_helpers.cc"],
+    hdrs = ["training_op_helpers.h"],
+    visibility = [":friends"],
+    deps = [
+        ":variable_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
     visibility = [":friends"],
@@ -3498,6 +3511,7 @@ tf_kernel_library(
     prefix = "training_ops",
     deps = [
         ":bounds_check",
+        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -4039,6 +4053,7 @@ filegroup(
         "tensor_array.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
+        "training_op_helpers.h",
         "training_ops.h",
         "transpose_functor.h",
         "transpose_op.h",
@@ -4176,6 +4191,7 @@ filegroup(
         "tile_ops_cpu_impl_6.cc",
         "tile_ops_cpu_impl_7.cc",
         "topk_op.cc",
+        "training_op_helpers.cc",
         "training_ops.cc",
         "transpose_functor_cpu.cc",
         "transpose_op.cc",

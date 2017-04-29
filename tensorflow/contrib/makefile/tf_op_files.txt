@@ -4,6 +4,7 @@ tensorflow/core/kernels/variable_ops.cc
 tensorflow/core/kernels/unpack_op.cc
 tensorflow/core/kernels/transpose_op.cc
 tensorflow/core/kernels/transpose_functor_cpu.cc
+tensorflow/core/kernels/training_op_helpers.cc
 tensorflow/core/kernels/training_ops.cc
 tensorflow/core/kernels/topk_op.cc
 tensorflow/core/kernels/tile_ops.cc
