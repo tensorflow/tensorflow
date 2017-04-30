@@ -1282,19 +1282,19 @@ class Conv3DTranspose(Conv3D):
     input_dim = input_shape[channel_axis]
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
-    self.kernel = vs.get_variable('kernel',
-                                  shape=kernel_shape,
-                                  initializer=self.kernel_initializer,
-                                  regularizer=self.kernel_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+    self.kernel = self.add_variable('kernel',
+                                    shape=kernel_shape,
+                                    initializer=self.kernel_initializer,
+                                    regularizer=self.kernel_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=(self.filters,),
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+      self.bias = self.add_variable('bias',
+                                    shape=(self.filters,),
+                                    initializer=self.bias_initializer,
+                                    regularizer=self.bias_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     else:
       self.bias = None
 
@@ -1456,4 +1456,3 @@ convolution3d = conv3d
 separable_convolution2d = separable_conv2d
 convolution2d_transpose = deconvolution2d = deconv2d = conv2d_transpose
 convolution3d_transpose = deconvolution3d = deconv3d = conv3d_transpose
-
