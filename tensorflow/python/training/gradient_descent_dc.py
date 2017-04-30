@@ -27,6 +27,8 @@ from tensorflow.python.training import training_ops
 
 class GradientDescentOptimizerDC(optimizer.Optimizer):
   """Optimizer that implements the gradient descent algorithm with delay compensation.
+  See [Zheng, Shuxin, et al., 2016](https://arxiv.org/abs/1609.08326)
+  ([pdf](https://arxiv.org/pdf/1609.08326.pdf)).
   """
 
   def __init__(self, learning_rate, variance_parameter, use_locking=False, name="GradientDescentDC"):
