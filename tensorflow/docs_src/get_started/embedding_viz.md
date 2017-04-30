@@ -21,7 +21,7 @@ interested in word embeddings,
 gives a good introduction.
 
 <video autoplay loop style="max-width: 100%;">
-  <source src="../images/embedding-mnist.mp4" type="video/mp4">
+  <source src="https://www.tensorflow.org/images/embedding-mnist.mp4" type="video/mp4">
   Sorry, your browser doesn't support HTML5 video in MP4 format.
 </video>
 
@@ -173,7 +173,7 @@ last data point in the bottom right:
 
 Note in the example above that the last row doesn't have to be filled. For a
 concrete example of a sprite, see
-[this sprite image](../images/mnist_10k_sprite.png) of 10,000 MNIST digits
+[this sprite image](https://www.tensorflow.org/images/mnist_10k_sprite.png) of 10,000 MNIST digits
 (100x100).
 
 Note: We currently support sprites up to 8192px X 8192px.
@@ -247,7 +247,7 @@ further analysis on their own with the "Isolate Points" button in the Inspector
 pane on the right hand side.
 
 
-![Selection of nearest neighbors](../images/embedding-nearest-points.png "Selection of nearest neighbors")
+![Selection of nearest neighbors](https://www.tensorflow.org/images/embedding-nearest-points.png "Selection of nearest neighbors")
 *Selection of the nearest neighbors of “important” in a word embedding dataset.*
 
 The combination of filtering with custom projection can be powerful. Below, we filtered
@@ -260,10 +260,10 @@ You can see that on the right side we have “ideas”, “science”, “perspe
 <table width="100%;">
   <tr>
     <td style="width: 30%;">
-      <img src="../images/embedding-custom-controls.png" alt="Custom controls panel" title="Custom controls panel" />
+      <img src="https://www.tensorflow.org/images/embedding-custom-controls.png" alt="Custom controls panel" title="Custom controls panel" />
     </td>
     <td style="width: 70%;">
-      <img src="../images/embedding-custom-projection.png" alt="Custom projection" title="Custom projection" />
+      <img src="https://www.tensorflow.org/images/embedding-custom-projection.png" alt="Custom projection" title="Custom projection" />
     </td>
   </tr>
   <tr>
@@ -284,4 +284,4 @@ projection) as a small file. The Projector can then be pointed to a set of one
 or more of these files, producing the panel below. Other users can then walk
 through a sequence of bookmarks.
 
-<img src="../images/embedding-bookmark.png" alt="Bookmark panel" style="width:300px;">
+<img src="https://www.tensorflow.org/images/embedding-bookmark.png" alt="Bookmark panel" style="width:300px;">

@@ -36,7 +36,7 @@ from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 
 
-class _Pooling1D(base._Layer):  # pylint: disable=protected-access
+class _Pooling1D(base.Layer):
   """Pooling layer for arbitrary pooling functions, for 1D inputs.
 
   This class only exists for code reuse. It will never be an exposed API.
@@ -222,7 +222,7 @@ def max_pooling1d(inputs, pool_size, strides,
   return layer.apply(inputs)
 
 
-class _Pooling2D(base._Layer):  # pylint: disable=protected-access
+class _Pooling2D(base.Layer):
   """Pooling layer for arbitrary pooling functions, for 2D inputs (e.g. images).
 
   This class only exists for code reuse. It will never be an exposed API.
@@ -407,7 +407,7 @@ def max_pooling2d(inputs,
   return layer.apply(inputs)
 
 
-class _Pooling3D(base._Layer):  # pylint: disable=protected-access
+class _Pooling3D(base.Layer):
   """Pooling layer for arbitrary pooling functions, for 3D inputs.
 
   This class only exists for code reuse. It will never be an exposed API.

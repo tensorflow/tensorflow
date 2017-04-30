@@ -42,6 +42,7 @@ py_library(
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
+        ":tf_optimizer",
         ":array_ops",
         ":check_ops",
         ":client",
@@ -80,7 +81,9 @@ py_library(
         ":weights_broadcast_ops",
         "//third_party/py/numpy",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/feature_column:feature_column",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/saved_model",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",

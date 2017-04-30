@@ -21,6 +21,7 @@
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 
 namespace xla {
 
@@ -108,6 +109,23 @@ class HloRematerialization {
   // occurs.
   tensorflow::gtl::FlatMap<const HloComputation*, int64>
       computation_peak_memory_;
+
+  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
+
+  // Set of computations which have had rematerialization
+  // applied. Rematerialization is only applied once per computation.
+  tensorflow::gtl::FlatSet<const HloComputation*> rematerialized_computations_;
+
+  // Count of the total instructions rematerialized.
+  int64 instructions_rematerialized_ = 0;
+
+  // Count of the net instructions added to the HLO module by
+  // rematerialization. This can be different than instructions_rematerialized_
+  // because some rematerializations are effectively moves in the HLO
+  // schedule. In these cases, the rematerialization instruction replaces all
+  // uses of the original instruction and the original instruction is
+  // dead. Hence, no net instructions were added.
+  int64 net_instructions_added_ = 0;
 };
 
 }  // namespace xla

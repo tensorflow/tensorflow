@@ -1487,6 +1487,9 @@ def variable_scope(name_or_scope,
   Note that the `reuse` flag is inherited: if we open a reusing scope,
   then all its sub-scopes become reusing as well.
 
+  A note about name scoping: Setting `reuse` does not impact the naming of other
+  ops such as mult. See related discussion on [github#6189](https://github.com/tensorflow/tensorflow/issues/6189)
+
   Args:
     name_or_scope: `string` or `VariableScope`: the scope to open.
     default_name: The default name to use if the `name_or_scope` argument is
