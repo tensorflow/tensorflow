@@ -227,6 +227,7 @@ To help you upgrade your existing TensorFlow Python code to match the API change
 * In the C++ API (in tensorflow/cc), Input, Output, etc. have moved
   from the tensorflow::ops namespace to tensorflow.
 * Change arg order for `{softmax,sparse_softmax,sigmoid}_cross_entropy_with_logits` to be (labels, predictions), and force use of named args.
+* In python, `Operation.get_attr` on type attributes now returns the Python DType version of the type rather than the protobuf enum.
 * tf.nn.rnn_cell.* and most functions in tf.nn.rnn.* (with the exception of dynamic_rnn and raw_rnn) are temporarily in tf.contrib.rnn.  They will be moved back into core for TF 1.2.
 * `tf.nn.sampled_softmax_loss` and `tf.nn.nce_loss` have both changed their API such that you need to switch the `inputs, labels` to `labels, inputs` parameters.
 * The shape keyword argument of the `SparseTensor` constructor changes its name to `dense_shape` between Tensorflow 0.12 and Tensorflow 1.0.
