@@ -1054,18 +1054,18 @@ REGISTER_OP("MatMul")
     .Attr("T: {half, float, double, int32, complex64, complex128}")
     .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(
-Multiply the matrix "a" by the matrix "b".
+Multiply the matrix 'a' by the matrix 'b'.
 
 The inputs must be two-dimensional matrices and the inner dimension of
-"a" (after being transposed if transpose_a is true) must match the
-outer dimension of "b" (after being transposed if transposed_b is
+'a' (after being transposed if transpose_a is true) must match the
+outer dimension of 'b' (after being transposed if transposed_b is
 true).
 
 *Note*: The default kernel implementation for MatMul on GPUs uses
 cublas.
 
-transpose_a: If true, "a" is transposed before multiplication.
-transpose_b: If true, "b" is transposed before multiplication.
+transpose_a: If true, 'a' is transposed before multiplication.
+transpose_b: If true, 'b' is transposed before multiplication.
 )doc");
 
 REGISTER_OP("SparseMatMul")
@@ -1080,11 +1080,11 @@ REGISTER_OP("SparseMatMul")
     .Attr("Tb: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(
-Multiply matrix "a" by matrix "b".
+Multiply matrix 'a' by matrix 'b'.
 
-The inputs must be two-dimensional matrices and the inner dimension of "a" must
-match the outer dimension of "b". This op is optimized for the case where at
-least one of "a" or "b" is sparse. The breakeven for using this versus a dense
+The inputs must be two-dimensional matrices and the inner dimension of 'a' must
+match the outer dimension of 'b'. This op is optimized for the case where at
+least one of 'a' or 'b' is sparse. The breakeven for using this versus a dense
 matrix multiply on one platform was 30% zero values in the sparse matrix.
 )doc");
 
@@ -1420,8 +1420,8 @@ that `segment_ids[j] == i`.
 
 If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/SegmentSum.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/SegmentSum.png' alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1451,8 +1451,8 @@ values summed.
 
 If the mean is empty for a given segment ID `i`, `output[i] = 0`.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/SegmentMean.png' alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1481,8 +1481,8 @@ that `segment_ids[j] == i`.
 
 If the product is empty for a given segment ID `i`, `output[i] = 1`.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/SegmentProd.png' alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1511,8 +1511,8 @@ that `segment_ids[j] == i`.
 
 If the min is empty for a given segment ID `i`, `output[i] = 0`.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/SegmentMin.png' alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1541,8 +1541,8 @@ that `segment_ids[j] == i`.
 
 If the max is empty for a given segment ID `i`, `output[i] = 0`.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/SegmentMax.png' alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1576,8 +1576,8 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 
 `num_segments` should equal the number of distinct segment IDs.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/UnsortedSegmentSum.png' alt>
 </div>
 
 segment_ids: A tensor whose shape is a prefix of `data.shape`.
@@ -1612,8 +1612,8 @@ that `segment_ids[j] == i`.
 If the maximum is empty for a given segment ID `i`, it outputs the smallest possible value for specific numeric type,
  `output[i] = numeric_limits<T>::min()`.
 
-<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
+<div style='width:70%; margin:auto; margin-bottom:10px; margin-top:20px;'>
+<img style='width:100%' src='../../images/UnsortedSegmentSum.png' alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1709,13 +1709,13 @@ REGISTER_OP("SparseSegmentMeanGrad")
     .Doc(R"doc(
 Computes gradients for SparseSegmentMean.
 
-Returns tensor "output" with same shape as grad, except for dimension 0 whose
+Returns tensor 'output' with same shape as grad, except for dimension 0 whose
 value is output_dim0.
 
 grad: gradient propagated to the SparseSegmentMean op.
 indices: indices passed to the corresponding SparseSegmentMean op.
 segment_ids: segment_ids passed to the corresponding SparseSegmentMean op.
-output_dim0: dimension 0 of "data" passed to SparseSegmentMean op.
+output_dim0: dimension 0 of 'data' passed to SparseSegmentMean op.
 )doc");
 
 REGISTER_OP("SparseSegmentSqrtN")
@@ -1755,13 +1755,13 @@ REGISTER_OP("SparseSegmentSqrtNGrad")
     .Doc(R"doc(
 Computes gradients for SparseSegmentSqrtN.
 
-Returns tensor "output" with same shape as grad, except for dimension 0 whose
+Returns tensor 'output' with same shape as grad, except for dimension 0 whose
 value is output_dim0.
 
 grad: gradient propagated to the SparseSegmentSqrtN op.
 indices: indices passed to the corresponding SparseSegmentSqrtN op.
 segment_ids: segment_ids passed to the corresponding SparseSegmentSqrtN op.
-output_dim0: dimension 0 of "data" passed to SparseSegmentSqrtN op.
+output_dim0: dimension 0 of 'data' passed to SparseSegmentSqrtN op.
 )doc");
 
 REGISTER_OP("All")
@@ -1772,7 +1772,7 @@ REGISTER_OP("All")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
-Computes the "logical and" of elements across dimensions of a tensor.
+Computes the 'logical and' of elements across dimensions of a tensor.
 
 Reduces `input` along the dimensions given in `reduction_indices`. Unless
 `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
@@ -1793,7 +1793,7 @@ REGISTER_OP("Any")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
-Computes the "logical or" of elements across dimensions of a tensor.
+Computes the 'logical or' of elements across dimensions of a tensor.
 
 Reduces `input` along the dimensions given in `reduction_indices`. Unless
 `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
@@ -1934,7 +1934,7 @@ so that the last one is exactly `stop`.
 For example:
 
 ```
-tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
+tf.linspace(10.0, 12.0, 3, name='linspace') => [ 10.0  11.0  12.0]
 ```
 
 start: First entry in the range.

@@ -268,7 +268,7 @@ REGISTER_OP("CholeskyGrad")
     .Doc(R"doc(
 Computes the reverse mode backpropagated gradient of the Cholesky algorithm.
 
-For an explanation see "Differentiation of the Cholesky algorithm" by
+For an explanation see 'Differentiation of the Cholesky algorithm' by
 Iain Murray http://arxiv.org/abs/1602.07527.
 
 l: Output of batch Cholesky algorithm l = cholesky(A). Shape is `[..., M, M]`.

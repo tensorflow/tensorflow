@@ -163,7 +163,7 @@ REGISTER_OP("SparseTensorDenseMatMul")
       return Status::OK();
     })
     .Doc(R"doc(
-Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
+Multiply SparseTensor (of rank 2) 'A' by dense matrix 'B'.
 
 No validity checking is performed on the indices of A.  However, the following
 input format is recommended for optimal behavior:
@@ -172,8 +172,8 @@ if adjoint_a == false:
   A should be sorted in lexicographically increasing order.  Use SparseReorder
   if you're not sure.
 if adjoint_a == true:
-  A should be sorted in order of increasing dimension 1 (i.e., "column major"
-  order instead of "row major" order).
+  A should be sorted in order of increasing dimension 1 (i.e., 'column major'
+  order instead of 'row major' order).
 
 a_indices: 2-D.  The `indices` of the `SparseTensor`, size `[nnz, 2]` Matrix.
 a_values: 1-D.  The `values` of the `SparseTensor`, size `[nnz]` Vector.
@@ -424,22 +424,22 @@ order to concatenate efficiently across an arbitrary dimension.
 For example, if `concat_dim = 1` and the inputs are
 
     sp_inputs[0]: shape = [2, 3]
-    [0, 2]: "a"
-    [1, 0]: "b"
-    [1, 1]: "c"
+    [0, 2]: 'a'
+    [1, 0]: 'b'
+    [1, 1]: 'c'
 
     sp_inputs[1]: shape = [2, 4]
-    [0, 1]: "d"
-    [0, 2]: "e"
+    [0, 1]: 'd'
+    [0, 2]: 'e'
 
 then the output will be
 
     shape = [2, 7]
-    [0, 2]: "a"
-    [0, 4]: "d"
-    [0, 5]: "e"
-    [1, 0]: "b"
-    [1, 1]: "c"
+    [0, 2]: 'a'
+    [0, 4]: 'd'
+    [0, 5]: 'e'
+    [1, 0]: 'b'
+    [1, 1]: 'c'
 
 Graphically this is equivalent to doing
 

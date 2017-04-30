@@ -102,9 +102,9 @@ ksize: The size of the sliding window for each dimension of `value`.
 strides: The stride of the sliding window for each dimension of `value`.
 padding: The type of padding algorithm to use.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
+    default format 'NHWC', the data is stored in the order of:
         [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
+    Alternatively, the format could be 'NCHW', the data storage order of:
         [batch, in_channels, in_height, in_width].
 output: The average pooled output tensor.
 )doc");
@@ -135,9 +135,9 @@ ksize: The size of the sliding window for each dimension of the input.
 strides: The stride of the sliding window for each dimension of the input.
 padding: The type of padding algorithm to use.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
+    default format 'NHWC', the data is stored in the order of:
         [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
+    Alternatively, the format could be 'NCHW', the data storage order of:
         [batch, in_channels, in_height, in_width].
 output: 4-D.  Gradients w.r.t. the input of `avg_pool`.
 )doc");
@@ -186,7 +186,7 @@ v: A 1D variance Tensor with size matching the last dimension of t.
 beta: A 1D beta Tensor with size matching the last dimension of t.
   An offset to be added to the normalized tensor.
 gamma: A 1D gamma Tensor with size matching the last dimension of t.
-  If "scale_after_normalization" is true, this tensor will be multiplied
+  If 'scale_after_normalization' is true, this tensor will be multiplied
   with the normalized tensor.
 variance_epsilon: A small float number to avoid dividing by 0.
 scale_after_normalization: A bool indicating whether the resulted tensor
@@ -245,7 +245,7 @@ v: A 1D variance Tensor with size matching the last dimension of t.
   This is the second output from tf.nn.moments,
   or a saved moving average thereof.
 gamma: A 1D gamma Tensor with size matching the last dimension of t.
-  If "scale_after_normalization" is true, this Tensor will be multiplied
+  If 'scale_after_normalization' is true, this Tensor will be multiplied
   with the normalized Tensor.
 backprop: 4D backprop Tensor.
 variance_epsilon: A small float number to avoid dividing by 0.
@@ -311,7 +311,7 @@ REGISTER_OP("FusedBatchNorm")
     })
     .Doc(R"doc(
 Batch normalization.
-Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+Note that the size of 4D Tensors are defined by either 'NHWC' or 'NCHW'.
 The size of 1D Tensors matches the dimension C of the 4D Tensors.
 
 x: A 4D Tensor for input data.
@@ -332,7 +332,7 @@ reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
                  in the cuDNN case), to be used in the gradient computation.
 T: The data type for the elements of input and output Tensors.
 epsilon: A small float number added to the variance of x.
-data_format: The data format for x and y. Either "NHWC" (default) or "NCHW".
+data_format: The data format for x and y. Either 'NHWC' (default) or 'NCHW'.
 is_training: A bool value to indicate the operation is for training (default)
              or inference.
 )doc");
@@ -403,7 +403,7 @@ REGISTER_OP("FusedBatchNormGrad")
     })
     .Doc(R"doc(
 Gradient for batch normalization.
-Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+Note that the size of 4D Tensors are defined by either 'NHWC' or 'NCHW'.
 The size of 1D Tensors matches the dimension C of the 4D Tensors.
 
 y_backprop: A 4D Tensor for the gradient with respect to y.
@@ -422,7 +422,7 @@ reserve_space_4: Unused placeholder to match the variance input
 T: The data type for the elements of input and output Tensors.
 epsilon: A small float number added to the variance of x.
 data_format: The data format for y_backprop, x, x_backprop.
-             Either "NHWC" (default) or "NCHW".
+             Either 'NHWC' (default) or 'NCHW'.
 is_training: A bool value to indicate the operation is for training (default)
              or inference.
 )doc");
@@ -445,11 +445,11 @@ Broadcasting is supported, so `value` may have any number of dimensions.
 value: Any number of dimensions.
 bias: 1-D with size the last dimension of `value`.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the bias tensor will be added to the last dimension
+    default format 'NHWC', the bias tensor will be added to the last dimension
     of the value tensor.
-    Alternatively, the format could be "NCHW", the data storage order of:
+    Alternatively, the format could be 'NCHW', the data storage order of:
         [batch, in_channels, in_height, in_width].
-    The tensor will be added to "in_channels", the third-to-the-last
+    The tensor will be added to 'in_channels', the third-to-the-last
         dimension.
 output: Broadcasted sum of `value` and `bias`.
 )doc");
@@ -462,7 +462,7 @@ REGISTER_OP("BiasAddGrad")
     .Output("output: T")
     .SetShapeFn(shape_inference::BiasAddGradShape)
     .Doc(R"doc(
-The backward operation for "BiasAdd" on the "bias" tensor.
+The backward operation for 'BiasAdd' on the 'bias' tensor.
 
 It accumulates all the values from out_backprop into the feature dimension.
 For NHWC data format, the feature dimension is the last. For NCHW data format,
@@ -471,11 +471,11 @@ the feature dimension is the third-to-last.
 out_backprop: Any number of dimensions.
 output: 1-D with size the feature dimension of `out_backprop`.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the bias tensor will be added to the last dimension
+    default format 'NHWC', the bias tensor will be added to the last dimension
     of the value tensor.
-    Alternatively, the format could be "NCHW", the data storage order of:
+    Alternatively, the format could be 'NCHW', the data storage order of:
         [batch, in_channels, in_height, in_width].
-    The tensor will be added to "in_channels", the third-to-the-last
+    The tensor will be added to 'in_channels', the third-to-the-last
         dimension.
 )doc");
 // --------------------------------------------------------------------------
@@ -546,9 +546,9 @@ strides: 1-D tensor of length 4.  The stride of the sliding window for each
     `data_format`, see below for details.
 padding: The type of padding algorithm to use.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
+    default format 'NHWC', the data is stored in the order of:
         [batch, height, width, channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
+    Alternatively, the format could be 'NCHW', the data storage order of:
         [batch, channels, height, width].
 )doc");
 
@@ -585,9 +585,9 @@ padding: The type of padding algorithm to use.
 output: 4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
   w.r.t. the input of the convolution.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
+    default format 'NHWC', the data is stored in the order of:
         [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
+    Alternatively, the format could be 'NCHW', the data storage order of:
         [batch, in_channels, in_height, in_width].
 )doc");
 
@@ -628,9 +628,9 @@ output: 4-D with shape
   `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
   the `filter` input of the convolution.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
+    default format 'NHWC', the data is stored in the order of:
         [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
+    Alternatively, the format could be 'NCHW', the data storage order of:
         [batch, in_channels, in_height, in_width].
 )doc");
 
@@ -1358,9 +1358,9 @@ strides: The stride of the sliding window for each dimension of the
   input tensor.
 padding: The type of padding algorithm to use.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
+    default format 'NHWC', the data is stored in the order of:
         [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
+    Alternatively, the format could be 'NCHW', the data storage order of:
         [batch, in_channels, in_height, in_width].
 input: 4-D input to pool over.
 output: The max pooled output tensor.
@@ -1387,9 +1387,9 @@ strides: The stride of the sliding window for each dimension of the
   input tensor.
 padding: The type of padding algorithm to use.
 data_format: Specify the data format of the input and output data. With the
-    default format "NHWC", the data is stored in the order of:
+    default format 'NHWC', the data is stored in the order of:
         [batch, in_height, in_width, in_channels].
-    Alternatively, the format could be "NCHW", the data storage order of:
+    Alternatively, the format could be 'NCHW', the data storage order of:
         [batch, in_channels, in_height, in_width].
 orig_input: The original input tensor.
 orig_output: The original output tensor.
@@ -1616,7 +1616,7 @@ input channel is processed independently of the others with its own structuring
 function. The `output` tensor has shape
 `[batch, out_height, out_width, depth]`. The spatial dimensions of the output
 tensor depend on the `padding` algorithm. We currently only support the default
-"NHWC" `data_format`.
+'NHWC' `data_format`.
 
 In detail, the grayscale morphological 2-D dilation is the max-sum correlation
 (for consistency with `conv2d`, we use unmirrored filters):
@@ -2098,7 +2098,7 @@ Fractional max pooling is slightly different than regular max pooling.  In
 regular max pooling, you downsize an input set by taking the maximum value of
 smaller N x N subsections of the set (often 2x2), and try to reduce the set by
 a factor of N, where N is an integer.  Fractional max pooling, as you might
-expect from the word "fractional", means that the overall reduction ratio N
+expect from the word 'fractional', means that the overall reduction ratio N
 does not have to be an integer.
 
 The sizes of the pooling regions are generated randomly but are fairly uniform.
@@ -2469,7 +2469,7 @@ REGISTER_OP("QuantizedRelu")
     .Doc(R"doc(
 Computes Quantized Rectified Linear: `max(features, 0)`
 
-activations: Has the same output shape as "features".
+activations: Has the same output shape as 'features'.
 min_features: The float value that the lowest quantized value represents.
 max_features: The float value that the highest quantized value represents.
 min_activations: The float value that the lowest quantized value represents.
@@ -2498,7 +2498,7 @@ REGISTER_OP("QuantizedRelu6")
     .Doc(R"doc(
 Computes Quantized Rectified Linear 6: `min(max(features, 0), 6)`
 
-activations: Has the same output shape as "features".
+activations: Has the same output shape as 'features'.
 min_features: The float value that the lowest quantized value represents.
 max_features: The float value that the highest quantized value represents.
 min_activations: The float value that the lowest quantized value represents.
@@ -2528,7 +2528,7 @@ REGISTER_OP("QuantizedReluX")
     .Doc(R"doc(
 Computes Quantized Rectified Linear X: `min(max(features, 0), max_value)`
 
-activations: Has the same output shape as "features".
+activations: Has the same output shape as 'features'.
 min_features: The float value that the lowest quantized value represents.
 max_features: The float value that the highest quantized value represents.
 min_activations: The float value that the lowest quantized value represents.
@@ -2602,7 +2602,7 @@ beta: A 1D beta Tensor with size matching the last dimension of t.
 beta_min: The value represented by the lowest quantized offset.
 beta_max: The value represented by the highest quantized offset.
 gamma: A 1D gamma Tensor with size matching the last dimension of t.
-  If "scale_after_normalization" is true, this tensor will be multiplied
+  If 'scale_after_normalization' is true, this tensor will be multiplied
   with the normalized tensor.
 gamma_min: The value represented by the lowest quantized gamma.
 gamma_max: The value represented by the highest quantized gamma.

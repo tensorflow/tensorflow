@@ -105,7 +105,7 @@ names: A vector containing the names of the serialized protos.
   corresponding serialized protos.  These are purely useful for debugging
   purposes, and the presence of values here has no effect on the output.
   May also be an empty vector if no names are available.
-  If non-empty, this vector must be the same length as "serialized".
+  If non-empty, this vector must be the same length as 'serialized'.
 dense_keys: A list of Ndense string Tensors (scalars).
   The keys expected in the Examples' features associated with dense values.
 dense_defaults: A list of Ndense Tensors (some may be empty).

@@ -80,7 +80,7 @@ Update '*var' by subtracting 'alpha' * 'delta' from it.
 var: Should be from a Variable().
 alpha: Scaling factor. Must be a scalar.
 delta: The change.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
@@ -139,7 +139,7 @@ alpha: Scaling factor. Must be a scalar.
 l1: L1 regularization. Must be a scalar.
 l2: L2 regularization. Must be a scalar.
 delta: The change.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If True, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
@@ -171,7 +171,7 @@ l1: L1 regularization. Must be a scalar.
 l2: L2 regularization. Must be a scalar.
 grad: The gradient.
 indices: A vector of indices into the first dimension of var and accum.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If True, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
@@ -277,7 +277,7 @@ lr: Scaling factor. Must be a scalar.
 rho: Decay factor. Must be a scalar.
 epsilon: Constant factor. Must be a scalar.
 grad: The gradient.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If True, updating of the var, accum and update_accum tensors will be protected by
 a lock; otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
@@ -307,7 +307,7 @@ rho: Decay factor. Must be a scalar.
 epsilon: Constant factor. Must be a scalar.
 grad: The gradient.
 indices: A vector of indices into the first dimension of var and accum.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If True, updating of the var and accum tensors will be protected by
 a lock; otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
@@ -406,7 +406,7 @@ var: Should be from a Variable().
 accum: Should be from a Variable().
 lr: Scaling factor. Must be a scalar.
 grad: The gradient.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
@@ -477,7 +477,7 @@ grad: The gradient.
 lr: Scaling factor. Must be a scalar.
 l1: L1 regularization. Must be a scalar.
 l2: L2 regularization. Must be a scalar.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If True, updating of the var and accum tensors will be protected by
 a lock; otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
@@ -535,7 +535,7 @@ accum: Should be from a Variable().
 lr: Learning rate. Must be a scalar.
 grad: The gradient.
 indices: A vector of indices into the first dimension of var and accum.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
@@ -616,7 +616,7 @@ lr: Scaling factor. Must be a scalar.
 l1: L1 regularization. Must be a scalar.
 l2: L2 regularization. Must be a scalar.
 global_step: Training step number. Must be a scalar.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If True, updating of the var and accum tensors will be protected by
 a lock; otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
@@ -650,7 +650,7 @@ lr: Learning rate. Must be a scalar.
 l1: L1 regularization. Must be a scalar.
 l2: L2 regularization. Must be a scalar.
 global_step: Training step number. Must be a scalar.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If True, updating of the var and accum tensors will be protected by
 a lock; otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
@@ -686,7 +686,7 @@ l1: L1 regularization. Must be a scalar.
 l2: L2 regularization. Must be a scalar.
 grad: The gradient.
 indices: A vector of indices into the first dimension of var and accum.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If True, updating of the var and accum tensors will be protected by
 a lock; otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
@@ -836,7 +836,7 @@ lr: Scaling factor. Must be a scalar.
 l1: L1 regulariation. Must be a scalar.
 l2: L2 regulariation. Must be a scalar.
 lr_power: Scaling factor. Must be a scalar.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
@@ -878,7 +878,7 @@ lr: Scaling factor. Must be a scalar.
 l1: L1 regularization. Must be a scalar.
 l2: L2 regularization. Must be a scalar.
 lr_power: Scaling factor. Must be a scalar.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
@@ -1000,7 +1000,7 @@ accum: Should be from a Variable().
 lr: Scaling factor. Must be a scalar.
 grad: The gradient.
 momentum: Momentum. Must be a scalar.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
@@ -1039,7 +1039,7 @@ lr: Learning rate. Must be a scalar.
 grad: The gradient.
 indices: A vector of indices into the first dimension of var and accum.
 momentum: Momentum. Must be a scalar.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
@@ -1171,7 +1171,7 @@ beta1: Momentum factor. Must be a scalar.
 beta2: Momentum factor. Must be a scalar.
 epsilon: Ridge term. Must be a scalar.
 grad: The gradient.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var, m, and v tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
@@ -1286,7 +1286,7 @@ lr: Scaling factor. Must be a scalar.
 epsilon: Ridge term. Must be a scalar.
 rho: Decay rate. Must be a scalar.
 grad: The gradient.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var, ms, and mom tensors is protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
@@ -1337,7 +1337,7 @@ lr: Scaling factor. Must be a scalar.
 epsilon: Ridge term. Must be a scalar.
 rho: Decay rate. Must be a scalar.
 grad: The gradient.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var, mg, ms, and mom tensors is
   protected by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
@@ -1381,7 +1381,7 @@ epsilon: Ridge term. Must be a scalar.
 rho: Decay rate. Must be a scalar.
 grad: The gradient.
 indices: A vector of indices into the first dimension of var, ms and mom.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var, ms, and mom tensors is protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
@@ -1433,7 +1433,7 @@ epsilon: Ridge term. Must be a scalar.
 rho: Decay rate. Must be a scalar.
 grad: The gradient.
 indices: A vector of indices into the first dimension of var, ms and mom.
-out: Same as "var".
+out: Same as 'var'.
 use_locking: If `True`, updating of the var, mg, ms, and mom tensors is
   protected by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.

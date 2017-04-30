@@ -253,7 +253,7 @@ See http://dl.acm.org/citation.cfm?id=358414
 
 shape: 1-D integer tensor. Shape of independent samples to draw from each
   distribution described by the shape parameters given in alpha.
-alpha: A tensor in which each scalar is a "shape" parameter describing the
+alpha: A tensor in which each scalar is a 'shape' parameter describing the
   associated gamma distribution.
 seed: If either `seed` or `seed2` are set to be non-zero, the random number
   generator is seeded by the given seed.  Otherwise, it is seeded by a
@@ -296,7 +296,7 @@ Programming, Volume 2. Addison Wesley
 
 shape: 1-D integer tensor. Shape of independent samples to draw from each
   distribution described by the shape parameters given in rate.
-rate: A tensor in which each scalar is a "rate" parameter describing the
+rate: A tensor in which each scalar is a 'rate' parameter describing the
   associated poisson distribution.
 seed: If either `seed` or `seed2` are set to be non-zero, the random number
   generator is seeded by the given seed.  Otherwise, it is seeded by a
