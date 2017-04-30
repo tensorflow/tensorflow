@@ -370,7 +370,7 @@ def create_bottleneck_file(bottleneck_path, image_lists, label_name, index,
     tf.logging.fatal('File does not exist %s', image_path)
   image_data = gfile.FastGFile(image_path, 'rb').read()
   try:
-      bottleneck_values = run_bottleneck_on_image(sess, image_data,
+    bottleneck_values = run_bottleneck_on_image(sess, image_data,
                                                   jpeg_data_tensor,
                                                   bottleneck_tensor)
   except:
