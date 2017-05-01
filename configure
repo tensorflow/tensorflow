@@ -362,9 +362,9 @@ while true; do
         default_cuda_path="$(cygpath -m "$CUDA_PATH")"
       fi
     elif is_linux; then
-      default_cuda_path2=/opt/cuda
-      if [ ! -d $default_cuda_path ] && [ -d $default_cuda_path2 ]; then
-        default_cuda_path=$default_cuda_path2
+      # If the default doesn't exist, try an alternative default.
+      if [ ! -d $default_cuda_path ] && [ -d /opt/cuda ]; then
+        default_cuda_path=/opt/cuda
       fi
     fi
     read -p "Please specify the location where CUDA $TF_CUDA_VERSION toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
