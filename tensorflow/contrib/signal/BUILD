@@ -10,7 +10,6 @@ py_library(
     name = "signal_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
