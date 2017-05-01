@@ -3522,6 +3522,256 @@ func Stage(scope *Scope, values []tf.Output, optional ...StageAttr) (o *tf.Opera
 	return scope.AddOperation(opspec)
 }
 
+// Table initializer that takes two tensors for keys and values respectively.
+//
+// Arguments:
+//	table_handle: Handle to a table which will be initialized.
+//	keys: Keys of type Tkey.
+//	values: Values of type Tval.
+//
+// Returns the created operation.
+func InitializeTableV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "InitializeTableV2",
+		Input: []tf.Input{
+			table_handle, keys, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// MutableHashTableV2Attr is an optional argument to MutableHashTableV2.
+type MutableHashTableV2Attr func(optionalAttr)
+
+// MutableHashTableV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func MutableHashTableV2Container(value string) MutableHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MutableHashTableV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func MutableHashTableV2SharedName(value string) MutableHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// MutableHashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+//
+// value: If true and shared_name is empty, the table is shared
+// using the node name.
+// If not specified, defaults to false
+func MutableHashTableV2UseNodeNameSharing(value bool) MutableHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// Creates an empty hash table.
+//
+// This op creates a mutable hash table, specifying the type of its keys and
+// values. Each value must be a scalar. Data can be inserted into the table using
+// the insert operations. It does not support the initialization operation.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func MutableHashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...MutableHashTableV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MutableHashTableV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// HashTableV2Attr is an optional argument to HashTableV2.
+type HashTableV2Attr func(optionalAttr)
+
+// HashTableV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func HashTableV2Container(value string) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// HashTableV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func HashTableV2SharedName(value string) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// HashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+//
+// value: If true and shared_name is empty, the table is shared
+// using the node name.
+// If not specified, defaults to false
+func HashTableV2UseNodeNameSharing(value bool) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// Creates a non-initialized hash table.
+//
+// This op creates a hash table, specifying the type of its keys and values.
+// Before using the table you will have to initialize it.  After initialization the
+// table will be immutable.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func HashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...HashTableV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "HashTableV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Replaces the contents of the table with the specified keys and values.
+//
+// The tensor `keys` must be of the same type as the keys of the table.
+// The tensor `values` must be of the type of the table values.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys to look up.
+//	values: Values to associate with keys.
+//
+// Returns the created operation.
+func LookupTableImportV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableImportV2",
+		Input: []tf.Input{
+			table_handle, keys, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Outputs all keys and values in the table.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//
+//
+//
+// Returns Vector of all keys present in the table.Tensor of all values in the table. Indexed in parallel with `keys`.
+func LookupTableExportV2(scope *Scope, table_handle tf.Output, Tkeys tf.DataType, Tvalues tf.DataType) (keys tf.Output, values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tkeys": Tkeys, "Tvalues": Tvalues}
+	opspec := tf.OpSpec{
+		Type: "LookupTableExportV2",
+		Input: []tf.Input{
+			table_handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// Updates the table to associates keys with values.
+//
+// The tensor `keys` must be of the same type as the keys of the table.
+// The tensor `values` must be of the type of the table values.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys to look up.
+//	values: Values to associate with keys.
+//
+// Returns the created operation.
+func LookupTableInsertV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableInsertV2",
+		Input: []tf.Input{
+			table_handle, keys, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Looks up keys in a table, outputs the corresponding values.
+//
+// The tensor `keys` must of the same type as the keys of the table.
+// The output `values` is of the type of the table values.
+//
+// The scalar `default_value` is the value output for keys not present in the
+// table. It must also be of the same type as the table values.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys to look up.
+//
+//
+// Returns Same shape as `keys`.  Values found in the table, or `default_values`
+// for missing keys.
+func LookupTableFindV2(scope *Scope, table_handle tf.Output, keys tf.Output, default_value tf.Output) (values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableFindV2",
+		Input: []tf.Input{
+			table_handle, keys, default_value,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // FakeQuantWithMinMaxArgsAttr is an optional argument to FakeQuantWithMinMaxArgs.
 type FakeQuantWithMinMaxArgsAttr func(optionalAttr)
 
@@ -10019,6 +10269,70 @@ func QuantizedRelu(scope *Scope, features tf.Output, min_features tf.Output, max
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// InitializeTableFromTextFileV2Attr is an optional argument to InitializeTableFromTextFileV2.
+type InitializeTableFromTextFileV2Attr func(optionalAttr)
+
+// InitializeTableFromTextFileV2VocabSize sets the optional vocab_size attribute to value.
+//
+// value: Number of elements of the file, use -1 if unknown.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func InitializeTableFromTextFileV2VocabSize(value int64) InitializeTableFromTextFileV2Attr {
+	return func(m optionalAttr) {
+		m["vocab_size"] = value
+	}
+}
+
+// InitializeTableFromTextFileV2Delimiter sets the optional delimiter attribute to value.
+//
+// value: Delimiter to separate fields in a line.
+// If not specified, defaults to "\t"
+func InitializeTableFromTextFileV2Delimiter(value string) InitializeTableFromTextFileV2Attr {
+	return func(m optionalAttr) {
+		m["delimiter"] = value
+	}
+}
+
+// Initializes a table from a text file.
+//
+// It inserts one key-value pair into the table for each line of the file.
+// The key and value is extracted from the whole line content, elements from the
+// split line based on `delimiter` or the line number (starting from zero).
+// Where to extract the key and value from a line is specified by `key_index` and
+// `value_index`.
+//
+// - A value of -1 means use the line number(starting from zero), expects `int64`.
+// - A value of -2 means use the whole line content, expects `string`.
+// - A value >= 0 means use the index (starting at zero) of the split line based
+//   on `delimiter`.
+//
+// Arguments:
+//	table_handle: Handle to a table which will be initialized.
+//	filename: Filename of a vocabulary text file.
+//	key_index: Column index in a line to get the table `key` values from.
+//	value_index: Column index that represents information of a line to get the table
+// `value` values from.
+//
+// Returns the created operation.
+func InitializeTableFromTextFileV2(scope *Scope, table_handle tf.Output, filename tf.Output, key_index int64, value_index int64, optional ...InitializeTableFromTextFileV2Attr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_index": key_index, "value_index": value_index}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "InitializeTableFromTextFileV2",
+		Input: []tf.Input{
+			table_handle, filename,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // ResourceSparseApplyProximalGradientDescentAttr is an optional argument to ResourceSparseApplyProximalGradientDescent.
 type ResourceSparseApplyProximalGradientDescentAttr func(optionalAttr)
 
@@ -10870,6 +11184,75 @@ func IFFT2D(scope *Scope, input tf.Output) (output tf.Output) {
 		Input: []tf.Input{
 			input,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MutableHashTableOfTensorsV2Attr is an optional argument to MutableHashTableOfTensorsV2.
+type MutableHashTableOfTensorsV2Attr func(optionalAttr)
+
+// MutableHashTableOfTensorsV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func MutableHashTableOfTensorsV2Container(value string) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func MutableHashTableOfTensorsV2SharedName(value string) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+// If not specified, defaults to false
+func MutableHashTableOfTensorsV2UseNodeNameSharing(value bool) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2ValueShape sets the optional value_shape attribute to value.
+// If not specified, defaults to <>
+func MutableHashTableOfTensorsV2ValueShape(value tf.Shape) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["value_shape"] = value
+	}
+}
+
+// Creates an empty hash table.
+//
+// This op creates a mutable hash table, specifying the type of its keys and
+// values. Each value must be a vector. Data can be inserted into the table using
+// the insert operations. It does not support the initialization operation.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func MutableHashTableOfTensorsV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...MutableHashTableOfTensorsV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MutableHashTableOfTensorsV2",
+
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -13268,6 +13651,104 @@ func ReaderReadV2(scope *Scope, reader_handle tf.Output, queue_handle tf.Output)
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// MutableDenseHashTableV2Attr is an optional argument to MutableDenseHashTableV2.
+type MutableDenseHashTableV2Attr func(optionalAttr)
+
+// MutableDenseHashTableV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func MutableDenseHashTableV2Container(value string) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MutableDenseHashTableV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func MutableDenseHashTableV2SharedName(value string) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// MutableDenseHashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+// If not specified, defaults to false
+func MutableDenseHashTableV2UseNodeNameSharing(value bool) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// MutableDenseHashTableV2ValueShape sets the optional value_shape attribute to value.
+//
+// value: The shape of each value.
+// If not specified, defaults to <>
+func MutableDenseHashTableV2ValueShape(value tf.Shape) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["value_shape"] = value
+	}
+}
+
+// MutableDenseHashTableV2InitialNumBuckets sets the optional initial_num_buckets attribute to value.
+//
+// value: The initial number of hash table buckets. Must be a power
+// to 2.
+// If not specified, defaults to 131072
+func MutableDenseHashTableV2InitialNumBuckets(value int64) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["initial_num_buckets"] = value
+	}
+}
+
+// MutableDenseHashTableV2MaxLoadFactor sets the optional max_load_factor attribute to value.
+//
+// value: The maximum ratio between number of entries and number of
+// buckets before growing the table. Must be between 0 and 1.
+// If not specified, defaults to 0.8
+func MutableDenseHashTableV2MaxLoadFactor(value float32) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["max_load_factor"] = value
+	}
+}
+
+// Creates an empty hash table that uses tensors as the backing store. It uses
+//
+// "open addressing" with quadratic reprobing to resolve collisions.
+//
+// This op creates a mutable hash table, specifying the type of its keys and
+// values. Each value must be a scalar. Data can be inserted into the table using
+// the insert operations. It does not support the initialization operation.
+//
+// Arguments:
+//	empty_key: The key used to represent empty key buckets internally. Must not
+// be used in insert or lookup operations.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func MutableDenseHashTableV2(scope *Scope, empty_key tf.Output, value_dtype tf.DataType, optional ...MutableDenseHashTableV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MutableDenseHashTableV2",
+		Input: []tf.Input{
+			empty_key,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // LRNAttr is an optional argument to LRN.
@@ -20552,6 +21033,26 @@ func SoftmaxCrossEntropyWithLogits(scope *Scope, features tf.Output, labels tf.O
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Computes the number of elements in the given table.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//
+// Returns Scalar that contains number of elements in the table.
+func LookupTableSizeV2(scope *Scope, table_handle tf.Output) (size tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableSizeV2",
+		Input: []tf.Input{
+			table_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // ResizeBilinearGradAttr is an optional argument to ResizeBilinearGrad.
