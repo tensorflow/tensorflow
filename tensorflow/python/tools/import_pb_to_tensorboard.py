@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+
 def import_to_tensorboard(model_dir, log_dir):
   """View an imported protobuf model (.pb file) as a graph in Tensorboard.
   
