@@ -220,6 +220,7 @@ BatchFFT3D
 BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
+Bucketize
 Complex
 ComplexAbs
 Conj

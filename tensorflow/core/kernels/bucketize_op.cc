@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// See docs in ../ops/math_ops.cc.
+
 #include <algorithm>
 #include <vector>
 
