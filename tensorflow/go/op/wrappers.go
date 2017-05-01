@@ -14316,9 +14316,9 @@ func SoftsignGrad(scope *Scope, gradients tf.Output, features tf.Output) (backpr
 //
 // The polygamma function is defined as:
 //
-// ```
-// \psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)
-// ```
+//
+// \\(\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)\\)
+//
 // where \\(\psi(x)\\) is the digamma function.
 func Polygamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
@@ -15540,9 +15540,8 @@ func Any(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 //
 // The Hurwitz zeta function is defined as:
 //
-// ```
-// \zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}
-// ```
+//
+// \\(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\\)
 func Zeta(scope *Scope, x tf.Output, q tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -18720,13 +18719,12 @@ func Pow(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 //
 // The upper regularized incomplete Gamma function is defined as:
 //
-// ```
-// Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)
-// ```
+// \\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\)
+//
 // where
-// ```
-// Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt
-// ```
+//
+// \\(Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
+//
 // is the upper incomplete Gama function.
 //
 // Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
@@ -18749,13 +18747,13 @@ func Igammac(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 //
 // The lower regularized incomplete Gamma function is defined as:
 //
-// ```
-// P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)
-// ```
+//
+// \\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
+//
 // where
-// ```
-// gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt
-// ```
+//
+// \\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\)
+//
 // is the lower incomplete Gamma function.
 //
 // Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
@@ -18778,14 +18776,14 @@ func Igamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 //
 // The regularized incomplete beta integral is defined as:
 //
-// ```
-// I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}
-// ```
+//
+// \\(I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}\\)
+//
 // where
 //
-// ```
-// B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt
-// ```
+//
+// \\(B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt\\)
+//
 //
 // is the incomplete beta function and \\(B(a, b)\\) is the *complete*
 // beta function.
