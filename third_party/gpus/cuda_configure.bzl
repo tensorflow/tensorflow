@@ -732,12 +732,6 @@ def _create_dummy_repository(repository_ctx):
            "%{cuda_include_genrules}": '',
            "%{cuda_headers}": '',
        })
-  _tpl(repository_ctx, "cuda:platform.bzl",
-       {
-           "%{cuda_version}": _DEFAULT_CUDA_VERSION,
-           "%{cudnn_version}": _DEFAULT_CUDNN_VERSION,
-           "%{platform}": cpu_value,
-       })
 
   # Create dummy files for the CUDA toolkit since they are still required by
   # tensorflow/core/platform/default/build_config:cuda.
@@ -913,13 +907,6 @@ def _create_cuda_repository(repository_ctx):
            "%{cuda_headers}": ('":cuda-include",\n' +
                                '        ":cudnn-include",')
        })
-  _tpl(repository_ctx, "cuda:platform.bzl",
-       {
-           "%{cuda_version}": cuda_config.cuda_version,
-           "%{cudnn_version}": cuda_config.cudnn_version,
-           "%{platform}": cuda_config.cpu_value,
-       })
-
   # Set up crosstool/
   _file(repository_ctx, "crosstool:BUILD")
   cc = find_cc(repository_ctx)
