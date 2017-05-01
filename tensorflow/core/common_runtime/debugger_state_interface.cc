@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 
+#include "tensorflow/core/lib/core/errors.h"
+
 namespace tensorflow {
 
 // static
@@ -58,11 +60,17 @@ void DebuggerStateRegistry::RegisterFactory(
 }
 
 // static
-std::unique_ptr<DebuggerStateInterface> DebuggerStateRegistry::CreateState(
-    const DebugOptions& debug_options) {
-  return (factory_ == nullptr || *factory_ == nullptr)
-             ? nullptr
-             : (*factory_)(debug_options);
+Status DebuggerStateRegistry::CreateState(
+    const DebugOptions& debug_options,
+    std::unique_ptr<DebuggerStateInterface>* state) {
+  if (factory_ == nullptr || *factory_ == nullptr) {
+    return errors::Internal(
+        "Creation of debugger state failed. "
+        "It appears that TFDBG is not linked in this TensorFlow build.");
+  } else {
+    *state = (*factory_)(debug_options);
+    return Status::OK();
+  }
 }
 
 // static
@@ -73,10 +81,17 @@ void DebugGraphDecoratorRegistry::RegisterFactory(
 }
 
 // static
-std::unique_ptr<DebugGraphDecoratorInterface>
-DebugGraphDecoratorRegistry::CreateDecorator(const DebugOptions& options) {
-  return (factory_ == nullptr || *factory_ == nullptr) ? nullptr
-                                                       : (*factory_)(options);
+Status DebugGraphDecoratorRegistry::CreateDecorator(
+    const DebugOptions& options,
+    std::unique_ptr<DebugGraphDecoratorInterface>* decorator) {
+  if (factory_ == nullptr || *factory_ == nullptr) {
+    return errors::Internal(
+        "Creation of graph decorator failed. "
+        "It appears that TFDBG is not linked in this TensorFlow build.");
+  } else {
+    *decorator = (*factory_)(options);
+    return Status::OK();
+  }
 }
 
 }  // end namespace tensorflow

@@ -376,31 +376,19 @@ Status DirectSession::CreateDebuggerState(
     const std::vector<string>& output_names,
     const std::vector<string>& target_names,
     std::unique_ptr<DebuggerStateInterface>* debugger_state) {
-  std::unique_ptr<DebuggerStateInterface> state =
-      DebuggerStateRegistry::CreateState(debug_options);
-  if (!state) {
-    return errors::Internal(
-        "Debugger options are set, but creation of debugger state failed. "
-        "It appears that debugger is not linked in this TensorFlow build.");
-  }
-
-  TF_RETURN_IF_ERROR(state->PublishDebugMetadata(
+  TF_RETURN_IF_ERROR(
+      DebuggerStateRegistry::CreateState(debug_options, debugger_state));
+  TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
       debug_options.global_step(), session_run_count, executor_step_count,
       input_names, output_names, target_names));
-
-  *debugger_state = std::move(state);
   return Status::OK();
 }
 
 Status DirectSession::DecorateAndPublishGraphForDebug(
     const DebugOptions& debug_options, Graph* graph, Device* device) {
-  std::unique_ptr<DebugGraphDecoratorInterface> decorator =
-      DebugGraphDecoratorRegistry::CreateDecorator(debug_options);
-  if (!decorator) {
-    return errors::Internal(
-        "Debugger options are set, but creation of debug graph publisher ",
-        "failed.");
-  }
+  std::unique_ptr<DebugGraphDecoratorInterface> decorator;
+  TF_RETURN_IF_ERROR(
+      DebugGraphDecoratorRegistry::CreateDecorator(debug_options, &decorator));
 
   TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
   TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph));
