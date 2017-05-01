@@ -1680,7 +1680,7 @@ def _UnpackIfSingleton(res):
 
 
 def cond(pred, fn1, fn2, strict=False, name=None):
-  """Return either `fn1()` or `fn2()` based on the boolean predicate `pred`.
+  """Return `fn1()` if the boolean predicate `pred` is true else `fn2()`.
 
   `fn1` and `fn2` both return lists of output tensors. `fn1` and `fn2` must have
   the same non-zero number and type of outputs.
