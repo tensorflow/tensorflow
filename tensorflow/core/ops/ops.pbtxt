@@ -3324,7 +3324,7 @@ op {
     }
   }
   summary: "Compute the regularized incomplete beta integral \\\\(I_x(a, b)\\\\)."
-  description: "The regularized incomplete beta integral is defined as:\n\n```\nI_x(a, b) = \\frac{B(x; a, b)}{B(a, b)}\n```\nwhere\n\n```\nB(x; a, b) = \\int_0^x t^{a-1} (1 - t)^{b-1} dt\n```\n\nis the incomplete beta function and \\\\(B(a, b)\\\\) is the *complete*\nbeta function."
+  description: "The regularized incomplete beta integral is defined as:\n\n\n\\\\(I_x(a, b) = \\frac{B(x; a, b)}{B(a, b)}\\\\)\n\nwhere\n\n\n\\\\(B(x; a, b) = \\int_0^x t^{a-1} (1 - t)^{b-1} dt\\\\)\n\n\nis the incomplete beta function and \\\\(B(a, b)\\\\) is the *complete*\nbeta function."
 }
 op {
   name: "BiasAdd"
@@ -9031,7 +9031,7 @@ op {
     }
   }
   summary: "Compute the lower regularized incomplete Gamma function `Q(a, x)`."
-  description: "The lower regularized incomplete Gamma function is defined as:\n\n```\nP(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\n```\nwhere\n```\ngamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\n```\nis the lower incomplete Gamma function.\n\nNote, above `Q(a, x)` (`Igammac`) is the upper regularized complete\nGamma function."
+  description: "The lower regularized incomplete Gamma function is defined as:\n\n\n\\\\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\\\)\n\nwhere\n\n\\\\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\\\)\n\nis the lower incomplete Gamma function.\n\nNote, above `Q(a, x)` (`Igammac`) is the upper regularized complete\nGamma function."
 }
 op {
   name: "Igammac"
@@ -9058,7 +9058,7 @@ op {
     }
   }
   summary: "Compute the upper regularized incomplete Gamma function `Q(a, x)`."
-  description: "The upper regularized incomplete Gamma function is defined as:\n\n```\nQ(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\n```\nwhere\n```\nGamma(a, x) = int_{x}^{\\infty} t^{a-1} exp(-t) dt\n```\nis the upper incomplete Gama function.\n\nNote, above `P(a, x)` (`Igamma`) is the lower regularized complete\nGamma function."
+  description: "The upper regularized incomplete Gamma function is defined as:\n\n\\\\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\\\)\n\nwhere\n\n\\\\(Gamma(a, x) = int_{x}^{\\infty} t^{a-1} exp(-t) dt\\\\)\n\nis the upper incomplete Gama function.\n\nNote, above `P(a, x)` (`Igamma`) is the lower regularized complete\nGamma function."
 }
 op {
   name: "Imag"
@@ -13342,7 +13342,7 @@ op {
     }
   }
   summary: "Compute the polygamma function \\\\(\\psi^{(n)}(x)\\\\)."
-  description: "The polygamma function is defined as:\n\n```\n\\psi^{(n)}(x) = \\frac{d^n}{dx^n} \\psi(x)\n```\nwhere \\\\(\\psi(x)\\\\) is the digamma function."
+  description: "The polygamma function is defined as:\n\n\n\\\\(\\psi^{(n)}(x) = \\frac{d^n}{dx^n} \\psi(x)\\\\)\n\nwhere \\\\(\\psi(x)\\\\) is the digamma function."
 }
 op {
   name: "Pow"
@@ -26985,5 +26985,5 @@ op {
     }
   }
   summary: "Compute the Hurwitz zeta function \\\\(\\zeta(x, q)\\\\)."
-  description: "The Hurwitz zeta function is defined as:\n\n```\n\\zeta(x, q) = \\sum_{n=0}^{\\infty} (q + n)^{-x}\n```"
+  description: "The Hurwitz zeta function is defined as:\n\n\n\\\\(\\zeta(x, q) = \\sum_{n=0}^{\\infty} (q + n)^{-x}\\\\)"
 }
