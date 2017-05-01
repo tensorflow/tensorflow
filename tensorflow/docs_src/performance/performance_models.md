@@ -1,4 +1,4 @@
-# TensorFlow High-Performance Models
+# High-Performance Models
 
 TensorFlow is a powerful and flexible machine learning platform.
 It can be used to distribute model training and inference across a large number
@@ -29,7 +29,7 @@ We divide our effort to build high-performance models into three categories:
 
 ## Input Pipeline
 
-The input pipeline is the part of a tensorflow program that reads input data,
+The input pipeline is the part of a TensorFlow program that reads input data,
 shuffles it, and preprocesses it.
 
 Among the most important features to build a fast input pipeline:
@@ -149,7 +149,7 @@ stage, and push one set at end end.
 
 For example: if there are three stages: A, B and C.
 There are two staging areas in between: S1 and S2.
-During the warmup, we run:
+During the warm up, we run:
 
 ```
 Warm up:
@@ -162,14 +162,14 @@ Step 4: A3  B2  C1
 Step 5: A4  B3  C2
 ```
 
-After the warmup, S1 and S2 each have one set of data in them.
+After the warm up, S1 and S2 each have one set of data in them.
 For each step of the actual execution, one set of data is consumed from each
 staging area, and one set is added to each.
 
 There are a few nice properties about the scheme:
 
 * All the stages are non-blocking, since the staging areas always have one set
-of data after the warmup.
+of data after the warm up.
 * Each stage can run in parallel since they can all start immediately.
 * The staging buffers have a fixed memory overhead. They will have at most one
   extra set of data.
@@ -292,7 +292,7 @@ devices and the fully aggregated gradient is then applied to each local copy.
 
 Gradient aggregation across the server can be done in different ways:
 
-* Using standard tensorflow operations to accumulate the total on a single
+* Using standard TensorFlow operations to accumulate the total on a single
   device (CPU or GPU) and then copy it back to all GPUs.
 * Using NVIDIA NCCL, described below in the NCCL section.
 
@@ -334,7 +334,7 @@ This is available in the benchmark scripts as the 'distributed_replicated'
 variable_update mode.
 
 ![distributed_replicated mode](
-../images/distributed_replicated_mode_doc.png){
+../images/perf_distributed_replicated_mode_doc.png){
 width="900" style="max-width: inherit"}
 
 #### NCCL
