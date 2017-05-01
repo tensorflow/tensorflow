@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/inputbuffer.h"
+#include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -41,8 +41,8 @@ class FixedLengthRecordReader : public ReaderBase {
         record_number_(0) {}
 
   // On success:
-  // * input_buffer_ != nullptr,
-  // * input_buffer_->Tell() == header_bytes_
+  // * buffered_inputstream_ != nullptr,
+  // * buffered_inputstream_->Tell() == header_bytes_
   // * file_pos_limit_ == file size - footer_bytes_
   Status OnWorkStartedLocked() override {
     record_number_ = 0;
@@ -50,43 +50,80 @@ class FixedLengthRecordReader : public ReaderBase {
     TF_RETURN_IF_ERROR(env_->GetFileSize(current_work(), &file_size));
     file_pos_limit_ = file_size - footer_bytes_;
 
+    lookahead_cache_.clear();
+
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file_));
 
-    input_buffer_.reset(new io::InputBuffer(file_.get(), kBufferSize));
-    TF_RETURN_IF_ERROR(input_buffer_->SkipNBytes(header_bytes_));
+    buffered_inputstream_.reset(
+        new io::BufferedInputStream(file_.get(), kBufferSize));
+    TF_RETURN_IF_ERROR(buffered_inputstream_->SkipNBytes(header_bytes_));
+    // In case hop_bytes_ is in between 0 and record_bytes_,
+    // we will need to hold a cache so that later on we could prefix the cache
+    // with the remaining data to read:
+    // For example, assume record_bytes is 2 and hop_bytes is 1,
+    // For file "H123",
+    // We will process the data in the following way:
+    // 1. Read hope_bytes of 1 ("1") and save it in hop cache.
+    // 2. Read record_bytes - hop_bytes = 1 ("2")
+    // 3. Prefix data in 2. with hop cache in one, we have "12",
+    //    this is used for the record.
+    // 4. Shift hop_bytes of 1 from the record, and we put "2" to hop cache.
+    // 5. Continue step 2.
+    // In order to acheive the above, we will peek in "record_bytes_ -
+    // hop_bytes_"
+    // before we read the first record.
+    if (0 < hop_bytes_ && hop_bytes_ < record_bytes_) {
+      TF_RETURN_IF_ERROR(buffered_inputstream_->ReadNBytes(
+          record_bytes_ - hop_bytes_, &lookahead_cache_));
+    }
     return Status::OK();
   }
 
   Status OnWorkFinishedLocked() override {
-    input_buffer_.reset(nullptr);
+    buffered_inputstream_.reset(nullptr);
     return Status::OK();
   }
 
   Status ReadLocked(string* key, string* value, bool* produced,
                     bool* at_end) override {
-    // The condition `input_buffer_->Tell() + record_bytes_ > file_pos_limit_`
-    // is to confirm that none of record bytes is out of the range of
-    // file_pos_limit_.
-    // This is necessary for the condition `hop_bytes > 0`. For example.
-    // File: "0123456"
-    // Reader setting: `record_bytes=3`, `hop_bytes=2`, `footer_bytes=0`,
-    //     `header_bytes=0`
-    // Without this checking condition, the forth time the reader will at
-    // this position: "012345|6" and the reading operation will result in
-    // an error.
-    if (input_buffer_->Tell() >= file_pos_limit_ ||
-        input_buffer_->Tell() + record_bytes_ > file_pos_limit_) {
+    // In case hop_bytes_ is in between 0 and record_bytes_,
+    // we will need to hold a cache so that later on we could prefix the cache
+    // with the remaining data to read:
+    // For example, assume record_bytes is 2 and hop_bytes is 1,
+    // For file "H123",
+    // We will process the data in the following way:
+    // 1. Read hope_bytes of 1 ("1") and save it in hop cache.
+    // 2. Read record_bytes - hop_bytes = 1 ("2")
+    // 3. Prefix data in 2. with hop cache in one, we have "12",
+    //    this is used for the record.
+    // 4. Shift hop_bytes of 1 from the record, and we put "2" to hop cache.
+    // 5. Continue step 2.
+    // In order to acheive the above, in the following only
+    // 'record_bytes_ - lookahead_cache_.size()' needs to be read. The
+    // lookahead_cache_
+    // is then prefixed to piece together the whole record.
+
+    int bytes_to_read = record_bytes_;
+    if (0 < hop_bytes_ && hop_bytes_ < record_bytes_) {
+      bytes_to_read = hop_bytes_;
+    }
+    if (buffered_inputstream_->Tell() >= file_pos_limit_ ||
+        buffered_inputstream_->Tell() + bytes_to_read > file_pos_limit_) {
       *at_end = true;
       return Status::OK();
     }
-    const int64 pos_before_read = input_buffer_->Tell();
-    TF_RETURN_IF_ERROR(input_buffer_->ReadNBytes(record_bytes_, value));
+    TF_RETURN_IF_ERROR(buffered_inputstream_->ReadNBytes(bytes_to_read, value));
+    if (0 < hop_bytes_ && hop_bytes_ < record_bytes_) {
+      lookahead_cache_.append(*value, 0, bytes_to_read);
+      *value = lookahead_cache_;
+      lookahead_cache_ = lookahead_cache_.substr(bytes_to_read);
+    }
     *key = strings::StrCat(current_work(), ":", record_number_);
     *produced = true;
     ++record_number_;
 
-    if (hop_bytes_ > 0) {
-      input_buffer_->Seek(pos_before_read + hop_bytes_).IgnoreError();
+    if (hop_bytes_ > record_bytes_) {
+      buffered_inputstream_->SkipNBytes(hop_bytes_ - record_bytes_);
     }
 
     return Status::OK();
@@ -95,7 +132,8 @@ class FixedLengthRecordReader : public ReaderBase {
   Status ResetLocked() override {
     file_pos_limit_ = -1;
     record_number_ = 0;
-    input_buffer_.reset(nullptr);
+    buffered_inputstream_.reset(nullptr);
+    lookahead_cache_.clear();
     return ReaderBase::ResetLocked();
   }
 
@@ -107,11 +145,13 @@ class FixedLengthRecordReader : public ReaderBase {
   const int64 record_bytes_;
   const int64 footer_bytes_;
   const int64 hop_bytes_;
+  string lookahead_cache_;
   Env* const env_;
   int64 file_pos_limit_;
   int64 record_number_;
-  std::unique_ptr<RandomAccessFile> file_;  // must outlive input_buffer_
-  std::unique_ptr<io::InputBuffer> input_buffer_;
+  // must outlive buffered_inputstream_
+  std::unique_ptr<RandomAccessFile> file_;
+  std::unique_ptr<io::InputStreamInterface> buffered_inputstream_;
 };
 
 class FixedLengthRecordReaderOp : public ReaderOpKernel {
