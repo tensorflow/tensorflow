@@ -40,7 +40,7 @@ networks (RNNs): an *encoder* that processes the input and a *decoder* that
 generates the output. This basic architecture is depicted below.
 
 <div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/basic_seq2seq.png" />
+<img style="width:100%" src="https://www.tensorflow.org/images/basic_seq2seq.png" />
 </div>
 
 Each box in the picture above represents a cell of the RNN, most commonly
@@ -62,7 +62,7 @@ decoding step. A multi-layer sequence-to-sequence network with LSTM cells and
 attention mechanism in the decoder looks like this.
 
 <div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/attention_seq2seq.png" />
+<img style="width:100%" src="https://www.tensorflow.org/images/attention_seq2seq.png" />
 </div>
 
 ## TensorFlow seq2seq library

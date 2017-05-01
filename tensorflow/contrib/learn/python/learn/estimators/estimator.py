@@ -40,6 +40,7 @@ from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -1250,6 +1251,13 @@ class Estimator(BaseEstimator):
       input_ops = serving_input_fn()
       input_alternatives, features = (
           saved_model_export_utils.get_input_alternatives(input_ops))
+
+      # TODO(b/34388557) This is a stopgap, pending recording model provenance.
+      # Record which features are expected at serving time.  It is assumed that
+      # these are the features that were used in training.
+      for feature_key in input_ops.features.keys():
+        ops.add_to_collection(
+            constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS, feature_key)
 
       # Call the model_fn and collect the output alternatives.
       model_fn_ops = self._call_model_fn(features, None,

@@ -146,7 +146,7 @@ class BeamSearchDecoder(decoder.Decoder):
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
     if (output_layer is not None
-        and not isinstance(output_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(output_layer, layers_base.Layer)):
       raise TypeError(
           "output_layer must be a Layer, received: %s" % type(output_layer))
     self._cell = cell
@@ -452,10 +452,12 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
     time: Beam search time step, should start at 0. At time 0 we assume
       that all beams are equal and consider only the first beam for
       continuations.
-    logits: Logits at the current time step. A tensor of shape `[B, vocab_size]`
-    beam_state: Current state of the beam search. An instance of `BeamState`
+    logits: Logits at the current time step. A tensor of shape
+      `[batch_size, beam_width, vocab_size]`
+    beam_state: Current state of the beam search.
+      An instance of `BeamSearchDecoderState`.
     batch_size: The batch size for this input.
-    beam_width: The size of the beams.
+    beam_width: Python int.  The size of the beams.
     end_token: The int32 end token.
     length_penalty_weight: Float weight to penalize length. Disabled with 0.0.
 
@@ -470,20 +472,22 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
 
   # Calculate the total log probs for the new hypotheses
   # Final Shape: [batch_size, beam_width, vocab_size]
-  probs = nn_ops.log_softmax(logits)
-  probs = _mask_probs(probs, end_token, previously_finished)
-  total_probs = array_ops.expand_dims(beam_state.log_probs, 2) + probs
+  step_log_probs = nn_ops.log_softmax(logits)
+  step_log_probs = _mask_probs(step_log_probs, end_token, previously_finished)
+  total_probs = array_ops.expand_dims(beam_state.log_probs, 2) + step_log_probs
 
   # Calculate the continuation lengths by adding to all continuing beams.
-  vocab_size = logits.get_shape().as_list()[-1]
+  vocab_size = logits.shape[-1].value
   lengths_to_add = array_ops.one_hot(
-      array_ops.tile(
+      indices=array_ops.tile(
           array_ops.reshape(end_token, [1, 1]), [batch_size, beam_width]),
-      vocab_size, 0, 1)
+      depth=vocab_size,
+      on_value=0,
+      off_value=1)
   add_mask = (1 - math_ops.to_int32(previously_finished))
   lengths_to_add = array_ops.expand_dims(add_mask, 2) * lengths_to_add
-  new_prediction_lengths = array_ops.expand_dims(prediction_lengths,
-                                                 2) + lengths_to_add
+  new_prediction_lengths = (
+      lengths_to_add + array_ops.expand_dims(prediction_lengths, 2))
 
   # Calculate the scores for each beam
   scores = _get_scores(
@@ -491,10 +495,11 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
       sequence_lengths=new_prediction_lengths,
       length_penalty_weight=length_penalty_weight)
 
-  scores_flat = array_ops.reshape(scores, [batch_size, -1])
+  time = ops.convert_to_tensor(time, name="time")
   # During the first time step we only consider the initial beam
   scores_flat = control_flow_ops.cond(
-      ops.convert_to_tensor(time) > 0, lambda: scores_flat,
+      time > 0,
+      lambda: array_ops.reshape(scores, [batch_size, -1]),
       lambda: scores[:, 0])
 
   # Pick the next beams according to the specified successors function
@@ -579,7 +584,11 @@ def _length_penalty(sequence_lengths, penalty_factor):
   Returns:
     The length penalty factor, a tensor fo shape [beam_size].
   """
-  # TODO(ebrevdo): cleanup based on constant-value of penalty_factor.
+  penalty_factor = ops.convert_to_tensor(penalty_factor, name="penalty_factor")
+  penalty_factor.set_shape(())  # penalty should be a scalar.
+  static_penalty = tensor_util.constant_value(penalty_factor)
+  if static_penalty is not None and static_penalty == 0:
+    return 1.0
   return math_ops.div((5. + math_ops.to_float(sequence_lengths))
                       **penalty_factor, (5. + 1.)**penalty_factor)
 
@@ -613,9 +622,9 @@ def _mask_probs(probs, eos_token, finished):
   finished_row = array_ops.one_hot(
       eos_token,
       vocab_size,
-      dtype=dtypes.float32,
+      dtype=probs.dtype,
       on_value=0.,
-      off_value=dtypes.float32.min)
+      off_value=probs.dtype.min)
   finished_examples = (1. - finished_mask) * finished_row
   return finished_examples + non_finished_examples
 

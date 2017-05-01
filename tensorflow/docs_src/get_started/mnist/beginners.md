@@ -15,7 +15,7 @@ MNIST is a simple computer vision dataset. It consists of images of handwritten
 digits like these:
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/MNIST.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/MNIST.png">
 </div>
 
 It also includes labels for each image, telling us which digit it is. For
@@ -88,7 +88,7 @@ Each image is 28 pixels by 28 pixels. We can interpret this as a big array of
 numbers:
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/MNIST-Matrix.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/MNIST-Matrix.png">
 </div>
 
 We can flatten this array into a vector of 28x28 = 784 numbers. It doesn't
@@ -110,7 +110,7 @@ Each entry in the tensor is a pixel intensity between 0 and 1, for a particular
 pixel in a particular image.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/mnist-train-xs.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/mnist-train-xs.png">
 </div>
 
 Each image in MNIST has a corresponding label, a number between 0 and 9
@@ -124,7 +124,7 @@ vector which is 1 in the \\(n\\)th dimension. For example, 3 would be
 `[55000, 10]` array of floats.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/mnist-train-ys.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/mnist-train-ys.png">
 </div>
 
 We're now ready to actually make our model!
@@ -157,7 +157,7 @@ classes. Red represents negative weights, while blue represents positive
 weights.
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/softmax-weights.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/softmax-weights.png">
 </div>
 
 We also add some extra evidence called a bias. Basically, we want to be able
@@ -202,13 +202,13 @@ although with a lot more \\(x\\)s. For each output, we compute a weighted sum of
 the \\(x\\)s, add a bias, and then apply softmax.
 
 <div style="width:55%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/softmax-regression-scalargraph.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/softmax-regression-scalargraph.png">
 </div>
 
 If we write that out as equations, we get:
 
 <div style="width:52%; margin-left:25%; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/softmax-regression-scalarequation.png"
+<img style="width:100%" src="https://www.tensorflow.org/images/softmax-regression-scalarequation.png"
    alt="[y1, y2, y3] = softmax(W11*x1 + W12*x2 + W13*x3 + b1,  W21*x1 + W22*x2 + W23*x3 + b2,  W31*x1 + W32*x2 + W33*x3 + b3)">
 </div>
 
@@ -217,7 +217,7 @@ and vector addition. This is helpful for computational efficiency. (It's also
 a useful way to think.)
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/softmax-regression-vectorequation.png"
+<img style="width:100%" src="https://www.tensorflow.org/images/softmax-regression-vectorequation.png"
  alt="[y1, y2, y3] = softmax([[W11, W12, W13], [W21, W22, W23], [W31, W32, W33]]*[x1, x2, x3] + [b1, b2, b3])">
 </div>
 
@@ -362,7 +362,7 @@ minimize. Then it can apply your choice of optimization algorithm to modify the
 variables and reduce the loss.
 
 ```python
-train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
+train_step = tf.train.GradientDescentOptimizer(0.05).minimize(cross_entropy)
 ```
 
 In this case, we ask TensorFlow to minimize `cross_entropy` using the

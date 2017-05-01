@@ -35,9 +35,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+
+using ::tensorflow::strings::StrCat;
 
 std::unique_ptr<HloComputation> HloComputation::Builder::Build(
     HloInstruction* root_instruction) {
@@ -91,12 +95,7 @@ HloInstruction* HloComputation::AddInstruction(
 HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction) {
   // Generate a unique name for the instruction.
-  instruction->set_name(
-      instruction_name_uniquer_.GetUniqueName(instruction->name()));
-  if (instruction->opcode() == HloOpcode::kParameter) {
-    instruction->set_parameter_name(
-        instruction_name_uniquer_.GetUniqueName(instruction->parameter_name()));
-  }
+  instruction->UniquifyName(&instruction_name_uniquer_);
   Reparent(instruction.get());
   HloInstruction* pinst = instruction.get();
   instruction_iterators_[pinst] =
@@ -131,9 +130,24 @@ Status HloComputation::RemoveParameter(int64 param_no) {
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
-    HloInstruction* new_instr = AddInstructionInternal(
-        HloInstruction::CreateParameter(param_no, param_instruction->shape(),
-                                        param_instruction->parameter_name()));
+    string param_name = param_instruction->name();
+    // Fusion parameters are named foo.param_1, bar.param_2, etc. We are
+    // renumbering the parameters so replace the final number in the name with
+    // the updated value.
+    const string param_underscore = ".param_";
+    size_t index = param_name.rfind(param_underscore);
+    if (index == string::npos) {
+      string after_param = name().substr(index + param_underscore.size());
+      int64 numeric_suffix;
+      if (tensorflow::strings::safe_strto64(after_param, &numeric_suffix)) {
+        param_name =
+            StrCat(param_name.substr(0, index), param_underscore, param_no);
+      }
+    }
+
+    HloInstruction* new_instr =
+        AddInstructionInternal(HloInstruction::CreateParameter(
+            param_no, param_instruction->shape(), param_name));
     TF_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
     new_instr->SetParentFusion(root_instruction_->fusion_instruction());
     param_instructions_[param_no] = new_instr;
@@ -670,6 +684,10 @@ std::unique_ptr<HloComputation> HloComputation::Clone(const string& suffix) {
     }
   }
   return result;
+}
+
+void HloComputation::UniquifyName(NameUniquer* name_uniquer) {
+  name_ = name_uniquer->GetUniqueName(name_);
 }
 
 }  // namespace xla

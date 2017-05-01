@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/constant_folding.h"
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -94,6 +95,21 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
   return Status::OK();
 }
 
+Status GraphMgr::DecorateAndPublishGraphForDebug(
+    const DebugOptions& debug_options, Graph* graph, Device* device) {
+  std::unique_ptr<DebugGraphDecoratorInterface> decorator =
+      DebugGraphDecoratorRegistry::CreateDecorator(debug_options);
+  if (!decorator) {
+    return errors::Internal(
+        "Debugger options are set, but creation of debug graph publisher ",
+        "failed.");
+  }
+  TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
+  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph));
+
+  return Status::OK();
+}
+
 // Creates executors given a graph definition "gdef" of a "session".
 // If a node in "gdef" is shared by other graphs in "session", the
 // same op kernel is reused. E.g., typically a params node is shared
@@ -106,7 +122,8 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
 // "executors" are filled with one executor per device if success and
 // the caller takes the ownership of returned executors.
 Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
-                          const GraphOptions& graph_options, Item* item) {
+                          const GraphOptions& graph_options,
+                          const DebugOptions& debug_options, Item* item) {
   item->session = session;
   item->lib_def =
       new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library());
@@ -232,6 +249,13 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     };
 
     optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph);
+
+    // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph.
+    if (!debug_options.debug_tensor_watch_opts().empty()) {
+      TF_RETURN_IF_ERROR(DecorateAndPublishGraphForDebug(
+          debug_options, subgraph.get(), params.device));
+    }
+
     TF_RETURN_IF_ERROR(
         EnsureMemoryTypes(DeviceType(unit->device->device_type()),
                           unit->device->name(), subgraph.get()));
@@ -247,9 +271,10 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 }
 
 Status GraphMgr::Register(const string& session, const GraphDef& gdef,
-                          const GraphOptions& graph_options, string* handle) {
+                          const GraphOptions& graph_options,
+                          const DebugOptions& debug_options, string* handle) {
   Item* item = new Item;
-  Status s = InitItem(session, gdef, graph_options, item);
+  Status s = InitItem(session, gdef, graph_options, debug_options, item);
   if (!s.ok()) {
     item->Unref();
     return s;

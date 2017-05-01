@@ -19,8 +19,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import distribution as distribution_lib
-from tensorflow.contrib.distributions.python.ops import distribution_util
 # Bijectors must be directly imported because `remove_undocumented` prevents
 # individual file imports.
 from tensorflow.contrib.distributions.python.ops.bijectors.identity import Identity
@@ -33,6 +31,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution as distribution_lib
+from tensorflow.python.ops.distributions import util as distribution_util
 
 __all__ = [
     "TransformedDistribution",

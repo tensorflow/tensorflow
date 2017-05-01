@@ -48,9 +48,9 @@ import threading
 import six
 
 from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators as sge
-from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.distributions import distribution
 
 STOCHASTIC_TENSOR_COLLECTION = "_stochastic_tensor_collection_"
 

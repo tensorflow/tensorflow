@@ -1930,6 +1930,12 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   NOTE: This operation is not differentiable and cannot be used if inputs depend
   on trainable variables. Please use `tf.add_n` for such cases.
 
+  Aside from differentiability, `tf.accumulate_n` performs the same operation as
+  `tf.add_n`, but does not wait for all of its inputs to be ready before
+  beginning to sum. This can save memory if inputs are ready at different times,
+  since minimum temporary storage is proportional to the output size rather than
+  the inputs size.
+
   For example:
 
   ```python

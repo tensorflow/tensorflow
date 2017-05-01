@@ -174,12 +174,6 @@ Node* Cast(Graph* g, Node* in, DataType dst);
 // Perform gather op on params "in0" with indices "in1".
 Node* Gather(Graph* g, Node* in0, Node* in1);
 
-// Computes broadcasted shape from the given input shapes.
-Node* BroadcastArgs(Graph* g, Node* s0, Node* s1);
-
-// Computes the args needed broadcast gradient function.
-Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
-
 // Gets a tensor stored in the session state.
 Node* GetSessionTensor(Graph* g, Node* in);
 

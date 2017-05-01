@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,19 @@ limitations under the License.
 #define TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
+
+// Options specific to constant folding optimizations.
+struct ConstantFoldingOptions {
+  // If "consider" is not a nullptr, then only constant fold a node "n" if
+  // consider(n) returns true.
+  std::function<bool(const Node*)> consider = nullptr;
+};
 
 // Perform constant folding optimization on "graph".
 // Looks for nodes in "graph" that can be completely evaluated statically, i.e.,
@@ -32,25 +40,9 @@ namespace tensorflow {
 // Sets `was_mutated` to true if and only if "graph" has been mutated.
 // The status is only set to a non-OK state if an unexpected error is hit
 // running the graph.
-Status DoConstantFoldingWithStatus(const ConstantFoldingOptions& opts,
-                                   FunctionLibraryRuntime* function_library,
-                                   Env* env, Device* partition_device,
-                                   Graph* graph, bool* was_mutated);
-
-// Version of the function that doesn't return a Status, for backwards
-// compatibility.
-bool DoConstantFolding(const ConstantFoldingOptions& opts,
-                       FunctionLibraryRuntime* function_library, Env* env,
-                       Device* partition_device, Graph* graph);
-
-typedef std::pair<Node*, int> NodeAndOutput;
-
-// Replaces the identified Tensor in 'graph' by a 'Const' node with
-// the value supplied in 'constant'. 'partition_device', if non-null
-// is the device where the graph executes. Returns true if the
-// replacement was successful, false otherwise.
-bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
-                               NodeAndOutput tensor, const Tensor& constant);
+Status ConstantFold(const ConstantFoldingOptions& opts,
+                    FunctionLibraryRuntime* function_library, Env* env,
+                    Device* partition_device, Graph* graph, bool* was_mutated);
 
 }  // namespace tensorflow
 

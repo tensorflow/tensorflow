@@ -95,7 +95,7 @@ TF_CAPI_EXPORT extern const char* TF_Version();
 // --------------------------------------------------------------------------
 // TF_DataType holds the type for a scalar value.  E.g., one slot in a tensor.
 // The enum values here are identical to corresponding values in types.proto.
-typedef enum {
+typedef enum TF_DataType {
   TF_FLOAT = 1,
   TF_DOUBLE = 2,
   TF_INT32 = 3,  // Int32 tensors are always in 'host' memory.
@@ -127,7 +127,7 @@ TF_CAPI_EXPORT extern size_t TF_DataTypeSize(TF_DataType dt);
 // --------------------------------------------------------------------------
 // TF_Code holds an error code.  The enum values here are identical to
 // corresponding values in error_codes.proto.
-typedef enum {
+typedef enum TF_Code {
   TF_OK = 0,
   TF_CANCELLED = 1,
   TF_UNKNOWN = 2,
@@ -629,7 +629,7 @@ TF_CAPI_EXPORT extern int TF_OperationGetControlOutputs(
     int max_control_outputs);
 
 // TF_AttrType describes the type of the value of an attribute on an operation.
-typedef enum {
+typedef enum TF_AttrType {
   TF_ATTR_STRING = 0,
   TF_ATTR_INT = 1,
   TF_ATTR_FLOAT = 2,

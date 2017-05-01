@@ -96,12 +96,10 @@ from tensorflow.contrib.distributions.python.ops.beta import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.categorical import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
-from tensorflow.contrib.distributions.python.ops.conditional_distribution import *
 from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.deterministic import *
 from tensorflow.contrib.distributions.python.ops.dirichlet import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
-from tensorflow.contrib.distributions.python.ops.distribution import *
 from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
 from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
 from tensorflow.contrib.distributions.python.ops.exponential import *
@@ -129,6 +127,8 @@ from tensorflow.contrib.distributions.python.ops.student_t import *
 from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.uniform import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
+from tensorflow.python.ops.distributions.conditional_distribution import *
+from tensorflow.python.ops.distributions.distribution import *
 
 # pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
 

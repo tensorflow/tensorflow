@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 
@@ -67,7 +68,8 @@ class GraphMgr {
 
   // Registers a graph. Fills in "handle"
   Status Register(const string& session, const GraphDef& gdef,
-                  const GraphOptions& graph_options, string* handle);
+                  const GraphOptions& graph_options,
+                  const DebugOptions& debug_options, string* handle);
 
   // Executes one step of a registered graph "handle".
   //
@@ -167,7 +169,11 @@ class GraphMgr {
                                       const StatusCallback& done);
 
   Status InitItem(const string& session, const GraphDef& gdef,
-                  const GraphOptions& graph_options, Item* item);
+                  const GraphOptions& graph_options,
+                  const DebugOptions& debug_options, Item* item);
+
+  Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,
+                                         Graph* graph, Device* device);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GraphMgr);
 };

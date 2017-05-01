@@ -102,8 +102,7 @@ Status FlattenNode(const CallGraphNode& node) {
 StatusOr<bool> FlattenCallGraph::Run(HloModule* module) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<CallGraph> call_graph,
-                      CallGraph::Build(module));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
 
   XLA_VLOG_LINES(3, "After flatten call graph:\n" + module->ToString());

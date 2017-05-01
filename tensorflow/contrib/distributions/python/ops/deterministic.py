@@ -22,7 +22,6 @@ import abc
 
 import six
 
-from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution
 
 __all__ = [
     "Deterministic",

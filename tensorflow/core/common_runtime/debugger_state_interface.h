@@ -18,27 +18,23 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 
-class DebugOptions;  // Defined in core/protobuf/debug.h.
-class Device;
-class Graph;
+// Returns a summary string for the list of debug tensor watches.
+const string SummarizeDebugTensorWatches(
+    const protobuf::RepeatedPtrField<DebugTensorWatch>& watches);
 
 // An abstract interface for storing and retrieving debugging information.
 class DebuggerStateInterface {
  public:
   virtual ~DebuggerStateInterface() {}
-
-  // Returns a summary string for RepeatedPtrFields of DebugTensorWatches.
-  virtual const string SummarizeDebugTensorWatches() = 0;
-
-  // Insert special-purpose debug nodes to graph and dump the graph for
-  // record. See the documentation of DebugNodeInserter::InsertNodes() for
-  // details.
-  virtual Status DecorateGraphForDebug(Graph* graph, Device* device) = 0;
 
   // Publish metadata about the debugged Session::Run() call.
   //
@@ -57,6 +53,19 @@ class DebuggerStateInterface {
       const int64 executor_step_count, const std::vector<string>& input_names,
       const std::vector<string>& output_names,
       const std::vector<string>& target_nodes) = 0;
+};
+
+class DebugGraphDecoratorInterface {
+ public:
+  virtual ~DebugGraphDecoratorInterface() {}
+
+  // Insert special-purpose debug nodes to graph and dump the graph for
+  // record. See the documentation of DebugNodeInserter::InsertNodes() for
+  // details.
+  virtual Status DecorateGraph(Graph* graph, Device* device) = 0;
+
+  // Publish Graph to debug URLs.
+  virtual Status PublishGraph(const Graph& graph) = 0;
 };
 
 typedef std::function<std::unique_ptr<DebuggerStateInterface>(
@@ -84,6 +93,23 @@ class DebuggerStateRegistry {
   static DebuggerStateFactory* factory_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DebuggerStateRegistry);
+};
+
+typedef std::function<std::unique_ptr<DebugGraphDecoratorInterface>(
+    const DebugOptions& options)>
+    DebugGraphDecoratorFactory;
+
+class DebugGraphDecoratorRegistry {
+ public:
+  static void RegisterFactory(const DebugGraphDecoratorFactory& factory);
+
+  static std::unique_ptr<DebugGraphDecoratorInterface> CreateDecorator(
+      const DebugOptions& options);
+
+ private:
+  static DebugGraphDecoratorFactory* factory_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(DebugGraphDecoratorRegistry);
 };
 
 }  // end namespace tensorflow

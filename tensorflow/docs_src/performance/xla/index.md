@@ -62,7 +62,7 @@ well as the NVIDIA GPU backend are in the TensorFlow source tree.
 The following diagram shows the compilation process in XLA:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img src="../../images/how-does-xla-work.png">
+  <img src="https://www.tensorflow.org/images/how-does-xla-work.png">
 </div>
 
 XLA comes with several optimizations and analyses that are target-independent,

@@ -290,17 +290,17 @@ class SummaryAtEndHook(session_run_hook.SessionRunHook):
       ValueError: If both `log_dir` and `summary_writer` are `None`.
     """
     self._summary_op = summary_op
+    self._replace_summary_op = summary_op is None
     self._feed_dict = feed_dict
     self._summary_writer = summary_writer
     self._log_dir = log_dir
-    self._summary_writer = summary_writer
     if self._log_dir is None and self._summary_writer is None:
       raise ValueError('One of log_dir or summary_writer should be used.')
-    self._global_step = variables.get_or_create_global_step()
 
   def begin(self):
-    if self._summary_op is None:
+    if self._replace_summary_op:
       self._summary_op = summary.merge_all()
+    self._global_step = variables.get_or_create_global_step()
 
   def after_create_session(self, session, coord):
     if self._summary_writer is None and self._log_dir:

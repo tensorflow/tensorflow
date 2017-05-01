@@ -894,27 +894,27 @@ tf_module {
   }
   member_method {
     name: "fake_quant_with_min_max_args"
-    argspec: "args=[\'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_args_gradient"
-    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars"
-    argspec: "args=[\'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars_gradient"
-    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars_per_channel"
-    argspec: "args=[\'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars_per_channel_gradient"
-    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "fft"
