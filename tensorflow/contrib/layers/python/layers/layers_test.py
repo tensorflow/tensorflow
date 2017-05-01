@@ -2416,7 +2416,8 @@ class BatchNormTest(test.TestCase):
   def testNoneUpdatesCollectionIsTrainingVariableFusedNHWC(self):
     self._testNoneUpdatesCollectionIsTrainingVariable(True, data_format='NHWC')
 
-  def _testTrainMovingVars(self, fused, data_format='NHWC'):
+  def _testTrainMovingVars(self, fused, data_format='NHWC', dtype=dtypes.float32,
+                           mean_tol=1e-3, var_tol=1e-2):
     # Test that the gradients are stable while the moving_mean is updated.
     # Since the moving_mean is used as shift to compute the tf.momments, the
     # gradients could diverge, this test checks that gradients remains stable
@@ -2441,7 +2442,7 @@ class BatchNormTest(test.TestCase):
         expected_var, _ = self._addBesselsCorrection(batch_size * height *
                                                      width, expected_var)
       images = constant_op.constant(
-          image_values, shape=image_shape, dtype=dtypes.float32)
+          image_values, shape=image_shape, dtype=dtype)
       output = _layers.batch_norm(
           images,
           decay=0.2,
@@ -2449,6 +2450,7 @@ class BatchNormTest(test.TestCase):
           is_training=True,
           fused=fused,
           data_format=data_format)
+      self.assertEqual(output.dtype, dtype)
       self.assertEqual(ops.get_collection(ops.GraphKeys.UPDATE_OPS), [])
 
       objective = math_ops.reduce_sum(output)
@@ -2469,10 +2471,11 @@ class BatchNormTest(test.TestCase):
         np_output, new_images_gradients = sess.run([output, images_gradients])
         # The outputs should be close to 0.0 mean and 1.0 variance
         self.assertAllClose(
-            np.mean(
-                np_output, axis=axis), [0] * channels, rtol=0.001, atol=0.001)
+            np.mean(np_output, axis=axis),
+            [0] * channels, rtol=mean_tol, atol=mean_tol)
         self.assertAllClose(
-            np.var(np_output, axis=axis), [1] * channels, rtol=0.01, atol=0.01)
+            np.var(np_output, axis=axis),
+            [1] * channels, rtol=var_tol, atol=var_tol)
         # The gradients should change slowly while updating moving_mean.
         max_diff = np.max(np.abs(images_gradients_value - new_images_gradients))
         self.assertGreaterEqual(max_diff, 0.0)
@@ -2483,8 +2486,18 @@ class BatchNormTest(test.TestCase):
   def testTrainMovingVarsNHWC(self):
     self._testTrainMovingVars(False, data_format='NHWC')
 
+  def testTrainMovingVarsNHWCFloat16(self):
+    self._testTrainMovingVars(
+      False, data_format='NHWC', dtype=dtypes.float16,
+      mean_tol=1, var_tol=1)
+
   def testTrainMovingVarsNCHW(self):
     self._testTrainMovingVars(False, data_format='NCHW')
+
+  def testTrainMovingVarsNCHWFloat16(self):
+    self._testTrainMovingVars(
+      False, data_format='NCHW', dtype=dtypes.float16,
+      mean_tol=1, var_tol=1)
 
   def testTrainMovingVarsFusedNCHW(self):
     if test.is_gpu_available(cuda_only=True):

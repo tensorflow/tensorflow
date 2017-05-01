@@ -531,6 +531,7 @@ def batch_norm(inputs,
       beta_regularizer = param_regularizers.get('beta')
       gamma_regularizer = param_regularizers.get('gamma')
       layer = normalization_layers.BatchNormalization(
+          dtype=inputs.dtype.base_dtype,
           axis=axis,
           momentum=decay,
           epsilon=epsilon,
