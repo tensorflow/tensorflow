@@ -324,6 +324,69 @@ class SwitchTestCase(TensorFlowTestCase):
       self.assertEquals(grad_x_false.eval(), 0.)
 
 
+class CondTest(TensorFlowTestCase):
+
+  def testCondTrue(self):
+    with self.test_session():
+      x = constant_op.constant(2)
+      y = constant_op.constant(5)
+      z = control_flow_ops.cond(
+          math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
+          lambda: math_ops.add(y, 23))
+      self.assertEquals(z.eval(), 34)
+
+  def testCondFalse(self):
+    with self.test_session():
+      x = constant_op.constant(2)
+      y = constant_op.constant(1)
+      z = control_flow_ops.cond(
+          math_ops.less(x, y), lambda: math_ops.multiply(x, 17),
+          lambda: math_ops.add(y, 23))
+      self.assertEquals(z.eval(), 24)
+
+  def testCondTrueLegacy(self):
+    with self.test_session():
+      x = constant_op.constant(2)
+      y = constant_op.constant(5)
+      z = control_flow_ops.cond(
+          math_ops.less(x, y), fn1=lambda: math_ops.multiply(x, 17),
+          fn2=lambda: math_ops.add(y, 23))
+      self.assertEquals(z.eval(), 34)
+
+  def testCondFalseLegacy(self):
+    with self.test_session():
+      x = constant_op.constant(2)
+      y = constant_op.constant(1)
+      z = control_flow_ops.cond(
+          math_ops.less(x, y), fn1=lambda: math_ops.multiply(x, 17),
+          fn2=lambda: math_ops.add(y, 23))
+      self.assertEquals(z.eval(), 24)
+
+  def testCondMissingArg1(self):
+    with self.test_session():
+      x = constant_op.constant(1)
+      with self.assertRaises(TypeError):
+        control_flow_ops.cond(True, false_fn=lambda: x)
+
+  def testCondMissingArg2(self):
+    with self.test_session():
+      x = constant_op.constant(1)
+      with self.assertRaises(TypeError):
+        control_flow_ops.cond(True, lambda: x)
+
+  def testCondDuplicateArg1(self):
+    with self.test_session():
+      x = constant_op.constant(1)
+      with self.assertRaises(TypeError):
+        control_flow_ops.cond(True, lambda: x, lambda: x, fn1=lambda: x)
+
+  def testCondDuplicateArg2(self):
+    with self.test_session():
+      x = constant_op.constant(1)
+      with self.assertRaises(TypeError):
+        control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
+
+
 class ContextTest(TensorFlowTestCase):
 
   def testCondContext(self):
