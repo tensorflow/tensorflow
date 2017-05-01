@@ -21,16 +21,16 @@ import tensorflow as tf
 
 
 def import_to_tensorboard(model_dir, log_dir):
-  """View an imported protobuf model (.pb file) as a graph in Tensorboard.
+  """View an imported protobuf model (`.pb` file) as a graph in Tensorboard.
   
   Args:
-  	model_dir: The location of the protobuf (pb) model to visualize
+    model_dir: The location of the protobuf (`pb`) model to visualize
     log_dir: The location for the Tensorboard log to begin visualisation from.
     
   Usage:
-  	Call this function with your model location and desired log directory.
+    Call this function with your model location and desired log directory.
     Launch Tensorboard by pointing it to the log directory.
-    View your imported .pb model as a graph.
+    View your imported `.pb` model as a graph.
   """
   with tf.Session(graph=tf.Graph()) as sess:
     with tf.gfile.FastGFile(model_dir, 'rb') as f:
