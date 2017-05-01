@@ -20,24 +20,30 @@ limitations under the License.
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 
+// In the constructor hop_bytes_ is set to record_bytes_ if it was 0,
+// so that we will always "hop" after each read (except first).
 class FixedLengthRecordReader : public ReaderBase {
  public:
   FixedLengthRecordReader(const string& node_name, int64 header_bytes,
                           int64 record_bytes, int64 footer_bytes,
-                          int64 hop_bytes, Env* env)
+                          int64 hop_bytes, const string& encoding, Env* env)
       : ReaderBase(
             strings::StrCat("FixedLengthRecordReader '", node_name, "'")),
         header_bytes_(header_bytes),
         record_bytes_(record_bytes),
         footer_bytes_(footer_bytes),
-        hop_bytes_(hop_bytes),
+        hop_bytes_(hop_bytes == 0 ? record_bytes : hop_bytes),
         env_(env),
-        record_number_(0) {}
+        record_number_(0),
+        encoding_(encoding) {}
 
   // On success:
   // * buffered_inputstream_ != nullptr,
@@ -48,33 +54,21 @@ class FixedLengthRecordReader : public ReaderBase {
     lookahead_cache_.clear();
 
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file_));
-
-    buffered_inputstream_.reset(
-        new io::BufferedInputStream(file_.get(), kBufferSize));
+    if (encoding_ == "ZLIB" || encoding_ == "GZIP") {
+      const io::ZlibCompressionOptions zlib_options =
+          encoding_ == "ZLIB" ? io::ZlibCompressionOptions::DEFAULT()
+                              : io::ZlibCompressionOptions::GZIP();
+      file_stream_.reset(new io::RandomAccessInputStream(file_.get()));
+      buffered_inputstream_.reset(
+          new io::ZlibInputStream(file_stream_.get(), (size_t)kBufferSize,
+                                  (size_t)kBufferSize, zlib_options));
+    } else {
+      buffered_inputstream_.reset(
+          new io::BufferedInputStream(file_.get(), kBufferSize));
+    }
+    // header_bytes_ is always skipped.
     TF_RETURN_IF_ERROR(buffered_inputstream_->SkipNBytes(header_bytes_));
 
-    int bytes_to_read = footer_bytes_;
-
-    // In case hop_bytes_ is in between 0 and record_bytes_,
-    // we will need to hold a cache so that later on we could prefix the cache
-    // with the remaining data to read:
-    // For example, assume record_bytes is 2 and hop_bytes is 1,
-    // For file "H123",
-    // We will process the data in the following way:
-    // 1. Read hope_bytes of 1 ("1") and save it in hop cache.
-    // 2. Read record_bytes - hop_bytes = 1 ("2")
-    // 3. Prefix data in 2. with hop cache in one, we have "12",
-    //    this is used for the record.
-    // 4. Shift hop_bytes of 1 from the record, and we put "2" to hop cache.
-    // 5. Continue step 2.
-    // In order to acheive the above, we will peek in "record_bytes_ -
-    // hop_bytes_"
-    // before we read the first record.
-    if (0 < hop_bytes_ && hop_bytes_ < record_bytes_) {
-      bytes_to_read += record_bytes_ - hop_bytes_;
-    }
-    TF_RETURN_IF_ERROR(
-        buffered_inputstream_->ReadNBytes(bytes_to_read, &lookahead_cache_));
     return Status::OK();
   }
 
@@ -85,63 +79,50 @@ class FixedLengthRecordReader : public ReaderBase {
 
   Status ReadLocked(string* key, string* value, bool* produced,
                     bool* at_end) override {
-    // In case hop_bytes_ is in between 0 and record_bytes_,
-    // we will need to hold a cache so that later on we could prefix the cache
-    // with the remaining data to read:
-    // For example, assume record_bytes is 2 and hop_bytes is 1,
-    // For file "H123",
-    // We will process the data in the following way:
-    // 1. Read hope_bytes of 1 ("1") and save it in hop cache.
-    // 2. Read record_bytes - hop_bytes = 1 ("2")
-    // 3. Prefix data in 2. with hop cache in one, we have "12",
-    //    this is used for the record.
-    // 4. Shift hop_bytes of 1 from the record, and we put "2" to hop cache.
-    // 5. Continue step 2.
-    // In order to acheive the above, in the following only
-    // 'record_bytes_ - lookahead_cache_.size()' needs to be read. The
-    // lookahead_cache_
-    // is then prefixed to piece together the whole record.
-
-    int bytes_to_read = record_bytes_;
-    if (0 < hop_bytes_ && hop_bytes_ < record_bytes_) {
-      bytes_to_read = hop_bytes_;
+    // We will always "hop" the hop_bytes_ except the first record
+    // where record_number_ == 0
+    if (record_number_ != 0) {
+      if (hop_bytes_ <= lookahead_cache_.size()) {
+        // If hop_bytes_ is smaller than the cached data we skip the
+        // hop_bytes_ from the cache.
+        lookahead_cache_ = lookahead_cache_.substr(hop_bytes_);
+      } else {
+        // If hop_bytes_ is larger than the cached data, we clean up
+        // the cache, then skip hop_bytes_ - cache_size from the file
+        // as the cache_size has been skipped through cache.
+        int64 cache_size = lookahead_cache_.size();
+        lookahead_cache_.clear();
+        Status s = buffered_inputstream_->SkipNBytes(hop_bytes_ - cache_size);
+        if (!s.ok()) {
+          if (!errors::IsOutOfRange(s)) {
+            return s;
+          }
+          *at_end = true;
+          return Status::OK();
+        }
+      }
     }
 
-    // In case of non-seekable files like compressed file, attempt to read
-    // record, and append record to cached footer, then pop head
-    // of cached footer as the record
+    // Fill up lookahead_cache_ to record_bytes_ + footer_bytes_
+    int bytes_to_read = record_bytes_ + footer_bytes_ - lookahead_cache_.size();
     Status s = buffered_inputstream_->ReadNBytes(bytes_to_read, value);
-    if (!s.ok() && !errors::IsOutOfRange(s)) {
-      return s;
-    }
-
-    // EOF reached
-    if (value->size() == 0) {
+    if (!s.ok()) {
+      value->clear();
+      if (!errors::IsOutOfRange(s)) {
+        return s;
+      }
       *at_end = true;
       return Status::OK();
     }
-
-    // We have the data which is pieced together by
-    // lookahead_cache_ + value(read)
     lookahead_cache_.append(*value, 0, bytes_to_read);
+    value->clear();
 
-    // Now the true data will be:
-    // value: the first record_bytes_
-    // hop cache (part of lookahead_cache_): the next chunk starts
-    //    with hop_bytes and ends with record_bytes
-    //    (total = record_bytes_ - hop_bytes_)
-    // footer cache (part of lookahead_cache_): the final chunk of
-    //    size footer_bytes
+    // Copy first record_bytes_ from cache to value
     *value = lookahead_cache_.substr(0, record_bytes_);
-    lookahead_cache_ = lookahead_cache_.substr(bytes_to_read);
 
     *key = strings::StrCat(current_work(), ":", record_number_);
     *produced = true;
     ++record_number_;
-
-    if (hop_bytes_ > record_bytes_) {
-      buffered_inputstream_->SkipNBytes(hop_bytes_ - record_bytes_);
-    }
 
     return Status::OK();
   }
@@ -161,11 +142,20 @@ class FixedLengthRecordReader : public ReaderBase {
   const int64 record_bytes_;
   const int64 footer_bytes_;
   const int64 hop_bytes_;
+  // The purpose of lookahead_cache_ is to allows "one-pass" processing
+  // without revisit previous processed data of the stream. This is needed
+  // because certain compression like zlib does not allow random access
+  // or even obtain the uncompressed stream size before hand.
+  // The max size of the lookahead_cache_ could be
+  // record_bytes_ + footer_bytes_
   string lookahead_cache_;
   Env* const env_;
   int64 record_number_;
+  string encoding_;
   // must outlive buffered_inputstream_
   std::unique_ptr<RandomAccessFile> file_;
+  // must outlive buffered_inputstream_
+  std::unique_ptr<io::RandomAccessInputStream> file_stream_;
   std::unique_ptr<io::InputStreamInterface> buffered_inputstream_;
 };
 
@@ -192,11 +182,14 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
         context, hop_bytes >= 0,
         errors::InvalidArgument("hop_bytes must be >= 0 not ", hop_bytes));
     Env* env = context->env();
-    SetReaderFactory(
-        [this, header_bytes, record_bytes, footer_bytes, hop_bytes, env]() {
-          return new FixedLengthRecordReader(name(), header_bytes, record_bytes,
-                                             footer_bytes, hop_bytes, env);
-        });
+    string encoding;
+    context->GetAttr("encoding", &encoding);
+    SetReaderFactory([this, header_bytes, record_bytes, footer_bytes, hop_bytes,
+                      encoding, env]() {
+      return new FixedLengthRecordReader(name(), header_bytes, record_bytes,
+                                         footer_bytes, hop_bytes, encoding,
+                                         env);
+    });
   }
 };
 
