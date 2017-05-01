@@ -3634,6 +3634,38 @@ op {
   description: "This is typically used by gradient computations for a broadcasting operation."
 }
 op {
+  name: "Bucketize"
+  input_arg {
+    name: "input"
+    description: "Any shape of Tensor contains with int or float type."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Same shape with \'input\', each value of input replaced with bucket index.\n\n@compatibility(numpy)\nEquivalent to np.digitize.\n@end_compatibility"
+    type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "boundaries"
+    type: "list(float)"
+    description: "A sorted list of floats gives the boundary of the buckets."
+  }
+  summary: "Bucketizes \'input\' based on \'boundaries\'."
+  description: "For example, if the inputs are\n    boundaries = [0, 10, 100]\n    input = [[-5, 10000]\n             [150,   10]\n             [5,    100]]\n\nthen the output will be\n    output = [[0, 3]\n              [3, 2]\n              [1, 3]]"
+}
+op {
   name: "CTCBeamSearchDecoder"
   input_arg {
     name: "inputs"
