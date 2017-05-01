@@ -153,6 +153,7 @@ cc_binary(
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service",
+        "//tensorflow/compiler/xla/service:computation_tracker",
         "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],

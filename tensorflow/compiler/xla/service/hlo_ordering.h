@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -36,13 +37,13 @@ namespace xla {
 // buffers.
 class HloOrdering {
  public:
-  HloOrdering() = default;
+  HloOrdering(const HloModule* module)
+      : module_(module), call_graph_(CallGraph::Build(module)) {}
   virtual ~HloOrdering() = default;
 
   // Returns true if instruction 'a' executes before instruction 'b'. This is
   // not reflexive, that is, an instruction does not execute before itself.
-  virtual bool ExecutesBefore(const HloInstruction* a,
-                              const HloInstruction* b) const = 0;
+  bool ExecutesBefore(const HloInstruction* a, const HloInstruction* b) const;
 
   // Returns the sequential instruction order for the given computation, or
   // nullptr if the computation does not have a sequential ordering.
@@ -50,6 +51,21 @@ class HloOrdering {
       const HloComputation& computation) const = 0;
 
   virtual string ToString() const = 0;
+
+ protected:
+  // Returns true if instruction 'a' executes before instruction 'b'.
+  // Precondition: 'a' and 'b' are in the same computation.
+  //
+  // Derived classes should implement this method for determining order of
+  // instructions in the same comptuation. ExecutesBefore() analyzes the
+  // callgraph and uses this method to determine ordering of instructions in
+  // different computations.
+  virtual bool ExecutesBeforeInSameComputation(
+      const HloInstruction* a, const HloInstruction* b) const = 0;
+
+  const HloModule* module_;
+
+  std::unique_ptr<CallGraph> call_graph_;
 };
 
 // Base class for partial orderings implemented by a map of strict predecessors
@@ -57,11 +73,6 @@ class HloOrdering {
 class PredecessorHloOrdering : public HloOrdering {
  public:
   ~PredecessorHloOrdering() override = default;
-
-  // Returns true if instruction 'a' executes before instruction 'b'.
-  // Instructions in different computations are not ordered.
-  bool ExecutesBefore(const HloInstruction* a,
-                      const HloInstruction* b) const override;
 
   // Returns nullptr indicating the computation does not have a sequential
   // ordering.
@@ -74,11 +85,12 @@ class PredecessorHloOrdering : public HloOrdering {
   explicit PredecessorHloOrdering(const HloModule* module);
   string ToStringHelper(const string& name) const;
 
-  const HloModule* module_;
+  bool ExecutesBeforeInSameComputation(const HloInstruction* a,
+                                       const HloInstruction* b) const override;
 
-  // For each each computation in the module, this is the set of the
-  // instruction's strict predecessors. An instruction is not an element of its
-  // own strict predecessor set.
+  // For each computation in the module, this is the set of the instruction's
+  // strict predecessors. An instruction is not an element of its own strict
+  // predecessor set.
   //
   // Subclasses should fill this in to define the desired ordering.
   tensorflow::gtl::FlatMap<const HloComputation*,
@@ -150,12 +162,6 @@ class SequentialHloOrdering : public HloOrdering {
                         const HloModuleSequence& module_sequence);
   ~SequentialHloOrdering() override = default;
 
-  // Instruction 'a' executes before 'b' if 'a' appears before 'b' in the
-  // instruction sequence for the computation. Instructions in different
-  // computations are unordered.
-  bool ExecutesBefore(const HloInstruction* a,
-                      const HloInstruction* b) const override;
-
   // Returns the sequential instruction order for the given computation.
   const std::vector<const HloInstruction*>* SequentialOrder(
       const HloComputation& computation) const override;
@@ -163,7 +169,9 @@ class SequentialHloOrdering : public HloOrdering {
   string ToString() const override;
 
  protected:
-  const HloModule* module_;
+  bool ExecutesBeforeInSameComputation(const HloInstruction* a,
+                                       const HloInstruction* b) const override;
+
   const HloModuleSequence module_sequence_;
 
   // The position of every instruction in the HLO module in its respective

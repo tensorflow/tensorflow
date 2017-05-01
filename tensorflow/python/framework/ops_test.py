@@ -18,7 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+import weakref
+
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
@@ -1297,6 +1301,32 @@ class GraphTest(test_util.TensorFlowTestCase):
     self.assertEqual(a, g.as_graph_element(ConvertibleObj()))
     with self.assertRaises(TypeError):
       g.as_graph_element(NonConvertibleObj())
+
+  # Regression test against creating custom __del__ functions in classes
+  # involved in cyclic references, e.g. Graph and Operation. (Python won't gc
+  # cycles that require calling a __del__ method, because the __del__ method can
+  # theoretically increase the object's refcount to "save" it from gc, and any
+  # already-deleted objects in the cycle would have be to restored.)
+  def testGarbageCollected(self):
+    # Create a graph we can delete and a weak reference to monitor if it's gc'd
+    g = ops.Graph()
+    g_ref = weakref.ref(g)
+    # Create some ops
+    with g.as_default():
+      a = constant_op.constant(2.0)
+      b = constant_op.constant(3.0)
+      c = math_ops.add(a, b)
+    # Create a session we can delete
+    with session.Session(graph=g) as sess:
+      sess.run(c)
+    # Delete all references and trigger gc
+    del g
+    del a
+    del b
+    del c
+    del sess
+    gc.collect()
+    self.assertIsNone(g_ref())
 
 
 class AttrScopeTest(test_util.TensorFlowTestCase):

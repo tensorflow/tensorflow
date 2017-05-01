@@ -1117,7 +1117,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       VLOG(3) << "  " << hlo->parent()->name() << "::" << hlo->name();
     }
   }
-  XLA_VLOG_LINES(3, module->ToString());
+  XLA_VLOG_LINES(2, module->ToString());
   XLA_VLOG_LINES(3, liveness->ToString());
   XLA_VLOG_LINES(3, liveness->points_to_analysis().ToString());
 

@@ -363,7 +363,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
       self._seed = seed
 
       if (next_input_layer is not None and not isinstance(next_input_layer,
-                                                          layers_base._Layer)):  # pylint: disable=protected-access
+                                                          layers_base.Layer)):
         raise TypeError("next_input_layer must be a Layer, received: %s" %
                         type(next_input_layer))
       self._next_input_layer = next_input_layer
