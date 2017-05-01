@@ -3981,9 +3981,13 @@ class GraphKeys(object):
     for more details.
   * `REGULARIZATION_LOSSES`: regularization losses collected during graph
     construction.
-  * `WEIGHTS`: weights inside neural network layers
-  * `BIASES`: biases inside neural network layers
-  * `ACTIVATIONS`: activations of neural network layers
+
+  The following standard keys are _defined_, but their collections are **not**
+  automatically populated as many of the others are:
+
+  * `WEIGHTS`
+  * `BIASES`
+  * `ACTIVATIONS`
   """
 
   # Key to collect Variable objects that are global (shared across machines).
