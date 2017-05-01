@@ -920,8 +920,7 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       padding is other than `'VALID'` or `'SAME'`.
   """
   return convolution(input=value, filter=filters, padding=padding,
-                     dilation_rate=np.broadcast_to(rate, (2, )),
-                     strides=strides, name=name)
+                     dilation_rate=np.broadcast_to(rate, (2, )), name=name)
 
 
 def conv2d_transpose(value,
