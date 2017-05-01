@@ -380,13 +380,6 @@ Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
       // Ignore duplicate FunctionDefs
       continue;
     }
-    // TODO(skyewm): fix test breakages and reenable this check
-    // const OpDef* op_def;
-    // if (ops_.LookUpOpDef(fdef.signature().name(), &op_def).ok()) {
-    //   return errors::InvalidArgument(
-    //       "Cannot add function '", fdef.signature().name(),
-    //       "' because an op with the same name already exists.");
-    // }
     TF_RETURN_IF_ERROR(ops_.AddFunctionDef(fdef));
   }
   for (const GradientDef& grad : fdef_lib.gradient()) {
