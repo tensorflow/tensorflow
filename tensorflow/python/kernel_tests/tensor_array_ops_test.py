@@ -1128,7 +1128,7 @@ class TensorArrayTest(test.TestCase):
           dtype=dtypes.float32, size=0, dynamic_size=False, infer_shape=True)
       self.assertEqual(0, ta.size().eval())
       # Don't actually perform the pack.  This stores the static shape.
-      ta.unstack(array_ops.zeros([0, 3, 5]))
+      ta.unstack(array_ops.zeros([0, 3, 5])).mark_used()
       packed = ta.stack()
       self.assertAllEqual([0, 3, 5], packed.eval().shape)
       # Concatenating zero tensors along their first dimension gives a

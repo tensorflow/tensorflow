@@ -72,6 +72,7 @@ from tensorflow.python.ops.gen_control_flow_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_should_use
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -84,6 +85,7 @@ _basetuple = tuple
 
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
+@tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
 

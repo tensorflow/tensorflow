@@ -22,6 +22,7 @@ import traceback
 import types
 
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.util import tf_decorator
 
 
 def _add_should_use_warning(x, fatal_error=False):
@@ -36,6 +37,13 @@ def _add_should_use_warning(x, fatal_error=False):
     An instance of `TFShouldUseWarningWrapper` which subclasses `type(x)`
     and is a very shallow wrapper for `x` which logs access into `x`.
   """
+  if x is None:  # special corner case where x is None
+    return x
+  has_been_used = getattr(x, '_tf_object_has_been_used', None)
+  if has_been_used is not None:
+    x._tf_object_has_been_used = has_been_used  # pylint: disable=protected-access
+    return x
+
   def override_method(method):
     def fn(self, *args, **kwargs):
       self._tf_object_has_been_used = True  # pylint: disable=protected-access
@@ -67,18 +75,27 @@ def _add_should_use_warning(x, fatal_error=False):
         else:
           logger = tf_logging.error
         logger(
-            'Object was never used: %s.\nIt was originally created here:\n%s'
-            % (self, self._tf_object_creation_stack))
+            '==================================\n'
+            'Object was never used (type %s):\n%s\nIf you want to mark it as '
+            'used call its "mark_used()" method.\nIt was originally created '
+            'here:\n%s\n'
+            '==================================' %
+            (type(x), x, self._tf_object_creation_stack))
 
       if hasattr(super(TFShouldUseWarningWrapper, self), '__del__'):
         return super(TFShouldUseWarningWrapper, self).__del__()
+
+    def mark_used(self, *args, **kwargs):
+      self._tf_object_has_been_used = True
+      if hasattr(super(TFShouldUseWarningWrapper, self), 'mark_used'):
+        return super(TFShouldUseWarningWrapper, self).mark_used(*args, **kwargs)
     # pylint: enable=super-on-old-class
 
   for name in dir(TFShouldUseWarningWrapper):
     method = getattr(TFShouldUseWarningWrapper, name)
     if not isinstance(method, types.FunctionType):
       continue
-    if name in ('__init__', '__getattribute__', '__del__'):
+    if name in ('__init__', '__getattribute__', '__del__', 'mark_used'):
       continue
     setattr(TFShouldUseWarningWrapper, name,
             functools.wraps(method)(override_method(method)))
@@ -114,7 +131,13 @@ def should_use_result(fn):
   """
   def wrapped(*args, **kwargs):
     return _add_should_use_warning(fn(*args, **kwargs))
-  return functools.wraps(fn)(wrapped)
+  return tf_decorator.make_decorator(
+      fn, wrapped, 'should_use_result',
+      ((fn.__doc__ or '') +
+       ('\n\n  '
+        '**NOTE** The output of this function should be used.  If it is not, '
+        'a warning will be logged.  To mark the output as used, '
+        'call its .mark_used() method.')))
 
 
 def must_use_result_or_fatal(fn):
@@ -142,4 +165,10 @@ def must_use_result_or_fatal(fn):
   """
   def wrapped(*args, **kwargs):
     return _add_should_use_warning(fn(*args, **kwargs), fatal_error=True)
-  return functools.wraps(fn)(wrapped)
+  return tf_decorator.make_decorator(
+      fn, wrapped, 'must_use_result_or_fatal',
+      ((fn.__doc__ or '') +
+       ('\n\n  '
+        '**NOTE** The output of this function must be used.  If it is not, '
+        'a fatal error will be raised.  To mark the output as used, '
+        'call its .mark_used() method.')))
