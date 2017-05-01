@@ -371,11 +371,10 @@ def create_bottleneck_file(bottleneck_path, image_lists, label_name, index,
   image_data = gfile.FastGFile(image_path, 'rb').read()
   try:
     bottleneck_values = run_bottleneck_on_image(sess, image_data,
-                                                  jpeg_data_tensor,
-                                                  bottleneck_tensor)
+                                                jpeg_data_tensor,
+                                                bottleneck_tensor)
   except:
-    tf.logging.fatal('Error during processing file %s', image_path)
-
+    raise RuntimeError('Error during processing file %s' % image_path)
 
   bottleneck_string = ','.join(str(x) for x in bottleneck_values)
   with open(bottleneck_path, 'w') as bottleneck_file:
