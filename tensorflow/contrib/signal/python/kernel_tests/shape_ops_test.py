@@ -26,7 +26,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
+
 class FramesTest(test.TestCase):
+
   def test_mapping_of_indices_without_padding(self):
     with self.test_session():
       tensor = constant_op.constant(np.arange(9152), dtypes.int32)
@@ -60,6 +62,7 @@ class FramesTest(test.TestCase):
       expected = np.array(expected, dtype=np.int32)
       
       self.assertAllEqual(expected, result)
+
 
 if __name__ == "__main__":
   test.main()
