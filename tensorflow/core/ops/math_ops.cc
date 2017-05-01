@@ -662,13 +662,12 @@ Compute the upper regularized incomplete Gamma function `Q(a, x)`.
 
 The upper regularized incomplete Gamma function is defined as:
 
-```
-Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)
-```
+\\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\)
+
 where
-```
-Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt
-```
+
+\\(Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
+
 is the upper incomplete Gama function.
 
 Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
@@ -686,13 +685,13 @@ Compute the lower regularized incomplete Gamma function `Q(a, x)`.
 
 The lower regularized incomplete Gamma function is defined as:
 
-```
-P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)
-```
+
+\\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
+
 where
-```
-gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt
-```
+
+\\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\)
+
 is the lower incomplete Gamma function.
 
 Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
@@ -710,9 +709,9 @@ Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
 
 The Hurwitz zeta function is defined as:
 
-```
-\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}
-```
+
+\\(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\\)
+
 )doc");
 
 REGISTER_OP("Polygamma")
@@ -726,9 +725,9 @@ Compute the polygamma function \\(\psi^{(n)}(x)\\).
 
 The polygamma function is defined as:
 
-```
-\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)
-```
+
+\\(\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)\\)
+
 where \\(\psi(x)\\) is the digamma function.
 )doc");
 
@@ -775,14 +774,14 @@ Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
 
 The regularized incomplete beta integral is defined as:
 
-```
-I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}
-```
+
+\\(I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}\\)
+
 where
 
-```
-B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt
-```
+
+\\(B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt\\)
+
 
 is the incomplete beta function and \\(B(a, b)\\) is the *complete*
 beta function.
