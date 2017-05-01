@@ -22,12 +22,12 @@ from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.contrib import layers
 from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
 from tensorflow.contrib.bayesflow.python.ops import variational_inference_impl
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
-from tensorflow.contrib.distributions.python.ops import normal
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.distributions import kullback_leibler
+from tensorflow.python.ops.distributions import normal
 from tensorflow.python.platform import test
 
 st = stochastic_tensor
@@ -68,7 +68,7 @@ class VariationalInferenceTest(test.TestCase):
   def testDefaultVariationalAndPrior(self):
     _, prior, variational, _, log_likelihood = mini_vae()
     elbo = vi.elbo(log_likelihood)
-    expected_elbo = log_likelihood - kullback_leibler.kl(
+    expected_elbo = log_likelihood - kullback_leibler.kl_divergence(
         variational.distribution, prior)
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
@@ -80,7 +80,7 @@ class VariationalInferenceTest(test.TestCase):
       prior = normal.Normal(loc=3., scale=2.)
       elbo = vi.elbo(
           log_likelihood, variational_with_prior={variational: prior})
-      expected_elbo = log_likelihood - kullback_leibler.kl(
+      expected_elbo = log_likelihood - kullback_leibler.kl_divergence(
           variational.distribution, prior)
       sess.run(variables.global_variables_initializer())
       self.assertAllEqual(*sess.run([expected_elbo, elbo]))
@@ -121,7 +121,7 @@ class VariationalInferenceTest(test.TestCase):
 
     # No analytic KL available between prior and variational distributions.
     with self.assertRaisesRegexp(NotImplementedError, "No KL"):
-      distributions.kl(variational.distribution, prior)
+      distributions.kl_divergence(variational.distribution, prior)
 
     elbo = vi.elbo(
         variational_with_prior={variational: prior},
