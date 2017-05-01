@@ -112,7 +112,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.1.0rc2-py2-none-any.whl</b></pre>
 
 If you encounter installation problems, see
-[Common Installation Problems](#CommonInstallationProblems).
+[Common Installation Problems](#common-installation-problems).
 
 
 ### Next Steps
@@ -233,7 +233,7 @@ take the following steps:
      https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.1.0rc2-py2-none-any.whl</b> </pre>
 
      If the preceding command fails, see
-     [Common installation problems](#CommonInstallationProblems).
+     [installation problems](#common-installation-problems).
 
 
 
