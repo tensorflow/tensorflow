@@ -116,16 +116,18 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
     with self.test_session():
       test_image_shape = shape_to_test
       test_image = np.random.randn(*test_image_shape)
-      test_image_tensor = constant_op.constant(test_image, shape=test_image_shape)
-      test_transform = image_ops.angles_to_projective_transforms(np.pi / 2, 4, 4)
+      test_image_tensor = constant_op.constant(test_image, 
+                                               shape=test_image_shape)
+      test_transform = image_ops.angles_to_projective_transforms(np.pi / 2, 
+                                                                 4, 
+                                                                 4)
       test_transform_shape = test_transform.shape
-
 
       output_shape = test_image_shape
       output = image_ops.transform(test_image_tensor, test_transform)
       left_err = gradient_checker.compute_gradient_error(
-        test_image_tensor, test_image_shape, output, output_shape,
-        x_init_value=test_image)
+          test_image_tensor, test_image_shape, output, output_shape,
+          x_init_value=test_image)
       self.assertLess(left_err, 1e-10)
 
   def test_grad(self):
