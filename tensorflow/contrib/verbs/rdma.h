@@ -40,6 +40,8 @@ struct RdmaAddress {
   uint32_t lid;
   uint32_t qpn;
   uint32_t psn;
+  uint64_t snp;
+  uint64_t iid;
 };
 // structure to save information for remote memory regions.
 struct RemoteMR {
