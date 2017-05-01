@@ -2,7 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-package(default_visibility = ["//visibility:__subpackages__"])
+package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
