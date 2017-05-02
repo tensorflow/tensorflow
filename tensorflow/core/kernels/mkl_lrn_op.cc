@@ -104,6 +104,7 @@ class MklLRNOp : public OpKernel {
       return;
     }
 
+    // TODO(inteltf) MKL will support depth radius not equal to 2 in the future
     if (depth_radius_ != 2) {
       Tensor converted_tensor =
           ConvertMklToTF<T>(context, input, mkl_context.input_shape);
@@ -277,7 +278,7 @@ class MklLRNOp : public OpKernel {
     }
 
     // Fallback implementation - Taken from lrn_op.cc
-    // TODO(intelft) Check if we can use EigenLRNOp directly instead of making a
+    // TODO(inteltf) Check if we can use EigenLRNOp directly instead of making a
     // copy.
     void MklDefaultToEigen(OpKernelContext* context, int depth_radius_,
                            float bias_, float alpha_, float beta_,
@@ -328,13 +329,6 @@ class MklLRNOp : public OpKernel {
       dnnLayoutDelete_F32(lt_internal_input);
       dnnLayoutDelete_F32(lt_internal_workspace);
       dnnLayoutDelete_F32(lt_internal_output);
-
-// TODO(intelft) Why is code not used ?
-#if 0
-      if (!input_in_mkl_format) {
-        dnnLayoutDelete_F32(mkl_prims.lt_input);
-      }
-#endif
     }
   } MklLRNOpContext;
 
