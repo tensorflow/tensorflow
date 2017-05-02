@@ -83,6 +83,7 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --outputs='softmax:0' \
 --transforms='\
 strip_unused_nodes(type=float, shape="1,299,299,3") \
+remove_nodes(op=Identity, op=CheckNumerics) \
 fold_old_batch_norms \
 '
 ```
@@ -93,7 +94,9 @@ transforms to modify the graph with. The transforms are given as a list of
 names, and can each have arguments themselves. These transforms define the
 pipeline of modifications that are applied in order to produce the output.
 Sometimes you need some transforms to happen before others, and the ordering
-within the list lets you specify which happen first.
+within the list lets you specify which happen first. Note that the optimization 
+`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control 
+flow operations, such as `tf.cond`, `tf.map_fn`, and `tf.while`.
 
 ## Inspecting Graphs
 
@@ -139,6 +142,7 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --outputs='softmax:0' \
 --transforms='\
 strip_unused_nodes(type=float, shape="1,299,299,3") \
+remove_nodes(op=Identity, op=CheckNumerics) \
 fold_constants(ignore_errors=true) \
 fold_batch_norms \
 fold_old_batch_norms\
@@ -283,6 +287,7 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --transforms='
  add_default_attributes
  strip_unused_nodes(type=float, shape="1,299,299,3")
+ remove_nodes(op=Identity, op=CheckNumerics) 
  fold_old_batch_norms
  quantize_weights
  quantize_nodes
