@@ -1,17 +1,17 @@
-# TensorFlow Performance Benchmarks
+# Benchmarks
 
 ## Overview
 
 A selection of image classification models were tested across multiple platforms
 to create a point of reference for the TensorFlow community. The methodology,
-links to the scripts, and commands to reproduce the results are in the
-[appendix](#appendix).
+links to the benchmark scripts, and commands to reproduce the results are in the
+[Appendix](#appendix).
 
 ## Results for image classification models
 
-InceptionV3 ([arXiv:1512.00567](https://arxiv.org/abs/1512.00567)),
-ResNet-50 ([arXiv:1512.03385](https://arxiv.org/abs/1512.03385)),
-ResNet-152 ([arXiv:1512.03385](https://arxiv.org/abs/1512.03385)), VGG16
+InceptionV3 ([arXiv:1512.00567](https://arxiv.org/abs/1512.00567)), ResNet-50
+([arXiv:1512.03385](https://arxiv.org/abs/1512.03385)), ResNet-152
+([arXiv:1512.03385](https://arxiv.org/abs/1512.03385)), VGG16
 ([arXiv:1409.1556](https://arxiv.org/abs/1409.1556)), and
 [AlexNet](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)
 were tested using the [ImageNet](http://www.image-net.org/) data set. Tests were
@@ -27,32 +27,32 @@ input pipeline and the underlying disk I/O are saturating the compute units.
 
 ### Training with NVIDIA® DGX-1™ (NVIDIA® Tesla® P100)
 
-<div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/perf_summary_p100_single_server.png">
+<div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
+  <img style="width:80%" src="../images/perf_summary_p100_single_server.png">
 </div>
 
 Details and additional results are in the [Details for NVIDIA® DGX-1™ (NVIDIA®
-Tesla® P100)](#details-for-nvidia®-dgx-1™-nvidia®-tesla®-p100) section.
+Tesla® P100)](#details_for_nvidia_dgx-1tm_nvidia_tesla_p100) section.
 
 ### Training with NVIDIA® Tesla® K80
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/perf_summary_k80_single_server.png">
+  <img style="width:80%" src="../images/perf_summary_k80_single_server.png">
 </div>
 
 Details and additional results are in the [Details for Google Compute Engine
-(NVIDIA® Tesla® K80)](#details-for-google-compute-engine-nvidia®-tesla®-k80) and
+(NVIDIA® Tesla® K80)](#details_for_google_compute_engine_nvidia_tesla_k80) and
 [Details for Amazon EC2 (NVIDIA® Tesla®
-K80)](#details-for-amazon-ec2-nvidia®-tesla®-k80) sections.
+K80)](#details_for_amazon_ec2_nvidia_tesla_k80) sections.
 
 ### Distributed training with NVIDIA® Tesla® K80
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/perf_summary_k80_aws_distributed.png">
+  <img style="width:80%" src="../images/perf_summary_k80_aws_distributed.png">
 </div>
 
 Details and additional results are in the [Details for Amazon EC2 Distributed
-(NVIDIA® Tesla® K80)](#details-for-amazon-ec2-distributed-nvidia®-tesla®-k80)
+(NVIDIA® Tesla® K80)](#details_for_amazon_ec2_distributed_nvidia_tesla_k80)
 section.
 
 ### Compare synthetic with real data training
@@ -82,12 +82,15 @@ section.
 *   **TensorFlow GitHub hash:** b1e174e
 *   **Build Command:** `bazel build -c opt --copt=-march="haswell" --config=cuda
     //tensorflow/tools/pip_package:build_pip_package`
-*   **Disk:** local SSD
+*   **Disk:** Local SSD
 *   **DataSet:** ImageNet
 
-Batch size and optimizer used for each model.
+Batch size and optimizer used for each model are listed in the table below. In
+addition to the batch sizes listed in the table, InceptionV3, ResNet-50,
+ResNet-152, and VGG16 were tested with a batch size of 32. Those results are in
+the *other results* section.
 
-                   | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+Options            | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 ------------------ | ----------- | --------- | ---------- | ------- | -----
 Batch size per GPU | 64          | 64        | 64         | 512     | 64
 Optimizer          | sgd         | sgd       | sgd        | sgd     | sgd
@@ -104,10 +107,8 @@ VGG16       | replicated (with NCCL) | n/a
 
 ### Results
 
-Batch size and optimizer used for each model are listed in the table below.
-
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/perf_summary_p100_single_server.png">
+  <img style="width:80%" src="../images/perf_summary_p100_single_server.png">
 </div>
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
@@ -136,6 +137,28 @@ GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 Training AlexNet with real data on 8 GPUs was excluded from the graph and table
 above due to it maxing out the input pipeline.
 
+### Other Results
+
+The results below are all with a batch size of 32.
+
+**Training synthetic data**
+
+GPUs | InceptionV3 | ResNet-50 | ResNet-152 | VGG16
+---- | ----------- | --------- | ---------- | -----
+1    | 128         | 210       | 85.3       | 124
+2    | 259         | 412       | 166        | 241
+4    | 520         | 827       | 330        | 470
+8    | 995         | 1623      | 643        | 738
+
+**Training real data**
+
+GPUs | InceptionV3 | ResNet-50 | ResNet-152 | VGG16
+---- | ----------- | --------- | ---------- | -----
+1    | 130         | 208       | 85.0       | 124
+2    | 257         | 403       | 163        | 221
+4    | 507         | 814       | 325        | 401
+8    | 966         | 1525      | 641        | 619
+
 ## Details for Google Compute Engine (NVIDIA® Tesla® K80)
 
 ### Environment
@@ -156,7 +179,7 @@ addition to the batch sizes listed in the table, InceptionV3 and ResNet-50 were
 tested with a batch size of 32. Those results are in the *other results*
 section.
 
-                   | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+Options            | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 ------------------ | ----------- | --------- | ---------- | ------- | -----
 Batch size per GPU | 64          | 64        | 32         | 512     | 32
 Optimizer          | sgd         | sgd       | sgd        | sgd     | sgd
@@ -184,10 +207,10 @@ GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 
 GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
-1    | 30.5        | 56.7      | 20.7       | 639     | 30.2
-2    | 57.8        | 107       | 39         | 1136    | 55.5
-4    | 115         | 211       | 77.3       | 2067    | 106
-8    | 225         | 418       | 150        | 4056    | 213
+  1  | 30.6        | 56.7      | 20.7       | 639     | 30.2       
+  2  | 58.4        | 107       | 39.0       | 1136    | 55.5       
+  4  | 115         | 211       | 77.3       | 2067    | 106        
+  8  | 225         | 422       | 151        | 4056    | 213   
 
 ### Other Results
 
@@ -204,10 +227,10 @@ GPUs | InceptionV3 (batch size 32) | ResNet-50 (batch size 32)
 
 GPUs | InceptionV3 (batch size 32) | ResNet-50 (batch size 32)
 ---- | --------------------------- | -------------------------
-1    | 29.3                        | 53.6
-2    | 55                          | 102
-4    | 109                         | 200
-8    | 215                         | 387
+  1  | 29.5                        | 53.6       
+  2  | 55.4                        | 102        
+  4  | 110                         | 201        
+  8  | 216                         | 387  
 
 ## Details for Amazon EC2 (NVIDIA® Tesla® K80)
 
@@ -230,7 +253,7 @@ addition to the batch sizes listed in the table, InceptionV3 and ResNet-50 were
 tested with a batch size of 32. Those results are in the *other results*
 section.
 
-                   | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+Options            | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 ------------------ | ----------- | --------- | ---------- | ------- | -----
 Batch size per GPU | 64          | 64        | 32         | 512     | 32
 Optimizer          | sgd         | sgd       | sgd        | sgd     | sgd
@@ -289,7 +312,7 @@ GPUs | InceptionV3 (batch size 32) | ResNet-50 (batch size 32)
 GPUs | InceptionV3 (batch size 32) | ResNet-50 (batch size 32)
 ---- | --------------------------- | -------------------------
 1    | 30.0                        | 53.6
-2    | 57.5                        | 101
+2    | 57.5                        | 102
 4    | 113                         | 202
 8    | 212                         | 379
 
@@ -313,7 +336,7 @@ addition to the batch sizes listed in the table, InceptionV3 and ResNet-50 were
 tested with a batch size of 32. Those results are in the *other results*
 section.
 
-                   | InceptionV3 | ResNet-50 | ResNet-152
+Options            | InceptionV3 | ResNet-50 | ResNet-152
 ------------------ | ----------- | --------- | ----------
 Batch size per GPU | 64          | 64        | 32
 Optimizer          | sgd         | sgd       | sgd
@@ -337,7 +360,7 @@ used with the following exceptions:
 ### Results
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:95%" src="../images/perf_summary_k80_aws_distributed.png">
+  <img style="width:80%" src="../images/perf_summary_k80_aws_distributed.png">
 </div>
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
@@ -374,34 +397,37 @@ GPUs | InceptionV3 (batch size 32) | ResNet-50 (batch size 32)
 
 ### Executing benchmark tests
 
-The code for the benchmarks was created to be both used for benchmarking
-TensorFlow as well as used as a tool to test hardware platforms. The benchmark
-code includes modes such as `trivial` that run a virtually empty model that is
-useful for testing the maximum possibly samples/sec for the input pipeline among
-other things. Not only does this test TensorFlow but also the throughput of the
-underlying systems. There are two ways to execute the benchmarks in
-[tf_cnn_benchmarks.py](TODO: LINK TO GITHUB):
+The [benchmark code](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks)
+was created to be used for benchmarking TensorFlow as well as used as a tool to
+test hardware platforms. Techniques used in the benchmark scripts are detailed
+in @{$performance_models$High-Performance Models}.
 
-1.  Execute [tf_cnn_benchmarks.py](TODO: LINK TO GITHUB) directly
-2.  Utilize the [small wrapper](TODO: LINK TO GITHUB) that helps pick the
-    correct config
+There are two ways to execute the benchmark code:
+
+1.  Execute [tf_cnn_benchmarks.py](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py)
+    directly.
+2.  Utilize the [scripts](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks/main.py)
+    that helps pick the correct config for each platform executes
+    `tf_cnn_benchmarks.py`.
 
 The wrapper is suggested as a starting point. Then investigate the variety of
-options available in `tf_cnn_benchmarks.py`. While the wrapper extensive
-examples, below are a couple highlights.
+options available in `tf_cnn_benchmarks.py`. Below are a couple examples of
+using the wrapper.
 
-Run ResNet-50 on a single instance with 8 GPUs. The `system` argument is used to
-determine the optimal configuration. The supported values are gce, aws, and
-dgx1. If `system` is not passeed, the best config for the most widely available
-hardware is used.
+**Single Server**
+This example illustrates training ResNet-50 on a single instance with 8 GPUs.
+The `system` flag is used to determine the optimal configuration. The
+supported values are gce, aws, and dgx1. If `system` is not passed, the best
+config for the most widely available hardware is used.
 
 ```bash
 python main.py --model=resnet50 --num_gpus=8
 python main.py --system=aws --model=resnet50 --num_gpus=8
 ```
 
-Run ResNet-50 on 2 hosts, e.g. host_0 (10.0.0.1) and host_1 (10.0.0.2), with 8
-GPUs each on aws.
+**Distributed**
+This example illustrates training ResNet-50 on 2 hosts, e.g. host_0 (10.0.0.1)
+and host_1 (10.0.0.2), with 8 GPUs each on AWS (Amazon EC2).
 
 ```bash
 # Run the following commands on host_0 (10.0.0.1):
