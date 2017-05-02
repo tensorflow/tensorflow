@@ -559,7 +559,7 @@ class MonitoredSession(_MonitoredSession):
 
   ```python
   saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
+  summary_hook = SummarySaverHook(...)
   with MonitoredSession(session_creator=ChiefSessionCreator(...),
                         hooks=[saver_hook, summary_hook]) as sess:
     while not sess.should_stop():
@@ -648,7 +648,7 @@ class SingularMonitoredSession(_MonitoredSession):
   Example usage:
   ```python
   saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
+  summary_hook = SummarySaverHook(...)
   with SingularMonitoredSession(hooks=[saver_hook, summary_hook]) as sess:
     while not sess.should_stop():
       sess.run(train_op)
