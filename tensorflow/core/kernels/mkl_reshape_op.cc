@@ -129,7 +129,7 @@ class MklReshapeOp : public OpKernel {
         return;
       }
     } else {
-      CopyTFTensorInToOut(context, 0, 0, shape);
+      CopyTfTensorInToOutWithShape(context, 0, 0, shape);
     }
   }
 };
