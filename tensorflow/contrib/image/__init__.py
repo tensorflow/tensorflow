@@ -23,6 +23,7 @@ transforms (including rotation) are supported.
 
 @@rotate
 @@transform
+@@single_image_random_dot_stereograms
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -31,6 +32,7 @@ from __future__ import print_function
 # pylint: disable=line-too-long
 from tensorflow.contrib.image.python.ops.image_ops import rotate
 from tensorflow.contrib.image.python.ops.image_ops import transform
+from tensorflow.contrib.image.python.ops.single_image_random_dot_stereograms import single_image_random_dot_stereograms
 
 from tensorflow.python.util.all_util import remove_undocumented
 
