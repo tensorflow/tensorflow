@@ -52,9 +52,9 @@ class ReferenceUtilTest : public ::testing::Test {
 
 TEST_F(ReferenceUtilTest, TransposeArray2D) {
   auto result = ReferenceUtil::TransposeArray2D(*matrix_);
-  auto result_literal = LiteralUtil::CreateR2FromArray2D(*result);
+  auto actual_literal = LiteralUtil::CreateR2FromArray2D(*result);
   LiteralTestUtil::ExpectR2Near<float>({{1.f, 4.f}, {2.f, 5.f}, {3.f, 6.f}},
-                                       *result_literal, ErrorSpec(0.0001));
+                                       *actual_literal, ErrorSpec(0.0001));
 }
 
 TEST_F(ReferenceUtilTest, MatmulArray2D) {
@@ -62,32 +62,32 @@ TEST_F(ReferenceUtilTest, MatmulArray2D) {
       {7.f, 8.f}, {9.f, 10.f}, {11.f, 12.f},
   });
   auto result = ReferenceUtil::MatmulArray2D(*matrix_, rhs);
-  auto result_literal = LiteralUtil::CreateR2FromArray2D(*result);
+  auto actual_literal = LiteralUtil::CreateR2FromArray2D(*result);
   LiteralTestUtil::ExpectR2Near<float>({{58.f, 64.f}, {139.f, 154.f}},
-                                       *result_literal, ErrorSpec(0.0001));
+                                       *actual_literal, ErrorSpec(0.0001));
 }
 
 TEST_F(ReferenceUtilTest, ReduceToColArray2D) {
   auto add = [](float lhs, float rhs) { return lhs + rhs; };
   auto result = ReferenceUtil::ReduceToColArray2D(*matrix_, 0.0f, add);
-  auto result_literal = LiteralUtil::CreateR1<float>(*result);
-  LiteralTestUtil::ExpectR1Near<float>({6.f, 15.f}, *result_literal,
+  auto actual_literal = LiteralUtil::CreateR1<float>(*result);
+  LiteralTestUtil::ExpectR1Near<float>({6.f, 15.f}, *actual_literal,
                                        ErrorSpec(0.0001));
 }
 
 TEST_F(ReferenceUtilTest, ReduceToRowArray2D) {
   auto add = [](float lhs, float rhs) { return lhs + rhs; };
   auto result = ReferenceUtil::ReduceToRowArray2D(*matrix_, 0.0f, add);
-  auto result_literal = LiteralUtil::CreateR1<float>(*result);
-  LiteralTestUtil::ExpectR1Near<float>({5.f, 7.f, 9.f}, *result_literal,
+  auto actual_literal = LiteralUtil::CreateR1<float>(*result);
+  LiteralTestUtil::ExpectR1Near<float>({5.f, 7.f, 9.f}, *actual_literal,
                                        ErrorSpec(0.0001));
 }
 
 TEST_F(ReferenceUtilTest, MapArray2D) {
   auto identity = [](float value) { return log(exp(value)); };
   auto result = ReferenceUtil::MapArray2D(*matrix_, identity);
-  auto result_literal = LiteralUtil::CreateR2FromArray2D(*result);
-  LiteralTestUtil::ExpectR2NearArray2D(*matrix_, *result_literal,
+  auto actual_literal = LiteralUtil::CreateR2FromArray2D(*result);
+  LiteralTestUtil::ExpectR2NearArray2D(*matrix_, *actual_literal,
                                        ErrorSpec(0.0001));
 }
 
@@ -96,9 +96,9 @@ TEST_F(ReferenceUtilTest, MapWithIndexArray2D) {
     return value + row + col;
   };
   auto result = ReferenceUtil::MapWithIndexArray2D(*matrix_, add_index);
-  auto result_literal = LiteralUtil::CreateR2FromArray2D(*result);
+  auto actual_literal = LiteralUtil::CreateR2FromArray2D(*result);
   LiteralTestUtil::ExpectR2Near<float>({{1.f, 3.f, 5.f}, {5.f, 7.f, 9.f}},
-                                       *result_literal, ErrorSpec(0.0001));
+                                       *actual_literal, ErrorSpec(0.0001));
 }
 
 TEST_F(ReferenceUtilTest, MapArray4D) {
@@ -107,11 +107,11 @@ TEST_F(ReferenceUtilTest, MapArray4D) {
   input->FillWithMultiples(1.0f);
   auto multiply_by_two = [](float value) { return 2 * value; };
   auto result = ReferenceUtil::MapArray4D(*input, multiply_by_two);
-  auto result_literal = LiteralUtil::CreateR4FromArray4D(*result);
+  auto actual_literal = LiteralUtil::CreateR4FromArray4D(*result);
 
   Array4D<float> expected(/*planes=*/2, /*depth=*/3, /*height=*/4, /*width=*/5);
   expected.FillWithMultiples(2.0f);
-  LiteralTestUtil::ExpectR4NearArray4D(expected, *result_literal,
+  LiteralTestUtil::ExpectR4NearArray4D(expected, *actual_literal,
                                        ErrorSpec(0.0001));
 }
 
@@ -124,11 +124,11 @@ TEST_F(ReferenceUtilTest, MapWithIndexArray4D) {
     return value - (3 * 4 * 5 * plane + 4 * 5 * depth + 5 * height + width);
   };
   auto result = ReferenceUtil::MapWithIndexArray4D(*input, subtract_index);
-  auto result_literal = LiteralUtil::CreateR4FromArray4D(*result);
+  auto actual_literal = LiteralUtil::CreateR4FromArray4D(*result);
 
   Array4D<float> expected(/*planes=*/2, /*depth=*/3, /*height=*/4, /*width=*/5);
   expected.Fill(0.0f);
-  LiteralTestUtil::ExpectR4NearArray4D(expected, *result_literal,
+  LiteralTestUtil::ExpectR4NearArray4D(expected, *actual_literal,
                                        ErrorSpec(0.0001));
 }
 
@@ -300,6 +300,18 @@ TEST_F(ReferenceUtilTest, ConvGeneralDimensionsWithValidPadding) {
 
   LiteralTestUtil::ExpectR4NearArray4D<float>(expected, *actual_literal,
                                               ErrorSpec(0.0001));
+}
+
+TEST_F(ReferenceUtilTest, ApplyElementwise2D) {
+  Array2D<float> a({{1, 2}, {3, 4}});
+  Array2D<float> b({{10, 20}, {30, 40}});
+  Array2D<float> c({{100, 200}, {300, 400}});
+
+  auto actual = ReferenceUtil::ApplyElementwise2D(
+      [](float x, float y, float z) { return 100 * x + 10 * y + z; }, a, b, c);
+  auto actual_literal = LiteralUtil::CreateR2FromArray2D(*actual);
+  LiteralTestUtil::ExpectR2Near({{300.f, 600.f}, {900.f, 1200.f}},
+                                *actual_literal, ErrorSpec(0.0001));
 }
 
 }  // namespace

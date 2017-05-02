@@ -22,7 +22,6 @@ import math
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import special_math
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -33,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import special_math
 
 
 __all__ = [

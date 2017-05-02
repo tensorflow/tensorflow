@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import categorical
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
@@ -30,6 +29,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
 
 
@@ -278,10 +278,10 @@ class CategoricalTest(test.TestCase):
           a = categorical.Categorical(logits=a_logits)
           b = categorical.Categorical(logits=b_logits)
 
-          kl = kullback_leibler.kl(a, b)
+          kl = kullback_leibler.kl_divergence(a, b)
           kl_val = sess.run(kl)
           # Make sure KL(a||a) is 0
-          kl_same = sess.run(kullback_leibler.kl(a, a))
+          kl_same = sess.run(kullback_leibler.kl_divergence(a, a))
 
           prob_a = np_softmax(a_logits)
           prob_b = np_softmax(b_logits)

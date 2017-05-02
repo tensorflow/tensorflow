@@ -242,6 +242,12 @@ def abs(x, name=None):
 # pylint: enable=g-docstring-has-escape
 
 
+# pylint: disable=redefined-builtin
+def _bucketize(input, boundaries, name=None):
+  return gen_math_ops._bucketize(input=input, boundaries=boundaries, name=name)
+# pylint: enable=redefined-builtin
+
+
 class DivideDelegateWithName(object):
   """Use Python2/Python3 division delegation to implement divide for tensors."""
 

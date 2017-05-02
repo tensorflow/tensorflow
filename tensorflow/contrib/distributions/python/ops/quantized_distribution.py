@@ -232,7 +232,7 @@ class QuantizedDistribution(distributions.Distribution):
       graph_parents = self._dist._graph_parents  # pylint: disable=protected-access
 
       checks = []
-      if low is not None and high is not None:
+      if validate_args and low is not None and high is not None:
         message = "low must be strictly less than high."
         checks.append(
             check_ops.assert_less(
