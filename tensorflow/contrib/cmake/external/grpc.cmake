@@ -17,7 +17,7 @@ include (ExternalProject)
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG 3bc78cd0b5bd784a235c01612d634b1ec5f8fb97)
+set(GRPC_TAG 2ad3d73f9557da88b5c8898b991ffb4a4d8d1e3e)
 
 if(WIN32)
   set(grpc_STATIC_LIBRARIES
@@ -48,3 +48,9 @@ ExternalProject_Add(grpc
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
 )
 
+ExternalProject_Add_Step(grpc copy_rand
+COMMAND ${CMAKE_COMMAND} -E copy
+${CMAKE_SOURCE_DIR}/patches/grpc/rand.h ${GRPC_BUILD}/include/openssl/rand.h
+DEPENDEES patch
+DEPENDERS build
+)

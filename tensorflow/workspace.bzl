@@ -320,7 +320,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   patched_http_archive(
-      name = "protobuf",
+      name = "protobuf_archive",
       urls = [
           "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
           "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
@@ -432,22 +432,37 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # to point to the protobuf's compiler library.
   native.bind(
       name = "protobuf_clib",
-      actual = "@protobuf//:protoc_lib",
+      actual = "@protobuf_archive//:protoc_lib",
   )
 
   native.bind(
       name = "protobuf_compiler",
-      actual = "@protobuf//:protoc_lib",
+      actual = "@protobuf_archive//:protoc_lib",
+  )
+
+  native.bind(
+      name = "protobuf",
+      actual = "@protobuf_archive//:protobuf",
+  )
+
+  native.bind(
+      name = "libssl",
+      actual = "@boringssl//:ssl",
+  )
+
+  native.bind(
+      name = "nanopb",
+      actual = "@grpc//third_party/nanopb:nanopb",
   )
 
   native.new_http_archive(
       name = "grpc",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/grpc/grpc/archive/d7ff4ff40071d2b486a052183e3e9f9382afb745.tar.gz",
-          "https://github.com/grpc/grpc/archive/d7ff4ff40071d2b486a052183e3e9f9382afb745.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/grpc/grpc/archive/2ad3d73f9557da88b5c8898b991ffb4a4d8d1e3e.tar.gz",
+          "https://github.com/grpc/grpc/archive/2ad3d73f9557da88b5c8898b991ffb4a4d8d1e3e.tar.gz",
       ],
-      sha256 = "a15f352436ab92c521b1ac11e729e155ace38d0856380cf25048c5d1d9ba8e31",
-      strip_prefix = "grpc-d7ff4ff40071d2b486a052183e3e9f9382afb745",
+      sha256 = "9ac0a49ca73aafe628a39838f2dcefd75569109e964d000cd7b396012677027d",
+      strip_prefix = "grpc-2ad3d73f9557da88b5c8898b991ffb4a4d8d1e3e",
       build_file = str(Label("//third_party:grpc.BUILD")),
   )
 
@@ -512,22 +527,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "025264d6e9a7ad371f2f66d17a28b6627de0c9592dc2eb54afd062f68f1f9aa3",
       strip_prefix = "boringssl-bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",
-  )
-
-  native.new_http_archive(
-      name = "nanopb_git",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/nanopb/nanopb/archive/1251fa1065afc0d62f635e0f63fec8276e14e13c.tar.gz",
-          "https://github.com/nanopb/nanopb/archive/1251fa1065afc0d62f635e0f63fec8276e14e13c.tar.gz",
-      ],
-      sha256 = "ab1455c8edff855f4f55b68480991559e51c11e7dab060bbab7cffb12dd3af33",
-      strip_prefix = "nanopb-1251fa1065afc0d62f635e0f63fec8276e14e13c",
-      build_file = str(Label("//third_party:nanopb.BUILD")),
-  )
-
-  native.bind(
-      name = "nanopb",
-      actual = "@nanopb_git//:nanopb",
   )
 
   native.new_http_archive(

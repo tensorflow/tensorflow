@@ -37,7 +37,7 @@
 cmake_minimum_required(VERSION 2.8)
 
 set(PACKAGE_NAME      "grpc")
-set(PACKAGE_VERSION   "1.0.0-pre2-tensorflow")
+set(PACKAGE_VERSION   "1.2.0-dev")
 set(PACKAGE_STRING    "${PACKAGE_NAME} ${PACKAGE_VERSION}")
 set(PACKAGE_TARNAME   "${PACKAGE_NAME}-${PACKAGE_VERSION}")
 set(PACKAGE_BUGREPORT "https://github.com/grpc/grpc/issues/")
@@ -73,9 +73,8 @@ add_library(gpr
   src/core/lib/support/log_linux.c
   src/core/lib/support/log_posix.c
   src/core/lib/support/log_windows.c
+  src/core/lib/support/mpscq.c
   src/core/lib/support/murmur_hash.c
-  src/core/lib/support/slice.c
-  src/core/lib/support/slice_buffer.c
   src/core/lib/support/stack_lockfree.c
   src/core/lib/support/string.c
   src/core/lib/support/string_posix.c
@@ -115,8 +114,13 @@ add_library(grpc_unsecure
   src/core/lib/channel/channel_stack_builder.c
   src/core/lib/channel/compress_filter.c
   src/core/lib/channel/connected_channel.c
+  src/core/lib/channel/deadline_filter.c
+  src/core/lib/channel/handshaker.c
+  src/core/lib/channel/handshaker_factory.c
+  src/core/lib/channel/handshaker_registry.c
   src/core/lib/channel/http_client_filter.c
   src/core/lib/channel/http_server_filter.c
+  src/core/lib/channel/message_size_filter.c
   src/core/lib/compression/compression.c
   src/core/lib/compression/message_compress.c
   src/core/lib/debug/trace.c
@@ -124,12 +128,13 @@ add_library(grpc_unsecure
   src/core/lib/http/httpcli.c
   src/core/lib/http/parser.c
   src/core/lib/iomgr/closure.c
+  src/core/lib/iomgr/combiner.c
   src/core/lib/iomgr/endpoint.c
   src/core/lib/iomgr/endpoint_pair_posix.c
+  src/core/lib/iomgr/endpoint_pair_uv.c
   src/core/lib/iomgr/endpoint_pair_windows.c
   src/core/lib/iomgr/error.c
   src/core/lib/iomgr/ev_epoll_linux.c
-  src/core/lib/iomgr/ev_poll_and_epoll_posix.c
   src/core/lib/iomgr/ev_poll_posix.c
   src/core/lib/iomgr/ev_posix.c
   src/core/lib/iomgr/exec_ctx.c
@@ -137,41 +142,60 @@ add_library(grpc_unsecure
   src/core/lib/iomgr/iocp_windows.c
   src/core/lib/iomgr/iomgr.c
   src/core/lib/iomgr/iomgr_posix.c
+  src/core/lib/iomgr/iomgr_uv.c
   src/core/lib/iomgr/iomgr_windows.c
   src/core/lib/iomgr/load_file.c
   src/core/lib/iomgr/network_status_tracker.c
   src/core/lib/iomgr/polling_entity.c
+  src/core/lib/iomgr/pollset_set_uv.c
   src/core/lib/iomgr/pollset_set_windows.c
+  src/core/lib/iomgr/pollset_uv.c
   src/core/lib/iomgr/pollset_windows.c
   src/core/lib/iomgr/resolve_address_posix.c
+  src/core/lib/iomgr/resolve_address_uv.c
   src/core/lib/iomgr/resolve_address_windows.c
+  src/core/lib/iomgr/resource_quota.c
   src/core/lib/iomgr/sockaddr_utils.c
+  src/core/lib/iomgr/socket_mutator.c
   src/core/lib/iomgr/socket_utils_common_posix.c
   src/core/lib/iomgr/socket_utils_linux.c
   src/core/lib/iomgr/socket_utils_posix.c
+  src/core/lib/iomgr/socket_utils_uv.c
+  src/core/lib/iomgr/socket_utils_windows.c
   src/core/lib/iomgr/socket_windows.c
   src/core/lib/iomgr/tcp_client_posix.c
+  src/core/lib/iomgr/tcp_client_uv.c
   src/core/lib/iomgr/tcp_client_windows.c
   src/core/lib/iomgr/tcp_posix.c
   src/core/lib/iomgr/tcp_server_posix.c
+  src/core/lib/iomgr/tcp_server_uv.c
   src/core/lib/iomgr/tcp_server_windows.c
+  src/core/lib/iomgr/tcp_uv.c
   src/core/lib/iomgr/tcp_windows.c
   src/core/lib/iomgr/time_averaged_stats.c
-  src/core/lib/iomgr/timer.c
+  src/core/lib/iomgr/timer_generic.c
   src/core/lib/iomgr/timer_heap.c
+  src/core/lib/iomgr/timer_uv.c
   src/core/lib/iomgr/udp_server.c
   src/core/lib/iomgr/unix_sockets_posix.c
   src/core/lib/iomgr/unix_sockets_posix_noop.c
+  src/core/lib/iomgr/wakeup_fd_cv.c
   src/core/lib/iomgr/wakeup_fd_eventfd.c
   src/core/lib/iomgr/wakeup_fd_nospecial.c
   src/core/lib/iomgr/wakeup_fd_pipe.c
   src/core/lib/iomgr/wakeup_fd_posix.c
-  src/core/lib/iomgr/workqueue_posix.c
+  src/core/lib/iomgr/workqueue_uv.c
   src/core/lib/iomgr/workqueue_windows.c
   src/core/lib/json/json.c
   src/core/lib/json/json_reader.c
   src/core/lib/json/json_string.c
   src/core/lib/json/json_writer.c
+  src/core/lib/slice/percent_encoding.c
+  src/core/lib/slice/slice.c
+  src/core/lib/slice/slice_buffer.c
+  src/core/lib/slice/slice_hash_table.c
+  src/core/lib/slice/slice_intern.c
+  src/core/lib/slice/slice_string_helpers.c
   src/core/lib/surface/alarm.c
   src/core/lib/surface/api_trace.c
   src/core/lib/surface/byte_buffer.c
@@ -190,11 +214,17 @@ add_library(grpc_unsecure
   src/core/lib/surface/server.c
   src/core/lib/surface/validate_metadata.c
   src/core/lib/surface/version.c
+  src/core/lib/transport/bdp_estimator.c
   src/core/lib/transport/byte_stream.c
   src/core/lib/transport/connectivity_state.c
+  src/core/lib/transport/error_utils.c
   src/core/lib/transport/metadata.c
   src/core/lib/transport/metadata_batch.c
+  src/core/lib/transport/pid_controller.c
+  src/core/lib/transport/service_config.c
   src/core/lib/transport/static_metadata.c
+  src/core/lib/transport/status_conversion.c
+  src/core/lib/transport/timeout_encoding.c
   src/core/lib/transport/transport.c
   src/core/lib/transport/transport_op_string.c
   src/core/ext/transport/chttp2/server/insecure/server_chttp2.c
@@ -215,38 +245,42 @@ add_library(grpc_unsecure
   src/core/ext/transport/chttp2/transport/huffsyms.c
   src/core/ext/transport/chttp2/transport/incoming_metadata.c
   src/core/ext/transport/chttp2/transport/parsing.c
-  src/core/ext/transport/chttp2/transport/status_conversion.c
   src/core/ext/transport/chttp2/transport/stream_lists.c
   src/core/ext/transport/chttp2/transport/stream_map.c
-  src/core/ext/transport/chttp2/transport/timeout_encoding.c
   src/core/ext/transport/chttp2/transport/varint.c
   src/core/ext/transport/chttp2/transport/writing.c
   src/core/ext/transport/chttp2/alpn/alpn.c
+  src/core/ext/transport/chttp2/server/chttp2_server.c
   src/core/ext/transport/chttp2/client/insecure/channel_create.c
   src/core/ext/transport/chttp2/client/insecure/channel_create_posix.c
-  src/core/ext/client_config/channel_connectivity.c
-  src/core/ext/client_config/client_channel.c
-  src/core/ext/client_config/client_channel_factory.c
-  src/core/ext/client_config/client_config.c
-  src/core/ext/client_config/client_config_plugin.c
-  src/core/ext/client_config/connector.c
-  src/core/ext/client_config/default_initial_connect_string.c
-  src/core/ext/client_config/initial_connect_string.c
-  src/core/ext/client_config/lb_policy.c
-  src/core/ext/client_config/lb_policy_factory.c
-  src/core/ext/client_config/lb_policy_registry.c
-  src/core/ext/client_config/parse_address.c
-  src/core/ext/client_config/resolver.c
-  src/core/ext/client_config/resolver_factory.c
-  src/core/ext/client_config/resolver_registry.c
-  src/core/ext/client_config/subchannel.c
-  src/core/ext/client_config/subchannel_call_holder.c
-  src/core/ext/client_config/subchannel_index.c
-  src/core/ext/client_config/uri_parser.c
+  src/core/ext/transport/chttp2/client/chttp2_connector.c
+  src/core/ext/client_channel/channel_connectivity.c
+  src/core/ext/client_channel/client_channel.c
+  src/core/ext/client_channel/client_channel_factory.c
+  src/core/ext/client_channel/client_channel_plugin.c
+  src/core/ext/client_channel/connector.c
+  src/core/ext/client_channel/default_initial_connect_string.c
+  src/core/ext/client_channel/http_connect_handshaker.c
+  src/core/ext/client_channel/http_proxy.c
+  src/core/ext/client_channel/initial_connect_string.c
+  src/core/ext/client_channel/lb_policy.c
+  src/core/ext/client_channel/lb_policy_factory.c
+  src/core/ext/client_channel/lb_policy_registry.c
+  src/core/ext/client_channel/parse_address.c
+  src/core/ext/client_channel/proxy_mapper.c
+  src/core/ext/client_channel/proxy_mapper_registry.c
+  src/core/ext/client_channel/resolver.c
+  src/core/ext/client_channel/resolver_factory.c
+  src/core/ext/client_channel/resolver_registry.c
+  src/core/ext/client_channel/subchannel.c
+  src/core/ext/client_channel/subchannel_index.c
+  src/core/ext/client_channel/uri_parser.c
   src/core/ext/resolver/dns/native/dns_resolver.c
   src/core/ext/resolver/sockaddr/sockaddr_resolver.c
   src/core/ext/load_reporting/load_reporting.c
   src/core/ext/load_reporting/load_reporting_filter.c
+  src/core/ext/lb_policy/grpclb/grpclb.c
+  src/core/ext/lb_policy/grpclb/grpclb_channel.c
   src/core/ext/lb_policy/grpclb/load_balancer_api.c
   src/core/ext/lb_policy/grpclb/proto/grpc/lb/v1/load_balancer.pb.c
   third_party/nanopb/pb_common.c
@@ -254,8 +288,10 @@ add_library(grpc_unsecure
   third_party/nanopb/pb_encode.c
   src/core/ext/lb_policy/pick_first/pick_first.c
   src/core/ext/lb_policy/round_robin/round_robin.c
+  src/core/ext/census/base_resources.c
   src/core/ext/census/context.c
   src/core/ext/census/gen/census.pb.c
+  src/core/ext/census/gen/trace_context.pb.c
   src/core/ext/census/grpc_context.c
   src/core/ext/census/grpc_filter.c
   src/core/ext/census/grpc_plugin.c
@@ -263,6 +299,8 @@ add_library(grpc_unsecure
   src/core/ext/census/mlog.c
   src/core/ext/census/operation.c
   src/core/ext/census/placeholders.c
+  src/core/ext/census/resource.c
+  src/core/ext/census/trace_context.c
   src/core/ext/census/tracing.c
   src/core/plugin_registry/grpc_unsecure_plugin_registry.c
 )
@@ -279,33 +317,37 @@ target_link_libraries(grpc_unsecure
 )
 
 add_library(grpc++_unsecure
+  src/cpp/client/insecure_credentials.cc
   src/cpp/common/insecure_create_auth_context.cc
-  src/cpp/client/channel.cc
+  src/cpp/server/insecure_server_credentials.cc
+  src/cpp/client/channel_cc.cc
   src/cpp/client/client_context.cc
   src/cpp/client/create_channel.cc
   src/cpp/client/create_channel_internal.cc
   src/cpp/client/create_channel_posix.cc
-  src/cpp/client/credentials.cc
+  src/cpp/client/credentials_cc.cc
   src/cpp/client/generic_stub.cc
-  src/cpp/client/insecure_credentials.cc
   src/cpp/common/channel_arguments.cc
-  src/cpp/common/completion_queue.cc
+  src/cpp/common/channel_filter.cc
+  src/cpp/common/completion_queue_cc.cc
   src/cpp/common/core_codegen.cc
+  src/cpp/common/resource_quota_cc.cc
   src/cpp/common/rpc_method.cc
+  src/cpp/common/version_cc.cc
   src/cpp/server/async_generic_service.cc
   src/cpp/server/create_default_thread_pool.cc
   src/cpp/server/dynamic_thread_pool.cc
-  src/cpp/server/insecure_server_credentials.cc
-  src/cpp/server/server.cc
   src/cpp/server/server_builder.cc
+  src/cpp/server/server_cc.cc
   src/cpp/server/server_context.cc
   src/cpp/server/server_credentials.cc
   src/cpp/server/server_posix.cc
-  src/cpp/util/byte_buffer.cc
-  src/cpp/util/slice.cc
+  src/cpp/thread_manager/thread_manager.cc
+  src/cpp/util/byte_buffer_cc.cc
+  src/cpp/util/slice_cc.cc
   src/cpp/util/status.cc
   src/cpp/util/string_ref.cc
-  src/cpp/util/time.cc
+  src/cpp/util/time_cc.cc
   src/cpp/codegen/codegen_init.cc
 )
 
