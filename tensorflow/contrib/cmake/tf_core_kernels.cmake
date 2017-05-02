@@ -47,6 +47,8 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/factorization_ops.cc"
       #"${tensorflow_source_dir}/tensorflow/contrib/ffmpeg/decode_audio_op.cc"
       #"${tensorflow_source_dir}/tensorflow/contrib/ffmpeg/encode_audio_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/layer_norm/kernels/layer_norm_fused_grad_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/layer_norm/kernels/layer_norm_fused_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/kernels/bucketization_kernel.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/kernels/sparse_feature_cross_kernel.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/layers/ops/bucketization_op.cc"
@@ -128,6 +130,7 @@ endif(WIN32)
 
 file(GLOB_RECURSE tf_core_gpu_kernels_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
+   "${tensorflow_source_dir}/tensorflow/contrib/layer_norm/kernels/*.cu.cc"
    "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/*.cu.cc"
    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/kernels/*.cu.cc"
 )
