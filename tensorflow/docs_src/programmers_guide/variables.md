@@ -62,7 +62,7 @@ with tf.device("/job:ps/task:7"):
   v = tf.Variable(...)
 ```
 
-**N.B.** Operations that mutate a variable, such as
+**NOTE** Operations that mutate a variable, such as
 @{tf.Variable.assign} and the parameter
 update operations in a
 @{tf.train.Optimizer} *must* run on

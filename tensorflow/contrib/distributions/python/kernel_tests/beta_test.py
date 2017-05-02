@@ -20,13 +20,13 @@ import numpy as np
 from scipy import special
 from scipy import stats
 from tensorflow.contrib.distributions.python.ops import beta as beta_lib
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
 
 
@@ -349,13 +349,13 @@ class BetaTest(test.TestCase):
 
         for dist1 in [d1, d1_sp]:
           for dist2 in [d2, d2_sp]:
-            kl = kullback_leibler.kl(dist1, dist2)
+            kl = kullback_leibler.kl_divergence(dist1, dist2)
             kl_val = sess.run(kl)
             self.assertEqual(kl.get_shape(), shape)
             self.assertAllClose(kl_val, kl_expected)
 
         # Make sure KL(d1||d1) is 0
-        kl_same = sess.run(kullback_leibler.kl(d1, d1))
+        kl_same = sess.run(kullback_leibler.kl_divergence(d1, d1))
         self.assertAllClose(kl_same, np.zeros_like(kl_expected))
 
 

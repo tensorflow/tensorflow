@@ -1287,9 +1287,6 @@ class Estimator(BaseEstimator):
       else:
         saver_for_restore = saver.Saver(sharded=True)
       with tf_session.Session('') as session:
-        variables.initialize_local_variables()
-        data_flow_ops.tables_initializer()
-        resources.initialize_resources(resources.shared_resources())
         saver_for_restore.restore(session, checkpoint_path)
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),

@@ -882,6 +882,12 @@ Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
                                    fdef.signature().name(),
                                    " already exists in function library.");
   }
+  const OpDef* op_def;
+  if (default_registry_->LookUpOpDef(fdef.signature().name(), &op_def).ok()) {
+    return errors::InvalidArgument(
+        "Cannot add function '", fdef.signature().name(),
+        "' because an op with the same name already exists.");
+  }
   ptr.reset(new FunctionDefAndOpRegistration(fdef));
   return Status::OK();
 }
