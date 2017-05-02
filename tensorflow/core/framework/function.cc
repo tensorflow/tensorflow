@@ -582,7 +582,7 @@ string Print(const GraphDef& gdef) {
   for (size_t i = 0; i < arg.size(); ++i) {
     const NodeDef* n = arg[i];
     if (i > 0) strings::StrAppend(&out, ", ");
-    CHECK_EQ(2, n->attr_size());
+    CHECK_GE(n->attr_size(), 2);
     strings::StrAppend(&out, n->name(), ":", get_type(*n));
   }
   strings::StrAppend(&out, ") -> (");
