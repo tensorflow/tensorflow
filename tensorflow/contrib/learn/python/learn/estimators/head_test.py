@@ -791,7 +791,7 @@ class BinaryClassificationHeadTest(test.TestCase):
             [b"0", b"1"], predicted_classes[0])
         self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
 
-  def testBinaryClassificationInferMode_withWightColumn(self):
+  def testBinaryClassificationInferMode_withWeightColumn(self):
     n_classes = 2
     head = head_lib.multi_class_head(n_classes=n_classes,
                                      weight_column_name="label_weight")
@@ -951,7 +951,7 @@ class MultiClassHeadTest(test.TestCase):
 
   def setUp(self):
     self._logits = ((1., 0., 0.),)
-    self._labels = (2,)
+    self._labels = ((2,),)
 
   def _expected_eval_metrics(self, expected_loss):
     return {
@@ -1131,7 +1131,7 @@ class MultiClassHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       expected_eval_metrics, model_fn_ops)
 
-  def testMultiClassWithWeight(self):
+  def testMultiClassWithScalarWeight(self):
     n_classes = 3
     head = head_lib.multi_class_head(
         n_classes=n_classes,
@@ -1143,6 +1143,30 @@ class MultiClassHeadTest(test.TestCase):
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       model_fn_ops = head.create_model_fn_ops(
           features={"label_weight": weight},
+          labels=self._labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = 1.5514447
+      _assert_metrics(self, expected_loss * weight,
+                      self._expected_eval_metrics(expected_loss), model_fn_ops)
+
+  def testMultiClassWith2DWeight(self):
+    n_classes = 3
+    head = head_lib.multi_class_head(
+        n_classes=n_classes,
+        weight_column_name="label_weight",
+        metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      weight = .1
+      weights = ((weight,),)
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weights},
           labels=self._labels,
           mode=model_fn.ModeKeys.TRAIN,
           train_op_fn=head_lib.no_op_train_fn,
