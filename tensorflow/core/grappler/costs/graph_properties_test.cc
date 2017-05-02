@@ -177,6 +177,19 @@ TEST_F(GraphPropertiesTest, Queues) {
   auto dequeue2 =
       ops::QueueDequeue(root.WithOpName("Dequeue2"), q2, {DataType::DT_FLOAT});
 
+  auto q3 =
+      ops::RandomShuffleQueue(root.WithOpName("Queue3"), {DataType::DT_FLOAT});
+  auto dequeue3 =
+      ops::QueueDequeue(root.WithOpName("Dequeue3"), q3, {DataType::DT_FLOAT});
+
+  auto q4 =
+      ops::RandomShuffleQueue(root.WithOpName("Queue4"), {DataType::DT_FLOAT});
+  auto enqueue4 = ops::QueueEnqueue(root.WithOpName("Enqueue4"), q4, {square2});
+  auto enqueue4_2 =
+      ops::QueueEnqueue(root.WithOpName("Enqueue4_2"), q4, {dequeue3[0]});
+  auto dequeue4 =
+      ops::QueueDequeue(root.WithOpName("Dequeue4"), q4, {DataType::DT_FLOAT});
+
   GrapplerItem item;
   TF_CHECK_OK(root.ToGraphDef(&item.graph));
 
@@ -200,6 +213,18 @@ TEST_F(GraphPropertiesTest, Queues) {
   EXPECT_EQ(2, prop2.shape().dim_size());
   EXPECT_EQ(3, prop2.shape().dim(0).size());
   EXPECT_EQ(7, prop2.shape().dim(1).size());
+
+  // The dequeue3 op shape is unknown. The square2 op shape is known. Verify
+  // that we merge the 2 properly to determine the shape of the data coming out
+  // of the queue.
+  const auto props4 = properties.GetOutputProperties("Dequeue4");
+  EXPECT_EQ(1, props4.size());
+  const OpInfo::TensorProperties& prop4 = props4[0];
+  EXPECT_EQ(DT_FLOAT, prop4.dtype());
+  EXPECT_FALSE(prop4.shape().unknown_rank());
+  EXPECT_EQ(2, prop4.shape().dim_size());
+  EXPECT_EQ(3, prop4.shape().dim(0).size());
+  EXPECT_EQ(7, prop4.shape().dim(1).size());
 }
 
 }  // namespace

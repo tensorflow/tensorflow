@@ -60,8 +60,9 @@ Status GraphProperties::InferStatically() {
       if (!qctx) {
         continue;
       }
-      shape_inference::ShapeHandle data_shp = qctx->output_handle_shape(0);
-      if (qctx->FullyDefined(data_shp)) {
+      DataType queue_type = qctx->output_handle_dtype(0);
+      shape_inference::ShapeHandle queue_shp = qctx->output_handle_shape(0);
+      if (qctx->FullyDefined(queue_shp) && queue_type != DT_INVALID) {
         continue;
       }
 
@@ -73,15 +74,19 @@ Status GraphProperties::InferStatically() {
         if (node->type_string().find("Enqueue") != std::string::npos) {
           if (ctx->num_inputs() == 2) {
             const DataType dtype = node->input_type(1);
-            shape_inference::ShapeHandle shp = ctx->input(1);
-            shape_inference::ShapeHandle refined;
-            TF_RETURN_IF_ERROR(qctx->Merge(shp, data_shp, &refined));
-            if (qctx->set_output_handle_shape(0, refined) ||
-                qctx->set_output_handle_dtype(0, dtype)) {
-              new_shapes.push(qnode);
+            if (queue_type == DT_INVALID) {
+              queue_type = dtype;
+            } else {
+              CHECK_EQ(queue_type, dtype);
             }
+            shape_inference::ShapeHandle shp = ctx->input(1);
+            TF_RETURN_IF_ERROR(qctx->Merge(queue_shp, shp, &queue_shp));
           }
         }
+      }
+      if (qctx->set_output_handle_dtype(0, queue_type) ||
+          qctx->set_output_handle_shape(0, queue_shp)) {
+        new_shapes.push(qnode);
       }
     }
     // Propagate the shapes in the transitive fan-out of the queue.

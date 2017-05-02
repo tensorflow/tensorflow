@@ -468,6 +468,8 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
   std::vector<ShapeHandle> input_tensors_as_shapes;
 
   // Run the shape inference function, and return if there was an error.
+  c->set_input_tensors(input_tensors);
+  c->set_input_tensors_as_shapes(input_tensors_as_shapes);
   if (op_reg_data->shape_inference_fn) {
     TF_RETURN_IF_ERROR(c->Run(op_reg_data->shape_inference_fn));
   } else {
