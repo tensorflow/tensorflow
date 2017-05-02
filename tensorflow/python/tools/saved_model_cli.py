@@ -602,7 +602,8 @@ def create_parser():
              '--signature_def serving_default '
              '--inputs input1_key=/tmp/124.npz[x],input2_key=/tmp/123.npy'
              '--outdir=/out\n\n'
-             'For more information about input file format, please see:\n')
+             'For more information about input file format, please see:\n'
+             'https://www.tensorflow.org/programmers_guide/saved_model_cli\n')
   parser_run = subparsers.add_parser(
       'run', description=run_msg, formatter_class=argparse.RawTextHelpFormatter)
   parser_run.add_argument(
