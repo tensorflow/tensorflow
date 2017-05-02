@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import itertools
 import os
+import shutil
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -41,20 +42,35 @@ from tensorflow.python.util import compat
 
 class MatchFilenamesOnceTest(test_lib.TestCase):
 
+  def tearDown():
+    if os.path.isdir(self.get_temp_dir()):
+      shutil.rmtree(self.get_temp_dir())
+
   def test(self):
     temp_dir = self.get_temp_dir()
+    print("temp_dir = %s" % temp_dir)
+
     filenames = [os.path.join(temp_dir, n) for n in os.listdir(temp_dir)]
+    print("filenames = %s" % repr(filenames))
+
     additional = [
-        os.path.join(self.get_temp_dir(), "match_filenames.%d" % i)
+        os.path.join(temp_dir, "match_filenames.%d" % i)
         for i in range(3)
     ]
     for name in additional:
-      open(name, "w").write("Some contents")
+      with open(name, "w") as f:
+        f.write("Some contents")
+
+    import glob
+    print("glob results")
+    print(glob.glob(os.path.join(temp_dir, "*")))
+    print(glob.glob(os.path.join(temp_dir, "*", "*")))
+
     filenames = list(set(filenames + additional))
     with self.test_session():
-      star = inp.match_filenames_once(os.path.join(self.get_temp_dir(), "*"))
+      star = inp.match_filenames_once(os.path.join(temp_dir, "*"))
       question = inp.match_filenames_once(
-          os.path.join(self.get_temp_dir(), "match_filenames.?"))
+          os.path.join(temp_dir, "match_filenames.?"))
       one = inp.match_filenames_once(additional[1])
       variables.global_variables_initializer().run()
       variables.local_variables_initializer().run()
