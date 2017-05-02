@@ -18,13 +18,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import importlib
+
 import numpy as np
-from scipy import stats
-from tensorflow.contrib.distributions.python.ops import exponential as exponential_lib
+
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops.distributions import exponential as exponential_lib
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
+
+
+def try_import(name):  # pylint: disable=invalid-name
+  module = None
+  try:
+    module = importlib.import_module(name)
+  except ImportError as e:
+    tf_logging.warning("Could not import %s: %s" % (name, str(e)))
+  return module
+
+
+stats = try_import("scipy.stats")
 
 
 class ExponentialTest(test.TestCase):
@@ -36,14 +51,17 @@ class ExponentialTest(test.TestCase):
       lam_v = 2.0
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
       exponential = exponential_lib.Exponential(rate=lam)
-      expected_log_pdf = stats.expon.logpdf(x, scale=1 / lam_v)
 
       log_pdf = exponential.log_prob(x)
       self.assertEqual(log_pdf.get_shape(), (6,))
-      self.assertAllClose(log_pdf.eval(), expected_log_pdf)
 
       pdf = exponential.prob(x)
       self.assertEqual(pdf.get_shape(), (6,))
+
+      if not stats:
+        return
+      expected_log_pdf = stats.expon.logpdf(x, scale=1 / lam_v)
+      self.assertAllClose(log_pdf.eval(), expected_log_pdf)
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
   def testExponentialCDF(self):
@@ -54,34 +72,43 @@ class ExponentialTest(test.TestCase):
       x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
 
       exponential = exponential_lib.Exponential(rate=lam)
-      expected_cdf = stats.expon.cdf(x, scale=1 / lam_v)
 
       cdf = exponential.cdf(x)
       self.assertEqual(cdf.get_shape(), (6,))
+
+      if not stats:
+        return
+      expected_cdf = stats.expon.cdf(x, scale=1 / lam_v)
       self.assertAllClose(cdf.eval(), expected_cdf)
 
   def testExponentialMean(self):
     with session.Session():
       lam_v = np.array([1.0, 4.0, 2.5])
-      expected_mean = stats.expon.mean(scale=1 / lam_v)
       exponential = exponential_lib.Exponential(rate=lam_v)
       self.assertEqual(exponential.mean().get_shape(), (3,))
+      if not stats:
+        return
+      expected_mean = stats.expon.mean(scale=1 / lam_v)
       self.assertAllClose(exponential.mean().eval(), expected_mean)
 
   def testExponentialVariance(self):
     with session.Session():
       lam_v = np.array([1.0, 4.0, 2.5])
-      expected_variance = stats.expon.var(scale=1 / lam_v)
       exponential = exponential_lib.Exponential(rate=lam_v)
       self.assertEqual(exponential.variance().get_shape(), (3,))
+      if not stats:
+        return
+      expected_variance = stats.expon.var(scale=1 / lam_v)
       self.assertAllClose(exponential.variance().eval(), expected_variance)
 
   def testExponentialEntropy(self):
     with session.Session():
       lam_v = np.array([1.0, 4.0, 2.5])
-      expected_entropy = stats.expon.entropy(scale=1 / lam_v)
       exponential = exponential_lib.Exponential(rate=lam_v)
       self.assertEqual(exponential.entropy().get_shape(), (3,))
+      if not stats:
+        return
+      expected_entropy = stats.expon.entropy(scale=1 / lam_v)
       self.assertAllClose(exponential.entropy().eval(), expected_entropy)
 
   def testExponentialSample(self):
@@ -95,6 +122,8 @@ class ExponentialTest(test.TestCase):
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000, 2))
       self.assertFalse(np.any(sample_values < 0.0))
+      if not stats:
+        return
       for i in range(2):
         self.assertLess(
             stats.kstest(
@@ -116,6 +145,8 @@ class ExponentialTest(test.TestCase):
       sample_values = samples.eval()
 
       self.assertFalse(np.any(sample_values < 0.0))
+      if not stats:
+        return
       for i in range(2):
         self.assertLess(
             stats.kstest(

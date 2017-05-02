@@ -23,8 +23,6 @@ import abc
 
 import six
 
-from tensorflow.contrib.distributions.python.ops import bernoulli
-from tensorflow.contrib.distributions.python.ops import categorical
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -35,6 +33,8 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.distributions import bernoulli
+from tensorflow.python.ops.distributions import categorical
 from tensorflow.python.util import nest
 
 __all__ = [
