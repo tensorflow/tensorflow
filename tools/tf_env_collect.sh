@@ -28,7 +28,7 @@ fi
 
 echo >> $OUTPUT_FILE
 echo '== compiler =====================================================' >> $OUTPUT_FILE
-c++ --version &>> $OUTPUT_FILE
+c++ --version 2>&1 >> $OUTPUT_FILE
 
 echo >> $OUTPUT_FILE
 echo '== uname -a =====================================================' >> $OUTPUT_FILE
@@ -36,7 +36,7 @@ uname -a >> $OUTPUT_FILE
 
 echo >> $OUTPUT_FILE
 echo '== check pips ===================================================' >> $OUTPUT_FILE
-pip list 2>&1 | grep "proto\|numpy\|tensorflow" &>> $OUTPUT_FILE
+pip list 2>&1 | grep "proto\|numpy\|tensorflow" >> $OUTPUT_FILE
 
 
 echo >> $OUTPUT_FILE
@@ -53,7 +53,7 @@ print("tf.COMPILER_VERSION = %s" % tf.GIT_VERSION)
 with tf.Session() as sess:
   print("Sanity check: %r" % sess.run(tf.constant([1,2,3])[:1]))
 EOF
-python /tmp/check_tf.py &>> ${OUTPUT_FILE}
+python /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
 
 DEBUG_LD=libs python -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
 grep libcudnn.so /tmp/loadedlibs >> $OUTPUT_FILE
@@ -74,7 +74,7 @@ fi
 
 echo >> $OUTPUT_FILE >> $OUTPUT_FILE
 echo '== nvidia-smi ===================================================' >> $OUTPUT_FILE
-nvidia-smi &>> $OUTPUT_FILE
+nvidia-smi 2>&1 >> $OUTPUT_FILE
 
 echo >> $OUTPUT_FILE
 
