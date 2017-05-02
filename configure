@@ -410,31 +410,6 @@ done
 export TF_CUDA_CLANG
 write_action_env_to_bazelrc "TF_CUDA_CLANG" "$TF_CUDA_CLANG"
 
-# Set up which gcc nvcc should use as the host compiler
-# No need to set this on Windows
-while [[ "$TF_CUDA_CLANG" != "1" ]] && ! is_windows && true; do
-  fromuser=""
-  if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
-    default_gcc_host_compiler_path=$(which gcc || true)
-    read -p "Please specify which gcc should be used by nvcc as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
-    fromuser="1"
-    if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
-      GCC_HOST_COMPILER_PATH="$default_gcc_host_compiler_path"
-    fi
-  fi
-  if [ -e "$GCC_HOST_COMPILER_PATH" ]; then
-    export GCC_HOST_COMPILER_PATH
-    write_action_env_to_bazelrc "GCC_HOST_COMPILER_PATH" "$GCC_HOST_COMPILER_PATH"
-    break
-  fi
-  echo "Invalid gcc path. ${GCC_HOST_COMPILER_PATH} cannot be found" 1>&2
-  if [ -z "$fromuser" ]; then
-    exit 1
-  fi
-  GCC_HOST_COMPILER_PATH=""
-  # Retry
-done
-
 # Set up which clang we should use as the cuda / host compiler.
 while [[ "$TF_CUDA_CLANG" == "1" ]] && true; do
   fromuser=""
@@ -475,6 +450,11 @@ while true; do
       else
         default_cuda_path="$(cygpath -m "$CUDA_PATH")"
       fi
+    elif is_linux; then
+      # If the default doesn't exist, try an alternative default.
+      if [ ! -d $default_cuda_path ] && [ -d /opt/cuda ]; then
+        default_cuda_path=/opt/cuda
+      fi
     fi
     read -p "Please specify the location where CUDA $TF_CUDA_VERSION toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
     fromuser="1"
@@ -512,6 +492,35 @@ while true; do
   # Retry
   TF_CUDA_VERSION=""
   CUDA_TOOLKIT_PATH=""
+done
+
+# Set up which gcc nvcc should use as the host compiler
+# No need to set this on Windows
+while [[ "$TF_CUDA_CLANG" != "1" ]] && ! is_windows && true; do
+  fromuser=""
+  if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
+    default_gcc_host_compiler_path=$(which gcc || true)
+    cuda_bin_symlink="$CUDA_TOOLKIT_PATH/bin/gcc"
+    if [ -L "$cuda_bin_symlink" ]; then
+      default_gcc_host_compiler_path=$(readlink $cuda_bin_symlink)
+    fi
+    read -p "Please specify which gcc should be used by nvcc as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
+    fromuser="1"
+    if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
+      GCC_HOST_COMPILER_PATH="$default_gcc_host_compiler_path"
+    fi
+  fi
+  if [ -e "$GCC_HOST_COMPILER_PATH" ]; then
+    export GCC_HOST_COMPILER_PATH
+    write_action_env_to_bazelrc "GCC_HOST_COMPILER_PATH" "$GCC_HOST_COMPILER_PATH"
+    break
+  fi
+  echo "Invalid gcc path. ${GCC_HOST_COMPILER_PATH} cannot be found" 1>&2
+  if [ -z "$fromuser" ]; then
+    exit 1
+  fi
+  GCC_HOST_COMPILER_PATH=""
+  # Retry
 done
 
 # Find out where the cuDNN library is installed
