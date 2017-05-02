@@ -191,6 +191,17 @@ class InferenceContext {
     return s;
   }
 
+  // Set the shape of the input in position idx. This requires idx to be in the
+  // [0, num_inputs) range. Returns true iff the stored input shape has been
+  // updated with a different handle.
+  bool set_input(int idx, ShapeHandle shape) {
+    if (!inputs_[idx].SameHandle(shape)) {
+      inputs_[idx] = shape;
+      return true;
+    } else {
+      return false;
+    }
+  }
   ShapeHandle input(int64 idx) const { return inputs_[idx]; }
   Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
@@ -430,15 +441,53 @@ class InferenceContext {
   // and dtypes of tensors which can be accessed via the handle. These methods
   // propagate that information. Output handle dtypes and shapes are ignored if
   // the output tensor is not of type DT_RESOURCE.
+
+  // Set the shape corresponding to the resource in position idx. This requires
+  // idx to be in the [0, num_inputs) range. Returns true iff the stored shape
+  // has been updated with a different handle.
+  bool set_input_handle_shape(int idx, ShapeHandle shape) {
+    if (!input_handle_shape_[idx].SameHandle(shape)) {
+      input_handle_shape_[idx] = shape;
+      return true;
+    }
+    return false;
+  }
+
+  // Set the type corresponding to the resource in position idx. This requires
+  // idx to be in the [0, num_inputs) range. Returns true iff the stored type
+  // has been updated.
+  bool set_input_handle_dtype(int idx, DataType dtype) {
+    if (input_handle_dtype_[idx] != dtype) {
+      input_handle_dtype_[idx] = dtype;
+      return true;
+    }
+    return false;
+  }
   ShapeHandle input_handle_shape(int idx);
   DataType input_handle_dtype(int idx) const {
     return input_handle_dtype_[idx];
   }
-  void set_output_handle_shape(int idx, ShapeHandle shape) {
-    output_handle_shape_[idx] = shape;
+
+  // Set the shape corresponding to the resource in position idx. This requires
+  // idx to be in the [0, num_outputs) range.
+  // Returns true iff the stored shape has been updated with a different handle.
+  bool set_output_handle_shape(int idx, ShapeHandle shape) {
+    if (!output_handle_shape_[idx].SameHandle(shape)) {
+      output_handle_shape_[idx] = shape;
+      return true;
+    }
+    return false;
   }
-  void set_output_handle_dtype(int idx, DataType dtype) {
-    output_handle_dtype_[idx] = dtype;
+
+  // Set the type corresponding to the resource in position idx. This requires
+  // idx to be in the [0, num_outputs) range. Returns true iff the stored type
+  // has been updated.
+  bool set_output_handle_dtype(int idx, DataType dtype) {
+    if (output_handle_dtype_[idx] != dtype) {
+      output_handle_dtype_[idx] = dtype;
+      return true;
+    }
+    return false;
   }
   ShapeHandle output_handle_shape(int idx) const {
     return output_handle_shape_[idx];
