@@ -15,74 +15,6 @@
 """Classes representing statistical distributions and ops for working with them.
 
 See the @{$python/contrib.distributions} guide.
-
-## Distribution Object
-@@ReparameterizationType
-@@Distribution
-
-## Individual Distributions
-@@Binomial
-@@Bernoulli
-@@BernoulliWithSigmoidProbs
-@@Beta
-@@BetaWithSoftplusConcentration
-@@Categorical
-@@Chi2
-@@Chi2WithAbsDf
-@@Deterministic
-@@VectorDeterministic
-@@Exponential
-@@ExponentialWithSoftplusRate
-@@Gamma
-@@GammaWithSoftplusConcentrationRate
-@@Geometric
-@@InverseGamma
-@@InverseGammaWithSoftplusConcentrationRate
-@@Laplace
-@@LaplaceWithSoftplusScale
-@@Logistic
-@@NegativeBinomial
-@@Normal
-@@NormalWithSoftplusScale
-@@Poisson
-@@StudentT
-@@StudentTWithAbsDfSoftplusScale
-@@Uniform
-
-@@MultivariateNormalDiag
-@@MultivariateNormalTriL
-@@MultivariateNormalDiagPlusLowRank
-@@MultivariateNormalDiagWithSoftplusScale
-
-@@Dirichlet
-@@DirichletMultinomial
-@@Multinomial
-@@WishartCholesky
-@@WishartFull
-
-@@TransformedDistribution
-@@QuantizedDistribution
-
-@@Mixture
-
-@@ExpRelaxedOneHotCategorical
-@@OneHotCategorical
-@@RelaxedBernoulli
-@@RelaxedOneHotCategorical
-
-## Kullback-Leibler Divergence
-@@kl_divergence
-@@RegisterKL
-
-## Helper Functions
-@@matrix_diag_transform
-@@normal_conjugates_known_scale_posterior
-@@normal_conjugates_known_scale_predictive
-@@softplus_inverse
-
-## Functions for statistics of samples
-@@percentile
-
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -140,6 +72,71 @@ _allowed_symbols = [
     'ConditionalTransformedDistribution',
     'FULLY_REPARAMETERIZED',
     'NOT_REPARAMETERIZED',
+    'Affine',
+    'AffineLinearOperator',
+    'Bijector',
+    'Chain',
+    'CholeskyOuterProduct',
+    'Exp',
+    'Identity',
+    'Inline',
+    'Invert',
+    'PowerTransform',
+    'SigmoidCentered',
+    'SoftmaxCentered',
+    'Softplus',
+    'ReparameterizationType',
+    'Distribution',
+    'Binomial',
+    'Bernoulli',
+    'BernoulliWithSigmoidProbs',
+    'Beta',
+    'BetaWithSoftplusConcentration',
+    'Categorical',
+    'Chi2',
+    'Chi2WithAbsDf',
+    'Deterministic',
+    'VectorDeterministic',
+    'Exponential',
+    'ExponentialWithSoftplusRate',
+    'Gamma',
+    'GammaWithSoftplusConcentrationRate',
+    'Geometric',
+    'InverseGamma',
+    'InverseGammaWithSoftplusConcentrationRate',
+    'Laplace',
+    'LaplaceWithSoftplusScale',
+    'Logistic',
+    'NegativeBinomial',
+    'Normal',
+    'NormalWithSoftplusScale',
+    'Poisson',
+    'StudentT',
+    'StudentTWithAbsDfSoftplusScale',
+    'Uniform',
+    'MultivariateNormalDiag',
+    'MultivariateNormalTriL',
+    'MultivariateNormalDiagPlusLowRank',
+    'MultivariateNormalDiagWithSoftplusScale',
+    'Dirichlet',
+    'DirichletMultinomial',
+    'Multinomial',
+    'WishartCholesky',
+    'WishartFull',
+    'TransformedDistribution',
+    'QuantizedDistribution',
+    'Mixture',
+    'ExpRelaxedOneHotCategorical',
+    'OneHotCategorical',
+    'RelaxedBernoulli',
+    'RelaxedOneHotCategorical',
+    'kl_divergence',
+    'RegisterKL',
+    'matrix_diag_transform',
+    'normal_conjugates_known_scale_posterior',
+    'normal_conjugates_known_scale_predictive',
+    'softplus_inverse',
+    'percentile'
 ]
 
 remove_undocumented(__name__, _allowed_symbols)
