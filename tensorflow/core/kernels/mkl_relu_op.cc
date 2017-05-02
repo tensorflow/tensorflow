@@ -217,46 +217,6 @@ class MklReluGradOp : public OpKernel {
 
       relu_res[dnnResourceDiffDst] = user_g;
 
-#if 0
-      CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(
-                   &mkl_lt_internal_grad, prim_relu_bwd, dnnResourceDiffDst),
-               E_SUCCESS);
-
-      CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_input,
-                                                prim_relu_bwd, dnnResourceSrc),
-               E_SUCCESS);
-
-      if (!dnnLayoutCompare_F32(mkl_lt_internal_grad, lt_grad)) {
-        AllocTmpBuffer(context, mkl_tmp_grad_buf_tensor, mkl_lt_internal_grad,
-                       &relu_res[dnnResourceDiffDst]);
-        CHECK_EQ(dnnConversionCreate_F32(&cv_user_to_reluB_grad, lt_grad,
-                                         mkl_lt_internal_grad),
-                 E_SUCCESS);
-        CHECK_EQ(dnnConversionExecute_F32(cv_user_to_reluB_grad, user_g,
-                                          relu_res[dnnResourceDiffDst]),
-                 E_SUCCESS);
-        dnnDelete_F32(cv_user_to_reluB_grad);
-      } else {
-        relu_res[dnnResourceDiffDst] = user_g;
-      }
-
-      if (!dnnLayoutCompare_F32(mkl_lt_internal_input, lt_input)) {
-        AllocTmpBuffer(context, mkl_tmp_input_buf_tensor, mkl_lt_internal_input,
-                       &relu_res[dnnResourceSrc]);
-        CHECK_EQ(dnnConversionCreate_F32(&cv_user_to_reluB_input, lt_input,
-                                         mkl_lt_internal_input),
-                 E_SUCCESS);
-        CHECK_EQ(dnnConversionExecute_F32(cv_user_to_reluB_input, user_i,
-                                          relu_res[dnnResourceSrc]),
-                 E_SUCCESS);
-        dnnDelete_F32(cv_user_to_reluB_input);
-      } else {
-        relu_res[dnnResourceSrc] = user_i;
-      }
-
-      dnnLayoutDelete_F32(mkl_lt_internal_input);
-      dnnLayoutDelete_F32(mkl_lt_internal_grad);
-#endif
     }
 
     void MklCreateInputLayouts(OpKernelContext* context) {
