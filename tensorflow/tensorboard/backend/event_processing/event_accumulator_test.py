@@ -246,7 +246,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     })
 
   def testReload(self):
-    """EventAccumulator contains suitable tags after calling Reload function."""
+    """EventAccumulator contains suitable tags after calling Reload."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     acc.Reload()
@@ -382,7 +382,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.Histograms('hst2'), [hst2])
 
   def testCompressedHistograms(self):
-    """Tests whether compressed histograms are inserted into EventAccumulator."""
+    """Tests compressed histograms inserted into EventAccumulator."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen, compression_bps=(0, 2500, 5000, 7500, 10000))
 
