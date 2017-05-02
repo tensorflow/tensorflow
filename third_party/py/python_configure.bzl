@@ -112,6 +112,7 @@ def _genrule(src_dir, genrule_name, command, outs):
       '    cmd = """\n' +
       command +
       '    """,\n' +
+      '    visibility = ["//visibility:private"],' +
       ')\n'
   )
 
@@ -157,7 +158,7 @@ def _get_numpy_include(repository_ctx, python_bin):
   return result.stdout.splitlines()[0]
 
 
-def _create_python_repository(repository_ctx):
+def _create_local_python_repository(repository_ctx):
   """Creates the repository containing files set up to build with Python."""
   python_include = None
   numpy_include = None
@@ -208,9 +209,20 @@ def _create_python_repository(repository_ctx):
     })
 
 
+def _create_remote_python_repository(repository_ctx):
+  """Creates pointers to a remotely configured repo set up to build with Python.
+  """
+  _tpl(repository_ctx, "remote.BUILD", {
+      "%{REMOTE_PYTHON_REPO}": repository_ctx.attr.remote_config_repo,
+  }, "BUILD")
+
+
 def _python_autoconf_impl(repository_ctx):
   """Implementation of the python_autoconf repository rule."""
-  _create_python_repository(repository_ctx)
+  if repository_ctx.attr.remote_config_repo != "":
+    _create_remote_python_repository(repository_ctx)
+  else:
+    _create_local_python_repository(repository_ctx)
 
 
 python_configure = repository_rule(
@@ -219,6 +231,7 @@ python_configure = repository_rule(
         "local_checks": attr.bool(mandatory = False, default = True),
         "python_include": attr.string(mandatory = False),
         "numpy_include": attr.string(mandatory = False),
+        "remote_config_repo": attr.string(mandatory = False, default =""),
     },
     environ = [
         _PYTHON_BIN_PATH,

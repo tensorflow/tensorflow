@@ -268,6 +268,66 @@ class Edge {
   int dst_input_;
 };
 
+// Allows for iteration of the edges of a Graph, by iterating the underlying
+// Graph.edges_ vector while skipping over null entries.
+class GraphEdgesIterable {
+ private:
+  const std::vector<Edge*>& edges_;
+
+ public:
+  explicit GraphEdgesIterable(const std::vector<Edge*>& edges)
+      : edges_(edges) {}
+
+  typedef Edge* value_type;
+
+  class const_iterator {
+   private:
+    // The underlying iterator.
+    std::vector<value_type>::const_iterator iter_;
+
+    // The end of the underlying iterator.
+    std::vector<value_type>::const_iterator end_;
+
+    // Advances iter_ until it reaches a non-null item, or reaches the end.
+    void apply_filter() {
+      while (iter_ != end_ && *iter_ == nullptr) {
+        ++iter_;
+      }
+    }
+
+   public:
+    const_iterator(std::vector<value_type>::const_iterator iter,
+                   std::vector<value_type>::const_iterator end)
+        : iter_(iter), end_(end) {
+      apply_filter();
+    }
+
+    bool operator==(const const_iterator& other) const {
+      return iter_ == other.iter_;
+    }
+
+    bool operator!=(const const_iterator& other) const {
+      return iter_ != other.iter_;
+    }
+
+    // This is the prefix increment operator (++x), which is the operator
+    // used by C++ range iteration (for (x : y) ...).  We intentionally do not
+    // provide a postfix increment operator.
+    const_iterator& operator++() {
+      ++iter_;
+      apply_filter();
+      return *this;
+    }
+
+    value_type operator*() { return *iter_; }
+  };
+
+  const_iterator begin() {
+    return const_iterator(edges_.begin(), edges_.end());
+  }
+  const_iterator end() { return const_iterator(edges_.end(), edges_.end()); }
+};
+
 // Thread compatible but not thread safe.
 class Graph {
  public:
@@ -345,7 +405,7 @@ class Graph {
   // smaller than num_edge_ids(). If one needs to create an array of
   // edges indexed by edge ids, num_edge_ids() should be used as the
   // array's size.
-  int num_edges() const { return edges().size(); }
+  int num_edges() const { return num_edges_; }
 
   // Serialize the nodes starting at `from_node_id` to a GraphDef.
   void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const;
@@ -381,7 +441,7 @@ class Graph {
 
   // Access to the set of all edges.  Example usage:
   //   for (const Edge* e : graph.edges()) { ... }
-  const EdgeSet& edges() const { return edge_set_; }
+  GraphEdgesIterable edges() const { return GraphEdgesIterable(edges_); }
 
   // The pre-defined nodes.
   enum { kSourceId = 0, kSinkId = 1 };
@@ -421,9 +481,8 @@ class Graph {
   // the edge with that id was removed from the graph.
   std::vector<Edge*> edges_;
 
-  // For ease of iteration, we currently just keep a set of all live
-  // edges.  May want to optimize by removing this copy.
-  EdgeSet edge_set_;
+  // The number of entries in edges_ that are not nullptr.
+  int num_edges_ = 0;
 
   // Allocated but free nodes and edges.
   std::vector<Node*> free_nodes_;

@@ -44,11 +44,13 @@ def _registered_kl(type_a, type_b):
   return kl_fn
 
 
-def kl(dist_a, dist_b, allow_nan_stats=True, name=None):
-  """Get the KL-divergence KL(dist_a || dist_b).
+def kl_divergence(distribution_a, distribution_b,
+                  allow_nan_stats=True, name=None):
+  """Get the KL-divergence KL(distribution_a || distribution_b).
 
-  If there is no KL method registered specifically for `type(dist_a)` and
-  `type(dist_b)`, then the class hierarchies of these types are searched.
+  If there is no KL method registered specifically for `type(distribution_a)`
+  and `type(distribution_b)`, then the class hierarchies of these types are
+  searched.
 
   If one KL method is registered between any pairs of classes in these two
   parent hierarchies, it is used.
@@ -58,11 +60,11 @@ def kl(dist_a, dist_b, allow_nan_stats=True, name=None):
 
   If more than one such shortest path exists, the first method
   identified in the search is used (favoring a shorter MRO distance to
-  `type(dist_a)`).
+  `type(distribution_a)`).
 
   Args:
-    dist_a: The first distribution.
-    dist_b: The second distribution.
+    distribution_a: The first distribution.
+    distribution_b: The second distribution.
     allow_nan_stats: Python `bool`, default `True`. When `True`,
       statistics (e.g., mean, mode, variance) use the value "`NaN`" to
       indicate the result is undefined. When `False`, an exception is raised
@@ -70,20 +72,22 @@ def kl(dist_a, dist_b, allow_nan_stats=True, name=None):
     name: Python `str` name prefixed to Ops created by this class.
 
   Returns:
-    A Tensor with the batchwise KL-divergence between dist_a and dist_b.
+    A Tensor with the batchwise KL-divergence between `distribution_a`
+    and `distribution_b`.
 
   Raises:
     NotImplementedError: If no KL method is defined for distribution types
-      of dist_a and dist_b.
+      of `distribution_a` and `distribution_b`.
   """
-  kl_fn = _registered_kl(type(dist_a), type(dist_b))
+  kl_fn = _registered_kl(type(distribution_a), type(distribution_b))
   if kl_fn is None:
     raise NotImplementedError(
-        "No KL(dist_a || dist_b) registered for dist_a type %s and dist_b "
-        "type %s" % (type(dist_a).__name__, type(dist_b).__name__))
+        "No KL(distribution_a || distribution_b) registered for distribution_a "
+        "type %s and distribution_b type %s"
+        % (type(distribution_a).__name__, type(distribution_b).__name__))
 
   with ops.name_scope("KullbackLeibler"):
-    kl_t = kl_fn(dist_a, dist_b, name=name)
+    kl_t = kl_fn(distribution_a, distribution_b, name=name)
     if allow_nan_stats:
       return kl_t
 
@@ -96,7 +100,7 @@ def kl(dist_a, dist_b, allow_nan_stats=True, name=None):
                 math_ops.reduce_any(math_ops.is_nan(kl_t))),
             ["KL calculation between %s and %s returned NaN values "
              "(and was called with allow_nan_stats=False). Values:"
-             % (dist_a.name, dist_b.name), kl_t])]):
+             % (distribution_a.name, distribution_b.name), kl_t])]):
       return array_ops.identity(kl_t, name="checked_kl")
 
 

@@ -1337,13 +1337,8 @@ Status MasterSession::CreateDebuggerState(
     const DebugOptions& debug_options, const RunStepRequestWrapper& req,
     int64 rcg_execution_count,
     std::unique_ptr<DebuggerStateInterface>* debugger_state) {
-  std::unique_ptr<DebuggerStateInterface> state =
-      DebuggerStateRegistry::CreateState(debug_options);
-  if (!state) {
-    return errors::Internal(
-        "Debugger options are set, but creation of debugger state failed. "
-        "It appears that debugger is not linked in this TensorFlow build.");
-  }
+  TF_RETURN_IF_ERROR(
+      DebuggerStateRegistry::CreateState(debug_options, debugger_state));
 
   std::vector<string> input_names;
   for (size_t i = 0; i < req.num_feeds(); ++i) {
@@ -1362,11 +1357,10 @@ Status MasterSession::CreateDebuggerState(
   // While this counter value is straightforward to define and obtain for
   // DirectSessions, it is less so for non-direct Sessions. Devise a better
   // way to get its value when the need arises.
-  TF_RETURN_IF_ERROR(state->PublishDebugMetadata(
+  TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
       debug_options.global_step(), -1, rcg_execution_count, input_names,
       output_names, target_names));
 
-  *debugger_state = std::move(state);
   return Status::OK();
 }
 

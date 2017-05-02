@@ -2249,6 +2249,7 @@ cc_library(
         ":batch_matmul_op",
         ":betainc_op",
         ":bincount_op",
+        ":bucketize_op",
         ":cast_op",
         ":check_numerics_op",
         ":cross_op",
@@ -2283,6 +2284,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "betainc_op",
     prefix = "betainc_op",
+    deps = MATH_DEPS,
+)
+
+tf_kernel_library(
+    name = "bucketize_op",
+    prefix = "bucketize_op",
     deps = MATH_DEPS,
 )
 

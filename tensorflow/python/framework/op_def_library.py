@@ -328,7 +328,7 @@ class OpDefLibrary(object):
       # Need to flatten all the arguments into a list.
       # pylint: disable=protected-access
       g = ops._get_graph_from_inputs(_Flatten(keywords.values()))
-      # pyline: enable=protected-access
+      # pylint: enable=protected-access
     except AssertionError as e:
       raise RuntimeError(
           "Cannot determine graph for Op '%s' due to: %s"

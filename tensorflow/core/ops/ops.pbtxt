@@ -3324,7 +3324,7 @@ op {
     }
   }
   summary: "Compute the regularized incomplete beta integral \\\\(I_x(a, b)\\\\)."
-  description: "The regularized incomplete beta integral is defined as:\n\n```\nI_x(a, b) = \\frac{B(x; a, b)}{B(a, b)}\n```\nwhere\n\n```\nB(x; a, b) = \\int_0^x t^{a-1} (1 - t)^{b-1} dt\n```\n\nis the incomplete beta function and \\\\(B(a, b)\\\\) is the *complete*\nbeta function."
+  description: "The regularized incomplete beta integral is defined as:\n\n\n\\\\(I_x(a, b) = \\frac{B(x; a, b)}{B(a, b)}\\\\)\n\nwhere\n\n\n\\\\(B(x; a, b) = \\int_0^x t^{a-1} (1 - t)^{b-1} dt\\\\)\n\n\nis the incomplete beta function and \\\\(B(a, b)\\\\) is the *complete*\nbeta function."
 }
 op {
   name: "BiasAdd"
@@ -3632,6 +3632,38 @@ op {
   }
   summary: "Return the reduction indices for computing gradients of s0 op s1 with broadcast."
   description: "This is typically used by gradient computations for a broadcasting operation."
+}
+op {
+  name: "Bucketize"
+  input_arg {
+    name: "input"
+    description: "Any shape of Tensor contains with int or float type."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Same shape with \'input\', each value of input replaced with bucket index.\n\n@compatibility(numpy)\nEquivalent to np.digitize.\n@end_compatibility"
+    type: DT_INT32
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "boundaries"
+    type: "list(float)"
+    description: "A sorted list of floats gives the boundary of the buckets."
+  }
+  summary: "Bucketizes \'input\' based on \'boundaries\'."
+  description: "For example, if the inputs are\n    boundaries = [0, 10, 100]\n    input = [[-5, 10000]\n             [150,   10]\n             [5,    100]]\n\nthen the output will be\n    output = [[0, 3]\n              [3, 2]\n              [1, 3]]"
 }
 op {
   name: "CTCBeamSearchDecoder"
@@ -8714,6 +8746,51 @@ op {
   is_stateful: true
 }
 op {
+  name: "HashTableV2"
+  output_arg {
+    name: "table_handle"
+    description: "Handle to a table."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
+  }
+  attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true and shared_name is empty, the table is shared\nusing the node name."
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+    description: "Type of the table keys."
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+    description: "Type of the table values."
+  }
+  summary: "Creates a non-initialized hash table."
+  description: "This op creates a hash table, specifying the type of its keys and values.\nBefore using the table you will have to initialize it.  After initialization the\ntable will be immutable."
+  is_stateful: true
+}
+op {
   name: "HistogramSummary"
   input_arg {
     name: "tag"
@@ -8954,7 +9031,7 @@ op {
     }
   }
   summary: "Compute the lower regularized incomplete Gamma function `Q(a, x)`."
-  description: "The lower regularized incomplete Gamma function is defined as:\n\n```\nP(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\n```\nwhere\n```\ngamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\n```\nis the lower incomplete Gamma function.\n\nNote, above `Q(a, x)` (`Igammac`) is the upper regularized complete\nGamma function."
+  description: "The lower regularized incomplete Gamma function is defined as:\n\n\n\\\\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\\\)\n\nwhere\n\n\\\\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\\\)\n\nis the lower incomplete Gamma function.\n\nNote, above `Q(a, x)` (`Igammac`) is the upper regularized complete\nGamma function."
 }
 op {
   name: "Igammac"
@@ -8981,7 +9058,7 @@ op {
     }
   }
   summary: "Compute the upper regularized incomplete Gamma function `Q(a, x)`."
-  description: "The upper regularized incomplete Gamma function is defined as:\n\n```\nQ(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\n```\nwhere\n```\nGamma(a, x) = int_{x}^{\\infty} t^{a-1} exp(-t) dt\n```\nis the upper incomplete Gama function.\n\nNote, above `P(a, x)` (`Igamma`) is the lower regularized complete\nGamma function."
+  description: "The upper regularized incomplete Gamma function is defined as:\n\n\\\\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\\\)\n\nwhere\n\n\\\\(Gamma(a, x) = int_{x}^{\\infty} t^{a-1} exp(-t) dt\\\\)\n\nis the upper incomplete Gama function.\n\nNote, above `P(a, x)` (`Igamma`) is the lower regularized complete\nGamma function."
 }
 op {
   name: "Imag"
@@ -9222,6 +9299,82 @@ op {
   }
   summary: "Initializes a table from a text file."
   description: "It inserts one key-value pair into the table for each line of the file.\nThe key and value is extracted from the whole line content, elements from the\nsplit line based on `delimiter` or the line number (starting from zero).\nWhere to extract the key and value from a line is specified by `key_index` and\n`value_index`.\n\n- A value of -1 means use the line number(starting from zero), expects `int64`.\n- A value of -2 means use the whole line content, expects `string`.\n- A value >= 0 means use the index (starting at zero) of the split line based\n  on `delimiter`."
+}
+op {
+  name: "InitializeTableFromTextFileV2"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to a table which will be initialized."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "filename"
+    description: "Filename of a vocabulary text file."
+    type: DT_STRING
+  }
+  attr {
+    name: "key_index"
+    type: "int"
+    description: "Column index in a line to get the table `key` values from."
+    has_minimum: true
+    minimum: -2
+  }
+  attr {
+    name: "value_index"
+    type: "int"
+    description: "Column index that represents information of a line to get the table\n`value` values from."
+    has_minimum: true
+    minimum: -2
+  }
+  attr {
+    name: "vocab_size"
+    type: "int"
+    default_value {
+      i: -1
+    }
+    description: "Number of elements of the file, use -1 if unknown."
+    has_minimum: true
+    minimum: -1
+  }
+  attr {
+    name: "delimiter"
+    type: "string"
+    default_value {
+      s: "\t"
+    }
+    description: "Delimiter to separate fields in a line."
+  }
+  summary: "Initializes a table from a text file."
+  description: "It inserts one key-value pair into the table for each line of the file.\nThe key and value is extracted from the whole line content, elements from the\nsplit line based on `delimiter` or the line number (starting from zero).\nWhere to extract the key and value from a line is specified by `key_index` and\n`value_index`.\n\n- A value of -1 means use the line number(starting from zero), expects `int64`.\n- A value of -2 means use the whole line content, expects `string`.\n- A value >= 0 means use the index (starting at zero) of the split line based\n  on `delimiter`."
+  is_stateful: true
+}
+op {
+  name: "InitializeTableV2"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to a table which will be initialized."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "keys"
+    description: "Keys of type Tkey."
+    type_attr: "Tkey"
+  }
+  input_arg {
+    name: "values"
+    description: "Values of type Tval."
+    type_attr: "Tval"
+  }
+  attr {
+    name: "Tkey"
+    type: "type"
+  }
+  attr {
+    name: "Tval"
+    type: "type"
+  }
+  summary: "Table initializer that takes two tensors for keys and values respectively."
+  is_stateful: true
 }
 op {
   name: "Inv"
@@ -10036,6 +10189,34 @@ op {
   summary: "Outputs all keys and values in the table."
 }
 op {
+  name: "LookupTableExportV2"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to the table."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "keys"
+    description: "Vector of all keys present in the table."
+    type_attr: "Tkeys"
+  }
+  output_arg {
+    name: "values"
+    description: "Tensor of all values in the table. Indexed in parallel with `keys`."
+    type_attr: "Tvalues"
+  }
+  attr {
+    name: "Tkeys"
+    type: "type"
+  }
+  attr {
+    name: "Tvalues"
+    type: "type"
+  }
+  summary: "Outputs all keys and values in the table."
+  is_stateful: true
+}
+op {
   name: "LookupTableFind"
   input_arg {
     name: "table_handle"
@@ -10069,6 +10250,39 @@ op {
   description: "The tensor `keys` must of the same type as the keys of the table.\nThe output `values` is of the type of the table values.\n\nThe scalar `default_value` is the value output for keys not present in the\ntable. It must also be of the same type as the table values."
 }
 op {
+  name: "LookupTableFindV2"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to the table."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "keys"
+    description: "Any shape.  Keys to look up."
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "default_value"
+    type_attr: "Tout"
+  }
+  output_arg {
+    name: "values"
+    description: "Same shape as `keys`.  Values found in the table, or `default_values`\nfor missing keys."
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+  summary: "Looks up keys in a table, outputs the corresponding values."
+  description: "The tensor `keys` must of the same type as the keys of the table.\nThe output `values` is of the type of the table values.\n\nThe scalar `default_value` is the value output for keys not present in the\ntable. It must also be of the same type as the table values."
+  is_stateful: true
+}
+op {
   name: "LookupTableImport"
   input_arg {
     name: "table_handle"
@@ -10096,6 +10310,35 @@ op {
   }
   summary: "Replaces the contents of the table with the specified keys and values."
   description: "The tensor `keys` must be of the same type as the keys of the table.\nThe tensor `values` must be of the type of the table values."
+}
+op {
+  name: "LookupTableImportV2"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to the table."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "keys"
+    description: "Any shape.  Keys to look up."
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "values"
+    description: "Values to associate with keys."
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+  summary: "Replaces the contents of the table with the specified keys and values."
+  description: "The tensor `keys` must be of the same type as the keys of the table.\nThe tensor `values` must be of the type of the table values."
+  is_stateful: true
 }
 op {
   name: "LookupTableInsert"
@@ -10127,6 +10370,35 @@ op {
   description: "The tensor `keys` must be of the same type as the keys of the table.\nThe tensor `values` must be of the type of the table values."
 }
 op {
+  name: "LookupTableInsertV2"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to the table."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "keys"
+    description: "Any shape.  Keys to look up."
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "values"
+    description: "Values to associate with keys."
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+  summary: "Updates the table to associates keys with values."
+  description: "The tensor `keys` must be of the same type as the keys of the table.\nThe tensor `values` must be of the type of the table values."
+  is_stateful: true
+}
+op {
   name: "LookupTableSize"
   input_arg {
     name: "table_handle"
@@ -10140,6 +10412,21 @@ op {
     type: DT_INT64
   }
   summary: "Computes the number of elements in the given table."
+}
+op {
+  name: "LookupTableSizeV2"
+  input_arg {
+    name: "table_handle"
+    description: "Handle to the table."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "size"
+    description: "Scalar that contains number of elements in the table."
+    type: DT_INT64
+  }
+  summary: "Computes the number of elements in the given table."
+  is_stateful: true
 }
 op {
   name: "LoopCond"
@@ -11846,6 +12133,80 @@ op {
   is_stateful: true
 }
 op {
+  name: "MutableDenseHashTableV2"
+  input_arg {
+    name: "empty_key"
+    description: "The key used to represent empty key buckets internally. Must not\nbe used in insert or lookup operations."
+    type_attr: "key_dtype"
+  }
+  output_arg {
+    name: "table_handle"
+    description: "Handle to a table."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
+  }
+  attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+    description: "Type of the table keys."
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+    description: "Type of the table values."
+  }
+  attr {
+    name: "value_shape"
+    type: "shape"
+    default_value {
+      shape {
+      }
+    }
+    description: "The shape of each value."
+  }
+  attr {
+    name: "initial_num_buckets"
+    type: "int"
+    default_value {
+      i: 131072
+    }
+    description: "The initial number of hash table buckets. Must be a power\nto 2."
+  }
+  attr {
+    name: "max_load_factor"
+    type: "float"
+    default_value {
+      f: 0.8
+    }
+    description: "The maximum ratio between number of entries and number of\nbuckets before growing the table. Must be between 0 and 1."
+  }
+  summary: "Creates an empty hash table that uses tensors as the backing store. It uses"
+  description: "\"open addressing\" with quadratic reprobing to resolve collisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
+  is_stateful: true
+}
+op {
   name: "MutableHashTable"
   output_arg {
     name: "table_handle"
@@ -11942,6 +12303,103 @@ op {
   }
   summary: "Creates an empty hash table."
   description: "This op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a vector. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
+  is_stateful: true
+}
+op {
+  name: "MutableHashTableOfTensorsV2"
+  output_arg {
+    name: "table_handle"
+    description: "Handle to a table."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
+  }
+  attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+    description: "Type of the table keys."
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+    description: "Type of the table values."
+  }
+  attr {
+    name: "value_shape"
+    type: "shape"
+    default_value {
+      shape {
+      }
+    }
+  }
+  summary: "Creates an empty hash table."
+  description: "This op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a vector. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
+  is_stateful: true
+}
+op {
+  name: "MutableHashTableV2"
+  output_arg {
+    name: "table_handle"
+    description: "Handle to a table."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
+  }
+  attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true and shared_name is empty, the table is shared\nusing the node name."
+  }
+  attr {
+    name: "key_dtype"
+    type: "type"
+    description: "Type of the table keys."
+  }
+  attr {
+    name: "value_dtype"
+    type: "type"
+    description: "Type of the table values."
+  }
+  summary: "Creates an empty hash table."
+  description: "This op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
   is_stateful: true
 }
 op {
@@ -12884,7 +13342,7 @@ op {
     }
   }
   summary: "Compute the polygamma function \\\\(\\psi^{(n)}(x)\\\\)."
-  description: "The polygamma function is defined as:\n\n```\n\\psi^{(n)}(x) = \\frac{d^n}{dx^n} \\psi(x)\n```\nwhere \\\\(\\psi(x)\\\\) is the digamma function."
+  description: "The polygamma function is defined as:\n\n\n\\\\(\\psi^{(n)}(x) = \\frac{d^n}{dx^n} \\psi(x)\\\\)\n\nwhere \\\\(\\psi(x)\\\\) is the digamma function."
 }
 op {
   name: "Pow"
@@ -19650,7 +20108,7 @@ op {
     minimum: 1
   }
   summary: "Distributed version of Stochastic Dual Coordinate Ascent (SDCA) optimizer for"
-  description: "linear models with L1 + L2 regularization. As global optimization objective is\nstrongly-convex, the optimizer optimizes the dual objective at each step. The\noptimizer applies each update one example at a time. Examples are sampled\nuniformly, and the optimizer is learning rate free and enjoys linear convergence\nrate.\n\nProximal Stochastic Dual Coordinate Ascent, Shalev-Shwartz, Shai; Zhang, Tong.\n2012 arXiv1211.2717S: http://arxiv.org/pdf/1211.2717v1.pdf\n\n  Loss objective = \\sum f_{i}(wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|\n\nAdding vs. Averaging in Distributed Primal-Dual Optimization.\nChenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan, Peter Richtarik,\nMartin Takac http://arxiv.org/abs/1502.03508\n\nStochastic Dual Coordinate Ascent with Adaptive Probabilities\nDominik Csiba, Zheng Qu, Peter Richtarik https://arxiv.org/abs/1502.08053"
+  description: "linear models with L1 + L2 regularization. As global optimization objective is\nstrongly-convex, the optimizer optimizes the dual objective at each step. The\noptimizer applies each update one example at a time. Examples are sampled\nuniformly, and the optimizer is learning rate free and enjoys linear convergence\nrate.\n\n[Proximal Stochastic Dual Coordinate Ascent](http://arxiv.org/pdf/1211.2717v1.pdf).<br>\nShai Shalev-Shwartz, Tong Zhang. 2012\n\n$$Loss Objective = \\sum f_{i} (wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|$$\n\n[Adding vs. Averaging in Distributed Primal-Dual Optimization](http://arxiv.org/abs/1502.03508).<br>\nChenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan,\nPeter Richtarik, Martin Takac. 2015\n\n[Stochastic Dual Coordinate Ascent with Adaptive Probabilities](https://arxiv.org/abs/1502.08053).<br>\nDominik Csiba, Zheng Qu, Peter Richtarik. 2015"
 }
 op {
   name: "SdcaShrinkL1"
@@ -26527,5 +26985,5 @@ op {
     }
   }
   summary: "Compute the Hurwitz zeta function \\\\(\\zeta(x, q)\\\\)."
-  description: "The Hurwitz zeta function is defined as:\n\n```\n\\zeta(x, q) = \\sum_{n=0}^{\\infty} (q + n)^{-x}\n```"
+  description: "The Hurwitz zeta function is defined as:\n\n\n\\\\(\\zeta(x, q) = \\sum_{n=0}^{\\infty} (q + n)^{-x}\\\\)"
 }

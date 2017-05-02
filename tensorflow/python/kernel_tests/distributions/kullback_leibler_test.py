@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
-from tensorflow.contrib.distributions.python.ops import normal
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.distributions import kullback_leibler
+from tensorflow.python.ops.distributions import normal
 from tensorflow.python.platform import test
 
 # pylint: disable=protected-access
@@ -43,7 +43,7 @@ class KLTest(test.TestCase):
       return name
 
     a = MyDist(loc=0.0, scale=1.0)
-    self.assertEqual("OK", kullback_leibler.kl(a, a, name="OK"))
+    self.assertEqual("OK", kullback_leibler.kl_divergence(a, a, name="OK"))
 
   def testDomainErrorExceptions(self):
 
@@ -60,11 +60,11 @@ class KLTest(test.TestCase):
 
     with self.test_session():
       a = MyDistException(loc=0.0, scale=1.0)
-      kl = kullback_leibler.kl(a, a, allow_nan_stats=False)
+      kl = kullback_leibler.kl_divergence(a, a, allow_nan_stats=False)
       with self.assertRaisesOpError(
           "KL calculation between .* and .* returned NaN values"):
         kl.eval()
-      kl_ok = kullback_leibler.kl(a, a)
+      kl_ok = kullback_leibler.kl_divergence(a, a)
       self.assertAllEqual([float("nan")], kl_ok.eval())
 
   def testRegistrationFailures(self):
@@ -116,16 +116,16 @@ class KLTest(test.TestCase):
     sub2 = Sub2(loc=0.0, scale=1.0)
     sub11 = Sub11(loc=0.0, scale=1.0)
 
-    self.assertEqual("sub1-1", kullback_leibler.kl(sub1, sub1))
-    self.assertEqual("sub1-2", kullback_leibler.kl(sub1, sub2))
-    self.assertEqual("sub2-1", kullback_leibler.kl(sub2, sub1))
-    self.assertEqual("sub1-1", kullback_leibler.kl(sub11, sub11))
-    self.assertEqual("sub1-1", kullback_leibler.kl(sub11, sub1))
-    self.assertEqual("sub1-2", kullback_leibler.kl(sub11, sub2))
-    self.assertEqual("sub1-1", kullback_leibler.kl(sub11, sub1))
-    self.assertEqual("sub1-2", kullback_leibler.kl(sub11, sub2))
-    self.assertEqual("sub2-1", kullback_leibler.kl(sub2, sub11))
-    self.assertEqual("sub1-1", kullback_leibler.kl(sub1, sub11))
+    self.assertEqual("sub1-1", kullback_leibler.kl_divergence(sub1, sub1))
+    self.assertEqual("sub1-2", kullback_leibler.kl_divergence(sub1, sub2))
+    self.assertEqual("sub2-1", kullback_leibler.kl_divergence(sub2, sub1))
+    self.assertEqual("sub1-1", kullback_leibler.kl_divergence(sub11, sub11))
+    self.assertEqual("sub1-1", kullback_leibler.kl_divergence(sub11, sub1))
+    self.assertEqual("sub1-2", kullback_leibler.kl_divergence(sub11, sub2))
+    self.assertEqual("sub1-1", kullback_leibler.kl_divergence(sub11, sub1))
+    self.assertEqual("sub1-2", kullback_leibler.kl_divergence(sub11, sub2))
+    self.assertEqual("sub2-1", kullback_leibler.kl_divergence(sub2, sub11))
+    self.assertEqual("sub1-1", kullback_leibler.kl_divergence(sub1, sub11))
 
 
 if __name__ == "__main__":
