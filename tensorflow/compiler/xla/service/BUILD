@@ -1418,6 +1418,27 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "hlo_constant_folding_test",
+    srcs = ["hlo_constant_folding_test.cc"],
+    deps = [
+        ":cpu_plugin",
+        ":hlo",
+        ":hlo_constant_folding",
+        ":hlo_matchers",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "device_memory_allocator",
     srcs = ["device_memory_allocator.cc"],
