@@ -35,12 +35,9 @@ function is_windows() {
   fi
 }
 
-function sed_hyphen_i() {
-  if is_macos; then
-    sed -i '' "$@"
-  else
-    sed -i "$@"
-  fi
+function sed_in_place() {
+  sed -e $1 $2 > "$2.bak"
+  mv "$2.bak" $2
 }
 
 function write_to_bazelrc() {
@@ -170,7 +167,7 @@ function setup_python {
 rm -f .tf_configure.bazelrc
 touch .tf_configure.bazelrc
 touch .bazelrc
-sed_hyphen_i "/tf_configure/d" .bazelrc
+sed_in_place "/tf_configure/d" .bazelrc
 echo "import %workspace%/.tf_configure.bazelrc" >> .bazelrc
 
 # Delete any leftover BUILD files from the Makefile build, which would interfere
