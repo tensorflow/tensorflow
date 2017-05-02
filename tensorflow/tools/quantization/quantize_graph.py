@@ -503,7 +503,7 @@ class GraphRewriter(object):
   def quantize_node(self, input_node):
     """Handles quantizing a single node."""
     input_name = input_node.name
-    if self.already_quantized.get(input_name, False):
+    if input_name in self.already_quantized:
       return
     self.already_quantized[input_name] = True
     original_input_name = input_name + "_original"
