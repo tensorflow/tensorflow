@@ -19,18 +19,30 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import importlib
 
 import numpy as np
-from scipy import special
-from scipy import stats
 
-from tensorflow.contrib.distributions.python.ops import special_math
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.distributions import special_math
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
+
+def try_import(name):  # pylint: disable=invalid-name
+  module = None
+  try:
+    module = importlib.import_module(name)
+  except ImportError as e:
+    tf_logging.warning("Could not import %s: %s" % (name, str(e)))
+  return module
+
+
+special = try_import("scipy.special")
+stats = try_import("scipy.stats")
 sm = special_math
 
 
@@ -66,6 +78,9 @@ class NdtriTest(test.TestCase):
   def testNdtri(self):
     """Verifies that ndtri computation is correct."""
     with self.test_session():
+      if not special:
+        return
+
       p = np.linspace(0., 1.0, 50).astype(np.float64)
       # Quantile performs piecewise rational approximation so adding some
       # special input values to make sure we hit all the pieces.
@@ -113,6 +128,9 @@ class NdtrTest(test.TestCase):
       self._test_grid_no_log(dtype, grid_spec, error_spec)
 
   def _test_grid_log(self, dtype, grid_spec, error_spec):
+    if not special:
+      return
+
     with self.test_session():
       grid = _make_grid(dtype, grid_spec)
       actual = sm.log_ndtr(grid).eval()
@@ -137,6 +155,9 @@ class NdtrTest(test.TestCase):
           atol=error_spec.atol)
 
   def _test_grid_no_log(self, dtype, grid_spec, error_spec):
+    if not special:
+      return
+
     with self.test_session():
       grid = _make_grid(dtype, grid_spec)
       actual = sm.ndtr(grid).eval()
@@ -267,6 +288,9 @@ class NdtrGradientTest(test.TestCase):
       self.assert_all_true(np.isfinite(grad_eval))
 
       # Versus scipy.
+      if not (special and stats):
+        return
+
       expected = stats.norm.pdf(raw_grid)
       if self._use_log:
         expected /= special.ndtr(raw_grid)
@@ -323,6 +347,9 @@ class LogCDFLaplaceTest(test.TestCase):
       _check_strictly_increasing(actual)
 
       # Versus scipy.
+      if not stats:
+        return
+
       scipy_dist = stats.laplace(loc=0., scale=1.)
       expected = scipy_dist.logcdf(grid.astype(scipy_dtype))
       self.assertAllClose(

@@ -497,24 +497,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "normal_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/normal_test.py"],
-    additional_deps = [
-        ":distributions_py",
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:variables",
-    ],
-)
-
-cuda_py_test(
     name = "poisson_test",
     size = "small",
     srcs = ["python/kernel_tests/poisson_test.py"],
@@ -610,18 +592,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-cuda_py_test(
-    name = "kullback_leibler_test",
-    size = "small",
-    srcs = ["python/kernel_tests/kullback_leibler_test.py"],
-    additional_deps = [
-        ":distributions_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -749,22 +719,6 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     tags = ["no_pip"],
-)
-
-cuda_py_test(
-    name = "special_math_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/special_math_test.py"],
-    additional_deps = [
-        ":distributions_py",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:variables",
-    ],
 )
 
 cuda_py_test(

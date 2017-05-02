@@ -21,11 +21,11 @@ from __future__ import print_function
 import numpy as np
 import scipy.special
 from tensorflow.contrib.distributions.python.ops import bernoulli
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
 
 
@@ -286,7 +286,7 @@ class BernoulliTest(test.TestCase):
       a = bernoulli.Bernoulli(probs=a_p)
       b = bernoulli.Bernoulli(probs=b_p)
 
-      kl = kullback_leibler.kl(a, b)
+      kl = kullback_leibler.kl_divergence(a, b)
       kl_val = sess.run(kl)
 
       kl_expected = (a_p * np.log(a_p / b_p) + (1. - a_p) * np.log(

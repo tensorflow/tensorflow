@@ -20,8 +20,6 @@ from __future__ import print_function
 
 from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import bijectors
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
-from tensorflow.contrib.distributions.python.ops import normal
 from tensorflow.contrib.distributions.python.ops import transformed_distribution
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -29,6 +27,8 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import kullback_leibler
+from tensorflow.python.ops.distributions import normal
 from tensorflow.python.ops.distributions import util as distribution_util
 
 

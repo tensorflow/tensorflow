@@ -83,11 +83,12 @@ class DebuggerStateRegistry {
   // implementation based on DebugOptions.
   static void RegisterFactory(const DebuggerStateFactory& factory);
 
-  // If RegisterFactory() has been called, creates and returns a concrete
+  // If RegisterFactory() has been called, creates and supplies a concrete
   // DebuggerStateInterface implementation using the registered factory,
-  // owned by the caller.  Otherwise returns nullptr.
-  static std::unique_ptr<DebuggerStateInterface> CreateState(
-      const DebugOptions& debug_options);
+  // owned by the caller and return an OK Status. Otherwise returns an error
+  // Status.
+  static Status CreateState(const DebugOptions& debug_options,
+                            std::unique_ptr<DebuggerStateInterface>* state);
 
  private:
   static DebuggerStateFactory* factory_;
@@ -103,8 +104,9 @@ class DebugGraphDecoratorRegistry {
  public:
   static void RegisterFactory(const DebugGraphDecoratorFactory& factory);
 
-  static std::unique_ptr<DebugGraphDecoratorInterface> CreateDecorator(
-      const DebugOptions& options);
+  static Status CreateDecorator(
+      const DebugOptions& options,
+      std::unique_ptr<DebugGraphDecoratorInterface>* decorator);
 
  private:
   static DebugGraphDecoratorFactory* factory_;

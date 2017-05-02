@@ -41,6 +41,12 @@ class SoftplusBijectorTest(test.TestCase):
     """Inverse log det jacobian, before being reduced."""
     return -np.log(1 - np.exp(-y))
 
+  def testHingeSoftnessZeroRaises(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=0., validate_args=True)
+      with self.assertRaisesOpError("must be non-zero"):
+        bijector.forward([1., 1.]).eval()
+
   def testBijectorForwardInverseEventDimsZero(self):
     with self.test_session():
       bijector = Softplus(event_ndims=0)

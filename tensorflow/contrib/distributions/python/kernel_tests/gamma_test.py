@@ -22,12 +22,12 @@ from scipy import special
 from scipy import stats
 
 from tensorflow.contrib.distributions.python.ops import gamma as gamma_lib
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
 
 
@@ -345,7 +345,7 @@ class GammaTest(test.TestCase):
       g1 = gamma_lib.Gamma(concentration=alpha1, rate=beta1)
       x = g0.sample(int(1e4), seed=0)
       kl_sample = math_ops.reduce_mean(g0.log_prob(x) - g1.log_prob(x), 0)
-      kl_actual = kullback_leibler.kl(g0, g1)
+      kl_actual = kullback_leibler.kl_divergence(g0, g1)
 
     # Execute graph.
     [kl_sample_, kl_actual_] = sess.run([kl_sample, kl_actual])

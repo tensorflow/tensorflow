@@ -1,7 +1,5 @@
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
-load("@local_config_cuda//cuda:platform.bzl", "readlink_command")
-
 package(default_visibility = ["//visibility:public"])
 
 config_setting(

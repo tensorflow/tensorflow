@@ -94,7 +94,9 @@ class Softplus(bijector.Bijector):
       if validate_args:
         nonzero_check = check_ops.assert_none_equal(
             ops.convert_to_tensor(
-                0, dtype=self.hinge_softness.dtype), self.hinge_softness)
+                0, dtype=self.hinge_softness.dtype),
+            self.hinge_softness,
+            message="hinge_softness must be non-zero")
         self._hinge_softness = control_flow_ops.with_dependencies(
             [nonzero_check], self.hinge_softness)
 

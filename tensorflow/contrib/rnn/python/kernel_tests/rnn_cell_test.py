@@ -882,6 +882,30 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(res[1].c, expected_state_c)
         self.assertAllClose(res[1].h, expected_state_h)
 
+  def testHighwayWrapper(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "base_cell", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 3])
+        base_cell = core_rnn_cell_impl.GRUCell(3)
+        g, m_new = base_cell(x, m)
+      with variable_scope.variable_scope(
+          "hw_cell", initializer=init_ops.constant_initializer(0.5)):
+        hw_cell = rnn_cell.HighwayWrapper(
+            core_rnn_cell_impl.GRUCell(3), carry_bias_init=-100.0)
+        g_res, m_new_res = hw_cell(x, m)
+        sess.run([variables.global_variables_initializer()])
+      res = sess.run([g, g_res, m_new, m_new_res], {
+          x: np.array([[1., 1., 1.]]),
+          m: np.array([[0.1, 0.1, 0.1]])
+      })
+      # As carry_bias_init is very negative, the carry gate is 'open' and the
+      # transform gate is 'closed'. This means the output equals the input.
+      self.assertAllClose(res[1], res[0])
+      # States are left untouched
+      self.assertAllClose(res[2], res[3])
+
 
 class LayerNormBasicLSTMCellTest(test.TestCase):
 

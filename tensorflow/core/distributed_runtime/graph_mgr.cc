@@ -97,16 +97,11 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
 
 Status GraphMgr::DecorateAndPublishGraphForDebug(
     const DebugOptions& debug_options, Graph* graph, Device* device) {
-  std::unique_ptr<DebugGraphDecoratorInterface> decorator =
-      DebugGraphDecoratorRegistry::CreateDecorator(debug_options);
-  if (!decorator) {
-    return errors::Internal(
-        "Debugger options are set, but creation of debug graph publisher ",
-        "failed.");
-  }
+  std::unique_ptr<DebugGraphDecoratorInterface> decorator;
+  TF_RETURN_IF_ERROR(
+      DebugGraphDecoratorRegistry::CreateDecorator(debug_options, &decorator));
   TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
   TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph));
-
   return Status::OK();
 }
 

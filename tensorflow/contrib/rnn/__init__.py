@@ -45,6 +45,7 @@ See @{$python/contrib.rnn} guide.
 @@UGRNNCell
 @@IntersectionRNNCell
 @@PhasedLSTMCell
+@@HighwayWrapper
 
 ### RNNCell wrappers
 @@AttentionCellWrapper
