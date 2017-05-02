@@ -225,6 +225,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertTagsEqual(x.Tags(), {})
 
   def testTags(self):
+    """Tests that proper tags should be found in EventAccumulator after adding some events."""
     gen = _EventGenerator(self)
     gen.AddScalar('s1')
     gen.AddScalar('s2')
@@ -245,6 +246,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     })
 
   def testReload(self):
+    """Tests that the EventsAccumulator contains suitable tags after calling Reload function."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     acc.Reload()
@@ -267,6 +269,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     })
 
   def testScalars(self):
+    """Tests whether EventAccumulator contains scalars after adding them."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     s1 = ea.ScalarEvent(wall_time=1, step=10, value=32)
@@ -293,6 +296,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
       self.assertEqual(expected_value, gotten_event.value[i])
 
   def testHealthPills(self):
+    """Tests whether HealthPills are properly inserted into EventAccumulator."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     gen.AddHealthPill(13371337, 41, 'Add', 0, range(1, 13))
@@ -328,6 +332,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertItemsEqual(['Add', 'MatMul'], acc.GetOpsWithHealthPills())
 
   def testHistograms(self):
+    """Tests whether histograms are inserted into EventAccumulator."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
 
@@ -377,6 +382,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.Histograms('hst2'), [hst2])
 
   def testCompressedHistograms(self):
+    """Tests whether compressed histograms are inserted into EventAccumulator."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen, compression_bps=(0, 2500, 5000, 7500, 10000))
 
@@ -428,6 +434,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.CompressedHistograms('hst2'), [expected_cmphst2])
 
   def testCompressedHistogramsWithEmptyHistogram(self):
+    """Tests that empty histograms compressed properly in EventAccumulator."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen, compression_bps=(0, 2500, 5000, 7500, 10000))
 
@@ -481,6 +488,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertAlmostEqual(vals[8].value, 1.0)
 
   def testImages(self):
+    """Tests that 2 images were inserted and can be accessed in EventAccumulator."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     im1 = ea.ImageEvent(
@@ -514,6 +522,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.Images('im2'), [im2])
 
   def testAudio(self):
+    """Tests that 2 audio events were inserted and can be accessed in EventAccumulator."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     snd1 = ea.AudioEvent(
@@ -551,6 +560,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     self.assertEqual(acc.Audio('snd2'), [snd2])
 
   def testKeyError(self):
+    """Tests that KeyError should be raised when accessing non-existing keys."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     acc.Reload()
