@@ -324,8 +324,6 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     chk_libxsmm_err(status, "Link filter");
   }
   if (kind == LIBXSMM_DNN_COMPUTE_KIND_FWD) {
-    chk_libxsmm_err(libxsmm_dnn_zero_buffer(libxsmm_output), "Zero output");
-
     chk_libxsmm_err(libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_input,
                                             LIBXSMM_DNN_REGULAR_INPUT),
                     "Bind input forward");
