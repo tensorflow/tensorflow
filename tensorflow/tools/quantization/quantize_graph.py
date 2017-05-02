@@ -453,7 +453,7 @@ class GraphRewriter(object):
 
   def round_nodes_recursively(self, current_node):
     """The entry point for simple rounding quantization."""
-    if (current_node.name in self.already_visited) and self.already_visited[current_node.name]:
+    if self.already_visited.get(current_node.name, False):
       return
     self.already_visited[current_node.name] = True
     for input_node_name in current_node.input:
@@ -485,7 +485,7 @@ class GraphRewriter(object):
 
   def quantize_nodes_recursively(self, current_node):
     """The entry point for quantizing nodes to eight bit and back."""
-    if (current_node.name in self.already_visited) and self.already_visited[current_node.name]:
+    if self.already_visited.get(current_node.name, False):
       return
     self.already_visited[current_node.name] = True
     for input_node_name in current_node.input:
@@ -494,10 +494,6 @@ class GraphRewriter(object):
       self.quantize_nodes_recursively(input_node)
     nodes_to_quantize = ["Conv2D", "BiasAdd", "MatMul"]
     if any(current_node.op in s for s in nodes_to_quantize):
-      for input_name in current_node.input:
-        input_name = node_name_from_input(input_name)
-        input_node = self.nodes_map[input_name]
-        self.quantize_node(input_node)
       self.quantize_node(current_node)
     else:
       new_node = node_def_pb2.NodeDef()
@@ -507,7 +503,7 @@ class GraphRewriter(object):
   def quantize_node(self, input_node):
     """Handles quantizing a single node."""
     input_name = input_node.name
-    if (current_node.name in self.already_visited) and self.already_visited[current_node.name]:
+    if self.already_quantized.get(input_name, False):
       return
     self.already_quantized[input_name] = True
     original_input_name = input_name + "_original"

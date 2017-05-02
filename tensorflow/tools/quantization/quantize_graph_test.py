@@ -170,16 +170,18 @@ def test_graph(float_graph_def, input_map, output_names, log_graph=False):
   # round_results = run_graph_def(
   #     round_graph_def, input_map,
   #     [output_name + ":0" for output_name in output_names])
-  # assert are_tensors_near(expected, round_results[0], 1.0)
+  # for expected, result in zip(float_results, round_results):
+  #   assert are_tensors_near(expected, round_results[0], 1.0)
   #
   # TODO(petewarden): Add test for "quantize" mode.
   quantize_rewriter = quantize_graph.GraphRewriter(
       float_graph_def, "quantize", quantized_input_range=None)
   quantize_graph_def = quantize_rewriter.rewrite(output_names)
-  round_results = run_graph_def(
+  quantize_results = run_graph_def(
       quantize_graph_def, input_map,
       [output_name + ":0" for output_name in output_names])
-  # assert are_tensors_near(expected, round_results[0], 1.0)
+  for expected, result in zip(float_results, quantize_results):
+    assert are_tensors_near(expected, result, 1.0)
 
   eightbit_rewriter = quantize_graph.GraphRewriter(
       float_graph_def, "eightbit", quantized_input_range=None)
