@@ -275,6 +275,9 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
 
     # 1. Add operations without their inputs.
     for node in graph_def.node:
+      # Check to see if this op's name matches a previously seen op
+      if node.name in name_to_op:
+        raise ValueError('Duplicate name \'%s\' in GraphDef.' % node.name)
       # Set any default attr values that aren't present.
       if node.op not in op_dict:
         raise ValueError('No op named %s in defined operations.' % node.op)
