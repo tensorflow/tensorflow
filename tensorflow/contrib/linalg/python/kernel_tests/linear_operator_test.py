@@ -54,6 +54,9 @@ class LinearOperatorShape(linalg.LinearOperator):
   def _shape_tensor(self):
     return constant_op.constant(self._stored_shape, dtype=dtypes.int32)
 
+  def _apply(self):
+    raise NotImplementedError("Not needed for this test.")
+
 
 class LinearOperatorApplyOnly(linalg.LinearOperator):
   """LinearOperator that simply wraps a [batch] matrix and implements apply."""
