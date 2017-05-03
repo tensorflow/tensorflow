@@ -18,15 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import importlib
+
 import numpy as np
-import scipy.special
-from tensorflow.contrib.distributions.python.ops import bernoulli
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import bernoulli
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
+
+
+def try_import(name):  # pylint: disable=invalid-name
+  module = None
+  try:
+    module = importlib.import_module(name)
+  except ImportError as e:
+    tf_logging.warning("Could not import %s: %s" % (name, str(e)))
+  return module
+
+
+special = try_import("scipy.special")
 
 
 def make_bernoulli(batch_shape, dtype=dtypes.int32):
@@ -54,13 +69,16 @@ class BernoulliTest(test.TestCase):
     with self.test_session():
       self.assertAllClose(logits, dist.logits.eval())
 
+    if not special:
+      return
+
     with self.test_session():
-      self.assertAllClose(scipy.special.expit(logits), dist.probs.eval())
+      self.assertAllClose(special.expit(logits), dist.probs.eval())
 
     p = [0.01, 0.99, 0.42]
     dist = bernoulli.Bernoulli(probs=p)
     with self.test_session():
-      self.assertAllClose(scipy.special.logit(p), dist.logits.eval())
+      self.assertAllClose(special.logit(p), dist.logits.eval())
 
   def testInvalidP(self):
     invalid_ps = [1.01, 2.]
@@ -160,7 +178,9 @@ class BernoulliTest(test.TestCase):
   def testPmfWithP(self):
     p = [[0.2, 0.4], [0.3, 0.6]]
     self._testPmf(probs=p)
-    self._testPmf(logits=scipy.special.logit(p))
+    if not special:
+      return
+    self._testPmf(logits=special.logit(p))
 
   def testBroadcasting(self):
     with self.test_session():

@@ -17,14 +17,15 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from tensorflow.contrib import distributions
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import dirichlet_multinomial
 from tensorflow.python.platform import test
 
-ds = distributions
+
+ds = dirichlet_multinomial
 
 
 class DirichletMultinomialTest(test.TestCase):

@@ -497,6 +497,23 @@ class SessionManagerTest(test.TestCase):
                                    "Init operations did not make model ready"):
         sm2.prepare_session("", init_op=v.initializer)
 
+  def testPrepareSessionDidNotInitLocalVariableList(self):
+    with ops.Graph().as_default():
+      v = variables.Variable(1, name="v")
+      w = variables.Variable(
+          v,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          name="w")
+      with self.test_session():
+        self.assertEqual(False, variables.is_variable_initialized(v).eval())
+        self.assertEqual(False, variables.is_variable_initialized(w).eval())
+      sm2 = session_manager.SessionManager(
+          ready_op=variables.report_uninitialized_variables())
+      with self.assertRaisesRegexp(RuntimeError,
+                                   "Init operations did not make model ready"):
+        sm2.prepare_session("", init_op=[v.initializer])
+
   def testPrepareSessionWithReadyNotReadyForLocal(self):
     with ops.Graph().as_default():
       v = variables.Variable(1, name="v")
