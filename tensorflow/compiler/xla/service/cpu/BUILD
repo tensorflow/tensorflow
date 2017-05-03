@@ -98,6 +98,7 @@ cc_library(
     name = "simple_orc_jit",
     srcs = ["simple_orc_jit.cc"],
     hdrs = ["simple_orc_jit.h"],
+    linkopts = ["-ldl"],
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
@@ -117,7 +118,6 @@ cc_library(
         "@llvm//:support",
         "@llvm//:target",  # fixdeps: keep
     ],
-    linkopts = ["-ldl"],
 )
 
 cc_library(
