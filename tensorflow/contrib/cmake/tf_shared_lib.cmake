@@ -82,6 +82,13 @@ target_link_libraries(tensorflow PRIVATE
     tf_protos_cc
 )
 
+# There is a bug in GCC 5 resulting in undefined reference to a __cpu_model function when
+# linking to the tensorflow library. Adding the following libraries fixes it.
+# See issue on github: https://github.com/tensorflow/tensorflow/issues/9593
+if(CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 5.0)
+    target_link_libraries(tensorflow PRIVATE gcc_s gcc)
+endif()
+
 if(WIN32)
   add_dependencies(tensorflow tensorflow_static)
 endif(WIN32)
