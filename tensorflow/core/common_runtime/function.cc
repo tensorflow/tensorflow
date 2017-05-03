@@ -456,7 +456,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
 void DumpGraph(StringPiece label, const Graph* g) {
   // TODO(zhifengc): Change Graph to record #nodes.
   VLOG(1) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
-          << g->edges().size();
+          << g->num_edges();
   if (VLOG_IS_ON(2)) {
     for (const auto& line : str_util::Split(DebugString(g), '\n')) {
       VLOG(2) << "|| " << line;

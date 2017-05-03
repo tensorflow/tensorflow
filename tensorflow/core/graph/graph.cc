@@ -199,7 +199,7 @@ Status Node::input_edges(std::vector<const Edge*>* input_edges) const {
   return Status::OK();
 }
 
-Status Node::input_node(int idx, const Node** n) const {
+Status Node::input_node(int idx, Node** n) const {
   const Edge* e;
   TF_RETURN_IF_ERROR(input_edge(idx, &e));
   if (e == nullptr) {
@@ -207,6 +207,13 @@ Status Node::input_node(int idx, const Node** n) const {
   } else {
     *n = e->src();
   }
+  return Status::OK();
+}
+
+Status Node::input_node(int idx, const Node** const_n) const {
+  Node* n;
+  TF_RETURN_IF_ERROR(input_node(idx, &n));
+  *const_n = n;
   return Status::OK();
 }
 
@@ -337,7 +344,7 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
   CHECK(source->out_edges_.insert(e).second);
   CHECK(dest->in_edges_.insert(e).second);
   edges_.push_back(e);
-  edge_set_.insert(e);
+  ++num_edges_;
   return e;
 }
 
@@ -347,8 +354,8 @@ void Graph::RemoveEdge(const Edge* e) {
   CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
   CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
   CHECK_EQ(e, edges_[e->id_]);
+  CHECK_GT(num_edges_, 0);
 
-  CHECK_EQ(edge_set_.erase(e), size_t{1});
   edges_[e->id_] = nullptr;
 
   Edge* del = const_cast<Edge*>(e);
@@ -358,6 +365,7 @@ void Graph::RemoveEdge(const Edge* e) {
   del->src_output_ = kControlSlot - 1;
   del->dst_input_ = kControlSlot - 1;
   free_edges_.push_back(del);
+  --num_edges_;
 }
 
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
@@ -373,13 +381,6 @@ Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
       // Ignore duplicate FunctionDefs
       continue;
     }
-    // TODO(skyewm): fix test breakages and reenable this check
-    // const OpDef* op_def;
-    // if (ops_.LookUpOpDef(fdef.signature().name(), &op_def).ok()) {
-    //   return errors::InvalidArgument(
-    //       "Cannot add function '", fdef.signature().name(),
-    //       "' because an op with the same name already exists.");
-    // }
     TF_RETURN_IF_ERROR(ops_.AddFunctionDef(fdef));
   }
   for (const GradientDef& grad : fdef_lib.gradient()) {

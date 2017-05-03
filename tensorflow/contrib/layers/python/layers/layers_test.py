@@ -247,7 +247,7 @@ class ConvolutionTest(test.TestCase):
   def testCreateConv(self):
     height, width = 7, 9
     with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 4))
+      images = np.random.uniform(size=(5, height, width, 4)).astype(np.float32)
       output = layers_lib.convolution2d(images, 32, [3, 3])
       self.assertEqual(output.op.name, 'Conv/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
@@ -259,7 +259,7 @@ class ConvolutionTest(test.TestCase):
   def testCreateConvNCHW(self):
     height, width = 7, 9
     with self.test_session():
-      images = np.random.uniform(size=(5, 4, height, width))
+      images = np.random.uniform(size=(5, 4, height, width)).astype(np.float32)
       output = layers_lib.convolution2d(images, 32, [3, 3], data_format='NCHW')
       self.assertEqual(output.op.name, 'Conv/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 32, height, width])
@@ -2780,7 +2780,7 @@ class RepeatTests(test.TestCase):
   def testRepeat(self):
     height, width = 3, 3
     with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 3))
+      images = np.random.uniform(size=(5, height, width, 3)).astype(np.float32)
       output = _layers.repeat(images, 3, layers_lib.conv2d, 32, [3, 3])
       self.assertEqual(output.op.name, 'Repeat/convolution_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 32])
@@ -2811,15 +2811,6 @@ class SeparableConv2dTest(test.TestCase):
     with self.test_session():
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, dtype=dtypes.float32)
-      output = layers_lib.separable_conv2d(images, 32, [3, 3], 2)
-      self.assertEqual(output.op.name, 'SeparableConv2d/Relu')
-      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
-
-  def testCreateConvFloat64(self):
-    height, width = 3, 3
-    with self.test_session():
-      images = random_ops.random_uniform(
-          (5, height, width, 3), seed=1, dtype=dtypes.float64)
       output = layers_lib.separable_conv2d(images, 32, [3, 3], 2)
       self.assertEqual(output.op.name, 'SeparableConv2d/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])

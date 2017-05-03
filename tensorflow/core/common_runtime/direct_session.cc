@@ -370,6 +370,31 @@ Status DirectSession::Run(const NamedTensorList& inputs,
              &run_metadata);
 }
 
+Status DirectSession::CreateDebuggerState(
+    const DebugOptions& debug_options, int64 session_run_count,
+    int64 executor_step_count, const std::vector<string>& input_names,
+    const std::vector<string>& output_names,
+    const std::vector<string>& target_names,
+    std::unique_ptr<DebuggerStateInterface>* debugger_state) {
+  TF_RETURN_IF_ERROR(
+      DebuggerStateRegistry::CreateState(debug_options, debugger_state));
+  TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
+      debug_options.global_step(), session_run_count, executor_step_count,
+      input_names, output_names, target_names));
+  return Status::OK();
+}
+
+Status DirectSession::DecorateAndPublishGraphForDebug(
+    const DebugOptions& debug_options, Graph* graph, Device* device) {
+  std::unique_ptr<DebugGraphDecoratorInterface> decorator;
+  TF_RETURN_IF_ERROR(
+      DebugGraphDecoratorRegistry::CreateDecorator(debug_options, &decorator));
+
+  TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
+  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph));
+  return Status::OK();
+}
+
 Status DirectSession::Run(const RunOptions& run_options,
                           const NamedTensorList& inputs,
                           const std::vector<string>& output_names,
@@ -402,27 +427,21 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
-  RunStateArgs run_state_args;
+  RunStateArgs run_state_args(run_options.debug_options());
 
   Executor::Args args;
   args.step_id = step_id_counter_.fetch_add(1);
-
-  // EXPERIMENTAL: Options that allow the client to insert nodes into partition
-  // graphs for debugging.
-  if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
-    run_state_args.debugger_state =
-        DebuggerStateRegistry::CreateState(run_options.debug_options());
-  }
 
   TF_RETURN_IF_ERROR(
       GetOrCreateExecutors(pool, input_tensor_names, output_names, target_nodes,
                            &executors_and_keys, &run_state_args));
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
-  if (run_state_args.debugger_state) {
-    TF_RETURN_IF_ERROR(run_state_args.debugger_state->PublishDebugMetadata(
-        run_options.debug_options().global_step(), args.step_id,
-        executor_step_count, input_tensor_names, output_names, target_nodes));
+  std::unique_ptr<DebuggerStateInterface> debugger_state;
+  if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
+    TF_RETURN_IF_ERROR(CreateDebuggerState(
+        run_options.debug_options(), args.step_id, executor_step_count,
+        input_tensor_names, output_names, target_nodes, &debugger_state));
   }
 
   // Configure a call frame for the step, which we use to feed and
@@ -629,7 +648,9 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
-  RunStateArgs run_state_args;
+  // TODO(cais): TFDBG support for partial runs.
+  DebugOptions debug_options;
+  RunStateArgs run_state_args(debug_options);
   run_state_args.is_partial_run = true;
   TF_RETURN_IF_ERROR(GetOrCreateExecutors(pool, input_names, output_names,
                                           target_nodes, &executors_and_keys,
@@ -720,16 +741,21 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
       if (it == run_state->pending_inputs.end()) {
         return errors::InvalidArgument(
             "The feed ", input.first,
-            " has already been fed or was not specified in partial_run_setup.");
+            " was not specified in partial_run_setup.");
+      } else if (it->second) {
+        return errors::InvalidArgument("The feed ", input.first,
+                                       " has already been fed.");
       }
     }
     // Check that this is a new set of fetches that are still pending.
     for (const auto& output : output_names) {
       auto it = run_state->pending_outputs.find(output);
       if (it == run_state->pending_outputs.end()) {
+        return errors::InvalidArgument(
+            "The fetch ", output, " was not specified in partial_run_setup.");
+      } else if (it->second) {
         return errors::InvalidArgument("The fetch ", output,
-                                       " has already been fetched or was not "
-                                       "specified in partial_run_setup.");
+                                       " has already been fetched.");
       }
     }
   }
@@ -764,14 +790,15 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
                        << run_state->status;
         }
       }
-      for (const auto& it : inputs) {
-        run_state->pending_inputs.erase(it.first);
+      for (const auto& input : inputs) {
+        auto it = run_state->pending_inputs.find(input.first);
+        it->second = true;
       }
       for (const auto& name : output_names) {
-        run_state->pending_outputs.erase(name);
+        auto it = run_state->pending_outputs.find(name);
+        it->second = true;
       }
-      done = (run_state->pending_inputs.size() == 0 &&
-              run_state->pending_outputs.size() == 0);
+      done = run_state->PendingDone();
     }
     if (done) {
       WaitForNotification(run_state, cancellation_manager_,
@@ -900,11 +927,13 @@ Status DirectSession::CheckFetch(const NamedTensorList& feeds,
   std::unordered_set<TensorId, TensorId::Hasher> pending_feeds;
   {
     mutex_lock l(executor_lock_);
-    for (const string& feed : run_state->pending_inputs) {
-      TensorId id(ParseTensorName(feed));
+    for (const auto& input : run_state->pending_inputs) {
+      // Skip if the feed has already been fed.
+      if (input.second) continue;
+      TensorId id(ParseTensorName(input.first));
       auto it = name_to_node->find(id.first);
       if (it == name_to_node->end()) {
-        return errors::NotFound("Feed ", feed, ": not found");
+        return errors::NotFound("Feed ", input.first, ": not found");
       }
       pending_feeds.insert(id);
     }
@@ -952,14 +981,15 @@ Status DirectSession::GetOrCreateExecutors(
     thread::ThreadPool* pool, gtl::ArraySlice<string> inputs,
     gtl::ArraySlice<string> outputs, gtl::ArraySlice<string> target_nodes,
     ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args) {
-  string debug_tensor_watches_summary;
   int64 handle_name_counter_value = -1;
   if (LogMemory::IsEnabled() || run_state_args->is_partial_run) {
     handle_name_counter_value = handle_name_counter_.fetch_add(1);
   }
-  if (run_state_args->debugger_state) {
-    debug_tensor_watches_summary =
-        run_state_args->debugger_state->SummarizeDebugTensorWatches();
+
+  string debug_tensor_watches_summary;
+  if (!run_state_args->debug_options.debug_tensor_watch_opts().empty()) {
+    debug_tensor_watches_summary = SummarizeDebugTensorWatches(
+        run_state_args->debug_options.debug_tensor_watch_opts());
   }
 
   // Fast lookup path, no sorting.
@@ -1024,6 +1054,9 @@ Status DirectSession::GetOrCreateExecutors(
   options.fetch_endpoints = outputs_sorted;
   options.target_nodes = tn_sorted;
   options.use_function_convention = !run_state_args->is_partial_run;
+  if (!run_state_args->debug_options.debug_tensor_watch_opts().empty()) {
+    options.debug_options = run_state_args->debug_options;
+  }
 
   std::shared_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
 
@@ -1099,10 +1132,10 @@ Status DirectSession::GetOrCreateExecutors(
 
     optimizer.Optimize(lib, options_.env, device, &iter->second);
 
-    // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph
-    if (run_state_args->debugger_state) {
-      TF_RETURN_IF_ERROR(run_state_args->debugger_state->DecorateGraphForDebug(
-          partition_graph.get(), params.device));
+    // EXPERIMENTAL: tfdbg inserts debug nodes in the graph.
+    if (!options.debug_options.debug_tensor_watch_opts().empty()) {
+      TF_RETURN_IF_ERROR(DecorateAndPublishGraphForDebug(
+          options.debug_options, partition_graph.get(), params.device));
     }
 
     TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device->device_type()),
@@ -1351,10 +1384,10 @@ DirectSession::RunState::RunState(
       }) {
   // Initially all the feeds and fetches are pending.
   for (auto& name : pending_input_names) {
-    pending_inputs.emplace(name);
+    pending_inputs[name] = false;
   }
   for (auto& name : pending_output_names) {
-    pending_outputs.emplace(name);
+    pending_outputs[name] = false;
   }
 }
 
@@ -1370,6 +1403,16 @@ DirectSession::RunState::~RunState() {
     }
     rendez->Unref();
   }
+}
+
+bool DirectSession::RunState::PendingDone() const {
+  for (const auto& it : pending_inputs) {
+    if (!it.second) return false;
+  }
+  for (const auto& it : pending_outputs) {
+    if (!it.second) return false;
+  }
+  return true;
 }
 
 void DirectSession::WaitForNotification(RunState* run_state,

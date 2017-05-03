@@ -13,8 +13,8 @@ of samples in the batch and `d1` ... `dN` are the remaining dimensions.
 It is common, when training with multiple loss functions, to adjust the relative
 strengths of individual losses. This is performed by rescaling the losses via
 a `weight` parameter passed to the loss functions. For example, if we were
-training with both log_loss and sum_of_squares_loss, and we wished that the
-log_loss penalty be twice as severe as the sum_of_squares_loss, we would
+training with both log_loss and mean_square_error, and we wished that the
+log_loss penalty be twice as severe as the mean_square_error, we would
 implement this as:
 
 ```python
@@ -22,7 +22,7 @@ implement this as:
   tf.contrib.losses.log(predictions, labels, weight=2.0)
 
   # Uses default weight of 1.0
-  tf.contrib.losses.sum_of_squares(predictions, labels)
+  tf.contrib.losses.mean_square_error(predictions, labels)
 
   # All the losses are collected into the `GraphKeys.LOSSES` collection.
   losses = tf.get_collection(tf.GraphKeys.LOSSES)
@@ -74,7 +74,7 @@ these predictions.
   predictions = MyModelPredictions(images)
 
   weight = tf.cast(tf.greater(depths, 0), tf.float32)
-  loss  = tf.contrib.losses.sum_of_squares(predictions, depths, weight)
+  loss  = tf.contrib.losses.mean_square_error(predictions, depths, weight)
 ```
 
 Note that when using weights for the losses, the final average is computed
@@ -100,7 +100,7 @@ weighted average over the individual prediction errors:
 
   weight = MyComplicatedWeightingFunction(labels)
   weight = tf.div(weight, tf.size(weight))
-  loss = tf.contrib.losses.sum_of_squares(predictions, depths, weight)
+  loss = tf.contrib.losses.mean_square_error(predictions, depths, weight)
 ```
 
 @{tf.contrib.losses.absolute_difference}
@@ -117,10 +117,5 @@ weighted average over the individual prediction errors:
 @{tf.contrib.losses.sigmoid_cross_entropy}
 @{tf.contrib.losses.softmax_cross_entropy}
 @{tf.contrib.losses.sparse_softmax_cross_entropy}
-
-The following are deprecated in favor of `mean_pairwise_squared_error` and
-`mean_squared_error`.
-@{tf.contrib.losses.sum_of_pairwise_squares}
-@{tf.contrib.losses.sum_of_squares}
 
 

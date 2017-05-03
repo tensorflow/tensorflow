@@ -424,7 +424,7 @@ TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
   n8 = NoOp() @ n4
   n9 = Identity[T=float](n3) @ n8
   n10 = Identity[T=float](n2) @ n8
-  n11 = NoOp() @ n10, n9
+  n11 = NoOp() @ n9, n10
   n5 = Mul[T=float](n2, n2) @ n11
   n6 = Add[T=float](n4, n5)
 }
@@ -500,8 +500,8 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   OptimizeGraph(lib_, &g);
   const char* e2 = R"P(
 (n2:float, n3:float) -> (n9:float) {
-  n11 = Const[dtype=int32, value=Tensor<type: int32 shape: [0] values: >]()
   n10 = Const[dtype=float, value=Tensor<type: float shape: [] values: 2>]()
+  n11 = Const[dtype=int32, value=Tensor<type: int32 shape: [0] values: >]()
   n6 = Shape[T=float, out_type=int32](n2)
   n5 = Mul[T=float](n3, n10)
   n7 = BroadcastGradientArgs[T=int32](n6, n11)
@@ -614,10 +614,10 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   n17 = Sum[T=float, Tidx=int32, keep_dims=false](n14, n16)
   n19 = SymbolicGradient[Tin={float, int32, float}, Tout={float, int32}, f=Sum[T=float, Tidx=int32, keep_dims=false]](n14, n16, n26)
   n21 = SymbolicGradient[Tin={float, float, float}, Tout={float, float}, f=Add[T=float]](n24, n25, n19)
-  n28 = Identity[T=float](n21:1)
   n27 = Identity[T=float](n21)
-  n6 = Identity[T=float](n28)
+  n28 = Identity[T=float](n21:1)
   n8 = Identity[T=float](n27)
+  n6 = Identity[T=float](n28)
 }
 )P";
   EXPECT_EQ(e1, DebugString(g.get()));
@@ -626,8 +626,8 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   const char* e2 = R"P(
 (n4:float, n3:float) -> (n25:float, n23:float) {
   n2 = Const[dtype=float, value=Tensor<type: float shape: [] values: 1>]()
-  n8 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
   n7 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 1>]()
+  n8 = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
   n19 = Shape[T=float, out_type=int32](n3)
   n9 = Add[T=float](n4, n3)
   n20 = Shape[T=float, out_type=int32](n4)
@@ -641,10 +641,10 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
   n16 = Reshape[T=float, Tshape=int32](n2, n15)
   n17 = Div[T=int32](n14, n15)
   n18 = Tile[T=float, Tmultiples=int32](n16, n17)
-  n24 = Sum[T=float, Tidx=int32, keep_dims=false](n18, n21)
   n22 = Sum[T=float, Tidx=int32, keep_dims=false](n18, n21:1)
-  n25 = Reshape[T=float, Tshape=int32](n24, n20)
+  n24 = Sum[T=float, Tidx=int32, keep_dims=false](n18, n21)
   n23 = Reshape[T=float, Tshape=int32](n22, n19)
+  n25 = Reshape[T=float, Tshape=int32](n24, n20)
 }
 )P";
   EXPECT_EQ(e2, DebugString(g.get()));

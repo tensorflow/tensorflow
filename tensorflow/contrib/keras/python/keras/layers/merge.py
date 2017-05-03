@@ -87,6 +87,7 @@ class _Merge(Layer):
       raise ValueError('A merge layer should be called '
                        'on a list of at least 2 inputs. '
                        'Got ' + str(len(input_shape)) + ' inputs.')
+    input_shape = [tensor_shape.TensorShape(s).as_list() for s in input_shape]
     batch_sizes = [s[0] for s in input_shape if s is not None]
     batch_sizes = set(batch_sizes)
     batch_sizes -= set([None])

@@ -143,7 +143,7 @@ class _StreamingModelPortProcessor(_OptimizableVariable):
     return self._v
 
   def update_op(self, optimizer, g):
-    return self._v
+    return g
 
 
 def _get_processor(v):

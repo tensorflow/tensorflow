@@ -882,7 +882,7 @@ def index_table_from_file(vocabulary_file=None,
     name: A name for this op (optional).
 
   Returns:
-    The lookup table to map a string `Tensor` to index `int64` `Tensor`.
+    The lookup table to map a `key_dtype` `Tensor` to index `int64` `Tensor`.
 
   Raises:
     ValueError: If `vocabulary_file` is not set.

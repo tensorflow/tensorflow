@@ -19,6 +19,7 @@ package(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
@@ -48,12 +49,12 @@ cc_library(
 cc_library(
     name = "xla_gpu_jit",
     visibility = [":friends"],
-    deps = [
+    deps = if_cuda([
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-    ],
+    ]),
     alwayslink = 1,
 )
 
@@ -176,21 +177,32 @@ cc_library(
 )
 
 cc_library(
+    name = "graph_to_functiondef",
+    srcs = ["graph_to_functiondef.cc"],
+    hdrs = ["graph_to_functiondef.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_launch_ops_pass.cc",
         "encapsulate_subgraphs_pass.cc",
-        "graph_to_functiondef.cc",
         "mark_for_compilation_pass.cc",
     ],
     hdrs = [
         "build_xla_launch_ops_pass.h",
         "encapsulate_subgraphs_pass.h",
-        "graph_to_functiondef.h",
         "mark_for_compilation_pass.h",
     ],
     deps = [
         ":common",
+        ":graph_to_functiondef",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
@@ -221,6 +233,7 @@ cc_test(
     deps = [
         ":common",
         ":compilation_passes",
+        ":graph_to_functiondef",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

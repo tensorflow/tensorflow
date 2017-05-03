@@ -21,7 +21,9 @@ import numpy as np
 from scipy import stats
 from tensorflow.contrib.distributions.python.ops import poisson as poisson_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -64,17 +66,18 @@ class PoissonTest(test.TestCase):
     with self.test_session():
       batch_size = 6
       lam = constant_op.constant([3.0] * batch_size)
-      x = [2.5, 3.2, 4.3, 5.1, 6., 7.]
+      x = array_ops.placeholder(dtypes.float32, shape=[6])
+      feed_dict = {x: [2.5, 3.2, 4.3, 5.1, 6., 7.]}
       poisson = poisson_lib.Poisson(rate=lam, validate_args=True)
 
       # Non-integer
       with self.assertRaisesOpError("cannot contain fractional components"):
         log_pmf = poisson.log_prob(x)
-        log_pmf.eval()
+        log_pmf.eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x >= 0"):
         log_pmf = poisson.log_prob([-1.])
-        log_pmf.eval()
+        log_pmf.eval(feed_dict=feed_dict)
 
       poisson = poisson_lib.Poisson(rate=lam, validate_args=False)
       log_pmf = poisson.log_prob(x)

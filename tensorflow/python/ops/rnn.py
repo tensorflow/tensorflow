@@ -288,11 +288,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
                               swap_memory=False, time_major=False, scope=None):
   """Creates a dynamic version of bidirectional recurrent neural network.
 
-  Similar to the unidirectional case above (rnn) but takes input and builds
-  independent forward and backward RNNs. The input_size of forward and
-  backward cell must match. The initial state for both directions is zero by
-  default (but can be set optionally) and no intermediate states are ever
-  returned -- the network is fully unrolled for the given (passed in)
+  Takes input and builds independent forward and backward RNNs. The input_size
+  of forward and backward cell must match. The initial state for both directions
+  is zero by default (but can be set optionally) and no intermediate states are
+  ever returned -- the network is fully unrolled for the given (passed in)
   length(s) of the sequence(s) or completely unrolled if length(s) is not
   given.
 
@@ -419,12 +418,10 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
                 time_major=False, scope=None):
   """Creates a recurrent neural network specified by RNNCell `cell`.
 
-  This function is functionally identical to the function `rnn` above, but
-  performs fully dynamic unrolling of `inputs`.
+  Performs fully dynamic unrolling of `inputs`.
 
-  Unlike `rnn`, the input `inputs` is not a Python list of `Tensors`, one for
-  each frame.  Instead, `inputs` may be a single `Tensor` where
-  the maximum time is either the first or second dimension (see the parameter
+  `Inputs` may be a single `Tensor` where the maximum time is either the first
+  or second dimension (see the parameter
   `time_major`).  Alternatively, it may be a (possibly nested) tuple of
   Tensors, each of them having matching batch and time dimensions.
   The corresponding output is either a single `Tensor` having the same number
@@ -433,7 +430,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
   The parameter `sequence_length` is optional and is used to copy-through state
   and zero-out outputs when past a batch element's sequence length. So it's more
-  for correctness than performance, unlike in rnn().
+  for correctness than performance.
 
   Args:
     cell: An instance of RNNCell.

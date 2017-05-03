@@ -80,6 +80,8 @@ cc_library(
         ":hlo_query",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -195,7 +197,6 @@ cc_library(
     deps = [
         ":hlo",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
@@ -624,6 +625,7 @@ cc_library(
         "buffer_liveness.h",
     ],
     deps = [
+        ":call_graph",
         ":hlo",
         ":hlo_ordering",
         ":liveness_util",
@@ -747,6 +749,7 @@ cc_library(
         "hlo_ordering.h",
     ],
     deps = [
+        ":call_graph",
         ":heap_simulator",
         ":hlo",
         ":logical_buffer",
@@ -858,7 +861,9 @@ cc_library(
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -1254,6 +1259,7 @@ cc_library(
         ":hlo_cost_analysis",
         ":hlo_dce",
         ":hlo_ordering",
+        ":liveness_util",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -1271,6 +1277,7 @@ cc_test(
     deps = [
         ":cpu_plugin",
         ":hlo",
+        ":hlo_matchers",
         ":hlo_ordering",
         ":hlo_rematerialization",
         "//tensorflow/compiler/xla:shape_util",
@@ -1297,6 +1304,7 @@ cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -1383,6 +1391,7 @@ cc_test(
         ":cpu_plugin",
         ":hlo",
         ":hlo_cse",
+        ":hlo_matchers",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
@@ -1408,6 +1417,27 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "hlo_constant_folding_test",
+    srcs = ["hlo_constant_folding_test.cc"],
+    deps = [
+        ":cpu_plugin",
+        ":hlo",
+        ":hlo_constant_folding",
+        ":hlo_matchers",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
     ],
 )
 

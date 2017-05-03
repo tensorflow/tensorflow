@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -374,8 +375,12 @@ class HloInstruction {
 
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
-  // complete.
-  Status Accept(DfsHloVisitor* visitor, bool call_finish_visit = true);
+  // complete. If ignore_control_predecessors is true, instructions only
+  // reachable via control dependencies will not be visited, and the postorder
+  // will not take control dependencies into account. It is as if the control
+  // dependencies didn't exist in the graph at all.
+  Status Accept(DfsHloVisitor* visitor, bool call_finish_visit = true,
+                bool ignore_control_predecessors = false);
 
   // Same as Accept() above, but the order of operand and control predecessor
   // visitation is determined by the given operand order; if compare(A, B) ==
@@ -484,7 +489,10 @@ class HloInstruction {
   string SignatureString() const;
 
   // Returns a debugging string that represents this instruction.
-  string ToString(bool compact_operands = false) const;
+  string ToString(bool compact_operands = false,
+                  bool include_metadata = true) const;
+
+  string ToStringNoMetadata() const { return ToString(false, false); }
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;
@@ -493,7 +501,9 @@ class HloInstruction {
   // or "elementwise".
   string ToCategory() const;
 
-  // Returns the string concatenation of parent name and this instructions name.
+  // Returns the string concatenation of parent name and this instructions
+  // name. This name is guaranteed to be unique among all instructions in the
+  // HloModule.
   string FullyQualifiedName() const;
 
   // Returns a logging instruction, if the output of this instruction is logged.
@@ -717,8 +727,9 @@ class HloInstruction {
   // this instruction.
   const string& name() const { return name_; }
 
-  // Sets the string identifier for this instruction.
-  void set_name(const string& name) { name_ = name; }
+  // Use the given NameUniquer to select a unique name for the instruction based
+  // on the instruction's existing name.
+  void UniquifyName(NameUniquer* name_uniquer);
 
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
@@ -782,7 +793,8 @@ class HloInstruction {
   // Inner DFS traversal function -- this function being called (rather than
   // Accept above) allows us to distinguish the root of the traversal.
   Status AcceptInternal(DfsHloVisitor* visitor,
-                        const CompareFunction* operand_order);
+                        const CompareFunction* operand_order,
+                        bool ignore_control_predecessors);
 
   // CHECKs various invariants of a fusion instruction.
   void CheckFusionInstruction() const;

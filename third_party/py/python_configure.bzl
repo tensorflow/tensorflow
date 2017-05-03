@@ -6,11 +6,13 @@
   * `NUMPY_INCLUDE_PATH`: Location of Numpy libraries.
   * `PYTHON_BIN_PATH`: location of python binary.
   * `PYTHON_INCLUDE_PATH`: Location of python binaries.
+  * `PYTHON_LIB_PATH`: Location of python libraries.
 """
 
 _NUMPY_INCLUDE_PATH = "NUMPY_INCLUDE_PATH"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 _PYTHON_INCLUDE_PATH = "PYTHON_INCLUDE_PATH"
+_PYTHON_LIB_PATH = "PYTHON_LIB_PATH"
 
 
 def _tpl(repository_ctx, tpl, substitutions={}, out=None):
@@ -110,8 +112,17 @@ def _genrule(src_dir, genrule_name, command, outs):
       '    cmd = """\n' +
       command +
       '    """,\n' +
+      '    visibility = ["//visibility:private"],' +
       ')\n'
   )
+
+
+def _check_python_lib(repository_ctx, python_lib):
+  """Checks the python lib path."""
+  cmd = 'test -d "%s" -a -x "%s"' % (python_lib, python_lib)
+  result = repository_ctx.execute(["bash", "-c", cmd])
+  if result.return_code == 1:
+    _python_configure_fail("Invalid python library path:  %s" % python_lib)
 
 
 def _check_python_bin(repository_ctx, python_bin):
@@ -147,37 +158,71 @@ def _get_numpy_include(repository_ctx, python_bin):
   return result.stdout.splitlines()[0]
 
 
-def _create_python_repository(repository_ctx):
+def _create_local_python_repository(repository_ctx):
   """Creates the repository containing files set up to build with Python."""
   python_include = None
   numpy_include = None
+  empty_config = False
   # If local checks were requested, the python and numpy include will be auto
   # detected on the host config (using _PYTHON_BIN_PATH).
   if repository_ctx.attr.local_checks:
     python_bin = _get_env_var(repository_ctx, _PYTHON_BIN_PATH)
     _check_python_bin(repository_ctx, python_bin)
-    python_include = _get_python_include(repository_ctx, python_bin)
-    numpy_include = _get_numpy_include(repository_ctx, python_bin) + '/numpy'
+    python_lib = _get_env_var(repository_ctx, _PYTHON_LIB_PATH, '')
+    if python_lib == '':
+      # If we could not find the python lib we will create an empty config that
+      # will allow non-compilation targets to build correctly (e.g., smoke
+      # tests).
+      empty_config = True
+      _python_configure_warning('PYTHON_LIB_PATH was not set;' +
+                                ' python setup cannot complete successfully.' +
+                                ' Please run ./configure.')
+    else:
+      _check_python_lib(repository_ctx, python_lib)
+      python_include = _get_python_include(repository_ctx, python_bin)
+      numpy_include = _get_numpy_include(repository_ctx, python_bin) + '/numpy'
   else:
     # Otherwise, we assume user provides all paths (via ENV or attrs)
     python_include = _get_env_var(repository_ctx, _PYTHON_INCLUDE_PATH,
                                   repository_ctx.attr.python_include)
     numpy_include = _get_env_var(repository_ctx, _NUMPY_INCLUDE_PATH,
                                  repository_ctx.attr.numpy_include) + '/numpy'
+  if empty_config:
+    _tpl(repository_ctx, "BUILD", {
+        "%{PYTHON_INCLUDE_GENRULE}": ('filegroup(\n' +
+                                      '    name = "python_include",\n' +
+                                      '    srcs = [],\n' +
+                                      ')\n'),
+        "%{NUMPY_INCLUDE_GENRULE}": ('filegroup(\n' +
+                                      '    name = "numpy_include",\n' +
+                                      '    srcs = [],\n' +
+                                      ')\n'),
+    })
+  else:
+    python_include_rule = _symlink_genrule_for_dir(
+        repository_ctx, python_include, 'python_include', 'python_include')
+    numpy_include_rule = _symlink_genrule_for_dir(
+        repository_ctx, numpy_include, 'numpy_include/numpy', 'numpy_include')
+    _tpl(repository_ctx, "BUILD", {
+        "%{PYTHON_INCLUDE_GENRULE}": python_include_rule,
+        "%{NUMPY_INCLUDE_GENRULE}": numpy_include_rule,
+    })
 
-  python_include_rule = _symlink_genrule_for_dir(
-      repository_ctx, python_include, 'python_include', 'python_include')
-  numpy_include_rule = _symlink_genrule_for_dir(
-      repository_ctx, numpy_include, 'numpy_include/numpy', 'numpy_include')
-  _tpl(repository_ctx, "BUILD", {
-      "%{PYTHON_INCLUDE_GENRULE}": python_include_rule,
-      "%{NUMPY_INCLUDE_GENRULE}": numpy_include_rule,
-  })
+
+def _create_remote_python_repository(repository_ctx):
+  """Creates pointers to a remotely configured repo set up to build with Python.
+  """
+  _tpl(repository_ctx, "remote.BUILD", {
+      "%{REMOTE_PYTHON_REPO}": repository_ctx.attr.remote_config_repo,
+  }, "BUILD")
 
 
 def _python_autoconf_impl(repository_ctx):
   """Implementation of the python_autoconf repository rule."""
-  _create_python_repository(repository_ctx)
+  if repository_ctx.attr.remote_config_repo != "":
+    _create_remote_python_repository(repository_ctx)
+  else:
+    _create_local_python_repository(repository_ctx)
 
 
 python_configure = repository_rule(
@@ -186,10 +231,12 @@ python_configure = repository_rule(
         "local_checks": attr.bool(mandatory = False, default = True),
         "python_include": attr.string(mandatory = False),
         "numpy_include": attr.string(mandatory = False),
+        "remote_config_repo": attr.string(mandatory = False, default =""),
     },
     environ = [
         _PYTHON_BIN_PATH,
         _PYTHON_INCLUDE_PATH,
+        _PYTHON_LIB_PATH,
         _NUMPY_INCLUDE_PATH,
     ],
 )

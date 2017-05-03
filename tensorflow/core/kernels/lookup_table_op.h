@@ -51,40 +51,52 @@ class LookupTableOp : public OpKernel {
   // ctx is not owned by this function.
   void Compute(OpKernelContext* ctx) override {
     mutex_lock l(mu_);
+
     if (!table_handle_set_) {
       OP_REQUIRES_OK(ctx, cinfo_.Init(ctx->resource_manager(), def(),
                                       use_node_name_sharing_));
-      auto creator = [ctx, this](lookup::LookupInterface** ret) {
-        lookup::LookupInterface* container = new Container(ctx, this);
-        if (!ctx->status().ok()) {
-          container->Unref();
-          return ctx->status();
-        }
-        if (ctx->track_allocations()) {
-          ctx->record_device_persistent_memory_allocation(
-              container->MemoryUsed());
-        }
-        *ret = container;
-        return Status::OK();
-      };
-
-      lookup::LookupInterface* table = nullptr;
-      OP_REQUIRES_OK(
-          ctx, cinfo_.resource_manager()
-                   ->template LookupOrCreate<lookup::LookupInterface>(
-                       cinfo_.container(), cinfo_.name(), &table, creator));
-      core::ScopedUnref unref_me(table);
-
-      OP_REQUIRES_OK(ctx, lookup::CheckTableDataTypes(
-                              *table, DataTypeToEnum<key_dtype>::v(),
-                              DataTypeToEnum<value_dtype>::v(), cinfo_.name()));
-
-      auto h = table_handle_.AccessTensor(ctx)->template flat<string>();
-      h(0) = cinfo_.container();
-      h(1) = cinfo_.name();
-      table_handle_set_ = true;
     }
-    ctx->set_output_ref(0, &mu_, table_handle_.AccessTensor(ctx));
+
+    auto creator = [ctx, this](lookup::LookupInterface** ret) {
+      lookup::LookupInterface* container = new Container(ctx, this);
+      if (!ctx->status().ok()) {
+        container->Unref();
+        return ctx->status();
+      }
+      if (ctx->track_allocations()) {
+        ctx->record_host_persistent_memory_allocation(
+            container->MemoryUsed() + table_handle_.AllocatedBytes());
+      }
+      *ret = container;
+      return Status::OK();
+    };
+
+    lookup::LookupInterface* table = nullptr;
+    OP_REQUIRES_OK(ctx,
+                   cinfo_.resource_manager()
+                       ->template LookupOrCreate<lookup::LookupInterface>(
+                           cinfo_.container(), cinfo_.name(), &table, creator));
+    core::ScopedUnref unref_me(table);
+
+    OP_REQUIRES_OK(ctx, lookup::CheckTableDataTypes(
+                            *table, DataTypeToEnum<key_dtype>::v(),
+                            DataTypeToEnum<value_dtype>::v(), cinfo_.name()));
+
+    if (ctx->expected_output_dtype(0) == DT_RESOURCE) {
+      Tensor* handle;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
+      handle->scalar<ResourceHandle>()() =
+          MakeResourceHandle<lookup::LookupInterface>(ctx, cinfo_.container(),
+                                                      cinfo_.name());
+    } else {
+      if (!table_handle_set_) {
+        auto h = table_handle_.AccessTensor(ctx)->template flat<string>();
+        h(0) = cinfo_.container();
+        h(1) = cinfo_.name();
+      }
+      ctx->set_output_ref(0, &mu_, table_handle_.AccessTensor(ctx));
+    }
+    table_handle_set_ = true;
   }
 
   ~LookupTableOp() override {
@@ -211,6 +223,15 @@ class HashTable : public InitializableLookupTable {
           default_val);
     }
     return Status::OK();
+  }
+
+  int64 MemoryUsed() const override {
+    if (table_) {
+      const int64 num_elements = table_->size();
+      return num_elements * (sizeof(K) + sizeof(V));
+    } else {
+      return 0;
+    }
   }
 
  private:

@@ -402,7 +402,7 @@ def dynamic_rnn_swap_memory_benchmark(batch_size, max_time, num_units):
 
 
 def rnn_long_sequence_benchmark(batch_size, seqlen, num_units, dynamic,
-                                swap_memory):
+                                swap_memory, nn):
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
@@ -415,7 +415,7 @@ def rnn_long_sequence_benchmark(batch_size, seqlen, num_units, dynamic,
   ]
   inputs = np.dstack(inputs_list).transpose([0, 2, 1])  # batch x time x depth
 
-  for _ in range(5):
+  for _ in range(nn):
     if dynamic:
       with session.Session(config=config, graph=ops_lib.Graph()) as sess:
         inputs_t = variables_lib.Variable(inputs, trainable=False).value()
@@ -548,6 +548,23 @@ class BenchmarkRNN(test.Benchmark):
                 iters=20,
                 wall_time=t_dt)
 
+  def _benchmarkDynamicLSTMMemorySwapLongSeq(self):
+    """The memory swapping test for the SOSP submission."""
+    print("Calculation: Long LSTM Sequence")
+    print("batch \t len \t units \t dynamic \t elapsed_t \t elapsed_t/len")
+    batch_size = 512
+    seqlen = 800
+    num_units = 512
+    dynamic = True
+    swap_memory = True
+    # Some warming up.
+    if swap_memory:
+      rnn_long_sequence_benchmark(batch_size, seqlen, num_units,
+                                  dynamic, swap_memory, 2)
+    # Measure the performance.
+    for slen in xrange(100, 1100, 100):
+      rnn_long_sequence_benchmark(batch_size, slen, num_units, dynamic,
+                                  swap_memory, 3)
 
 if __name__ == "__main__":
   test.main()

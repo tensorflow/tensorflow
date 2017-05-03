@@ -20,7 +20,6 @@ common machine learning algorithms.
 *   @{tf.contrib.layers.flatten}
 *   @{tf.contrib.layers.fully_connected}
 *   @{tf.contrib.layers.layer_norm}
-*   @{tf.contrib.layers.linear}
 *   @{tf.contrib.layers.max_pool2d}
 *   @{tf.contrib.layers.one_hot_encoding}
 *   @{tf.nn.relu}

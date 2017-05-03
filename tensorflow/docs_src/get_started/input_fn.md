@@ -12,7 +12,7 @@ When training a neural network using tf.contrib.learn, it's possible to pass
 your feature and target data directly into your `fit`, `evaluate`, or `predict`
 operations. Here's an example taken from the @{$tflearn$tf.contrib.learn quickstart tutorial}:
 
-```py
+```python
 training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
     filename=IRIS_TRAINING, target_dtype=np.int, features_dtype=np.float32)
 test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
