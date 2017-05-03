@@ -29,5 +29,6 @@ if [[ -z "$patchelf_location" ]]; then
   ./configure --prefix=/usr/local
   make
   sudo make install
+  rm -rf patchelf-0.9*
 fi
 cd ..

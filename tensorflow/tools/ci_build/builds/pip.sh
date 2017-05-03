@@ -58,7 +58,7 @@ str_strip () {
 # Fixed naming patterns for wheel (.whl) files given different python versions
 if [[ $(uname) == "Linux" ]]; then
   declare -A WHL_TAGS
-  WHL_TAGS=(["2.7"]="cp27-none" ["3.4"]="cp34-cp34m" ["3.5"]="cp35-cp35m")
+  WHL_TAGS=(["2.7"]="cp27-none" ["3.4"]="cp34-cp34m" ["3.5"]="cp35-cp35m" ["3.6"]="cp36-cp36m")
 fi
 
 
@@ -215,6 +215,7 @@ if [[ $(uname) == "Linux" ]]; then
   AUDITED_WHL_NAME="${WHL_DIR}/$(echo ${WHL_BASE_NAME} | sed "s/linux/manylinux1/")"
 
   # Repair the wheels for cpu manylinux1
+  # Python 3.6 wheels cannot be repaired by auditwheel due to .so file in purelib.
   if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
     echo "auditwheel repairing ${WHL_PATH}"
     auditwheel repair -w ${WHL_DIR} ${WHL_PATH}
@@ -254,8 +255,14 @@ if [[ -z $(which virtualenv) ]]; then
   die "FAILED: virtualenv not available on path"
 fi
 
-virtualenv --system-site-packages -p "${PYTHON_BIN_PATH}" "${VENV_DIR}" || \
+if [[ ${PY_MAJOR_MINOR_VER} != "3.6" ]]; then
+  virtualenv --system-site-packages -p "${PYTHON_BIN_PATH}" "${VENV_DIR}" || \
     die "FAILED: Unable to create virtualenv"
+else
+  "${PYTHON_BIN_PATH}" -m virtualenv \
+    --system-site-packages -p "${PYTHON_BIN_PATH}" "${VENV_DIR}" || \
+    die "FAILED: Unable to create virtualenv"
+fi
 
 source "${VENV_DIR}/bin/activate" || \
     die "FAILED: Unable to activate virtualenv"
