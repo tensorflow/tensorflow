@@ -85,7 +85,7 @@ Status GraphProperties::InferStatically() {
         }
       }
       if (qctx->set_output_handle_dtype(0, queue_type) ||
-          qctx->set_output_handle_shape(0, queue_shp)) {
+          qctx->MergeOutputHandleShape(0, queue_shp)) {
         new_shapes.push(qnode);
       }
     }
