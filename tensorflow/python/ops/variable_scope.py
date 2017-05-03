@@ -280,6 +280,17 @@ class _VariableStore(object):
       raise ValueError(
           "Passed a custom_getter which is not callable: %s" % custom_getter)
 
+    # If a *_ref type is passed in an error would be triggered further down the
+    # stack. We prevent this using base_dtype to get a non-ref version of the
+    # type, before doing anything else. When _ref types are removed in favour of
+    # resources, this line can be removed.
+    try:
+      dtype = dtype.base_dtype
+    except AttributeError:
+      # .base_dtype not existing means that we will try and use the raw dtype
+      # which was passed in - this might be a NumPy type which is valid.
+      pass
+
     # This is the main logic of get_variable.  However, custom_getter
     # may override this logic.  So we save it as a callable and pass
     # it to custom_getter.

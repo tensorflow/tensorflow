@@ -994,7 +994,7 @@ class SVSummaryThread(coordinator.LooperThread):
       summary_strs = self._sess.run(self._sv.summary_op)
       global_step = None
     if self._sv.summary_writer:
-      logging.info("Recording summary at step %d.", global_step)
+      logging.info("Recording summary at step %s.", global_step)
       self._sv.summary_writer.add_summary(summary_strs, global_step)
 
 

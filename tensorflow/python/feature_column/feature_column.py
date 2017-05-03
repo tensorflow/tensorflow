@@ -139,6 +139,82 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
+def make_input_layer(features,
+                     feature_columns,
+                     weight_collections=None,
+                     trainable=True):
+  """Returns a dense `Tensor` as input layer based on given `feature_columns`.
+
+  Generally a single example in training data is described with FeatureColumns.
+  At the first layer of the model, this column oriented data should be converted
+  to a single `Tensor`.
+
+  Example:
+
+  ```python
+  price = numeric_column('price')
+  keywords_embedded = embedding_column(
+      categorical_column_with_hash_bucket("keywords", 10K), dimensions=16)
+  all_feature_columns = [price, keywords_embedded, ...]
+  dense_tensor = make_input_layer(features, all_feature_columns)
+  for units in [128, 64, 32]:
+    dense_tensor = tf.layers.dense(dense_tensor, units, tf.nn.relu)
+  prediction = tf.layers.dense(dense_tensor, 1)
+  ```
+
+  Args:
+    features: A mapping from key to tensors. `FeatureColumn`s look up via these
+      keys. For example `numeric_column('price') will look at 'price' key in
+      this dict. Values can be a `SparseTensor` or a `Tensor` depends on
+      corresponding `FeatureColumn`.
+    feature_columns: An iterable containing all the `FeatureColumn`s. All items
+      should be instances of classes derived from `_DenseColumn` such as
+      `numeric_column`, `embedding_column`, `bucketized_column`,
+      `indicator_column`. If you have categorical features, you can wrap them
+      with with an `embedding_column` or `indicator_column`.
+    weight_collections: A list of collection names to which the Variable will be
+      added. Note that, variables will also be added to collections
+      `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
+    trainable: If `True` also add the variable to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+
+  Returns:
+    A `Tensor` which represents input layer of a model. Its shape
+    is (batch_size, first_layer_dimension) and its dtype is `float32`.
+    first_layer_dimension is determined based on given `feature_columns`.
+
+  Raises:
+    ValueError: if an item in `feature_columns` is not a `_DenseColumn`.
+  """
+  _check_feature_columns(feature_columns)
+  for column in feature_columns:
+    if not isinstance(column, _DenseColumn):
+      raise ValueError(
+          'Items of feature_columns must be a _DenseColumn. '
+          'You can wrap a categorical column with an '
+          'embedding_column or indicator_column. Given: {}'.format(column))
+  weight_collections = list(weight_collections or [])
+  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
+    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
+  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
+    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
+  with variable_scope.variable_scope(
+      None, default_name='make_input_layer', values=features.values()):
+    builder = _LazyBuilder(features)
+    output_tensors = []
+    for column in sorted(feature_columns, key=lambda x: x.name):
+      with variable_scope.variable_scope(None, default_name=column.name):
+        tensor = column._get_dense_tensor(  # pylint: disable=protected-access
+            builder,
+            weight_collections=weight_collections,
+            trainable=trainable)
+        num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
+        batch_size = array_ops.shape(tensor)[0]
+        tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
+        output_tensors.append(tensor)
+    return array_ops.concat(output_tensors, 1)
+
+
 def make_linear_model(features,
                       feature_columns,
                       units=1,
@@ -156,10 +232,21 @@ def make_linear_model(features,
   while `make_input_layer` explicitly requires wrapping each of them with an
   `embedding_column` or an `indicator_column`.
 
+  Example:
+
+  ```python
+  price = numeric_column('price')
+  price_buckets = bucketized_column(price, boundaries=[0., 10., 100., 1000.])
+  keywords = categorical_column_with_hash_bucket("keywords", 10K)
+  all_feature_columns = [price_buckets, keywords, ...]
+  prediction = make_linear_model(features, all_feature_columns)
+  ```
+
   Args:
-    features: A mapping from key to tensors. 'string' key means a base feature.
-      It can have `_FeatureColumn` as a key too. That means that FeatureColumn
-      is already transformed by the input pipeline.
+    features: A mapping from key to tensors. `FeatureColumn`s look up via these
+      keys. For example `numeric_column('price')` will look at 'price' key in
+      this dict. Values are `Tensor` or `SparseTensor` depending on
+      corresponding `FeatureColumn`.
     feature_columns: An iterable containing all the FeatureColumns. All items
       should be instances of classes derived from FeatureColumn.
     units: units: An integer, dimensionality of the output space. Default
@@ -191,9 +278,10 @@ def make_linear_model(features,
       raise ValueError('Items of feature_columns must be either a _DenseColumn '
                        'or _CategoricalColumn. Given: {}'.format(column))
   weight_collections = list(weight_collections or [])
-  weight_collections += [
-      ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.MODEL_VARIABLES
-  ]
+  if ops.GraphKeys.GLOBAL_VARIABLES not in weight_collections:
+    weight_collections.append(ops.GraphKeys.GLOBAL_VARIABLES)
+  if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
+    weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
   with variable_scope.variable_scope(
       None, default_name='make_linear_model', values=features.values()):
     weigthed_sums = []
@@ -228,7 +316,8 @@ def numeric_column(key,
                    normalizer_fn=None):
   """Represents real valued or numerical features.
 
-  An example:
+  Example:
+
   ```python
   price = numeric_column('price')
   all_feature_columns = [price, ...]
@@ -298,7 +387,8 @@ def bucketized_column(source_column, boundaries):
   `boundaries=[0., 1., 2.]` generates buckets `(-inf, 0.)`, `[0., 1.)`,
   `[1., 2.)`, and `[2., +inf)`.
 
-  An example:
+  Example:
+
   ```python
   price = numeric_column('price')
   bucketized_price = bucketized_column(price, boundaries=[...])
@@ -349,7 +439,8 @@ def categorical_column_with_hash_bucket(key,
   want to distribute your inputs into a finite number of buckets by hashing.
   output_id = Hash(input_feature_string) % bucket_size
 
-  An example:
+  Example:
+
   ```python
   keywords = categorical_column_with_hash_bucket("keywords", 10K)
   all_feature_columns = [keywords, ...]
@@ -471,7 +562,7 @@ class _DenseColumn(_FeatureColumn):
 
   @abc.abstractproperty
   def _variable_shape(self):
-    """Returns shape of variable which is compatible with _get_dense_tensor."""
+    """Returns a `TensorShape` of variable compatible with _get_dense_tensor."""
     pass
 
   @abc.abstractmethod
@@ -480,6 +571,7 @@ class _DenseColumn(_FeatureColumn):
 
     The output of this function will be used by model-buildier-functions. For
     example the pseudo code of `make_input_layer` will be like that:
+
     ```python
     def make_input_layer(features, feature_columns, ...):
       outputs = [fc._get_dense_tensor(...) for fc in feature_columns]
@@ -503,7 +595,7 @@ def _create_dense_column_weighted_sum(
       builder,
       weight_collections=weight_collections,
       trainable=trainable)
-  num_elements = tensor_shape.TensorShape(column._variable_shape).num_elements()  # pylint: disable=protected-access
+  num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
   batch_size = array_ops.shape(tensor)[0]
   tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
   weight = variable_scope.get_variable(
@@ -615,12 +707,15 @@ class _LazyBuilder(object):
     """Creates a `_LazyBuilder`.
 
     Args:
-      features: A mapping from feature column to tensors. A `string` key
+      features: A mapping from feature column to objects that are `Tensor` or
+        `SparseTensor`, or can be converted to same via
+        `sparse_tensor.convert_to_tensor_or_sparse_tensor`. A `string` key
         signifies a base feature (not-transformed). A `FeatureColumn` key
         means that this `Tensor` is the output of an existing `FeatureColumn`
         which can be reused.
     """
-    self._columns_to_tensors = features.copy()
+    self._features = features.copy()
+    self._feature_tensors = {}
 
   def get(self, key):
     """Returns a `Tensor` for the given key.
@@ -640,9 +735,16 @@ class _LazyBuilder(object):
       ValueError: if key is not found or a transformed `Tensor` cannot be
         computed.
     """
-    if key in self._columns_to_tensors:
-      # Feature_column is already transformed or it's a raw feature.
-      return self._columns_to_tensors[key]
+    if key in self._feature_tensors:
+      # FeatureColumn is already transformed or converted.
+      return self._feature_tensors[key]
+
+    if key in self._features:
+      # FeatureColumn is a raw feature.
+      feature_tensor = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(
+          self._features[key])
+      self._feature_tensors[key] = feature_tensor
+      return feature_tensor
 
     if not isinstance(key, (str, _FeatureColumn)):
       raise TypeError('"key" must be either a "str" or "_FeatureColumn". '
@@ -653,11 +755,13 @@ class _LazyBuilder(object):
 
     column = key
     logging.debug('Transforming feature_column %s.', column)
-    transformed = column._transform_feature(self)  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    transformed = column._transform_feature(self)
+    # pylint: enable=protected-access
     if transformed is None:
       raise ValueError('Column {} is not supported.'.format(column.name))
-    self._columns_to_tensors[column] = transformed
-    return self._columns_to_tensors[column]
+    self._feature_tensors[column] = transformed
+    return transformed
 
 
 def _check_feature_columns(feature_columns):
@@ -709,7 +813,7 @@ class _NumericColumn(_DenseColumn,
 
   @property
   def _variable_shape(self):
-    return self.shape
+    return tensor_shape.TensorShape(self.shape)
 
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
     del weight_collections
@@ -738,7 +842,8 @@ class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
 
   @property
   def _variable_shape(self):
-    return tuple(self.source_column.shape) + (len(self.boundaries) + 1,)
+    return tensor_shape.TensorShape(
+        tuple(self.source_column.shape) + (len(self.boundaries) + 1,))
 
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
     del weight_collections

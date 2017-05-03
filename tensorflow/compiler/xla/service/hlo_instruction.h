@@ -54,7 +54,8 @@ class HloInstruction {
  public:
   enum class FusionKind {
     kLoop,                // Fused into a loop.
-    kInput,               // Fused into a reduction kernel.
+    kInput,               // Op's input is fused into the op itself.
+    kOutput,              // Op's output is fused into the op itself.
     kTransposeDot,        // Fused into a dot with transposed operands.
     kConvBackwardFilter,  // Fused into a backward filter convolution.
     kConvBackwardInput,   // Fused into a backward input convolution.

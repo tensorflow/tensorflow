@@ -328,11 +328,15 @@ The downside is that all the weights read are from the previous training step.
 So it is a different algorithm from SGD. But it is possible to improve its
 convergence by adjusting learning rate and other hyperparameters.
 
-### Executing the script
+## Executing the script
 
 This section lists the core command line arguments and a few basic examples for
 executing the main script
 ([tf_cnn_benchmarks.py](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py)).
+
+> Note: `tf_cnn_benchmarks.py` uses the config `force_gpu_compatible`,
+> which was introduced after TensorFlow 1.1. Until TensorFlow 1.2 is released
+> building from source is advised.
 
 #### Base command line arguments
 
