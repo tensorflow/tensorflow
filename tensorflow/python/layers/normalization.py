@@ -201,6 +201,7 @@ class BatchNormalization(base.Layer):
                 'renorm_stddev_weight', ())
     finally:
       self._scope.set_partitioner(partitioner)
+    self.built = True
 
   def _renorm_correction_and_moments(self, mean, variance, training):
     """Returns the correction and update values for renorm."""

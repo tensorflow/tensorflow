@@ -111,6 +111,7 @@ class _Merge(Layer):
       self._reshape_required = False
     else:
       self._reshape_required = True
+    self.built = True
 
   def call(self, inputs):
     if self._reshape_required:
@@ -302,6 +303,7 @@ class Concatenate(_Merge):
                        'inputs with matching shapes '
                        'except for the concat axis. '
                        'Got inputs shapes: %s' % (input_shape))
+    self.built = True
 
   def call(self, inputs):
     if not isinstance(inputs, list):
@@ -414,6 +416,7 @@ class Dot(_Merge):
       raise ValueError('Dimension incompatibility '
                        '%s != %s. ' % (shape1[axes[0]], shape2[axes[1]]) +
                        'Layer shapes: %s, %s' % (shape1, shape2))
+    self.built = True
 
   def call(self, inputs):
     x1 = inputs[0]
