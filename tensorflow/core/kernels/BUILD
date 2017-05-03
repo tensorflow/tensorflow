@@ -2042,6 +2042,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "@local_config_cuda//cuda:cusolver",
     ],
 )
@@ -2322,7 +2323,9 @@ tf_kernel_library(
     prefix = "fft_ops",
     deps = MATH_DEPS + [
         "//tensorflow/core:spectral_ops_op_lib",
-    ],
+    ] + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cufft_plugin",
+    ]),
 )
 
 tf_kernel_library(
@@ -2626,7 +2629,9 @@ tf_kernel_library(
             "@libxsmm_archive//:xsmm_avx",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cudnn_plugin",
+    ]),
 )
 
 tf_kernel_library(

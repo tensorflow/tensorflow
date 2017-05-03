@@ -42,8 +42,10 @@ __all__ = [
 
 
 class StudentT(distribution.Distribution):
-  # pylint: disable=line-too-long
-  """Student's t-distribution with degree of freedom `df`, location `loc`, and `scale` parameters.
+  """Student's t-distribution.
+
+  This distribution has parameters: degree of freedom `df`, location `loc`,
+  and `scale`.
 
   #### Mathematical details
 
@@ -82,7 +84,7 @@ class StudentT(distribution.Distribution):
 
   ```python
   # Define a single scalar Student t distribution.
-  single_dist = tf.contrib.distributions.StudentT(df=3)
+  single_dist = tf.distributions.StudentT(df=3)
 
   # Evaluate the pdf at 1, returning a scalar Tensor.
   single_dist.prob(1.)
@@ -90,7 +92,7 @@ class StudentT(distribution.Distribution):
   # Define a batch of two scalar valued Student t's.
   # The first has degrees of freedom 2, mean 1, and scale 11.
   # The second 3, 2 and 22.
-  multi_dist = tf.contrib.distributions.StudentT(df=[2, 3],
+  multi_dist = tf.distributions.StudentT(df=[2, 3],
                                                  loc=[1, 2.],
                                                  scale=[11, 22.])
 
@@ -107,7 +109,7 @@ class StudentT(distribution.Distribution):
   ```python
   # Define a batch of two Student's t distributions.
   # Both have df 2 and mean 1, but different scales.
-  dist = tf.contrib.distributions.StudentT(df=2, loc=1, scale=[11, 22.])
+  dist = tf.distributions.StudentT(df=2, loc=1, scale=[11, 22.])
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.

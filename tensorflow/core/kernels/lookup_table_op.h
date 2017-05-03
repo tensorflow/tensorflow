@@ -64,8 +64,8 @@ class LookupTableOp : public OpKernel {
         return ctx->status();
       }
       if (ctx->track_allocations()) {
-        ctx->record_device_persistent_memory_allocation(
-            container->MemoryUsed());
+        ctx->record_host_persistent_memory_allocation(
+            container->MemoryUsed() + table_handle_.AllocatedBytes());
       }
       *ret = container;
       return Status::OK();
@@ -223,6 +223,15 @@ class HashTable : public InitializableLookupTable {
           default_val);
     }
     return Status::OK();
+  }
+
+  int64 MemoryUsed() const override {
+    if (table_) {
+      const int64 num_elements = table_->size();
+      return num_elements * (sizeof(K) + sizeof(V));
+    } else {
+      return 0;
+    }
   }
 
  private:

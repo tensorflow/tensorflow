@@ -39,6 +39,7 @@ from tensorflow.python.util import nest
 
 
 __all__ = [
+    "AttentionMechanism",
     "AttentionWrapper",
     "AttentionWrapperState",
     "LuongAttention",

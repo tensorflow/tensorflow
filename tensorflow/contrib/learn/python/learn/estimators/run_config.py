@@ -31,6 +31,17 @@ from tensorflow.python.estimator import run_config as core_run_config
 from tensorflow.python.training import server_lib
 
 
+_DEFAULT_UID_WHITE_LIST = [
+    'tf_random_seed',
+    'save_summary_steps',
+    'save_checkpoints_steps',
+    'save_checkpoints_secs',
+    'session_config',
+    'keep_checkpoint_max',
+    'keep_checkpoint_every_n_hours',
+]
+
+
 class Environment(object):
   # For running general distributed training.
   CLOUD = 'cloud'
@@ -312,18 +323,29 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     return new_copy
 
   @experimental
-  def uid(self):
+  def uid(self, whitelist=None):
     """Generates a 'Unique Identifier' based on all internal fields.
 
     Caller should use the uid string to check `RunConfig` instance integrity
     in one session use, but should not rely on the implementation details, which
     is subject to change.
 
+    Args:
+      whitelist: A list of the string names of the properties uid should not
+        include. If `None`, defaults to `_DEFAULT_UID_WHITE_LIST`, which
+        includes most properites user allowes to change.
+
     Returns:
       A uid string.
     """
-    # TODO(b/33295821): Allows user to specify a whitelist.
+    if whitelist is None:
+      whitelist = _DEFAULT_UID_WHITE_LIST
+
     state = {k: v for k, v in self.__dict__.items() if not k.startswith('__')}
+    # Pop out the keys in whitelist.
+    for k in whitelist:
+      state.pop('_' + k, None)
+
     ordered_state = collections.OrderedDict(
         sorted(state.items(), key=lambda t: t[0]))
     # For class instance without __repr__, some special cares are required.

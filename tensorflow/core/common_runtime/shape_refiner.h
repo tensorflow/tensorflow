@@ -55,6 +55,11 @@ class ShapeRefiner {
   Status SetShape(const Node* node, int output_port,
                   shape_inference::ShapeHandle shape);
 
+  // Update the input shapes of node in case the shapes of the fan-ins of 'node'
+  // have themselves been modified (For example, in case of incremental shape
+  // refinement). Sets refined to true if any of the node shape has changed.
+  Status UpdateNode(const Node* node, bool* refined);
+
   // Returns the InferenceContext for 'node', if present.
   shape_inference::InferenceContext* GetContext(const Node* node) const {
     auto it = node_to_context_.find(node);
@@ -107,6 +112,9 @@ class ShapeRefiner {
   Status ConstantPartialShape(shape_inference::InferenceContext* target_context,
                               const Node* node, int dst_idx,
                               shape_inference::ShapeHandle* result);
+
+  Status RunShapeFn(const Node* node, const OpRegistrationData* op_reg_data,
+                    shape_inference::InferenceContext* c);
 
   int32 graph_def_version_;
   const OpRegistryInterface* const ops_registry_;

@@ -190,7 +190,6 @@ def _get_default_do_not_descend_map():
           'tensor_forest',
           'tensorboard',
           'testing',
-          'training',
           'tfprof',
       ],
       'contrib.bayesflow': [

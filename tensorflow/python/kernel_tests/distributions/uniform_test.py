@@ -18,15 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import importlib
+
 import numpy as np
-from scipy import stats
-from tensorflow.contrib.distributions.python.ops import uniform as uniform_lib
+
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import uniform as uniform_lib
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
+
+
+def try_import(name):  # pylint: disable=invalid-name
+  module = None
+  try:
+    module = importlib.import_module(name)
+  except ImportError as e:
+    tf_logging.warning("Could not import %s: %s" % (name, str(e)))
+  return module
+
+
+stats = try_import("scipy.stats")
 
 
 class UniformTest(test.TestCase):
@@ -126,7 +141,7 @@ class UniformTest(test.TestCase):
       b_v = np.array([1.0, 2.0, 3.0], dtype=np.float32)
       uniform = uniform_lib.Uniform(low=a_v, high=b_v, validate_args=True)
 
-      with self.assertRaisesWithPredicateMatch(errors_impl.InvalidArgumentError,
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                                "x < y"):
         uniform.low.eval()
 
@@ -187,6 +202,8 @@ class UniformTest(test.TestCase):
       a = 10.0
       b = 100.0
       uniform = uniform_lib.Uniform(low=a, high=b)
+      if not stats:
+        return
       s_uniform = stats.uniform(loc=a, scale=b - a)
       self.assertAllClose(uniform.mean().eval(), s_uniform.mean())
 
@@ -195,6 +212,8 @@ class UniformTest(test.TestCase):
       a = 10.0
       b = 100.0
       uniform = uniform_lib.Uniform(low=a, high=b)
+      if not stats:
+        return
       s_uniform = stats.uniform(loc=a, scale=b - a)
       self.assertAllClose(uniform.variance().eval(), s_uniform.var())
 
@@ -203,6 +222,8 @@ class UniformTest(test.TestCase):
       a = 10.0
       b = 100.0
       uniform = uniform_lib.Uniform(low=a, high=b)
+      if not stats:
+        return
       s_uniform = stats.uniform(loc=a, scale=b - a)
       self.assertAllClose(uniform.stddev().eval(), s_uniform.std())
 

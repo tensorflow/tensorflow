@@ -278,7 +278,7 @@ Then, the code creates a `DNNClassifier` model using the following arguments:
 
 The `tf.contrib.learn` API uses input functions, which create the TensorFlow
 operations that generate data for the model. In this case, the data is small
-enough that it can be stored in @{tf.constant TensorFlow constants}. The
+enough that it can be stored in @{tf.constant$TensorFlow constants}. The
 following code produces the simplest possible input pipeline:
 
 ```python

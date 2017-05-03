@@ -16,14 +16,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import importlib
+
 import numpy as np
-from scipy import stats
-from tensorflow.contrib.distributions.python.ops import dirichlet as dirichlet_lib
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import dirichlet as dirichlet_lib
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
+
+
+def try_import(name):  # pylint: disable=invalid-name
+  module = None
+  try:
+    module = importlib.import_module(name)
+  except ImportError as e:
+    tf_logging.warning("Could not import %s: %s" % (name, str(e)))
+  return module
+
+
+stats = try_import("scipy.stats")
 
 
 class DirichletTest(test.TestCase):
@@ -132,9 +147,11 @@ class DirichletTest(test.TestCase):
   def testMean(self):
     with self.test_session():
       alpha = [1., 2, 3]
-      expected_mean = stats.dirichlet.mean(alpha)
       dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
       self.assertEqual(dirichlet.mean().get_shape(), [3])
+      if not stats:
+        return
+      expected_mean = stats.dirichlet.mean(alpha)
       self.assertAllClose(dirichlet.mean().eval(), expected_mean)
 
   def testCovarianceFromSampling(self):
@@ -177,11 +194,13 @@ class DirichletTest(test.TestCase):
     with self.test_session():
       alpha = [1., 2, 3]
       denominator = np.sum(alpha)**2 * (np.sum(alpha) + 1)
+      dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
+      self.assertEqual(dirichlet.covariance().get_shape(), (3, 3))
+      if not stats:
+        return
       expected_covariance = np.diag(stats.dirichlet.var(alpha))
       expected_covariance += [[0., -2, -3], [-2, 0, -6],
                               [-3, -6, 0]] / denominator
-      dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
-      self.assertEqual(dirichlet.covariance().get_shape(), (3, 3))
       self.assertAllClose(dirichlet.covariance().eval(), expected_covariance)
 
   def testMode(self):
@@ -213,9 +232,11 @@ class DirichletTest(test.TestCase):
   def testEntropy(self):
     with self.test_session():
       alpha = [1., 2, 3]
-      expected_entropy = stats.dirichlet.entropy(alpha)
       dirichlet = dirichlet_lib.Dirichlet(concentration=alpha)
       self.assertEqual(dirichlet.entropy().get_shape(), ())
+      if not stats:
+        return
+      expected_entropy = stats.dirichlet.entropy(alpha)
       self.assertAllClose(dirichlet.entropy().eval(), expected_entropy)
 
   def testSample(self):
@@ -227,6 +248,8 @@ class DirichletTest(test.TestCase):
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000, 2))
       self.assertTrue(np.all(sample_values > 0.0))
+      if not stats:
+        return
       self.assertLess(
           stats.kstest(
               # Beta is a univariate distribution.
