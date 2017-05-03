@@ -3,9 +3,9 @@
 ## Overview
 
 A selection of image classification models were tested across multiple platforms
-to create a point of reference for the TensorFlow community. The methodology,
-links to the benchmark scripts, and commands to reproduce the results are in the
-[Appendix](#appendix).
+to create a point of reference for the TensorFlow community. The
+[Methodology](#methodology) section details how the test were executed and has
+links to the scripts used.
 
 ## Results for image classification models
 
@@ -120,19 +120,19 @@ VGG16       | replicated (with NCCL) | n/a
 
 GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
-1    | 142         | 238       | 95.6       | 2987    | 132
-2    | 284         | 479       | 187        | 5658    | 259
-4    | 569         | 948       | 374        | 10509   | 511
-8    | 1131        | 1886      | 744        | 17822   | 959
+  1  | 142         | 238       | 95.6       | 2987    | 154
+  2  | 284         | 479       | 187        | 5658    | 295
+  4  | 569         | 948       | 374        | 10509   | 584
+  8  | 1131        | 1886      | 744        | 17822   | 1081
 
 **Training real data**
 
 GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
-1    | 142         | 239       | 95.5       | 2890    | 132
-2    | 278         | 468       | 187        | 4448    | 245
-4    | 551         | 938       | 373        | 7105    | 466
-8    | 1079        | 1802      | 721        | N/A     | 794
+  1  | 142         | 239       | 95.5       | 2890    | 154
+  2  | 278         | 468       | 187        | 4448    | 284
+  4  | 551         | 938       | 373        | 7105    | 534
+  8  | 1079        | 1802      | 721        | N/A     | 898
 
 Training AlexNet with real data on 8 GPUs was excluded from the graph and table
 above due to it maxing out the input pipeline.
@@ -145,19 +145,19 @@ The results below are all with a batch size of 32.
 
 GPUs | InceptionV3 | ResNet-50 | ResNet-152 | VGG16
 ---- | ----------- | --------- | ---------- | -----
-1    | 128         | 210       | 85.3       | 124
-2    | 259         | 412       | 166        | 241
-4    | 520         | 827       | 330        | 470
-8    | 995         | 1623      | 643        | 738
+  1  | 128         | 210       | 85.3       | 144
+  2  | 259         | 412       | 166        | 281
+  4  | 520         | 827       | 330        | 549
+  8  | 995         | 1623      | 643        | 820
 
 **Training real data**
 
 GPUs | InceptionV3 | ResNet-50 | ResNet-152 | VGG16
 ---- | ----------- | --------- | ---------- | -----
-1    | 130         | 208       | 85.0       | 124
-2    | 257         | 403       | 163        | 221
-4    | 507         | 814       | 325        | 401
-8    | 966         | 1525      | 641        | 619
+  1  | 130         | 208       | 85.0       | 144
+  2  | 257         | 403       | 163        | 253
+  4  | 507         | 814       | 325        | 457
+  8  | 966         | 1525      | 641        | 690
 
 ## Details for Google Compute Engine (NVIDIA® Tesla® K80)
 
@@ -198,19 +198,19 @@ The configuration used for each model was `variable_update` equal to
 
 GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
-1    | 30.5        | 56.8      | 20.8       | 656     | 30.3
-2    | 57.8        | 107       | 39.1       | 1210    | 56.2
-4    | 116         | 212       | 77.2       | 2330    | 106
-8    | 227         | 419       | 151        | 4640    | 222
+  1  | 30.5        | 56.8      | 20.8       | 656     | 35.4
+  2  | 57.8        | 107       | 39.1       | 1209    | 64.8
+  4  | 116         | 212       | 77.2       | 2328    | 120
+  8  | 227         | 419       | 151        | 4640    | 234
 
 **Training real data**
 
 GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
-  1  | 30.6        | 56.7      | 20.7       | 639     | 30.2       
-  2  | 58.4        | 107       | 39.0       | 1136    | 55.5       
-  4  | 115         | 211       | 77.3       | 2067    | 106        
-  8  | 225         | 422       | 151        | 4056    | 213   
+  1  | 30.6        | 56.7      | 20.7       | 639     | 34.2
+  2  | 58.4        | 107       | 39.0       | 1136    | 62.9
+  4  | 115         | 211       | 77.3       | 2067    | 118
+  8  | 225         | 422       | 151        | 4056    | 230
 
 ### Other Results
 
@@ -227,10 +227,10 @@ GPUs | InceptionV3 (batch size 32) | ResNet-50 (batch size 32)
 
 GPUs | InceptionV3 (batch size 32) | ResNet-50 (batch size 32)
 ---- | --------------------------- | -------------------------
-  1  | 29.5                        | 53.6       
-  2  | 55.4                        | 102        
-  4  | 110                         | 201        
-  8  | 216                         | 387  
+  1  | 29.5                        | 53.6
+  2  | 55.4                        | 102
+  4  | 110                         | 201
+  8  | 216                         | 387
 
 ## Details for Amazon EC2 (NVIDIA® Tesla® K80)
 
@@ -279,19 +279,19 @@ VGG16       | parameter_server          | gpu
 
 GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
-1    | 30.8        | 56.3      | 20.9       | 684     | 32.4
-2    | 58.7        | 108       | 39.3       | 1244    | 61.5
-4    | 117         | 217       | 79.1       | 2479    | 123
-8    | 230         | 419       | 156        | 4853    | 234
+  1  | 30.8        | 56.3      | 20.9       | 684     | 36.3
+  2  | 58.7        | 108       | 39.3       | 1244    | 69.4
+  4  | 117         | 217       | 79.1       | 2479    | 141
+  8  | 230         | 419       | 156        | 4853    | 260
 
 **Training real data**
 
 GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
-1    | 30.5        | 56.0      | 20.6       | 674     | 32.0
-2    | 58.7        | 107       | 39.0       | 1227    | 61.0
-4    | 118         | 205       | 77.9       | 2201    | 120
-8    | 228         | 405       | 152        | N/A     | 191
+  1  | 30.5        | 56.0      | 20.6       | 674     | 36.3
+  2  | 59.0        | 107       | 39.0       | 1227    | 67.5
+  4  | 118         | 205       | 77.9       | 2201    | 136
+  8  | 228         | 405       | 152        | N/A     | 242
 
 Training AlexNet with real data on 8 GPUs was excluded from the graph and table
 above due to our EFS setup not providing enough throughput.
@@ -393,63 +393,17 @@ GPUs | InceptionV3 (batch size 32) | ResNet-50 (batch size 32)
 32   | 820                         | 1265
 64   | 1608                        | 2623
 
-## Appendix
 
-### Executing benchmark tests
+## Methodology
 
-The [benchmark code](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks)
-was created to be used for benchmarking TensorFlow as well as used as a tool to
-test hardware platforms. Techniques used in the benchmark scripts are detailed
-in @{$performance_models$High-Performance Models}.
+This [script](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks)
+was run on the various platforms to generate the above results.
+@{$performance_models$High-Performance Models} details techniques in the script
+along with examples of how to execute the script.
 
-There are two ways to execute the benchmark code:
-
-1.  Execute [tf_cnn_benchmarks.py](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py)
-    directly.
-2.  Utilize the [scripts](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks/main.py)
-    that helps pick the correct config for each platform executes
-    `tf_cnn_benchmarks.py`.
-
-The wrapper is suggested as a starting point. Then investigate the variety of
-options available in `tf_cnn_benchmarks.py`. Below are a couple examples of
-using the wrapper.
-
-**Single Server**
-This example illustrates training ResNet-50 on a single instance with 8 GPUs.
-The `system` flag is used to determine the optimal configuration. The
-supported values are gce, aws, and dgx1. If `system` is not passed, the best
-config for the most widely available hardware is used.
-
-```bash
-python main.py --model=resnet50 --num_gpus=8
-python main.py --system=aws --model=resnet50 --num_gpus=8
-```
-
-**Distributed**
-This example illustrates training ResNet-50 on 2 hosts, e.g. host_0 (10.0.0.1)
-and host_1 (10.0.0.2), with 8 GPUs each on AWS (Amazon EC2).
-
-```bash
-# Run the following commands on host_0 (10.0.0.1):
-  $  python main.py --system=aws --model=resnet50 --job_name=worker
-     --hosts=10.0.0.1,10.0.0.2 --task_index=0
-
-  $  python main.py --system=aws --model=resnet50 --job_name=ps
-     --hosts=10.0.0.1,10.0.0.2 --task_index=0
-
-# Run the following commands on host_1 (10.0.0.2):
-  $  python main.py --system=aws --model=resnet50 --job_name=worker
-     --hosts=10.0.0.1,10.0.0.2 --task_index=1
-
-  $  python main.py --system=aws --model=resnet50 --job_name=ps
-     --hosts=10.0.0.1,10.0.0.2 --task_index=1
-```
-
-### Methodology
-
-Unless otherwise stated, each test is run 5 times and then the times are
-averaged together. GPUs are run in their default state on the given platform.
-For NVIDIA® Tesla® K80 this means leaving on [GPU
-Boost](https://devblogs.nvidia.com/parallelforall/increase-performance-gpu-boost-k80-autoboost/)
-unless it has been turned off by the provider. For a given test, 10 warmup steps
-are done and then the next 100 steps are averaged.
+In order to create results that are as repeatable as possible, each test was run
+5 times and then the times were averaged together. GPUs are run in their default
+state on the given platform.  For NVIDIA® Tesla® K80 this means leaving on [GPU
+Boost](https://devblogs.nvidia.com/parallelforall/increase-performance-gpu-boost-k80-autoboost/).
+For each test, 10 warmup steps are done and then the next 100 steps are
+averaged.
