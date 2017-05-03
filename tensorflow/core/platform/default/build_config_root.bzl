@@ -12,6 +12,9 @@ def tf_additional_plugin_deps():
   return select({
       "//tensorflow:with_xla_support": ["//tensorflow/compiler/jit"],
       "//conditions:default": [],
+  }) + select({
+      "//tensorflow:with_xla_plugin": ["//tensorflow/compiler/plugin"],
+      "//conditions:default": [],
   })
 
 def tf_additional_xla_deps_py():

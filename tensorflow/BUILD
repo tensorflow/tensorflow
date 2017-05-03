@@ -150,6 +150,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_xla_plugin",
+    values = {"define": "with_xla_plugin=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_verbs_support",
     values = {"define": "with_verbs_support=true"},
     visibility = ["//visibility:public"],
