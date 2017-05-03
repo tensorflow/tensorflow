@@ -55,6 +55,9 @@ apt-get install -y --no-install-recommends \
     zip \
     zlib1g-dev
 
+# populate the database
+updatedb
+
 # Install ca-certificates, and update the certificate store.
 apt-get install -y ca-certificates-java
 update-ca-certificates -f
