@@ -27,3 +27,9 @@ contributions, often because we probably won't get to them right now. If you
 decide to start on an issue, leave a comment so that other people know that
 you're working on it. If you want to help out, but not alone, use the issue
 comment thread to coordinate.
+
+### Setup for contributing
+
+- `brew install bazel`
+- `./configure`
+- `bazel test python`
