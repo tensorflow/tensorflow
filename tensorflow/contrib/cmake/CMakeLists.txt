@@ -32,6 +32,19 @@ option(tensorflow_BUILD_PYTHON_TESTS "Build python unit tests " OFF)
 option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
+option(tensorflow_USE_SYSTEM_ZLIB "Use system library libz" OFF)
+option(tensorflow_USE_SYSTEM_PNG "Use system library libpng" ON)
+option(tensorflow_USE_SYSTEM_JPEG "Use system library libjpeg" ON)
+option(tensorflow_USE_SYSTEM_GIF "Use system library libgif" ON)
+option(tensorflow_USE_SYSTEM_JSONCPP "Use system library libjsoncpp" ON)
+option(tensorflow_USE_SYSTEM_EIGEN "Use system library eigen3" OFF)
+option(tensorflow_USE_SYSTEM_GEMMLOWP "Use system library gemmlowp" OFF)
+option(tensorflow_USE_SYSTEM_FARMHASH "Use system library farmhash" OFF)
+option(tensorflow_USE_SYSTEM_HIGHWAYHASH "Use system library highwayhash" OFF)
+option(tensorflow_USE_SYSTEM_FFT2D "Use system library fft2d" OFF)
+option(tensorflow_USE_SYSTEM_PROTOBUF "Use system library protobuf" OFF)
+
+
 
 if (NOT WIN32)
   # Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option
@@ -100,63 +113,238 @@ if (tensorflow_ENABLE_JEMALLOC_SUPPORT)
   add_definitions(-DTENSORFLOW_USE_JEMALLOC -DJEMALLOC_EXPORT=)
 endif()
 
-# External dependencies
-include(zlib)
-include(gif)
-include(png)
-include(jpeg)
-include(eigen)
-include(gemmlowp)
-include(jsoncpp)
-include(farmhash)
-include(fft2d)
-include(highwayhash)
-include(protobuf)
+
+if(tensorflow_USE_SYSTEM_ZLIB)
+
+  message(STATUS "use system zlib")
+
+  find_package(ZLIB REQUIRED)
+  include_directories(${ZLIB_INCLUDE_DIR})
+  link_libraries (${ZLIB_LIBRARY})
+
+else(tensorflow_USE_SYSTEM_ZLIB)
+
+  message(STATUS "do not use system zlib")
+
+  include(zlib)
+  set(tensorflow_EXTERNAL_LIBRARIES ${zlib_STATIC_LIBRARIES})
+  set(tensorflow_EXTERNAL_DEPENDENCIES zlib_copy_headers_to_destination)
+  include_directories(${zlib_INCLUDE_DIR})
+
+endif(tensorflow_USE_SYSTEM_ZLIB)
+
+if(tensorflow_USE_SYSTEM_JPEG)
+
+  message(STATUS "use system libjpeg")
+
+  find_package(JPEG REQUIRED)
+  include_directories(${JPEG_INCLUDE_DIR})
+  link_libraries (${JPEG_LIBRARY})
+
+else(tensorflow_USE_SYSTEM_JPEG)
+
+  message(STATUS "do not use system libjpeg")
+
+  include(jpeg)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${jpeg_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES jpeg_copy_headers_to_destination)
+
+  include_directories(${jpeg_INCLUDE_DIR})
+
+endif(tensorflow_USE_SYSTEM_JPEG)
+
+if(tensorflow_USE_SYSTEM_PNG)
+
+  message(STATUS "use system libpng")
+
+  find_package(PNG REQUIRED)
+  include_directories(${PNG_INCLUDE_DIR})
+  link_libraries (${PNG_LIBRARY})
+
+else(tensorflow_USE_SYSTEM_PNG)
+
+  message(STATUS "do not use system libpng")
+
+  include(png)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${PNG_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES png_copy_headers_to_destination)
+
+  include_directories(
+    ${png_INCLUDE_DIR}
+    )
+
+endif(tensorflow_USE_SYSTEM_PNG)
+
+if(tensorflow_USE_SYSTEM_GIF)
+
+  message(STATUS "use system libgif")
+
+  find_package(GIF REQUIRED)
+  include_directories(${GIF_INCLUDE_DIR})
+  link_libraries (${GIF_LIBRARY})
+
+else(tensorflow_USE_SYSTEM_GIF)
+
+  message(STATUS "do not use system libgif")
+
+  include(gif)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${gif_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES gif_copy_headers_to_destination)
+
+  include_directories(
+    ${gif_INCLUDE_DIR}
+    )
+
+endif(tensorflow_USE_SYSTEM_GIF)
+
+
+if(tensorflow_USE_SYSTEM_JSONCPP)
+
+  message(STATUS "use system libjsoncpp")
+
+  find_package(jsoncpp REQUIRED)
+  include_directories(${JSONCPP_INCLUDE_DIR})
+  link_libraries (${JSONCPP_LIBRARY})
+
+else(tensorflow_USE_SYSTEM_JSONCPP)
+
+  message(STATUS "do not use system libjsoncpp")
+
+  include(jsoncpp)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${jsoncpp_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES jsoncpp)
+
+  include_directories(
+    ${jsoncpp_INCLUDE_DIR}
+    )
+
+endif(tensorflow_USE_SYSTEM_JSONCPP)
+
+if(tensorflow_USE_SYSTEM_EIGEN)
+
+  message(STATUS "use system eigen3")
+  message(FATAL_ERROR "finding eigen3 is not yet implemented")
+
+
+else(tensorflow_USE_SYSTEM_EIGEN)
+
+  message(STATUS "do not use system eigen3")
+
+  include(eigen)
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES eigen)
+
+  include_directories(
+    ${eigen_INCLUDE_DIRS}
+    )
+
+endif(tensorflow_USE_SYSTEM_EIGEN)
+
+if(tensorflow_USE_SYSTEM_GEMMLOWP)
+
+  message(STATUS "use system libgemmlowp")
+  message(FATAL_ERROR "finding gemmlowp is not yet implemented")
+
+
+else(tensorflow_USE_SYSTEM_GEMMLOWP)
+
+  message(STATUS "do not use system libgemmlowp")
+
+  include(gemmlowp)
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES gemmlowp)
+
+  include_directories(${gemmlowp_INCLUDE_DIR})
+
+endif(tensorflow_USE_SYSTEM_GEMMLOWP)
+
+
+if(tensorflow_USE_SYSTEM_FARMHASH)
+
+  message(STATUS "use system farmhash")
+  message(FATAL_ERROR "finding farmhash is not yet implemented")
+
+else(tensorflow_USE_SYSTEM_FARMHASH)
+
+  message(STATUS "do not use system libfarmhash")
+
+  include(farmhash)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${farmhash_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES farmhash_copy_headers_to_destination)
+
+  include_directories( ${farmhash_INCLUDE_DIR}   )
+
+endif(tensorflow_USE_SYSTEM_FARMHASH)
+
+if(tensorflow_USE_SYSTEM_FFT2D)
+
+  message(STATUS "use system fft2d")
+  message(FATAL_ERROR "finding fft2d is not yet implemented")
+
+else(tensorflow_USE_SYSTEM_FFT2D)
+
+  message(STATUS "do not use system fft2d")
+
+  include(fft2d)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${fft2d_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES fft2d)
+
+
+endif(tensorflow_USE_SYSTEM_FFT2D)
+
+
+
+if(tensorflow_USE_SYSTEM_HIGHWAYHASH)
+
+  message(STATUS "use system highwayhash")
+  message(FATAL_ERROR "finding highwayhash is not yet implemented")
+
+else(tensorflow_USE_SYSTEM_HIGHWAYHASH)
+
+  message(STATUS "do not use system highwayhash")
+
+  include(highwayhash)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${highwayhash_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES highwayhash_copy_headers_to_destination)
+
+  include_directories(${highwayhash_INCLUDE_DIR})
+
+endif(tensorflow_USE_SYSTEM_HIGHWAYHASH)
+
+
+if(tensorflow_USE_SYSTEM_PROTOBUF)
+
+  message(STATUS "use system protobuf")
+
+  find_package(protobuf REQUIRED)
+  include_directories(${PROTOBUF_INCLUDE_DIR})
+  link_libraries (${PROTOBUF_LIBRARY})
+
+else(tensorflow_USE_SYSTEM_PROTOBUF)
+
+  message(STATUS "do not use system protobuf")
+
+  include(protobuf)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${protobuf_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES protobuf)
+
+  include_directories(${PROTOBUF_INCLUDE_DIRS})
+
+endif(tensorflow_USE_SYSTEM_PROTOBUF)
+
+
+
+# this stuff will be needed no matter what
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
 
-set(tensorflow_EXTERNAL_LIBRARIES
-    ${zlib_STATIC_LIBRARIES}
-    ${gif_STATIC_LIBRARIES}
-    ${png_STATIC_LIBRARIES}
-    ${jpeg_STATIC_LIBRARIES}
-    ${jsoncpp_STATIC_LIBRARIES}
-    ${farmhash_STATIC_LIBRARIES}
-    ${fft2d_STATIC_LIBRARIES}
-    ${highwayhash_STATIC_LIBRARIES}
-    ${protobuf_STATIC_LIBRARIES}
-)
-set(tensorflow_EXTERNAL_DEPENDENCIES
-    zlib_copy_headers_to_destination
-    gif_copy_headers_to_destination
-    png_copy_headers_to_destination
-    jpeg_copy_headers_to_destination
-    jsoncpp
-    farmhash_copy_headers_to_destination
-    highwayhash_copy_headers_to_destination
-    protobuf
-    eigen
-    gemmlowp
-    fft2d
-)
-
 include_directories(
-    # Source and generated code.
-    ${tensorflow_source_dir}
-    ${CMAKE_CURRENT_BINARY_DIR}
-    # External dependencies.
-    ${zlib_INCLUDE_DIR}
-    ${gif_INCLUDE_DIR}
-    ${png_INCLUDE_DIR}
-    ${jpeg_INCLUDE_DIR}
-    ${eigen_INCLUDE_DIRS}
-    ${gemmlowp_INCLUDE_DIR}
-    ${jsoncpp_INCLUDE_DIR}
-    ${farmhash_INCLUDE_DIR}
-    ${highwayhash_INCLUDE_DIR}
-    ${PROTOBUF_INCLUDE_DIRS}
-)
+  #Source and generated code.
+  ${tensorflow_source_dir}
+  ${CMAKE_CURRENT_BINARY_DIR}
+  )
+
+
+
 
 if(tensorflow_ENABLE_SSL_SUPPORT)
   include(boringssl)
