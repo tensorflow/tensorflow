@@ -136,8 +136,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.assertEqual(x._GetAccumulator('run2')._path, 'path2')
 
   def testReload(self):
-    """Tests two EventAccumulators executed Reload function
-    after EventMultiplexer called it."""
+    """EventAccumulators should Reload after EventMultiplexer call it."""
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
     self.assertFalse(x._GetAccumulator('run1').reload_called)
     self.assertFalse(x._GetAccumulator('run2').reload_called)
@@ -194,10 +193,12 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
 
   def testAddRunsFromDirectory(self):
     """Tests AddRunsFromDirectory function.
-    It should work well when the directory is not exist.
-    It should work well when the directory is empty.
-    It should work well when the directory has empty subdirectory.
-    It should contain proper EventAccumulators after adding events.
+
+    Tests the following scenarios:
+    - When the directory does not exist.
+    - When the directory is empty.
+    - When the directory has empty subdirectory.
+    - Contains proper EventAccumulators after adding events.
     """
     x = event_multiplexer.EventMultiplexer()
     tmpdir = self.get_temp_dir()
