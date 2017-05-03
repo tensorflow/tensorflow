@@ -200,13 +200,13 @@ def make_linear_model(features,
     builder = _LazyBuilder(features)
     for column in sorted(feature_columns, key=lambda x: x.name):
       with variable_scope.variable_scope(None, default_name=column.name):
-        if isinstance(column, _DenseColumn):
-          weigthed_sums.append(_create_dense_column_weighted_sum(
-              column, builder, units, weight_collections, trainable))
-        else:
+        if isinstance(column, _CategoricalColumn):
           weigthed_sums.append(_create_categorical_column_weighted_sum(
               column, builder, units, sparse_combiner, weight_collections,
               trainable))
+        else:
+          weigthed_sums.append(_create_dense_column_weighted_sum(
+              column, builder, units, weight_collections, trainable))
     predictions_no_bias = math_ops.add_n(
         weigthed_sums, name='weighted_sum_no_bias')
     bias = variable_scope.get_variable(
@@ -237,7 +237,7 @@ def numeric_column(key,
   # or
   bucketized_price = bucketized_column(price, boundaries=[...])
   all_feature_columns = [bucketized_price, ...]
-  linear_prediction, _, _ = make_linear_model(features, all_feature_columns)
+  linear_prediction = make_linear_model(features, all_feature_columns)
 
   ```
 
@@ -291,6 +291,55 @@ def numeric_column(key,
       normalizer_fn=normalizer_fn)
 
 
+def bucketized_column(source_column, boundaries):
+  """Represents discretized dense input.
+
+  Buckets include the left boundary, and exclude the right boundary. Namely,
+  `boundaries=[0., 1., 2.]` generates buckets `(-inf, 0.)`, `[0., 1.)`,
+  `[1., 2.)`, and `[2., +inf)`.
+
+  An example:
+  ```python
+  price = numeric_column('price')
+  bucketized_price = bucketized_column(price, boundaries=[...])
+  all_feature_columns = [bucketized_price, ...]
+  linear_prediction = make_linear_model(features, all_feature_columns)
+
+  # or
+  all_feature_columns = [bucketized_price, ...]
+  dense_tensor = make_input_layer(features, all_feature_columns)
+  ```
+
+  Args:
+    source_column: A one-dimensional dense column which is generated with
+      `numeric_column`.
+    boundaries: A sorted list or tuple of floats specifying the boundaries.
+
+  Returns:
+    A `_BucketizedColumn`.
+
+  Raises:
+    ValueError: If `source_column` is not a numeric column, or if it is not
+      one-dimensional.
+    ValueError: If `boundaries` is not a sorted list or tuple.
+  """
+  if not isinstance(source_column, _NumericColumn):
+    raise ValueError(
+        'source_column must be a column generated with numeric_column(). '
+        'Given: {}'.format(source_column))
+  if len(source_column.shape) > 1:
+    raise ValueError(
+        'source_column must be one-dimensional column. '
+        'Given: {}'.format(source_column))
+  if (not boundaries or
+      not (isinstance(boundaries, list) or isinstance(boundaries, tuple))):
+    raise ValueError('boundaries must be a sorted list.')
+  for i in range(len(boundaries) - 1):
+    if boundaries[i] >= boundaries[i + 1]:
+      raise ValueError('boundaries must be a sorted list.')
+  return _BucketizedColumn(source_column, tuple(boundaries))
+
+
 def categorical_column_with_hash_bucket(key,
                                         hash_bucket_size,
                                         dtype=dtypes.string):
@@ -303,8 +352,8 @@ def categorical_column_with_hash_bucket(key,
   An example:
   ```python
   keywords = categorical_column_with_hash_bucket("keywords", 10K)
-  linear_prediction, _, _ = make_linear_model(features, all_feature_columns)
   all_feature_columns = [keywords, ...]
+  linear_prediction = make_linear_model(features, all_feature_columns)
 
   # or
   keywords_embedded = embedding_column(keywords, 16)
@@ -666,6 +715,73 @@ class _NumericColumn(_DenseColumn,
     del weight_collections
     del trainable
     return inputs.get(self)
+
+
+class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
+                        collections.namedtuple('_BucketizedColumn', [
+                            'source_column', 'boundaries'])):
+  """See `bucketized_column`."""
+
+  @property
+  def name(self):
+    return '{}_bucketized'.format(self.source_column.name)
+
+  @property
+  def _parse_example_config(self):
+    return self.source_column._parse_example_config  # pylint: disable=protected-access
+
+  def _transform_feature(self, inputs):
+    source_tensor = inputs.get(self.source_column)
+    return math_ops._bucketize(  # pylint: disable=protected-access
+        source_tensor,
+        boundaries=self.boundaries)
+
+  @property
+  def _variable_shape(self):
+    return tuple(self.source_column.shape) + (len(self.boundaries) + 1,)
+
+  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    del weight_collections
+    del trainable
+    input_tensor = inputs.get(self)
+    return array_ops.one_hot(
+        indices=math_ops.to_int64(input_tensor),
+        depth=len(self.boundaries) + 1,
+        on_value=1.,
+        off_value=0.)
+
+  @property
+  def _num_buckets(self):
+    # By construction, source_column is always one-dimensional.
+    return (len(self.boundaries) + 1) * self.source_column.shape[0]
+
+  def _get_sparse_tensors(self, inputs, weight_collections=None,
+                          trainable=None):
+    input_tensor = inputs.get(self)
+    batch_size = array_ops.shape(input_tensor)[0]
+    # By construction, source_column is always one-dimensional.
+    source_dimension = self.source_column.shape[0]
+
+    i1 = array_ops.reshape(
+        array_ops.tile(
+            array_ops.expand_dims(math_ops.range(0, batch_size), 1),
+            [1, source_dimension]),
+        (-1,))
+    i2 = array_ops.tile(math_ops.range(0, source_dimension), [batch_size])
+    # Flatten the bucket indices and unique them across dimensions
+    # E.g. 2nd dimension indices will range from k to 2*k-1 with k buckets
+    bucket_indices = (
+        array_ops.reshape(input_tensor, (-1,)) +
+        (len(self.boundaries) + 1) * i2)
+
+    indices = math_ops.to_int64(array_ops.transpose(array_ops.stack((i1, i2))))
+    dense_shape = math_ops.to_int64(array_ops.stack(
+        [batch_size, source_dimension]))
+    sparse_tensor = sparse_tensor_lib.SparseTensor(
+        indices=indices,
+        values=bucket_indices,
+        dense_shape=dense_shape)
+    return _CategoricalColumn.IdWeightPair(sparse_tensor, None)
 
 
 def _create_tuple(shape, value):
