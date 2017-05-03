@@ -5,7 +5,6 @@ node_modules
 /.tf_configure.bazelrc
 /bazel-*
 /third_party/py/numpy/numpy_include
-/tools/bazel.rc
 /tools/python_bin_path.sh
 /tools/git/gen
 /util/python/python_include

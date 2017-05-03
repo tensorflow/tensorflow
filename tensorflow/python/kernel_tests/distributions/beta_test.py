@@ -16,18 +16,33 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import importlib
+
 import numpy as np
-from scipy import special
-from scipy import stats
-from tensorflow.contrib.distributions.python.ops import beta as beta_lib
+
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops.distributions import beta as beta_lib
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
+
+
+def try_import(name):  # pylint: disable=invalid-name
+  module = None
+  try:
+    module = importlib.import_module(name)
+  except ImportError as e:
+    tf_logging.warning("Could not import %s: %s" % (name, str(e)))
+  return module
+
+
+special = try_import("scipy.special")
+stats = try_import("scipy.stats")
 
 
 class BetaTest(test.TestCase):
@@ -167,18 +182,22 @@ class BetaTest(test.TestCase):
     with session.Session():
       a = [1., 2, 3]
       b = [2., 4, 1.2]
-      expected_mean = stats.beta.mean(a, b)
       dist = beta_lib.Beta(a, b)
       self.assertEqual(dist.mean().get_shape(), (3,))
+      if not stats:
+        return
+      expected_mean = stats.beta.mean(a, b)
       self.assertAllClose(expected_mean, dist.mean().eval())
 
   def testBetaVariance(self):
     with session.Session():
       a = [1., 2, 3]
       b = [2., 4, 1.2]
-      expected_variance = stats.beta.var(a, b)
       dist = beta_lib.Beta(a, b)
       self.assertEqual(dist.variance().get_shape(), (3,))
+      if not stats:
+        return
+      expected_variance = stats.beta.var(a, b)
       self.assertAllClose(expected_variance, dist.variance().eval())
 
   def testBetaMode(self):
@@ -228,9 +247,11 @@ class BetaTest(test.TestCase):
     with session.Session():
       a = [1., 2, 3]
       b = [2., 4, 1.2]
-      expected_entropy = stats.beta.entropy(a, b)
       dist = beta_lib.Beta(a, b)
       self.assertEqual(dist.entropy().get_shape(), (3,))
+      if not stats:
+        return
+      expected_entropy = stats.beta.entropy(a, b)
       self.assertAllClose(expected_entropy, dist.entropy().eval())
 
   def testBetaSample(self):
@@ -243,6 +264,8 @@ class BetaTest(test.TestCase):
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000,))
       self.assertFalse(np.any(sample_values < 0.0))
+      if not stats:
+        return
       self.assertLess(
           stats.kstest(
               # Beta is a univariate distribution.
@@ -286,6 +309,8 @@ class BetaTest(test.TestCase):
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000, 3, 2, 2))
       self.assertFalse(np.any(sample_values < 0.0))
+      if not stats:
+        return
       self.assertAllClose(
           sample_values[:, 1, :].mean(axis=0),
           stats.beta.mean(a, b)[1, :],
@@ -301,6 +326,8 @@ class BetaTest(test.TestCase):
         actual = beta_lib.Beta(a, b).cdf(x).eval()
         self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
         self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
+        if not stats:
+          return
         self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
 
   def testBetaLogCdf(self):
@@ -313,6 +340,8 @@ class BetaTest(test.TestCase):
         actual = math_ops.exp(beta_lib.Beta(a, b).log_cdf(x)).eval()
         self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
         self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
+        if not stats:
+          return
         self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
 
   def testBetaWithSoftplusConcentration(self):
@@ -342,6 +371,8 @@ class BetaTest(test.TestCase):
         d2_sp = beta_lib.BetaWithSoftplusConcentration(concentration1=a2_sp,
                                                        concentration0=b2_sp)
 
+        if not special:
+          return
         kl_expected = (special.betaln(a2, b2) - special.betaln(a1, b1) +
                        (a1 - a2) * special.digamma(a1) +
                        (b1 - b2) * special.digamma(b1) +
