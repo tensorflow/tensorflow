@@ -38,6 +38,7 @@ apt-get install -y --no-install-recommends \
     git \
     libcurl4-openssl-dev \
     libtool \
+    mlocate \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
     pkg-config \
