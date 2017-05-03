@@ -223,6 +223,27 @@ class RunConfigTest(test.TestCase):
     config = run_config_lib.RunConfig(model_dir=TEST_DIR)
     self.assertEqual(TEST_DIR, config.model_dir)
 
+  def test_model_dir_in_tf_config(self):
+    tf_config = {"model_dir": TEST_DIR}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      run_config = run_config_lib.RunConfig()
+    self.assertEqual(TEST_DIR, run_config.model_dir)
+
+  def test_model_dir_both_in_tf_config_and_constructor(self):
+    tf_config = {"model_dir": TEST_DIR}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      run_config = run_config_lib.RunConfig(model_dir=TEST_DIR)
+    self.assertEqual(TEST_DIR, run_config.model_dir)
+
+  def test_model_dir_fail_if_constructor_value_mismatch_tf_config(self):
+    tf_config = {"model_dir": TEST_DIR}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      with self.assertRaisesRegexp(
+          ValueError,
+          "`model_dir` provided in RunConfig .* must have "
+          "the same value .* in TF_CONFIG"):
+        run_config_lib.RunConfig(model_dir=TEST_DIR + "/sub_dir")
+
   def test_replace(self):
     config = run_config_lib.RunConfig(
         tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
