@@ -49,11 +49,11 @@ from tensorflow.contrib import metrics
 from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
+from tensorflow.contrib import periodic_intersperse
 from tensorflow.contrib import quantization
 from tensorflow.contrib import rnn
 from tensorflow.contrib import saved_model
 from tensorflow.contrib import seq2seq
-from tensorflow.contrib import shuffle
 from tensorflow.contrib import slim
 from tensorflow.contrib import solvers
 from tensorflow.contrib import sparsemax

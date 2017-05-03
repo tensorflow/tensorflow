@@ -1,12 +1,14 @@
-#ifndef TENSORFLOW_KERNELS_SHUFFLE_OP_H_
-#define TENSORFLOW_KERNELS_SHUFFLE_OP_H_
+#ifndef TENSORFLOW_KERNELS_PERIODICINTERSPERSE_OP_H_
+#define TENSORFLOW_KERNELS_PERIODICINTERSPERSE_OP_H_
 
 #include <cmath>
 #include <type_traits>
 #include <vector>
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 using namespace tensorflow;
 using std::vector;
@@ -80,19 +82,20 @@ void main_logic (OpKernelContext *context,
   int q;
   TensorShape output_shape;
 
-  // TODO throw a proper exception
-  // NOTE requires that the ranks of the input tensors are equal
-  assert(rank == desired_shape.size());
+  // NOTE requires that the rank of the input tensor and length of the desired shape are equal
+  OP_REQUIRES(context, rank == desired_shape.size(),
+              errors::InvalidArgument("periodic_intersperse expects the rank of the input tensor, ",
+              rank, ", to be the same as the length of the desired shape, ", desired_shape.size(), "."));
 
   // NOTE from here on, the logic parallels notebook
   {
     bool found = false;
     for (int i = 0; i < rank; ++i) {
       if (desired_shape(i) < 1) {
-        // TODO throw a proper exception
         // NOTE only one index can be adjustable
-        if (found)
-          assert(false);
+        OP_REQUIRES(context, !found,
+                    errors::InvalidArgument("periodic_intersperse expects only "
+                    "one index to be marked as adjustable."));
         q = i;
         found = true;
       }
@@ -101,11 +104,10 @@ void main_logic (OpKernelContext *context,
         new_sliced_size *= Y[i];
       }
     }
-    // NOTE one index needs to be adjustable
-    if (!found) {
-      // TODO throw a proper exception
-      assert(found);
-    }
+    // NOTE at least one index needs to be adjustable
+    OP_REQUIRES(context, found,
+                errors::InvalidArgument("periodic_intersperse expects at least "
+                "one index to be marked as adjustable."));
 
     int count = 0;
     for (const auto dim_info : input_tensor.shape()) {
@@ -126,9 +128,11 @@ void main_logic (OpKernelContext *context,
     }
   }
 
-  // TODO throw a proper exception
   // NOTE ensure that the new dimension is greater than zero
-  assert(Y[q] > 0);
+  OP_REQUIRES(context, Y[q] > 0,
+              errors::InvalidArgument("periodic_intersperse found that the "
+              "adjustable dimension, ", q, ", isn't greater than zero, ", Y[q],
+              "."));
   for (int i = 0; i < rank; ++i) {
     output_shape.AddDim(Y[i]);
   }
@@ -177,9 +181,9 @@ void create_output_Tensor (OpKernelContext *context,
 }
 
 
-class ShuffleOp : public OpKernel {
+class PeriodicIntersperseOp : public OpKernel {
 public:
-  explicit ShuffleOp (OpKernelConstruction* context) : OpKernel(context) {}
+  explicit PeriodicIntersperseOp (OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute (OpKernelContext* context) override {
 
@@ -189,9 +193,11 @@ public:
     const Tensor &desired_shape_tensor = context->input(1);
     const DataType desired_shape_tensor_type = context->input_dtype(1);
 
-    // TODO throw a proper exception
-    // NOTE requires that the desired shape has a single dimension (vector)
-    assert(desired_shape_tensor.dims() == 1);
+    // NOTE requires that the desired shape is a vector
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(desired_shape_tensor.shape()),
+        errors::InvalidArgument(
+          "periodic_intersperse expects a 1D vector for the desired shape."));
 
     // obligatory type switch
     if (desired_shape_tensor_type == DataTypeToEnum<int32>::value)
@@ -207,4 +213,4 @@ public:
   }
 };
 
-#endif  // TENSORFLOW_KERNELS_SHUFFLE_OP_H_
+#endif  // TENSORFLOW_KERNELS_PERIODICINTERSPERSE_OP_H_
