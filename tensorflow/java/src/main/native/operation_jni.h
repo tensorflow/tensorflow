@@ -48,6 +48,16 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_numOutputs(JNIEnv *,
 
 /*
  * Class:     org_tensorflow_Operation
+ * Method:    outputListLength
+ * Signature: (JLjava/lang/String;)I
+ */
+JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_outputListLength(JNIEnv *,
+                                                                      jclass,
+                                                                      jlong,
+                                                                      jstring);
+
+/*
+ * Class:     org_tensorflow_Operation
  * Method:    shape
  * Signature: (JJI)[J
  */
