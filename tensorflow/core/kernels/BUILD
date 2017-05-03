@@ -17,7 +17,10 @@ licenses(["notice"])  # Apache 2.0
 
 package_group(
     name = "friends",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/brain/contrib/...",
+        "//tensorflow/...",
+    ],
 )
 
 load(
@@ -360,10 +363,35 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "split_lib_hdrs",
+    hdrs = [
+        "split_lib.h",
+    ],
+    deps = [
+        ":eigen_helpers",
+        ":ops_util_hdrs",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "typed_queue",
     hdrs = ["typed_queue.h"],
     deps = [
         ":queue_base",
+    ],
+)
+
+cc_library(
+    name = "training_op_helpers",
+    srcs = ["training_op_helpers.cc"],
+    hdrs = ["training_op_helpers.h"],
+    visibility = [":friends"],
+    deps = [
+        ":variable_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -374,6 +402,15 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "warn_about_ints",
+    srcs = ["warn_about_ints.cc"],
+    hdrs = ["warn_about_ints.h"],
+    deps = [
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -2005,6 +2042,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "@local_config_cuda//cuda:cusolver",
     ],
 )
@@ -2212,6 +2250,7 @@ cc_library(
         ":batch_matmul_op",
         ":betainc_op",
         ":bincount_op",
+        ":bucketize_op",
         ":cast_op",
         ":check_numerics_op",
         ":cross_op",
@@ -2250,6 +2289,12 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "bucketize_op",
+    prefix = "bucketize_op",
+    deps = MATH_DEPS,
+)
+
+tf_kernel_library(
     name = "cast_op",
     prefix = "cast_op",
     deps = MATH_DEPS,
@@ -2278,7 +2323,9 @@ tf_kernel_library(
     prefix = "fft_ops",
     deps = MATH_DEPS + [
         "//tensorflow/core:spectral_ops_op_lib",
-    ],
+    ] + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cufft_plugin",
+    ]),
 )
 
 tf_kernel_library(
@@ -2582,7 +2629,9 @@ tf_kernel_library(
             "@libxsmm_archive//:xsmm_avx",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cudnn_plugin",
+    ]),
 )
 
 tf_kernel_library(
@@ -2696,13 +2745,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "softplus_op",
     prefix = "softplus_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [":warn_about_ints"],
 )
 
 tf_kernel_library(
     name = "softsign_op",
     prefix = "softsign_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [":warn_about_ints"],
 )
 
 tf_kernel_library(
@@ -3474,6 +3523,7 @@ tf_kernel_library(
     prefix = "training_ops",
     deps = [
         ":bounds_check",
+        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3826,7 +3876,7 @@ cc_library(
 # tensorflow/contrib/makefile/tf_op_files.txt
 # LINT.IfChange
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "avgpooling_op.h",
         "bounds_check.h",
@@ -3853,6 +3903,11 @@ filegroup(
         "queue_op.h",
         "typed_queue.h",
     ],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
 )
 
 # Core kernels we want on Android. Only a subset of kernels to keep
@@ -4000,6 +4055,7 @@ filegroup(
         "relu_op.h",
         "relu_op_functor.h",
         "resize_bilinear_op.h",
+        "resize_nearest_neighbor_op.h",
         "reverse_op.h",
         "save_restore_tensor.h",
         "softplus_op.h",
@@ -4009,9 +4065,11 @@ filegroup(
         "tensor_array.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
+        "training_op_helpers.h",
         "training_ops.h",
         "transpose_functor.h",
         "transpose_op.h",
+        "warn_about_ints.h",
         "where_op.h",
         "xent_op.h",
     ],
@@ -4108,6 +4166,7 @@ filegroup(
         "queue_base.cc",
         "queue_ops.cc",
         "random_op.cc",
+        "reduction_ops_all.cc",
         "reduction_ops_any.cc",
         "reduction_ops_common.cc",
         "reduction_ops_max.cc",
@@ -4144,9 +4203,11 @@ filegroup(
         "tile_ops_cpu_impl_6.cc",
         "tile_ops_cpu_impl_7.cc",
         "topk_op.cc",
+        "training_op_helpers.cc",
         "training_ops.cc",
         "transpose_functor_cpu.cc",
         "transpose_op.cc",
+        "warn_about_ints.cc",
         "where_op.cc",
         "xent_op.cc",
         ":android_extended_ops_headers",

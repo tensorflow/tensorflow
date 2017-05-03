@@ -126,6 +126,27 @@ TEST(ShapeRefinerTest, SetShape) {
   ASSERT_FALSE(m.SetShape(a.node(), 0, h).ok());
 }
 
+namespace {
+
+// An op with no shape function.
+REGISTER_OP("TestOpWithNoShapeFn").Input("a: int32").Output("o: int32");
+
+}  // namespace
+
+TEST(ShapeRefinerTest, MissingShapeInferenceFns) {
+  Scope root = Scope::NewRootScope();
+  auto a = ops::Const(root, 42);
+  Node* b;
+  TF_ASSERT_OK(NodeBuilder("b", "TestOpWithNoShapeFn")
+                   .Input(a.node())
+                   .Finalize(root.graph(), &b));
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(a.node()));
+  EXPECT_FALSE(m.AddNode(b).ok());
+  m.set_require_shape_inference_fns(false);
+  TF_EXPECT_OK(m.AddNode(b));
+}
+
 TEST(ShapeRefinerTest, PropagateConstants) {
   // Reduction dimension is a variable, so we don't know its value.
   // So the output shape value is unknown (though its rank is known).
@@ -745,6 +766,39 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
   TF_ASSERT_OK(m.AddNode(concat.node()));
   EXPECT_EQ("Invalid value in tensor used for shape: -2",
             m.AddNode(result).error_message());
+}
+
+TEST(ShapeRefinerTest, IncrementalUpdates) {
+  Scope root = Scope::NewRootScope();
+  Graph* g = root.graph();
+  Node* queue;
+  TF_CHECK_OK(NodeBuilder("queue", "FIFOQueueV2")
+                  .Attr("component_types", {DT_FLOAT})
+                  .Finalize(g, &queue));
+  Node* dequeue;
+  TF_CHECK_OK(NodeBuilder("dequeue", "QueueDequeueV2")
+                  .Attr("component_types", {DT_FLOAT})
+                  .Input(queue)
+                  .Finalize(g, &dequeue));
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(queue));
+  TF_ASSERT_OK(m.AddNode(dequeue));
+
+  // At this point, the shapes of the dequeued tensor are unknown.
+  shape_inference::InferenceContext* ctx = m.GetContext(dequeue);
+  EXPECT_EQ("?", ctx->DebugString(ctx->output(0)));
+
+  // Inject a shape, and incrementally propagate it to the dequeue op.
+  ctx = m.GetContext(queue);
+  shape_inference::ShapeHandle shp = ctx->MakeShape({3, 7});
+  ctx->set_output_handle_shape(0, shp);
+  ctx->set_output_handle_dtype(0, DT_FLOAT);
+
+  bool refined = false;
+  TF_ASSERT_OK(m.UpdateNode(dequeue, &refined));
+  EXPECT_TRUE(refined);
+  ctx = m.GetContext(dequeue);
+  EXPECT_EQ("[3,7]", ctx->DebugString(ctx->output(0)));
 }
 
 }  // namespace

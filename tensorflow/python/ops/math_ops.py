@@ -56,6 +56,7 @@ See the @{$python/math_ops} guide.
 @@acos
 @@asin
 @@atan
+@@atan2
 @@lgamma
 @@digamma
 @@erf
@@ -151,6 +152,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gen_state_ops
@@ -238,6 +240,12 @@ def abs(x, name=None):
 
 
 # pylint: enable=g-docstring-has-escape
+
+
+# pylint: disable=redefined-builtin
+def _bucketize(input, boundaries, name=None):
+  return gen_math_ops._bucketize(input=input, boundaries=boundaries, name=name)
+# pylint: enable=redefined-builtin
 
 
 class DivideDelegateWithName(object):
@@ -817,7 +825,16 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
       if not isinstance(y, sparse_tensor.SparseTensor):
-        y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+        try:
+          y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+        except TypeError:
+          # If the RHS is not a tensor, it might be a tensor aware object
+          # that can implement the operator with knowledge of itself
+          # and the tensor.
+          if hasattr(type(y), "__r%s__" % op_name):
+            return NotImplemented
+          else:
+            raise
       return func(x, y, name=name)
 
   def binary_op_wrapper_sparse(sp_x, y):
@@ -1919,6 +1936,12 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   NOTE: This operation is not differentiable and cannot be used if inputs depend
   on trainable variables. Please use `tf.add_n` for such cases.
 
+  Aside from differentiability, `tf.accumulate_n` performs the same operation as
+  `tf.add_n`, but does not wait for all of its inputs to be ready before
+  beginning to sum. This can save memory if inputs are ready at different times,
+  since minimum temporary storage is proportional to the output size rather than
+  the inputs size.
+
   For example:
 
   ```python
@@ -2002,6 +2025,24 @@ def sigmoid(x, name=None):
   with ops.name_scope(name, "Sigmoid", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops._sigmoid(x, name=name)
+
+
+def log_sigmoid(x, name=None):
+  """Computes log sigmoid of `x` element-wise.
+
+  Specifically, `y = log(1 / (1 + exp(-x)))`.  For numerical stability,
+  we use `y = -tf.nn.softplus(-x)`.
+
+  Args:
+    x: A Tensor with type `float32` or `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor with the same type as `x`.
+  """
+  with ops.name_scope(name, "LogSigmoid", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    return gen_math_ops._neg(gen_nn_ops.softplus(-x), name=name)
 
 
 def tanh(x, name=None):

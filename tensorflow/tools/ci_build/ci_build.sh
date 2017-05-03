@@ -18,7 +18,7 @@
 #                    <COMMAND>
 #
 # CONTAINER_TYPE: Type of the docker container used the run the build:
-#                 e.g., (cpu | gpu | android | tensorboard)
+#                 e.g., (cpu | gpu | gpu_clang | android | tensorboard)
 #
 # DOCKERFILE_PATH: (Optional) Path to the Dockerfile used for docker build.
 #                  If this optional value is not supplied (via the
@@ -84,7 +84,7 @@ if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
 fi
 
 # Use nvidia-docker if the container is GPU.
-if [[ "${CONTAINER_TYPE}" == "gpu" ]]; then
+if [[ "${CONTAINER_TYPE}" == "gpu" ]] || [[ "${CONTAINER_TYPE}" == "gpu_clang" ]]; then
   DOCKER_BINARY="nvidia-docker"
 else
   DOCKER_BINARY="docker"
@@ -104,7 +104,7 @@ BUILD_TAG="${BUILD_TAG:-tf_ci}"
 
 # Add extra params for cuda devices and libraries for GPU container.
 # And clear them if we are not building for GPU.
-if [ "${CONTAINER_TYPE}" != "gpu" ]; then
+if [[ "${CONTAINER_TYPE}" != "gpu" ]] && [[ "${CONTAINER_TYPE}" != "gpu_clang" ]]; then
   GPU_EXTRA_PARAMS=""
 fi
 

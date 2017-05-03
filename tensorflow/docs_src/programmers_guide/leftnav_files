@@ -8,6 +8,7 @@ supervisor.md
 debugger.md
 tfdbg-tflearn.md
 meta_graph.md
+saved_model_cli.md
 version_semantics.md
 data_versions.md
 faq.md

@@ -1206,7 +1206,11 @@ class Operation(object):
     else:
       if not all(x.is_compatible_with(i.dtype)
                  for i, x in zip(self._inputs, input_types)):
-        raise TypeError("Inputs are not compatible with input types")
+        raise TypeError("In op '%s', input types (%s) are not compatible "
+                        "with expected types (%s)" % (
+                            self.node_def.name,
+                            [i.dtype for i in self._inputs],
+                            input_types))
     self._input_types = input_types
 
     # Build the list of control inputs.
@@ -3977,9 +3981,13 @@ class GraphKeys(object):
     for more details.
   * `REGULARIZATION_LOSSES`: regularization losses collected during graph
     construction.
-  * `WEIGHTS`: weights inside neural network layers
-  * `BIASES`: biases inside neural network layers
-  * `ACTIVATIONS`: activations of neural network layers
+
+  The following standard keys are _defined_, but their collections are **not**
+  automatically populated as many of the others are:
+
+  * `WEIGHTS`
+  * `BIASES`
+  * `ACTIVATIONS`
   """
 
   # Key to collect Variable objects that are global (shared across machines).

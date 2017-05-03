@@ -251,7 +251,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("box_ind has incompatible shape"))
+      StringPiece(s.ToString()).contains("box_index has incompatible shape"))
       << s;
 }
 
@@ -264,8 +264,10 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("box_ind has values outside [0, batch)"))
+                  .contains("box_index has values outside [0, batch_size)"))
       << s;
 }
+
+// TODO(zhengxq, rmlarsen): Add a benchmark.
 
 }  // namespace tensorflow

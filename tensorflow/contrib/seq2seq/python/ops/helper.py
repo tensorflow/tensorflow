@@ -23,8 +23,6 @@ import abc
 
 import six
 
-from tensorflow.contrib.distributions.python.ops import bernoulli
-from tensorflow.contrib.distributions.python.ops import categorical
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -35,6 +33,8 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.distributions import bernoulli
+from tensorflow.python.ops.distributions import categorical
 from tensorflow.python.util import nest
 
 __all__ = [
@@ -363,7 +363,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
       self._seed = seed
 
       if (next_input_layer is not None and not isinstance(next_input_layer,
-                                                          layers_base._Layer)):  # pylint: disable=protected-access
+                                                          layers_base.Layer)):
         raise TypeError("next_input_layer must be a Layer, received: %s" %
                         type(next_input_layer))
       self._next_input_layer = next_input_layer

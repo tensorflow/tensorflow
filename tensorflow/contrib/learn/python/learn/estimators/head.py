@@ -37,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
@@ -613,7 +614,9 @@ def _create_model_fn_ops(features,
   if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
     weight_tensor = _weight_tensor(features, weight_column_name)
     loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
-    summary.scalar(
+    # Uses the deprecated API to set the tag explicitly.
+    # Without it, trianing and eval losses will show up in different graphs.
+    logging_ops.scalar_summary(
         _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
     if mode == model_fn.ModeKeys.TRAIN:
@@ -918,12 +921,21 @@ def _softmax_cross_entropy_loss(labels, logits, weights=None):
     if not labels.dtype.is_integer:
       raise ValueError("Labels dtype should be integer "
                        "Instead got %s." % labels.dtype)
-    # TODO(ptucker): This will break for dynamic shapes.
+
     # sparse_softmax_cross_entropy_with_logits requires [batch_size] labels.
+    is_squeezed_labels = False
+    # TODO(ptucker): This will break for dynamic shapes.
     if len(labels.get_shape()) == 2:
       labels = array_ops.squeeze(labels, squeeze_dims=(1,))
+      is_squeezed_labels = True
+
     loss = nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits, name=name)
+
+    # Restore squeezed dimension, if necessary, so loss matches weights shape.
+    if is_squeezed_labels:
+      loss = array_ops.expand_dims(loss, axis=(1,))
+
     return _compute_weighted_loss(loss, weights)
 
 

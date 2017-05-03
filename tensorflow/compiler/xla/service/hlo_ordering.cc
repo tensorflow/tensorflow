@@ -34,15 +34,95 @@ limitations under the License.
 
 namespace xla {
 
-PredecessorHloOrdering::PredecessorHloOrdering(const HloModule* module)
-    : module_(module) {}
+namespace {
 
-bool PredecessorHloOrdering::ExecutesBefore(const HloInstruction* a,
-                                            const HloInstruction* b) const {
-  // Instructions in different computations are unordered.
-  if (a->parent() != b->parent()) {
+// Returns the nearest call graph ancestors of instructions 'a' and 'b' for
+// which the ancestors are in the same computation. An instruction is an call
+// graph ancestor of 'a' if the instruction calls the computation containing 'a'
+// either directly or transitively. Degeneratively an instruction is an ancestor
+// of itself. nullptr is returned if there is no common ancestor or if the
+// caller chain of 'a' or 'b' diverges (has multiple callers) before the nearest
+// common ancestor.
+//
+// Example:
+//
+// Entry computation:
+//   %x = Call(A, {Constant(42.0)})
+//   %y = Call(B, {%x})
+//
+// Computation A:
+//   %a = Negate(Param())
+//
+// Computation B:
+//   %b = Exp(Param());
+//
+// If called with %a and %b, this function would return (%x, %y). %x is an
+// ancestor of %a, and %y is an ancestor of %b, and %x and %y are in the same
+// computation.
+std::pair<const HloInstruction*, const HloInstruction*>
+GetNearestCallGraphAncestorsInSameComputation(const HloInstruction* a,
+                                              const HloInstruction* b,
+                                              const CallGraph& call_graph) {
+  // Lambda which returns the next instruction in the callee->caller chain in
+  // the call graph. This is the unique instruction which calls the computation
+  // containing 'instruction'. If more than one instruction calls the
+  // computation containing 'instruction' or no instructions call the
+  // computation then nullptr is returned.
+  auto next_caller =
+      [&call_graph](
+          const HloInstruction* instruction) -> const HloInstruction* {
+    const CallGraphNode& node = call_graph.GetNode(instruction->parent());
+    if (node.caller_callsites().size() != 1) {
+      return nullptr;
+    }
+    return node.caller_callsites()[0].instruction();
+  };
+
+  // Iterate through the callee->caller chains and find the earliest common
+  // element.
+  for (const HloInstruction* a_ancestor = a; a_ancestor != nullptr;
+       a_ancestor = next_caller(a_ancestor)) {
+    for (const HloInstruction* b_ancestor = b; b_ancestor != nullptr;
+         b_ancestor = next_caller(b_ancestor)) {
+      if (a_ancestor->parent() == b_ancestor->parent()) {
+        return {a_ancestor, b_ancestor};
+      }
+    }
+  }
+  return {nullptr, nullptr};
+}
+
+}  // namespace
+
+bool HloOrdering::ExecutesBefore(const HloInstruction* a,
+                                 const HloInstruction* b) const {
+  // 'a' and 'b' may be in different computations. In this case, find the
+  // callgraph ancestor instructions which call (potentially transitively) the
+  // computations containing 'a' and 'b' and use these ancestor instructions to
+  // compare order.
+  const HloInstruction* a_ancestor;
+  const HloInstruction* b_ancestor;
+  std::tie(a_ancestor, b_ancestor) =
+      GetNearestCallGraphAncestorsInSameComputation(a, b, *call_graph_);
+
+  if (a_ancestor == nullptr) {
+    // Ancestors in a common computation could not be found so consider the
+    // instructions 'a' and 'b' to be unordered.
     return false;
   }
+  // a_ancestor and b_ancestor must be either both null or both non-null.
+  CHECK_NE(b_ancestor, nullptr);
+  CHECK_EQ(a_ancestor->parent(), b_ancestor->parent());
+  return ExecutesBeforeInSameComputation(a_ancestor, b_ancestor);
+}
+
+PredecessorHloOrdering::PredecessorHloOrdering(const HloModule* module)
+    : HloOrdering(module) {}
+
+bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
+    const HloInstruction* a, const HloInstruction* b) const {
+  CHECK_EQ(a->parent(), b->parent());
+
   // 'a' executes before 'b' if 'a' is in the strict predecessor set of 'b'.
   return strict_predecessors_.at(b->parent())->IsReachable(b, a);
 }
@@ -86,7 +166,7 @@ string DependencyHloOrdering::ToString() const {
 
 SequentialHloOrdering::SequentialHloOrdering(
     const HloModule* module, const HloModuleSequence& module_sequence)
-    : module_(module), module_sequence_(module_sequence) {
+    : HloOrdering(module), module_sequence_(module_sequence) {
   // Create a map from instruction to its order position.
   for (auto computation_order : module_sequence_) {
     const std::vector<const HloInstruction*>& order = computation_order.second;
@@ -97,12 +177,9 @@ SequentialHloOrdering::SequentialHloOrdering(
   }
 }
 
-bool SequentialHloOrdering::ExecutesBefore(const HloInstruction* a,
-                                           const HloInstruction* b) const {
-  // Instructions in different computations are unordered.
-  if (a->parent() != b->parent()) {
-    return false;
-  }
+bool SequentialHloOrdering::ExecutesBeforeInSameComputation(
+    const HloInstruction* a, const HloInstruction* b) const {
+  CHECK_EQ(a->parent(), b->parent());
   // If either instruction is not in the order, then 'a' and 'b' are unordered.
   if (order_position_.count(a) == 0 || order_position_.count(b) == 0) {
     return false;

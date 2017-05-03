@@ -28,8 +28,9 @@ limitations under the License.
 
 namespace xla {
 
-bool DoesNotUseOperandBuffer(HloInstruction* operand, const ShapeIndex& index,
-                             HloInstruction* user,
+bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                             const ShapeIndex& index,
+                             const HloInstruction* user,
                              const TuplePointsToAnalysis& points_to_analysis) {
   CHECK(user->IsUserOf(operand))
       << "user: " << user->ToString() << " operand: " << operand->ToString();
@@ -120,6 +121,11 @@ bool CanShareOperandBufferWithUser(
   if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
     return false;
   }
+  // Copy instructions are explicitly added by CopyInsertion to prevent liveness
+  // issues, so they should never re-use their operand buffer.
+  if (user->opcode() == HloOpcode::kCopy) {
+    return false;
+  }
   // Check if 'user' is a loop fusion instruction with a kDynamicUpdateSlice
   // fused root instruction.
   if (user->opcode() == HloOpcode::kFusion &&
@@ -144,8 +150,9 @@ bool CanShareOperandBufferWithUser(
       break;
     }
     return false;
-  } else if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
-             user->opcode() == HloOpcode::kWhile) {
+  }
+  if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
+      user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in BufferLiveness::live_range_strictly_before,
     // so here we just need to check that the use is at operand index 0.
     std::vector<int64> operand_indices = user->OperandIndices(operand);

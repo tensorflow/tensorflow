@@ -115,11 +115,12 @@ Status XlaCompiler::CompileFunction(
   }
 
   // Optimize the graph before running the compiler.
-  // TODO(pbar): The constant folder currently does not simplify int32
-  // operations for devices other than CPU.
   OptimizerOptions opts;
+  opts.set_do_common_subexpression_elimination(true);
+  opts.set_do_function_inlining(true);
+  opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  OptimizeGraph(flr, &graph);
+  optimizer.Optimize(flr, flr->env(), /*device=*/nullptr, &graph);
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile(

@@ -28,6 +28,7 @@ import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 
@@ -92,6 +93,9 @@ message RegisterGraphRequest {
 
   // Configuration options for the session in which this graph was created.
   GraphOptions graph_options = 4;
+
+  // Field(s) used by TensorFlow Debugger (tfdbg).
+  DebugOptions debug_options = 5;
 }
 
 message RegisterGraphResponse {

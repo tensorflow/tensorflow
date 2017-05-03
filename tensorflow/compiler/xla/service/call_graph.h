@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 
@@ -138,7 +137,7 @@ class CallGraphNode {
   // If instruction calls any computations adds a call site for this instruction
   // to the call graph node. If the instruction calls no computations then no
   // call site is added.
-  Status AddCallSiteForInstruction(HloInstruction* instruction);
+  void AddCallSiteForInstruction(HloInstruction* instruction);
 
   // Computation represented by this call graph node.
   HloComputation* computation_;
@@ -174,12 +173,11 @@ class CallGraph {
   using VisitorFunction = std::function<Status(const CallGraphNode&)>;
 
   // Builds and returns a call graph for the given HLO module.
-  static StatusOr<std::unique_ptr<CallGraph>> Build(const HloModule* module);
+  static std::unique_ptr<CallGraph> Build(const HloModule* module);
 
   // Returns the node associated with the given computation.
-  StatusOr<const CallGraphNode*> GetNode(
-      const HloComputation* computation) const;
-  StatusOr<CallGraphNode*> GetNode(const HloComputation* computation);
+  const CallGraphNode& GetNode(const HloComputation* computation) const;
+  CallGraphNode& GetNode(const HloComputation* computation);
 
   // Returns the vector of all nodes in the call graph.
   const std::vector<CallGraphNode>& nodes() const { return nodes_; }
@@ -197,14 +195,14 @@ class CallGraph {
   CallGraph(const HloModule* module);
 
   // Sets the call contexts for every node in the graph.
-  Status SetCallContexts();
+  void SetCallContexts();
 
   // Helper method for VisitNodes(). Traverses the call graph from 'node' in DFS
   // post order (callee before caller) calling visitor_func on each node. Adds
   // nodes to 'visited' as each node is visited. Skips nodes already in
   // 'visited'.
   Status VisitNodesInternal(
-      const VisitorFunction& visitor_func, const CallGraphNode* node,
+      const VisitorFunction& visitor_func, const CallGraphNode& node,
       tensorflow::gtl::FlatSet<const CallGraphNode*>* visited) const;
 
   // The HLO module represented by this call graph.

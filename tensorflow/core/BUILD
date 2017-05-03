@@ -841,7 +841,7 @@ filegroup(
 
 # Core sources for Android builds.
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         ":proto_text_srcs_all",
         "//tensorflow/core/kernels:android_srcs",
@@ -1573,6 +1573,7 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
+        "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
     ],
     alwayslink = 1,
@@ -2222,9 +2223,12 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:bcast_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:concat_op",
+        "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:immutable_constant_op",
         "//tensorflow/core/kernels:matmul_op",
@@ -2759,4 +2763,10 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
+    visibility = ["//visibility:public"],
 )

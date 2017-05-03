@@ -26,22 +26,37 @@ AllocatorRegistry* AllocatorRegistry::Global() {
   return global_allocator_registry;
 }
 
-bool AllocatorRegistry::CheckForDuplicates(const string& name, int priority) {
+Allocator* AllocatorRegistry::GetRegisteredAllocator(const string& name,
+                                                     int priority) {
   for (auto entry : allocators_) {
     if (!name.compare(entry.name) && priority == entry.priority) {
-      return true;
+      return entry.allocator;
     }
   }
-  return false;
+  return nullptr;
 }
 
 void AllocatorRegistry::Register(const string& name, int priority,
                                  Allocator* allocator) {
   CHECK(!name.empty()) << "Need a valid name for Allocator";
   CHECK_GE(priority, 0) << "Priority needs to be non-negative";
-  CHECK(!CheckForDuplicates(name, priority))
-      << "Allocator with name: [" << name << "] and priority: [" << priority
-      << "] already registered";
+
+  Allocator* existing = GetRegisteredAllocator(name, priority);
+  if (existing != nullptr) {
+    // A duplicate is if the registration name and priority match
+    // but the Allocator::Name()'s don't match.
+    CHECK_EQ(existing->Name(), allocator->Name())
+        << "Allocator with name: [" << name << "], type [" << existing->Name()
+        << "], priority: [" << priority
+        << "] already registered.  Choose a different name to register "
+        << "an allocator of type " << allocator->Name();
+
+    // The allocator names match, so we can just return.
+    // It should be safe to delete the allocator since the caller
+    // gives up ownership of it.
+    delete allocator;
+    return;
+  }
 
   AllocatorRegistryEntry tmp_entry;
   tmp_entry.name = name;

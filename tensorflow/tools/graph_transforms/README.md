@@ -81,10 +81,10 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul:0' \
 --outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
-fold_old_batch_norms \
+--transforms='
+strip_unused_nodes(type=float, shape="1,299,299,3")
+remove_nodes(op=Identity, op=CheckNumerics)
+fold_old_batch_norms
 '
 ```
 
@@ -94,7 +94,10 @@ transforms to modify the graph with. The transforms are given as a list of
 names, and can each have arguments themselves. These transforms define the
 pipeline of modifications that are applied in order to produce the output.
 Sometimes you need some transforms to happen before others, and the ordering
-within the list lets you specify which happen first.
+within the list lets you specify which happen first. 
+Note that the optimization 
+`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control 
+flow operations, such as `tf.cond`, `tf.map_fn`, and `tf.while`.
 
 ## Inspecting Graphs
 
@@ -169,7 +172,7 @@ then you'll need to make local modifications to the build files to include the
 right .cc file that defines it. In a lot of cases the op is just a vestigial
 remnant from the training process though, and if that's true then you can run
 the [strip_unused_nodes](#strip_unused_nodes), specifying the inputs and outputs
-of your inference usage, to remove those unneccessary nodes:
+of your inference usage, to remove those unnecessary nodes:
 
 ```bash
 bazel build tensorflow/tools/graph_transforms:transform_graph

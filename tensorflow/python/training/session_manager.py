@@ -27,6 +27,23 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_mod
 
 
+def _maybe_name(obj):
+  """Returns object name if it has one, or a message otherwise.
+
+  This is useful for names that apper in error messages.
+  Args:
+    obj: Object to get the name of.
+  Returns:
+    name, "None", or a "no name" message.
+  """
+  if obj is None:
+    return "None"
+  elif hasattr(obj, "name"):
+    return obj.name
+  else:
+    return "<no name for %s>" % type(obj)
+
+
 class SessionManager(object):
   """Training helper that restores from checkpoint and creates session.
 
@@ -267,8 +284,8 @@ class SessionManager(object):
     if not local_init_success:
       raise RuntimeError(
           "Init operations did not make model ready for local_init.  "
-          "Init op: %s, init fn: %s, error: %s" % ("None" if init_op is None
-                                                   else init_op.name, init_fn,
+          "Init op: %s, init fn: %s, error: %s" % (_maybe_name(init_op),
+                                                   init_fn,
                                                    msg))
 
     is_ready, msg = self._model_ready(sess)
@@ -276,8 +293,7 @@ class SessionManager(object):
       raise RuntimeError(
           "Init operations did not make model ready.  "
           "Init op: %s, init fn: %s, local_init_op: %s, error: %s" %
-          (None if init_op is None else init_op.name, init_fn,
-           self._local_init_op, msg))
+          (_maybe_name(init_op), init_fn, self._local_init_op, msg))
     return sess
 
   def recover_session(self,

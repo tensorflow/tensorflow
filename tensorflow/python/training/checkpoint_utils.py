@@ -59,14 +59,14 @@ def load_checkpoint(ckpt_dir_or_file):
 
 
 def load_variable(ckpt_dir_or_file, name):
-  """Returns a tensor with the contents of the given variable in the checkpoint.
+  """Returns the tensor value of the given variable in the checkpoint.
 
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint.
-    name: Name of the tensor to return.
+    name: Name of the variable to return.
 
   Returns:
-    `Tensor` object.
+    A numpy `ndarray` with a copy of the value of this variable.
   """
   # TODO(b/29227106): Fix this in the right place and remove this.
   if name.endswith(":0"):
@@ -227,7 +227,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
       # and create variable to variable mapping.
       scope_variables = set()
       for var_name in store_vars:
-        if var_name.startswith(scopes):
+        if not scopes or var_name.startswith(scopes + "/"):
           # Consume /part_ if partitioned variable.
           if "/part_" in var_name:
             var_name = var_name[:var_name.index("/part_")]

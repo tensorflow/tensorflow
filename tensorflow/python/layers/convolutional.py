@@ -37,7 +37,7 @@ from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 
 
-class _Conv(base._Layer):  # pylint: disable=protected-access
+class _Conv(base.Layer):
   """Abstract nD convolution layer (private, used as implementation base).
 
   This layer creates a convolution kernel that is convolved
@@ -130,19 +130,19 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
     input_dim = input_shape[channel_axis].value
     kernel_shape = self.kernel_size + (input_dim, self.filters)
 
-    self.kernel = vs.get_variable('kernel',
-                                  shape=kernel_shape,
-                                  initializer=self.kernel_initializer,
-                                  regularizer=self.kernel_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+    self.kernel = self.add_variable(name='kernel',
+                                    shape=kernel_shape,
+                                    initializer=self.kernel_initializer,
+                                    regularizer=self.kernel_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=(self.filters,),
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+      self.bias = self.add_variable(name='bias',
+                                    shape=(self.filters,),
+                                    initializer=self.bias_initializer,
+                                    regularizer=self.bias_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     else:
       self.bias = None
 
@@ -814,27 +814,27 @@ class SeparableConv2D(Conv2D):
                               self.depth_multiplier * input_dim,
                               self.filters)
 
-    self.depthwise_kernel = vs.get_variable(
-        'depthwise_kernel',
+    self.depthwise_kernel = self.add_variable(
+        name='depthwise_kernel',
         shape=depthwise_kernel_shape,
         initializer=self.depthwise_initializer,
         regularizer=self.depthwise_regularizer,
         trainable=True,
         dtype=self.dtype)
-    self.pointwise_kernel = vs.get_variable(
-        'pointwise_kernel',
+    self.pointwise_kernel = self.add_variable(
+        name='pointwise_kernel',
         shape=pointwise_kernel_shape,
         initializer=self.pointwise_initializer,
         regularizer=self.pointwise_regularizer,
         trainable=True,
         dtype=self.dtype)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=(self.filters,),
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+      self.bias = self.add_variable(name='bias',
+                                    shape=(self.filters,),
+                                    initializer=self.bias_initializer,
+                                    regularizer=self.bias_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     else:
       self.bias = None
 
@@ -1055,19 +1055,19 @@ class Conv2DTranspose(Conv2D):
     input_dim = input_shape[channel_axis]
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
-    self.kernel = vs.get_variable('kernel',
-                                  shape=kernel_shape,
-                                  initializer=self.kernel_initializer,
-                                  regularizer=self.kernel_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+    self.kernel = self.add_variable(name='kernel',
+                                    shape=kernel_shape,
+                                    initializer=self.kernel_initializer,
+                                    regularizer=self.kernel_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=(self.filters,),
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+      self.bias = self.add_variable(name='bias',
+                                    shape=(self.filters,),
+                                    initializer=self.bias_initializer,
+                                    regularizer=self.bias_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     else:
       self.bias = None
 
@@ -1282,19 +1282,19 @@ class Conv3DTranspose(Conv3D):
     input_dim = input_shape[channel_axis]
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
-    self.kernel = vs.get_variable('kernel',
-                                  shape=kernel_shape,
-                                  initializer=self.kernel_initializer,
-                                  regularizer=self.kernel_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+    self.kernel = self.add_variable('kernel',
+                                    shape=kernel_shape,
+                                    initializer=self.kernel_initializer,
+                                    regularizer=self.kernel_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=(self.filters,),
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+      self.bias = self.add_variable('bias',
+                                    shape=(self.filters,),
+                                    initializer=self.bias_initializer,
+                                    regularizer=self.bias_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     else:
       self.bias = None
 
@@ -1456,4 +1456,3 @@ convolution3d = conv3d
 separable_convolution2d = separable_conv2d
 convolution2d_transpose = deconvolution2d = deconv2d = conv2d_transpose
 convolution3d_transpose = deconvolution3d = deconv3d = conv3d_transpose
-

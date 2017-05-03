@@ -57,20 +57,20 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
 
   def testUnitTestFileReturnsFalse(self):
     self.assertFalse(
-        source_utils._guess_is_tensorflow_py_library(self.curr_file_path))
+        source_utils.guess_is_tensorflow_py_library(self.curr_file_path))
 
   def testSourceUtilModuleReturnsTrue(self):
     self.assertTrue(
-        source_utils._guess_is_tensorflow_py_library(source_utils.__file__))
+        source_utils.guess_is_tensorflow_py_library(source_utils.__file__))
 
   def testFileInPythonKernelsPathReturnsTrue(self):
     x = constant_op.constant(42.0, name="x")
     self.assertTrue(
-        source_utils._guess_is_tensorflow_py_library(x.op.traceback[-1][0]))
+        source_utils.guess_is_tensorflow_py_library(x.op.traceback[-1][0]))
 
   def testNonPythonFileRaisesException(self):
     with self.assertRaisesRegexp(ValueError, r"is not a Python source file"):
-      source_utils._guess_is_tensorflow_py_library(
+      source_utils.guess_is_tensorflow_py_library(
           os.path.join(os.path.dirname(self.curr_file_path), "foo.cc"))
 
 
