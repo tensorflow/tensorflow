@@ -37,7 +37,6 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.ops.math_ops import tanh
 
 
 _checked_scope = core_rnn_cell_impl._checked_scope  # pylint: disable=protected-access
@@ -1940,7 +1939,8 @@ class GLSTMCell(core_rnn_cell.RNNCell):
   """
 
   def __init__(self, num_units, initializer=None, num_proj=None,
-               number_of_groups=1, forget_bias=1.0, activation=tanh):
+               number_of_groups=1, forget_bias=1.0, activation=math_ops.tanh,
+               reuse=None):
     """Initialize the parameters of G-LSTM cell.
 
     Args:
@@ -1949,13 +1949,20 @@ class GLSTMCell(core_rnn_cell.RNNCell):
         projection matrices.
       num_proj: (optional) int, The output dimensionality for the projection
         matrices.  If None, no projection is performed.
-      number_of_groups: (optional) int, number of groups to use. If number_of_groups=1,
-        then it should be equivalent to LSTMP cell
+      number_of_groups: (optional) int, number of groups to use.
+        If number_of_groups=1, then it should be equivalent to LSTMP cell
       forget_bias: Biases of the forget gate are initialized by default to 1
         in order to reduce the scale of forgetting at the beginning of
         the training.
       activation: Activation function of the inner states.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already
+        has the given variables, an error is raised.
+
+    Raises:
+      ValueError: If num_units or num_proj is not divisible by number_of_groups
     """
+    super(GLSTMCell, self).__init__(_reuse=reuse)
     self._num_units = num_units
     self._initializer = initializer
     self._num_proj = num_proj
@@ -1963,9 +1970,11 @@ class GLSTMCell(core_rnn_cell.RNNCell):
     self._activation = activation
     self._number_of_groups = number_of_groups
 
-    assert (self._num_units % self._number_of_groups == 0)
+    if self._num_units % self._number_of_groups != 0:
+      raise ValueError("num_units must be divisible by number_of_groups")
     if self._num_proj:
-      assert (self._num_proj % self._number_of_groups == 0)
+      if self._num_proj % self._number_of_groups != 0:
+        raise ValueError("num_proj must be divisible by number_of_groups")
       self._group_shape = [int(self._num_proj / self._number_of_groups),
                            int(self._num_units / self._number_of_groups)]
     else:
@@ -1973,10 +1982,10 @@ class GLSTMCell(core_rnn_cell.RNNCell):
                            int(self._num_units / self._number_of_groups)]
 
     if num_proj:
-      self._state_size = (core_rnn_cell.LSTMStateTuple(num_units, num_proj))
+      self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_proj)
       self._output_size = num_proj
     else:
-      self._state_size = (core_rnn_cell.LSTMStateTuple(num_units, num_units))
+      self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_units)
       self._output_size = num_units
 
   @property
@@ -1987,28 +1996,34 @@ class GLSTMCell(core_rnn_cell.RNNCell):
   def output_size(self):
     return self._output_size
 
-  def _get_input_for_group(self, inpt, group_id, group_size):
+  def _get_input_for_group(self, inputs, group_id, group_size):
     """Slices inputs into groups to prepare for processing by cell's groups
 
     Args:
-      inpt: inputs
-      group_id: group id, for which to prepare extract input_group_id
+      inputs: cell input or it's previous state,
+              a Tensor, 2D, [batch x num_units]
+      group_id: group id, a Scalar, for which to prepare input
       group_size: size of the group
 
     Returns:
-      subset of inputs corresponding to group "group_id"
+      subset of inputs corresponding to group "group_id",
+      a Tensor, 2D, [batch x num_units/number_of_groups]
     """
-    return array_ops.slice(input_=inpt,
+    batch_size = inputs.get_shape()[0].value
+    if batch_size is None:
+      raise ValueError("Could not infer batch size from input")
+    return array_ops.slice(input_=inputs,
                            begin=[0, group_id * group_size],
-                           size=[inpt.get_shape()[0].value, group_size],
-                           name="GLSTMinputGroupCreation")
+                           size=[batch_size, group_size],
+                           name=("GLSTM_group%d_input_generation" % group_id))
 
-  def __call__(self, inputs, state):
+  def call(self, inputs, state):
     """Run one step of G-LSTM.
 
     Args:
-      inputs: input Tensor, 2D, batch x num_units.
-      state: this must be a tuple of state Tensors, both `2-D`, with column sizes `c_state` and `m_state`.
+      inputs: input Tensor, 2D, [batch x num_units].
+      state: this must be a tuple of state Tensors, both `2-D`,
+      with column sizes `c_state` and `m_state`.
 
     Returns:
       A tuple containing:
@@ -2018,8 +2033,8 @@ class GLSTMCell(core_rnn_cell.RNNCell):
         Here output_dim is:
            num_proj if num_proj was set,
            num_units otherwise.
-      - Tensor(s) representing the new state of G-LSTM after reading `inputs` when
-        the previous state was `state`.  Same type and shape(s) as `state`.
+      - LSTMStateTuple representing the new state of G-LSTM  cell
+        after reading `inputs` when the previous state was `state`.
 
     Raises:
       ValueError: If input size cannot be inferred from inputs via
@@ -2029,19 +2044,22 @@ class GLSTMCell(core_rnn_cell.RNNCell):
 
     input_size = inputs.get_shape().with_rank(2)[1]
     if input_size.value is None:
-      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+      raise ValueError("Couldn't infer input size from inputs.get_shape()[-1]")
     dtype = inputs.dtype
-    with vs.variable_scope("glstm_cell",
-                           initializer=self._initializer):
+    scope = vs.get_variable_scope()
+    with vs.variable_scope(scope, initializer=self._initializer):
       i_parts = []
       j_parts = []
       f_parts = []
       o_parts = []
 
-      for group_id in xrange(self._number_of_groups):
-        with vs.variable_scope("group%d"%group_id):
-          x_g_id = array_ops.concat([self._get_input_for_group(inputs, group_id, self._group_shape[0]),
-                                     self._get_input_for_group(m_prev, group_id, self._group_shape[0])], axis=1)
+      for group_id in range(self._number_of_groups):
+        with vs.variable_scope("group%d" % group_id):
+          x_g_id = array_ops.concat(
+            [self._get_input_for_group(inputs, group_id,
+                                       self._group_shape[0]),
+             self._get_input_for_group(m_prev, group_id,
+                                       self._group_shape[0])], axis=1)
           R_k = _linear(x_g_id, 4 * self._group_shape[1], bias=False)
           i_k, j_k, f_k, o_k = array_ops.split(R_k, 4, 1)
 
@@ -2050,30 +2068,34 @@ class GLSTMCell(core_rnn_cell.RNNCell):
         f_parts.append(f_k)
         o_parts.append(o_k)
 
-      #it is more efficient to have per total gate biases compared to per gate, per group biases
-      bi = vs.get_variable(name="biases_i",
+      bi = vs.get_variable(name="bias_i",
                            shape=[self._num_units],
                            dtype=dtype,
-                           initializer=init_ops.constant_initializer(0.0, dtype=dtype))
-      bj = vs.get_variable(name="biases_j",
+                           initializer=
+                           init_ops.constant_initializer(0.0, dtype=dtype))
+      bj = vs.get_variable(name="bias_j",
                            shape=[self._num_units],
                            dtype=dtype,
-                           initializer=init_ops.constant_initializer(0.0, dtype=dtype))
-      bf = vs.get_variable(name="biases_f",
+                           initializer=
+                           init_ops.constant_initializer(0.0, dtype=dtype))
+      bf = vs.get_variable(name="bias_f",
                            shape=[self._num_units],
                            dtype=dtype,
-                           initializer=init_ops.constant_initializer(0.0, dtype=dtype))
-      bo = vs.get_variable(name="biases_o",
+                           initializer=
+                           init_ops.constant_initializer(0.0, dtype=dtype))
+      bo = vs.get_variable(name="bias_o",
                            shape=[self._num_units],
                            dtype=dtype,
-                           initializer=init_ops.constant_initializer(0.0, dtype=dtype))
+                           initializer=
+                           init_ops.constant_initializer(0.0, dtype=dtype))
 
       i = nn_ops.bias_add(array_ops.concat(i_parts, axis=1), bi)
       j = nn_ops.bias_add(array_ops.concat(j_parts, axis=1), bj)
       f = nn_ops.bias_add(array_ops.concat(f_parts, axis=1), bf)
       o = nn_ops.bias_add(array_ops.concat(o_parts, axis=1), bo)
 
-    c = math_ops.sigmoid(f + self._forget_bias) * c_prev + math_ops.sigmoid(i) * math_ops.tanh(j)
+    c = math_ops.sigmoid(f + self._forget_bias) * c_prev + \
+        math_ops.sigmoid(i) * math_ops.tanh(j)
     m = math_ops.sigmoid(o) * self._activation(c)
 
     if self._num_proj is not None:
