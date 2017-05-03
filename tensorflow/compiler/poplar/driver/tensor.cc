@@ -71,20 +71,15 @@ AddConstantTensorTyped(poplar::Graph&graph,
                        const std::string &type,
                        poplar::Tensor& tensor) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
+  std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
   const TYPE* data(static_cast<const TYPE*>(LiteralUtil::InternalData(literal)));
 
   if (num_elements == 0) {
     tensor = graph.addConstantTensor(type, {0}, 0);
   } else if (num_elements == 1) {
-    std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
     tensor = graph.addConstantTensor(type, dim, data[0]);
   } else {
-    tensor = graph.addConstantTensor(type, {1}, data[0]);
-
-    for (int64 index = 1; index < num_elements; ++index) {
-      auto t = graph.addConstantTensor(type, {1}, data[index]);
-      tensor = poplar::concat(tensor, t);
-    }
+    tensor = graph.addConstantTensor(type, dim, data);
   }
 }
 
