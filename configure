@@ -107,83 +107,76 @@ OSNAME=`uname -s`
 
 if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
   fromuser=""
-  read -p "Do you wish to download MKL LIB from the web? [y/N] " INPUT
+  read -p "Do you wish to download MKL LIB from the web? [Y/n] " INPUT
   fromuser="1"
   case $INPUT in
-    [Yy]* )
-  		DST=`dirname $0`
-  		ARCHIVE_BASENAME=mklml_lnx_2017.0.3.20170424.tgz
-  		GITHUB_RELEASE_TAG=v0.7
-  		MKLURL="https://github.com/01org/mkl-dnn/releases/download/$GITHUB_RELEASE_TAG/$ARCHIVE_BASENAME"
-  		if ! [ -e "$DST/third_party/mkl/$ARCHIVE_BASENAME" ]; then
-  			wget --no-check-certificate -P $DST/third_party/mkl/ $MKLURL
-  		fi
-  		tar -xzf $DST/third_party/mkl/$ARCHIVE_BASENAME -C $DST/third_party/mkl/
-  		extracted_dir_name="${ARCHIVE_BASENAME%.*}"
-  		MKL_INSTALL_PATH=$DST/third_party/mkl/$extracted_dir_name
-  		MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`;;
-		[Nn]* )
-      default_mkl_path=/opt/intel/mklml
-      fromuser=""
-      read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
-      fromuser="1"
-      if [ -z "$MKL_INSTALL_PATH" ]; then
-      MKL_INSTALL_PATH=$default_mkl_path
-      fi
-      # Result returned from "read" will be used unexpanded. That make "~" unuseable.
-      # Going through one more level of expansion to handle that.
-      MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`;;
-    "" )
-      default_mkl_path=/opt/intel/mklml
-      fromuser=""
-      read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
-      fromuser="1"
-      if [ -z "$MKL_INSTALL_PATH" ]; then
-      MKL_INSTALL_PATH=$default_mkl_path
-      fi
-      # Result returned from "read" will be used unexpanded. That make "~" unuseable.
-      # Going through one more level of expansion to handle that.
-      MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`;;
-    * )
-      echo "Invalid selection: " $INPUT
-      exit 1;;
+    [Yy]* ) TF_DOWNLOAD_MKL=1;;
+    [Nn]* ) TF_DOWNLOAD_MKL=0;;
+    "" )    TF_DOWNLOAD_MKL=1;;
+    * )     echo "Invalid selection: " $INPUT; exit 1;;
   esac
 
-    if [ "$OSNAME" == "Linux" ]; then
-	  # Full MKL configuration
+  if [[ "$TF_DOWNLOAD_MKL" == "1" ]]; then
+    DST=`dirname $0`
+    ARCHIVE_BASENAME=mklml_lnx_2017.0.3.20170424.tgz
+    GITHUB_RELEASE_TAG=v0.7
+    MKLURL="https://github.com/01org/mkl-dnn/releases/download/$GITHUB_RELEASE_TAG/$ARCHIVE_BASENAME"
+    if ! [ -e "$DST/third_party/mkl/$ARCHIVE_BASENAME" ]; then
+      wget --no-check-certificate -P $DST/third_party/mkl/ $MKLURL
+    fi
+    tar -xzf $DST/third_party/mkl/$ARCHIVE_BASENAME -C $DST/third_party/mkl/
+    extracted_dir_name="${ARCHIVE_BASENAME%.*}"
+    MKL_INSTALL_PATH=$DST/third_party/mkl/$extracted_dir_name
+    MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`
+
+  else
+    default_mkl_path=/opt/intel/mklml
+    fromuser=""
+    read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
+    fromuser="1"
+    if [ -z "$MKL_INSTALL_PATH" ]; then
+      MKL_INSTALL_PATH=$default_mkl_path
+    fi
+    # Result returned from "read" will be used unexpanded. That make "~" unuseable.
+    # Going through one more level of expansion to handle that.
+    MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`
+  fi
+
+  if [ "$OSNAME" == "Linux" ]; then
+      # Full MKL configuration
       MKL_RT_LIB_PATH="lib/intel64/libmkl_rt.so" #${TF_MKL_EXT}#TODO version?
       MKL_RT_OMP_LIB_PATH="../compiler/lib/intel64/libiomp5.so" #TODO VERSION?
 
-	  # MKL-ML configuration
+      # MKL-ML configuration
       MKL_ML_LIB_PATH="lib/libmklml_intel.so" #${TF_MKL_EXT}#TODO version?
       MKL_ML_OMP_LIB_PATH="lib/libiomp5.so" #TODO VERSION?
-    elif [ "$OSNAME" == "Darwin" ]; then
+  elif [ "$OSNAME" == "Darwin" ]; then
       echo "Darwin is unsupported yet";
       exit 1
-    fi
+  fi
 
-    if [ -e "$MKL_INSTALL_PATH/${MKL_ML_LIB_PATH}" ]; then
-        ln -sf $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} third_party/mkl/
-        ln -sf $MKL_INSTALL_PATH/${MKL_ML_OMP_LIB_PATH} third_party/mkl/
-        ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
-        ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
-        loc=$(locate -e libdl.so.2 | sed -n 1p)
-        ln -sf $loc third_party/mkl/libdl.so.2
-    elif [ -e "$MKL_INSTALL_PATH/${MKL_RT_LIB_PATH}" ]; then
-        ln -sf $MKL_INSTALL_PATH/${MKL_RT_LIB_PATH} third_party/mkl/
-        ln -sf $MKL_INSTALL_PATH/${MKL_RT_OMP_LIB_PATH} third_party/mkl/
-        ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
-        ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
-        loc=$(locate -e libdl.so.2 | sed -n 1p)
-        ln -sf $loc third_party/mkl/libdl.so.2
-    else
+  if [ -e "$MKL_INSTALL_PATH/${MKL_ML_LIB_PATH}" ]; then
+      ln -sf $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/${MKL_ML_OMP_LIB_PATH} third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
+      loc=$(locate -e libdl.so.2 | sed -n 1p)
+      ln -sf $loc third_party/mkl/libdl.so.2
+  elif [ -e "$MKL_INSTALL_PATH/${MKL_RT_LIB_PATH}" ]; then
+      ln -sf $MKL_INSTALL_PATH/${MKL_RT_LIB_PATH} third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/${MKL_RT_OMP_LIB_PATH} third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
+      loc=$(locate -e libdl.so.2 | sed -n 1p)
+      ln -sf $loc third_party/mkl/libdl.so.2
+  else
       echo "ERROR: $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} nor $MKL_INSTALL_PATH/${MKL_RT_LIB_PATH} exists";
       exit 1
-    fi
+  fi
 
-    if [ -z "$fromuser" ]; then
+  if [ -z "$fromuser" ]; then
       exit 1
-    fi
+  fi
 
 cat > third_party/mkl/mkl.config <<EOF
 # MKL_INSTALL_PATH refers to the location of MKL root folder. The MKL header and library
