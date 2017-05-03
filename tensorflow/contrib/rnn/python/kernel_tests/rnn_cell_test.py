@@ -906,6 +906,56 @@ class RNNCellTest(test.TestCase):
       # States are left untouched
       self.assertAllClose(res[2], res[3])
 
+  def testGLSTMCell(self):
+    #First test that GLSTM matches LSTM when number_of_groups = 1
+    batch_size = 2
+    num_units = 4
+    number_of_groups = 1
+
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root1", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.ones([batch_size, num_units])
+        gcell = rnn_cell.GLSTMCell(num_units=num_units, number_of_groups=number_of_groups)
+        cell = core_rnn_cell_impl.LSTMCell(num_units=num_units)
+        self.assertTrue(isinstance(gcell.state_size, tuple))
+        zero_state = gcell.zero_state(batch_size=batch_size, dtype=dtypes.float32)
+        gh, gs = gcell(x, zero_state)
+        h, g = cell(x, zero_state)
+
+        sess.run([variables.global_variables_initializer()])
+        resG = sess.run([gh, gs])
+        res = sess.run([h, g])
+
+        self.assertAllEqual(resG[0], res[0])
+        self.assertAllEqual(resG[1], res[1])
+
+    #Test that GLSTM subgroup acts like correspoinding sub LSTM
+    batch_size = 2
+    num_units = 4
+    number_of_groups = 2
+
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root2", initializer=init_ops.constant_initializer(0.5)):
+        #input for GLSTM with 2 groups
+        x = array_ops.ones([batch_size, num_units])
+        #input for LSTM which will simulate single group
+        xL = array_ops.ones([batch_size, num_units/number_of_groups])
+        gcell = rnn_cell.GLSTMCell(num_units=num_units, number_of_groups=number_of_groups)
+        self.assertTrue(isinstance(gcell.state_size, tuple))
+        zero_stateG = gcell.zero_state(batch_size=batch_size, dtype=dtypes.float32)
+        gh, gs = gcell(x, zero_state)
+
+        # note division here in the num_units
+        cell = core_rnn_cell_impl.LSTMCell(num_units=int(num_units/number_of_groups))
+        zero_state = cell.zero_state(batch_size=batch_size, dtype=dtypes.float32)
+        h, g = cell(xL, zero_state)
+
+        sess.run([variables.global_variables_initializer()])
+        resG = sess.run([gh, gs])
+        self.assertAllEqual(resG[0][:, 0:int(num_units/number_of_groups)], res[0])
+
 
 class LayerNormBasicLSTMCellTest(test.TestCase):
 
