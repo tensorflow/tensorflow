@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -338,6 +339,14 @@ class LiteralUtil {
   static void PopulateR4FromArray4DWithLayout(const Array4D<NativeT>& values,
                                               const Layout& layout,
                                               Literal* literal);
+
+  // Populates literal values by calling the generator function for every cell
+  // in the literal object.
+  template <typename NativeT>
+  static Status Populate(
+      Literal* literal,
+      const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
+          generator);
 
   // Creates a Literal of the given dimensions with all elements set to the
   // given value.
@@ -990,6 +999,43 @@ template <typename NativeT>
     const Array4D<NativeT>& values, Literal* literal) {
   PopulateR4FromArray4DWithLayout(values, LayoutUtil::GetDefaultLayoutForR4(),
                                   literal);
+}
+
+template <typename NativeT>
+/* static */ Status LiteralUtil::Populate(
+    Literal* literal,
+    const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
+        generator) {
+  const Shape& shape = literal->shape();
+  int64 rank = ShapeUtil::Rank(shape);
+  TF_RET_CHECK(shape.element_type() ==
+               primitive_util::NativeToPrimitiveType<NativeT>());
+  tensorflow::protobuf::RepeatedField<NativeT>* data =
+      GetMutableRepeatedField<NativeT>(literal);
+  if (rank > 0) {
+    std::vector<int64> base(rank, 0);
+    std::vector<int64> step(rank, 1);
+    std::vector<int64> minor_scan_indexes(rank, 0);
+    int64 minor_dimension = shape.layout().minor_to_major()[0];
+    int64 minor_dimension_size =
+        ShapeUtil::GetDimension(shape, minor_dimension);
+
+    step[minor_dimension] = minor_dimension_size;
+    auto init_function = [&](const std::vector<int64>& indexes) {
+      int64 index = LinearIndex(*literal, indexes);
+      std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
+      for (int64 i = 0; i < minor_dimension_size; ++i) {
+        minor_scan_indexes[minor_dimension] = i;
+        data->Set(index + i, generator(minor_scan_indexes));
+      }
+      return true;
+    };
+    ShapeUtil::ForEachIndex(shape, base, AsInt64Slice(shape.dimensions()), step,
+                            init_function);
+  } else {
+    data->Set(0, generator({}));
+  }
+  return Status::OK();
 }
 
 template <typename NativeT>
