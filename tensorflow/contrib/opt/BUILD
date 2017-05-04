@@ -29,7 +29,9 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//third_party/py/scipy",
         "@six_archive//:six",
     ],
 )
