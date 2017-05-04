@@ -1570,7 +1570,9 @@ string HloInstruction::ToCategory() const {
           return "non-elementwise fusion";
         }
       case FusionKind::kInput:
-        return "reduce fusion";
+        return "input fusion";
+      case FusionKind::kOutput:
+        return "output fusion";
       case FusionKind::kTransposeDot:
         return "dot fusion";
       case FusionKind::kConvBackwardFilter:
@@ -1618,7 +1620,6 @@ bool HloInstruction::IsFusable() const {
 
   // Some kinds of instructions don't make sense to fuse.
   switch (opcode_) {
-    case HloOpcode::kFusion:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
@@ -2186,6 +2187,8 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kLoop";
     case HloInstruction::FusionKind::kInput:
       return "kInput";
+    case HloInstruction::FusionKind::kOutput:
+      return "kOutput";
     case HloInstruction::FusionKind::kTransposeDot:
       return "kTransposeDot";
     case HloInstruction::FusionKind::kConvBackwardFilter:

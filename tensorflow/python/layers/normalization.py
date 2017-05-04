@@ -201,6 +201,7 @@ class BatchNormalization(base.Layer):
                 'renorm_stddev_weight', ())
     finally:
       self._scope.set_partitioner(partitioner)
+    self.built = True
 
   def _renorm_correction_and_moments(self, mean, variance, training):
     """Returns the correction and update values for renorm."""
@@ -399,7 +400,9 @@ def batch_normalization(inputs,
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode
       (normalized with statistics of the current batch) or in inference mode
-      (normalized with moving statistics).
+      (normalized with moving statistics). **NOTE**: make sure to set this
+      parameter correctly, or else your training/inference will not work
+      properly.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     name: String, the name of the layer.

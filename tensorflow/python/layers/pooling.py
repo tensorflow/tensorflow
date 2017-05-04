@@ -71,6 +71,7 @@ class _Pooling1D(base.Layer):
     if len(input_shape) != 3:
       raise ValueError('Inputs should have rank 3. '
                        'Received input shape:', str(input_shape))
+    self.built = True
 
   def call(self, inputs):
     # There is no TF op for 1D pooling, hence we make the inputs 4D.
@@ -261,6 +262,7 @@ class _Pooling2D(base.Layer):
     if len(input_shape) != 4:
       raise ValueError('Inputs should have rank 4. '
                        'Received input shape:', str(input_shape))
+    self.built = True
 
   def call(self, inputs):
     if self.data_format == 'channels_last':
@@ -448,6 +450,7 @@ class _Pooling3D(base.Layer):
     if len(input_shape) != 5:
       raise ValueError('Inputs should have rank 5. '
                        'Received input shape:', str(input_shape))
+    self.built = True
 
   def call(self, inputs):
     pool_shape = (1,) + self.pool_size + (1,)

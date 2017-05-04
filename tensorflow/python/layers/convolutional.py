@@ -145,6 +145,7 @@ class _Conv(base.Layer):
                                     dtype=self.dtype)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     outputs = nn.convolution(
@@ -837,6 +838,7 @@ class SeparableConv2D(Conv2D):
                                     dtype=self.dtype)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     if self.data_format == 'channels_first':
@@ -1070,6 +1072,7 @@ class Conv2DTranspose(Conv2D):
                                     dtype=self.dtype)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -1297,6 +1300,7 @@ class Conv3DTranspose(Conv3D):
                                     dtype=self.dtype)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -63,17 +64,32 @@ class HeapSimulator {
   };
 
   // Run the heap simulation with the given algorithm, assuming the given
-  // sequential ordering of instructions.  The 'instruction_sequence' must
-  // contain a topologically-consistent total ordering of all instructions in
-  // the computation.  The result is invalid if instructions are not run in
-  // exactly this sequence.
+  // module_sequence, which must contain a topologically-consistent total
+  // ordering of all instructions within each computation. The result is invalid
+  // if instructions are not run in exactly this sequence.
+  //
+  // Running heap simulation on the whole module tends to save memory, compared
+  // to running on a per-computation basis, since we can re-use buffer space for
+  // called sub-computations.
   //
   // If 'buffers_to_assign' is provided, only those buffers are assigned
   // offsets, otherwise all buffers defined by the instructions are assigned.
   static StatusOr<Result> Run(
+      std::unique_ptr<HeapAlgorithm> algorithm, const HloModule& module,
+      const SequentialHloOrdering::HloModuleSequence& module_sequence,
+      const TuplePointsToAnalysis& points_to_analysis,
+      const LogicalBuffer::SizeFunction& size_fn,
+      const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign =
+          nullptr);
+
+  // Same as above, but runs on a single computation. The 'instruction_sequence'
+  // must contain a topologically-consistent total ordering of all instructions
+  // in the computation. The result is invalid if instructions are not run in
+  // exactly this sequence.
+  static StatusOr<Result> Run(
       std::unique_ptr<HeapAlgorithm> algorithm,
-      const std::vector<const HloInstruction*>& instruction_sequence,
       const HloComputation& computation,
+      const std::vector<const HloInstruction*>& instruction_sequence,
       const TuplePointsToAnalysis& points_to_analysis,
       const LogicalBuffer::SizeFunction& size_fn,
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign =
@@ -85,6 +101,12 @@ class HeapSimulator {
       const LogicalBuffer::SizeFunction& size_fn,
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign);
   ~HeapSimulator();
+
+  Status RunComputation(
+      const HloComputation& computation,
+      const std::vector<const HloInstruction*>& instruction_sequence,
+      const TuplePointsToAnalysis& points_to_analysis,
+      const SequentialHloOrdering::HloModuleSequence* module_sequence);
 
   bool IgnoreBuffer(const LogicalBuffer* buffer) const;
   void Alloc(const LogicalBuffer* buffer);

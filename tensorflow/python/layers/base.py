@@ -335,7 +335,7 @@ class Layer(object):
 
   def add_variable(self, name, shape, dtype=None,
                    initializer=None, regularizer=None, trainable=True):
-    """Adds a new variable to the layer.
+    """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
       name: variable name.
@@ -424,7 +424,6 @@ class Layer(object):
             self.build(input_shapes[0])
           else:
             self.build(input_shapes)
-          self.built = True
         if 'scope' in tf_inspect.getargspec(self.call).args:
           kwargs['scope'] = scope
         outputs = self.call(inputs, *args, **kwargs)
@@ -443,6 +442,7 @@ class Layer(object):
 
     # Update global default collections.
     _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
+    self.built = True
     return outputs
 
   @property
