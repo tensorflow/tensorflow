@@ -1927,6 +1927,7 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
 
     return new_h, new_state
 
+
 class GLSTMCell(core_rnn_cell.RNNCell):
   """Group LSTM cell (G-LSTM).
 
@@ -2010,9 +2011,7 @@ class GLSTMCell(core_rnn_cell.RNNCell):
       subset of inputs corresponding to group "group_id",
       a Tensor, 2D, [batch x num_units/number_of_groups]
     """
-    batch_size = inputs.get_shape()[0].value
-    if batch_size is None:
-      raise ValueError("Could not infer batch size from input")
+    batch_size = inputs.shape[0].value or array_ops.shape(value)[0]
     return array_ops.slice(input_=inputs,
                            begin=[0, group_id * group_size],
                            size=[batch_size, group_size],
@@ -2095,8 +2094,8 @@ class GLSTMCell(core_rnn_cell.RNNCell):
       f = nn_ops.bias_add(array_ops.concat(f_parts, axis=1), bf)
       o = nn_ops.bias_add(array_ops.concat(o_parts, axis=1), bo)
 
-    c = math_ops.sigmoid(f + self._forget_bias) * c_prev + \
-        math_ops.sigmoid(i) * math_ops.tanh(j)
+    c = (math_ops.sigmoid(f + self._forget_bias) * c_prev +
+         math_ops.sigmoid(i) * math_ops.tanh(j))
     m = math_ops.sigmoid(o) * self._activation(c)
 
     if self._num_proj is not None:
