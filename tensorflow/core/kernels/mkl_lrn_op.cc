@@ -526,7 +526,7 @@ class MklLRNGradOp : public OpKernel {
       }
     }
 
-        // convert input if needed
+    // convert input if needed
     void MklPrepareLRNGradInput(OpKernelContext* context,
                                 Tensor* mkl_tmp_input_buf_tensor,
                                 Tensor* mkl_tmp_image_buf_tensor,
