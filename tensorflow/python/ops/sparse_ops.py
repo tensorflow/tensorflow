@@ -241,6 +241,8 @@ def sparse_add(a, b, thresh=0):
   of arguments does not matter.  Use vanilla `tf.add()` for adding two dense
   `Tensor`s.
 
+  The shapes of the two operands must match: broadcasting is not supported.
+
   The indices of any input `SparseTensor` are assumed ordered in standard
   lexicographic order.  If this is not the case, before this step run
   `SparseReorder` to restore index ordering.
