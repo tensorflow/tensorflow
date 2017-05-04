@@ -60,6 +60,22 @@ def tensorboard_typescript_genrule(name, srcs, typings=[], **kwargs):
       **kwargs
   )
 
+def tensorboard_karma_web_test_suite(**kwargs):
+  """Rules referencing this will be deleted from the codebase soon."""
+  pass
+
+def tensorboard_ts_declaration(**kwargs):
+  """Rules referencing this will be deleted from the codebase soon."""
+  pass
+
+def tensorboard_ts_development_sources(**kwargs):
+  """Rules referencing this will be deleted from the codebase soon."""
+  pass
+
+def tensorboard_ts_devserver(**kwargs):
+  """Rules referencing this will be deleted from the codebase soon."""
+  pass
+
 def tensorboard_ts_library(**kwargs):
   """Rules referencing this will be deleted from the codebase soon."""
   pass
