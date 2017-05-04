@@ -76,6 +76,18 @@ class VariableOp : public OpKernel {
     // As long as the resource manager hasn't been cleared the ref we return
     // here is valid because it owns a ref on var.
     ctx->set_output_ref(0, var->mu(), var->tensor());
+    if (ctx->track_allocations() && var->tensor()->IsInitialized()) {
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+      if (ctx->allocate_on_host(attr)) {
+        ctx->record_host_persistent_memory_allocation(
+            var->tensor()->AllocatedBytes());
+      } else {
+        ctx->record_device_persistent_memory_allocation(
+            var->tensor()->AllocatedBytes());
+      }
+    }
     var->Unref();
   }
 
