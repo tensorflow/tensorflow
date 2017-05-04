@@ -405,7 +405,7 @@ class Conv2DProcessor : public NodeProcessor {
       }
     }
     if (input_shape.dim_size() == 4 && filter_shape.dim_size() == 4) {
-      if (input_shape.dim(1).size() == filter_shape.dim(0).size() == 1 &&
+      if (input_shape.dim(1).size() == filter_shape.dim(0).size() &&
           input_shape.dim(2).size() == filter_shape.dim(1).size() &&
           IsValidPadding()) {
         return true;
