@@ -24,7 +24,6 @@ import time
 
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import experiment
-from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import run_config
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
@@ -461,7 +460,8 @@ class ExperimentTest(test.TestCase):
       self.assertEqual(1, est.eval_count)
       self.assertEqual(1, len(est.monitors))
       self.assertEqual([noop_hook], est.eval_hooks)
-      self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
+      self.assertTrue(isinstance(est.monitors[0],
+                                 session_run_hook.SessionRunHook))
 
   def test_train_hooks_extend_does_not_mutate_input_hooks(self):
     for est in self._estimators_for_tests():
@@ -563,7 +563,8 @@ class ExperimentTest(test.TestCase):
       self.assertEqual(1, est.export_count)
       self.assertEqual(1, len(est.monitors))
       self.assertEqual([noop_hook], est.eval_hooks)
-      self.assertTrue(isinstance(est.monitors[0], monitors.ValidationMonitor))
+      self.assertTrue(isinstance(est.monitors[0],
+                                 session_run_hook.SessionRunHook))
 
   def test_train_and_evaluate_with_no_eval_during_training(self):
     for est in self._estimators_for_tests():
