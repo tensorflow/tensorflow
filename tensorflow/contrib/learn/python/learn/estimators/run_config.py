@@ -28,6 +28,7 @@ import six
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as core_run_config
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
 
@@ -260,10 +261,12 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
         the feature.
       evaluation_master: the master on which to perform evaluation.
       model_dir: directory where model parameters, graph etc are saved. If
-        `None`, see `Estimator` about where the model will be saved.
+        `None`, will use `model_dir` property in `TF_CONFIG` environment
+        variable. If both are set, must have same value. If both are `None`, see
+        `Estimator` about where the model will be saved.
       session_config: a ConfigProto used to set session parameters, or None.
-         Note - using this argument, it is easy to provide settings which break
-         otherwise perfectly good models. Use with care.
+        Note - using this argument, it is easy to provide settings which break
+        otherwise perfectly good models. Use with care.
     """
     super(RunConfig, self).__init__(
         master=master, evaluation_master=evaluation_master)
@@ -291,7 +294,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     # create Scaffold and Saver in their model_fn to set these.
     self._keep_checkpoint_max = keep_checkpoint_max
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
-    self._model_dir = model_dir
+    self._model_dir = _get_model_dir(model_dir)
 
   def replace(self, **kwargs):
     """Returns a new instance of `RunConfig` replacing specified properties.
@@ -434,3 +437,21 @@ def _get_master(cluster_spec, task_type, task_id):
   # For backwards compatibility, we return empty string if task_type was
   # not set (task_type did not previously exist).
   return ''
+
+
+def _get_model_dir(model_dir):
+  """Returns `model_dir` based user provided `model_dir` or `TF_CONFIG`."""
+
+  model_dir_in_tf_config = json.loads(
+      os.environ.get('TF_CONFIG') or '{}').get('model_dir', None)
+  if model_dir_in_tf_config is not None:
+    if model_dir is not None and model_dir_in_tf_config != model_dir:
+      raise ValueError(
+          '`model_dir` provided in RunConfig construct, if set, '
+          'must have the same value as the model_dir in TF_CONFIG. '
+          'model_dir: {}\nTF_CONFIG["model_dir"]: {}.\n'.format(
+              model_dir, model_dir_in_tf_config))
+
+    logging.info('Using model_dir in TF_CONFIG: %s', model_dir_in_tf_config)
+
+  return model_dir or model_dir_in_tf_config

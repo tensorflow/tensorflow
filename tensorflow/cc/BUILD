@@ -389,6 +389,16 @@ tf_gen_op_wrappers_cc(
 )
 
 tf_gen_op_wrappers_cc(
+    name = "functional_ops",
+    include_internal_ops = 1,
+    op_lib_names = [
+        "functional_ops",
+    ],
+    pkg = "//tensorflow/core",
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_gen_op_wrappers_cc(
     name = "resource_variable_ops",
     include_internal_ops = 1,
     op_lib_names = [

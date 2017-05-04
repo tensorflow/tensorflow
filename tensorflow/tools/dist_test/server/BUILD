@@ -9,7 +9,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-py_library(
+py_binary(
     name = "grpc_tensorflow_server",
     srcs = [
         "grpc_tensorflow_server.py",

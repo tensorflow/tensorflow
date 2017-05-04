@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import collections
 import hashlib
-import re
 import threading
 
 import six
@@ -56,6 +55,7 @@ def _as_type_list(dtypes):
 def _as_shape_list(shapes, dtypes, unknown_dim_allowed=False,
                    unknown_rank_allowed=False):
   """Convert shapes to a list of tuples of int (or None)."""
+  del dtypes
   if unknown_dim_allowed:
     if (not isinstance(shapes, collections.Sequence)
         or not shapes
@@ -925,16 +925,18 @@ class Barrier(object):
     If barrier has no completed elements, this operation will block
     until there are 'num_elements' elements to take.
 
+    TODO(b/25743580): the semantics of `allow_small_batch` are experimental
+    and may be extended to other cases in the future.
+
+    TODO(ebrevdo): If a take_many(allow_small_batch=True) is blocking
+    already when the barrier is closed, it will block for ever. Fix this
+    by using asynchronous operations.
+
     Args:
       num_elements: The number of elements to take.
       allow_small_batch: If the barrier is closed, don't block if there are less
         completed elements than requested, but instead return all available
         completed elements.
-        TODO(b/25743580): the semantics of `allow_small_batch` are experimental
-        and may be extended to other cases in the future.
-        TODO(ebrevdo): If a take_many(allow_small_batch=True) is blocking
-        already when the barrier is closed, it will block for ever. Fix this
-        by using asynchronous operations.
       timeout: This specifies the number of milliseconds to block
         before returning with DEADLINE_EXCEEDED. (This option is not
         supported yet.)
