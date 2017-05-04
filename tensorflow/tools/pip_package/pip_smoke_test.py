@@ -28,11 +28,13 @@ import subprocess
 PIP_PACKAGE_QUERY = """bazel query \
   'deps(//tensorflow/tools/pip_package:build_pip_package)'"""
 
-PY_TEST_QUERY = """bazel query 'filter("^((?!(benchmark|manual|no_pip)).)*$", \
-  deps(kind(py_test,\
-  //tensorflow/python/... + \
-  //tensorflow/tensorboard/... + \
-  //tensorflow/contrib/...), 1))'"""
+PY_TEST_QUERY = """bazel query 'deps(\
+  filter("^((?!benchmark).)*$",\
+  kind(py_test,\
+  //tensorflow/python/... \
+  + //tensorflow/tensorboard/... \
+  + //tensorflow/contrib/... \
+  - attr(tags, "manual|no_pip", //tensorflow/...))), 1)'"""
 
 # Hard-coded blacklist of files if not included in pip package
 # TODO(amitpatankar): Clean up blacklist.
