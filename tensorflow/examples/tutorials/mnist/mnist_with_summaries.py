@@ -55,6 +55,7 @@ def train():
     y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
 
   with tf.name_scope('input_reshape'):
+    ## -1 can also be used to infer the shape
     image_shaped_input = tf.reshape(x, [-1, 28, 28, 1])
     tf.image_summary('input', image_shaped_input, 10)
 
