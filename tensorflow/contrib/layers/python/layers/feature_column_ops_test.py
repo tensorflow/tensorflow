@@ -27,6 +27,7 @@ from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -610,6 +611,10 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [real_valued])
     with self.test_session():
       self.assertAllClose(output.eval(), features["price"].eval())
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllClose(output.eval(),
+                          fc_core.make_input_layer(features,
+                                                   [real_valued]).eval())
 
   def testRealValuedColumnWithMultiDimensions(self):
     real_valued = feature_column.real_valued_column("price", 2)
@@ -620,6 +625,10 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [real_valued])
     with self.test_session():
       self.assertAllClose(output.eval(), features["price"].eval())
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllClose(output.eval(),
+                          fc_core.make_input_layer(features,
+                                                   [real_valued]).eval())
 
   def testRealValuedColumnSparse(self):
     sparse_real_valued = feature_column._real_valued_var_len_column(
@@ -640,6 +649,10 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [real_valued])
     with self.test_session():
       self.assertAllClose(output.eval(), features["price"].eval() - 2)
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllClose(output.eval(),
+                          fc_core.make_input_layer(features,
+                                                   [real_valued]).eval())
 
   def testRealValuedColumnWithMultiDimensionsAndNormalizer(self):
     real_valued = feature_column.real_valued_column(
@@ -651,6 +664,10 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [real_valued])
     with self.test_session():
       self.assertAllClose(output.eval(), features["price"].eval() - 2)
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllClose(output.eval(),
+                          fc_core.make_input_layer(features,
+                                                   [real_valued]).eval())
 
   def testBucketizedColumnWithNormalizerSucceedsForDNN(self):
     bucket = feature_column.bucketized_column(

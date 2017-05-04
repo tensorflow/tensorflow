@@ -108,6 +108,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
         "@six_archive//:six",
     ],
 )
