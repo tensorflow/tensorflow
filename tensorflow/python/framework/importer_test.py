@@ -685,6 +685,17 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual("return_elements must be a list of strings.",
                        str(e.exception))
 
+  def testDuplicateOperationNames(self):
+    with ops.Graph().as_default():
+      with self.assertRaises(ValueError) as e:
+        importer.import_graph_def(
+            self._MakeGraphDef("""
+            node { name: 'A' op: 'Oi' }
+            node { name: 'B' op: 'Oi' }
+            node { name: 'A' op: 'Oi' }
+            """))
+      self.assertEqual("Duplicate name 'A' in GraphDef.", str(e.exception))
+
   def testWithExtensionAndAttr(self):
     with ops.Graph().as_default() as g:
       c = constant_op.constant(5.0, dtype=dtypes.float32, name="c")

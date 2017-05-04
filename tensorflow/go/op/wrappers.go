@@ -57,7 +57,7 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 // Requires `updates.shape = indices.shape + ref.shape[1:]`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/ScatterAdd.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
 // </div>
 //
 // Arguments:
@@ -195,6 +195,19 @@ func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...Va
 	return op.Output(0)
 }
 
+// FakeQuantWithMinMaxVarsPerChannelGradientAttr is an optional argument to FakeQuantWithMinMaxVarsPerChannelGradient.
+type FakeQuantWithMinMaxVarsPerChannelGradientAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsPerChannelGradientNumBits sets the optional num_bits attribute to value.
+//
+// value: The bitwidth of the quantization; between 2 and 8, inclusive.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsPerChannelGradientNumBits(value int64) FakeQuantWithMinMaxVarsPerChannelGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
 //
 // Arguments:
@@ -211,18 +224,34 @@ func VarHandleOp(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...Va
 //   `gradients * (inputs >= min && inputs <= max)`.Backpropagated gradients w.r.t. min parameter, shape `[d]`:
 // `sum_per_d(gradients * (inputs < min))`.Backpropagated gradients w.r.t. max parameter, shape `[d]`:
 // `sum_per_d(gradients * (inputs > max))`.
-func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
+func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelGradientAttr) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVarsPerChannelGradient",
 		Input: []tf.Input{
 			gradients, inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// FakeQuantWithMinMaxVarsAttr is an optional argument to FakeQuantWithMinMaxVars.
+type FakeQuantWithMinMaxVarsAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsNumBits(value int64) FakeQuantWithMinMaxVarsAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
 }
 
 // Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
@@ -232,17 +261,23 @@ func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output
 // [min; max] is the clamping range for the 'inputs' data.  Op divides this range
 // into 255 steps (total of 256 values), then replaces each 'inputs' value with the
 // closest of the quantized step values.
+// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
 // This operation has a gradient and thus allows for training `min` and `max` values.
-func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output) (outputs tf.Output) {
+func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVars",
 		Input: []tf.Input{
 			inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -653,14 +688,14 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // For example, given this input of shape `[1, 1, 1, 4]`, and a block size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3, 4]]]]
 //
 // ```
 //
 // This operation will output a tensor of shape `[1, 2, 2, 1]`:
 //
-// ```prettyprint
+// ```
 //    [[[[1], [2]],
 //      [[3], [4]]]]
 // ```
@@ -672,14 +707,14 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // For an input tensor with larger depth, here of shape `[1, 1, 1, 12]`, e.g.
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
 // ```
 //
 // This operation, for block size of 2, will return the following tensor of shape
 // `[1, 2, 2, 3]`
 //
-// ```prettyprint
+// ```
 //    [[[[1, 2, 3], [4, 5, 6]],
 //      [[7, 8, 9], [10, 11, 12]]]]
 //
@@ -687,7 +722,7 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // Similarly, for the following input of shape `[1 2 2 4]`, and a block size of 2:
 //
-// ```prettyprint
+// ```
 // x =  [[[[1, 2, 3, 4],
 //        [5, 6, 7, 8]],
 //       [[9, 10, 11, 12],
@@ -696,7 +731,7 @@ func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides
 //
 // the operator will return the following tensor of shape `[1 4 4 1]`:
 //
-// ```prettyprint
+// ```
 // x = [[ [1],   [2],  [5],  [6]],
 //      [ [3],   [4],  [7],  [8]],
 //      [ [9],  [10], [13],  [14]],
@@ -784,26 +819,26 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // (1) For the following input of shape `[4, 1, 1, 1]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // (2) For the following input of shape `[4, 1, 1, 3]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 3]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
@@ -811,7 +846,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // (3) For the following input of shape `[4, 2, 2, 1]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -820,7 +855,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //
 // The output tensor has shape `[1, 4, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[1],   [2],  [3],  [4]],
 //      [[5],   [6],  [7],  [8]],
 //      [[9],  [10], [11],  [12]],
@@ -830,7 +865,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // (4) For the following input of shape `[8, 1, 3, 1]`, `block_shape = [2, 2]`, and
 //     `crops = [[0, 0], [2, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
 //      [[[0], [2], [4]]], [[[0], [10], [12]]],
 //      [[[0], [5], [7]]], [[[0], [13], [15]]],
@@ -839,7 +874,7 @@ func DepthToSpace(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //
 // The output tensor has shape `[2, 2, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]]],
 //      [[[9],  [10], [11],  [12]],
@@ -897,32 +932,32 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // (1) For the following input of shape `[1, 2, 2, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 1]` and value:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // (2) For the following input of shape `[1, 2, 2, 3]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 3]` and value:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // (3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]],
 //       [[9],  [10], [11],  [12]],
@@ -931,7 +966,7 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // The output tensor has shape `[4, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -940,7 +975,7 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // (4) For the following input of shape `[2, 2, 4, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]]],
 //      [[[9],  [10], [11],  [12]],
@@ -949,7 +984,7 @@ func BatchToSpaceND(scope *Scope, input tf.Output, block_shape tf.Output, crops 
 //
 // The output tensor has shape `[8, 1, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
 //      [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]
 // ```
@@ -1142,34 +1177,34 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 // (1) For the following input of shape `[1, 2, 2, 1]`, `block_shape = [2, 2]`, and
 //     `paddings = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 1]` and value:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // (2) For the following input of shape `[1, 2, 2, 3]`, `block_shape = [2, 2]`, and
 //     `paddings = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
 //
 // The output tensor has shape `[4, 1, 1, 3]` and value:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // (3) For the following input of shape `[1, 4, 4, 1]`, `block_shape = [2, 2]`, and
 //     `paddings = [[0, 0], [0, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]],
 //       [[9],  [10], [11],  [12]],
@@ -1178,7 +1213,7 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 //
 // The output tensor has shape `[4, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -1188,7 +1223,7 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 // (4) For the following input of shape `[2, 2, 4, 1]`, block_shape = `[2, 2]`, and
 //     paddings = `[[0, 0], [2, 0]]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [3],  [4]],
 //       [[5],   [6],  [7],  [8]]],
 //      [[[9],  [10], [11],  [12]],
@@ -1197,7 +1232,7 @@ func QuantizeAndDequantizeV2(scope *Scope, input tf.Output, input_min tf.Output,
 //
 // The output tensor has shape `[8, 1, 3, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
 //      [[[0], [2], [4]]], [[[0], [10], [12]]],
 //      [[[0], [5], [7]]], [[[0], [13], [15]]],
@@ -1243,14 +1278,14 @@ func ListDiffOutIdx(value tf.DataType) ListDiffAttr {
 //
 // For example, given this input:
 //
-// ```prettyprint
+// ```
 // x = [1, 2, 3, 4, 5, 6]
 // y = [1, 3, 5]
 // ```
 //
 // This operation would return:
 //
-// ```prettyprint
+// ```
 // out ==> [2, 4, 6]
 // idx ==> [1, 3, 5]
 // ```
@@ -1304,14 +1339,14 @@ func SqueezeSqueezeDims(value []int64) SqueezeAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
 // shape(squeeze(t)) ==> [2, 3]
 // ```
 //
 // Or, to remove specific size 1 dimensions:
 //
-// ```prettyprint
+// ```
 // # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
 // shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 // ```
@@ -1426,7 +1461,7 @@ func Placeholder(scope *Scope, dtype tf.DataType, optional ...PlaceholderAttr) (
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[1, 2, 3], [4, 5, 6]].
 // # 'paddings' is [[1, 1]], [2, 2]].
 // # 'mode' is SYMMETRIC.
@@ -1510,7 +1545,7 @@ func BroadcastArgs(scope *Scope, s0 tf.Output, s1 tf.Output) (r0 tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'input' tensor is [[True, False]
 // #                    [True, False]]
 // # 'input' has two true values, so output has two coordinates.
@@ -1727,7 +1762,7 @@ func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []t
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 't' is [1, 2, 3, 4, 5, 6, 7, 8, 9]
 // # tensor 't' has shape [9]
 // reshape(t, [3, 3]) ==> [[1, 2, 3],
@@ -1911,20 +1946,17 @@ func Identity(scope *Scope, input tf.Output) (output tf.Output) {
 
 // Gather values or slices from `params` according to `indices`.
 //
-// `params` is a Tensor of rank `P` and `indices` is a Tensor of rank `Q`.
+// `indices` is an integer tensor containing indices into `params`.  The last
+// dimension of `indices` can be at most the rank of `params`:
 //
-// `indices` must be integer tensor, containing indices into `params`.
-// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+//     indices.shape[-1] <= params.rank
 //
-// The innermost dimension of `indices` (with length `K`) corresponds to
-// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-// dimension of `params`.
+// The last dimension of `indices` corresponds to elements
+// (if `indices.shape[-1] = params.rank`) or slices
+// (if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
+// of `params`.  The output tensor has shape
 //
-// Produces an output tensor with shape
-//
-// ```
-// [d_0, ..., d_{Q-2}, params.shape[K], ..., params.shape[P-1]].
-// ```
+//     indices.shape[:-1] + params.shape[indices.shape[-1]:]
 //
 // Some examples below.
 //
@@ -2004,11 +2036,11 @@ func Identity(scope *Scope, input tf.Output) (output tf.Output) {
 // ```
 //
 // Arguments:
-//	params: `P-D`.  The tensor from which to gather values.
-//	indices: `Q-D`.  Index tensor having shape `[d_0, ..., d_{Q-2}, K]`.
+//	params: The tensor from which to gather values.
+//	indices: Index tensor.
 //
-// Returns `(P+Q-K-1)-D`.  Values from `params` gathered from indices given by
-// `indices`.
+// Returns Values from `params` gathered from indices given by `indices`, with
+// shape `indices.shape[:-1] + params.shape[indices.shape[-1]:]`.
 func GatherNd(scope *Scope, params tf.Output, indices tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -2155,7 +2187,7 @@ func MatrixSetDiag(scope *Scope, input tf.Output, diagonal tf.Output) (output tf
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'input' is [[1, 0, 0, 0]
 //               [0, 2, 0, 0]
 //               [0, 0, 3, 0]
@@ -2351,7 +2383,7 @@ func Split(scope *Scope, split_dim tf.Output, value tf.Output, num_split int64) 
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'x' is [2, 2, 7]
 // # 'y' is [2, 3, 7]
 // # 'z' is [2, 5, 7]
@@ -2420,7 +2452,7 @@ func Concat(scope *Scope, concat_dim tf.Output, values []tf.Output) (output tf.O
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'x' is [[1, 4]]
 // # 'y' is [[2, 5]]
 // # 'z' is [[3, 6]]
@@ -2555,7 +2587,7 @@ func UniqueOutIdx(value tf.DataType) UniqueAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
 // y, idx = unique(x)
 // y ==> [1, 2, 4, 7, 8]
@@ -2689,7 +2721,7 @@ func AllCandidateSamplerSeed2(value int64) AllCandidateSamplerAttr {
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to produce per batch.
+//	num_sampled: Number of candidates to produce.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -2847,7 +2879,7 @@ func FixedUnigramCandidateSamplerSeed2(value int64) FixedUnigramCandidateSampler
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -2920,7 +2952,7 @@ func UniformCandidateSamplerSeed2(value int64) UniformCandidateSamplerAttr {
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -3035,14 +3067,14 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 //
 // For example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]],
 //       [[3], [4]]]]
 // ```
 //
 // This operation will output a tensor of shape `[1, 1, 1, 4]`:
 //
-// ```prettyprint
+// ```
 // [[[[1, 2, 3, 4]]]]
 // ```
 //
@@ -3053,7 +3085,7 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 //
 // For an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
@@ -3061,13 +3093,13 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 // This operation, for block_size of 2, will return the following tensor of shape
 // `[1, 1, 1, 12]`
 //
-// ```prettyprint
+// ```
 // [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
 // ```
 //
 // Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1],   [2],  [5],  [6]],
 //       [[3],   [4],  [7],  [8]],
 //       [[9],  [10], [13],  [14]],
@@ -3076,7 +3108,7 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 //
 // the operator will return the following tensor of shape `[1 2 2 4]`:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3, 4],
 //        [5, 6, 7, 8]],
 //       [[9, 10, 11, 12],
@@ -3102,37 +3134,34 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 	return op.Output(0)
 }
 
-// Creates a new tensor by applying sparse `updates` to individual
+// Scatter `updates` into a new (initially zero) tensor according to `indices`.
 //
-// values or slices within a zero tensor of the given `shape` tensor according to
+// Creates a new tensor by applying sparse `updates` to individual
+// values or slices within a zero tensor of the given `shape` according to
 // indices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)
 // operator which extracts values or slices from a given tensor.
 //
-// TODO(simister): Add a link to Variable.__getitem__ documentation on slice
-// syntax.
+// **WARNING**: The order in which updates are applied is nondeterministic, so the
+// output will be nondeterministic if `indices` contains duplicates.
 //
-// `shape` is a `TensorShape` with rank `P` and `indices` is a `Tensor` of rank
-// `Q`.
+// `indices` is an integer tensor containing indices into a new tensor of shape
+// `shape`.  The last dimension of `indices` can be at most the rank of `shape`:
 //
-// `indices` must be integer tensor, containing indices into `shape`.
-// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+//     indices.shape[-1] <= shape.rank
 //
-// The innermost dimension of `indices` (with length `K`) corresponds to
-// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-// dimension of `shape`.
+// The last dimension of `indices` corresponds to indices into elements
+// (if `indices.shape[-1] = shape.rank`) or slices
+// (if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
+// `shape`.  `updates` is a tensor with shape
 //
-// `updates` is Tensor of rank `Q-1+P-K` with shape:
-//
-// ```
-// [d_0, ..., d_{Q-2}, shape[K], ..., shape[P-1]].
-// ```
+//     indices.shape[:-1] + shape[indices.shape[-1]:]
 //
 // The simplest form of scatter is to insert individual elements in a tensor by
 // index. For example, say we want to insert 4 scattered elements in a rank-1
 // tensor with 8 elements.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/ScatterNd1.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
 // </div>
 //
 // In Python, this scatter operation would look like this:
@@ -3143,7 +3172,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //     shape = tf.constant([8])
 //     scatter = tf.scatter_nd(indices, updates, shape)
 //     with tf.Session() as sess:
-//       print sess.run(scatter)
+//       print(sess.run(scatter))
 // ```
 //
 // The resulting tensor would look like this:
@@ -3155,7 +3184,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 // rank-3 tensor with two matrices of new values.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/ScatterNd2.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
 // </div>
 //
 // In Python, this scatter operation would look like this:
@@ -3169,7 +3198,7 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //     shape = tf.constant([4, 4, 4])
 //     scatter = tf.scatter_nd(indices, updates, shape)
 //     with tf.Session() as sess:
-//       print sess.run(scatter)
+//       print(sess.run(scatter))
 // ```
 //
 // The resulting tensor would look like this:
@@ -3180,11 +3209,9 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //      [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
 //
 // Arguments:
-//	indices: A Tensor. Must be one of the following types: int32, int64.
-// A tensor of indices into ref.
-//	updates: A Tensor. Must have the same type as tensor. A tensor of updated values
-// to store in ref.
-//	shape: A vector. The shape of the resulting tensor.
+//	indices: Index tensor.
+//	updates: Updates to scatter into output.
+//	shape: 1-D. The shape of the resulting tensor.
 //
 // Returns A new tensor with the given shape and updates applied according
 // to the indices.
@@ -3495,6 +3522,256 @@ func Stage(scope *Scope, values []tf.Output, optional ...StageAttr) (o *tf.Opera
 	return scope.AddOperation(opspec)
 }
 
+// Table initializer that takes two tensors for keys and values respectively.
+//
+// Arguments:
+//	table_handle: Handle to a table which will be initialized.
+//	keys: Keys of type Tkey.
+//	values: Values of type Tval.
+//
+// Returns the created operation.
+func InitializeTableV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "InitializeTableV2",
+		Input: []tf.Input{
+			table_handle, keys, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// MutableHashTableV2Attr is an optional argument to MutableHashTableV2.
+type MutableHashTableV2Attr func(optionalAttr)
+
+// MutableHashTableV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func MutableHashTableV2Container(value string) MutableHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MutableHashTableV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func MutableHashTableV2SharedName(value string) MutableHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// MutableHashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+//
+// value: If true and shared_name is empty, the table is shared
+// using the node name.
+// If not specified, defaults to false
+func MutableHashTableV2UseNodeNameSharing(value bool) MutableHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// Creates an empty hash table.
+//
+// This op creates a mutable hash table, specifying the type of its keys and
+// values. Each value must be a scalar. Data can be inserted into the table using
+// the insert operations. It does not support the initialization operation.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func MutableHashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...MutableHashTableV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MutableHashTableV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// HashTableV2Attr is an optional argument to HashTableV2.
+type HashTableV2Attr func(optionalAttr)
+
+// HashTableV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func HashTableV2Container(value string) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// HashTableV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func HashTableV2SharedName(value string) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// HashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+//
+// value: If true and shared_name is empty, the table is shared
+// using the node name.
+// If not specified, defaults to false
+func HashTableV2UseNodeNameSharing(value bool) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// Creates a non-initialized hash table.
+//
+// This op creates a hash table, specifying the type of its keys and values.
+// Before using the table you will have to initialize it.  After initialization the
+// table will be immutable.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func HashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...HashTableV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "HashTableV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Replaces the contents of the table with the specified keys and values.
+//
+// The tensor `keys` must be of the same type as the keys of the table.
+// The tensor `values` must be of the type of the table values.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys to look up.
+//	values: Values to associate with keys.
+//
+// Returns the created operation.
+func LookupTableImportV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableImportV2",
+		Input: []tf.Input{
+			table_handle, keys, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Outputs all keys and values in the table.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//
+//
+//
+// Returns Vector of all keys present in the table.Tensor of all values in the table. Indexed in parallel with `keys`.
+func LookupTableExportV2(scope *Scope, table_handle tf.Output, Tkeys tf.DataType, Tvalues tf.DataType) (keys tf.Output, values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tkeys": Tkeys, "Tvalues": Tvalues}
+	opspec := tf.OpSpec{
+		Type: "LookupTableExportV2",
+		Input: []tf.Input{
+			table_handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// Updates the table to associates keys with values.
+//
+// The tensor `keys` must be of the same type as the keys of the table.
+// The tensor `values` must be of the type of the table values.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys to look up.
+//	values: Values to associate with keys.
+//
+// Returns the created operation.
+func LookupTableInsertV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableInsertV2",
+		Input: []tf.Input{
+			table_handle, keys, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Looks up keys in a table, outputs the corresponding values.
+//
+// The tensor `keys` must of the same type as the keys of the table.
+// The output `values` is of the type of the table values.
+//
+// The scalar `default_value` is the value output for keys not present in the
+// table. It must also be of the same type as the table values.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys to look up.
+//
+//
+// Returns Same shape as `keys`.  Values found in the table, or `default_values`
+// for missing keys.
+func LookupTableFindV2(scope *Scope, table_handle tf.Output, keys tf.Output, default_value tf.Output) (values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableFindV2",
+		Input: []tf.Input{
+			table_handle, keys, default_value,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // FakeQuantWithMinMaxArgsAttr is an optional argument to FakeQuantWithMinMaxArgs.
 type FakeQuantWithMinMaxArgsAttr func(optionalAttr)
 
@@ -3514,11 +3791,20 @@ func FakeQuantWithMinMaxArgsMax(value float32) FakeQuantWithMinMaxArgsAttr {
 	}
 }
 
+// FakeQuantWithMinMaxArgsNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxArgsNumBits(value int64) FakeQuantWithMinMaxArgsAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
 //
 // Attributes [min; max] define the clamping range for the 'inputs' data.  Op
 // divides this range into 255 steps (total of 256 values), then replaces each
 // 'inputs' value with the closest of the quantized step values.
+// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
 // Quantization is called fake since the output is still in floating point.
 func FakeQuantWithMinMaxArgs(scope *Scope, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsAttr) (outputs tf.Output) {
@@ -3730,7 +4016,7 @@ func LearnedUnigramCandidateSamplerSeed2(value int64) LearnedUnigramCandidateSam
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -3816,7 +4102,7 @@ func TensorArraySplitV3(scope *Scope, handle tf.Output, value tf.Output, lengths
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'diagonal' is [1, 2, 3, 4]
 // tf.diag(diagonal) ==> [[1, 0, 0, 0]
 //                        [0, 2, 0, 0]
@@ -4051,7 +4337,7 @@ func TensorArrayConcatV2(scope *Scope, handle tf.Output, flow_in tf.Output, dtyp
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'input' is [[[1, 0, 0, 0]
 //                [0, 2, 0, 0]
 //                [0, 0, 3, 0]
@@ -4752,7 +5038,7 @@ func StridedSliceShrinkAxisMask(value int64) StridedSliceAttr {
 // particular,
 // `foo[1, 2:4, None, ..., :-3:-1, :]` will be encoded as
 //
-// ```prettyprint
+// ```
 // begin = [1, 2, x, x, 0, x] # x denotes don't care (usually 0)
 // end = [2, 4, x, x, -3, x]
 // strides = [1, 1, x, x, -1, 1]
@@ -4904,7 +5190,7 @@ func TensorArrayGatherV2(scope *Scope, handle tf.Output, indices tf.Output, flow
 // ```
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/DynamicStitch.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/DynamicStitch.png" alt>
 // </div>
 func DynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged tf.Output) {
 	if scope.Err() != nil {
@@ -5618,6 +5904,14 @@ func FakeQuantWithMinMaxArgsGradientMax(value float32) FakeQuantWithMinMaxArgsGr
 	}
 }
 
+// FakeQuantWithMinMaxArgsGradientNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxArgsGradientNumBits(value int64) FakeQuantWithMinMaxArgsGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxArgs operation.
 //
 // Arguments:
@@ -5970,7 +6264,7 @@ func ReverseSequenceBatchDim(value int64) ReverseSequenceAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # Given this:
 // batch_dim = 0
 // seq_dim = 1
@@ -5992,7 +6286,7 @@ func ReverseSequenceBatchDim(value int64) ReverseSequenceAttr {
 //
 // In contrast, if:
 //
-// ```prettyprint
+// ```
 // # Given this:
 // batch_dim = 2
 // seq_dim = 0
@@ -6872,7 +7166,7 @@ func SaveSlices(scope *Scope, filename tf.Output, tensor_names tf.Output, shapes
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
 // # shape of tensor 't' is [2, 2, 3]
 // rank(t) ==> 3
@@ -7082,7 +7376,7 @@ func Acos(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # if 'input' is [[ 0,  1,  2, 3]
 //                  [-1,  0,  1, 2]
 //                  [-2, -1,  0, 1]
@@ -7101,7 +7395,7 @@ func Acos(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // Useful special cases:
 //
-// ```prettyprint
+// ```
 //  tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
 //  tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
 //  tf.matrix_band_part(input, 0, 0) ==> Diagonal.
@@ -7513,6 +7807,17 @@ func RandomShuffle(scope *Scope, value tf.Output, optional ...RandomShuffleAttr)
 	return op.Output(0)
 }
 
+// FakeQuantWithMinMaxVarsPerChannelAttr is an optional argument to FakeQuantWithMinMaxVarsPerChannel.
+type FakeQuantWithMinMaxVarsPerChannelAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsPerChannelNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsPerChannelNumBits(value int64) FakeQuantWithMinMaxVarsPerChannelAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
 //
 // `[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
@@ -7521,17 +7826,23 @@ func RandomShuffle(scope *Scope, value tf.Output, optional ...RandomShuffleAttr)
 // [min; max] is the clamping range for the 'inputs' data in the corresponding
 // depth channel.  Op divides this range into 255 steps (total of 256 values), then
 // replaces each 'inputs' value with the closest of the quantized step values.
+// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
 // This operation has a gradient and thus allows for training `min` and `max` values.
-func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output) (outputs tf.Output) {
+func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVarsPerChannel",
 		Input: []tf.Input{
 			inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -7880,17 +8191,17 @@ func SdcaOptimizerAdaptative(value bool) SdcaOptimizerAttr {
 // uniformly, and the optimizer is learning rate free and enjoys linear convergence
 // rate.
 //
-// Proximal Stochastic Dual Coordinate Ascent, Shalev-Shwartz, Shai; Zhang, Tong.
-// 2012 arXiv1211.2717S: http://arxiv.org/pdf/1211.2717v1.pdf
+// [Proximal Stochastic Dual Coordinate Ascent](http://arxiv.org/pdf/1211.2717v1.pdf).<br>
+// Shai Shalev-Shwartz, Tong Zhang. 2012
 //
-//   Loss objective = \sum f_{i}(wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|
+// $$Loss Objective = \sum f_{i} (wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|$$
 //
-// Adding vs. Averaging in Distributed Primal-Dual Optimization.
-// Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan, Peter Richtarik,
-// Martin Takac http://arxiv.org/abs/1502.03508
+// [Adding vs. Averaging in Distributed Primal-Dual Optimization](http://arxiv.org/abs/1502.03508).<br>
+// Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan,
+// Peter Richtarik, Martin Takac. 2015
 //
-// Stochastic Dual Coordinate Ascent with Adaptive Probabilities
-// Dominik Csiba, Zheng Qu, Peter Richtarik https://arxiv.org/abs/1502.08053
+// [Stochastic Dual Coordinate Ascent with Adaptive Probabilities](https://arxiv.org/abs/1502.08053).<br>
+// Dominik Csiba, Zheng Qu, Peter Richtarik. 2015
 //
 // Arguments:
 //	sparse_example_indices: a list of vectors which contain example indices.
@@ -9872,7 +10183,7 @@ func PackAxis(value int64) PackAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'x' is [1, 4]
 // # 'y' is [2, 5]
 // # 'z' is [3, 6]
@@ -9956,6 +10267,70 @@ func QuantizedRelu(scope *Scope, features tf.Output, min_features tf.Output, max
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// InitializeTableFromTextFileV2Attr is an optional argument to InitializeTableFromTextFileV2.
+type InitializeTableFromTextFileV2Attr func(optionalAttr)
+
+// InitializeTableFromTextFileV2VocabSize sets the optional vocab_size attribute to value.
+//
+// value: Number of elements of the file, use -1 if unknown.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func InitializeTableFromTextFileV2VocabSize(value int64) InitializeTableFromTextFileV2Attr {
+	return func(m optionalAttr) {
+		m["vocab_size"] = value
+	}
+}
+
+// InitializeTableFromTextFileV2Delimiter sets the optional delimiter attribute to value.
+//
+// value: Delimiter to separate fields in a line.
+// If not specified, defaults to "\t"
+func InitializeTableFromTextFileV2Delimiter(value string) InitializeTableFromTextFileV2Attr {
+	return func(m optionalAttr) {
+		m["delimiter"] = value
+	}
+}
+
+// Initializes a table from a text file.
+//
+// It inserts one key-value pair into the table for each line of the file.
+// The key and value is extracted from the whole line content, elements from the
+// split line based on `delimiter` or the line number (starting from zero).
+// Where to extract the key and value from a line is specified by `key_index` and
+// `value_index`.
+//
+// - A value of -1 means use the line number(starting from zero), expects `int64`.
+// - A value of -2 means use the whole line content, expects `string`.
+// - A value >= 0 means use the index (starting at zero) of the split line based
+//   on `delimiter`.
+//
+// Arguments:
+//	table_handle: Handle to a table which will be initialized.
+//	filename: Filename of a vocabulary text file.
+//	key_index: Column index in a line to get the table `key` values from.
+//	value_index: Column index that represents information of a line to get the table
+// `value` values from.
+//
+// Returns the created operation.
+func InitializeTableFromTextFileV2(scope *Scope, table_handle tf.Output, filename tf.Output, key_index int64, value_index int64, optional ...InitializeTableFromTextFileV2Attr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_index": key_index, "value_index": value_index}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "InitializeTableFromTextFileV2",
+		Input: []tf.Input{
+			table_handle, filename,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
 }
 
 // ResourceSparseApplyProximalGradientDescentAttr is an optional argument to ResourceSparseApplyProximalGradientDescent.
@@ -10105,7 +10480,7 @@ func WriteFile(scope *Scope, filename tf.Output, contents tf.Output) (o *tf.Oper
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 't' is [[[[ 0,  1,  2,  3],
 // #                  [ 4,  5,  6,  7],
 // #                  [ 8,  9, 10, 11]],
@@ -10577,7 +10952,7 @@ func SizeOutType(value tf.DataType) SizeAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
 // size(t) ==> 12
 // ```
@@ -10759,7 +11134,7 @@ func FFT2D(scope *Scope, input tf.Output) (output tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # Output tensor has shape [2, 3].
 // fill([2, 3], 9) ==> [[9, 9, 9]
 //                      [9, 9, 9]]
@@ -10809,6 +11184,75 @@ func IFFT2D(scope *Scope, input tf.Output) (output tf.Output) {
 		Input: []tf.Input{
 			input,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MutableHashTableOfTensorsV2Attr is an optional argument to MutableHashTableOfTensorsV2.
+type MutableHashTableOfTensorsV2Attr func(optionalAttr)
+
+// MutableHashTableOfTensorsV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func MutableHashTableOfTensorsV2Container(value string) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func MutableHashTableOfTensorsV2SharedName(value string) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+// If not specified, defaults to false
+func MutableHashTableOfTensorsV2UseNodeNameSharing(value bool) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2ValueShape sets the optional value_shape attribute to value.
+// If not specified, defaults to <>
+func MutableHashTableOfTensorsV2ValueShape(value tf.Shape) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["value_shape"] = value
+	}
+}
+
+// Creates an empty hash table.
+//
+// This op creates a mutable hash table, specifying the type of its keys and
+// values. Each value must be a vector. Data can be inserted into the table using
+// the insert operations. It does not support the initialization operation.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func MutableHashTableOfTensorsV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...MutableHashTableOfTensorsV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MutableHashTableOfTensorsV2",
+
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -11556,7 +12000,7 @@ func SparseAdd(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[1, 2, 3], [4, 5, 6], [7, 8, 9]].
 // # 'paddings' is [[0, 1]], [0, 1]].
 // # 'mode' is SYMMETRIC.
@@ -11601,7 +12045,7 @@ func MirrorPadGrad(scope *Scope, input tf.Output, paddings tf.Output, mode strin
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor `x` is [3, 4, 0, 2, 1]
 // invert_permutation(x) ==> [2, 4, 3, 0, 1]
 // ```
@@ -11637,7 +12081,7 @@ func InvertPermutation(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 't' is [[[[ 0,  1,  2,  3],
 // #                  [ 4,  5,  6,  7],
 // #                  [ 8,  9, 10, 11]],
@@ -12160,7 +12604,7 @@ func ThreadUnsafeUnigramCandidateSamplerSeed2(value int64) ThreadUnsafeUnigramCa
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -13209,6 +13653,104 @@ func ReaderReadV2(scope *Scope, reader_handle tf.Output, queue_handle tf.Output)
 	return op.Output(0), op.Output(1)
 }
 
+// MutableDenseHashTableV2Attr is an optional argument to MutableDenseHashTableV2.
+type MutableDenseHashTableV2Attr func(optionalAttr)
+
+// MutableDenseHashTableV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func MutableDenseHashTableV2Container(value string) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MutableDenseHashTableV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func MutableDenseHashTableV2SharedName(value string) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// MutableDenseHashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+// If not specified, defaults to false
+func MutableDenseHashTableV2UseNodeNameSharing(value bool) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// MutableDenseHashTableV2ValueShape sets the optional value_shape attribute to value.
+//
+// value: The shape of each value.
+// If not specified, defaults to <>
+func MutableDenseHashTableV2ValueShape(value tf.Shape) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["value_shape"] = value
+	}
+}
+
+// MutableDenseHashTableV2InitialNumBuckets sets the optional initial_num_buckets attribute to value.
+//
+// value: The initial number of hash table buckets. Must be a power
+// to 2.
+// If not specified, defaults to 131072
+func MutableDenseHashTableV2InitialNumBuckets(value int64) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["initial_num_buckets"] = value
+	}
+}
+
+// MutableDenseHashTableV2MaxLoadFactor sets the optional max_load_factor attribute to value.
+//
+// value: The maximum ratio between number of entries and number of
+// buckets before growing the table. Must be between 0 and 1.
+// If not specified, defaults to 0.8
+func MutableDenseHashTableV2MaxLoadFactor(value float32) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["max_load_factor"] = value
+	}
+}
+
+// Creates an empty hash table that uses tensors as the backing store. It uses
+//
+// "open addressing" with quadratic reprobing to resolve collisions.
+//
+// This op creates a mutable hash table, specifying the type of its keys and
+// values. Each value must be a scalar. Data can be inserted into the table using
+// the insert operations. It does not support the initialization operation.
+//
+// Arguments:
+//	empty_key: The key used to represent empty key buckets internally. Must not
+// be used in insert or lookup operations.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func MutableDenseHashTableV2(scope *Scope, empty_key tf.Output, value_dtype tf.DataType, optional ...MutableDenseHashTableV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MutableDenseHashTableV2",
+		Input: []tf.Input{
+			empty_key,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // LRNAttr is an optional argument to LRN.
 type LRNAttr func(optionalAttr)
 
@@ -13472,7 +14014,7 @@ func LogicalNot(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[1, 1], [2, 2]]
 // # 'paddings' is [[1, 1], [2, 2]]
 // # rank of 't' is 2
@@ -13697,7 +14239,7 @@ func GatherValidateIndices(value bool) GatherAttr {
 // raising an error.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../../images/Gather.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
 // </div>
 func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...GatherAttr) (output tf.Output) {
 	if scope.Err() != nil {
@@ -13774,9 +14316,9 @@ func SoftsignGrad(scope *Scope, gradients tf.Output, features tf.Output) (backpr
 //
 // The polygamma function is defined as:
 //
-// ```
-// \psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)
-// ```
+//
+// \\(\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)\\)
+//
 // where \\(\psi(x)\\) is the digamma function.
 func Polygamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
@@ -14998,9 +15540,8 @@ func Any(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 //
 // The Hurwitz zeta function is defined as:
 //
-// ```
-// \zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}
-// ```
+//
+// \\(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\\)
 func Zeta(scope *Scope, x tf.Output, q tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -15359,7 +15900,7 @@ func UniqueWithCountsOutIdx(value tf.DataType) UniqueWithCountsAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
 // y, idx, count = unique_with_counts(x)
 // y ==> [1, 2, 4, 7, 8]
@@ -15667,7 +16208,7 @@ func NotEqual(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
 //
 // and diagonal.shape = (2, 4)
@@ -16643,7 +17184,7 @@ func Sqrt(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // Other examples:
 //
-// ```prettyprint
+// ```
 // # 't' is a tensor of shape [2]
 // shape(expand_dims(t, 0)) ==> [1, 2]
 // shape(expand_dims(t, 1)) ==> [2, 1]
@@ -17417,32 +17958,32 @@ func Tan(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // (1) For the following input of shape `[4, 1, 1, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [2]], [[3], [4]]]]
 // ```
 //
 // (2) For the following input of shape `[4, 1, 1, 3]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
 // ```
 //
 // The output tensor has shape `[1, 2, 2, 3]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1, 2, 3], [4, 5, 6]],
 //       [[7, 8, 9], [10, 11, 12]]]]
 // ```
 //
 // (3) For the following input of shape `[4, 2, 2, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[9], [11]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -17451,7 +17992,7 @@ func Tan(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // The output tensor has shape `[1, 4, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[1],   [2],  [3],  [4]],
 //      [[5],   [6],  [7],  [8]],
 //      [[9],  [10], [11],  [12]],
@@ -17460,14 +18001,14 @@ func Tan(scope *Scope, x tf.Output) (y tf.Output) {
 //
 // (4) For the following input of shape `[8, 1, 2, 1]` and block_size of 2:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],
 //      [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]
 // ```
 //
 // The output tensor has shape `[2, 2, 4, 1]` and value:
 //
-// ```prettyprint
+// ```
 // x = [[[[1], [3]], [[5], [7]]],
 //      [[[2], [4]], [[10], [12]]],
 //      [[[5], [7]], [[13], [15]]],
@@ -18037,7 +18578,7 @@ func LogUniformCandidateSamplerSeed2(value int64) LogUniformCandidateSamplerAttr
 //	true_classes: A batch_size * num_true matrix, in which each row contains the
 // IDs of the num_true target_classes in the corresponding original label.
 //	num_true: Number of true labels per context.
-//	num_sampled: Number of candidates to randomly sample per batch.
+//	num_sampled: Number of candidates to randomly sample.
 //	unique: If unique is true, we sample with rejection, so that all sampled
 // candidates in a batch are unique. This requires some approximation to
 // estimate the post-rejection sampling probabilities.
@@ -18087,6 +18628,19 @@ func Less(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// FakeQuantWithMinMaxVarsGradientAttr is an optional argument to FakeQuantWithMinMaxVarsGradient.
+type FakeQuantWithMinMaxVarsGradientAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsGradientNumBits sets the optional num_bits attribute to value.
+//
+// value: The bitwidth of the quantization; between 2 and 8, inclusive.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsGradientNumBits(value int64) FakeQuantWithMinMaxVarsGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxVars operation.
 //
 // Arguments:
@@ -18100,15 +18654,20 @@ func Less(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 // `gradients * (inputs >= min && inputs <= max)`.Backpropagated gradients w.r.t. min parameter:
 // `sum(gradients * (inputs < min))`.Backpropagated gradients w.r.t. max parameter:
 // `sum(gradients * (inputs > max))`.
-func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
+func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsGradientAttr) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "FakeQuantWithMinMaxVarsGradient",
 		Input: []tf.Input{
 			gradients, inputs, min, max,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
@@ -18160,13 +18719,12 @@ func Pow(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 //
 // The upper regularized incomplete Gamma function is defined as:
 //
-// ```
-// Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)
-// ```
+// \\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\)
+//
 // where
-// ```
-// Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt
-// ```
+//
+// \\(Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
+//
 // is the upper incomplete Gama function.
 //
 // Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
@@ -18189,13 +18747,13 @@ func Igammac(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 //
 // The lower regularized incomplete Gamma function is defined as:
 //
-// ```
-// P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)
-// ```
+//
+// \\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
+//
 // where
-// ```
-// gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt
-// ```
+//
+// \\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\)
+//
 // is the lower incomplete Gamma function.
 //
 // Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
@@ -18218,14 +18776,14 @@ func Igamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 //
 // The regularized incomplete beta integral is defined as:
 //
-// ```
-// I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}
-// ```
+//
+// \\(I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}\\)
+//
 // where
 //
-// ```
-// B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt
-// ```
+//
+// \\(B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt\\)
+//
 //
 // is the incomplete beta function and \\(B(a, b)\\) is the *complete*
 // beta function.
@@ -18663,6 +19221,44 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Bucketizes 'input' based on 'boundaries'.
+//
+// For example, if the inputs are
+//     boundaries = [0, 10, 100]
+//     input = [[-5, 10000]
+//              [150,   10]
+//              [5,    100]]
+//
+// then the output will be
+//     output = [[0, 3]
+//               [3, 2]
+//               [1, 3]]
+//
+// Arguments:
+//	input: Any shape of Tensor contains with int or float type.
+//	boundaries: A sorted list of floats gives the boundary of the buckets.
+//
+// Returns Same shape with 'input', each value of input replaced with bucket index.
+//
+// @compatibility(numpy)
+// Equivalent to np.digitize.
+// @end_compatibility
+func Bucketize(scope *Scope, input tf.Output, boundaries []float32) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"boundaries": boundaries}
+	opspec := tf.OpSpec{
+		Type: "Bucketize",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Computes the product along segments of a tensor.
@@ -19915,7 +20511,7 @@ func Sum(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ..
 // ```
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="../../images/DynamicPartition.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/DynamicPartition.png" alt>
 // </div>
 //
 // Arguments:
@@ -20389,7 +20985,7 @@ func ShapeOutType(value tf.DataType) ShapeAttr {
 //
 // For example:
 //
-// ```prettyprint
+// ```
 // # 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
 // shape(t) ==> [2, 2, 3]
 // ```
@@ -20435,6 +21031,26 @@ func SoftmaxCrossEntropyWithLogits(scope *Scope, features tf.Output, labels tf.O
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Computes the number of elements in the given table.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//
+// Returns Scalar that contains number of elements in the table.
+func LookupTableSizeV2(scope *Scope, table_handle tf.Output) (size tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableSizeV2",
+		Input: []tf.Input{
+			table_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // ResizeBilinearGradAttr is an optional argument to ResizeBilinearGrad.

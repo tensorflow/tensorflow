@@ -38,7 +38,7 @@ class PublicAPIVisitor(object):
     self._visitor = visitor
 
     # Modules/classes we do not want to descend into if we hit them. Usually,
-    # sytem modules exposed through platforms for compatibility reasons.
+    # system modules exposed through platforms for compatibility reasons.
     # Each entry maps a module path to a name to ignore in traversal.
     self._do_not_descend_map = {
         '': [

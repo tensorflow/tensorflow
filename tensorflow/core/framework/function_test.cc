@@ -944,6 +944,15 @@ TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
   ASSERT_NE(second, nullptr);
   EXPECT_EQ(second->DebugString(),
             test::function::WXPlusB().signature().DebugString());
+
+  // Can't add function with same name as existing op
+  FunctionDef fdef = test::function::XTimesTwo();
+  fdef.mutable_signature()->set_name("Add");
+  Status s = lib_def.AddFunctionDef(fdef);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Cannot add function 'Add' because an op with the same name "
+            "already exists.");
 }
 
 TEST(FunctionLibraryDefinitionTest, AddGradientDef) {

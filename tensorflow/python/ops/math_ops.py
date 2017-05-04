@@ -242,6 +242,12 @@ def abs(x, name=None):
 # pylint: enable=g-docstring-has-escape
 
 
+# pylint: disable=redefined-builtin
+def _bucketize(input, boundaries, name=None):
+  return gen_math_ops._bucketize(input=input, boundaries=boundaries, name=name)
+# pylint: enable=redefined-builtin
+
+
 class DivideDelegateWithName(object):
   """Use Python2/Python3 division delegation to implement divide for tensors."""
 
@@ -1929,6 +1935,12 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   NOTE: This operation is not differentiable and cannot be used if inputs depend
   on trainable variables. Please use `tf.add_n` for such cases.
+
+  Aside from differentiability, `tf.accumulate_n` performs the same operation as
+  `tf.add_n`, but does not wait for all of its inputs to be ready before
+  beginning to sum. This can save memory if inputs are ready at different times,
+  since minimum temporary storage is proportional to the output size rather than
+  the inputs size.
 
   For example:
 

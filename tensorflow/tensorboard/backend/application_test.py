@@ -227,6 +227,17 @@ class TensorboardServerTest(test.TestCase):
       response.read()
       connection.close()
 
+  def testScalars(self):
+    """Test the format of /data/scalars."""
+    data = self._getJson('/data/scalars?run=run1&tag=simple_values')
+    self.assertEqual(len(data),self._SCALAR_COUNT)
+
+  def testScalarsCsv(self):
+    """Test the csv format of /data/scalars."""
+    data = self._get('/data/scalars?run=run1&tag=simple_values&format=csv').read()
+    line_count = data.count('\n')
+    self.assertEqual(line_count,self._SCALAR_COUNT + 1) # include 1 more line for header
+
   def testHistograms(self):
     """Test the format of /data/histograms."""
     self.assertEqual(

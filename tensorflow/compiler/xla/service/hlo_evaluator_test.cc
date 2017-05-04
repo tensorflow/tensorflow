@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -29,9 +32,16 @@ limitations under the License.
 namespace xla {
 namespace {
 
+class HloEvaluatorTest : public ::testing::Test {
+ protected:
+  HloEvaluatorTest() { evaluator_ = MakeUnique<HloEvaluator>(); }
+
+  std::unique_ptr<HloEvaluator> evaluator_;
+};
+
 // Verifies that HloEvaluator evaluates a HLO instruction that performs clamp
 // with 3 operands.
-TEST(HloEvaluatorTest, DoesClamp) {
+TEST_F(HloEvaluatorTest, DoesClamp) {
   auto low = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
   auto high = LiteralUtil::CreateR2<float>({{2.f, 4.f}, {4.f, 4.f}});
   auto value = LiteralUtil::CreateR2<float>({{0.f, 5.f}, {0.f, 4.f}});
@@ -44,7 +54,7 @@ TEST(HloEvaluatorTest, DoesClamp) {
       shape, HloOpcode::kClamp, c1.get(), c2.get(), c3.get());
 
   std::unique_ptr<Literal> result =
-      HloEvaluator::EvaluateOpForLiteral(instruction.get()).ConsumeValueOrDie();
+      evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
 
   auto expected = LiteralUtil::CreateR2<float>({{0, 4}, {2, 4}});
 
@@ -53,7 +63,7 @@ TEST(HloEvaluatorTest, DoesClamp) {
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs select
 // with 3 operands.
-TEST(HloEvaluatorTest, DoesSelect) {
+TEST_F(HloEvaluatorTest, DoesSelect) {
   auto pred = LiteralUtil::CreateR2<bool>({{true, false}, {false, true}});
   auto on_true = LiteralUtil::CreateR2<float>({{2.f, 4.f}, {4.f, 4.f}});
   auto on_false = LiteralUtil::CreateR2<float>({{0.f, 5.f}, {0.f, 4.f}});
@@ -66,7 +76,7 @@ TEST(HloEvaluatorTest, DoesSelect) {
       shape, HloOpcode::kSelect, c1.get(), c2.get(), c3.get());
 
   std::unique_ptr<Literal> result =
-      HloEvaluator::EvaluateOpForLiteral(instruction.get()).ConsumeValueOrDie();
+      evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
 
   auto expected = LiteralUtil::CreateR2<float>({{2, 5}, {0, 4}});
 
@@ -75,7 +85,7 @@ TEST(HloEvaluatorTest, DoesSelect) {
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise addition with 2 operands.
-TEST(HloEvaluatorTest, DoesAdd) {
+TEST_F(HloEvaluatorTest, DoesAdd) {
   auto lhs = LiteralUtil::CreateR2<int64>({{1, 0}, {-100, 4}});
   auto rhs = LiteralUtil::CreateR2<int64>({{2, 4}, {4, 4}});
 
@@ -86,7 +96,7 @@ TEST(HloEvaluatorTest, DoesAdd) {
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, c1.get(), c2.get());
 
   std::unique_ptr<Literal> result =
-      HloEvaluator::EvaluateOpForLiteral(instruction.get()).ConsumeValueOrDie();
+      evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
 
   auto expected = LiteralUtil::CreateR2<int64>({{3, 4}, {-96, 8}});
 
@@ -95,7 +105,7 @@ TEST(HloEvaluatorTest, DoesAdd) {
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise divide with 2 operands.
-TEST(HloEvaluatorTest, DoesDivide) {
+TEST_F(HloEvaluatorTest, DoesDivide) {
   auto lhs_s64 = LiteralUtil::CreateR2<int64>({{1, 0}, {-100, 4}});
   auto rhs_s64 = LiteralUtil::CreateR2<int64>({{2, 4}, {4, 4}});
 
@@ -106,7 +116,7 @@ TEST(HloEvaluatorTest, DoesDivide) {
                                                   c1_s64.get(), c2_s64.get());
 
   std::unique_ptr<Literal> result =
-      HloEvaluator::EvaluateOpForLiteral(instruction.get()).ConsumeValueOrDie();
+      evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
 
   auto expected = LiteralUtil::CreateR2<int64>({{0, 0}, {-25, 1}});
 
@@ -121,8 +131,7 @@ TEST(HloEvaluatorTest, DoesDivide) {
   instruction = HloInstruction::CreateBinary(shape_f64, HloOpcode::kDivide,
                                              c1_f64.get(), c2_f64.get());
 
-  result =
-      HloEvaluator::EvaluateOpForLiteral(instruction.get()).ConsumeValueOrDie();
+  result = evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
 
   expected =
       LiteralUtil::CreateR2<double>({{0.45454545454545453, 0}, {-25, 1}});
@@ -132,18 +141,48 @@ TEST(HloEvaluatorTest, DoesDivide) {
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise abs op with 1 operand.
-TEST(HloEvaluatorTest, DoesAbs) {
+TEST_F(HloEvaluatorTest, DoesAbs) {
   auto operand = LiteralUtil::CreateR2<int64>({{1, -20}, {-100, 4}});
-
   Shape shape = ShapeUtil::MakeShape(S64, {2, 2});
   auto c1 = HloInstruction::CreateConstant(std::move(operand));
   auto instruction =
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, c1.get());
 
   std::unique_ptr<Literal> result =
-      HloEvaluator::EvaluateOpForLiteral(instruction.get()).ConsumeValueOrDie();
+      evaluator_->Evaluate(instruction.get(), {}).ConsumeValueOrDie();
 
   auto expected = LiteralUtil::CreateR2<int64>({{1, 20}, {100, 4}});
+
+  EXPECT_TRUE(LiteralUtil::Equal(*result, *expected));
+}
+
+// Verifies that HloEvaluator evaluates a HLO Computation with non-parameter nor
+// constant operands.
+TEST_F(HloEvaluatorTest, DoesTraveseInstructions) {
+  HloComputation::Builder builder(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+
+  auto lhs = LiteralUtil::CreateR2<int64>({{1, 0}, {-100, 4}});
+  auto rhs = LiteralUtil::CreateR2<int64>({{2, 4}, {4, 4}});
+  auto rhs2 = LiteralUtil::CreateR2<int64>({{1, -20}, {-100, 4}});
+  std::vector<const Literal*> args = {lhs.get(), rhs.get(), rhs2.get()};
+
+  Shape shape = ShapeUtil::MakeShape(S64, {2, 2});
+
+  auto param_lhs = HloInstruction::CreateParameter(0, shape, "lhs");
+  auto param_rhs = HloInstruction::CreateParameter(1, shape, "rhs");
+  auto lhs_instruction = HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, param_lhs.get(), param_rhs.get());
+
+  auto param_rhs2 = HloInstruction::CreateParameter(2, shape, "rhs2");
+  auto root_instruction = HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, lhs_instruction.get(), param_rhs2.get());
+
+  builder.AddInstruction(std::move(root_instruction));
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(builder.Build().get(), args).ConsumeValueOrDie();
+
+  auto expected = LiteralUtil::CreateR2<int64>({{4, -16}, {-196, 12}});
 
   EXPECT_TRUE(LiteralUtil::Equal(*result, *expected));
 }

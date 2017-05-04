@@ -218,7 +218,8 @@ def random_flip_up_down(image, seed=None):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
+  image = control_flow_ops.with_dependencies(
+      _Check3DImage(image, require_static=False), image)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror_cond = math_ops.less(uniform_random, .5)
   result = control_flow_ops.cond(mirror_cond,
@@ -246,7 +247,8 @@ def random_flip_left_right(image, seed=None):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
+  image = control_flow_ops.with_dependencies(
+      _Check3DImage(image, require_static=False), image)
   uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
   mirror_cond = math_ops.less(uniform_random, .5)
   result = control_flow_ops.cond(mirror_cond,
@@ -273,7 +275,8 @@ def flip_left_right(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
+  image = control_flow_ops.with_dependencies(
+      _Check3DImage(image, require_static=False), image)
   return fix_image_flip_shape(image, array_ops.reverse(image, [1]))
 
 
@@ -295,7 +298,8 @@ def flip_up_down(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
+  image = control_flow_ops.with_dependencies(
+      _Check3DImage(image, require_static=False), image)
   return fix_image_flip_shape(image, array_ops.reverse(image, [0]))
 
 
@@ -312,7 +316,8 @@ def rot90(image, k=1, name=None):
   """
   with ops.name_scope(name, 'rot90', [image, k]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    _Check3DImage(image, require_static=False)
+    image = control_flow_ops.with_dependencies(
+        _Check3DImage(image, require_static=False), image)
     k = ops.convert_to_tensor(k, dtype=dtypes.int32, name='k')
     k.get_shape().assert_has_rank(0)
     k = math_ops.mod(k, 4)
@@ -350,7 +355,8 @@ def transpose_image(image):
     ValueError: if the shape of `image` not supported.
   """
   image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
+  image = control_flow_ops.with_dependencies(
+      _Check3DImage(image, require_static=False), image)
   return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
 
 
@@ -379,11 +385,13 @@ def central_crop(image, central_fraction):
     3-D float Tensor
   """
   image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
   if central_fraction <= 0.0 or central_fraction > 1.0:
     raise ValueError('central_fraction must be within (0, 1]')
   if central_fraction == 1.0:
     return image
+
+  image = control_flow_ops.with_dependencies(
+      _Check3DImage(image, require_static=False), image)
 
   img_shape = array_ops.shape(image)
   depth = image.get_shape()[2]
@@ -435,9 +443,6 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   """
   image = ops.convert_to_tensor(image, name='image')
 
-  assert_ops = []
-  assert_ops += _CheckAtLeast3DImage(image, require_static=False)
-
   is_batch = True
   image_shape = image.get_shape()
   if image_shape.ndims == 3:
@@ -449,6 +454,8 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     image.set_shape([None] * 4)
   elif image_shape.ndims != 4:
     raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
+  assert_ops = _CheckAtLeast3DImage(image, require_static=False)
 
   batch, height, width, depth = _ImageDimensions(image, rank=4)
 
@@ -515,9 +522,6 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
   """
   image = ops.convert_to_tensor(image, name='image')
 
-  assert_ops = []
-  assert_ops += _CheckAtLeast3DImage(image, require_static=False)
-
   is_batch = True
   image_shape = image.get_shape()
   if image_shape.ndims == 3:
@@ -529,6 +533,8 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     image.set_shape([None] * 4)
   elif image_shape.ndims != 4:
     raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
+  assert_ops = _CheckAtLeast3DImage(image, require_static=False)
 
   batch, height, width, depth = _ImageDimensions(image, rank=4)
 
@@ -602,8 +608,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   elif image_shape.ndims != 4:
     raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
-  assert_ops = []
-  assert_ops += _CheckAtLeast3DImage(image, require_static=False)
+  assert_ops = _CheckAtLeast3DImage(image, require_static=False)
   assert_ops += _assert(target_width > 0, ValueError,
                         'target_width must be > 0.')
   assert_ops += _assert(target_height > 0, ValueError,
@@ -800,7 +805,8 @@ def per_image_standardization(image):
     ValueError: if the shape of 'image' is incompatible with this function.
   """
   image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
+  image = control_flow_ops.with_dependencies(
+      _Check3DImage(image, require_static=False), image)
   num_pixels = math_ops.reduce_prod(array_ops.shape(image))
 
   image = math_ops.cast(image, dtype=dtypes.float32)

@@ -47,6 +47,8 @@ class TestEventListenerImpl final : public EventListener::Service {
                                              const int32 output_slot,
                                              const string& debug_op);
 
+  std::vector<string> debug_metadata_strings;
+  std::vector<string> encoded_graph_defs;
   std::vector<string> node_names;
   std::vector<int32> output_slots;
   std::vector<string> debug_ops;

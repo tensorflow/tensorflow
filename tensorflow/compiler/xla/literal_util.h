@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -99,6 +100,31 @@ class LiteralUtil {
           std::initializer_list<std::initializer_list<NativeT>>>>
           values,
       const Layout& layout);
+
+  // Create a new Literal object with the shape specified as parameter.
+  // The content of the literal values is the default value of the primitive
+  // type of literal itself (0 for numeric types, and false for predicates).
+  static std::unique_ptr<Literal> CreateFromShape(const Shape& shape);
+
+  // Create a new Literal object with its values havings the primitive_type
+  // type, and with dimensions defined by the dimensions parameter.
+  // The content of the literal values is the default value of the primitive
+  // type of literal itself (0 for numeric types, and false for predicates).
+  static std::unique_ptr<Literal> CreateFromDimensions(
+      PrimitiveType primitive_type,
+      tensorflow::gtl::ArraySlice<int64> dimensions);
+
+  // Copies the values from src_literal, starting at src_base shape indexes,
+  // to dest_literal, starting at dest_base, where the copy size in each
+  // dimension is specified by copy_size.
+  // The src_literal and dest_literal must have the same primitive type,
+  // src_base+copy_size must fit the source literal dimensions, as well as
+  // dest_base+copy_size must fit the destination literal dimensions.
+  static Status Copy(const Literal& src_literal,
+                     tensorflow::gtl::ArraySlice<int64> src_base,
+                     Literal* dest_literal,
+                     tensorflow::gtl::ArraySlice<int64> dest_base,
+                     tensorflow::gtl::ArraySlice<int64> copy_size);
 
   // Creates a new value that has the equivalent value as literal, but conforms
   // to new_layout; e.g. a literal matrix that was in {0, 1} minor-to-major
@@ -257,9 +283,8 @@ class LiteralUtil {
   // like representation in a protobuf).
   static void EachCellAsString(
       const Literal& literal,
-      std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
-                         const string& value)>
-          per_cell);
+      const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
+                               const string& value)>& per_cell);
   template <typename NativeT>
   static void EachCell(
       const Literal& literal,
@@ -314,6 +339,14 @@ class LiteralUtil {
   static void PopulateR4FromArray4DWithLayout(const Array4D<NativeT>& values,
                                               const Layout& layout,
                                               Literal* literal);
+
+  // Populates literal values by calling the generator function for every cell
+  // in the literal object.
+  template <typename NativeT>
+  static Status Populate(
+      Literal* literal,
+      const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
+          generator);
 
   // Creates a Literal of the given dimensions with all elements set to the
   // given value.
@@ -398,6 +431,30 @@ class LiteralUtil {
   // element_type repeated field.
   static int64 LinearIndex(const Literal& literal,
                            tensorflow::gtl::ArraySlice<int64> multi_index);
+
+  // Internal template helper for the Copy() API, matching its arguments one by
+  // one.
+  //
+  // The double WT template parameter is pretty ugly, but it comes from one of
+  // the gcc versions used for tests, which seems unable to match templates
+  // types uint64 and int64 with tensorflow::protobuf_uint64 and
+  // tensorflow::protobuf_int64, for the GetArraySlice<>() and
+  // GetMutableRepeatedField<>() APIs.
+  // While for the GetArraySlice<>() case the AsUInt64Slice() and
+  // AsInt64Slice() wrappers are taking care via reinterpret_cast<> of the code
+  // pointer parameters, the protocol buffer repeated fields accessories
+  // return a RepeatedField<> pointer, which is not trivially remappable
+  // (unless pretty ugly API forwarder wrapper).
+  // For that gcc version, this creates a mismatch were either things like the
+  // CopyRange<>() API needs to have both specified, or the Get<>() and Set<>()
+  // APIs having to be called with different types (Get<>() with uint64 and
+  // Set<>() with tensorflow::protobuf_uint64).
+  template <typename T, typename WT = T>
+  static Status CopyRange(const Literal& src_literal,
+                          tensorflow::gtl::ArraySlice<int64> src_base,
+                          Literal* dest_literal,
+                          tensorflow::gtl::ArraySlice<int64> dest_base,
+                          tensorflow::gtl::ArraySlice<int64> copy_size);
 
   TF_DISALLOW_COPY_AND_ASSIGN(LiteralUtil);
 };
@@ -942,6 +999,43 @@ template <typename NativeT>
     const Array4D<NativeT>& values, Literal* literal) {
   PopulateR4FromArray4DWithLayout(values, LayoutUtil::GetDefaultLayoutForR4(),
                                   literal);
+}
+
+template <typename NativeT>
+/* static */ Status LiteralUtil::Populate(
+    Literal* literal,
+    const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
+        generator) {
+  const Shape& shape = literal->shape();
+  int64 rank = ShapeUtil::Rank(shape);
+  TF_RET_CHECK(shape.element_type() ==
+               primitive_util::NativeToPrimitiveType<NativeT>());
+  tensorflow::protobuf::RepeatedField<NativeT>* data =
+      GetMutableRepeatedField<NativeT>(literal);
+  if (rank > 0) {
+    std::vector<int64> base(rank, 0);
+    std::vector<int64> step(rank, 1);
+    std::vector<int64> minor_scan_indexes(rank, 0);
+    int64 minor_dimension = shape.layout().minor_to_major()[0];
+    int64 minor_dimension_size =
+        ShapeUtil::GetDimension(shape, minor_dimension);
+
+    step[minor_dimension] = minor_dimension_size;
+    auto init_function = [&](const std::vector<int64>& indexes) {
+      int64 index = LinearIndex(*literal, indexes);
+      std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
+      for (int64 i = 0; i < minor_dimension_size; ++i) {
+        minor_scan_indexes[minor_dimension] = i;
+        data->Set(index + i, generator(minor_scan_indexes));
+      }
+      return true;
+    };
+    ShapeUtil::ForEachIndex(shape, base, AsInt64Slice(shape.dimensions()), step,
+                            init_function);
+  } else {
+    data->Set(0, generator({}));
+  }
+  return Status::OK();
 }
 
 template <typename NativeT>

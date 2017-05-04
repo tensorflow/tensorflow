@@ -88,12 +88,18 @@ const string& HloTfGraphBuilder::GetNodeNameForInstruction(
   if (ContainsKey(instruction_to_node_name_, instruction)) {
     return instruction_to_node_name_[instruction];
   }
+  string node_name;
   // If an instruction is fused, put it in the subgraph of the fusion;
   // otherwise, put it in the computation subgraph.
-  string node_name =
-      instruction->IsFused()
-          ? GetNodeNameForInstruction(instruction->fusion_instruction())
-          : instruction->parent()->name();
+  if (instruction->IsFused()) {
+    node_name = GetNodeNameForInstruction(instruction->fusion_instruction());
+  } else {
+    node_name = instruction->parent()->name();
+    if (!instruction->metadata().op_name().empty()) {
+      // Always make computations contain TF ops but not the other way around.
+      StrAppend(&node_name, "/", instruction->metadata().op_name());
+    }
+  }
   string instruction_name = instruction->name();
   if (instruction->opcode() == HloOpcode::kParameter) {
     StrAppend(&instruction_name, ".", instruction->parameter_number());

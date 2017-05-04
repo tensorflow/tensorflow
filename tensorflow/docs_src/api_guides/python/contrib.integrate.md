@@ -33,7 +33,7 @@ plt.plot(x, z)
 ```
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/lorenz_attractor.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/lorenz_attractor.png" alt>
 </div>
 
 ## Ops

@@ -144,7 +144,7 @@ class FileIO(object):
     # This check exists so that we can convert back to having offset be a
     # positional argument.
     # TODO(jhseu): Make `offset` a positional argument after `position` is
-    # deprecated.
+    # deleted.
     if offset is None and position is None:
       raise TypeError("seek(): offset argument required")
     if offset is not None and position is not None:

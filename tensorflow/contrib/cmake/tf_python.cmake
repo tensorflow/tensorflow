@@ -206,11 +206,13 @@ add_python_module("tensorflow/python/estimator/inputs/queues")
 add_python_module("tensorflow/python/framework")
 add_python_module("tensorflow/python/grappler")
 add_python_module("tensorflow/python/kernel_tests")
+add_python_module("tensorflow/python/kernel_tests/distributions")
 add_python_module("tensorflow/python/layers")
 add_python_module("tensorflow/python/lib")
 add_python_module("tensorflow/python/lib/core")
 add_python_module("tensorflow/python/lib/io")
 add_python_module("tensorflow/python/ops")
+add_python_module("tensorflow/python/ops/distributions")
 add_python_module("tensorflow/python/ops/losses")
 add_python_module("tensorflow/python/platform")
 add_python_module("tensorflow/python/platform/default")
@@ -621,8 +623,6 @@ GENERATE_PYTHON_OP_LIB("contrib_input_pipeline_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/input_pipeline/ops/gen_input_pipeline_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_image_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/image/ops/gen_image_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_layers_bucketization_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/layers/ops/gen_bucketization_op.py)
 GENERATE_PYTHON_OP_LIB("contrib_layers_sparse_feature_cross_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/layers/ops/gen_sparse_feature_cross_op.py)
 GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"

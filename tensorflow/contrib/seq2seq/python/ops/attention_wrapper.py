@@ -39,6 +39,7 @@ from tensorflow.python.util import nest
 
 
 __all__ = [
+    "AttentionMechanism",
     "AttentionWrapper",
     "AttentionWrapperState",
     "LuongAttention",
@@ -73,8 +74,9 @@ def _prepare_memory(memory, memory_sequence_length, check_inner_dims_defined):
   """
   memory = nest.map_structure(
       lambda m: ops.convert_to_tensor(m, name="memory"), memory)
-  memory_sequence_length = ops.convert_to_tensor(
-      memory_sequence_length, name="memory_sequence_length")
+  if memory_sequence_length is not None:
+    memory_sequence_length = ops.convert_to_tensor(
+        memory_sequence_length, name="memory_sequence_length")
   if check_inner_dims_defined:
     def _check_dims(m):
       if not m.get_shape()[2:].is_fully_defined():
@@ -143,11 +145,11 @@ class _BaseAttentionMechanism(AttentionMechanism):
       name: Name to use when creating ops.
     """
     if (query_layer is not None
-        and not isinstance(query_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(query_layer, layers_base.Layer)):
       raise TypeError(
           "query_layer is not a Layer: %s" % type(query_layer).__name__)
     if (memory_layer is not None
-        and not isinstance(memory_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(memory_layer, layers_base.Layer)):
       raise TypeError(
           "memory_layer is not a Layer: %s" % type(memory_layer).__name__)
     self._query_layer = query_layer
@@ -477,7 +479,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
         behavior is not guaranteed.
       name: Name to use when creating ops.
     """
-    super(AttentionWrapper, self).__init__()
+    super(AttentionWrapper, self).__init__(name=name)
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError(
           "cell must be an RNNCell, saw type: %s" % type(cell).__name__)
@@ -496,7 +498,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     if probability_fn is None:
       probability_fn = nn_ops.softmax
     else:
-      if not callable(cell_input_fn):
+      if not callable(probability_fn):
         raise TypeError(
             "probability_fn must be callable, saw type: %s"
             % type(probability_fn).__name__)
@@ -613,64 +615,63 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       - `next_state` is an instance of `DynamicAttentionWrapperState`
          containing the state calculated at this time step.
     """
-    with variable_scope.variable_scope("attention"):
-      # Step 1: Calculate the true inputs to the cell based on the
-      # previous attention value.
-      cell_inputs = self._cell_input_fn(inputs, state.attention)
-      cell_state = state.cell_state
-      cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
+    # Step 1: Calculate the true inputs to the cell based on the
+    # previous attention value.
+    cell_inputs = self._cell_input_fn(inputs, state.attention)
+    cell_state = state.cell_state
+    cell_output, next_cell_state = self._cell(cell_inputs, cell_state)
 
-      cell_batch_size = (
-          cell_output.shape[0].value or array_ops.shape(cell_output)[0])
-      error_message = (
-          "When applying AttentionWrapper %s: " % self.name +
-          "Non-matching batch sizes between the memory "
-          "(encoder output) and the query (decoder output).  Are you using "
-          "the BeamSearchDecoder?  You may need to tile your memory input via "
-          "the tf.contrib.seq2seq.tile_batch function with argument "
-          "multiple=beam_width.")
-      with ops.control_dependencies(
-          [check_ops.assert_equal(cell_batch_size,
-                                  self._attention_mechanism.batch_size,
-                                  message=error_message)]):
-        cell_output = array_ops.identity(
-            cell_output, name="checked_cell_output")
+    cell_batch_size = (
+        cell_output.shape[0].value or array_ops.shape(cell_output)[0])
+    error_message = (
+        "When applying AttentionWrapper %s: " % self.name +
+        "Non-matching batch sizes between the memory "
+        "(encoder output) and the query (decoder output).  Are you using "
+        "the BeamSearchDecoder?  You may need to tile your memory input via "
+        "the tf.contrib.seq2seq.tile_batch function with argument "
+        "multiple=beam_width.")
+    with ops.control_dependencies(
+        [check_ops.assert_equal(cell_batch_size,
+                                self._attention_mechanism.batch_size,
+                                message=error_message)]):
+      cell_output = array_ops.identity(
+          cell_output, name="checked_cell_output")
 
-      score = self._attention_mechanism(cell_output)
-      alignments = self._probability_fn(score)
+    score = self._attention_mechanism(cell_output)
+    alignments = self._probability_fn(score)
 
-      # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
-      expanded_alignments = array_ops.expand_dims(alignments, 1)
-      # Context is the inner product of alignments and values along the
-      # memory time dimension.
-      # alignments shape is
-      #   [batch_size, 1, memory_time]
-      # attention_mechanism.values shape is
-      #   [batch_size, memory_time, attention_mechanism.num_units]
-      # the batched matmul is over memory_time, so the output shape is
-      #   [batch_size, 1, attention_mechanism.num_units].
-      # we then squeeze out the singleton dim.
-      attention_mechanism_values = self._attention_mechanism.values
-      context = math_ops.matmul(expanded_alignments, attention_mechanism_values)
-      context = array_ops.squeeze(context, [1])
+    # Reshape from [batch_size, memory_time] to [batch_size, 1, memory_time]
+    expanded_alignments = array_ops.expand_dims(alignments, 1)
+    # Context is the inner product of alignments and values along the
+    # memory time dimension.
+    # alignments shape is
+    #   [batch_size, 1, memory_time]
+    # attention_mechanism.values shape is
+    #   [batch_size, memory_time, attention_mechanism.num_units]
+    # the batched matmul is over memory_time, so the output shape is
+    #   [batch_size, 1, attention_mechanism.num_units].
+    # we then squeeze out the singleton dim.
+    attention_mechanism_values = self._attention_mechanism.values
+    context = math_ops.matmul(expanded_alignments, attention_mechanism_values)
+    context = array_ops.squeeze(context, [1])
 
-      if self._attention_layer is not None:
-        attention = self._attention_layer(
-            array_ops.concat([cell_output, context], 1))
-      else:
-        attention = context
+    if self._attention_layer is not None:
+      attention = self._attention_layer(
+          array_ops.concat([cell_output, context], 1))
+    else:
+      attention = context
 
-      if self._alignment_history:
-        alignment_history = state.alignment_history.write(
-            state.time, alignments)
-      else:
-        alignment_history = ()
+    if self._alignment_history:
+      alignment_history = state.alignment_history.write(
+          state.time, alignments)
+    else:
+      alignment_history = ()
 
-      next_state = AttentionWrapperState(
-          time=state.time + 1,
-          cell_state=next_cell_state,
-          attention=attention,
-          alignment_history=alignment_history)
+    next_state = AttentionWrapperState(
+        time=state.time + 1,
+        cell_state=next_cell_state,
+        attention=attention,
+        alignment_history=alignment_history)
 
     if self._output_attention:
       return attention, next_state

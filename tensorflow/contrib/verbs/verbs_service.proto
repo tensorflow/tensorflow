@@ -30,6 +30,8 @@ message Channel {
   int32 lid = 1;
   int32 qpn = 2;
   int32 psn = 3;
+  uint64 snp = 4;
+  uint64 iid = 5;
 }
 
 message MemoryRegion {

@@ -456,7 +456,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
 void DumpGraph(StringPiece label, const Graph* g) {
   // TODO(zhifengc): Change Graph to record #nodes.
   VLOG(1) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
-          << g->edges().size();
+          << g->num_edges();
   if (VLOG_IS_ON(2)) {
     for (const auto& line : str_util::Split(DebugString(g), '\n')) {
       VLOG(2) << "|| " << line;
@@ -1001,25 +1001,19 @@ string NewName(const Node* n, bool pretty) {
 void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   // We visit nodes in forward topological sort order, which is a
   // possible execution order of the graph.
-  std::vector<size_t> pending(g->num_node_ids());
-  std::deque<const Node*> ready;
-  for (const Node* n : g->nodes()) {
-    pending[n->id()] = n->in_edges().size();
-    if (pending[n->id()] == 0) ready.push_back(n);
-  }
   gtl::InlinedVector<const Edge*, 4> inputs;
   gdef->Clear();
   gdef->mutable_versions()->CopyFrom(g->versions());
-  while (!ready.empty()) {
-    const Node* n = ready.front();
-    ready.pop_front();
-    for (const Edge* e : n->out_edges()) {
-      const Node* next = e->dst();
-      if (--pending[next->id()] == 0) {
-        ready.push_back(next);
-      }
+
+  std::vector<Node*> start_nodes;
+  for (Node* n : g->nodes()) {
+    if (n->out_edges().empty()) {
+      start_nodes.push_back(n);
     }
-    if (!n->IsOp()) continue;
+  }
+
+  ReverseDFSFrom(*g, start_nodes, nullptr, [gdef, pretty, &inputs](Node* n) {
+    if (!n->IsOp()) return;
     NodeDef* ndef = gdef->add_node();
     ndef->set_name(NewName(n, pretty));
     ndef->set_op(n->type_string());
@@ -1054,7 +1048,7 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
         ndef->add_input(strings::StrCat(srcname, ":", e->src_output()));
       }
     }
-  }
+  });
 }
 
 string DebugString(const Graph* g) {

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/cc/training/queue_runner.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -111,6 +112,8 @@ Status SingleMachine::Run(const GraphDef& graph_def,
         for (auto node : *init_metadata_.mutable_cost_graph()->mutable_node()) {
           node.clear_compute_cost();
         }
+        // Also clear the timeline to save memory
+        init_metadata_.clear_step_stats();
       }
       for (int i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
@@ -133,15 +136,17 @@ Status SingleMachine::Run(const GraphDef& graph_def,
     }
   }
 
-  TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
-
   if (metadata) {
-    // Add the costs of initialization and the queue runners.
-    metadata->MergeFrom(init_metadata_);
-    return coordinator_->ExportCostGraph(metadata->mutable_cost_graph());
+    TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
+    // Merge the costs of the initialization and the queue runners.
+    CostGraphDef queue_costs;
+    TF_RETURN_IF_ERROR(coordinator_->ExportCostGraph(&queue_costs));
+    MergeCosts(metadata->mutable_cost_graph(), init_metadata_.cost_graph(),
+               queue_costs);
   } else {
-    return Status::OK();
+    return RunWithTimeout(feed, fetch, nullptr);
   }
+  return Status::OK();
 }
 
 Status SingleMachine::RunWithTimeout(
@@ -247,6 +252,37 @@ Status SingleMachine::ResetSession() {
   coordinator_.reset(new Coordinator());
 
   return Status::OK();
+}
+
+void SingleMachine::MergeCosts(CostGraphDef* graph_costs,
+                               const CostGraphDef& init_costs,
+                               const CostGraphDef& queue_costs) {
+  graph_costs->mutable_node()->Reserve(graph_costs->node_size() +
+                                       init_costs.node_size() +
+                                       queue_costs.node_size());
+  std::unordered_set<string> nodes_seen;
+  for (const auto& node : graph_costs->node()) {
+    nodes_seen.insert(node.name());
+  }
+
+  // The costs obtained by running the main graph could be more stable than
+  // the one we get from the queue runners since the queue runners run
+  // asynchronously.
+  for (const auto& node : queue_costs.node()) {
+    if (nodes_seen.find(node.name()) != nodes_seen.end()) {
+      continue;
+    }
+    graph_costs->add_node()->MergeFrom(node);
+  }
+
+  // Don't overwrite the costs with that generated during initialization since
+  // these are possibly outdated.
+  for (const auto& node : init_costs.node()) {
+    if (nodes_seen.find(node.name()) != nodes_seen.end()) {
+      continue;
+    }
+    graph_costs->add_node()->MergeFrom(node);
+  }
 }
 
 }  // namespace grappler

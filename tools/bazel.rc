@@ -1,0 +1,30 @@
+build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
+build:cuda --define=using_cuda=true --define=using_cuda_nvcc=true
+
+build:cuda_clang --crosstool_top=@local_config_cuda//crosstool:toolchain
+build:cuda_clang --define=using_cuda=true --define=using_cuda_clang=true
+
+build:win-cuda --define=using_cuda=true --define=using_cuda_nvcc=true
+
+build:mkl --define=using_mkl=true
+
+build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
+build:sycl --define=using_sycl=true
+
+build:sycl_asan --crosstool_top=@local_config_sycl//crosstool:toolchain
+build:sycl_asan --define=using_sycl=true --copt -fno-omit-frame-pointer --copt -fsanitize-coverage=3 --copt -DGPR_NO_DIRECT_SYSCALLS --linkopt -fPIC --linkopt -fsanitize=address
+
+build --define=use_fast_cpp_protos=true
+build --define=allow_oversize_protos=true
+
+build --spawn_strategy=standalone
+test --spawn_strategy=standalone
+run --spawn_strategy=standalone
+
+build --genrule_strategy=standalone
+test --genrule_strategy=standalone
+run --genrule_strategy=standalone
+
+build -c opt
+test -c opt
+run -c opt
