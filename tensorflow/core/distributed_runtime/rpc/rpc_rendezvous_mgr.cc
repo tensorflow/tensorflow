@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/rdma.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -59,10 +60,12 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
 
   void Init(WorkerInterface* wi, int64 step_id, StringPiece key,
             AllocatorAttributes alloc_attrs, Device* dst_device,
-            const Rendezvous::Args& recv_args, Rendezvous::DoneCallback done) {
+            RdmaClient* client, const Rendezvous::Args& recv_args,
+            Rendezvous::DoneCallback done) {
     wi_ = wi;
     alloc_attrs_ = alloc_attrs;
     dst_device_ = dst_device;
+    client_ = client;
     recv_args_ = recv_args;
     done_ = std::move(done);
     req_.set_step_id(step_id);
@@ -125,11 +128,21 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
     resp_.InitAlloc(dst_device_, alloc_attrs_);
+    req_.set_dma_ok(true);
     using namespace std::placeholders;
     StatusCallback cb = std::bind(
         [this](std::function<void()> recv_done,
                // Begin unbound arguments.
                const Status& s) {
+          bool use_dma = resp_.metadata().has_transport_options();
+          if (s.ok() && use_dma) {
+            const TensorBuffer* buffer = DMAHelper::buffer(&tensor());
+            Status status = client_->ReadTensorViaDMA(buffer,
+              resp_.metadata().transport_options());
+            if (!status.ok()) {
+              LOG(WARNING) << status.ToString();
+            }
+          }
           if (!s.ok()) {
             mutex_lock l(mu_);
             status_.Update(s);
@@ -145,6 +158,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   WorkerInterface* wi_;
   AllocatorAttributes alloc_attrs_;
   Device* dst_device_;
+  RdmaClient* client_;
   CallOptions opts_;
   RecvTensorRequest req_;
   TensorResponse resp_;
@@ -237,7 +251,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   }
 
   call->Init(rwi, step_id_, parsed.FullKey(), recv_args.alloc_attrs, dst_device,
-             recv_args, std::move(done));
+             env_->rdma_client, recv_args, std::move(done));
 
   // Record "call" in active_ so that it can be aborted cleanly.
   RegisterCall(call);

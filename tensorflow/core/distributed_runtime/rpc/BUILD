@@ -77,6 +77,7 @@ cc_library(
         ":grpc_client_cq_tag",
         ":grpc_util",
         ":grpc_worker_service_impl",
+        ":rdma",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -160,6 +161,7 @@ tf_cuda_library(
         ":grpc_tensor_coding",
         ":grpc_util",
         ":grpc_worker_service_impl",
+        ":rdma",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
@@ -243,6 +245,21 @@ cc_library(
 )
 
 cc_library(
+    name = "rdma",
+    srcs = ["rdma.cc"],
+    hdrs = ["rdma.h"],
+    deps = [
+        "//tensorflow/core/distributed_runtime:rdma",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+    linkopts = select({
+        "//conditions:default": ["-libverbs", "-lrdmacm"],
+    }),
+)
+
+cc_library(
     name = "rpc_rendezvous_mgr",
     srcs = ["rpc_rendezvous_mgr.cc"],
     hdrs = ["rpc_rendezvous_mgr.h"],
@@ -251,6 +268,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime:rdma",
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_interface",
@@ -268,6 +286,7 @@ cc_library(
         ":grpc_master_service",
         ":grpc_worker_cache",
         ":grpc_worker_service",
+        ":rdma",
         ":rpc_rendezvous_mgr",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",

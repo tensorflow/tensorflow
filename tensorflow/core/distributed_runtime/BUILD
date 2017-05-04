@@ -135,6 +135,12 @@ cc_test(
 )
 
 cc_library(
+    name = "rdma",
+    hdrs = ["rdma.h"],
+    deps = [],
+)
+
+cc_library(
     name = "worker_env",
     hdrs = ["worker_env.h"],
     deps = ["//tensorflow/core:lib"],
