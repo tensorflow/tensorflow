@@ -45,6 +45,7 @@ BLACKLIST = [
     "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/core:image_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
+    "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",
     # contrib
     "//tensorflow/contrib/session_bundle:session_bundle_half_plus_two",

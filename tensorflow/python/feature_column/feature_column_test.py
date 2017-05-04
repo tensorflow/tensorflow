@@ -28,6 +28,7 @@ from tensorflow.python.client import session
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import data_flow_ops
@@ -552,7 +553,7 @@ class BucketizedColumnTest(test.TestCase):
         self.assertAllClose([[81.], [141.]], predictions.eval())
 
 
-class SparseColumnHashedTest(test.TestCase):
+class HashedCategoricalColumnTest(test.TestCase):
 
   def test_defaults(self):
     a = fc.categorical_column_with_hash_bucket('aaa', 10)
@@ -578,11 +579,14 @@ class SparseColumnHashedTest(test.TestCase):
 
   def test_deep_copy(self):
     """Tests deepcopy of categorical_column_with_hash_bucket."""
-    column = fc.categorical_column_with_hash_bucket('aaa', 10)
-    column_copy = copy.deepcopy(column)
-    self.assertEqual('aaa', column_copy.name)
-    self.assertEqual(10, column_copy.hash_bucket_size)
-    self.assertEqual(dtypes.string, column_copy.dtype)
+    original = fc.categorical_column_with_hash_bucket('aaa', 10)
+    for column in (original, copy.deepcopy(original)):
+      self.assertEqual('aaa', column.name)
+      self.assertEqual(10, column.hash_bucket_size)
+      # pylint: disable=protected-access
+      self.assertEqual(10, column._num_buckets)
+      # pylint: enable=protected-access
+      self.assertEqual(dtypes.string, column.dtype)
 
   def test_parse_config(self):
     a = fc.categorical_column_with_hash_bucket('aaa', 10)
@@ -681,14 +685,45 @@ class SparseColumnHashedTest(test.TestCase):
 
   def test_get_sparse_tensors(self):
     hashed_sparse = fc.categorical_column_with_hash_bucket('wire', 10)
-    wire_tensor = sparse_tensor.SparseTensor(
-        values=['omar', 'stringer', 'marlo'],
-        indices=[[0, 0], [1, 0], [1, 1]],
-        dense_shape=[2, 2])
-    builder = fc._LazyBuilder({'wire': wire_tensor})
-    self.assertEqual(
-        builder.get(hashed_sparse),
-        hashed_sparse._get_sparse_tensors(builder).id_tensor)
+    builder = fc._LazyBuilder({
+        'wire': sparse_tensor.SparseTensor(
+            values=['omar', 'stringer', 'marlo'],
+            indices=[[0, 0], [1, 0], [1, 1]],
+            dense_shape=[2, 2])
+    })
+    id_weight_pair = hashed_sparse._get_sparse_tensors(builder)
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    self.assertEqual(builder.get(hashed_sparse), id_weight_pair.id_tensor)
+
+  def test_get_sparse_tensors_dense_input(self):
+    hashed_sparse = fc.categorical_column_with_hash_bucket('wire', 10)
+    builder = fc._LazyBuilder({
+        'wire': (('omar', ''), ('stringer', 'marlo'))
+    })
+    id_weight_pair = hashed_sparse._get_sparse_tensors(builder)
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    self.assertEqual(builder.get(hashed_sparse), id_weight_pair.id_tensor)
+
+  def test_make_linear_model(self):
+    wire_column = fc.categorical_column_with_hash_bucket('wire', 4)
+    self.assertEqual(4, wire_column._num_buckets)
+    with ops.Graph().as_default():
+      predictions = fc.make_linear_model({
+          wire_column.name: sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=('marlo', 'skywalker', 'omar'),
+              dense_shape=(2, 2))
+      }, (wire_column,))
+      bias = get_linear_model_bias()
+      wire_var = get_linear_model_column_var(wire_column)
+      with _initialized_session():
+        self.assertAllClose((0.,), bias.eval())
+        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)), wire_var.eval())
+        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
+        # 'marlo' -> 3: wire_var[3] = 4
+        # 'skywalker' -> 2, 'omar' -> 2: wire_var[2] + wire_var[2] = 3+3 = 6
+        self.assertAllClose(((4.,), (6.,)), predictions.eval())
 
 
 def get_linear_model_bias():
@@ -1156,6 +1191,351 @@ class MakeInputLayerTest(test.TestCase):
       with _initialized_session():
         self.assertAllClose([[1., 3.]], net1.eval())
         self.assertAllClose([[1., 3.]], net2.eval())
+
+
+class VocabularyCategoricalColumnTest(test.TestCase):
+
+  def setUp(self):
+    super(VocabularyCategoricalColumnTest, self).setUp()
+
+    # Contains ints, Golden State Warriors jersey numbers: 30, 35, 11, 23, 22
+    self._warriors_vocabulary_file_name = test.test_src_dir_path(
+        'python/feature_column/testdata/warriors_vocabulary.txt')
+    self._warriors_vocabulary_size = 5
+
+    # Contains strings, character names from 'The Wire': omar, stringer, marlo
+    self._wire_vocabulary_file_name = test.test_src_dir_path(
+        'python/feature_column/testdata/wire_vocabulary.txt')
+    self._wire_vocabulary_size = 3
+
+  def _assert_sparse_tensor_value(self, expected, actual):
+    self.assertEqual(np.int64, np.array(actual.indices).dtype)
+    self.assertAllEqual(expected.indices, actual.indices)
+
+    self.assertEqual(
+        np.array(expected.values).dtype, np.array(actual.values).dtype)
+    self.assertAllEqual(expected.values, actual.values)
+
+    self.assertEqual(np.int64, np.array(actual.dense_shape).dtype)
+    self.assertAllEqual(expected.dense_shape, actual.dense_shape)
+
+  def test_defaults(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa', vocabulary_file='path_to_file', vocabulary_size=3)
+    self.assertEqual('aaa', column.name)
+    # pylint: disable=protected-access
+    self.assertEqual(3, column._num_buckets)
+    self.assertEqual({
+        'aaa': parsing_ops.VarLenFeature(dtypes.string)
+    }, column._parse_example_config)
+    # pylint: enable=protected-access
+
+  def test_all_constructor_args(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa', vocabulary_file='path_to_file', vocabulary_size=3,
+        num_oov_buckets=4, dtype=dtypes.int32)
+    # pylint: disable=protected-access
+    self.assertEqual(7, column._num_buckets)
+    self.assertEqual({
+        'aaa': parsing_ops.VarLenFeature(dtypes.int32)
+    }, column._parse_example_config)
+    # pylint: enable=protected-access
+
+  def test_deep_copy(self):
+    """Tests deepcopy of categorical_column_with_hash_bucket."""
+    original = fc.categorical_column_with_vocabulary_file(
+        key='aaa', vocabulary_file='path_to_file', vocabulary_size=3,
+        num_oov_buckets=4, dtype=dtypes.int32)
+    for column in (original, copy.deepcopy(original)):
+      self.assertEqual('aaa', column.name)
+      # pylint: disable=protected-access
+      self.assertEqual(7, column._num_buckets)
+      self.assertEqual({
+          'aaa': parsing_ops.VarLenFeature(dtypes.int32)
+      }, column._parse_example_config)
+      # pylint: enable=protected-access
+
+  def test_vocabulary_file_none(self):
+    with self.assertRaisesRegexp(ValueError, 'Missing vocabulary_file'):
+      fc.categorical_column_with_vocabulary_file(
+          key='aaa', vocabulary_file=None, vocabulary_size=3)
+
+  def test_vocabulary_file_empty_string(self):
+    with self.assertRaisesRegexp(ValueError, 'Missing vocabulary_file'):
+      fc.categorical_column_with_vocabulary_file(
+          key='aaa', vocabulary_file='', vocabulary_size=3)
+
+  def test_invalid_vocabulary_file(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa', vocabulary_file='file_does_not_exist', vocabulary_size=10)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    with self.assertRaisesRegexp(errors.OpError, 'file_does_not_exist'):
+      with self.test_session():
+        data_flow_ops.tables_initializer().run()
+
+  def test_invalid_vocabulary_size(self):
+    with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
+      fc.categorical_column_with_vocabulary_file(
+          key='aaa', vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=None)
+    with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
+      fc.categorical_column_with_vocabulary_file(
+          key='aaa', vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=-1)
+    with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
+      fc.categorical_column_with_vocabulary_file(
+          key='aaa', vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=0)
+
+  def test_too_large_vocabulary_size(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size + 1)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    with self.assertRaisesRegexp(errors.OpError, 'Invalid vocab_size'):
+      with self.test_session():
+        data_flow_ops.tables_initializer().run()
+
+  def test_invalid_num_oov_buckets(self):
+    with self.assertRaisesRegexp(ValueError, 'Invalid num_oov_buckets'):
+      fc.categorical_column_with_vocabulary_file(
+          key='aaa', vocabulary_file='path', vocabulary_size=3,
+          num_oov_buckets=-1)
+
+  def test_invalid_dtype(self):
+    with self.assertRaisesRegexp(ValueError, 'Invalid dtype'):
+      fc.categorical_column_with_vocabulary_file(
+          key='aaa', vocabulary_file='path', vocabulary_size=3,
+          dtype=dtypes.float64)
+
+  def test_invalid_buckets_and_default_value(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'both num_oov_buckets and default_value'):
+      fc.categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=self._wire_vocabulary_size,
+          num_oov_buckets=100,
+          default_value=2)
+
+  def test_get_sparse_tensors(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      self._assert_sparse_tensor_value(
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, -1, 0), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_dense_input(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size)
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(fc._LazyBuilder({
+        'aaa': (('marlo', ''), ('skywalker', 'omar'))
+    }))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      self._assert_sparse_tensor_value(
+          sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=np.array((2, -1, 0), dtype=np.int64),
+              dense_shape=(2, 2)),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_default_value_in_vocabulary(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size,
+        default_value=2)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      self._assert_sparse_tensor_value(
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, 2, 0), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_with_oov_buckets(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size,
+        num_oov_buckets=100)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1), (1, 2)),
+        values=('marlo', 'skywalker', 'omar', 'heisenberg'),
+        dense_shape=(2, 3))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      self._assert_sparse_tensor_value(
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, 33, 0, 62), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_small_vocabulary_size(self):
+    # 'marlo' is the last entry in our vocabulary file, so be setting
+    # `vocabulary_size` to 1 less than number of entries in file, we take
+    # 'marlo' out of the vocabulary.
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size - 1)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      self._assert_sparse_tensor_value(
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((-1, -1, 0), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_int32(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._warriors_vocabulary_file_name,
+        vocabulary_size=self._warriors_vocabulary_size,
+        dtype=dtypes.int32)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+        values=(11, 100, 30, 22),
+        dense_shape=(3, 3))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      self._assert_sparse_tensor_value(
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, -1, 0, 4), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_int32_dense_input(self):
+    default_value = -100
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._warriors_vocabulary_file_name,
+        vocabulary_size=self._warriors_vocabulary_size,
+        dtype=dtypes.int32,
+        default_value=default_value)
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(fc._LazyBuilder({
+        'aaa': ((11, -1, -1), (100, 30, -1), (-1, -1, 22))
+    }))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      self._assert_sparse_tensor_value(
+          sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+              values=np.array((2, default_value, 0, 4), dtype=np.int64),
+              dense_shape=(3, 3)),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_int32_with_oov_buckets(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._warriors_vocabulary_file_name,
+        vocabulary_size=self._warriors_vocabulary_size,
+        dtype=dtypes.int32,
+        num_oov_buckets=100)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+        values=(11, 100, 30, 22),
+        dense_shape=(3, 3))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      self._assert_sparse_tensor_value(
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, 60, 0, 4), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_make_linear_model(self):
+    wire_column = fc.categorical_column_with_vocabulary_file(
+        key='wire',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size,
+        num_oov_buckets=1)
+    self.assertEqual(4, wire_column._num_buckets)
+    with ops.Graph().as_default():
+      predictions = fc.make_linear_model({
+          wire_column.name: sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=('marlo', 'skywalker', 'omar'),
+              dense_shape=(2, 2))
+      }, (wire_column,))
+      bias = get_linear_model_bias()
+      wire_var = get_linear_model_column_var(wire_column)
+      with _initialized_session():
+        self.assertAllClose((0.,), bias.eval())
+        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)), wire_var.eval())
+        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
+        # 'marlo' -> 2: wire_var[2] = 3
+        # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
+        self.assertAllClose(((3.,), (5.,)), predictions.eval())
 
 
 if __name__ == '__main__':
