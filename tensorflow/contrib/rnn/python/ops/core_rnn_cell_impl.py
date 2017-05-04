@@ -27,7 +27,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import contextlib
 import hashlib
 import math
 import numbers
@@ -55,53 +54,6 @@ from tensorflow.python.util import nest
 
 _BIAS_VARIABLE_NAME = "biases"
 _WEIGHTS_VARIABLE_NAME = "weights"
-
-
-@contextlib.contextmanager
-def _checked_scope(cell, scope, reuse=None, **kwargs):
-  if reuse is not None:
-    kwargs["reuse"] = reuse
-  with vs.variable_scope(scope, **kwargs) as checking_scope:
-    scope_name = checking_scope.name
-    if hasattr(cell, "_scope"):
-      cell_scope = cell._scope  # pylint: disable=protected-access
-      if cell_scope.name != checking_scope.name:
-        raise ValueError(
-            "Attempt to reuse RNNCell %s with a different variable scope than "
-            "its first use.  First use of cell was with scope '%s', this "
-            "attempt is with scope '%s'.  Please create a new instance of the "
-            "cell if you would like it to use a different set of weights.  "
-            "If before you were using: MultiRNNCell([%s(...)] * num_layers), "
-            "change to: MultiRNNCell([%s(...) for _ in range(num_layers)]).  "
-            "If before you were using the same cell instance as both the "
-            "forward and reverse cell of a bidirectional RNN, simply create "
-            "two instances (one for forward, one for reverse).  "
-            "In May 2017, we will start transitioning this cell's behavior "
-            "to use existing stored weights, if any, when it is called "
-            "with scope=None (which can lead to silent model degradation, so "
-            "this error will remain until then.)"
-            % (cell, cell_scope.name, scope_name, type(cell).__name__,
-               type(cell).__name__))
-    else:
-      weights_found = False
-      try:
-        with vs.variable_scope(checking_scope, reuse=True):
-          vs.get_variable(_WEIGHTS_VARIABLE_NAME)
-        weights_found = True
-      except ValueError:
-        pass
-      if weights_found and reuse is None:
-        raise ValueError(
-            "Attempt to have a second RNNCell use the weights of a variable "
-            "scope that already has weights: '%s'; and the cell was not "
-            "constructed as %s(..., reuse=True).  "
-            "To share the weights of an RNNCell, simply "
-            "reuse it in your second calculation, or create a new one with "
-            "the argument reuse=True." % (scope_name, type(cell).__name__))
-
-    # Everything is OK.  Update the cell's scope and yield it.
-    cell._scope = checking_scope  # pylint: disable=protected-access
-    yield checking_scope
 
 
 class BasicRNNCell(RNNCell):

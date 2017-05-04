@@ -28,6 +28,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util import nest
 
 
@@ -75,11 +77,13 @@ def _zero_state_tensors(state_size, batch_size, dtype):
   return zeros
 
 
-class _RNNCell(base_layer.Layer):  # pylint: disable=protected-access
+class _RNNCell(base_layer.Layer):
   """Abstract object representing an RNN cell.
 
-  Every `RNNCell` must have the properties below and implement `__call__` with
-  the following signature.
+  Every `RNNCell` must have the properties below and implement `call` with
+  the signature `(output, next_state) = call(input, state)`.  The optional
+  third input argument, `scope`, is allowed for backwards compatibility
+  purposes; but should be left off for new subclasses.
 
   This definition of cell differs from the definition used in the literature.
   In the literature, 'cell' refers to an object with a single scalar output.
@@ -90,8 +94,9 @@ class _RNNCell(base_layer.Layer):  # pylint: disable=protected-access
   This operation results in an output matrix with `self.output_size` columns.
   If `self.state_size` is an integer, this operation also results in a new
   state matrix with `self.state_size` columns.  If `self.state_size` is a
-  tuple of integers, then it results in a tuple of `len(state_size)` state
-  matrices, each with a column size corresponding to values in `state_size`.
+  (possibly nested tuple of) TensorShape object(s), then it should return a
+  matching structure of Tensors having shape `[batch_size].concatenate(s)`
+  for each `s` in `self.batch_size`.
   """
 
   def __call__(self, inputs, state, scope=None):
@@ -112,7 +117,25 @@ class _RNNCell(base_layer.Layer):  # pylint: disable=protected-access
       - New state: Either a single `2-D` tensor, or a tuple of tensors matching
         the arity and shapes of `state`.
     """
-    return super(_RNNCell, self).__call__(inputs, state, scope=scope)
+    if scope is not None:
+      with vs.variable_scope(scope,
+                             custom_getter=self._rnn_get_variable) as scope:
+        return super(_RNNCell, self).__call__(inputs, state, scope=scope)
+    else:
+      with vs.variable_scope(vs.get_variable_scope(),
+                             custom_getter=self._rnn_get_variable):
+        return super(_RNNCell, self).__call__(inputs, state)
+
+  def _rnn_get_variable(self, getter, *args, **kwargs):
+    variable = getter(*args, **kwargs)
+    trainable = (variable in tf_variables.trainable_variables() or
+                 (isinstance(variable, tf_variables.PartitionedVariable) and
+                  list(variable)[0] in tf_variables.trainable_variables()))
+    if trainable and variable not in self._trainable_weights:
+      self._trainable_weights.append(variable)
+    elif not trainable and variable not in self._non_trainable_weights:
+      self._non_trainable_weights.append(variable)
+    return variable
 
   @property
   def state_size(self):
@@ -127,6 +150,11 @@ class _RNNCell(base_layer.Layer):  # pylint: disable=protected-access
   def output_size(self):
     """Integer or TensorShape: size of outputs produced by this cell."""
     raise NotImplementedError("Abstract method")
+
+  def build(self, _):
+    # This tells the parent Layer object that it's OK to call
+    # self.add_variable() inside the call() method.
+    pass
 
   def zero_state(self, batch_size, dtype):
     """Return zero-filled state tensor(s).
