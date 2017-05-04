@@ -162,7 +162,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // Partitions the graph into subgraphs and registers them on
   // workers.
   Status RegisterPartitions(const PartitionOptions& popts,
-                            const FunctionDefLibrary& func_def_lib);
+                            const FunctionLibraryDefinition& flib_def);
 
   // Runs one step of all partitions.
   Status RunPartitions(const MasterEnv* env, int64 step_id,
@@ -273,7 +273,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 };
 
 Status MasterSession::ReffedClientGraph::RegisterPartitions(
-    const PartitionOptions& popts, const FunctionDefLibrary& func_def_lib) {
+    const PartitionOptions& popts, const FunctionLibraryDefinition& flib_def) {
   {  // Ensure register once.
     mu_.lock();
     if (!init_started_) {
@@ -292,7 +292,8 @@ Status MasterSession::ReffedClientGraph::RegisterPartitions(
           graph_defs_for_publishing.push_back(&name_def.second);
         }
         stats_publisher_->PublishGraphProto(graph_defs_for_publishing);
-        s = DoRegisterPartitions(popts, func_def_lib, std::move(graph_defs));
+        s = DoRegisterPartitions(popts, flib_def.ToProto(),
+                                 std::move(graph_defs));
       }
       mu_.lock();
       init_result_ = s;
@@ -1214,7 +1215,7 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
   }
 
   TF_RETURN_IF_ERROR(
-      rcg->RegisterPartitions(popts, rcg->client_graph()->flib_def->ToProto()));
+      rcg->RegisterPartitions(popts, *rcg->client_graph()->flib_def));
 
   return Status::OK();
 }
