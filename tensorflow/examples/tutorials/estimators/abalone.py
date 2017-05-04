@@ -134,12 +134,22 @@ def main(unused_argv):
 
   # Instantiate Estimator
   nn = tf.contrib.learn.Estimator(model_fn=model_fn, params=model_params)
-
+  
+  def get_train_inputs():
+    x = tf.constant(training_set.data)
+    y = tf.constant(training_set.target)
+    return x, y
+  
   # Fit
-  nn.fit(x=training_set.data, y=training_set.target, steps=5000)
+  nn.fit(input_fn=get_train_inputs, steps=5000)
 
   # Score accuracy
-  ev = nn.evaluate(x=test_set.data, y=test_set.target, steps=1)
+  def get_test_inputs():
+    x = tf.constant(test_set.data)
+    y = tf.constant(test_set.target)
+    return x, y
+  
+  ev = nn.evaluate(input_fn=get_test_inputs, steps=1)
   print("Loss: %s" % ev["loss"])
   print("Root Mean Squared Error: %s" % ev["rmse"])
 
