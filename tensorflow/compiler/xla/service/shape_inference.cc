@@ -244,8 +244,11 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     }
     if (ShapeUtil::Rank(*arg_shape) != ShapeUtil::Rank(*shape)) {
       return InvalidArgument(
-          "cannot concatenate arrays with different ranks: %lld vs %lld",
-          ShapeUtil::Rank(*arg_shape), ShapeUtil::Rank(*shape));
+          "Cannot concatenate arrays with different ranks: %lld (%s) vs %lld "
+          "(%s)",
+          ShapeUtil::Rank(*arg_shape),
+          ShapeUtil::HumanString(*arg_shape).c_str(), ShapeUtil::Rank(*shape),
+          ShapeUtil::HumanString(*shape).c_str());
     }
     if (arg_shape->element_type() != shape->element_type()) {
       return InvalidArgument(
