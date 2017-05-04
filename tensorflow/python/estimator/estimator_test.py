@@ -42,8 +42,8 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
@@ -1391,9 +1391,10 @@ class EstimatorExportTest(test.TestCase):
       my_int = variables.Variable(1, name='my_int',
                                   collections=[ops.GraphKeys.LOCAL_VARIABLES])
       scores = constant_op.constant([3.])
-      with ops.control_dependencies(
-          [variables.local_variables_initializer(),
-           data_flow_ops.tables_initializer()]):
+      with ops.control_dependencies([
+          variables.local_variables_initializer(),
+          lookup_ops.tables_initializer()
+      ]):
         assign_op = state_ops.assign(my_int, 12345)
 
       # local_initSop must be an Operation, not a Tensor.

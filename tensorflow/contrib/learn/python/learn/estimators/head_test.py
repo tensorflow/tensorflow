@@ -32,7 +32,7 @@ from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses as losses_lib
 from tensorflow.python.platform import test
@@ -1214,7 +1214,7 @@ class MultiClassHeadTest(test.TestCase):
           train_op_fn=head_lib.no_op_train_fn,
           logits=((1., 0., 0.), (0., 0., 1.),))
       with session.Session():
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         self.assertAllEqual(
             [0, 2],
             model_fn_ops.predictions["classes"].eval())
@@ -1266,7 +1266,7 @@ class MultiClassHeadTest(test.TestCase):
           train_op_fn=head_lib.no_op_train_fn,
           logits=((1., 0., 0.), (0., 0., 1.),))
       with session.Session():
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         self.assertAllEqual(
             [b"key0", b"key2"],
             model_fn_ops.predictions["classes"].eval())
@@ -1301,7 +1301,7 @@ class MultiClassHeadTest(test.TestCase):
           train_op_fn=head_lib.no_op_train_fn,
           logits=((1., 0., 0.),))
       with session.Session():
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         self.assertIsNone(model_fn_ops.train_op)
         _assert_no_variables(self)
         _assert_summary_tags(self, ["loss"])
@@ -1327,7 +1327,7 @@ class MultiClassHeadTest(test.TestCase):
           train_op_fn=head_lib.no_op_train_fn,
           logits=((0., 0., 1.),))
       with session.Session():
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         self.assertIsNone(model_fn_ops.train_op)
         _assert_no_variables(self)
         _assert_summary_tags(self, ["loss"])

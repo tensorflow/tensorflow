@@ -80,9 +80,9 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:data_flow_ops_gen",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lookup_ops_gen",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",

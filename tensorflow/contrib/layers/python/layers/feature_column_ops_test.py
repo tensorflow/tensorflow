@@ -33,9 +33,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
@@ -224,7 +224,7 @@ class TransformerTest(test.TestCase):
     self.assertEqual(len(output), 1)
     self.assertIn(keys_sparse, output)
     with self.test_session():
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertEqual(output[keys_sparse].values.dtype, dtypes.int64)
       self.assertAllEqual(output[keys_sparse].values.eval(), [1, 2, 0])
       self.assertAllEqual(output[keys_sparse].indices.eval(),
@@ -242,7 +242,7 @@ class TransformerTest(test.TestCase):
     output = feature_column_ops._Transformer(features).transform(keys_sparse)
 
     with self.test_session():
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       # While the input is a dense Tensor, the output should be a SparseTensor.
       self.assertIsInstance(output, sparse_tensor.SparseTensor)
       self.assertEqual(output.dtype, dtypes.int64)
@@ -311,7 +311,7 @@ class TransformerTest(test.TestCase):
     self.assertIn(weighted_ids, output)
 
     with self.test_session():
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual(output[weighted_ids][0].dense_shape.eval(),
                           ids_tensor.dense_shape.eval())
       self.assertAllEqual(output[weighted_ids][0].indices.eval(),
@@ -341,7 +341,7 @@ class TransformerTest(test.TestCase):
     self.assertEqual(len(output), 1)
     self.assertIn(vocab_sparse, output)
     with self.test_session():
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertEqual(output[vocab_sparse].values.dtype, dtypes.int64)
       self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0])
       self.assertAllEqual(output[vocab_sparse].indices.eval(),
@@ -363,7 +363,7 @@ class TransformerTest(test.TestCase):
     self.assertEqual(len(output), 1)
     self.assertIn(vocab_sparse, output)
     with self.test_session():
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertEqual(output[vocab_sparse].values.dtype, dtypes.int64)
       self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0, 1])
       self.assertAllEqual(output[vocab_sparse].indices.eval(),
@@ -387,7 +387,7 @@ class TransformerTest(test.TestCase):
     self.assertEqual(len(output), 1)
     self.assertIn(vocab_sparse, output)
     with self.test_session():
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertEqual(output[vocab_sparse].values.dtype, dtypes.int64)
       self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0])
       self.assertAllEqual(output[vocab_sparse].indices.eval(),
@@ -409,7 +409,7 @@ class TransformerTest(test.TestCase):
     self.assertEqual(len(output), 1)
     self.assertIn(vocab_sparse, output)
     with self.test_session():
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertEqual(output[vocab_sparse].values.dtype, dtypes.int64)
       self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0, 1])
       self.assertAllEqual(output[vocab_sparse].indices.eval(),
@@ -601,7 +601,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         one_hot_column, embedding_column, real_valued_column])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual(output.eval().shape, [3, 2 + 4 + 10])
 
   def testRealValuedColumn(self):
@@ -714,7 +714,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [one_hot_column])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual([[0, 0, 10., 0], [0, 20., 0, 0], [30., 0, 40., 0]],
                           output.eval())
 
@@ -732,7 +732,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 0, 0]],
                           output.eval())
 
@@ -750,7 +750,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 1, 0]],
                           output.eval())
 
@@ -784,7 +784,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [one_hot_sparse])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual([3, 10], output.eval().shape)
 
   def testEmbeddingColumnSucceedsForDNN(self):
@@ -891,7 +891,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [embeded_sparse])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
 
   def testEmbeddingColumnWithIntegerWeightedSparseColumnSucceedsForDNN(self):
@@ -914,7 +914,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [embeded_sparse])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
 
   def testEmbeddingColumnWithCrossedColumnSucceedsForDNN(self):
@@ -965,7 +965,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
       with self.assertRaisesRegexp(
           ValueError,
           "Error creating input layer for column: ids_weighted_by_weights"):
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         feature_column_ops.input_from_feature_columns(features, [weighted_ids])
 
   def testCrossedColumnFailsForDNN(self):
@@ -1072,7 +1072,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [embeded_sparse])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       # score: (sum of weights)
       self.assertAllEqual(output.eval(), [[10.], [50.], [0.]])
 
@@ -1310,7 +1310,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
 
     with self.test_session() as sess:
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       model_input = sess.run(model_input_tensor)
 
     expected_input_shape = np.array([4, 3, 4])
@@ -1344,7 +1344,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
 
     with self.test_session() as sess:
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       model_input = sess.run(model_input_tensor)
 
     expected_input_shape = np.array([4, 3, hash_buckets])
@@ -1374,7 +1374,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
 
     with self.test_session() as sess:
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       model_input = sess.run(model_input_tensor)
 
     self.assertAllEqual(expected_input_shape, model_input.shape)
@@ -1403,7 +1403,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
 
     with self.test_session() as sess:
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       model_input = sess.run(model_input_tensor)
 
     self.assertAllEqual(expected_input_shape, model_input.shape)
@@ -1433,7 +1433,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
                                                embedding_weights)
     with self.test_session() as sess:
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       model_input, gradients = sess.run([model_input_tensor, gradient_tensor])
 
     expected_input_shape = [4, 3, embedding_dimension]
@@ -1500,7 +1500,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
 
     with self.test_session() as sess:
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       model_input = sess.run(model_input_tensor)
 
     expected_input_shape = [
@@ -1581,7 +1581,7 @@ class WeightedSumTest(test.TestCase):
         features, [weighted_ids], num_outputs=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
   def testWeightedSparseColumnWithDenseInputTensor(self):
@@ -1597,7 +1597,7 @@ class WeightedSumTest(test.TestCase):
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
   def testCrossedColumn(self):
@@ -1651,7 +1651,7 @@ class WeightedSumTest(test.TestCase):
               features, [movies], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.initialize_all_variables().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[movies][0]
         self.assertEqual(weights.get_shape(), (3, 1))
@@ -1726,7 +1726,7 @@ class WeightedSumTest(test.TestCase):
               features, [age, language], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         self.assertAllClose(output.eval(), [[0.], [0.]])
 
@@ -1766,7 +1766,7 @@ class WeightedSumTest(test.TestCase):
       self.assertEqual(len(variables), 1)
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         self.assertAllClose(output.eval(), [[0.], [0.]])
 
@@ -1830,7 +1830,7 @@ class WeightedSumTest(test.TestCase):
               features, [weighted_language], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         self.assertAllClose(output.eval(), [[0.], [0.]])
 
@@ -1858,7 +1858,7 @@ class WeightedSumTest(test.TestCase):
               features, [language], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         # score: 0.1 + language_weight['hindi'] + language_weight['english']
         sess.run(bias.assign([0.1]))
@@ -1881,7 +1881,7 @@ class WeightedSumTest(test.TestCase):
               features, [movies], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[movies][0]
         self.assertEqual(weights.get_shape(), (15, 1))
@@ -1915,7 +1915,7 @@ class WeightedSumTest(test.TestCase):
               features, [country_language], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[country_language][0]
         sess.run(weights.assign(weights + 0.4))
@@ -1939,7 +1939,7 @@ class WeightedSumTest(test.TestCase):
               features, [language_language], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[language_language][0]
         sess.run(weights.assign(weights + 0.4))
@@ -1972,7 +1972,7 @@ class WeightedSumTest(test.TestCase):
               features, [country_language], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[country_language][0]
         sess.run(weights.assign(weights + 0.4))
@@ -2013,7 +2013,7 @@ class WeightedSumTest(test.TestCase):
                 scope=scope))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         self.assertEqual(2, len(column_to_variable[country]))
         self.assertEqual(3, len(column_to_variable[language]))
@@ -2050,7 +2050,7 @@ class WeightedSumTest(test.TestCase):
               features, [country, age, incomes], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         incomes_weights = column_to_variable[incomes][0]
         sess.run(incomes_weights.assign([[0.1], [0.2], [0.3]]))
@@ -2086,7 +2086,7 @@ class WeightedSumTest(test.TestCase):
               features, [country, age, height, incomes], num_outputs=5))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         height_weights = column_to_variable[height][0]
         sess.run(
@@ -2116,7 +2116,7 @@ class WeightedSumTest(test.TestCase):
               features, [bucket], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         sess.run(column_to_variable[bucket][0].assign([[0.1], [0.2], [0.3],
                                                        [0.4]]))
@@ -2144,7 +2144,7 @@ class WeightedSumTest(test.TestCase):
               features, [bucket, country], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         # dimension = 2, bucket_size = 4, num_classes = 1
         sess.run(column_to_variable[bucket][0].assign(
@@ -2173,7 +2173,7 @@ class WeightedSumTest(test.TestCase):
               features, [bucket, country], num_outputs=5))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         # dimension = 2, bucket_size = 4, num_classes = 5
         sess.run(column_to_variable[bucket][0].assign(
@@ -2209,7 +2209,7 @@ class WeightedSumTest(test.TestCase):
               features, [country_price], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[country_price][0]
         sess.run(weights.assign(weights + 0.4))
@@ -2248,7 +2248,7 @@ class WeightedSumTest(test.TestCase):
               features, [country_language_price], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[country_language_price][0]
         sess.run(weights.assign(weights + 0.4))
@@ -2272,7 +2272,7 @@ class WeightedSumTest(test.TestCase):
               features, [product], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         product_weights = column_to_variable[product][0]
         sess.run(product_weights.assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
         self.assertAllClose(output.eval(), [[0.1], [0.5], [0.3]])
@@ -2287,7 +2287,7 @@ class WeightedSumTest(test.TestCase):
               features, [product], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         product_weights = column_to_variable[product][0]
         sess.run(product_weights.assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
         self.assertAllClose(output.eval(), [[0.1], [0.5], [0.3]])
@@ -2302,7 +2302,7 @@ class WeightedSumTest(test.TestCase):
               features, [product], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         product_weights = column_to_variable[product][0]
         sess.run(product_weights.assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
         self.assertAllClose(output.eval(), [[0.6], [0.7]])
@@ -2323,7 +2323,7 @@ class WeightedSumTest(test.TestCase):
               features, [product], num_outputs=1))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         product_weights = column_to_variable[product][0]
         sess.run(product_weights.assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
         self.assertAllClose(output.eval(), [[0.1], [0.5], [0.3]])
@@ -2335,7 +2335,7 @@ class WeightedSumTest(test.TestCase):
           features, [feature_column.real_valued_column("age")], num_outputs=3)
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         sess.run(bias.assign([0.1, 0.2, 0.3]))
         self.assertAllClose(output.eval(), [[0.1, 0.2, 0.3], [0.1, 0.2, 0.3],
                                             [0.1, 0.2, 0.3], [0.1, 0.2, 0.3]])
@@ -2349,7 +2349,7 @@ class WeightedSumTest(test.TestCase):
               features, [column], num_outputs=3))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         weights = column_to_variable[column][0]
         self.assertEqual(weights.get_shape(), (1, 3))
         sess.run(weights.assign([[0.01, 0.03, 0.05]]))
@@ -2373,7 +2373,7 @@ class WeightedSumTest(test.TestCase):
               features, [column], num_outputs=3))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
         weights = column_to_variable[column][0]
         self.assertEqual(weights.get_shape(), (5, 3))
         sess.run(
@@ -2399,7 +2399,7 @@ class WeightedSumTest(test.TestCase):
               features, [column], num_outputs=3))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[column][0]
         self.assertEqual(weights.get_shape(), (5, 3))
@@ -2439,7 +2439,7 @@ class WeightedSumTest(test.TestCase):
               features, [column], num_outputs=3))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[column][0]
         self.assertEqual(weights.get_shape(), (5, 3))
@@ -2468,7 +2468,7 @@ class WeightedSumTest(test.TestCase):
               features, [column], num_outputs=3))
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
         weights = column_to_variable[column][0]
         self.assertEqual(weights.get_shape(), (5, 3))
@@ -2533,7 +2533,7 @@ class ParseExampleTest(test.TestCase):
     self.assertIn(bucket, output)
     self.assertIn(wire_cast, output)
     with self.test_session():
-      data_flow_ops.tables_initializer().run()
+      lookup_ops.tables_initializer().run()
       self.assertAllEqual(output[bucket].eval(), [[2, 3, 0]])
       self.assertAllEqual(output[wire_cast].indices.eval(), [[0, 0], [0, 1]])
       self.assertAllEqual(output[wire_cast].values.eval(), [2, 0])

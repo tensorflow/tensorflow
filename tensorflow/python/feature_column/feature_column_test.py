@@ -31,7 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
@@ -41,7 +41,7 @@ from tensorflow.python.platform import test
 def _initialized_session():
   sess = session.Session()
   sess.run(variables_lib.global_variables_initializer())
-  sess.run(data_flow_ops.tables_initializer())
+  sess.run(lookup_ops.tables_initializer())
   return sess
 
 
@@ -1277,7 +1277,7 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     # pylint: enable=protected-access
     with self.assertRaisesRegexp(errors.OpError, 'file_does_not_exist'):
       with self.test_session():
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
   def test_invalid_vocabulary_size(self):
     with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
@@ -1307,7 +1307,7 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     # pylint: enable=protected-access
     with self.assertRaisesRegexp(errors.OpError, 'Invalid vocab_size'):
       with self.test_session():
-        data_flow_ops.tables_initializer().run()
+        lookup_ops.tables_initializer().run()
 
   def test_invalid_num_oov_buckets(self):
     with self.assertRaisesRegexp(ValueError, 'Invalid num_oov_buckets'):

@@ -38,8 +38,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -157,7 +157,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
         self.context_feature_columns)
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.tables_initializer())
+      sess.run(lookup_ops.tables_initializer())
       sequence_input_val = sess.run(sequence_input)
     expected_shape = np.array([
         3,  # expected batch size
@@ -178,7 +178,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     # Obtain values of activations and final state.
     with session.Session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.tables_initializer())
+      sess.run(lookup_ops.tables_initializer())
       activations, final_state = sess.run([activations_t, final_state_t])
 
     expected_activations_shape = np.array([3, 2, self.NUM_LABEL_COLUMNS])

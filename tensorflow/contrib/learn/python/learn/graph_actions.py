@@ -37,8 +37,8 @@ from tensorflow.python.client import session as tf_session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -429,11 +429,14 @@ def _get_ready_op():
 
 
 def _get_local_init_op():
+  """Returns the local init ops to initialize tables and local variables."""
   local_init_op = _get_first_op_from_collection(
       ops.GraphKeys.LOCAL_INIT_OP)
   if local_init_op is None:
-    op_list = [variables.local_variables_initializer(),
-               data_flow_ops.tables_initializer()]
+    op_list = [
+        variables.local_variables_initializer(),
+        lookup_ops.tables_initializer()
+    ]
     if op_list:
       local_init_op = control_flow_ops.group(*op_list)
       ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, local_init_op)
@@ -680,7 +683,7 @@ def run_feeds_iter(output_dict, feed_dicts, restore_checkpoint_path=None):
       else:
         session.run(variables.global_variables_initializer())
       session.run(variables.local_variables_initializer())
-      session.run(data_flow_ops.tables_initializer())
+      session.run(lookup_ops.tables_initializer())
       coord = coordinator.Coordinator()
       threads = None
       try:
