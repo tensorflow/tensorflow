@@ -273,6 +273,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.conv2d_grad_filter = "Conv2DBackpropFilter";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
+    csinfo_.identity = "Identity";
     csinfo_.lrn = "LRN";
     csinfo_.lrn_grad = "LRNGrad";
     csinfo_.matmul = "MatMul";
@@ -326,6 +327,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.fused_batch_norm_grad,
                       GetMklOpName(csinfo_.fused_batch_norm_grad),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite, nullptr});
+    rinfo_.push_back({csinfo_.identity,
+                      GetMklOpName(csinfo_.identity),
+                      CopyAttrsIdentity, AlwaysRewrite, nullptr});
     rinfo_.push_back({csinfo_.lrn,
                       GetMklOpName(csinfo_.lrn),
                       CopyAttrsLRN, AlwaysRewrite, nullptr});
@@ -446,6 +450,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string conv2d_grad_filter;
     string fused_batch_norm;
     string fused_batch_norm_grad;
+    string identity;
     string lrn;
     string lrn_grad;
     string matmul;
@@ -767,6 +772,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConv2D(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsIdentity(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsRelu(const Node* orig_node, NodeBuilder* nb);
@@ -1273,6 +1279,16 @@ void MklLayoutRewritePass::CopyAttrsBiasAddGrad(const Node* orig_node,
   nb->Attr("T", T);
   nb->Attr("strides", strides);
   nb->Attr("data_format", data_format);
+}
+
+void MklLayoutRewritePass::CopyAttrsIdentity(const Node* orig_node,
+                                             NodeBuilder* nb) {
+  DataType T;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  // Add attributes to new node.
+  nb->Attr("T", T);
 }
 
 void MklLayoutRewritePass::CopyAttrsLRN(const Node* orig_node,
