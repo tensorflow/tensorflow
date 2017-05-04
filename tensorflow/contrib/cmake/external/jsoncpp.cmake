@@ -23,7 +23,7 @@ set(jsoncpp_LIBRARIES ${jsoncpp_BUILD}/obj/so/libjsoncpp.so)
 set(jsoncpp_INCLUDES ${jsoncpp_BUILD})
 
 if(WIN32)
-  set(jsoncpp_STATIC_LIBRARIES ${jsoncpp_BUILD}/${CMAKE_BUILD_TYPE}/jsoncpp.lib)
+  set(jsoncpp_STATIC_LIBRARIES ${jsoncpp_BUILD}/$(Configuration)/jsoncpp.lib)
 else()
   set(jsoncpp_STATIC_LIBRARIES ${jsoncpp_BUILD}/libjsoncpp.a)
 endif()
