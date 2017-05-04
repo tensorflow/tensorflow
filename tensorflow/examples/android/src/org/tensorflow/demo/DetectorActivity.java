@@ -273,13 +273,12 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
           yuvBytes[0],
           yuvBytes[1],
           yuvBytes[2],
-          rgbBytes,
           previewWidth,
           previewHeight,
           yRowStride,
           uvRowStride,
           uvPixelStride,
-          false);
+          rgbBytes);
 
       image.close();
     } catch (final Exception e) {

@@ -41,10 +41,6 @@ import org.tensorflow.demo.env.Logger;
 public class TensorFlowMultiBoxDetector implements Classifier {
   private static final Logger LOGGER = new Logger();
 
-  static {
-    System.loadLibrary("tensorflow_demo");
-  }
-
   // Only return this many results with at least this confidence.
   private static final int MAX_RESULTS = Integer.MAX_VALUE;
 
