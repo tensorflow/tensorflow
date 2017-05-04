@@ -171,9 +171,7 @@ class MklLRNOp : public OpKernel {
     MklShape input_shape;
     dnnPrimitive_t lrn_fwd = nullptr;
     dnnPrimitive_t convert_input = nullptr;
-    /* dnnPrimitive_t convert_output; */
     dnnLayout_t lt_input = nullptr;
-    /* dnnLayout_t lt_output; */
     dnnLayout_t lt_internal_input = nullptr;
     dnnLayout_t lt_internal_workspace = nullptr;
     dnnLayout_t lt_internal_output = nullptr;
@@ -390,11 +388,6 @@ class MklLRNGradOp : public OpKernel {
       return;
     }
 
-    if (depth_radius_ != 2) {
-      mkl_context.MklDefaultToEigen(context);
-      return;
-    }
-
     if (ingrad_in_mkl_format || inimage_in_mkl_format) {
       const MklShape* tmp_mkl_shape = (ingrad_in_mkl_format)
                                           ? &mkl_context.ingrad_shape
@@ -476,11 +469,11 @@ class MklLRNGradOp : public OpKernel {
         const_cast<void*>(static_cast<const void*>(output->flat<T>().data()));
 
     Tensor mkl_tmp_input_buf_tensor, mkl_tmp_image_buf_tensor,
-        mkl_tmp_outimage_buf_tensor, mkl_tmp_workspace_buf_tensor;
+        mkl_tmp_outimage_buf_tensor;
     // Convert Inputs if needed
-    mkl_context.MklPrepareLRNGradInput(
-        context, &mkl_tmp_input_buf_tensor, &mkl_tmp_image_buf_tensor,
-        &mkl_tmp_outimage_buf_tensor, &mkl_tmp_workspace_buf_tensor);
+    mkl_context.MklPrepareLRNGradInput(context, &mkl_tmp_input_buf_tensor,
+                                       &mkl_tmp_image_buf_tensor,
+                                       &mkl_tmp_outimage_buf_tensor);
 
     // We do not do any conversion for output. But we simply emit it
     // in MKL format.
@@ -537,11 +530,13 @@ class MklLRNGradOp : public OpKernel {
     void MklPrepareLRNGradInput(OpKernelContext* context,
                                 Tensor* mkl_tmp_input_buf_tensor,
                                 Tensor* mkl_tmp_image_buf_tensor,
-                                Tensor* mkl_tmp_outimage_buf_tensor,
-                                Tensor* mkl_tmp_workspace_buf_tensor) {
+                                Tensor* mkl_tmp_outimage_buf_tensor) {
       const Tensor& in_grads = MklGetInput(context, 0);
       const Tensor& in_image = MklGetInput(context, 1);
       const Tensor& out_image = MklGetInput(context, 2);
+      const Tensor& workspace = MklGetInput(
+          context,
+          3); /*Worskpsace is enabled, get the buffer to the workspace */
 
       void* user_input = const_cast<void*>(
           static_cast<const void*>(in_grads.flat<T>().data()));
@@ -549,6 +544,9 @@ class MklLRNGradOp : public OpKernel {
           static_cast<const void*>(in_image.flat<T>().data()));
       void* user_fwd_output = const_cast<void*>(
           static_cast<const void*>(out_image.flat<T>().data()));
+      void* workspace_buffer = const_cast<void*>(
+          static_cast<const void*>(workspace.flat<T>().data()));
+
       CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&lt_workspace, lrn_bwd,
                                                 dnnResourceWorkspace),
                E_SUCCESS);
@@ -623,9 +621,7 @@ class MklLRNGradOp : public OpKernel {
         res_lrn_bwd[dnnResourceDst] = user_fwd_output;
       }
 
-      // Allocate buffer for workspace.
-      AllocTmpBuffer(context, mkl_tmp_workspace_buf_tensor, lt_workspace,
-                     &res_lrn_bwd[dnnResourceWorkspace]);
+      res_lrn_bwd[dnnResourceWorkspace] = workspace_buffer;
     }
 
     // Fallback implementation - Taken from lrn_op.cc
@@ -713,7 +709,7 @@ class MklLRNGradOp : public OpKernel {
       Shard(worker_threads.num_threads, worker_threads.workers, nodes * batch,
             depth * depth, shard);
     }
-
+		
     // release mkl resources
     void Mklcleanup() {
       bool ingrad_in_mkl_format = ingrad_shape.IsMklTensor();
