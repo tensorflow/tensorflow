@@ -564,8 +564,8 @@ inline void CopyMklTensorInToOut(OpKernelContext* context,
 }
 
 inline void CopyTfTensorInToOutWithShape(OpKernelContext* context,
-                                int idx_in, int idx_out,
-                                const TensorShape& shape) {
+                                         int idx_in, int idx_out,
+                                         const TensorShape& shape) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
@@ -599,7 +599,7 @@ inline void FowardTfTensorInToOut(OpKernelContext* context,
 }
 
 inline void ForwarMklTensorInToOut(OpKernelContext* context,
-                                      int idx_in, int idx_out) {
+                                   int idx_in, int idx_out) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);

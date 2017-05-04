@@ -1282,7 +1282,7 @@ void MklLayoutRewritePass::CopyAttrsBiasAddGrad(const Node* orig_node,
 }
 
 void MklLayoutRewritePass::CopyAttrsIdentity(const Node* orig_node,
-                                           NodeBuilder* nb) {
+                                             NodeBuilder* nb) {
   DataType T;
 
   // Get all attributes from old node.
