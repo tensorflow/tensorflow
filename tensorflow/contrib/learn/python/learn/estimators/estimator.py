@@ -966,7 +966,8 @@ class BaseEstimator(
             saver.Saver(
                 sharded=True,
                 max_to_keep=self._config.keep_checkpoint_max,
-                defer_build=True))
+                defer_build=True,
+                save_relative_paths=True))
 
       chief_hooks = []
       if (self._config.save_checkpoints_secs or

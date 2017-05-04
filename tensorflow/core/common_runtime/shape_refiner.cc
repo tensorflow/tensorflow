@@ -163,7 +163,7 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool* refined) {
 
     InferenceContext* c = iter->second.get();
     DCHECK_GE(e->dst_input(), 0);
-    if (node_context->set_input(e->dst_input(), c->output(e->src_output()))) {
+    if (node_context->MergeInput(e->dst_input(), c->output(e->src_output()))) {
       *refined = true;
     }
 
@@ -174,7 +174,7 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool* refined) {
               e->dst_input(), c->output_handle_dtype(e->src_output()))) {
         *refined = true;
       }
-      if (node_context->set_input_handle_shape(
+      if (node_context->MergeInputHandleShape(
               e->dst_input(), c->output_handle_shape(e->src_output()))) {
         *refined = true;
       }

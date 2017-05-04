@@ -130,6 +130,7 @@ class Dense(base.Layer):
                                     trainable=True)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)

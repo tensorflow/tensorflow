@@ -45,9 +45,10 @@ class SquareLinearOperatorFullMatrixTest(
       # values are random and we want the same value used for both mat and
       # feed_dict.
       matrix = matrix.eval()
-      operator = linalg.LinearOperatorFullMatrix(matrix_ph)
+      operator = linalg.LinearOperatorFullMatrix(matrix_ph, is_square=True)
       feed_dict = {matrix_ph: matrix}
     else:
+      # is_square should be auto-detected here.
       operator = linalg.LinearOperatorFullMatrix(matrix)
       feed_dict = None
 
@@ -68,6 +69,8 @@ class SquareLinearOperatorFullMatrixTest(
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertFalse(operator.is_self_adjoint)
+    # Auto-detected.
+    self.assertTrue(operator.is_square)
 
 
 class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
@@ -104,6 +107,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
       # values are random and we want the same value used for both mat and
       # feed_dict.
       matrix = matrix.eval()
+      # is_square is auto-set because of self_adjoint/pd.
       operator = linalg.LinearOperatorFullMatrix(
           matrix_ph, is_self_adjoint=True, is_positive_definite=True)
       feed_dict = {matrix_ph: matrix}
@@ -129,7 +133,8 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
 
     # Should be auto-set
     self.assertTrue(operator.is_non_singular)
-    self.assertTrue(operator._is_spd)
+    self.assertTrue(operator._can_use_cholesky)
+    self.assertTrue(operator.is_square)
 
 
 class NonSquareLinearOperatorFullMatrixTest(
@@ -157,16 +162,14 @@ class NonSquareLinearOperatorFullMatrixTest(
     return operator, mat, feed_dict
 
   def test_is_x_flags(self):
-    # Matrix with two positive eigenvalues.
-    matrix = [[3., 0.], [1., 1.]]
+    matrix = [[3., 2., 1.], [1., 1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
         matrix,
-        is_positive_definite=True,
-        is_non_singular=True,
         is_self_adjoint=False)
-    self.assertTrue(operator.is_positive_definite)
-    self.assertTrue(operator.is_non_singular)
+    self.assertEqual(operator.is_positive_definite, None)
+    self.assertEqual(operator.is_non_singular, None)
     self.assertFalse(operator.is_self_adjoint)
+    self.assertFalse(operator.is_square)
 
   def test_matrix_must_have_at_least_two_dims_or_raises(self):
     with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):

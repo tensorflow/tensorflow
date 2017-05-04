@@ -153,6 +153,36 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer.built, True)
     self.assertEqual(outputs.op.name, 'my_layer/Square')
 
+  def testFirstCallCanCreateVariablesButSecondCanNotWhenBuildEmpty(self):
+
+    class MyLayer(base_layers.Layer):
+
+      def build(self, _):
+        # Do not mark the layer as built.
+        pass
+
+      def call(self, inputs):
+        self.my_var = self.add_variable('my_var', [2, 2])
+        if self.built:
+          # Skip creating on the first call; try to create after it's
+          # built.  This is expected to fail.
+          self.add_variable('this_will_break_on_second_call', [2, 2])
+        return inputs + math_ops.square(self.my_var)
+
+    layer = MyLayer(name='my_layer')
+    inputs = random_ops.random_uniform((2,), seed=1)
+    outputs = layer.apply(inputs)
+    self.assertEqual(layer.built, True)
+    self.assertEqual(outputs.op.name, 'my_layer/add')
+    self.assertListEqual(
+        [v.name for v in layer.variables], ['my_layer/my_var:0'])
+    with self.assertRaisesRegexp(ValueError,
+                                 'my_layer/this_will_break_on_second_call'):
+      layer.apply(inputs)
+    # The list of variables hasn't changed.
+    self.assertListEqual(
+        [v.name for v in layer.variables], ['my_layer/my_var:0'])
+
   def testDeepCopy(self):
 
     class MyLayer(base_layers.Layer):

@@ -166,6 +166,7 @@ class TimeDistributed(Wrapper):
       self.layer.build(child_input_shape)
       self.layer.built = True
     super(TimeDistributed, self).build()
+    self.built = True
 
   def _compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
