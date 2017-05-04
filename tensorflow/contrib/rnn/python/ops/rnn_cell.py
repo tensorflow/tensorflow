@@ -1950,7 +1950,7 @@ class GLSTMCell(core_rnn_cell.RNNCell):
       num_proj: (optional) int, The output dimensionality for the projection
         matrices.  If None, no projection is performed.
       number_of_groups: (optional) int, number of groups to use.
-        If number_of_groups=1, then it should be equivalent to LSTMP cell
+        If `number_of_groups` is 1, then it should be equivalent to LSTM cell
       forget_bias: Biases of the forget gate are initialized by default to 1
         in order to reduce the scale of forgetting at the beginning of
         the training.
@@ -1960,7 +1960,8 @@ class GLSTMCell(core_rnn_cell.RNNCell):
         has the given variables, an error is raised.
 
     Raises:
-      ValueError: If num_units or num_proj is not divisible by number_of_groups
+      ValueError: If `num_units` or `num_proj` is not divisible by 
+        `number_of_groups`.
     """
     super(GLSTMCell, self).__init__(_reuse=reuse)
     self._num_units = num_units
