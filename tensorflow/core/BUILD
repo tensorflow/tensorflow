@@ -1282,7 +1282,10 @@ cc_library(
     ] + tf_additional_verbs_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
-        "//conditions:default": ["-ldl"],
+        "//conditions:default": [
+            "-ldl",
+            "-lpthread",
+        ],
     }),
     deps = tf_additional_lib_deps() + [
         ":lib_hash_crc32c_accelerate_internal",

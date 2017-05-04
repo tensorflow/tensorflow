@@ -106,7 +106,7 @@ class MklToTfOp : public OpKernel {
 ///////////////////////////////////////////////////////////
 
 #define REGISTER_CPU(T)                                             \
-  REGISTER_KERNEL_BUILDER(Name("MklToTf")                           \
+  REGISTER_KERNEL_BUILDER(Name("_MklToTf")                          \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \

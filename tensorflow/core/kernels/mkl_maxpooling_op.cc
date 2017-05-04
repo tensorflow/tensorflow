@@ -276,11 +276,6 @@ class MklMaxPoolingGradOp : public OpKernel {
     mkl_context.pooling_res[dnnResourceDiffSrc] = const_cast<void*>(
         static_cast<const void*>(output_tensor->flat<T>().data()));
 
-    int64 output_size = output_tensor->NumElements();
-    for (int64 i = 0; i < output_size; ++i) {
-      (static_cast<float*>(mkl_context.pooling_res[dnnResourceDiffSrc]))[i] = 0;
-    }
-
     CHECK_EQ(
         dnnExecute_F32(mkl_context.prim_pooling_bwd, mkl_context.pooling_res),
         E_SUCCESS);
