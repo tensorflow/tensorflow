@@ -31,7 +31,7 @@ limitations under the License.
 namespace Eigen {
 struct ThreadPoolDevice;
 #ifdef TENSORFLOW_USE_SYCL
-class SyclDevice;
+struct SyclDevice;
 #endif
 }  // end namespace Eigen
 
