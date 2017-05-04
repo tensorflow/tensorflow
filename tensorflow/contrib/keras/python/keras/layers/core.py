@@ -741,6 +741,7 @@ class Dense(tf_core_layers.Dense, Layer):
       self.constraints[self.kernel] = self.kernel_constraint
     if self.use_bias and self.bias_constraint:
       self.constraints[self.bias] = self.bias_constraint
+    self.built = True
 
   def get_config(self):
     config = {

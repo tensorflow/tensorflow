@@ -59,6 +59,9 @@ TEST_F(UserComputationTest, SimpleComputation) {
   param_request.set_name("param0");
   TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle param_handle,
                          computation.AddParameterInstruction(param_request));
+  OpMetadata metadata;
+  metadata.set_op_name("meta");
+  TF_ASSERT_OK(computation.SetOpMetadata(param_handle, metadata));
 
   OutfeedRequest outfeed_request;
   *outfeed_request.mutable_operand() = constant_handle;
@@ -135,6 +138,8 @@ TEST_F(UserComputationTest, SimpleComputation) {
     // The root of the instruction should be the parameter instruction (not the
     // outfeed).
     EXPECT_THAT(hlo_computation->root_instruction(), op::Parameter());
+    EXPECT_EQ(hlo_computation->root_instruction()->metadata().op_name(),
+              "meta");
   }
 }
 

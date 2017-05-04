@@ -14,8 +14,8 @@ input pipeline issues and best practices. We found that using @{tf.FIFOQueue}
 and @{tf.train.queue_runner} could not saturate multiple current generation GPUs
 when using large inputs and processing with higher samples per second, such
 as training ImageNet with [AlexNet](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf).
-This is due to the the use of Python threads as its underlying implementation.
-The overhead of Python threads is too large.
+This is due to the use of Python threads as its underlying implementation. The
+overhead of Python threads is too large.
 
 Another approach, which we have implemented in the
 [scripts](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks),
@@ -327,3 +327,96 @@ free.
 The downside is that all the weights read are from the previous training step.
 So it is a different algorithm from SGD. But it is possible to improve its
 convergence by adjusting learning rate and other hyperparameters.
+
+## Executing the script
+
+This section lists the core command line arguments and a few basic examples for
+executing the main script
+([tf_cnn_benchmarks.py](https://github.com/tensorflow/benchmarks/tree/master/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py)).
+
+> Note: `tf_cnn_benchmarks.py` uses the config `force_gpu_compatible`,
+> which was introduced after TensorFlow 1.1. Until TensorFlow 1.2 is released
+> building from source is advised.
+
+#### Base command line arguments
+
+*   **`model`**: Model to use, e.g. `resnet50`, `inception3`, `vgg16`, and
+    `alexnet`.
+*   **`num_gpus`**: Number of GPUs to use.
+*   **`data_dir`**: Path to data to process. If not set, synthetic data is used.
+    To use Imagenet data use these
+    [instructions(https://github.com/tensorflow/models/tree/master/inception#getting-started)
+    as a starting point.
+*   **`batch_size`**: Batch size for each GPU.
+*   **`variable_update`**: The method for managing variables: `parameter_server`
+    ,`replicated`, `distributed_replicated`, `independent`
+*   **`local_parameter_device`**: Device to use as parameter server: `cpu` or
+    `gpu`.
+
+#### Single instance examples
+
+```bash
+# VGG16 training ImageNet with 8 GPUs using arguments that optimize for
+# Google Compute Engine.
+python tf_cnn_benchmarks.py --local_parameter_device=cpu --num_gpus=8 \
+--batch_size=32 --model=vgg16 --data_dir=/home/ubuntu/imagenet/train \
+--variable_update=parameter_server --nodistortions
+
+# VGG16 training synthetic ImageNet data with 8 GPUs using arguments that
+# optimize for the NVIDIA DGX-1.
+python tf_cnn_benchmarks.py --local_parameter_device=gpu --num_gpus=8 \
+--batch_size=64 --model=vgg16 --variable_update=replicated --use_nccl=True
+
+# VGG16 training ImageNet data with 8 GPUs using arguments that optimize for
+# Amazon EC2.
+python tf_cnn_benchmarks.py --local_parameter_device=gpu --num_gpus=8 \
+--batch_size=64 --model=vgg16 --variable_update=parameter_server
+
+# ResNet-50 training ImageNet data with 8 GPUs using arguments that optimize for
+# Amazon EC2.
+python tf_cnn_benchmarks.py --local_parameter_device=gpu --num_gpus=8 \
+--batch_size=64 --model=resnet50 --variable_update=replicated --use_nccl=False
+
+```
+
+#### Distributed command line arguments
+
+*   **`ps_hosts`**: Comma separated list of hosts to use as parameter servers
+    in the format of ```<host>:port```, e.g. ```10.0.0.2:50000```.
+*   **`worker_hosts`**: Comma separated list of hosts to use as workers in the
+    format of ```<host>:port```, e.g. ```10.0.0.2:50001```.
+*   **`task_index`**: Index of the host in the list of `ps_hosts` or
+    `worker_hosts` being started.
+*   **`job_name`**: Type of job, e.g `ps` or `worker`
+
+#### Distributed examples
+
+Below is an example of training ResNet-50 on 2 hosts: host_0 (10.0.0.1) and
+host_1 (10.0.0.2). The example uses synthetic data. To use real data pass the
+`--data_dir` argument.
+
+```bash
+# Run the following commands on host_0 (10.0.0.1):
+python tf_cnn_benchmarks.py --local_parameter_device=gpu --num_gpus=8 \
+--batch_size=64 --model=resnet50 --variable_update=distributed_replicated \
+--job_name=worker --ps_hosts=10.0.0.1:50000,10.0.0.2:50000 \
+--worker_hosts=10.0.0.1:50001,10.0.0.2:50001 --task_index=0
+
+python tf_cnn_benchmarks.py --local_parameter_device=gpu --num_gpus=8 \
+--batch_size=64 --model=resnet50 --variable_update=distributed_replicated \
+--job_name=ps --ps_hosts=10.0.0.1:50000,10.0.0.2:50000 \
+--worker_hosts=10.0.0.1:50001,10.0.0.2:50001 --task_index=0
+
+
+# Run the following commands on host_1 (10.0.0.2):
+python tf_cnn_benchmarks.py --local_parameter_device=gpu --num_gpus=8 \
+--batch_size=64 --model=resnet50 --variable_update=distributed_replicated \
+--job_name=worker --ps_hosts=10.0.0.1:50000,10.0.0.2:50000 \
+--worker_hosts=10.0.0.1:50001,10.0.0.2:50001 --task_index=1
+
+python tf_cnn_benchmarks.py --local_parameter_device=gpu --num_gpus=8 \
+--batch_size=64 --model=resnet50 --variable_update=distributed_replicated \
+--job_name=ps --ps_hosts=10.0.0.1:50000,10.0.0.2:50000 \
+--worker_hosts=10.0.0.1:50001,10.0.0.2:50001 --task_index=1
+
+```

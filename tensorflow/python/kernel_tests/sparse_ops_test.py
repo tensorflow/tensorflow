@@ -328,6 +328,12 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
     return sparse_tensor.SparseTensorValue(self._IND_2_5_6, self._VAL_2_5_6,
                                            self._SHP_2_5_6)
 
+  def testStaticShapeInfoPreservedWhenNewShapeIsProvidedAndStatic(self):
+    sp_input = self._SparseTensor_2x5x6()
+    new_shape = np.array([3, 6, 7], dtype=np.int64)
+    sp_output = sparse_ops.sparse_reset_shape(sp_input, new_shape)
+    self.assertAllEqual([3, 6, 7], sp_output.get_shape())
+
   def testBasic(self):
     with self.test_session(use_gpu=False) as sess:
       sp_input = self._SparseTensor_2x5x6()
@@ -397,14 +403,21 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError("x == y did not hold element-wise"):
         sess.run(out, feed_dict={new_shape: np.array([3, 7], dtype=np.int64)})
 
-  def testInvalidDimensionSize(self):
+  def testInvalidDimensionSizeStatic(self):
+    sp_input = self._SparseTensor_2x5x6()
+    new_shape = np.array([3, 7, 5], dtype=np.int64)
+
+    with self.assertRaisesRegexp(ValueError, "should have dimension sizes"):
+      sparse_ops.sparse_reset_shape(sp_input, new_shape)
+
+  def testInvalidDimensionSizeDynamic(self):
     with self.test_session(use_gpu=False) as sess:
       sp_input = self._SparseTensor_2x5x6()
-      new_shape = np.array([3, 7, 5], dtype=np.int64)
+      new_shape = array_ops.placeholder(dtype=dtypes.int32)
       out = sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
       with self.assertRaisesOpError("x <= y did not hold element-wise"):
-        sess.run(out)
+        sess.run(out, feed_dict={new_shape: [3, 7, 5]})
 
   def testInvalidDimensionSizeInputUnavailableInGraphConstruction(self):
     sp_input = array_ops.sparse_placeholder(dtype=dtypes.int32)

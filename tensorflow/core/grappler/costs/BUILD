@@ -91,6 +91,23 @@ cc_test(
 )
 
 cc_library(
+    name = "robust_stats",
+    srcs = ["robust_stats.cc"],
+    hdrs = ["robust_stats.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "robust_stats_test",
+    srcs = ["robust_stats_test.cc"],
+    deps = [
+        ":robust_stats",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
@@ -114,5 +131,39 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "virtual_scheduler",
+    srcs = ["virtual_scheduler.cc"],
+    hdrs = ["virtual_scheduler.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:cost_estimator",
+    ],
+)
+
+cc_library(
+    name = "measuring_cost_estimator",
+    srcs = ["measuring_cost_estimator.cc"],
+    hdrs = ["measuring_cost_estimator.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":robust_stats",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/costs:cost_estimator",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )

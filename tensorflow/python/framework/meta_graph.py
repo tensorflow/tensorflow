@@ -422,14 +422,15 @@ def import_scoped_meta_graph(meta_graph_or_file,
                              graph=None,
                              import_scope=None,
                              input_map=None,
-                             unbound_inputs_col_name="unbound_inputs"):
-  """Recreates a`Graph` saved in a `MetaGraphDef` proto.
+                             unbound_inputs_col_name="unbound_inputs",
+                             restore_collections_predicate=(lambda key: True)):
+  """Recreates a `Graph` saved in a `MetaGraphDef` proto.
 
   This function takes a `MetaGraphDef` protocol buffer as input. If
   the argument is a file containing a `MetaGraphDef` protocol buffer ,
   it constructs a protocol buffer from the file content. The function
   then adds all the nodes from the `graph_def` field to the
-  current graph, recreates all the collections, and returns a saver
+  current graph, recreates the desired collections, and returns a saver
   constructed from the `saver_def` field.
 
   In combination with `export_scoped_meta_graph()`, this function can be used to
@@ -453,6 +454,10 @@ def import_scoped_meta_graph(meta_graph_or_file,
       `Tensor` objects. The values of the named input tensors in the imported
       graph will be re-mapped to the respective `Tensor` values.
     unbound_inputs_col_name: Collection name for looking up unbound inputs.
+    restore_collections_predicate: a predicate on collection names. A collection
+      named c (i.e whose key is c) will be restored iff
+      1) `restore_collections_predicate(c)` is True, and
+      2) `c != unbound_inputs_col_name`.
 
   Returns:
     A dictionary of all the `Variables` imported into the name scope.
@@ -502,6 +507,8 @@ def import_scoped_meta_graph(meta_graph_or_file,
     for key, col_def in meta_graph_def.collection_def.items():
       # Don't add unbound_inputs to the new graph.
       if key == unbound_inputs_col_name:
+        continue
+      if not restore_collections_predicate(key):
         continue
 
       kind = col_def.WhichOneof("kind")

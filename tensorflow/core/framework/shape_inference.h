@@ -191,16 +191,18 @@ class InferenceContext {
     return s;
   }
 
-  // Set the shape of the input in position idx. This requires idx to be in the
-  // [0, num_inputs) range. Returns true iff the stored input shape has been
-  // updated with a different handle.
-  bool set_input(int idx, ShapeHandle shape) {
-    if (!inputs_[idx].SameHandle(shape)) {
-      inputs_[idx] = shape;
-      return true;
-    } else {
+  // Merge the stored shape of the input in position idx with the specified
+  // shape. This requires idx to be in the [0, num_inputs) range. If the merge
+  // is successful and the new shape differs from the old one, store the new
+  // shape and return true. Return false otherwise.
+  bool MergeInput(int idx, ShapeHandle shape) {
+    ShapeHandle new_shape;
+    if (!Merge(inputs_[idx], shape, &new_shape).ok() ||
+        inputs_[idx].SameHandle(new_shape)) {
       return false;
     }
+    inputs_[idx] = new_shape;
+    return true;
   }
   ShapeHandle input(int64 idx) const { return inputs_[idx]; }
   Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
@@ -442,15 +444,18 @@ class InferenceContext {
   // propagate that information. Output handle dtypes and shapes are ignored if
   // the output tensor is not of type DT_RESOURCE.
 
-  // Set the shape corresponding to the resource in position idx. This requires
-  // idx to be in the [0, num_inputs) range. Returns true iff the stored shape
-  // has been updated with a different handle.
-  bool set_input_handle_shape(int idx, ShapeHandle shape) {
-    if (!input_handle_shape_[idx].SameHandle(shape)) {
-      input_handle_shape_[idx] = shape;
-      return true;
+  // Merge the stored shape corresponding to the input handle in position idx
+  // with the specified shape. This requires idx to be in the [0, num_inputs)
+  // range. If the merge is successful and the new shape differs from the old
+  // one, store the new shape and return true. Return false otherwise.
+  bool MergeInputHandleShape(int idx, ShapeHandle shape) {
+    ShapeHandle new_shape;
+    if (!Merge(input_handle_shape_[idx], shape, &new_shape).ok() ||
+        input_handle_shape_[idx].SameHandle(new_shape)) {
+      return false;
     }
-    return false;
+    input_handle_shape_[idx] = shape;
+    return true;
   }
 
   // Set the type corresponding to the resource in position idx. This requires
@@ -468,15 +473,24 @@ class InferenceContext {
     return input_handle_dtype_[idx];
   }
 
-  // Set the shape corresponding to the resource in position idx. This requires
-  // idx to be in the [0, num_outputs) range.
-  // Returns true iff the stored shape has been updated with a different handle.
-  bool set_output_handle_shape(int idx, ShapeHandle shape) {
-    if (!output_handle_shape_[idx].SameHandle(shape)) {
-      output_handle_shape_[idx] = shape;
-      return true;
+  // Merge the stored shape corresponding to the output handle in position idx
+  // with the specified shape. This requires idx to be in the [0, num_outputs)
+  // range. If the merge is successful and the new shape differs from the old
+  // one, store the new shape and return true. Return false otherwise.
+
+  bool MergeOutputHandleShape(int idx, ShapeHandle shape) {
+    ShapeHandle new_shape;
+    if (!Merge(output_handle_shape_[idx], shape, &new_shape).ok() ||
+        output_handle_shape_[idx].SameHandle(new_shape)) {
+      return false;
     }
-    return false;
+    output_handle_shape_[idx] = shape;
+    return true;
+  }
+  // Overwrite the shape corresponding to the output handle in position idx with
+  // the specified shape.
+  void set_output_handle_shape(int idx, ShapeHandle shape) {
+    output_handle_shape_[idx] = shape;
   }
 
   // Set the type corresponding to the resource in position idx. This requires

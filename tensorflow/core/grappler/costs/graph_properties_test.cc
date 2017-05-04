@@ -177,10 +177,14 @@ TEST_F(GraphPropertiesTest, Queues) {
   auto dequeue2 =
       ops::QueueDequeue(root.WithOpName("Dequeue2"), q2, {DataType::DT_FLOAT});
 
+  // Create a queue that feeds itself.
   auto q3 =
       ops::RandomShuffleQueue(root.WithOpName("Queue3"), {DataType::DT_FLOAT});
   auto dequeue3 =
       ops::QueueDequeue(root.WithOpName("Dequeue3"), q3, {DataType::DT_FLOAT});
+  auto merge3 = ops::Merge(root.WithOpName("Merge3"), {dequeue3[0], square2});
+  auto enqueue3 =
+      ops::QueueEnqueue(root.WithOpName("Enqueue3"), q3, {merge3.output});
 
   auto q4 =
       ops::RandomShuffleQueue(root.WithOpName("Queue4"), {DataType::DT_FLOAT});
@@ -225,6 +229,229 @@ TEST_F(GraphPropertiesTest, Queues) {
   EXPECT_EQ(2, prop4.shape().dim_size());
   EXPECT_EQ(3, prop4.shape().dim(0).size());
   EXPECT_EQ(7, prop4.shape().dim(1).size());
+}
+
+TEST_F(GraphPropertiesTest, Loops) {
+  // Test graph produced in python using:
+  /*
+     with tf.Graph().as_default():
+       i = tf.constant(0)
+       c = lambda i: tf.less(i, 10)
+       b = lambda i: tf.add(i, 1)
+       r = tf.while_loop(c, b, [i])
+       with open('/tmp/graph.txt', 'w') as f:
+         f.write(str(tf.get_default_graph().as_graph_def()))
+  */
+  const string gdef_ascii = R"EOF(
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/Enter"
+  op: "Enter"
+  input: "Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Merge"
+  op: "Merge"
+  input: "while/Enter"
+  input: "while/NextIteration"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Less/y"
+  op: "Const"
+  input: "^while/Merge"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 10
+      }
+    }
+  }
+}
+node {
+  name: "while/Less"
+  op: "Less"
+  input: "while/Merge"
+  input: "while/Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/LoopCond"
+  op: "LoopCond"
+  input: "while/Less"
+}
+node {
+  name: "while/Switch"
+  op: "Switch"
+  input: "while/Merge"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge"
+      }
+    }
+  }
+}
+node {
+  name: "while/Identity"
+  op: "Identity"
+  input: "while/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Add/y"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "while/Add"
+  op: "Add"
+  input: "while/Identity"
+  input: "while/Add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration"
+  op: "NextIteration"
+  input: "while/Add"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Exit"
+  op: "Exit"
+  input: "while/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 11
+}
+  )EOF";
+
+  GrapplerItem item;
+  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  const auto props = properties.GetOutputProperties("while/Exit");
+  EXPECT_EQ(1, props.size());
+  const OpInfo::TensorProperties& prop = props[0];
+  EXPECT_EQ(DT_INT32, prop.dtype());
+  EXPECT_TRUE(prop.shape().unknown_rank());
 }
 
 }  // namespace
