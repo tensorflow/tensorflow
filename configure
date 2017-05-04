@@ -180,25 +180,35 @@ fi
 setup_python
 
 ## Set up MKL related environment settings
-if false; then # Disable building with MKL for now
-  while [ "$TF_NEED_MKL" == "" ]; do
-    fromuser=""
-    read -p "Do you wish to build TensorFlow with MKL support (experimental)? [y/N] " INPUT
-    fromuser="1"
-    case $INPUT in
-      [Yy]* ) echo "MKL support (experimental) (will be enabled for TensorFlow"; TF_NEED_MKL=1;;
-      [Nn]* ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
-      "" ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
-      * ) echo "Invalid selection: " $INPUT;;
-    esac
-  done
+while [ "$TF_NEED_MKL" == "" ]; do
+  fromuser=""
+  read -p "Do you wish to build TensorFlow with MKL support? [y/N] " INPUT
+  fromuser="1"
+  case $INPUT in
+    [Yy]* ) echo "MKL support will be enabled for TensorFlow"; TF_NEED_MKL=1;;
+    [Nn]* ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
+    "" ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
 
-  OSNAME=`uname -s`
+OSNAME=`uname -s`
 
-  if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
+if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
+  fromuser=""
+  read -p "Do you wish to download MKL LIB from the web? [Y/n] " INPUT
+  fromuser="1"
+  case $INPUT in
+    [Yy]* ) TF_DOWNLOAD_MKL=1;;
+    [Nn]* ) TF_DOWNLOAD_MKL=0;;
+    "" )    TF_DOWNLOAD_MKL=1;;
+    * )     echo "Invalid selection: " $INPUT; exit 1;;
+  esac
+
+  if [[ "$TF_DOWNLOAD_MKL" == "1" ]]; then
     DST=`dirname $0`
-    ARCHIVE_BASENAME=mklml_lnx_2017.0.2.20170209.tgz
-    GITHUB_RELEASE_TAG=v0.5
+    ARCHIVE_BASENAME=mklml_lnx_2018.0.20170425.tgz
+    GITHUB_RELEASE_TAG=v0.7
     MKLURL="https://github.com/01org/mkl-dnn/releases/download/$GITHUB_RELEASE_TAG/$ARCHIVE_BASENAME"
     if ! [ -e "$DST/third_party/mkl/$ARCHIVE_BASENAME" ]; then
       wget --no-check-certificate -P $DST/third_party/mkl/ $MKLURL
@@ -208,7 +218,20 @@ if false; then # Disable building with MKL for now
     MKL_INSTALL_PATH=$DST/third_party/mkl/$extracted_dir_name
     MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`
 
-    if [ "$OSNAME" == "Linux" ]; then
+  else
+    default_mkl_path=/opt/intel/mklml
+    fromuser=""
+    read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
+    fromuser="1"
+    if [ -z "$MKL_INSTALL_PATH" ]; then
+      MKL_INSTALL_PATH=$default_mkl_path
+    fi
+    # Result returned from "read" will be used unexpanded. That make "~" unuseable.
+    # Going through one more level of expansion to handle that.
+    MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`
+  fi
+
+  if [ "$OSNAME" == "Linux" ]; then
       # Full MKL configuration
       MKL_RT_LIB_PATH="lib/intel64/libmkl_rt.so" #${TF_MKL_EXT}#TODO version?
       MKL_RT_OMP_LIB_PATH="../compiler/lib/intel64/libiomp5.so" #TODO VERSION?
@@ -216,24 +239,33 @@ if false; then # Disable building with MKL for now
       # MKL-ML configuration
       MKL_ML_LIB_PATH="lib/libmklml_intel.so" #${TF_MKL_EXT}#TODO version?
       MKL_ML_OMP_LIB_PATH="lib/libiomp5.so" #TODO VERSION?
-    elif [ "$OSNAME" == "Darwin" ]; then
+  elif [ "$OSNAME" == "Darwin" ]; then
       echo "Darwin is unsupported yet";
       exit 1
-    fi
+  fi
 
-    if [ -e "$MKL_INSTALL_PATH/${MKL_ML_LIB_PATH}" ]; then
+  if [ -e "$MKL_INSTALL_PATH/${MKL_ML_LIB_PATH}" ]; then
       ln -sf $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} third_party/mkl/
       ln -sf $MKL_INSTALL_PATH/${MKL_ML_OMP_LIB_PATH} third_party/mkl/
       ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
       ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
-    else
-      echo "ERROR: $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} does not exist";
+      loc=$(locate -e libdl.so.2 | sed -n 1p)
+      ln -sf $loc third_party/mkl/libdl.so.2
+  elif [ -e "$MKL_INSTALL_PATH/${MKL_RT_LIB_PATH}" ]; then
+      ln -sf $MKL_INSTALL_PATH/${MKL_RT_LIB_PATH} third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/${MKL_RT_OMP_LIB_PATH} third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
+      ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
+      loc=$(locate -e libdl.so.2 | sed -n 1p)
+      ln -sf $loc third_party/mkl/libdl.so.2
+  else
+      echo "ERROR: $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} nor $MKL_INSTALL_PATH/${MKL_RT_LIB_PATH} exists";
       exit 1
-    fi
+  fi
 
-    if [ -z "$fromuser" ]; then
+  if [ -z "$fromuser" ]; then
       exit 1
-    fi
+  fi
 
 cat > third_party/mkl/mkl.config <<EOF
 # MKL_INSTALL_PATH refers to the location of MKL root folder. The MKL header and library
@@ -241,9 +273,8 @@ cat > third_party/mkl/mkl.config <<EOF
 MKL_INSTALL_PATH=$MKL_INSTALL_PATH
 EOF
 
-  fi # TF_NEED_MKL
-  ################## MKL
-fi # Disable building with MKL for now
+fi # TF_NEED_MKL
+## End MKL setup
 
 ## Set up architecture-dependent optimization flags.
 if [ -z "$CC_OPT_FLAGS" ]; then

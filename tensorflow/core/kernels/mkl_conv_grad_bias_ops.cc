@@ -38,9 +38,9 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#include "tensorflow/core/util/mkl_util.h"
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -252,7 +252,7 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
 };
 
 #define REGISTER_CPU_KERNELS(T)                                     \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBiasBackpropBias")     \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBiasBackpropBias")    \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
