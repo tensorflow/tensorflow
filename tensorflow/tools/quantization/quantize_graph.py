@@ -453,7 +453,7 @@ class GraphRewriter(object):
 
   def round_nodes_recursively(self, current_node):
     """The entry point for simple rounding quantization."""
-    if self.already_visited[current_node.name]:
+    if (current_node.name in self.already_visited) and self.already_visited[current_node.name]:
       return
     self.already_visited[current_node.name] = True
     for input_node_name in current_node.input:

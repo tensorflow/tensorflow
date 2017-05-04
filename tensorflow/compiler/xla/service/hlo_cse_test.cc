@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -35,6 +36,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/types.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
@@ -88,13 +91,15 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndInsensitive) {
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, computation->instruction_count());
-  EXPECT_NE(add->operand(0), add->operand(1));
+  EXPECT_THAT(add, op::Add(constant1, constant2));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
   EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(2, computation->instruction_count());
-  EXPECT_EQ(add->operand(0), add->operand(1));
+  auto first_operand = add->operand(0);
+  EXPECT_THAT(first_operand, ::testing::AnyOf(constant1, constant2));
+  EXPECT_THAT(add, op::Add(first_operand, first_operand));
 
   auto result = ExecuteAndTransfer(std::move(module), {});
   auto expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
@@ -118,15 +123,13 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndSensitive) {
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, computation->instruction_count());
-  EXPECT_EQ(constant1, add->operand(0));
-  EXPECT_EQ(constant2, add->operand(1));
+  EXPECT_THAT(add, op::Add(constant1, constant2));
 
   HloCSE cse(/*is_layout_sensitive=*/true);
   EXPECT_FALSE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(3, computation->instruction_count());
-  EXPECT_EQ(constant1, add->operand(0));
-  EXPECT_EQ(constant2, add->operand(1));
+  EXPECT_THAT(add, op::Add(constant1, constant2));
 
   auto result = ExecuteAndTransfer(std::move(module), {});
   auto expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
@@ -185,16 +188,18 @@ TEST_F(HloCseTest, NonscalarConstants) {
   auto computation = module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(4, computation->instruction_count());
+  EXPECT_THAT(tuple,
+              op::Tuple(common_constant1, common_constant2, uncommon_constant));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
   EXPECT_TRUE(cse.Run(&module).ValueOrDie());
 
   EXPECT_EQ(3, computation->instruction_count());
-
-  EXPECT_EQ(tuple->operand(0), tuple->operand(1));
-  EXPECT_EQ(uncommon_constant, tuple->operand(2));
-  EXPECT_TRUE(tuple->operand(0) == common_constant1 ||
-              tuple->operand(0) == common_constant2);
+  auto first_operand = tuple->operand(0);
+  EXPECT_THAT(first_operand,
+              ::testing::AnyOf(common_constant1, common_constant2));
+  EXPECT_THAT(tuple,
+              op::Tuple(first_operand, first_operand, uncommon_constant));
 }
 
 TEST_F(HloCseTest, IdenticalInstructions) {
@@ -215,16 +220,15 @@ TEST_F(HloCseTest, IdenticalInstructions) {
   auto computation = module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(5, computation->instruction_count());
-  EXPECT_NE(tuple->operand(0), tuple->operand(1));
-  EXPECT_NE(tuple->operand(1), tuple->operand(2));
-  EXPECT_NE(tuple->operand(0), tuple->operand(2));
+  EXPECT_THAT(tuple, op::Tuple(exp1, exp2, exp3));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
   EXPECT_TRUE(cse.Run(&module).ValueOrDie());
 
   EXPECT_EQ(3, computation->instruction_count());
-  EXPECT_EQ(tuple->operand(0), tuple->operand(1));
-  EXPECT_EQ(tuple->operand(1), tuple->operand(2));
+  auto first_operand = tuple->operand(0);
+  EXPECT_THAT(first_operand, ::testing::AnyOf(exp1, exp2, exp3));
+  EXPECT_THAT(tuple, op::Tuple(first_operand, first_operand, first_operand));
 }
 
 TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsSensitive) {
@@ -249,13 +253,13 @@ TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsSensitive) {
   auto computation = module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(4, computation->instruction_count());
-  EXPECT_NE(tuple->operand(0), tuple->operand(1));
+  EXPECT_THAT(tuple, op::Tuple(exp1, exp2));
 
   HloCSE cse(/*is_layout_sensitive=*/true);
   EXPECT_FALSE(cse.Run(&module).ValueOrDie());
 
   EXPECT_EQ(4, computation->instruction_count());
-  EXPECT_NE(tuple->operand(0), tuple->operand(1));
+  EXPECT_THAT(tuple, op::Tuple(exp1, exp2));
 }
 
 TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsInsensitive) {
@@ -280,13 +284,15 @@ TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsInsensitive) {
   auto computation = module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(4, computation->instruction_count());
-  EXPECT_NE(tuple->operand(0), tuple->operand(1));
+  EXPECT_THAT(tuple, op::Tuple(exp1, exp2));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
   EXPECT_TRUE(cse.Run(&module).ValueOrDie());
 
   EXPECT_EQ(3, computation->instruction_count());
-  EXPECT_EQ(tuple->operand(0), tuple->operand(1));
+  auto first_operand = tuple->operand(0);
+  EXPECT_THAT(first_operand, ::testing::AnyOf(exp1, exp2));
+  EXPECT_THAT(tuple, op::Tuple(first_operand, first_operand));
 }
 
 TEST_F(HloCseTest, IdenticalExpressions) {
@@ -328,14 +334,15 @@ TEST_F(HloCseTest, IdenticalExpressions) {
   auto computation = module.AddEntryComputation(builder.Build());
 
   EXPECT_EQ(8, computation->instruction_count());
-  EXPECT_NE(tuple->operand(0), tuple->operand(1));
+  EXPECT_THAT(tuple, op::Tuple(op::Add(negate1, exp1), op::Add(negate2, exp2)));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
   EXPECT_TRUE(cse.Run(&module).ValueOrDie());
 
   EXPECT_EQ(5, computation->instruction_count());
-  EXPECT_EQ(tuple->operand(0), tuple->operand(1));
-  EXPECT_EQ(HloOpcode::kAdd, tuple->operand(0)->opcode());
+  auto operand = tuple->operand(0);
+  EXPECT_THAT(tuple, op::Tuple(operand, operand));
+  EXPECT_THAT(operand, op::Add(op::Negate(), op::Exp()));
 }
 
 TEST_F(HloCseTest, DoNotCombineRng) {
@@ -351,11 +358,15 @@ TEST_F(HloCseTest, DoNotCombineRng) {
   auto rng2 = builder.AddInstruction(HloInstruction::CreateRng(
       ShapeUtil::MakeShape(F32, {}), RandomDistribution::RNG_UNIFORM,
       {constant1, constant2}));
+
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, rng1, rng2));
 
   auto module = MakeUnique<HloModule>(TestName());
   auto computation = module->AddEntryComputation(builder.Build());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Add(rng1, rng2));
 
   uint32 count_before = computation->instruction_count();
 
@@ -364,11 +375,8 @@ TEST_F(HloCseTest, DoNotCombineRng) {
 
   uint32 count_after = computation->instruction_count();
   EXPECT_EQ(count_before, count_after);
-  HloInstruction* root = computation->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kRng);
-  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kRng);
-  EXPECT_NE(root->operand(0), root->operand(1));
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Add(rng1, rng2));
 }
 
 // TODO(b/28245743): Handle impure functions correctly in CSE.
@@ -412,16 +420,17 @@ TEST_F(HloCseTest, DISABLED_DoNotCombineCallsToImpureFunctions) {
   }
 
   EXPECT_EQ(4, computation->instruction_count());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Add(op::Map(), op::Map()));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
   EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(4, computation->instruction_count());
-  HloInstruction* root = computation->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kMap);
-  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kMap);
-  EXPECT_NE(root->operand(0), root->operand(1));
+  root = computation->root_instruction();
+  auto operand = root->operand(0)->operand(0);
+  EXPECT_THAT(operand, op::Map());
+  EXPECT_THAT(root, op::Add(operand, operand));
 }
 
 }  // namespace

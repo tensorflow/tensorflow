@@ -241,7 +241,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           scale_tril=np.linalg.cholesky(sigma_b),
           validate_args=True)
 
-      kl = ds.kl(mvn_a, mvn_b)
+      kl = ds.kl_divergence(mvn_a, mvn_b)
       self.assertEqual(batch_shape, kl.get_shape())
 
       kl_v = kl.eval()
@@ -263,7 +263,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           scale_tril=np.linalg.cholesky(sigma_b),
           validate_args=True)
 
-      kl = ds.kl(mvn_a, mvn_b)
+      kl = ds.kl_divergence(mvn_a, mvn_b)
       self.assertEqual(batch_shape, kl.get_shape())
 
       kl_v = kl.eval()
@@ -285,7 +285,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           validate_args=True)
 
       # Should be zero since KL(p || p) = =.
-      kl = ds.kl(mvn_a, mvn_a)
+      kl = ds.kl_divergence(mvn_a, mvn_a)
       self.assertEqual(batch_shape, kl.get_shape())
 
       kl_v = kl.eval()
@@ -323,7 +323,7 @@ class MultivariateNormalTriLTest(test.TestCase):
 
       sample_kl_chol = math_ops.reduce_mean(
           dist.log_prob(samps) - mvn_chol.log_prob(samps), 0)
-      analytical_kl_chol = ds.kl(dist, mvn_chol)
+      analytical_kl_chol = ds.kl_divergence(dist, mvn_chol)
 
       scale = dist.scale.to_dense()
 

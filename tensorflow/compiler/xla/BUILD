@@ -271,6 +271,7 @@ cc_library(
         ":array3d",
         ":array4d",
         ":shape_util",
+        ":status_macros",
         ":types",
         ":util",
         ":xla_data_proto",
@@ -289,6 +290,7 @@ cc_test(
         ":test",
         ":types",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )

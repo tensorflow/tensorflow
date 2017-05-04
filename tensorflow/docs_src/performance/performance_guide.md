@@ -1,8 +1,10 @@
-# Performance
+# Performance Guide
 
 This guide contains a collection of best practices for optimizing your
 TensorFlow code. The best practices apply to both new and experienced
-Tensorflow users.
+Tensorflow users.  As a complement to the best practices in this document, the
+@{$performance_models$High-Performance Models} document links to example code
+and details for creating models that scale on a variety of hardware.
 
 ## Best Practices
 While optimizing implementations of different types of models can be different,
@@ -73,7 +75,7 @@ Unless for a special circumstance or for example code, do not feed data
 into the session from Python variables, e.g. `dictionary`.
 
 ```python
-# This will result in poor performance.
+# Using feed_dict often results in suboptimal performance when using large inputs.
 sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 ```
 
@@ -141,3 +143,4 @@ bn = tf.contrib.layers.batch_norm(
 The non-fused batch norm does computations using several individual Ops. Fused
 batch norm combines the individual operations into a single kernel, which runs
 faster.
+

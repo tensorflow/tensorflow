@@ -69,14 +69,6 @@ bool FLAGS_prefer_cubin_to_ptx = true;
 
 namespace perftools {
 namespace gputools {
-namespace rng {
-class RngSupport;
-}  // namespace rng
-}  // namespace gputools
-}  // namespace perftools
-
-namespace perftools {
-namespace gputools {
 namespace cuda {
 
 // Hook that can be used to CUBIN-ate PTX before it is loaded into the driver.

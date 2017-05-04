@@ -36,7 +36,7 @@ from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 
 
-class _Pooling1D(base._Layer):  # pylint: disable=protected-access
+class _Pooling1D(base.Layer):
   """Pooling layer for arbitrary pooling functions, for 1D inputs.
 
   This class only exists for code reuse. It will never be an exposed API.
@@ -71,6 +71,7 @@ class _Pooling1D(base._Layer):  # pylint: disable=protected-access
     if len(input_shape) != 3:
       raise ValueError('Inputs should have rank 3. '
                        'Received input shape:', str(input_shape))
+    self.built = True
 
   def call(self, inputs):
     # There is no TF op for 1D pooling, hence we make the inputs 4D.
@@ -222,7 +223,7 @@ def max_pooling1d(inputs, pool_size, strides,
   return layer.apply(inputs)
 
 
-class _Pooling2D(base._Layer):  # pylint: disable=protected-access
+class _Pooling2D(base.Layer):
   """Pooling layer for arbitrary pooling functions, for 2D inputs (e.g. images).
 
   This class only exists for code reuse. It will never be an exposed API.
@@ -261,6 +262,7 @@ class _Pooling2D(base._Layer):  # pylint: disable=protected-access
     if len(input_shape) != 4:
       raise ValueError('Inputs should have rank 4. '
                        'Received input shape:', str(input_shape))
+    self.built = True
 
   def call(self, inputs):
     if self.data_format == 'channels_last':
@@ -407,7 +409,7 @@ def max_pooling2d(inputs,
   return layer.apply(inputs)
 
 
-class _Pooling3D(base._Layer):  # pylint: disable=protected-access
+class _Pooling3D(base.Layer):
   """Pooling layer for arbitrary pooling functions, for 3D inputs.
 
   This class only exists for code reuse. It will never be an exposed API.
@@ -448,6 +450,7 @@ class _Pooling3D(base._Layer):  # pylint: disable=protected-access
     if len(input_shape) != 5:
       raise ValueError('Inputs should have rank 5. '
                        'Received input shape:', str(input_shape))
+    self.built = True
 
   def call(self, inputs):
     pool_shape = (1,) + self.pool_size + (1,)

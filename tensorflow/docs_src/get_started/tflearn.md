@@ -118,7 +118,7 @@ The [Iris data set](https://en.wikipedia.org/wiki/Iris_flower_data_set) contains
 150 rows of data, comprising 50 samples from each of three related Iris species:
 *Iris setosa*, *Iris virginica*, and *Iris versicolor*.
 
-![Petal geometry compared for three iris species: Iris setosa, Iris virginica, and Iris versicolor](../images/iris_three_species.jpg) **From left to right,
+![Petal geometry compared for three iris species: Iris setosa, Iris virginica, and Iris versicolor](https://www.tensorflow.org/images/iris_three_species.jpg) **From left to right,
 [*Iris setosa*](https://commons.wikimedia.org/w/index.php?curid=170298) (by
 [Radomil](https://commons.wikimedia.org/wiki/User:Radomil), CC BY-SA 3.0),
 [*Iris versicolor*](https://commons.wikimedia.org/w/index.php?curid=248095) (by
@@ -278,7 +278,7 @@ Then, the code creates a `DNNClassifier` model using the following arguments:
 
 The `tf.contrib.learn` API uses input functions, which create the TensorFlow
 operations that generate data for the model. In this case, the data is small
-enough that it can be stored in @{tf.constant TensorFlow constants}. The
+enough that it can be stored in @{tf.constant$TensorFlow constants}. The
 following code produces the simplest possible input pipeline:
 
 ```python

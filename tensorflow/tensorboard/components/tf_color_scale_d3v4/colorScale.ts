@@ -63,8 +63,6 @@ export class ColorScale {
   }
 }
 
-
-
 Polymer({
   is: 'tf-color-scale',
   properties: {

@@ -140,14 +140,14 @@ class _Conv(Layer):
     kernel_shape = self.kernel_size + (input_dim, self.filters)
 
     self.kernel = self.add_weight(
-        kernel_shape,
+        shape=kernel_shape,
         initializer=self.kernel_initializer,
         name='kernel',
         regularizer=self.kernel_regularizer,
         constraint=self.kernel_constraint)
     if self.use_bias:
       self.bias = self.add_weight(
-          (self.filters,),
+          shape=(self.filters,),
           initializer=self.bias_initializer,
           name='bias',
           regularizer=self.bias_regularizer,
@@ -734,14 +734,14 @@ class Conv2DTranspose(Conv2D):
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
     self.kernel = self.add_weight(
-        kernel_shape,
+        shape=kernel_shape,
         initializer=self.kernel_initializer,
         name='kernel',
         regularizer=self.kernel_regularizer,
         constraint=self.kernel_constraint)
     if self.use_bias:
       self.bias = self.add_weight(
-          (self.filters,),
+          shape=(self.filters,),
           initializer=self.bias_initializer,
           name='bias',
           regularizer=self.bias_regularizer,
@@ -949,13 +949,13 @@ class SeparableConv2D(Conv2D):
                               self.filters)
 
     self.depthwise_kernel = self.add_weight(
-        depthwise_kernel_shape,
+        shape=depthwise_kernel_shape,
         initializer=self.depthwise_initializer,
         name='depthwise_kernel',
         regularizer=self.depthwise_regularizer,
         constraint=self.depthwise_constraint)
     self.pointwise_kernel = self.add_weight(
-        pointwise_kernel_shape,
+        shape=pointwise_kernel_shape,
         initializer=self.pointwise_initializer,
         name='pointwise_kernel',
         regularizer=self.pointwise_regularizer,
@@ -963,7 +963,7 @@ class SeparableConv2D(Conv2D):
 
     if self.use_bias:
       self.bias = self.add_weight(
-          (self.filters,),
+          shape=(self.filters,),
           initializer=self.bias_initializer,
           name='bias',
           regularizer=self.bias_regularizer,

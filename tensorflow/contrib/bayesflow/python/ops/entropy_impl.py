@@ -84,8 +84,9 @@ def elbo_ratio(log_p,
   KL[q || p] = E[ Log[q(Z)] - Log[p(Z)] ]
   ```
 
-  Note that if `p` is a `Distribution`, then `distributions.kl(q, p)` may be
-  defined and available as an exact result.
+  Note that if `p` is a `Distribution`, then
+  `distributions.kl_divergence(q, p)` may be defined and available as an
+  exact result.
 
   #### ELBO
 

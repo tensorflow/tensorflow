@@ -30,7 +30,7 @@ statistics.
 
 tfprof is part of TensorFlow core. Simply ```import tensorflow as tf```.
 
-### Examine the shapes and sizes of all trainiable Variables.
+### Examine the shapes and sizes of all trainable Variables.
 ```python
 # Print trainable variable parameter statistics to stdout.
 param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
@@ -439,7 +439,7 @@ with gfile.Open(os.path.join(output_dir, "run_meta"), "w") as f:
 <b>--op_log_path:</b>
 tensorflow::tfprof::OpLog. A proto used to provide extra op information
 for ops. By giving a group of ops a type name, users can easily aggregate the
-statistics for those ops without accidently missing or including extra ops.
+statistics for those ops without accidentally missing or including extra ops.
 tfprof exposes the following Python API to add op information and logging.
 
 ```python

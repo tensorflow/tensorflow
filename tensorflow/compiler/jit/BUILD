@@ -20,6 +20,7 @@ package(
 
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 cc_header_only_library(
     name = "xla_jit_headers_lib",
@@ -60,12 +61,12 @@ cc_library(
 cc_library(
     name = "xla_gpu_jit",
     visibility = [":friends"],
-    deps = [
+    deps = if_cuda([
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-    ],
+    ]),
     alwayslink = 1,
 )
 
