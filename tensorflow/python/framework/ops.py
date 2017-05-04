@@ -70,25 +70,33 @@ def _override_helper(clazz_object, operator, func):
   setattr(clazz_object, operator, func)
 
 
-def _convert_stack(stack):
+def _convert_stack(stack, include_func_start_lineno=False):
   """Converts a stack extracted using _extract_stack() to a traceback stack.
 
   Args:
-    stack: A list of n 4-tuples, (filename, lineno, name, frame_globals).
+    stack: A list of n 5-tuples,
+      (filename, lineno, name, frame_globals, func_start_lineno).
+    include_func_start_lineno: True if function start line number should be
+      included as the 5th entry in return tuples.
 
   Returns:
-    A list of n 4-tuples (filename, lineno, name, code), where the code tuple
-    element is calculated from the corresponding elements of the input tuple.
+    A list of n 4-tuples or 5-tuples
+    (filename, lineno, name, code, [optional: func_start_lineno]), where the
+    code tuple element is calculated from the corresponding elements of the
+    input tuple.
   """
   ret = []
-  for filename, lineno, name, frame_globals in stack:
+  for filename, lineno, name, frame_globals, func_start_lineno in stack:
     linecache.checkcache(filename)
     line = linecache.getline(filename, lineno, frame_globals)
     if line:
       line = line.strip()
     else:
       line = None
-    ret.append((filename, lineno, name, line))
+    if include_func_start_lineno:
+      ret.append((filename, lineno, name, line, func_start_lineno))
+    else:
+      ret.append((filename, lineno, name, line))
   return ret
 
 
@@ -103,7 +111,8 @@ def _extract_stack():
     be formatted etc. using traceback methods.
 
   Returns:
-    A list of 4-tuples (filename, lineno, name, frame_globals) corresponding to
+    A list of 5-tuples
+    (filename, lineno, name, frame_globals, func_start_lineno) corresponding to
     the call stack of the current thread.
   """
   # pylint: enable=line-too-long
@@ -118,7 +127,8 @@ def _extract_stack():
     filename = co.co_filename
     name = co.co_name
     frame_globals = f.f_globals
-    ret.append((filename, lineno, name, frame_globals))
+    func_start_lineno = co.co_firstlineno
+    ret.append((filename, lineno, name, frame_globals, func_start_lineno))
     f = f.f_back
   ret.reverse()
   return ret
@@ -1504,6 +1514,15 @@ class Operation(object):
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
     return _convert_stack(self._traceback)
+
+  @property
+  def traceback_with_start_lines(self):
+    """Same as traceback but includes start line of function definition.
+
+    Returns:
+      A list of 5-tuples (filename, lineno, name, code, func_start_lineno).
+    """
+    return _convert_stack(self._traceback, include_func_start_lineno=True)
 
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
