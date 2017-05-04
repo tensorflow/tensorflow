@@ -71,13 +71,17 @@ public final class Operation {
   }
 
   /**
-   * Given the name of an output producing a tensor list, return the
-   * size of the list.
+   * Returns the size of the list of Tensors produced by this operation.
    *
-   * @param name is the name of the output.
-   * @return the size of the tensor list produced by this output.
+   * <p>An Operation has multiple named outputs, each of which produces either
+   * a single tensor or a list of tensors. This method returns the size of
+   * the list of tensors for a specific named output of the operation.
+   *
+   * @param name identifier of the list of tensors (of which there may
+   *        be many) produced by this operation.
+   * @returns the size of the list of Tensors produced by this named output.
    * @throws IllegalArgumentException if this operation has no output
-   *         with the provided name, or does not return a tensor list.
+   *         with the provided name.
    */
   public int outputListLength(final String name) {
     Graph.Reference r = graph.ref();

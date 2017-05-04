@@ -29,30 +29,38 @@ import java.util.List;
 public class OperationTest {
 
   @Test
-  public void outputListLength() {
+  public void  outputListLengthFailsOnInvalidName() {
     try (Graph g = new Graph()) {
+      Operation op = g.opBuilder("Add", "Add")
+          .addInput(TestUtil.constant(g, "x", 1))
+          .addInput(TestUtil.constant(g, "y", 2))
+          .build();
+      assertEquals(1, op.outputListLength("z"));
 
-      checkSplit(g, "t1", new int[] {0, 1}, 1);
-      checkSplit(g, "t2", new int[] {0, 1}, 2);
-      checkSplit(g, "t3", new int[] {0, 1, 2}, 3);
+      try {
+        op.outputListLength("unknown");
+        fail("Did not catch bad name");
+      } catch (IllegalArgumentException iae) {
+        // expected
+      }
     }
   }
 
-  private void checkSplit(Graph g, String name, int[] values, int num) {
-    Operation op =
-        g.opBuilder("Split", "split_op_" + name)
-            .addInput(TestUtil.constant(g, "split_dim_" + name, 0))
-            .addInput(TestUtil.constant(g, "values_" + name, values))
-            .setAttr("num_split", num)
-            .build();
+  @Test
+  public void outputListLength() {
+    assertEquals(1, split(new int[]{0, 1}, 1));
+    assertEquals(2, split(new int[]{0, 1}, 2));
+    assertEquals(3, split(new int[]{0, 1, 2}, 3));
+  }
 
-    assertEquals(num, op.numOutputs());
-    try {
-      op.outputListLength("unknown_name");
-      fail("Did not catch bad name");
-    } catch (IllegalArgumentException iae) {
-      // expected
+  private int split(int[] values, int num_split) {
+    try (Graph g = new Graph()) {
+      return g.opBuilder("Split", "Split")
+          .addInput(TestUtil.constant(g, "split_dim", 0))
+          .addInput(TestUtil.constant(g, "values", values))
+          .setAttr("num_split", num_split)
+          .build()
+          .outputListLength("output");
     }
-    assertEquals(num, op.outputListLength("output"));
   }
 }
