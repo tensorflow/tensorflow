@@ -1292,7 +1292,7 @@ def _pure_variable_scope(name_or_scope,
       well-defined semantics. Defaults to False (will later change to True).
 
   Yields:
-    A scope that can be to captured and reused.
+    A scope that can be captured and reused.
 
   Raises:
     ValueError: when trying to reuse within a create scope, or create within
