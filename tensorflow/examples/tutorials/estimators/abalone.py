@@ -141,7 +141,7 @@ def main(unused_argv):
     return x, y
   
   # Fit
-  nn.fit(input_fn=get_train_inputs,, steps=5000)
+  nn.fit(input_fn=get_train_inputs, steps=5000)
 
   # Score accuracy
   def get_test_inputs():
