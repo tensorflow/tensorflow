@@ -140,7 +140,7 @@ performance and increase the flexiblity of models.
 Most TensorFlow operations used by a CNN support both NHWC and NCHW data format.
 On GPU, NCHW is faster. But on CPU, NHWC is sometimes faster.
 
-Building a model to support both date formats keeps the model flexible and
+Building a model to support both data formats keeps the model flexible and
 capable of operating optimally regardless of platform. Most TensorFlow
 operations used by a CNN support both NHWC and NCHW data format. The benchmark
 script was written to support both NCHW and NHWC. NCHW should always be used
