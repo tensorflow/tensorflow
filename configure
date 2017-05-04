@@ -147,17 +147,17 @@ function setup_python {
   # Set-up env variables used by python_configure.bzl
   write_action_env_to_bazelrc "PYTHON_BIN_PATH" "$PYTHON_BIN_PATH"
   write_action_env_to_bazelrc "PYTHON_LIB_PATH" "$PYTHON_LIB_PATH"
-  write_to_bazelrc "build --define PYTHON_BIN_PATH=$PYTHON_BIN_PATH"
-  write_to_bazelrc "build --define PYTHON_LIB_PATH=$PYTHON_LIB_PATH"
+  write_to_bazelrc "build --define PYTHON_BIN_PATH=\"$PYTHON_BIN_PATH\""
+  write_to_bazelrc "build --define PYTHON_LIB_PATH=\"$PYTHON_LIB_PATH\""
   write_to_bazelrc "build --force_python=py$python_major_version"
   write_to_bazelrc "build --host_force_python=py$python_major_version"
-  write_to_bazelrc "build --python${python_major_version}_path=$PYTHON_BIN_PATH"
+  write_to_bazelrc "build --python${python_major_version}_path=\"$PYTHON_BIN_PATH\""
   write_to_bazelrc "test --force_python=py$python_major_version"
   write_to_bazelrc "test --host_force_python=py$python_major_version"
-  write_to_bazelrc "test --define PYTHON_BIN_PATH=$PYTHON_BIN_PATH"
-  write_to_bazelrc "test --define PYTHON_LIB_PATH=$PYTHON_LIB_PATH"
-  write_to_bazelrc "run --define PYTHON_BIN_PATH=$PYTHON_BIN_PATH"
-  write_to_bazelrc "run --define PYTHON_LIB_PATH=$PYTHON_LIB_PATH"
+  write_to_bazelrc "test --define PYTHON_BIN_PATH=\"$PYTHON_BIN_PATH\""
+  write_to_bazelrc "test --define PYTHON_LIB_PATH=\"$PYTHON_LIB_PATH\""
+  write_to_bazelrc "run --define PYTHON_BIN_PATH=\"$PYTHON_BIN_PATH\""
+  write_to_bazelrc "run --define PYTHON_LIB_PATH=\"$PYTHON_LIB_PATH\""
 
   # Write tools/python_bin_path.sh
   echo "export PYTHON_BIN_PATH=\"$PYTHON_BIN_PATH\"" > tools/python_bin_path.sh

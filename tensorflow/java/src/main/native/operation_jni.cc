@@ -66,6 +66,24 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_numOutputs(JNIEnv* env,
   return TF_OperationNumOutputs(op);
 }
 
+JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_outputListLength(JNIEnv* env,
+                                                                      jclass clazz,
+                                                                      jlong handle,
+                                                                      jstring name) {
+  TF_Operation* op = requireHandle(env, handle);
+  if (op == nullptr) return 0;
+
+  TF_Status* status = TF_NewStatus();
+
+  const char* cname = env->GetStringUTFChars(name, nullptr);
+  int result = TF_OperationOutputListLength(op, cname, status);
+  env->ReleaseStringUTFChars(name, cname);
+
+  throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
+  return result;
+}
+
 JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Operation_shape(
     JNIEnv* env, jclass clazz, jlong graph_handle, jlong op_handle,
     jint output_index) {

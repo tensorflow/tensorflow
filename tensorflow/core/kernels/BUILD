@@ -2109,7 +2109,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_triangular_solve_op",
     prefix = "matrix_triangular_solve_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+    ]),
 )
 
 tf_kernel_library(
@@ -2350,6 +2352,8 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + if_mkl([
         "//third_party/mkl:intel_binary_blob",
+    ]) + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]),
 )
 
@@ -2630,6 +2634,7 @@ tf_kernel_library(
         ],
         "//conditions:default": [],
     }) + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
     ]),
 )

@@ -56,20 +56,22 @@ Example output:
 To show all available information in the SavedModel:
   $saved_model_cli show --dir /tmp/saved_model --all
 
-'run' command usage: saved_model_cli run [-h] --dir DIR --tag_set TAG_SET
-                         --signature_def SIGNATURE_DEF_KEY --inputs INPUTS
-                         [--outdir OUTDIR] [--overwrite]
+usage: saved_model_cli run [-h] --dir DIR --tag_set TAG_SET --signature_def
+                           SIGNATURE_DEF_KEY [--inputs INPUTS]
+                           [--input_exprs INPUT_EXPRS] [--outdir OUTDIR]
+                           [--overwrite] [--tf_debug]
+
 Examples:
 To run input tensors from files through a MetaGraphDef and save the output
 tensors to files:
   $saved_model_cli run --dir /tmp/saved_model --tag_set serve
-  --signature_def serving_default --inputs x:0=/tmp/124.npz,x2=/tmp/123.npy
-  --outdir /tmp/out
+  --signature_def serving_default --inputs x=/tmp/124.npz
+  --input_exprs 'x2=np.ones((6,2))' --outdir /tmp/out
 
 To observe the intermediate Tensor values in the runtime graph, use the
 --tf_debug flag, e.g.:
   $saved_model_cli run --dir /tmp/saved_model --tag_set serve
-  --signature_def serving_default --inputs x:0=/tmp/124.npz,x2=/tmp/123.npy
+  --signature_def serving_default --inputs 'x=/tmp/124.npz;x2=/tmp/123.npy'
   --outdir /tmp/out --tf_debug
 
 To build this tool from source, run:
@@ -367,7 +369,7 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
                                             output_full_path))
 
 
-def preprocess_input_arg_string(inputs_str):
+def preprocess_inputs_arg_string(inputs_str):
   """Parses input arg into dictionary that maps input to file/variable tuple.
 
   Parses input string in the format of, for example,
@@ -375,74 +377,94 @@ def preprocess_input_arg_string(inputs_str):
   dictionary looks like
   {'input_key1': (filename1, variable_name1),
    'input_key2': (file2, None)}
-  , which maps input keys to a tuple of file name and varaible name(None if
+  , which maps input keys to a tuple of file name and variable name(None if
   empty).
 
   Args:
-    inputs_str: A string that specified where to load inputs. Each input is
-        separated by comma.
-        * If the command line arg for inputs is quoted and contains
-            whitespace(s), all whitespaces will be ignored.
+    inputs_str: A string that specified where to load inputs. Inputs are
+    separated by semicolons.
         * For each input key:
-            'input=filename<[variable_name]>'
-        * The "[variable_name]" key is optional. Will be set to None if not
-            specified.
+            '<input_key>=<filename>' or
+            '<input_key>=<filename>[<variable_name>]'
+        * The optional 'variable_name' key will be set to None if not specified.
 
   Returns:
-    A dictionary that maps input keys to a tuple of file name and varaible name.
+    A dictionary that maps input keys to a tuple of file name and variable name.
 
   Raises:
-    RuntimeError: An error when the given input is in a bad format.
+    RuntimeError: An error when the given input string is in a bad format.
   """
   input_dict = {}
-  inputs_raw = inputs_str.split(',')
+  inputs_raw = inputs_str.split(';')
   for input_raw in filter(bool, inputs_raw):  # skip empty strings
-    # Remove quotes and whitespaces
-    input_raw = input_raw.replace('"', '').replace('\'', '').replace(' ', '')
-
     # Format of input=filename[variable_name]'
-    match = re.match(r'^([\w\-]+)=([\w\-.\/]+)\[([\w\-]+)\]$', input_raw)
+    match = re.match(r'([^=]+)=([^\[\]]+)\[([^\[\]]+)\]$', input_raw)
+
     if match:
-      input_dict[match.group(1)] = (match.group(2), match.group(3))
+      input_dict[match.group(1)] = match.group(2), match.group(3)
     else:
       # Format of input=filename'
-      match = re.match(r'^([\w\-]+)=([\w\-.\/]+)$', input_raw)
+      match = re.match(r'([^=]+)=([^\[\]]+)$', input_raw)
       if match:
-        input_dict[match.group(1)] = (match.group(2), None)
+        input_dict[match.group(1)] = match.group(2), None
       else:
         raise RuntimeError(
-            'Input \"%s\" format is incorrect. Please follow \"--inputs '
-            'input_key=file_name[variable_name]\" or input_key=file_name' %
-            input_raw)
+            '--inputs "%s" format is incorrect. Please follow'
+            '"<input_key>=<filename>", or'
+            '"<input_key>=<filename>[<variable_name>]"' % input_raw)
 
   return input_dict
 
 
-def load_inputs_from_input_arg_string(inputs_str):
-  """Parses input arg string and load inputs into a dictionary.
+def preprocess_input_exprs_arg_string(input_exprs_str):
+  """Parses input arg into dictionary that maps input key to python expression.
 
-  Parses input string in the format of, for example,
-  "input1=filename1[variable_name1],input2=filename2" into a
-  dictionary looks like
-  {'input1:0': ndarray_saved_as_variable_name1_in_filename1 ,
-   'input2:0': ndarray_saved_in_filename2}
-  , which maps input keys to a numpy ndarray loaded from file. See Args section
-  for more details on inputs format.
+  Parses input string in the format of 'input_key=<python expression>' into a
+  dictionary that maps each input_key to its python expression.
+
+  Args:
+    input_exprs_str: A string that specifies python expression for input keys.
+    Each input is separated by semicolon. For each input key:
+        'input_key=<python expression>'
+
+  Returns:
+    A dictionary that maps input keys to python expressions.
+
+  Raises:
+    RuntimeError: An error when the given input string is in a bad format.
+  """
+  input_dict = {}
+
+  for input_raw in filter(bool, input_exprs_str.split(';')):
+    if '=' not in input_exprs_str:
+      raise RuntimeError('--input_exprs "%s" format is incorrect. Please follow'
+                         '"<input_key>=<python expression>"' % input_exprs_str)
+    input_key, expr = input_raw.split('=')
+    input_dict[input_key] = expr
+
+  return input_dict
+
+
+def load_inputs_from_input_arg_string(inputs_str, input_exprs_str):
+  """Parses input arg strings and create inputs feed_dict.
+
+  Parses '--inputs' string for inputs to be loaded from file, and parses
+  '--input_exprs' string for inputs to be evaluated from python expression.
 
   Args:
     inputs_str: A string that specified where to load inputs. Each input is
-        separated by comma.
-        * If the command line arg for inputs is quoted and contains
-            whitespace(s), all whitespaces will be ignored.
+        separated by semicolon.
         * For each input key:
-            'input=filename[variable_name]'
+            '<input_key>=<filename>' or
+            '<input_key>=<filename>[<variable_name>]'
+        * The optional 'variable_name' key will be set to None if not specified.
         * File specified by 'filename' will be loaded using numpy.load. Inputs
             can be loaded from only .npy, .npz or pickle files.
         * The "[variable_name]" key is optional depending on the input file type
             as descripted in more details below.
         When loading from a npy file, which always contains a numpy ndarray, the
         content will be directly assigned to the specified input tensor. If a
-        varaible_name is specified, it will be ignored and a warning will be
+        variable_name is specified, it will be ignored and a warning will be
         issued.
         When loading from a npz zip file, user can specify which variable within
         the zip file to load for the input tensor inside the square brackets. If
@@ -453,10 +475,12 @@ def load_inputs_from_input_arg_string(inputs_str):
         to the specified input tensor, else SavedModel CLI will assume a
         dictionary is stored in the pickle file and the value corresponding to
         the variable_name will be used.
+    input_exprs_str: A string that specified python expressions for inputs.
+        * In the format of: '<input_key>=<python expression>'.
+        * numpy module is available as np.
 
   Returns:
-    A dictionary that maps input tensor keys to a numpy ndarray loaded from
-    file.
+    A dictionary that maps input tensor keys to numpy ndarrays.
 
   Raises:
     RuntimeError: An error when a key is specified, but the input file contains
@@ -466,13 +490,14 @@ def load_inputs_from_input_arg_string(inputs_str):
   """
   tensor_key_feed_dict = {}
 
-  for input_tensor_key, (
-      filename,
-      variable_name) in preprocess_input_arg_string(inputs_str).items():
+  inputs = preprocess_inputs_arg_string(inputs_str)
+  input_exprs = preprocess_input_exprs_arg_string(input_exprs_str)
+
+  for input_tensor_key, (filename, variable_name) in inputs.items():
+    data = np.load(filename)
+
     # When a variable_name key is specified for the input file
     if variable_name:
-      data = np.load(filename)
-
       # if file contains a single ndarray, ignore the input name
       if isinstance(data, np.ndarray):
         warnings.warn(
@@ -488,7 +513,6 @@ def load_inputs_from_input_arg_string(inputs_str):
               (filename, variable_name))
     # When no key is specified for the input file.
     else:
-      data = np.load(filename)
       # Check if npz file only contains a single numpy ndarray.
       if isinstance(data, np.lib.npyio.NpzFile):
         variable_name_list = data.files
@@ -499,6 +523,16 @@ def load_inputs_from_input_arg_string(inputs_str):
         tensor_key_feed_dict[input_tensor_key] = data[variable_name_list[0]]
       else:
         tensor_key_feed_dict[input_tensor_key] = data
+
+  # When input is a python expression:
+  for input_tensor_key, py_expr in input_exprs.items():
+    if input_tensor_key in tensor_key_feed_dict:
+      warnings.warn(
+          'input_key %s has been specified with both --inputs and --input_exprs'
+          ' options. Value in --input_exprs will be used.' % input_tensor_key)
+
+    # ast.literal_eval does not work with numpy expressions
+    tensor_key_feed_dict[input_tensor_key] = eval(py_expr)  # pylint: disable=eval-used
 
   return tensor_key_feed_dict
 
@@ -531,7 +565,8 @@ def run(args):
   Args:
     args: A namespace parsed from command line.
   """
-  tensor_key_feed_dict = load_inputs_from_input_arg_string(args.inputs)
+  tensor_key_feed_dict = load_inputs_from_input_arg_string(
+      args.inputs, args.input_exprs)
   run_saved_model_with_feed_dict(args.dir, args.tag_set, args.signature_def,
                                  tensor_key_feed_dict, args.outdir,
                                  args.overwrite, tf_debug=args.tf_debug)
@@ -559,7 +594,7 @@ def create_parser():
       'MetaGraphDef specified by its tag-set:\n'
       '$saved_model_cli show --dir /tmp/saved_model --tag_set serve\n'
       'For a MetaGraphDef with multiple tags in the tag-set, all tags must be '
-      'passed in, separated by \',\':\n'
+      'passed in, separated by \';\':\n'
       '$saved_model_cli show --dir /tmp/saved_model --tag_set serve,gpu\n\n'
       'To show all inputs and outputs TensorInfo for a specific'
       ' SignatureDef specified by the SignatureDef key in a'
@@ -601,7 +636,7 @@ def create_parser():
              '$saved_model_cli show --dir /tmp/saved_model --tag_set serve'
              '--signature_def serving_default '
              '--inputs input1_key=/tmp/124.npz[x],input2_key=/tmp/123.npy'
-             '--outdir=/out\n\n'
+             '--input_exprs \'input3_key=np.ones(2)\' --outdir=/out\n\n'
              'For more information about input file format, please see:\n'
              'https://www.tensorflow.org/programmers_guide/saved_model_cli\n')
   parser_run = subparsers.add_parser(
@@ -622,10 +657,15 @@ def create_parser():
       required=True,
       metavar='SIGNATURE_DEF_KEY',
       help='key of SignatureDef to run')
-  msg = ('inputs in the format of \'input_key=filename[variable_name]\', '
-         'separated by \',\'. Inputs can only be loaded from .npy, .npz or '
-         'pickle files. Please use input keys instead of input names.')
-  parser_run.add_argument('--inputs', type=str, required=True, help=msg)
+  msg = ('Loading inputs from files, in the format of \'<input_key>=<filename>,'
+         ' or \'<input_key>=<filename>[<variable_name>]\', separated by \';\'.'
+         ' The file format can only be from .npy, .npz or pickle.')
+  parser_run.add_argument('--inputs', type=str, default='', help=msg)
+  msg = ('Specifying inputs by python expressions, in the format of'
+         ' "<input_key>=\'<python expression>\'", separated by \';\'. '
+         'numpy module is available as \'np\'. '
+         'Will override duplicate input_keys from --inputs option.')
+  parser_run.add_argument('--input_exprs', type=str, default='', help=msg)
   parser_run.add_argument(
       '--outdir',
       type=str,
@@ -649,6 +689,8 @@ def create_parser():
 def main():
   parser = create_parser()
   args = parser.parse_args()
+  if not args.inputs and not args.input_exprs:
+    args.error('At least one of --inputs and --input_exprs is required')
   args.func(args)
 
 

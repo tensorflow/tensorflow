@@ -379,7 +379,12 @@ def multi_label_head(n_classes,
                      loss_fn=None):
   """Creates a Head for multi label classification.
 
-  The Head uses sigmoid cross entropy loss.
+  Multi-label classification handles the case where each example may have zero
+  or more associated labels, from a discrete set.  This is distinct from
+  `multi_class_head` which has exactly one label from a discrete set.
+
+  This head by default uses sigmoid cross entropy loss, which expects as input
+  a multi-hot tensor of shape `(batch_size, num_classes)`.
 
   Args:
     n_classes: Integer, number of classes, must be >= 2

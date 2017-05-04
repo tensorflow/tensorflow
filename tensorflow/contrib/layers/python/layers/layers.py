@@ -844,7 +844,7 @@ def convolution(inputs,
   variable would be created and added the activations. Finally, if
   `activation_fn` is not `None`, it is applied to the activations as well.
 
-  Performs a'trous convolution with input stride/dilation rate equal to `rate`
+  Performs atrous convolution with input stride/dilation rate equal to `rate`
   if a value > 1 for any dimension of `rate` is specified.  In this case
   `stride` values != 1 are not supported.
 
@@ -870,7 +870,7 @@ def convolution(inputs,
       "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
       For N=3, the valid values are "NDHWC" (default) and "NCDHW".
     rate: A sequence of N positive integers specifying the dilation rate to use
-      for a'trous convolution.  Can be a single integer to specify the same
+      for atrous convolution.  Can be a single integer to specify the same
       value for all spatial dimensions.  Specifying any `rate` value != 1 is
       incompatible with specifying any `stride` value != 1.
     activation_fn: Activation function. The default value is a ReLU function.
@@ -1865,7 +1865,7 @@ def separable_convolution2d(
       depthwise convolution stride. Can be an int if both strides are the same.
     padding: One of 'VALID' or 'SAME'.
     rate: A list of length 2: [rate_height, rate_width], specifying the dilation
-      rates for a'trous convolution. Can be an int if both rates are the same.
+      rates for atrous convolution. Can be an int if both rates are the same.
       If any value is larger than one, then both stride values need to be one.
     activation_fn: Activation function. The default value is a ReLU function.
       Explicitly set it to None to skip it and maintain a linear activation.
