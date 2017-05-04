@@ -14,68 +14,8 @@
 # ==============================================================================
 """Command-line interface to inspect and execute a graph in a SavedModel.
 
-If TensorFlow is installed on your system through pip, the 'saved_model_cli'
-binary can be invoked directly from command line.
-
-At a high level, SavedModel CLI allows users to both inspect and execute
-computations on a MetaGraphDef in a SavedModel. These are done through `show`
-and `run` commands. Following is the usage of the two commands. SavedModel
-CLI will also display these information with -h option.
-
-'show' command usage: saved_model_cli show [-h] --dir DIR [--tag_set TAG_SET]
-                          [--signature_def SIGNATURE_DEF_KEY]
-Examples:
-To show all available tag-sets in the SavedModel:
-  $saved_model_cli show --dir /tmp/saved_model
-
-To show all available SignatureDef keys in a MetaGraphDef specified by its
-tag-set:
-  $saved_model_cli show --dir /tmp/saved_model --tag_set serve
-For a MetaGraphDef with multiple tags in the tag-set, all tags must be passed
-in, separated by ',':
-  $saved_model_cli show --dir /tmp/saved_model --tag_set serve,gpu
-
-To show all inputs and outputs TensorInfo for a specific SignatureDef specified
-by the SignatureDef key in a MetaGraphDef:
-  $saved_model_cli show --dir /tmp/saved_model --tag_set serve
-  --signature_def serving_default
-Example output:
-  The given SavedModel SignatureDef contains the following input(s):
-  inputs['input0'] tensor_info:
-      dtype: DT_FLOAT
-      shape: (-1, 1)
-  inputs['input1'] tensor_info:
-      dtype: DT_FLOAT
-      shape: (-1, 1)
-  The given SavedModel SignatureDef contains the following output(s):
-  outputs['output'] tensor_info:
-      dtype: DT_FLOAT
-      shape: (-1, 1)
-  Method name is: tensorflow/serving/regress
-
-To show all available information in the SavedModel:
-  $saved_model_cli show --dir /tmp/saved_model --all
-
-usage: saved_model_cli run [-h] --dir DIR --tag_set TAG_SET --signature_def
-                           SIGNATURE_DEF_KEY [--inputs INPUTS]
-                           [--input_exprs INPUT_EXPRS] [--outdir OUTDIR]
-                           [--overwrite] [--tf_debug]
-
-Examples:
-To run input tensors from files through a MetaGraphDef and save the output
-tensors to files:
-  $saved_model_cli run --dir /tmp/saved_model --tag_set serve
-  --signature_def serving_default --inputs x=/tmp/124.npz
-  --input_exprs 'x2=np.ones((6,2))' --outdir /tmp/out
-
-To observe the intermediate Tensor values in the runtime graph, use the
---tf_debug flag, e.g.:
-  $saved_model_cli run --dir /tmp/saved_model --tag_set serve
-  --signature_def serving_default --inputs 'x=/tmp/124.npz;x2=/tmp/123.npy'
-  --outdir /tmp/out --tf_debug
-
-To build this tool from source, run:
-  $bazel build tensorflow/python/tools:saved_model_cli
+For detailed usages and examples, please refer to:
+https://www.tensorflow.org/programmers_guide/saved_model_cli
 
 """
 

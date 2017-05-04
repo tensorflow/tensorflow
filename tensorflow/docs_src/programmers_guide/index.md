@@ -39,6 +39,11 @@ trained graph.  The following guide details `MetaGraph` objects:
 
   * @{$meta_graph$Exporting and Importing a MetaGraph}.
 
+`SavedModel` is the universal serialization format for Tensorflow models. TensorFlow provides SavedModel CLI (command-line interface) as a tool to inspect and execute a MetaGraph in a SavedModel. The detailed usages and examples are
+documented in the following guide:
+
+  * @{$saved_model_cli$SavedModel CLI (Command-Line Interface)}.
+
 To learn about the TensorFlow versioning scheme, consult the following two
 guides:
 
