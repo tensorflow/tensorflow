@@ -34,8 +34,11 @@ REGISTER_KERNEL_BUILDER(Name("Greater")
                         BinaryOp<CPUDevice, functor::greater<int32>>);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER2(BinaryOp, SYCL, "Greater", functor::greater, float, double);
+REGISTER(BinaryOp, SYCL, "Greater", functor::greater, float);
 
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Greater")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")
@@ -44,4 +47,5 @@ REGISTER_KERNEL_BUILDER(Name("Greater")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::greater<int32>>);
 #endif // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow

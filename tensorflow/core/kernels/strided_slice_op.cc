@@ -481,8 +481,12 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
                               .TypeConstraint<int32>("Index"), \
                           StridedSliceAssignOp<SYCLDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+REGISTER_SYCL(float);
+REGISTER_SYCL(double);
 
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("StridedSlice")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -513,5 +517,6 @@ REGISTER_KERNEL_BUILDER(Name("StridedSliceAssign")
                             .HostMemory("end")
                             .HostMemory("strides"),
                         StridedSliceAssignOp<CPUDevice, int32>)
+#undef REGISTER_SYCL
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

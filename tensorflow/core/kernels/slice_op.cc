@@ -328,9 +328,8 @@ namespace functor {
   DECLARE_SYCL_SPEC(T, 6); \
   DECLARE_SYCL_SPEC(T, 7);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_FOR_N);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
 DECLARE_FOR_N(int32);
-DECLARE_FOR_N(bool);
 
 #undef DECLARE_FOR_N
 #undef DECLARE_SYCL_SPEC
@@ -345,8 +344,11 @@ DECLARE_FOR_N(bool);
                               .TypeConstraint<int32>("Index"), \
                           SliceOp<SYCLDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL);
 
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Slice")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -356,6 +358,7 @@ REGISTER_KERNEL_BUILDER(Name("Slice")
                             .HostMemory("size")
                             .HostMemory("output"),
                         SliceOp<CPUDevice, int32>);
+
 #undef REGISTER_SYCL
 
 #endif  // TENSORFLOW_USE_SYCL

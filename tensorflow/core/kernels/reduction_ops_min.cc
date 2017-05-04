@@ -67,7 +67,7 @@ REGISTER_KERNEL_BUILDER(
           .HostMemory("reduction_indices"), \
       ReductionOp<SYCLDevice, type, Eigen::internal::MinReducer<type>>);
 REGISTER_SYCL_KERNELS(float);
-REGISTER_SYCL_KERNELS(double);
+#undef REGISTER_SYCL_KERNELS
 
 REGISTER_KERNEL_BUILDER(
     Name("Min")
@@ -78,7 +78,6 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<int32>("T")
         .TypeConstraint<int32>("Tidx"),
     ReductionOp<CPUDevice, int32, Eigen::internal::MinReducer<int32>>);
-#undef REGISTER_SYCL_KERNELS
 #endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

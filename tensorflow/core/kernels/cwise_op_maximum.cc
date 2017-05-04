@@ -35,7 +35,11 @@ REGISTER_KERNEL_BUILDER(Name("Maximum")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER3(BinaryOp, SYCL, "Maximum", functor::maximum, float, double, int64);
+REGISTER(BinaryOp, SYCL, "Maximum", functor::maximum, float);
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Maximum")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")
@@ -44,4 +48,5 @@ REGISTER_KERNEL_BUILDER(Name("Maximum")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::maximum<int32>>);
 #endif // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow

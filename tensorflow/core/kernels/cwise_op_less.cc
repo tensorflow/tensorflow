@@ -35,6 +35,7 @@ REGISTER_KERNEL_BUILDER(Name("Less")
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER3(BinaryOp, SYCL, "Less", functor::less, float, double, int64);
+
 REGISTER_KERNEL_BUILDER(Name("Less")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")
