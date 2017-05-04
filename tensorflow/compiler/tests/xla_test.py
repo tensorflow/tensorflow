@@ -44,6 +44,8 @@ flags.DEFINE_string('test_device', None,
 flags.DEFINE_string('types', None, 'Types to test. Comma-separated list.')
 flags.DEFINE_string('disabled_manifest', None,
                     'Path to a file with a list of tests that should not run.')
+flags.DEFINE_string('load_plugin', None,
+                    'Load plugin details from python script.')
 
 
 class XLATestCase(test.TestCase):
@@ -51,11 +53,21 @@ class XLATestCase(test.TestCase):
 
   def __init__(self, method_name='runTest'):
     super(XLATestCase, self).__init__(method_name)
-    self.device = FLAGS.test_device
+    test_device = FLAGS.test_device
+    test_types = FLAGS.types
+
+    if FLAGS.load_plugin:
+      cfg = __import__("tensorflow.compiler.tests.plugin_config")
+      test_device = cfg.compiler.tests.plugin_config.device
+      test_types = cfg.compiler.tests.plugin_config.types
+      __import__(cfg.compiler.tests.plugin_config.loader)
+      logging.info('Loaded XLA plugin %s', test_device)
+
+    self.device = test_device
     self.has_custom_call = (self.device == 'XLA_CPU')
     self.all_tf_types = [
         dtypes.DType(types_pb2.DataType.Value(name))
-        for name in FLAGS.types.split(',')
+        for name in test_types.split(',')
     ]
     self.all_types = [dtype.as_numpy_dtype for dtype in self.all_tf_types]
     self.int_types = [
