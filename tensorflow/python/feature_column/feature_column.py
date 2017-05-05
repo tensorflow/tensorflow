@@ -121,6 +121,8 @@ from __future__ import print_function
 import abc
 import collections
 
+import numpy as np
+
 from tensorflow.python.feature_column import lookup_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -433,6 +435,12 @@ def bucketized_column(source_column, boundaries):
   return _BucketizedColumn(source_column, tuple(boundaries))
 
 
+def _assert_string_or_int(dtype, prefix):
+  if (dtype != dtypes.string) and (not dtype.is_integer):
+    raise ValueError(
+        '{} dtype must be string or integer. dtype: {}.'.format(prefix, dtype))
+
+
 def categorical_column_with_hash_bucket(key,
                                         hash_bucket_size,
                                         dtype=dtypes.string):
@@ -475,9 +483,7 @@ def categorical_column_with_hash_bucket(key,
                      'hash_bucket_size: {}, key: {}'.format(
                          hash_bucket_size, key))
 
-  if dtype != dtypes.string and not dtype.is_integer:
-    raise ValueError('dtype must be string or integer. '
-                     'dtype: {}, column_name: {}'.format(dtype, key))
+  _assert_string_or_int(dtype, prefix='column_name: {}'.format(key))
 
   return _HashedCategoricalColumn(key, hash_bucket_size, dtype)
 
@@ -485,7 +491,7 @@ def categorical_column_with_hash_bucket(key,
 def categorical_column_with_vocabulary_file(
     key, vocabulary_file, vocabulary_size, num_oov_buckets=0,
     default_value=None, dtype=dtypes.string):
-  """Creates a `_CategoricalColumn` with vocabulary file configuration.
+  """A `_CategoricalColumn` with a vocabulary file.
 
   Use this when your inputs are in string or integer format, and you have a
   vocabulary file that maps each value to an integer ID. By default,
@@ -504,7 +510,7 @@ def categorical_column_with_vocabulary_file(
   ID 50-54.
   ```python
   states = categorical_column_with_vocabulary_file(
-      key='keywords', vocabulary_file='/us/states.txt', vocabulary_size=50,
+      key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
       num_oov_buckets=5)
   linear_prediction = make_linear_model(features, [states, ...])
   ```
@@ -516,7 +522,7 @@ def categorical_column_with_vocabulary_file(
   others are assigned the corresponding line number 1-50.
   ```python
   states = categorical_column_with_vocabulary_file(
-      key='keywords', vocabulary_file='/us/states.txt', vocabulary_size=51,
+      key='states', vocabulary_file='/us/states.txt', vocabulary_size=51,
       default_value=0)
   linear_prediction, _, _ = make_linear_model(features, [states, ...])
 
@@ -530,7 +536,9 @@ def categorical_column_with_vocabulary_file(
       column name and the dictionary key for feature parsing configs, feature
       `Tensor` objects, and feature columns.
     vocabulary_file: The vocabulary file name.
-    vocabulary_size: Number of the elements in the vocabulary.
+    vocabulary_size: Number of the elements in the vocabulary. This must be no
+      greater than length of `vocabulary_file`, if less than length, later
+      values are ignored.
     num_oov_buckets: Non-negative integer, the number of out-of-vocabulary
       buckets. All out-of-vocabulary inputs will be assigned IDs in the range
       `[vocabulary_size, vocabulary_size+num_oov_buckets)` based on a hash of
@@ -542,7 +550,7 @@ def categorical_column_with_vocabulary_file(
     dtype: The type of features. Only string and integer types are supported.
 
   Returns:
-    A `_CategoricalColumn` with vocabulary file configuration.
+    A `_CategoricalColumn` with a vocabulary file.
 
   Raises:
     ValueError: `vocabulary_file` is missing.
@@ -564,15 +572,88 @@ def categorical_column_with_vocabulary_file(
     if num_oov_buckets < 0:
       raise ValueError('Invalid num_oov_buckets {} in {}.'.format(
           num_oov_buckets, key))
-  if dtype != dtypes.string and not dtype.is_integer:
-    raise ValueError('Invalid dtype {} in {}.'.format(dtype, key))
-  return _VocabularyCategoricalColumn(
+  _assert_string_or_int(dtype, prefix='column_name: {}'.format(key))
+  return _VocabularyFileCategoricalColumn(
       key=key,
       vocabulary_file=vocabulary_file,
       vocabulary_size=vocabulary_size,
       num_oov_buckets=0 if num_oov_buckets is None else num_oov_buckets,
       default_value=-1 if default_value is None else default_value,
       dtype=dtype)
+
+
+def categorical_column_with_vocabulary_list(
+    key, vocabulary_list, dtype=None, default_value=-1):
+  """A `_CategoricalColumn` with in-memory vocabulary.
+
+  Logic for feature f is:
+  id = f in vocabulary_list ? vocabulary_list.index(f) : default_value
+
+  Use this when your inputs are in string or integer format, and you have an
+  in-memory vocabulary mapping each value to an integer ID. By default,
+  out-of-vocabulary values are ignored. Use `default_value` to specify how to
+  include out-of-vocabulary values.
+
+  Inputs can be either `Tensor` or `SparseTensor`. If `Tensor`, missing values
+  can be represented by `-1` for int and `''` for string. Note that these values
+  are independent of the `default_value` argument.
+
+  In the following examples, each input in `vocabulary_list` is assigned an ID
+  0-4 corresponding to its index (e.g., input 'B' produces output 2). All other
+  inputs are assigned `default_value` 0.
+
+  Linear model:
+  ```python
+  colors = categorical_column_with_vocabulary_list(
+      key='colors', vocabulary_list=('X', 'R', 'G', 'B', 'Y'), default_value=0)
+  linear_prediction, _, _ = make_linear_model(features, [colors, ...])
+  ```
+
+  Embedding for a DNN model:
+  ```python
+  dense_tensor = make_input_layer(features, [embedding_column(colors, 3),...])
+  ```
+
+  Args:
+    key: A unique string identifying the input feature. It is used as the
+      column name and the dictionary key for feature parsing configs, feature
+      `Tensor` objects, and feature columns.
+    vocabulary_list: An ordered iterable defining the vocabulary. Each feature
+      is mapped to the index of its value (if present) in `vocabulary_list`.
+      Must be castable to `dtype`.
+    dtype: The type of features. Only string and integer types are supported.
+      If `None`, it will be inferred from `vocabulary_list`.
+    default_value: The value to use for values not in `vocabulary_list`.
+
+  Returns:
+    A `_CategoricalColumn` with in-memory vocabulary.
+
+  Raises:
+    ValueError: if `vocabulary_list` is empty, or contains duplicate keys.
+    ValueError: if `dtype` is not integer or string.
+  """
+  if (vocabulary_list is None) or (len(vocabulary_list) < 1):
+    raise ValueError(
+        'vocabulary_list {} must be non-empty, column_name: {}'.format(
+            vocabulary_list, key))
+  if len(set(vocabulary_list)) != len(vocabulary_list):
+    raise ValueError(
+        'Duplicate keys in vocabulary_list {}, column_name: {}'.format(
+            vocabulary_list, key))
+  vocabulary_dtype = dtypes.as_dtype(np.array(vocabulary_list).dtype)
+  _assert_string_or_int(
+      vocabulary_dtype, prefix='column_name: {} vocabulary'.format(key))
+  if dtype is None:
+    dtype = vocabulary_dtype
+  elif dtype.is_integer != vocabulary_dtype.is_integer:
+    raise ValueError(
+        'dtype {} and vocabulary dtype {} do not match, column_name: {}'.format(
+            dtype, vocabulary_dtype, key))
+  _assert_string_or_int(dtype, prefix='column_name: {}'.format(key))
+
+  return _VocabularyListCategoricalColumn(
+      key=key, vocabulary_list=tuple(vocabulary_list), dtype=dtype,
+      default_value=default_value)
 
 
 class _FeatureColumn(object):
@@ -1170,11 +1251,9 @@ class _HashedCategoricalColumn(
     if not isinstance(input_tensor, sparse_tensor_lib.SparseTensor):
       raise ValueError('SparseColumn input must be a SparseTensor.')
 
-    if (input_tensor.dtype != dtypes.string and
-        not input_tensor.dtype.is_integer):
-      raise ValueError('input tensors dtype must be string or integer. '
-                       'dtype: {}, column_name: {}'.format(
-                           input_tensor.dtype, self.key))
+    _assert_string_or_int(
+        input_tensor.dtype,
+        prefix='column_name: {} input_tensor'.format(self.key))
 
     if self.dtype.is_integer != input_tensor.dtype.is_integer:
       raise ValueError(
@@ -1202,8 +1281,9 @@ class _HashedCategoricalColumn(
     return _CategoricalColumn.IdWeightPair(inputs.get(self), None)
 
 
-class _VocabularyCategoricalColumn(
-    _CategoricalColumn, collections.namedtuple('_VocabularyCategoricalColumn', (
+class _VocabularyFileCategoricalColumn(
+    _CategoricalColumn,
+    collections.namedtuple('_VocabularyFileCategoricalColumn', (
         'key', 'vocabulary_file', 'vocabulary_size', 'num_oov_buckets', 'dtype',
         'default_value'
     ))):
@@ -1226,15 +1306,15 @@ class _VocabularyCategoricalColumn(
           'key: {}, column dtype: {}, tensor dtype: {}'.format(
               self.key, self.dtype, input_tensor.dtype))
 
+    _assert_string_or_int(
+        input_tensor.dtype,
+        prefix='column_name: {} input_tensor'.format(self.key))
+
     key_dtype = self.dtype
     if input_tensor.dtype.is_integer:
       # `index_table_from_file` requires 64-bit integer keys.
       key_dtype = dtypes.int64
       input_tensor = math_ops.to_int64(input_tensor)
-    elif input_tensor.dtype != dtypes.string:
-      raise ValueError('input tensors dtype must be string or integer. '
-                       'dtype: {}, column_name: {}'.format(
-                           input_tensor.dtype, self.key))
 
     return lookup_ops.index_table_from_file(
         vocabulary_file=self.vocabulary_file,
@@ -1248,6 +1328,56 @@ class _VocabularyCategoricalColumn(
   def _num_buckets(self):
     """Returns number of buckets in this sparse feature."""
     return self.vocabulary_size + self.num_oov_buckets
+
+  def _get_sparse_tensors(
+      self, inputs, weight_collections=None, trainable=None):
+    return _CategoricalColumn.IdWeightPair(inputs.get(self), None)
+
+
+class _VocabularyListCategoricalColumn(
+    _CategoricalColumn,
+    collections.namedtuple('_VocabularyListCategoricalColumn', (
+        'key', 'vocabulary_list', 'dtype', 'default_value'
+    ))):
+  """See `categorical_column_with_vocabulary_list`."""
+
+  @property
+  def name(self):
+    return self.key
+
+  @property
+  def _parse_example_config(self):
+    return {self.key: parsing_ops.VarLenFeature(self.dtype)}
+
+  def _transform_feature(self, inputs):
+    input_tensor = _to_sparse_input(inputs.get(self.key))
+
+    if self.dtype.is_integer != input_tensor.dtype.is_integer:
+      raise ValueError(
+          'Column dtype and SparseTensors dtype must be compatible. '
+          'key: {}, column dtype: {}, tensor dtype: {}'.format(
+              self.key, self.dtype, input_tensor.dtype))
+
+    _assert_string_or_int(
+        input_tensor.dtype,
+        prefix='column_name: {} input_tensor'.format(self.key))
+
+    key_dtype = self.dtype
+    if input_tensor.dtype.is_integer:
+      # `index_table_from_tensor` requires 64-bit integer keys.
+      key_dtype = dtypes.int64
+      input_tensor = math_ops.to_int64(input_tensor)
+
+    return lookup_ops.index_table_from_tensor(
+        mapping=tuple(self.vocabulary_list),
+        default_value=self.default_value,
+        dtype=key_dtype,
+        name='{}_lookup'.format(self.key)).lookup(input_tensor)
+
+  @property
+  def _num_buckets(self):
+    """Returns number of buckets in this sparse feature."""
+    return len(self.vocabulary_list)
 
   def _get_sparse_tensors(
       self, inputs, weight_collections=None, trainable=None):

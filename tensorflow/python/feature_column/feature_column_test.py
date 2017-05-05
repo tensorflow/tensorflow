@@ -1193,10 +1193,22 @@ class MakeInputLayerTest(test.TestCase):
         self.assertAllClose([[1., 3.]], net2.eval())
 
 
-class VocabularyCategoricalColumnTest(test.TestCase):
+def _assert_sparse_tensor_value(test_case, expected, actual):
+  test_case.assertEqual(np.int64, np.array(actual.indices).dtype)
+  test_case.assertAllEqual(expected.indices, actual.indices)
+
+  test_case.assertEqual(
+      np.array(expected.values).dtype, np.array(actual.values).dtype)
+  test_case.assertAllEqual(expected.values, actual.values)
+
+  test_case.assertEqual(np.int64, np.array(actual.dense_shape).dtype)
+  test_case.assertAllEqual(expected.dense_shape, actual.dense_shape)
+
+
+class VocabularyFileCategoricalColumnTest(test.TestCase):
 
   def setUp(self):
-    super(VocabularyCategoricalColumnTest, self).setUp()
+    super(VocabularyFileCategoricalColumnTest, self).setUp()
 
     # Contains ints, Golden State Warriors jersey numbers: 30, 35, 11, 23, 22
     self._warriors_vocabulary_file_name = test.test_src_dir_path(
@@ -1207,17 +1219,6 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     self._wire_vocabulary_file_name = test.test_src_dir_path(
         'python/feature_column/testdata/wire_vocabulary.txt')
     self._wire_vocabulary_size = 3
-
-  def _assert_sparse_tensor_value(self, expected, actual):
-    self.assertEqual(np.int64, np.array(actual.indices).dtype)
-    self.assertAllEqual(expected.indices, actual.indices)
-
-    self.assertEqual(
-        np.array(expected.values).dtype, np.array(actual.values).dtype)
-    self.assertAllEqual(expected.values, actual.values)
-
-    self.assertEqual(np.int64, np.array(actual.dense_shape).dtype)
-    self.assertAllEqual(expected.dense_shape, actual.dense_shape)
 
   def test_defaults(self):
     column = fc.categorical_column_with_vocabulary_file(
@@ -1316,7 +1317,7 @@ class VocabularyCategoricalColumnTest(test.TestCase):
           num_oov_buckets=-1)
 
   def test_invalid_dtype(self):
-    with self.assertRaisesRegexp(ValueError, 'Invalid dtype'):
+    with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
       fc.categorical_column_with_vocabulary_file(
           key='aaa', vocabulary_file='path', vocabulary_size=3,
           dtype=dtypes.float64)
@@ -1330,6 +1331,36 @@ class VocabularyCategoricalColumnTest(test.TestCase):
           vocabulary_size=self._wire_vocabulary_size,
           num_oov_buckets=100,
           default_value=2)
+
+  def test_invalid_input_dtype_int32(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size,
+        dtype=dtypes.string)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(12, 24, 36),
+        dense_shape=(2, 2))
+    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+      # pylint: disable=protected-access
+      column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+      # pylint: enable=protected-access
+
+  def test_invalid_input_dtype_string(self):
+    column = fc.categorical_column_with_vocabulary_file(
+        key='aaa',
+        vocabulary_file=self._warriors_vocabulary_file_name,
+        vocabulary_size=self._warriors_vocabulary_size,
+        dtype=dtypes.int32)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('omar', 'stringer', 'marlo'),
+        dense_shape=(2, 2))
+    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+      # pylint: disable=protected-access
+      column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+      # pylint: enable=protected-access
 
   def test_get_sparse_tensors(self):
     column = fc.categorical_column_with_vocabulary_file(
@@ -1346,7 +1377,8 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     # pylint: enable=protected-access
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
-      self._assert_sparse_tensor_value(
+      _assert_sparse_tensor_value(
+          self,
           sparse_tensor.SparseTensorValue(
               indices=inputs.indices,
               values=np.array((2, -1, 0), dtype=np.int64),
@@ -1365,7 +1397,8 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     # pylint: enable=protected-access
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
-      self._assert_sparse_tensor_value(
+      _assert_sparse_tensor_value(
+          self,
           sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1)),
               values=np.array((2, -1, 0), dtype=np.int64),
@@ -1388,7 +1421,8 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     # pylint: enable=protected-access
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
-      self._assert_sparse_tensor_value(
+      _assert_sparse_tensor_value(
+          self,
           sparse_tensor.SparseTensorValue(
               indices=inputs.indices,
               values=np.array((2, 2, 0), dtype=np.int64),
@@ -1411,7 +1445,8 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     # pylint: enable=protected-access
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
-      self._assert_sparse_tensor_value(
+      _assert_sparse_tensor_value(
+          self,
           sparse_tensor.SparseTensorValue(
               indices=inputs.indices,
               values=np.array((2, 33, 0, 62), dtype=np.int64),
@@ -1436,7 +1471,8 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     # pylint: enable=protected-access
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
-      self._assert_sparse_tensor_value(
+      _assert_sparse_tensor_value(
+          self,
           sparse_tensor.SparseTensorValue(
               indices=inputs.indices,
               values=np.array((-1, -1, 0), dtype=np.int64),
@@ -1459,7 +1495,8 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     # pylint: enable=protected-access
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
-      self._assert_sparse_tensor_value(
+      _assert_sparse_tensor_value(
+          self,
           sparse_tensor.SparseTensorValue(
               indices=inputs.indices,
               values=np.array((2, -1, 0, 4), dtype=np.int64),
@@ -1481,7 +1518,8 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     # pylint: enable=protected-access
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
-      self._assert_sparse_tensor_value(
+      _assert_sparse_tensor_value(
+          self,
           sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1), (2, 2)),
               values=np.array((2, default_value, 0, 4), dtype=np.int64),
@@ -1505,7 +1543,8 @@ class VocabularyCategoricalColumnTest(test.TestCase):
     # pylint: enable=protected-access
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
-      self._assert_sparse_tensor_value(
+      _assert_sparse_tensor_value(
+          self,
           sparse_tensor.SparseTensorValue(
               indices=inputs.indices,
               values=np.array((2, 60, 0, 4), dtype=np.int64),
@@ -1536,6 +1575,257 @@ class VocabularyCategoricalColumnTest(test.TestCase):
         # 'marlo' -> 2: wire_var[2] = 3
         # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
         self.assertAllClose(((3.,), (5.,)), predictions.eval())
+
+
+class VocabularyListCategoricalColumnTest(test.TestCase):
+
+  def test_defaults_string(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+    self.assertEqual('aaa', column.name)
+    # pylint: disable=protected-access
+    self.assertEqual(3, column._num_buckets)
+    self.assertEqual({
+        'aaa': parsing_ops.VarLenFeature(dtypes.string)
+    }, column._parse_example_config)
+    # pylint: enable=protected-access
+
+  def test_defaults_int(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa', vocabulary_list=(12, 24, 36))
+    self.assertEqual('aaa', column.name)
+    # pylint: disable=protected-access
+    self.assertEqual(3, column._num_buckets)
+    self.assertEqual({
+        'aaa': parsing_ops.VarLenFeature(dtypes.int64)
+    }, column._parse_example_config)
+    # pylint: enable=protected-access
+
+  def test_all_constructor_args(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa', vocabulary_list=(12, 24, 36), dtype=dtypes.int32,
+        default_value=-99)
+    # pylint: disable=protected-access
+    self.assertEqual(3, column._num_buckets)
+    self.assertEqual({
+        'aaa': parsing_ops.VarLenFeature(dtypes.int32)
+    }, column._parse_example_config)
+    # pylint: enable=protected-access
+
+  def test_deep_copy(self):
+    """Tests deepcopy of categorical_column_with_hash_bucket."""
+    original = fc.categorical_column_with_vocabulary_list(
+        key='aaa', vocabulary_list=(12, 24, 36), dtype=dtypes.int32)
+    for column in (original, copy.deepcopy(original)):
+      self.assertEqual('aaa', column.name)
+      # pylint: disable=protected-access
+      self.assertEqual(3, column._num_buckets)
+      self.assertEqual({
+          'aaa': parsing_ops.VarLenFeature(dtypes.int32)
+      }, column._parse_example_config)
+      # pylint: enable=protected-access
+
+  def test_invalid_dtype(self):
+    with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
+      fc.categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'),
+          dtype=dtypes.float32)
+
+  def test_invalid_mapping_dtype(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'vocabulary dtype must be string or integer'):
+      fc.categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=(12., 24., 36.))
+
+  def test_mismatched_int_dtype(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'dtype.*and vocabulary dtype.*do not match'):
+      fc.categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'),
+          dtype=dtypes.int32)
+
+  def test_mismatched_string_dtype(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'dtype.*and vocabulary dtype.*do not match'):
+      fc.categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=(12, 24, 36), dtype=dtypes.string)
+
+  def test_none_mapping(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'vocabulary_list.*must be non-empty'):
+      fc.categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=None)
+
+  def test_empty_mapping(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'vocabulary_list.*must be non-empty'):
+      fc.categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=tuple([]))
+
+  def test_duplicate_mapping(self):
+    with self.assertRaisesRegexp(ValueError, 'Duplicate keys'):
+      fc.categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=(12, 24, 12))
+
+  def test_invalid_input_dtype_int32(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=('omar', 'stringer', 'marlo'))
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(12, 24, 36),
+        dense_shape=(2, 2))
+    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+      # pylint: disable=protected-access
+      column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+      # pylint: enable=protected-access
+
+  def test_invalid_input_dtype_string(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=(12, 24, 36))
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('omar', 'stringer', 'marlo'),
+        dense_shape=(2, 2))
+    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+      # pylint: disable=protected-access
+      column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+      # pylint: enable=protected-access
+
+  def test_get_sparse_tensors(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=('omar', 'stringer', 'marlo'))
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, -1, 0), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_dense_input(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=('omar', 'stringer', 'marlo'))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(fc._LazyBuilder({
+        'aaa': (('marlo', ''), ('skywalker', 'omar'))
+    }))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=np.array((2, -1, 0), dtype=np.int64),
+              dense_shape=(2, 2)),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_default_value_in_vocabulary(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=('omar', 'stringer', 'marlo'),
+        default_value=2)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, 2, 0), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_int32(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=np.array((30, 35, 11, 23, 22), dtype=np.int32),
+        dtype=dtypes.int32)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+        values=np.array((11, 100, 30, 22), dtype=np.int32),
+        dense_shape=(3, 3))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, -1, 0, 4), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_int32_dense_input(self):
+    default_value = -100
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=np.array((30, 35, 11, 23, 22), dtype=np.int32),
+        dtype=dtypes.int32,
+        default_value=default_value)
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(fc._LazyBuilder({
+        'aaa': np.array(
+            ((11, -1, -1), (100, 30, -1), (-1, -1, 22)),
+            dtype=np.int32)
+    }))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+              values=np.array((2, default_value, 0, 4), dtype=np.int64),
+              dense_shape=(3, 3)),
+          id_weight_pair.id_tensor.eval())
+
+  def test_make_linear_model(self):
+    wire_column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=('omar', 'stringer', 'marlo'))
+    self.assertEqual(3, wire_column._num_buckets)
+    with ops.Graph().as_default():
+      predictions = fc.make_linear_model({
+          wire_column.name: sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=('marlo', 'skywalker', 'omar'),
+              dense_shape=(2, 2))
+      }, (wire_column,))
+      bias = get_linear_model_bias()
+      wire_var = get_linear_model_column_var(wire_column)
+      with _initialized_session():
+        self.assertAllClose((0.,), bias.eval())
+        self.assertAllClose(((0.,), (0.,), (0.,)), wire_var.eval())
+        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        wire_var.assign(((1.,), (2.,), (3.,))).eval()
+        # 'marlo' -> 2: wire_var[2] = 3
+        # 'skywalker' -> None, 'omar' -> 0: wire_var[0] = 1
+        self.assertAllClose(((3.,), (1.,)), predictions.eval())
 
 
 if __name__ == '__main__':
