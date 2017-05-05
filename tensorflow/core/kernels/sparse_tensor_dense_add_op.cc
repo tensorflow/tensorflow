@@ -47,16 +47,26 @@ class SparseTensorDenseAddOp : public OpKernel {
                     "Input a_indices should be a matrix but received shape: ",
                     a_indices_t->shape().DebugString()));
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(a_values_t->shape()) &&
-                 TensorShapeUtils::IsVector(a_shape_t->shape()),
+        ctx,
+        TensorShapeUtils::IsVector(a_values_t->shape()) &&
+            TensorShapeUtils::IsVector(a_shape_t->shape()),
         errors::InvalidArgument("Inputs a_values and a_shape should be vectors "
                                 "but received shapes: ",
                                 a_values_t->shape().DebugString(), " and ",
                                 a_shape_t->shape().DebugString()));
-    OP_REQUIRES(ctx, a_shape_t->NumElements() == b->dims(),
-                errors::InvalidArgument(
-                    "Two operands have different dimensions; received: ",
-                    a_shape_t->NumElements(), " and ", b->dims()));
+    OP_REQUIRES(
+        ctx, a_shape_t->NumElements() == b->dims(),
+        errors::InvalidArgument("Two operands have different ranks; received: ",
+                                a_shape_t->NumElements(), " and ", b->dims()));
+    const auto a_shape_flat = a_shape_t->flat<Index>();
+    for (int i = 0; i < b->dims(); ++i) {
+      OP_REQUIRES(
+          ctx, a_shape_flat(i) == b->dim_size(i),
+          errors::InvalidArgument(
+              "Dimension ", i,
+              " does not equal (no broadcasting is supported): sparse side ",
+              a_shape_flat(i), " vs dense side ", b->dim_size(i)));
+    }
 
     Tensor *out_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, b->shape(), &out_t));
@@ -82,8 +92,9 @@ class SparseTensorDenseAddOp : public OpKernel {
       NDIMS_CASE(4);
       NDIMS_CASE(5);
       default:
-        OP_REQUIRES(ctx, false, errors::InvalidArgument(
-                                    "Only tensors with ranks between 1 and 5 "
+        OP_REQUIRES(
+            ctx, false,
+            errors::InvalidArgument("Only tensors with ranks between 1 and 5 "
                                     "are currently supported.  Tensor rank: ",
                                     ndims));
 #undef NDIMS_CASE

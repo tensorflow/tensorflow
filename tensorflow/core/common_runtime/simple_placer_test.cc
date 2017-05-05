@@ -66,7 +66,7 @@ class DummyOp : public OpKernel {
 class FakeDevice : public Device {
  private:
   explicit FakeDevice(const DeviceAttributes& device_attributes)
-      : Device(nullptr, device_attributes, nullptr) {}
+      : Device(nullptr, device_attributes) {}
 
  public:
   Status Sync() override { return errors::Unimplemented("FakeDevice::Sync()"); }

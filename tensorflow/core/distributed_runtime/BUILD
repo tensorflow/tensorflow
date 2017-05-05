@@ -77,7 +77,6 @@ cc_library(
     ],
     deps = [
         ":graph_mgr",
-        ":rendezvous_mgr_interface",
         ":worker_cache",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:protos_all_cc",
@@ -92,9 +91,9 @@ cc_library(
     deps = [
         ":graph_mgr",
         ":worker_session",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
     ],
 )
 
@@ -237,6 +236,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
     ],
 )

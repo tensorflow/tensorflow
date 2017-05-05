@@ -23,9 +23,9 @@ import itertools
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops.bijectors.affine import Affine
-from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_scalar_congruency
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.distributions.bijector_test_util import assert_scalar_congruency
 from tensorflow.python.platform import test
 
 
