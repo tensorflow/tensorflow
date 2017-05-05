@@ -148,38 +148,6 @@ struct FillFunctor<CPUDevice, T> {
   }
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-namespace Eigen {
-namespace internal {
-
-template <typename T>
-struct scalar_const_op {
-  const T val;
-
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-  scalar_const_op(const scalar_const_op & x)
-      : val(x.val) {}
-
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE scalar_const_op(const T v) : val(v) {}
-
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()() const {
-    return val;
-  }
-};
-}
-}
-
-// Partial specialization of FillFunctor<Device=SYCLDevice, T>.
-template <typename T>
-struct FillFunctor<SYCLDevice, T> {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
-                  T in) {
-    Eigen::internal::scalar_const_op<T> f(in);
-    To32Bit(out).device(d) = To32Bit(out).nullaryExpr(f);
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
-
 }  // end namespace functor
 
 template <typename Device, typename T>
@@ -211,6 +179,18 @@ class FillOp : public OpKernel {
 };
 
 #ifdef TENSORFLOW_USE_SYCL
+
+namespace functor {
+// Partial specialization of FillFunctor<Device=SYCLDevice, T>.
+template <typename T>
+struct FillFunctor<SYCLDevice, T> {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat out,
+                  typename TTypes<T>::ConstScalar in) {
+    out.device(d) = out.constant(in());
+  }
+};
+}
+
 template <typename T>
 class FillOp<SYCLDevice, T> : public OpKernel {
  public:
@@ -224,12 +204,6 @@ class FillOp<SYCLDevice, T> : public OpKernel {
                                 Tdims.shape().DebugString()));
     const Tensor& Tvalue = context->input(1);
 
-    T data_host;
-    auto device = context->eigen_sycl_device();
-    auto size = sizeof(T);
-    auto src_ptr = GetBase(&Tvalue);
-    device.memcpyDeviceToHost(&data_host, static_cast<const T *>(src_ptr), size);
-
     OP_REQUIRES(context, IsLegacyScalar(Tvalue.shape()),
                 errors::InvalidArgument("value must be a scalar, got shape ",
                                         Tvalue.shape().DebugString()));
@@ -242,7 +216,7 @@ class FillOp<SYCLDevice, T> : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
     functor::FillFunctor<SYCLDevice, T> functor;
     functor(context->eigen_device<SYCLDevice>(), out->flat<T>(),
-            data_host);
+            Tvalue.scalar<T>());
   }
 };
 #endif // TENSORFLOW_USE_SYCL
@@ -262,13 +236,21 @@ REGISTER_KERNEL(CPU, quint8);
 #undef REGISTER_CPU_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL(SYCL, float);
-REGISTER_KERNEL(SYCL, double);
-REGISTER_KERNEL(SYCL, uint8);
-REGISTER_KERNEL(SYCL, int8);
-REGISTER_KERNEL(SYCL, uint16);
-REGISTER_KERNEL(SYCL, int16);
-REGISTER_KERNEL(SYCL, int64);
+#define REGISTER_KERNEL_SYCL(D, TYPE)                    \
+  REGISTER_KERNEL_BUILDER(Name("Fill")                   \
+                              .Device(DEVICE_##D)        \
+                              .TypeConstraint<TYPE>("T") \
+                              .HostMemory("value")       \
+                              .HostMemory("dims"),       \
+                          FillOp<D##Device, TYPE>);
+
+REGISTER_KERNEL_SYCL(SYCL, float);
+REGISTER_KERNEL_SYCL(SYCL, double);
+REGISTER_KERNEL_SYCL(SYCL, uint8);
+REGISTER_KERNEL_SYCL(SYCL, int8);
+REGISTER_KERNEL_SYCL(SYCL, uint16);
+REGISTER_KERNEL_SYCL(SYCL, int16);
+REGISTER_KERNEL_SYCL(SYCL, int64);
 
 REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_SYCL)
@@ -277,6 +259,7 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
                             .HostMemory("value")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32>);
+#undef REGISTER_KERNEL_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
