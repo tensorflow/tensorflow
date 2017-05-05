@@ -385,7 +385,7 @@ fi
 
 # Append CC optimization flags to bazel.rc
 for opt in $CC_OPT_FLAGS; do
-  write_to_bazelrc 'build:opt --cxxopt=$opt --copt=$opt'
+  write_to_bazelrc "build:opt --cxxopt=$opt --copt=$opt"
 done
 
 # Run the gen_git_source to create links where bazel can track dependencies for
