@@ -59,22 +59,6 @@ class LocalService : public Service {
       const Shape& shape, int device_ordinal,
       bool allocate_space_for_deep_copy);
 
-  // A description of a computation to compile using CompileAheadOfTime.
-  struct AheadOfTimeComputationInstance {
-    ComputationHandle computation;
-    std::vector<const Shape*> argument_layouts;
-    const Shape* result_layout = nullptr;
-  };
-
-  // Compiles a list of computations for ahead-of-time execution.  This is
-  // intended for use in static compilation.  See
-  // |LocalClient::CompileAheadOfTime| for additional details.
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      const tensorflow::gtl::ArraySlice<AheadOfTimeComputationInstance>
-          computations,
-      const AotCompilationOptions& Options);
-
   // Builds an Executable with the given argument layouts and options. If
   // result_layout is non-null, then the executable is compiled to produce a
   // result of the given layout.

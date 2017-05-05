@@ -180,20 +180,24 @@ Service::Service(std::unique_ptr<Backend> execute_backend,
                  std::unique_ptr<Backend> compute_constant_backend)
     : execute_backend_(std::move(execute_backend)),
       compute_constant_backend_(std::move(compute_constant_backend)) {
-  LOG(INFO) << Printf(
-      "XLA service %p executing computations on platform %s. Devices:", this,
-      execute_backend_->platform()->Name().c_str());
-  for (int i = 0; i < execute_backend_->device_count(); ++i) {
-    if (execute_backend_->device_ordinal_supported(i)) {
-      se::StreamExecutor* executor =
-          execute_backend_->stream_executor(i).ValueOrDie();
-      const auto& description = executor->GetDeviceDescription();
-      LOG(INFO) << Printf("  StreamExecutor device (%d): %s, %s", i,
-                          description.name().c_str(),
-                          description.platform_version().c_str());
-    } else {
-      LOG(INFO) << Printf("  StreamExecutor device (%d) not supported", i);
+  if (execute_backend_) {
+    LOG(INFO) << Printf(
+        "XLA service %p executing computations on platform %s. Devices:", this,
+        execute_backend_->platform()->Name().c_str());
+    for (int i = 0; i < execute_backend_->device_count(); ++i) {
+      if (execute_backend_->device_ordinal_supported(i)) {
+        se::StreamExecutor* executor =
+            execute_backend_->stream_executor(i).ValueOrDie();
+        const auto& description = executor->GetDeviceDescription();
+        LOG(INFO) << Printf("  StreamExecutor device (%d): %s, %s", i,
+                            description.name().c_str(),
+                            description.platform_version().c_str());
+      } else {
+        LOG(INFO) << Printf("  StreamExecutor device (%d) not supported", i);
+      }
     }
+  } else {
+    VLOG(1) << "XLA compile-only service constructed";
   }
 }
 

@@ -261,38 +261,6 @@ tensorflow::Status LocalClient::ResolveArguments(
                                           argument_ptrs);
 }
 
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-LocalClient::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AheadOfTimeComputationInstance>
-        computations,
-    const AotCompilationOptions& options) {
-  std::vector<LocalService::AheadOfTimeComputationInstance> service_instances;
-  service_instances.reserve(computations.size());
-  for (const AheadOfTimeComputationInstance& instance : computations) {
-    service_instances.push_back({});
-    LocalService::AheadOfTimeComputationInstance& service_instance =
-        service_instances.back();
-    TF_RET_CHECK(instance.computation != nullptr);
-    service_instance.computation = instance.computation->handle();
-    service_instance.argument_layouts = instance.argument_layouts;
-    service_instance.result_layout = instance.result_layout;
-  }
-  return local_service_->CompileAheadOfTime(service_instances, options);
-}
-
-int64 LocalClient::PointerSizeForTriple(tensorflow::StringPiece target_triple) {
-  llvm::Triple triple(
-      llvm::Triple::normalize(llvm_ir::AsStringRef(target_triple)));
-  if (triple.isArch64Bit()) {
-    return 8;
-  } else if (triple.isArch32Bit()) {
-    return 4;
-  } else {
-    CHECK(triple.isArch16Bit());
-    return 2;
-  }
-}
-
 se::Platform* LocalClient::platform() const {
   return local_service_->backend().platform();
 }
