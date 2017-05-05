@@ -1849,7 +1849,7 @@ def separable_convolution2d(
   is not None, it adds a pointwise convolution that mixes channels, creating a
   variable called `pointwise_weights`. Then, if `normalizer_fn` is None,
   it adds bias to the result, creating a variable called 'biases', otherwise,
-  a normalization layer could be applied. It finally applies an activation function
+  the `normalizer_fn` is applied. It finally applies an activation function
   to produce the end result.
 
   Args:
