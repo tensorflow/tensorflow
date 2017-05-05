@@ -195,7 +195,7 @@ class RNNCellTest(test.TestCase):
         self.assertEqual(len(res), 2)
 
   def testBasicLSTMCellDimension0Error(self):
-    """Tests that dimesion 0 in both(x and m) shape must be equal."""
+    """Tests that dimension 0 in both(x and m) shape must be equal."""
     with self.test_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
