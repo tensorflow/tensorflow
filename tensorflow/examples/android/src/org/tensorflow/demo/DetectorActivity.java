@@ -124,7 +124,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
+    tracker = new MultiBoxTracker(this);
 
     if (USE_YOLO) {
       detector =
