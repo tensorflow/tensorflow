@@ -25,7 +25,7 @@ SYCLAllocator::~SYCLAllocator() {
   }
 }
 
-string SYCLAllocator::Name() { return "sycl"; }
+string SYCLAllocator::Name() { return "device:SYCL"; }
 
 void *SYCLAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   assert(sycl_device_);
