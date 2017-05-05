@@ -111,6 +111,55 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                              [0, 1, 0, 1],
                              [0, 1, 1, 1]])
 
+  def test_bilinear(self):
+    with self.test_session():
+      image = constant_op.constant(
+          [[0, 0, 0, 0, 0],
+           [0, 1, 1, 1, 0],
+           [0, 1, 0, 1, 0],
+           [0, 1, 1, 1, 0],
+           [0, 0, 0, 0, 0]],
+          dtypes.float32)
+      # The following result matches:
+      # >>> scipy.ndimage.rotate(image, 45, order=1, reshape=False)
+      # which uses spline interpolation of order 1, equivalent to bilinear
+      # interpolation.
+      self.assertAllClose(
+          image_ops.rotate(image, np.pi / 4.0, interpolation="BILINEAR").eval(),
+          [[0.000, 0.000, 0.343, 0.000, 0.000],
+           [0.000, 0.586, 0.914, 0.586, 0.000],
+           [0.343, 0.914, 0.000, 0.914, 0.343],
+           [0.000, 0.586, 0.914, 0.586, 0.000],
+           [0.000, 0.000, 0.343, 0.000, 0.000]],
+          atol=0.001)
+      self.assertAllClose(
+          image_ops.rotate(image, np.pi / 4.0, interpolation="NEAREST").eval(),
+          [[0, 0, 1, 0, 0],
+           [0, 1, 1, 1, 0],
+           [1, 1, 0, 1, 1],
+           [0, 1, 1, 1, 0],
+           [0, 0, 1, 0, 0]])
+
+  def test_bilinear_uint8(self):
+    with self.test_session():
+      image = constant_op.constant(
+          np.asarray(
+              [[0.0, 0.0, 0.0, 0.0, 0.0],
+               [0.0, 255, 255, 255, 0.0],
+               [0.0, 255, 0.0, 255, 0.0],
+               [0.0, 255, 255, 255, 0.0],
+               [0.0, 0.0, 0.0, 0.0, 0.0]],
+              np.uint8),
+          dtypes.uint8)
+      # == np.rint((expected image above) * 255)
+      self.assertAllEqual(
+          image_ops.rotate(image, np.pi / 4.0, interpolation="BILINEAR").eval(),
+          [[0.0, 0.0, 87., 0.0, 0.0],
+           [0.0, 149, 233, 149, 0.0],
+           [87., 233, 0.0, 233, 87.],
+           [0.0, 149, 233, 149, 0.0],
+           [0.0, 0.0, 87., 0.0, 0.0]])
+
   def _test_grad(self, shape_to_test):
     with self.test_session():
       test_image_shape = shape_to_test
