@@ -1986,4 +1986,129 @@ file_parallelism: How many sstables are opened and concurrently iterated over.
 batch_size: The batch size.
 )doc");
 
+// UnorderedMap
+REGISTER_OP("MapStage")
+    .Input("key: int64")
+    .Input("values: dtypes")
+    .Attr("capacity: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(MapStage)doc");
+
+REGISTER_OP("MapGet")
+    .Input("key: int64")
+    .Output("values: dtypes")
+    .Attr("capacity: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(MapGet)doc");
+
+REGISTER_OP("MapUnstage")
+    .Input("key: int64")
+    .Output("values: dtypes")
+    .Attr("capacity: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(MapUnstage)doc");
+
+REGISTER_OP("MapPopitem")
+    .Output("key: int64")
+    .Output("values: dtypes")
+    .Attr("capacity: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(MapPopitem)doc");
+
+REGISTER_OP("MapSize")
+    .Output("size: int64")
+    .Attr("capacity: int = 0")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(MapSize)doc");
+
+REGISTER_OP("MapClear")
+    .Attr("capacity: int = 0")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(MapClear)doc");
+
+
+// OrderedMap
+REGISTER_OP("OrderedMapStage")
+    .Input("key: int64")
+    .Input("values: dtypes")
+    .Attr("capacity: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(OrderedMapStage)doc");
+
+REGISTER_OP("OrderedMapGet")
+    .Input("key: int64")
+    .Output("values: dtypes")
+    .Attr("capacity: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(OrderedMapGet)doc");
+
+REGISTER_OP("OrderedMapUnstage")
+    .Input("key: int64")
+    .Output("values: dtypes")
+    .Attr("capacity: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(OrderedMapUnstage)doc");
+
+REGISTER_OP("OrderedMapPopitem")
+    .Output("key: int64")
+    .Output("values: dtypes")
+    .Attr("capacity: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(OrderedMapPopitem)doc");
+
+REGISTER_OP("OrderedMapSize")
+    .Output("size: int64")
+    .Attr("capacity: int = 0")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(OrderedMapSize)doc");
+
+REGISTER_OP("OrderedMapClear")
+    .Attr("capacity: int = 0")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(OrderedMapClear)doc");
+
 }  // namespace tensorflow

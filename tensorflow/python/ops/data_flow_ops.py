@@ -1598,6 +1598,230 @@ class StagingArea(object):
 
     return self._get_return_value(ret)
 
+class MapStagingArea(object):
+    """
+    Class for staging inputs. Similar to `StagingArea` but behaves
+    like a hashtable with support for puts, gets, pops, popitems,
+    size and clear.
+
+    Keys are int64 and the associated data is a Tensor or list of Tensors
+    """
+
+    def __init__(self, dtypes, capacity=0, ordered=False,
+                        shapes=None, names=None,
+                        shared_name=None, name="map_staging_area"):
+
+        self._dtypes = data_flow_ops._as_type_list(dtypes)
+        self._capacity = capacity
+        self._ordered = ordered
+
+        if ordered:
+            base_name = "OrderedMapStagingArea"
+
+            self._put_fn = gen_data_flow_ops.ordered_map_stage
+            self._pop_fn = gen_data_flow_ops.ordered_map_unstage
+            self._popitem_fn = gen_data_flow_ops.ordered_map_popitem
+            self._get_fn = gen_data_flow_ops.ordered_map_get
+            self._size_fn = gen_data_flow_ops.ordered_map_size
+            self._clear_fn = gen_data_flow_ops.ordered_map_clear
+        else:
+            base_name = "MapStagingArea"
+
+            self._put_fn = gen_data_flow_ops.map_stage
+            self._pop_fn = gen_data_flow_ops.map_unstage
+            self._popitem_fn = gen_data_flow_ops.map_popitem
+            self._get_fn = gen_data_flow_ops.map_get
+            self._size_fn = gen_data_flow_ops.map_size
+            self._clear_fn = gen_data_flow_ops.map_clear
+
+        if shared_name is None:
+            self._name = (ops.get_default_graph()
+                        .unique_name(base_name))
+        elif isinstance(shared_name, six.string_types):
+            self._name = shared_name
+        else:
+            raise ValueError("shared_name must be a string")
+
+        with ops.name_scope("%s_root" % self._name):
+            self._coloc_op = control_flow_ops.no_op()
+
+    def _scope_values(self, data):
+        if isinstance(data, collections.Sequence):
+            return data
+        elif isinstance(data, collections.Mapping):
+            return data.values()
+        else:
+            return [data]
+
+    @property
+    def dtypes(self):
+        return self._dtypes
+
+    @property
+    def name(self):
+        return self._name
+
+    def put(self, key, data, name=None):
+        """
+        Create an op that stores the (key, data) pair in the staging area
+
+        Args:
+            key: Key associated with the data
+            data: Tensor (or a tuple of Tensors) to place
+                    into the staging area.
+            name: A name for the operation (optional)
+
+        Returns:
+            The created op
+
+        Raises:
+            ValueError: If the number or type of inputs don't match the staging area.
+        """
+
+        scope_vals = self._scope_values(data)
+        op_name = "%s_put" % self._name
+
+        with ops.name_scope(name, op_name, scope_vals) as scope:
+            if not len(data) == len(self._dtypes):
+                raise ValueError("Insufficient data values '{}' provided "
+                                "'{}' expected.".format(
+                                    len(data), len(self._dtypes)))
+
+
+            for i, (value, dtype) in enumerate(zip(data, self._dtypes)):
+                print value, value.dtype, dtype
+                if not value.dtype == dtype:
+                    raise ValueError("DataType '{}' with value '{}' "
+                                    "does not match "
+                                    "'{}' and '{}'".format(
+                                        i, value, value.dtype, dtype))
+
+            with ops.colocate_with(self._coloc_op):
+                return self._put_fn(key, data, shared_name=self._name,
+                                     name=scope,
+                                     capacity=self._capacity)
+
+    def get(self, key, name=None):
+        """
+        Gets data associated with the key from the staging area.
+
+        If the staging area is empty when this operation executes,
+        it will block until there is an element to dequeue.
+
+        Args:
+            key: Key associated with the required data
+            name: A name for the operation (optional)
+
+        Returns:
+            The created op
+        """
+
+        if name is None:
+            name = "%s_pop" % self._name
+
+        with ops.colocate_with(self._coloc_op):
+            result = self._get_fn(key, shared_name=self._name,
+                            dtypes=self._dtypes,
+                            name=name,
+                            capacity=self._capacity)
+
+            if not control_flow_ops.no_op().device == self._coloc_op.device:
+                result = [array_ops.identity(r) for r in result]
+
+            return result
+
+
+    def pop(self, key, name=None):
+        """
+        Removes and returns data associated with
+        the key from the staging area.
+
+        If the staging area is empty when this operation executes,
+        it will block until there is an element to dequeue.
+
+        Args:
+            key: Key associated with the required data
+            name: A name for the operation (optional)
+
+        Returns:
+            The created op
+        """
+        if name is None:
+            name = "%s_pop" % self._name
+
+        with ops.colocate_with(self._coloc_op):
+            result = self._pop_fn(key, shared_name=self._name,
+                            dtypes=self._dtypes,
+                            name=name,
+                            capacity=self._capacity)
+
+            if not control_flow_ops.no_op().device == self._coloc_op.device:
+                result = [array_ops.identity(r) for r in result]
+
+            return result
+
+    def popitem(self, name=None):
+        """
+        Removes and returns a random (key, data) pair from the staging area.
+
+        If the staging area is empty when this operation executes,
+        it will block until there is an element to dequeue.
+
+        Args:
+            key: Key associated with the required data
+            name: A name for the operation (optional)
+
+        Returns:
+            The created op
+        """
+        if name is None:
+            name = "%s_popitem" % self._name
+
+        with ops.colocate_with(self._coloc_op):
+            result = self._popitem_fn(shared_name=self._name,
+                                    dtypes=self._dtypes,
+                                    name=name,
+                                    capacity=self._capacity)
+
+            if not control_flow_ops.no_op().device == self._coloc_op.device:
+                result = [array_ops.identity(r) for r in result]
+
+            return result
+
+    def size(self, name=None):
+        """
+        Returns the number of elements in the staging area.
+
+        Args:
+            name: A name for the operation (optional)
+
+        Returns:
+            The created op
+        """
+        if name is None:
+            name = "%s_size" % self._name
+
+        return self._size_fn(shared_name=self._name,
+                            name=name,
+                            capacity=self._capacity)
+
+    def clear(self, name=None):
+        """
+        Clears the staging area.
+
+        Args:
+            name: A name for the operation (optional)
+
+        Returns:
+            The created op
+        """
+        if name is None:
+            name = "%s_clear" % self._name
+
+        return self._clear_fn(shared_name=self._name,
+                            name=name,
+                            capacity=self._capacity)
+
 
 class RecordInput(object):
   """RecordInput asynchronously reads and randomly yields TFRecords.
