@@ -83,12 +83,14 @@ class BasicRNNCell(RNNCell):
 class GRUCell(RNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078)."""
 
-  def __init__(self, num_units, input_size=None, activation=tanh, reuse=None):
+  def __init__(self, num_units, input_size=None, activation=tanh, reuse=None,
+               initializer=None):
     super(GRUCell, self).__init__(_reuse=reuse)
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated.", self)
     self._num_units = num_units
     self._activation = activation
+    self._initializer = initializer
 
   @property
   def state_size(self):
@@ -100,11 +102,11 @@ class GRUCell(RNNCell):
 
   def call(self, inputs, state):
     """Gated recurrent unit (GRU) with nunits cells."""
-    with vs.variable_scope("gates"):  # Reset gate and update gate.
+    with vs.variable_scope("gates", initializer=self._initializer):  # Reset gate and update gate.
       # We start with bias of 1.0 to not reset and not update.
       value = sigmoid(_linear([inputs, state], 2 * self._num_units, True, 1.0))
       r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
-    with vs.variable_scope("candidate"):
+    with vs.variable_scope("candidate", initializer=self._initializer):
       c = self._activation(_linear([inputs, r * state], self._num_units, True))
     new_h = u * state + (1 - u) * c
     return new_h, new_h
@@ -843,7 +845,7 @@ class EmbeddingWrapper(RNNCell):
 class MultiRNNCell(RNNCell):
   """RNN cell composed sequentially of multiple simple cells."""
 
-  def __init__(self, cells, state_is_tuple=True):
+  def __init__(self, cells, state_is_tuple=True, initializer=None):
     """Create a RNN cell composed sequentially of a number of RNNCells.
 
     Args:
@@ -866,6 +868,7 @@ class MultiRNNCell(RNNCell):
 
     self._cells = cells
     self._state_is_tuple = state_is_tuple
+    self._initializer = initializer
     if not state_is_tuple:
       if any(nest.is_sequence(c.state_size) for c in self._cells):
         raise ValueError("Some cells return tuples of states, but the flag "
@@ -898,7 +901,7 @@ class MultiRNNCell(RNNCell):
     cur_inp = inputs
     new_states = []
     for i, cell in enumerate(self._cells):
-      with vs.variable_scope("cell_%d" % i):
+      with vs.variable_scope("cell_%d" % i, initializer=self._initializer):
         if self._state_is_tuple:
           if not nest.is_sequence(state):
             raise ValueError(
