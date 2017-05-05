@@ -129,6 +129,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -654,6 +655,44 @@ def categorical_column_with_vocabulary_list(
   return _VocabularyListCategoricalColumn(
       key=key, vocabulary_list=tuple(vocabulary_list), dtype=dtype,
       default_value=default_value)
+
+
+def categorical_column_with_identity(key, num_buckets, default_value=None):
+  """A `_CategoricalColumn` that returns identity values.
+
+  Use this when your inputs are integers in the range `[0, num_buckets)`. Values
+  outside this range will result in `default_value` if specified, otherwise it
+  will fail.
+
+  Inputs can be either `Tensor` or `SparseTensor`.
+  ```
+
+  Args:
+    key: A unique string identifying the input feature. It is used as the
+      column name and the dictionary key for feature parsing configs, feature
+      `Tensor` objects, and feature columns.
+    num_buckets: Range of inputs and outputs is `[0, num_buckets)`.
+    default_value: If `None`, this column's graph operations will fail for
+      out-of-range inputs. Otherwise, this value must be in the range
+      `[0, num_buckets)`, and will replace inputs in that range.
+
+  Returns:
+    A `_CategoricalColumn` that returns identity values.
+
+  Raises:
+    ValueError: if `num_buckets` is less than one.
+    ValueError: if `default_value` is not in range `[0, num_buckets)`.
+  """
+  if num_buckets < 1:
+    raise ValueError(
+        'num_buckets {} < 1, column_name {}'.format(num_buckets, key))
+  if (default_value is not None) and (
+      (default_value < 0) or (default_value >= num_buckets)):
+    raise ValueError(
+        'default_value {} not in range [0, {}), column_name {}'.format(
+            default_value, num_buckets, key))
+  return _IdentityCategoricalColumn(
+      key=key, num_buckets=num_buckets, default_value=default_value)
 
 
 class _FeatureColumn(object):
@@ -1378,6 +1417,69 @@ class _VocabularyListCategoricalColumn(
   def _num_buckets(self):
     """Returns number of buckets in this sparse feature."""
     return len(self.vocabulary_list)
+
+  def _get_sparse_tensors(
+      self, inputs, weight_collections=None, trainable=None):
+    return _CategoricalColumn.IdWeightPair(inputs.get(self), None)
+
+
+class _IdentityCategoricalColumn(
+    _CategoricalColumn,
+    collections.namedtuple('_IdentityCategoricalColumn', (
+        'key', 'num_buckets', 'default_value'
+    ))):
+
+  """See `categorical_column_with_identity`."""
+
+  @property
+  def name(self):
+    return self.key
+
+  @property
+  def _parse_example_config(self):
+    return {self.key: parsing_ops.VarLenFeature(dtypes.int64)}
+
+  def _transform_feature(self, inputs):
+    input_tensor = _to_sparse_input(inputs.get(self.key))
+
+    if not input_tensor.dtype.is_integer:
+      raise ValueError(
+          'Invalid input, not integer. key: {} dtype: {}'.format(
+              self.key, input_tensor.dtype))
+
+    values = math_ops.to_int64(input_tensor.values, name='values')
+    num_buckets = math_ops.to_int64(self.num_buckets, name='num_buckets')
+    zero = math_ops.to_int64(0, name='zero')
+    if self.default_value is None:
+      # Fail if values are out-of-range.
+      assert_less = check_ops.assert_less(
+          values, num_buckets, data=(values, num_buckets),
+          name='assert_less_than_num_buckets')
+      assert_greater = check_ops.assert_greater_equal(
+          values, zero, data=(values,),
+          name='assert_greater_or_equal_0')
+      with ops.control_dependencies((assert_less, assert_greater)):
+        values = array_ops.identity(values)
+    else:
+      # Assign default for out-of-range values.
+      values = array_ops.where(
+          math_ops.logical_or(
+              values < zero, values >= num_buckets, name='out_of_range'),
+          array_ops.fill(
+              dims=array_ops.shape(values),
+              value=math_ops.to_int64(self.default_value),
+              name='default_values'),
+          values)
+
+    return sparse_tensor_lib.SparseTensor(
+        indices=input_tensor.indices,
+        values=values,
+        dense_shape=input_tensor.dense_shape)
+
+  @property
+  def _num_buckets(self):
+    """Returns number of buckets in this sparse feature."""
+    return self.num_buckets
 
   def _get_sparse_tensors(
       self, inputs, weight_collections=None, trainable=None):

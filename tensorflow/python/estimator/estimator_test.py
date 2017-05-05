@@ -436,13 +436,13 @@ class EstimatorTrainTest(test.TestCase):
         model_dir=model_dir1,
         model_fn=model_fn_global_step_incrementer)
     est1.train(dummy_input_fn, steps=5)
-    
+
     # We have to clear the cache before we can rename the directory,
     # otherwise open file handles will prevent the delete on Windows.
     writer_cache.FileWriterCache.clear()
     model_dir2 = os.path.join(tmpdir, 'model_dir2')
     os.renames(model_dir1, model_dir2)
-    
+
     est2 = estimator.Estimator(
         model_dir=model_dir2,
         model_fn=model_fn_global_step_incrementer)

@@ -935,11 +935,11 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
           ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
   except errors.OpError as e:
     # It's ok if the file cannot be read
-    logging.warning("%s: %s" % (type(e).__name__, e))
+    logging.warning("%s: %s", type(e).__name__, e)
     logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
     return None
   except text_format.ParseError as e:
-    logging.warning("%s: %s" % (type(e).__name__, e))
+    logging.warning("%s: %s", type(e).__name__, e)
     logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
     return None
   finally:

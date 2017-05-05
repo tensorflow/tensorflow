@@ -28,10 +28,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
+
+using ::testing::_;
 
 class HloRematerializationTest : public HloTestBase {
  protected:
@@ -145,11 +147,9 @@ TEST_F(HloRematerializationTest, SingleComputation) {
   // Find and save the original broadcast instruction which should be
   // rematerialized.
   const HloInstruction* slice = computation->root_instruction();
-  ASSERT_EQ(HloOpcode::kSlice, slice->opcode());
+  ASSERT_THAT(slice, op::Slice(op::Concatenate(op::Broadcast(_), _)));
   const HloInstruction* concat = slice->operand(0);
-  ASSERT_EQ(HloOpcode::kConcatenate, concat->opcode());
   const HloInstruction* bcast = concat->operand(0);
-  ASSERT_EQ(HloOpcode::kBroadcast, bcast->opcode());
 
   SequentialHloOrdering::HloModuleSequence sequence;
   // Computation requires 16KB without rematerialization, but uses only 12KB
@@ -165,8 +165,7 @@ TEST_F(HloRematerializationTest, SingleComputation) {
 
   // The broadcast should have been rematerialized.
   const HloInstruction* remat_bcast = concat->operand(0);
-  EXPECT_EQ(HloOpcode::kBroadcast, remat_bcast->opcode());
-  EXPECT_NE(bcast, remat_bcast);
+  EXPECT_THAT(remat_bcast, op::Broadcast(::testing::Ne(bcast)));
 
   // The rematerialized broadcast should be immediate before the concat in the
   // sequence.
