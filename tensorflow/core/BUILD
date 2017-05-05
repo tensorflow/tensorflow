@@ -154,6 +154,7 @@ CORE_PROTO_SRCS = [
     "framework/versions.proto",
     "lib/core/error_codes.proto",
     "protobuf/config.proto",
+    "protobuf/cluster.proto",
     "protobuf/debug.proto",
     "protobuf/queue_runner.proto",
     "protobuf/rewriter_config.proto",

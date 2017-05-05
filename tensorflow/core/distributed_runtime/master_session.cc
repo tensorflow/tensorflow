@@ -36,11 +36,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -528,6 +530,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       c->req->set_is_partial(is_partial_);
       c->req->set_is_last_partial_run(is_last_partial_run);
     }
+    c->req->set_session_handle(session_handle_);
     c->req->set_graph_handle(part.graph_handle);
     c->req->set_step_id(step_id);
     *c->req->mutable_exec_opts() = exec_opts;
@@ -871,6 +874,7 @@ void MasterSession::ReffedClientGraph::DeregisterPartitions() {
     // The graph handle may be empty if we failed during partition registration.
     if (!part.graph_handle.empty()) {
       Call* c = new Call;
+      c->req.set_session_handle(session_handle_);
       c->req.set_graph_handle(part.graph_handle);
       // NOTE(mrry): We must capture `worker_cache_` since `this`
       // could be deleted before the callback is called.
@@ -973,31 +977,25 @@ string BuildGraphOptionsString(const BuildGraphOptions& opts) {
 MasterSession::MasterSession(
     const SessionOptions& opt, const MasterEnv* env,
     std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
+    std::unique_ptr<WorkerCacheInterface> worker_cache,
+    std::unique_ptr<DeviceSet> device_set,
     StatsPublisherFactory stats_publisher_factory)
     : session_opts_(opt),
       env_(env),
       handle_(strings::FpToString(random::New64())),
       remote_devs_(std::move(remote_devs)),
+      worker_cache_(std::move(worker_cache)),
+      devices_(std::move(device_set)),
       stats_publisher_factory_(std::move(stats_publisher_factory)),
       graph_version_(0),
       run_graphs_(5),
       partial_run_graphs_(5) {
   UpdateLastAccessTime();
+  CHECK(devices_) << "device_set was null!";
 
   VLOG(1) << "Session " << handle_ << " #local " << env->local_devices.size()
           << " #remote " << remote_devs_->size();
-  for (auto&& d : *remote_devs_) {
-    devices_.AddDevice(d.get());
-  }
-  int num_local_devices = 0;
-  for (Device* d : env->local_devices) {
-    devices_.AddDevice(d);
-    if (num_local_devices == 0) {
-      // Uses the first local device as the client device.
-      devices_.set_client_device(d);
-    }
-    num_local_devices++;
-  }
+
   LOG(INFO) << "Start master session " << handle_
             << " with config: " << std::endl
             << session_opts_.config.DebugString();
@@ -1012,7 +1010,8 @@ void MasterSession::UpdateLastAccessTime() {
   last_access_time_usec_.store(Env::Default()->NowMicros());
 }
 
-Status MasterSession::Create(GraphDef* graph_def) {
+Status MasterSession::Create(GraphDef* graph_def,
+                             const WorkerCacheFactoryOptions& options) {
   if (session_opts_.config.graph_options().place_pruned_graph()) {
     // TODO(b/29900832): Fix this or remove the option.
     LOG(WARNING) << "Distributed session does not support the "
@@ -1020,15 +1019,91 @@ Status MasterSession::Create(GraphDef* graph_def) {
     session_opts_.config.mutable_graph_options()->set_place_pruned_graph(false);
   }
 
-  SimpleGraphExecutionStateOptions options;
-  options.device_set = &devices_;
-  options.session_options = &session_opts_;
+  SimpleGraphExecutionStateOptions execution_options;
+  execution_options.device_set = devices_.get();
+  execution_options.session_options = &session_opts_;
   {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForBaseGraph(
-        graph_def, options, &execution_state_));
+        graph_def, execution_options, &execution_state_));
+  }
+  if (options.cluster_def != nullptr) {
+    return CreateWorkerSessions(options);
   }
   return Status::OK();
+}
+
+Status MasterSession::CreateWorkerSessions(
+    const WorkerCacheFactoryOptions& options) {
+  CHECK(worker_cache_) << "CreateWorkerSessions should be called only with "
+                       << "dynamic cluster membership.";
+  std::vector<string> worker_names;
+  worker_cache_->ListWorkers(&worker_names);
+
+  struct WorkerGroup {
+    // The worker name. (Not owned.)
+    const string* name;
+
+    // The worker referenced by name. (Not owned.)
+    WorkerInterface* worker = nullptr;
+
+    // Request and responses used for a given worker.
+    CreateWorkerSessionRequest request;
+    CreateWorkerSessionResponse response;
+    Status status = Status::OK();
+  };
+  BlockingCounter done(worker_names.size());
+  std::vector<WorkerGroup> workers(worker_names.size());
+
+  // Release the workers.
+  auto cleanup = gtl::MakeCleanup([this, &workers] {
+    for (auto&& worker_group : workers) {
+      if (worker_group.worker != nullptr) {
+        worker_cache_->ReleaseWorker(*worker_group.name, worker_group.worker);
+      }
+    }
+  });
+
+  Status status = Status::OK();
+  // Create all the workers & kick off the computations.
+  for (size_t i = 0; i < worker_names.size(); ++i) {
+    workers[i].name = &worker_names[i];
+    workers[i].worker = worker_cache_->CreateWorker(worker_names[i]);
+    workers[i].request.set_session_handle(handle_);
+    *workers[i].request.mutable_server_def()->mutable_cluster() =
+        *options.cluster_def;
+    workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
+
+    DeviceNameUtils::ParsedName name;
+    if (!DeviceNameUtils::ParseFullName(worker_names[i], &name)) {
+      status = errors::Internal("Could not parse name ", worker_names[i]);
+      LOG(WARNING) << status;
+      return status;
+    }
+    if (!name.has_job || !name.has_task) {
+      status = errors::Internal("Incomplete worker name ", worker_names[i]);
+      LOG(WARNING) << status;
+      return status;
+    }
+
+    workers[i].request.mutable_server_def()->set_job_name(name.job);
+    workers[i].request.mutable_server_def()->set_task_index(name.task);
+  }
+
+  for (size_t i = 0; i < worker_names.size(); ++i) {
+    auto cb = [i, &workers, &done](const Status& s) {
+      workers[i].status = s;
+      done.DecrementCount();
+    };
+    workers[i].worker->CreateWorkerSessionAsync(&workers[i].request,
+                                                &workers[i].response, cb);
+  }
+
+  done.Wait();
+  for (size_t i = 0; i < workers.size(); ++i) {
+    status.Update(workers[i].status);
+  }
+  return status;
 }
 
 Status MasterSession::Extend(const ExtendSessionRequest* req,
@@ -1060,6 +1135,13 @@ Status MasterSession::Extend(const ExtendSessionRequest* req,
   return Status::OK();
 }
 
+WorkerCacheInterface* MasterSession::get_worker_cache() const {
+  if (worker_cache_) {
+    return worker_cache_.get();
+  }
+  return env_->worker_cache;
+}
+
 Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
                                 ReffedClientGraph** rcg, bool is_partial) {
   const uint64 hash = HashBuildGraphOptions(opts);
@@ -1083,11 +1165,11 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
               << "\n";
       std::unique_ptr<SimpleClientGraph> client_graph;
       TF_RETURN_IF_ERROR(execution_state_->BuildGraph(opts, &client_graph));
+      WorkerCacheInterface* worker_cache = get_worker_cache();
       auto entry = new ReffedClientGraph(
           handle_, opts, std::move(client_graph), session_opts_,
           stats_publisher_factory_, execution_state_.get(), is_partial,
-          env_->worker_cache);
-
+          worker_cache);
       iter = m->insert({hash, entry}).first;
       VLOG(1) << "Preparing to execute new graph";
     }
@@ -1162,6 +1244,8 @@ Status MasterSession::Run(CallOptions* opts, const RunStepRequestWrapper& req,
       return errors::FailedPrecondition("Session is closed.");
     }
     ++num_running_;
+    // Note: all code paths must eventually call MarkRunCompletion()
+    // in order to appropriate decrement the num_running_ counter.
   }
   Status status;
   if (!req.partial_run_handle().empty()) {
@@ -1169,14 +1253,16 @@ Status MasterSession::Run(CallOptions* opts, const RunStepRequestWrapper& req,
   } else {
     status = DoRunWithLocalExecution(opts, req, resp);
   }
-  {
-    mutex_lock l(mu_);
-    --num_running_;
-    if (num_running_ == 0) {
-      num_running_is_zero_.notify_all();
-    }
-  }
   return status;
+}
+
+// Decrements num_running_ and broadcasts if num_running_ is zero.
+void MasterSession::MarkRunCompletion() {
+  mutex_lock l(mu_);
+  --num_running_;
+  if (num_running_ == 0) {
+    num_running_is_zero_.notify_all();
+  }
 }
 
 Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
@@ -1188,7 +1274,7 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
     return strings::StrCat(prefix, "_S", next_node_id_++);
   };
   popts.get_incarnation = [this](const string& name) -> int64 {
-    Device* d = devices_.FindDeviceByName(name);
+    Device* d = devices_->FindDeviceByName(name);
     if (d == nullptr) {
       return PartitionOptions::kIllegalIncarnation;
     } else {
@@ -1223,6 +1309,7 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
 Status MasterSession::DoPartialRun(CallOptions* opts,
                                    const RunStepRequestWrapper& req,
                                    MutableRunStepResponseWrapper* resp) {
+  auto cleanup = gtl::MakeCleanup([this] { MarkRunCompletion(); });
   const string& prun_handle = req.partial_run_handle();
   RunState* run_state = nullptr;
   {
@@ -1321,12 +1408,14 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     rcg->Ref();
     rcg->ProcessStats(run_state->step_id, &run_state->pss, run_state->ph.get(),
                       req.options(), resp->mutable_metadata());
+    cleanup.release();  // MarkRunCompletion called in done closure.
     rcg->CleanupPartitionsAsync(
         run_state->step_id, [this, rcg, prun_handle](const Status& s) {
           if (!s.ok()) {
             LOG(ERROR) << "Cleanup partition error: " << s;
           }
           rcg->Unref();
+          MarkRunCompletion();
         });
     mutex_lock l(mu_);
     partial_runs_.erase(prun_handle);
@@ -1368,10 +1457,10 @@ Status MasterSession::CreateDebuggerState(
 Status MasterSession::DoRunWithLocalExecution(
     CallOptions* opts, const RunStepRequestWrapper& req,
     MutableRunStepResponseWrapper* resp) {
-  VLOG(2) << "DoRunWithLocalExecution "
-          << "req: " << req.DebugString();
+  VLOG(2) << "DoRunWithLocalExecution req: " << req.DebugString();
   PerStepState pss;
   pss.start_micros = Env::Default()->NowMicros();
+  auto cleanup = gtl::MakeCleanup([this] { MarkRunCompletion(); });
 
   // Prepare.
   BuildGraphOptions bgopts;
@@ -1438,11 +1527,13 @@ Status MasterSession::DoRunWithLocalExecution(
     }
   }
   rcg->Ref();
-  rcg->CleanupPartitionsAsync(step_id, [rcg](const Status& s) {
+  cleanup.release();  // MarkRunCompletion called in done closure.
+  rcg->CleanupPartitionsAsync(step_id, [this, rcg](const Status& s) {
     if (!s.ok()) {
       LOG(ERROR) << "Cleanup partition error: " << s;
     }
     rcg->Unref();
+    MarkRunCompletion();
   });
   return s;
 }
