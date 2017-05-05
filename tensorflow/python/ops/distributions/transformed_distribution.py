@@ -21,7 +21,6 @@ import numpy as np
 
 # Bijectors must be directly imported because `remove_undocumented` prevents
 # individual file imports.
-from tensorflow.contrib.distributions.python.ops.bijectors.identity import Identity
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,6 +31,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
+from tensorflow.python.ops.distributions import identity_bijector
 from tensorflow.python.ops.distributions import util as distribution_util
 
 __all__ = [
@@ -265,7 +265,7 @@ class TransformedDistribution(distribution_lib.Distribution):
       self._empty = constant_op.constant([], dtype=dtypes.int32, name="empty")
 
       if bijector is None:
-        bijector = Identity(validate_args=validate_args)
+        bijector = identity_bijector.Identity(validate_args=validate_args)
 
       # We will keep track of a static and dynamic version of
       # self._is_{batch,event}_override. This way we can do more prior to graph

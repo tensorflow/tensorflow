@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/master.pb.h"
@@ -49,13 +50,15 @@ class MasterSession : public core::RefCounted {
   MasterSession(
       const SessionOptions& options, const MasterEnv* env,
       std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
+      std::unique_ptr<WorkerCacheInterface> worker_cache,
+      std::unique_ptr<DeviceSet> device_set,
       StatsPublisherFactory stats_publisher_factory);
 
   // Initialize the MasterSession for "def".  Must be called before Extend(),
   // Run(), or Close().
   //
   // After this method returns, `def` will no longer be valid.
-  Status Create(GraphDef* def);
+  Status Create(GraphDef* def, const WorkerCacheFactoryOptions& options);
 
   // Returns the session handle.
   const string& handle() const { return handle_; }
@@ -107,8 +110,14 @@ class MasterSession : public core::RefCounted {
 
   std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs_;
 
+  // The optional session-specific worker cluster.
+  // TODO(saeta): Convert to std::optional when available.
+  std::unique_ptr<WorkerCacheInterface> worker_cache_;
+  // Retrieves either worker_cache_ or the env_->worker_cache as appropriate.
+  WorkerCacheInterface* get_worker_cache() const;
+
   // The device set used by this session.
-  DeviceSet devices_;
+  std::unique_ptr<DeviceSet> devices_;
 
   StatsPublisherFactory stats_publisher_factory_;
 
@@ -181,6 +190,13 @@ class MasterSession : public core::RefCounted {
   // Private dtor. The client must call Close().
   virtual ~MasterSession();
 
+  // Creates sessions on all workers.
+  //
+  // If this session is operating using the new ClusterSpec propagation behavior
+  // call this method in order to propagate the cluster membership to all
+  // workers.
+  Status CreateWorkerSessions(const WorkerCacheFactoryOptions& server_def);
+
   Status StartStep(const BuildGraphOptions& opts, int64* count,
                    ReffedClientGraph** graph, bool is_partial);
   void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
@@ -190,6 +206,7 @@ class MasterSession : public core::RefCounted {
                                  MutableRunStepResponseWrapper* resp);
   Status DoPartialRun(CallOptions* opts, const RunStepRequestWrapper& req,
                       MutableRunStepResponseWrapper* resp);
+  void MarkRunCompletion();
   void UpdateLastAccessTime();
 
   Status BuildAndRegisterPartitions(ReffedClientGraph* rcg);

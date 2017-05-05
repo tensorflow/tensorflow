@@ -119,6 +119,10 @@ message RegisterGraphResponse {
 ////////////////////////////////////////////////////////////////////////////////
 
 message DeregisterGraphRequest {
+  // The session_handle used when registering the graph. If session_handle is
+  // empty, a single global namespace is used.
+  string session_handle = 2;
+
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
   string graph_handle = 1;
@@ -167,6 +171,12 @@ message ExecutorOpts {
 };
 
 message RunGraphRequest {
+  // session_handle is the the master-generated unique id for this session.
+  // If session_handle is non-empty, it must be the same as used when
+  // registering the graph. If it is empty, a single global namespace is used to
+  // search for the graph_handle.
+  string session_handle = 8;
+
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
   string graph_handle = 1;
@@ -193,6 +203,8 @@ message RunGraphRequest {
   bool is_partial = 6;
   // True if this is the last partial run request in a sequence of requests.
   bool is_last_partial_run = 7;
+
+  // Next: 9
 }
 
 message RunGraphResponse {

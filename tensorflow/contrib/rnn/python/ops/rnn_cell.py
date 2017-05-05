@@ -39,9 +39,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
-_checked_scope = core_rnn_cell_impl._checked_scope  # pylint: disable=protected-access
-
-
 def _get_concat_variable(name, shape, dtype, num_shards):
   """Get a sharded variable concatenated into one tensor."""
   sharded_variable = _get_sharded_variable(name, shape, dtype, num_shards)

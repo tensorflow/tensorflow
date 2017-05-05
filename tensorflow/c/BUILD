@@ -58,6 +58,7 @@ tf_cuda_library(
             "//tensorflow/cc/saved_model:loader",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",
+            "//tensorflow/cc:grad_ops",
             "//tensorflow/cc:scope_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",

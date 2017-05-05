@@ -656,22 +656,6 @@ Status OpKernelContext::allocate_persistent(DataType type,
       *out_tensor = out_persistent->AccessTensor(this);
     }
   }
-  if (track_allocations() && persistent.TotalBytes() > 0) {
-    // TODO(yuefengz): some allocators allocate memory even if the requested
-    // size is 0.
-    Allocator* a = get_allocator(attr);
-    if (a->TracksAllocationSizes()) {
-      int64 alloc_size =
-          a->AllocatedSize(const_cast<char*>(persistent.tensor_data().data()));
-      int64 alloc_id =
-          a->AllocationId(const_cast<char*>(persistent.tensor_data().data()));
-      if (allocate_on_host(attr)) {
-        record_host_persistent_memory_allocation(alloc_size, alloc_id);
-      } else {
-        record_device_persistent_memory_allocation(alloc_size, alloc_id);
-      }
-    }
-  }
   return s;
 }
 

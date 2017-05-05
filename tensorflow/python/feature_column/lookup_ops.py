@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Lookup table Operations."""
-# pylint: disable=g-bad-name
+"""Lookup table operations."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -27,7 +27,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import gen_lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
@@ -151,7 +151,7 @@ class InitializableLookupTableBase(LookupInterface):
     with ops.name_scope(name, "%s_Size" % self._name,
                         [self._table_ref]) as scope:
       # pylint: disable=protected-access
-      return gen_data_flow_ops._lookup_table_size(self._table_ref, name=scope)
+      return gen_lookup_ops._lookup_table_size(self._table_ref, name=scope)
       # pylint: enable=protected-access
 
   def lookup(self, keys, name=None):
@@ -182,7 +182,7 @@ class InitializableLookupTableBase(LookupInterface):
         name, "%s_Lookup" % self._name,
         (self._table_ref, key_tensor, self._default_value)) as scope:
       # pylint: disable=protected-access
-      values = gen_data_flow_ops._lookup_table_find(
+      values = gen_lookup_ops._lookup_table_find(
           self._table_ref, key_tensor, self._default_value, name=scope)
       # pylint: enable=protected-access
 
@@ -229,7 +229,7 @@ class HashTable(InitializableLookupTableBase):
     with ops.name_scope(
         name, "hash_table", (initializer, default_value)) as scope:
       # pylint: disable=protected-access
-      table_ref = gen_data_flow_ops._hash_table(
+      table_ref = gen_lookup_ops._hash_table(
           shared_name=shared_name,
           key_dtype=initializer.key_dtype,
           value_dtype=initializer.value_dtype,
@@ -308,10 +308,8 @@ class KeyValueTensorInitializer(TableInitializerBase):
         self._name,
         values=(table.table_ref, self._keys, self._values)) as scope:
       # pylint: disable=protected-access
-      init_op = gen_data_flow_ops._initialize_table(table.table_ref,
-                                                    self._keys,
-                                                    self._values,
-                                                    name=scope)
+      init_op = gen_lookup_ops._initialize_table(
+          table.table_ref, self._keys, self._values, name=scope)
       # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
@@ -477,7 +475,7 @@ class TextFileInitializer(TableInitializerBase):
                                        dtypes.string,
                                        name="asset_filepath")
       # pylint: disable=protected-access
-      init_op = gen_data_flow_ops._initialize_table_from_text_file(
+      init_op = gen_lookup_ops._initialize_table_from_text_file(
           table.table_ref,
           filename,
           self._key_index,
@@ -608,7 +606,7 @@ class HasherSpec(collections.namedtuple("HasherSpec", ["hasher", "key"])):
   __slots__ = ()
 
 
-FastHashSpec = HasherSpec("fasthash", None)
+FastHashSpec = HasherSpec("fasthash", None)  # pylint: disable=invalid-name
 
 
 class StrongHashSpec(HasherSpec):
@@ -1333,14 +1331,14 @@ class MutableHashTable(LookupInterface):
     use_node_name_sharing = checkpoint and shared_name is None
     # pylint: disable=protected-access
     if self._default_value.get_shape().ndims == 0:
-      self._table_ref = gen_data_flow_ops._mutable_hash_table(
+      self._table_ref = gen_lookup_ops._mutable_hash_table(
           shared_name=shared_name,
           use_node_name_sharing=use_node_name_sharing,
           key_dtype=key_dtype,
           value_dtype=value_dtype,
           name=name)
     else:
-      self._table_ref = gen_data_flow_ops._mutable_hash_table_of_tensors(
+      self._table_ref = gen_lookup_ops._mutable_hash_table_of_tensors(
           shared_name=shared_name,
           use_node_name_sharing=use_node_name_sharing,
           key_dtype=key_dtype,
@@ -1368,7 +1366,7 @@ class MutableHashTable(LookupInterface):
     with ops.name_scope(name, "%s_Size" % self._name,
                         [self._table_ref]) as name:
       # pylint: disable=protected-access
-      return gen_data_flow_ops._lookup_table_size(self._table_ref, name=name)
+      return gen_lookup_ops._lookup_table_size(self._table_ref, name=name)
 
   def lookup(self, keys, name=None):
     """Looks up `keys` in a table, outputs the corresponding values.
@@ -1394,10 +1392,8 @@ class MutableHashTable(LookupInterface):
     with ops.name_scope(name, "%s_lookup_table_find" % self._name,
                         (self._table_ref, keys, self._default_value)) as name:
       # pylint: disable=protected-access
-      values = gen_data_flow_ops._lookup_table_find(self._table_ref,
-                                                    keys,
-                                                    self._default_value,
-                                                    name=name)
+      values = gen_lookup_ops._lookup_table_find(
+          self._table_ref, keys, self._default_value, name=name)
 
     values.set_shape(keys.get_shape().concatenate(self._value_shape))
     return values
@@ -1423,7 +1419,7 @@ class MutableHashTable(LookupInterface):
     with ops.name_scope(name, "%s_lookup_table_insert" % self._name,
                         [self._table_ref, keys, values]) as name:
       # pylint: disable=protected-access
-      op = gen_data_flow_ops._lookup_table_insert(
+      op = gen_lookup_ops._lookup_table_insert(
           self._table_ref, keys, values, name=name)
       return op
 
@@ -1440,11 +1436,8 @@ class MutableHashTable(LookupInterface):
     with ops.name_scope(name, "%s_lookup_table_export_values" % self._name,
                         [self._table_ref]) as name:
       # pylint: disable=protected-access
-      exported_keys, exported_values = gen_data_flow_ops._lookup_table_export(
-          self._table_ref,
-          self._key_dtype,
-          self._value_dtype,
-          name=name)
+      exported_keys, exported_values = gen_lookup_ops._lookup_table_export(
+          self._table_ref, self._key_dtype, self._value_dtype, name=name)
 
     exported_values.set_shape(exported_keys.get_shape().concatenate(
         self._value_shape))
@@ -1464,7 +1457,7 @@ class MutableHashTable(LookupInterface):
 
     def restore(self, restored_tensors, unused_restored_shapes):
       # pylint: disable=protected-access
-      return gen_data_flow_ops._lookup_table_import(
+      return gen_lookup_ops._lookup_table_import(
           self.op._table_ref, restored_tensors[0], restored_tensors[1])
 
 
@@ -1539,7 +1532,7 @@ class MutableDenseHashTable(LookupInterface):
     use_node_name_sharing = checkpoint and shared_name is None
     empty_key = ops.convert_to_tensor(empty_key, dtype=key_dtype)
     # pylint: disable=protected-access
-    self._table_ref = gen_data_flow_ops._mutable_dense_hash_table(
+    self._table_ref = gen_lookup_ops._mutable_dense_hash_table(
         empty_key=empty_key,
         shared_name=shared_name,
         use_node_name_sharing=use_node_name_sharing,
@@ -1567,7 +1560,7 @@ class MutableDenseHashTable(LookupInterface):
     with ops.name_scope(name, "%s_Size" % self._name,
                         [self._table_ref]) as name:
       # pylint: disable=protected-access
-      return gen_data_flow_ops._lookup_table_size(self._table_ref, name=name)
+      return gen_lookup_ops._lookup_table_size(self._table_ref, name=name)
 
   def lookup(self, keys, name=None):
     """Looks up `keys` in a table, outputs the corresponding values.
@@ -1593,7 +1586,7 @@ class MutableDenseHashTable(LookupInterface):
     with ops.name_scope(name, "%s_lookup_table_find" % self._name,
                         [self._table_ref, keys]) as name:
       # pylint: disable=protected-access
-      values = gen_data_flow_ops._lookup_table_find(
+      values = gen_lookup_ops._lookup_table_find(
           self._table_ref, keys, self._default_value, name=name)
 
     if keys.get_shape().ndims is not None and keys.get_shape().ndims > 0:
@@ -1623,7 +1616,7 @@ class MutableDenseHashTable(LookupInterface):
     with ops.name_scope(name, "%s_lookup_table_insert" % self._name,
                         [self._table_ref, keys, values]) as name:
       # pylint: disable=protected-access
-      op = gen_data_flow_ops._lookup_table_insert(
+      op = gen_lookup_ops._lookup_table_insert(
           self._table_ref, keys, values, name=name)
       return op
 
@@ -1640,7 +1633,7 @@ class MutableDenseHashTable(LookupInterface):
     with ops.name_scope(name, "%s_lookup_table_export_values" % self._name,
                         [self._table_ref]) as name:
       # pylint: disable=protected-access
-      exported_keys, exported_values = gen_data_flow_ops._lookup_table_export(
+      exported_keys, exported_values = gen_lookup_ops._lookup_table_export(
           self._table_ref, self._key_dtype, self._value_dtype, name=name)
 
     exported_values.set_shape(exported_keys.get_shape().concatenate(
@@ -1661,6 +1654,5 @@ class MutableDenseHashTable(LookupInterface):
 
     def restore(self, restored_tensors, unused_restored_shapes):
       # pylint: disable=protected-access
-      return gen_data_flow_ops._lookup_table_import(self.op._table_ref,
-                                                    restored_tensors[0],
-                                                    restored_tensors[1])
+      return gen_lookup_ops._lookup_table_import(
+          self.op._table_ref, restored_tensors[0], restored_tensors[1])
