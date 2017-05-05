@@ -5583,6 +5583,74 @@ func ReadFile(scope *Scope, filename tf.Output) (contents tf.Output) {
 	return op.Output(0)
 }
 
+// Store the input tensor in the state of the current session.
+//
+// Arguments:
+//	value: The tensor to be stored.
+//
+// Returns The handle for the tensor stored in the session state, represented
+// as a ResourceHandle object.
+func GetSessionHandleV2(scope *Scope, value tf.Output) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "GetSessionHandleV2",
+		Input: []tf.Input{
+			value,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Adjust the hue of one or more images.
+//
+// `images` is a tensor of at least 3 dimensions.  The last dimension is
+// interpretted as channels, and must be three.
+//
+// The input image is considered in the RGB colorspace. Conceptually, the RGB
+// colors are first mapped into HSV. A delta is then applied all the hue values,
+// and then remapped back to RGB colorspace.
+//
+// Arguments:
+//	images: Images to adjust.  At least 3-D.
+//	delta: A float delta to add to the hue.
+//
+// Returns The hue-adjusted image or images.
+func AdjustHue(scope *Scope, images tf.Output, delta tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "AdjustHue",
+		Input: []tf.Input{
+			images, delta,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Restore a Reader to its initial clean state.
+//
+// Arguments:
+//	reader_handle: Handle to a Reader.
+//
+// Returns the created operation.
+func ReaderResetV2(scope *Scope, reader_handle tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReaderResetV2",
+		Input: []tf.Input{
+			reader_handle,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Computes softmax cross entropy cost and gradients to backpropagate.
 //
 // Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept
@@ -19039,6 +19107,27 @@ func Igamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
+//
+// This is the angle \( \theta \in [-\pi, \pi] \) such that
+// \[ x = r \cos(\theta) \]
+// and
+// \[ y = r \sin(\theta) \]
+// where \(r = \sqrt(x^2 + y^2) \).
+func Atan2(scope *Scope, y tf.Output, x tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Atan2",
+		Input: []tf.Input{
+			y, x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
 //
 // The regularized incomplete beta integral is defined as:
@@ -21626,72 +21715,4 @@ func SoftmaxCrossEntropyWithLogits(scope *Scope, features tf.Output, labels tf.O
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// Store the input tensor in the state of the current session.
-//
-// Arguments:
-//	value: The tensor to be stored.
-//
-// Returns The handle for the tensor stored in the session state, represented
-// as a ResourceHandle object.
-func GetSessionHandleV2(scope *Scope, value tf.Output) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "GetSessionHandleV2",
-		Input: []tf.Input{
-			value,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Adjust the hue of one or more images.
-//
-// `images` is a tensor of at least 3 dimensions.  The last dimension is
-// interpretted as channels, and must be three.
-//
-// The input image is considered in the RGB colorspace. Conceptually, the RGB
-// colors are first mapped into HSV. A delta is then applied all the hue values,
-// and then remapped back to RGB colorspace.
-//
-// Arguments:
-//	images: Images to adjust.  At least 3-D.
-//	delta: A float delta to add to the hue.
-//
-// Returns The hue-adjusted image or images.
-func AdjustHue(scope *Scope, images tf.Output, delta tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "AdjustHue",
-		Input: []tf.Input{
-			images, delta,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Restore a Reader to its initial clean state.
-//
-// Arguments:
-//	reader_handle: Handle to a Reader.
-//
-// Returns the created operation.
-func ReaderResetV2(scope *Scope, reader_handle tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReaderResetV2",
-		Input: []tf.Input{
-			reader_handle,
-		},
-	}
-	return scope.AddOperation(opspec)
 }
