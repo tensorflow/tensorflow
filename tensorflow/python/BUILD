@@ -82,6 +82,7 @@ py_library(
         "//third_party/py/numpy",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/feature_column:feature_column",
+        "//tensorflow/python/feature_column:lookup_ops",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/saved_model",
@@ -1021,7 +1022,6 @@ tf_gen_op_wrapper_private_py(
     require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/contrib/lookup:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
@@ -1052,6 +1052,16 @@ tf_gen_op_wrapper_private_py(
     require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "lookup_ops_gen",
+    require_shape_functions = True,
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/feature_column:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
@@ -1474,6 +1484,20 @@ py_library(
 )
 
 py_library(
+    name = "lookup_ops",
+    srcs = ["ops/lookup_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":lookup_ops_gen",
+        ":math_ops",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "math_grad",
     srcs = ["ops/math_grad.py"],
     srcs_version = "PY2AND3",
@@ -1861,6 +1885,7 @@ py_library(
         ":io_ops",
         ":linalg_ops",
         ":logging_ops",
+        ":lookup_ops",
         ":math_grad",
         ":math_ops",
         ":numerics",
@@ -2268,6 +2293,7 @@ py_library(
         ":io_ops",
         ":io_ops_gen",
         ":lib",
+        ":lookup_ops",
         ":math_ops",
         ":platform",
         ":protos_all_py",
@@ -2990,6 +3016,7 @@ cuda_py_tests(
         ":framework",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":lookup_ops",
         ":gradients",
         ":math_ops",
         ":nn_grad",
@@ -3020,7 +3047,7 @@ py_library(
     srcs = ["training/saver_test_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":data_flow_ops_gen",
+        ":lookup_ops_gen",
         ":training",
     ],
 )

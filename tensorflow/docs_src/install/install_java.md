@@ -63,7 +63,7 @@ As an example, these steps will create a Maven project that uses TensorFlow:
                <dependency>
                  <groupId>org.tensorflow</groupId>
                  <artifactId>tensorflow</artifactId>
-                 <version>1.1.0</version>
+                 <version>1.1.0-rc2</version>
                </dependency>
              </dependencies>
          </project>
@@ -218,11 +218,7 @@ and Mac OS X:
 
 And the following comand line executes the `HelloTF` program on Windows:
 
-<pre><b>java -cp libtensorflow-1.1.0-rc2.jar;. -Djava.library.path=jni HelloTF</b></pre>
-
-And the following comand line executes the `HelloTF` program on Windows:
-
-<pre><b>java -cp libtensorflow-1.1.0-rc2.jar;. -Djava.library.path=jni HelloTF</b></pre>
+<pre><b>java -cp libtensorflow-1.1.0.jar;. -Djava.library.path=jni HelloTF</b></pre>
 
 If the program prints <tt>Hello from <i>version</i></tt>, you've successfully
 installed TensorFlow for Java and are ready to use the API.  If the program

@@ -25,6 +25,7 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
+from tensorflow.contrib.distributions.python.ops.conditional_distribution import *
 from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.deterministic import *
 from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
@@ -44,12 +45,10 @@ from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.sample_stats import *
-from tensorflow.contrib.distributions.python.ops.transformed_distribution import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
 from tensorflow.python.ops.distributions.bernoulli import *
 from tensorflow.python.ops.distributions.beta import *
 from tensorflow.python.ops.distributions.categorical import *
-from tensorflow.python.ops.distributions.conditional_distribution import *
 from tensorflow.python.ops.distributions.dirichlet import *
 from tensorflow.python.ops.distributions.dirichlet_multinomial import *
 from tensorflow.python.ops.distributions.distribution import *
@@ -60,6 +59,7 @@ from tensorflow.python.ops.distributions.laplace import *
 from tensorflow.python.ops.distributions.multinomial import *
 from tensorflow.python.ops.distributions.normal import *
 from tensorflow.python.ops.distributions.student_t import *
+from tensorflow.python.ops.distributions.transformed_distribution import *
 from tensorflow.python.ops.distributions.uniform import *
 
 # pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
