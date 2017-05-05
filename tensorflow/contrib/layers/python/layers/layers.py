@@ -1831,7 +1831,7 @@ def separable_convolution2d(
     padding='SAME',
     rate=1,
     activation_fn=nn.relu,
-    normalizer_fn=batch_norm,
+    normalizer_fn=None,
     normalizer_params=None,
     weights_initializer=initializers.xavier_initializer(),
     weights_regularizer=None,
@@ -1848,8 +1848,8 @@ def separable_convolution2d(
   channels, creating a variable called `depthwise_weights`. If `num_outputs`
   is not None, it adds a pointwise convolution that mixes channels, creating a
   variable called `pointwise_weights`. Then, if `normalizer_fn` is None,
-  it adds bias to the result, creating a variable called 'biases', otherwise
-  it adds a batch normalization layer. It finally applies an activation function
+  it adds bias to the result, creating a variable called 'biases', otherwise,
+  a normalization layer could be applied. It finally applies an activation function
   to produce the end result.
 
   Args:
