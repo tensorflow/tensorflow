@@ -4,6 +4,8 @@ node_modules
 /.bazelrc
 /.tf_configure.bazelrc
 /bazel-*
+/third_party/eigen3/mkl_include
+/third_party/mkl/*
 /third_party/py/numpy/numpy_include
 /tools/python_bin_path.sh
 /tools/git/gen

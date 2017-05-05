@@ -26,7 +26,6 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-namespace {
 struct NodeState {
   std::vector<const NodeDef*> inputs;
   std::vector<const NodeDef*> outputs;
@@ -86,7 +85,6 @@ class FIFOManager : public ReadyNodeManager {
  private:
   std::list<const NodeDef*> nodes_;
 };
-}  // namespace
 
 // The virtual scheduler emulates execution of nodes in a graph, considering
 // dependencies, device, etc.

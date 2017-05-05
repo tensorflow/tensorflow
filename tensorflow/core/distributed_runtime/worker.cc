@@ -56,10 +56,6 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
   Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
       request->debug_options(), response->mutable_graph_handle());
-  if (s.ok()) {
-    env_->session_mgr->AssociateGraphWithSession(request->session_handle(),
-                                                 response->graph_handle());
-  }
   done(s);
 }
 
@@ -67,9 +63,8 @@ void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
                                   DeregisterGraphResponse* response,
                                   StatusCallback done) {
   WorkerSession* session =
-      env_->session_mgr->WorkerSessionForGraphHandle(request->graph_handle());
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
   Status s = session->graph_mgr->Deregister(request->graph_handle());
-  env_->session_mgr->DisassociateGraphFromSession(request->graph_handle());
 
   done(s);
 }
@@ -141,8 +136,7 @@ void Worker::SetOrCallFinalCallback(const string& graph_handle, int step_id,
 }
 
 void Worker::AbortStep(int64 step_id) {
-  WorkerSession* session = env_->session_mgr->WorkerSessionForStepId(step_id);
-  Rendezvous* rendez = session->rendezvous_mgr->Find(step_id);
+  Rendezvous* rendez = env_->rendezvous_mgr->Find(step_id);
   SchedNonBlockingClosureAfter(1000000, [rendez, step_id]() {
     // Delay a bit before aborting the step. This way, the root
     // cause may return first back to the client instead of this
@@ -193,8 +187,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   const int64 step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
   WorkerSession* session =
-      env_->session_mgr->WorkerSessionForGraphHandle(request->graph_handle());
-  env_->session_mgr->AssociateStepIdWithGraph(request->graph_handle(), step_id);
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
@@ -231,8 +224,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   }
   CostGraphDef* cost_graph = response->mutable_cost_graph();
   session->graph_mgr->ExecuteAsync(
-      request->graph_handle(), step_id, request->exec_opts(), collector,
-      cost_graph, cm, in,
+      request->graph_handle(), step_id, session, request->exec_opts(),
+      collector, cost_graph, cm, in,
       [this, step_id, response, session, cm, out, token, collector, opts,
        done](Status s) {
         if (s.ok()) {
@@ -267,8 +260,8 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
   WorkerSession* session =
-      env_->session_mgr->WorkerSessionForGraphHandle(graph_handle);
-  env_->session_mgr->AssociateStepIdWithGraph(graph_handle, step_id);
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
+
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
@@ -315,8 +308,8 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
                                               [cm]() { cm->StartCancel(); });
     }
     session->graph_mgr->ExecuteAsync(
-        graph_handle, step_id, request->exec_opts(), nullptr /* collector */,
-        nullptr /* cost_graph */, cm, in,
+        graph_handle, step_id, session, request->exec_opts(),
+        nullptr /* collector */, nullptr /* cost_graph */, cm, in,
         [this, token, graph_handle, step_id, cm](Status s) {
           {
             mutex_lock l(mu_);
@@ -365,8 +358,7 @@ void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
                                CleanupGraphResponse* response,
                                StatusCallback done) {
   const int64 step_id = request->step_id();
-  WorkerSession* session = env_->session_mgr->WorkerSessionForStepId(step_id);
-  session->rendezvous_mgr->Cleanup(step_id);
+  env_->rendezvous_mgr->Cleanup(step_id);
   done(Status::OK());
 }
 
@@ -394,8 +386,8 @@ void Worker::TracingAsync(const TracingRequest* request,
 Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
                                  Device** src_dev) {
   // Figures out which device the tensor is hosted on.
-  TF_RETURN_IF_ERROR(
-      env_->device_mgr->LookupDevice(parsed.src_device, src_dev));
+  string local_name = DeviceNameUtils::LocalName(parsed.src_device);
+  TF_RETURN_IF_ERROR(env_->device_mgr->LookupDevice(local_name, src_dev));
 
   // Does the device have the right incarnation number we expect?
   if ((*src_dev)->attributes().incarnation() != parsed.src_incarnation) {

@@ -136,8 +136,10 @@ from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.layers.python.ops import bucketization_op
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
 from tensorflow.contrib.layers.python.ops import sparse_ops as contrib_sparse_ops
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_py
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -1497,9 +1499,12 @@ def _real_valued_var_len_column(column_name,
                                  is_sparse)
 
 
-class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
-    "_RealValuedColumn",
-    ["column_name", "dimension", "default_value", "dtype", "normalizer"])):
+class _RealValuedColumn(
+    _FeatureColumn,
+    fc_core._DenseColumn,  # pylint: disable=protected-access
+    collections.namedtuple(
+        "_RealValuedColumn",
+        ["column_name", "dimension", "default_value", "dtype", "normalizer"])):
   """Represents a real valued feature column also known as continuous features.
 
   Instances of this class are immutable. The dictionary returned by InputBuilder
@@ -1568,6 +1573,23 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
 
   def _to_dense_tensor(self, input_tensor):
     return input_tensor
+
+  @property
+  def _variable_shape(self):
+    return tensor_shape.TensorShape((self.dimension))
+
+  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    del weight_collections
+    del trainable
+    return inputs.get(self)
+
+  def _transform_feature(self, inputs):
+    return math_ops.to_float(
+        self._normalized_input_tensor(inputs.get(self.name)))
+
+  @property
+  def _parse_example_config(self):
+    return self.config
 
 
 def real_valued_column(column_name,

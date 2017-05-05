@@ -91,6 +91,7 @@ cc_library(
     deps = [
         ":array_grad",
         ":math_grad",
+        ":nn_grad",
     ],
 )
 

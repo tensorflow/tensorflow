@@ -3522,256 +3522,6 @@ func Stage(scope *Scope, values []tf.Output, optional ...StageAttr) (o *tf.Opera
 	return scope.AddOperation(opspec)
 }
 
-// Table initializer that takes two tensors for keys and values respectively.
-//
-// Arguments:
-//	table_handle: Handle to a table which will be initialized.
-//	keys: Keys of type Tkey.
-//	values: Values of type Tval.
-//
-// Returns the created operation.
-func InitializeTableV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "InitializeTableV2",
-		Input: []tf.Input{
-			table_handle, keys, values,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// MutableHashTableV2Attr is an optional argument to MutableHashTableV2.
-type MutableHashTableV2Attr func(optionalAttr)
-
-// MutableHashTableV2Container sets the optional container attribute to value.
-//
-// value: If non-empty, this table is placed in the given container.
-// Otherwise, a default container is used.
-// If not specified, defaults to ""
-func MutableHashTableV2Container(value string) MutableHashTableV2Attr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// MutableHashTableV2SharedName sets the optional shared_name attribute to value.
-//
-// value: If non-empty, this table is shared under the given name across
-// multiple sessions.
-// If not specified, defaults to ""
-func MutableHashTableV2SharedName(value string) MutableHashTableV2Attr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// MutableHashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
-//
-// value: If true and shared_name is empty, the table is shared
-// using the node name.
-// If not specified, defaults to false
-func MutableHashTableV2UseNodeNameSharing(value bool) MutableHashTableV2Attr {
-	return func(m optionalAttr) {
-		m["use_node_name_sharing"] = value
-	}
-}
-
-// Creates an empty hash table.
-//
-// This op creates a mutable hash table, specifying the type of its keys and
-// values. Each value must be a scalar. Data can be inserted into the table using
-// the insert operations. It does not support the initialization operation.
-//
-// Arguments:
-//	key_dtype: Type of the table keys.
-//	value_dtype: Type of the table values.
-//
-// Returns Handle to a table.
-func MutableHashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...MutableHashTableV2Attr) (table_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MutableHashTableV2",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// HashTableV2Attr is an optional argument to HashTableV2.
-type HashTableV2Attr func(optionalAttr)
-
-// HashTableV2Container sets the optional container attribute to value.
-//
-// value: If non-empty, this table is placed in the given container.
-// Otherwise, a default container is used.
-// If not specified, defaults to ""
-func HashTableV2Container(value string) HashTableV2Attr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// HashTableV2SharedName sets the optional shared_name attribute to value.
-//
-// value: If non-empty, this table is shared under the given name across
-// multiple sessions.
-// If not specified, defaults to ""
-func HashTableV2SharedName(value string) HashTableV2Attr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// HashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
-//
-// value: If true and shared_name is empty, the table is shared
-// using the node name.
-// If not specified, defaults to false
-func HashTableV2UseNodeNameSharing(value bool) HashTableV2Attr {
-	return func(m optionalAttr) {
-		m["use_node_name_sharing"] = value
-	}
-}
-
-// Creates a non-initialized hash table.
-//
-// This op creates a hash table, specifying the type of its keys and values.
-// Before using the table you will have to initialize it.  After initialization the
-// table will be immutable.
-//
-// Arguments:
-//	key_dtype: Type of the table keys.
-//	value_dtype: Type of the table values.
-//
-// Returns Handle to a table.
-func HashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...HashTableV2Attr) (table_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "HashTableV2",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Replaces the contents of the table with the specified keys and values.
-//
-// The tensor `keys` must be of the same type as the keys of the table.
-// The tensor `values` must be of the type of the table values.
-//
-// Arguments:
-//	table_handle: Handle to the table.
-//	keys: Any shape.  Keys to look up.
-//	values: Values to associate with keys.
-//
-// Returns the created operation.
-func LookupTableImportV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LookupTableImportV2",
-		Input: []tf.Input{
-			table_handle, keys, values,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Outputs all keys and values in the table.
-//
-// Arguments:
-//	table_handle: Handle to the table.
-//
-//
-//
-// Returns Vector of all keys present in the table.Tensor of all values in the table. Indexed in parallel with `keys`.
-func LookupTableExportV2(scope *Scope, table_handle tf.Output, Tkeys tf.DataType, Tvalues tf.DataType) (keys tf.Output, values tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"Tkeys": Tkeys, "Tvalues": Tvalues}
-	opspec := tf.OpSpec{
-		Type: "LookupTableExportV2",
-		Input: []tf.Input{
-			table_handle,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// Updates the table to associates keys with values.
-//
-// The tensor `keys` must be of the same type as the keys of the table.
-// The tensor `values` must be of the type of the table values.
-//
-// Arguments:
-//	table_handle: Handle to the table.
-//	keys: Any shape.  Keys to look up.
-//	values: Values to associate with keys.
-//
-// Returns the created operation.
-func LookupTableInsertV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LookupTableInsertV2",
-		Input: []tf.Input{
-			table_handle, keys, values,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Looks up keys in a table, outputs the corresponding values.
-//
-// The tensor `keys` must of the same type as the keys of the table.
-// The output `values` is of the type of the table values.
-//
-// The scalar `default_value` is the value output for keys not present in the
-// table. It must also be of the same type as the table values.
-//
-// Arguments:
-//	table_handle: Handle to the table.
-//	keys: Any shape.  Keys to look up.
-//
-//
-// Returns Same shape as `keys`.  Values found in the table, or `default_values`
-// for missing keys.
-func LookupTableFindV2(scope *Scope, table_handle tf.Output, keys tf.Output, default_value tf.Output) (values tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LookupTableFindV2",
-		Input: []tf.Input{
-			table_handle, keys, default_value,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // FakeQuantWithMinMaxArgsAttr is an optional argument to FakeQuantWithMinMaxArgs.
 type FakeQuantWithMinMaxArgsAttr func(optionalAttr)
 
@@ -5404,6 +5154,435 @@ func ExtractGlimpse(scope *Scope, input tf.Output, size tf.Output, offsets tf.Ou
 	return op.Output(0)
 }
 
+// Draw bounding boxes on a batch of images.
+//
+// Outputs a copy of `images` but draws on top of the pixels zero or more bounding
+// boxes specified by the locations in `boxes`. The coordinates of the each
+// bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
+// bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+// height of the underlying image.
+//
+// For example, if an image is 100 x 200 pixels and the bounding box is
+// `[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the
+// bounding box will be `(10, 40)` to `(50, 180)`.
+//
+// Parts of the bounding box may fall outside the image.
+//
+// Arguments:
+//	images: 4-D with shape `[batch, height, width, depth]`. A batch of images.
+//	boxes: 3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding
+// boxes.
+//
+// Returns 4-D with the same shape as `images`. The batch of input images with
+// bounding boxes drawn on the images.
+func DrawBoundingBoxes(scope *Scope, images tf.Output, boxes tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DrawBoundingBoxes",
+		Input: []tf.Input{
+			images, boxes,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Convert one or more images from HSV to RGB.
+//
+// Outputs a tensor of the same shape as the `images` tensor, containing the RGB
+// value of the pixels. The output is only well defined if the value in `images`
+// are in `[0,1]`.
+//
+// See `rgb_to_hsv` for a description of the HSV encoding.
+//
+// Arguments:
+//	images: 1-D or higher rank. HSV data to convert. Last dimension must be size 3.
+//
+// Returns `images` converted to RGB.
+func HSVToRGB(scope *Scope, images tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "HSVToRGB",
+		Input: []tf.Input{
+			images,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Decode the first frame of a GIF-encoded image to a uint8 tensor.
+//
+// GIF with frame or transparency compression are not supported
+// convert animated GIF from compressed to uncompressed by:
+//
+// convert $src.gif -coalesce $dst.gif
+//
+// Arguments:
+//	contents: 0-D.  The GIF-encoded image.
+//
+// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB order
+func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeGif",
+		Input: []tf.Input{
+			contents,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DecodePngAttr is an optional argument to DecodePng.
+type DecodePngAttr func(optionalAttr)
+
+// DecodePngChannels sets the optional channels attribute to value.
+//
+// value: Number of color channels for the decoded image.
+// If not specified, defaults to 0
+func DecodePngChannels(value int64) DecodePngAttr {
+	return func(m optionalAttr) {
+		m["channels"] = value
+	}
+}
+
+// DecodePngDtype sets the optional dtype attribute to value.
+// If not specified, defaults to DT_UINT8
+func DecodePngDtype(value tf.DataType) DecodePngAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Decode a PNG-encoded image to a uint8 or uint16 tensor.
+//
+// The attr `channels` indicates the desired number of color channels for the
+// decoded image.
+//
+// Accepted values are:
+//
+// *   0: Use the number of channels in the PNG-encoded image.
+// *   1: output a grayscale image.
+// *   3: output an RGB image.
+// *   4: output an RGBA image.
+//
+// If needed, the PNG-encoded image is transformed to match the requested number
+// of color channels.
+//
+// Arguments:
+//	contents: 0-D.  The PNG-encoded image.
+//
+// Returns 3-D with shape `[height, width, channels]`.
+func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodePng",
+		Input: []tf.Input{
+			contents,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Adjust the contrast of one or more images.
+//
+// `images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
+// interpreted as `[height, width, channels]`.  The other dimensions only
+// represent a collection of images, such as `[batch, height, width, channels].`
+//
+// Contrast is adjusted independently for each channel of each image.
+//
+// For each channel, the Op first computes the mean of the image pixels in the
+// channel and then adjusts each component of each pixel to
+// `(x - mean) * contrast_factor + mean`.
+//
+// Arguments:
+//	images: Images to adjust.  At least 3-D.
+//	contrast_factor: A float multiplier for adjusting contrast.
+//
+// Returns The contrast-adjusted image or images.
+func AdjustContrastv2(scope *Scope, images tf.Output, contrast_factor tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "AdjustContrastv2",
+		Input: []tf.Input{
+			images, contrast_factor,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DecodeJpegAttr is an optional argument to DecodeJpeg.
+type DecodeJpegAttr func(optionalAttr)
+
+// DecodeJpegChannels sets the optional channels attribute to value.
+//
+// value: Number of color channels for the decoded image.
+// If not specified, defaults to 0
+func DecodeJpegChannels(value int64) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["channels"] = value
+	}
+}
+
+// DecodeJpegRatio sets the optional ratio attribute to value.
+//
+// value: Downscaling ratio.
+// If not specified, defaults to 1
+func DecodeJpegRatio(value int64) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["ratio"] = value
+	}
+}
+
+// DecodeJpegFancyUpscaling sets the optional fancy_upscaling attribute to value.
+//
+// value: If true use a slower but nicer upscaling of the
+// chroma planes (yuv420/422 only).
+// If not specified, defaults to true
+func DecodeJpegFancyUpscaling(value bool) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["fancy_upscaling"] = value
+	}
+}
+
+// DecodeJpegTryRecoverTruncated sets the optional try_recover_truncated attribute to value.
+//
+// value: If true try to recover an image from truncated input.
+// If not specified, defaults to false
+func DecodeJpegTryRecoverTruncated(value bool) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["try_recover_truncated"] = value
+	}
+}
+
+// DecodeJpegAcceptableFraction sets the optional acceptable_fraction attribute to value.
+//
+// value: The minimum required fraction of lines before a truncated
+// input is accepted.
+// If not specified, defaults to 1
+func DecodeJpegAcceptableFraction(value float32) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["acceptable_fraction"] = value
+	}
+}
+
+// DecodeJpegDctMethod sets the optional dct_method attribute to value.
+//
+// value: string specifying a hint about the algorithm used for
+// decompression.  Defaults to "" which maps to a system-specific
+// default.  Currently valid values are ["INTEGER_FAST",
+// "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+// jpeg library changes to a version that does not have that specific
+// option.)
+// If not specified, defaults to ""
+func DecodeJpegDctMethod(value string) DecodeJpegAttr {
+	return func(m optionalAttr) {
+		m["dct_method"] = value
+	}
+}
+
+// Decode a JPEG-encoded image to a uint8 tensor.
+//
+// The attr `channels` indicates the desired number of color channels for the
+// decoded image.
+//
+// Accepted values are:
+//
+// *   0: Use the number of channels in the JPEG-encoded image.
+// *   1: output a grayscale image.
+// *   3: output an RGB image.
+//
+// If needed, the JPEG-encoded image is transformed to match the requested number
+// of color channels.
+//
+// The attr `ratio` allows downscaling the image by an integer factor during
+// decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
+// downscaling the image later.
+//
+// Arguments:
+//	contents: 0-D.  The JPEG-encoded image.
+//
+// Returns 3-D with shape `[height, width, channels]`..
+func DecodeJpeg(scope *Scope, contents tf.Output, optional ...DecodeJpegAttr) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeJpeg",
+		Input: []tf.Input{
+			contents,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ResizeNearestNeighborGradAttr is an optional argument to ResizeNearestNeighborGrad.
+type ResizeNearestNeighborGradAttr func(optionalAttr)
+
+// ResizeNearestNeighborGradAlignCorners sets the optional align_corners attribute to value.
+//
+// value: If true, rescale grads by (orig_height - 1) / (height - 1), which
+// exactly aligns the 4 corners of grads and original_image. If false, rescale by
+// orig_height / height. Treat similarly the width dimension.
+// If not specified, defaults to false
+func ResizeNearestNeighborGradAlignCorners(value bool) ResizeNearestNeighborGradAttr {
+	return func(m optionalAttr) {
+		m["align_corners"] = value
+	}
+}
+
+// Computes the gradient of nearest neighbor interpolation.
+//
+// Arguments:
+//	grads: 4-D with shape `[batch, height, width, channels]`.
+//	size: = A 1-D int32 Tensor of 2 elements: `orig_height, orig_width`. The
+// original input size.
+//
+// Returns 4-D with shape `[batch, orig_height, orig_width, channels]`. Gradients
+// with respect to the input image.
+func ResizeNearestNeighborGrad(scope *Scope, grads tf.Output, size tf.Output, optional ...ResizeNearestNeighborGradAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResizeNearestNeighborGrad",
+		Input: []tf.Input{
+			grads, size,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ResizeNearestNeighborAttr is an optional argument to ResizeNearestNeighbor.
+type ResizeNearestNeighborAttr func(optionalAttr)
+
+// ResizeNearestNeighborAlignCorners sets the optional align_corners attribute to value.
+//
+// value: If true, rescale input by (new_height - 1) / (height - 1), which
+// exactly aligns the 4 corners of images and resized images. If false, rescale
+// by new_height / height. Treat similarly the width dimension.
+// If not specified, defaults to false
+func ResizeNearestNeighborAlignCorners(value bool) ResizeNearestNeighborAttr {
+	return func(m optionalAttr) {
+		m["align_corners"] = value
+	}
+}
+
+// Resize `images` to `size` using nearest neighbor interpolation.
+//
+// Arguments:
+//	images: 4-D with shape `[batch, height, width, channels]`.
+//	size: = A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+// new size for the images.
+//
+// Returns 4-D with shape
+// `[batch, new_height, new_width, channels]`.
+func ResizeNearestNeighbor(scope *Scope, images tf.Output, size tf.Output, optional ...ResizeNearestNeighborAttr) (resized_images tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResizeNearestNeighbor",
+		Input: []tf.Input{
+			images, size,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the set of files matching one or more glob patterns.
+//
+// Note that this routine only supports wildcard characters in the
+// basename portion of the pattern, not in the directory portion.
+//
+// Arguments:
+//	pattern: Shell wildcard pattern(s). Scalar or vector of type string.
+//
+// Returns A vector of matching filenames.
+func MatchingFiles(scope *Scope, pattern tf.Output) (filenames tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatchingFiles",
+		Input: []tf.Input{
+			pattern,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Shuffle dimensions of x according to a permutation.
+//
+// The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
+//   `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`
+func Transpose(scope *Scope, x tf.Output, perm tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Transpose",
+		Input: []tf.Input{
+			x, perm,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Reads and outputs the entire contents of the input filename.
+func ReadFile(scope *Scope, filename tf.Output) (contents tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReadFile",
+		Input: []tf.Input{
+			filename,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes softmax cross entropy cost and gradients to backpropagate.
 //
 // Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept
@@ -6560,6 +6739,95 @@ func Softsign(scope *Scope, features tf.Output) (activations tf.Output) {
 	return op.Output(0)
 }
 
+// ResizeBilinearAttr is an optional argument to ResizeBilinear.
+type ResizeBilinearAttr func(optionalAttr)
+
+// ResizeBilinearAlignCorners sets the optional align_corners attribute to value.
+//
+// value: If true, rescale input by (new_height - 1) / (height - 1), which
+// exactly aligns the 4 corners of images and resized images. If false, rescale
+// by new_height / height. Treat similarly the width dimension.
+// If not specified, defaults to false
+func ResizeBilinearAlignCorners(value bool) ResizeBilinearAttr {
+	return func(m optionalAttr) {
+		m["align_corners"] = value
+	}
+}
+
+// Resize `images` to `size` using bilinear interpolation.
+//
+// Input images can be of different types but output images are always float.
+//
+// Arguments:
+//	images: 4-D with shape `[batch, height, width, channels]`.
+//	size: = A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+// new size for the images.
+//
+// Returns 4-D with shape
+// `[batch, new_height, new_width, channels]`.
+func ResizeBilinear(scope *Scope, images tf.Output, size tf.Output, optional ...ResizeBilinearAttr) (resized_images tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResizeBilinear",
+		Input: []tf.Input{
+			images, size,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ProdAttr is an optional argument to Prod.
+type ProdAttr func(optionalAttr)
+
+// ProdKeepDims sets the optional keep_dims attribute to value.
+//
+// value: If true, retain reduced dimensions with length 1.
+// If not specified, defaults to false
+func ProdKeepDims(value bool) ProdAttr {
+	return func(m optionalAttr) {
+		m["keep_dims"] = value
+	}
+}
+
+// Computes the product of elements across dimensions of a tensor.
+//
+// Reduces `input` along the dimensions given in `reduction_indices`. Unless
+// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
+// retained with length 1.
+//
+// Arguments:
+//	input: The tensor to reduce.
+//	reduction_indices: The dimensions to reduce.
+//
+// Returns The reduced tensor.
+func Prod(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...ProdAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Prod",
+		Input: []tf.Input{
+			input, reduction_indices,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // DepthwiseConv2dNativeAttr is an optional argument to DepthwiseConv2dNative.
 type DepthwiseConv2dNativeAttr func(optionalAttr)
 
@@ -6768,6 +7036,181 @@ func BiasAddV1(scope *Scope, value tf.Output, bias tf.Output) (output tf.Output)
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// EncodeJpegAttr is an optional argument to EncodeJpeg.
+type EncodeJpegAttr func(optionalAttr)
+
+// EncodeJpegFormat sets the optional format attribute to value.
+//
+// value: Per pixel image format.
+// If not specified, defaults to ""
+func EncodeJpegFormat(value string) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["format"] = value
+	}
+}
+
+// EncodeJpegQuality sets the optional quality attribute to value.
+//
+// value: Quality of the compression from 0 to 100 (higher is better and slower).
+// If not specified, defaults to 95
+func EncodeJpegQuality(value int64) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["quality"] = value
+	}
+}
+
+// EncodeJpegProgressive sets the optional progressive attribute to value.
+//
+// value: If True, create a JPEG that loads progressively (coarse to fine).
+// If not specified, defaults to false
+func EncodeJpegProgressive(value bool) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["progressive"] = value
+	}
+}
+
+// EncodeJpegOptimizeSize sets the optional optimize_size attribute to value.
+//
+// value: If True, spend CPU/RAM to reduce size with no quality change.
+// If not specified, defaults to false
+func EncodeJpegOptimizeSize(value bool) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["optimize_size"] = value
+	}
+}
+
+// EncodeJpegChromaDownsampling sets the optional chroma_downsampling attribute to value.
+//
+// value: See http://en.wikipedia.org/wiki/Chroma_subsampling.
+// If not specified, defaults to true
+func EncodeJpegChromaDownsampling(value bool) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["chroma_downsampling"] = value
+	}
+}
+
+// EncodeJpegDensityUnit sets the optional density_unit attribute to value.
+//
+// value: Unit used to specify `x_density` and `y_density`:
+// pixels per inch (`'in'`) or centimeter (`'cm'`).
+// If not specified, defaults to "in"
+func EncodeJpegDensityUnit(value string) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["density_unit"] = value
+	}
+}
+
+// EncodeJpegXDensity sets the optional x_density attribute to value.
+//
+// value: Horizontal pixels per density unit.
+// If not specified, defaults to 300
+func EncodeJpegXDensity(value int64) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["x_density"] = value
+	}
+}
+
+// EncodeJpegYDensity sets the optional y_density attribute to value.
+//
+// value: Vertical pixels per density unit.
+// If not specified, defaults to 300
+func EncodeJpegYDensity(value int64) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["y_density"] = value
+	}
+}
+
+// EncodeJpegXmpMetadata sets the optional xmp_metadata attribute to value.
+//
+// value: If not empty, embed this XMP metadata in the image header.
+// If not specified, defaults to ""
+func EncodeJpegXmpMetadata(value string) EncodeJpegAttr {
+	return func(m optionalAttr) {
+		m["xmp_metadata"] = value
+	}
+}
+
+// JPEG-encode an image.
+//
+// `image` is a 3-D uint8 Tensor of shape `[height, width, channels]`.
+//
+// The attr `format` can be used to override the color format of the encoded
+// output.  Values can be:
+//
+// *   `''`: Use a default format based on the number of channels in the image.
+// *   `grayscale`: Output a grayscale JPEG image.  The `channels` dimension
+//     of `image` must be 1.
+// *   `rgb`: Output an RGB JPEG image. The `channels` dimension
+//     of `image` must be 3.
+//
+// If `format` is not specified or is the empty string, a default format is picked
+// in function of the number of channels in `image`:
+//
+// *   1: Output a grayscale image.
+// *   3: Output an RGB image.
+//
+// Arguments:
+//	image: 3-D with shape `[height, width, channels]`.
+//
+// Returns 0-D. JPEG-encoded image.
+func EncodeJpeg(scope *Scope, image tf.Output, optional ...EncodeJpegAttr) (contents tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "EncodeJpeg",
+		Input: []tf.Input{
+			image,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Gradients for batch normalization.
+//
+// DEPRECATED at GraphDef version 9: Use tf.nn.batch_normalization()
+//
+// This op is deprecated. See `tf.nn.batch_normalization`.
+//
+// Arguments:
+//	t: A 4D input Tensor.
+//	m: A 1D mean Tensor with size matching the last dimension of t.
+// This is the first output from tf.nn.moments,
+// or a saved moving average thereof.
+//	v: A 1D variance Tensor with size matching the last dimension of t.
+// This is the second output from tf.nn.moments,
+// or a saved moving average thereof.
+//	gamma: A 1D gamma Tensor with size matching the last dimension of t.
+// If "scale_after_normalization" is true, this Tensor will be multiplied
+// with the normalized Tensor.
+//	backprop: 4D backprop Tensor.
+//	variance_epsilon: A small float number to avoid dividing by 0.
+//	scale_after_normalization: A bool indicating whether the resulted tensor
+// needs to be multiplied with gamma.
+//
+// Returns 4D backprop tensor for input.1D backprop tensor for mean.1D backprop tensor for variance.1D backprop tensor for beta.1D backprop tensor for gamma.
+func BatchNormWithGlobalNormalizationGrad(scope *Scope, t tf.Output, m tf.Output, v tf.Output, gamma tf.Output, backprop tf.Output, variance_epsilon float32, scale_after_normalization bool) (dx tf.Output, dm tf.Output, dv tf.Output, db tf.Output, dg tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"variance_epsilon": variance_epsilon, "scale_after_normalization": scale_after_normalization}
+	opspec := tf.OpSpec{
+		Type: "BatchNormWithGlobalNormalizationGrad",
+		Input: []tf.Input{
+			t, m, v, gamma, backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
 }
 
 // Conv2DBackpropInputAttr is an optional argument to Conv2DBackpropInput.
@@ -7160,6 +7603,51 @@ func SaveSlices(scope *Scope, filename tf.Output, tensor_names tf.Output, shapes
 	return scope.AddOperation(opspec)
 }
 
+// Writes contents to the file at input filename. Creates file if not existing.
+//
+// Arguments:
+//	filename: scalar. The name of the file to which we write the contents.
+//	contents: scalar. The content to be written to the output file.
+//
+// Returns the created operation.
+func WriteFile(scope *Scope, filename tf.Output, contents tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteFile",
+		Input: []tf.Input{
+			filename, contents,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Computes the Cholesky decomposition of one or more square matrices.
+//
+// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+// form square matrices, with the same constraints as the single matrix Cholesky
+// decomposition above. The output is a tensor of the same shape as the input
+// containing the Cholesky decompositions for all input submatrices `[..., :, :]`.
+//
+// Arguments:
+//	input: Shape is `[..., M, M]`.
+//
+// Returns Shape is `[..., M, M]`.
+func Cholesky(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Cholesky",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns the rank of a tensor.
 //
 // This operation returns an integer representing the rank of `input`.
@@ -7241,54 +7729,6 @@ func DecodeCSV(scope *Scope, records tf.Output, record_defaults []tf.Output, opt
 		return
 	}
 	return output
-}
-
-// BiasAddGradAttr is an optional argument to BiasAddGrad.
-type BiasAddGradAttr func(optionalAttr)
-
-// BiasAddGradDataFormat sets the optional data_format attribute to value.
-//
-// value: Specify the data format of the input and output data. With the
-// default format "NHWC", the bias tensor will be added to the last dimension
-// of the value tensor.
-// Alternatively, the format could be "NCHW", the data storage order of:
-//     [batch, in_channels, in_height, in_width].
-// The tensor will be added to "in_channels", the third-to-the-last
-//     dimension.
-// If not specified, defaults to "NHWC"
-func BiasAddGradDataFormat(value string) BiasAddGradAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// The backward operation for "BiasAdd" on the "bias" tensor.
-//
-// It accumulates all the values from out_backprop into the feature dimension.
-// For NHWC data format, the feature dimension is the last. For NCHW data format,
-// the feature dimension is the third-to-last.
-//
-// Arguments:
-//	out_backprop: Any number of dimensions.
-//
-// Returns 1-D with size the feature dimension of `out_backprop`.
-func BiasAddGrad(scope *Scope, out_backprop tf.Output, optional ...BiasAddGradAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "BiasAddGrad",
-		Input: []tf.Input{
-			out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Convert JSON-encoded Example records to binary protocol buffer strings.
@@ -8024,27 +8464,51 @@ func ParameterizedTruncatedNormal(scope *Scope, shape tf.Output, means tf.Output
 	return op.Output(0)
 }
 
-// Convert one or more images from HSV to RGB.
+// EncodePngAttr is an optional argument to EncodePng.
+type EncodePngAttr func(optionalAttr)
+
+// EncodePngCompression sets the optional compression attribute to value.
 //
-// Outputs a tensor of the same shape as the `images` tensor, containing the RGB
-// value of the pixels. The output is only well defined if the value in `images`
-// are in `[0,1]`.
+// value: Compression level.
+// If not specified, defaults to -1
+func EncodePngCompression(value int64) EncodePngAttr {
+	return func(m optionalAttr) {
+		m["compression"] = value
+	}
+}
+
+// PNG-encode an image.
 //
-// See `rgb_to_hsv` for a description of the HSV encoding.
+// `image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
+// where `channels` is:
+//
+// *   1: for grayscale.
+// *   2: for grayscale + alpha.
+// *   3: for RGB.
+// *   4: for RGBA.
+//
+// The ZLIB compression level, `compression`, can be -1 for the PNG-encoder
+// default or a value from 0 to 9.  9 is the highest compression level, generating
+// the smallest output, but is slower.
 //
 // Arguments:
-//	images: 1-D or higher rank. HSV data to convert. Last dimension must be size 3.
+//	image: 3-D with shape `[height, width, channels]`.
 //
-// Returns `images` converted to RGB.
-func HSVToRGB(scope *Scope, images tf.Output) (output tf.Output) {
+// Returns 0-D. PNG-encoded image.
+func EncodePng(scope *Scope, image tf.Output, optional ...EncodePngAttr) (contents tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
-		Type: "HSVToRGB",
+		Type: "EncodePng",
 		Input: []tf.Input{
-			images,
+			image,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -8974,29 +9438,6 @@ func SparseSparseMinimum(scope *Scope, a_indices tf.Output, a_values tf.Output, 
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// Returns the set of files matching one or more glob patterns.
-//
-// Note that this routine only supports wildcard characters in the
-// basename portion of the pattern, not in the directory portion.
-//
-// Arguments:
-//	pattern: Shell wildcard pattern(s). Scalar or vector of type string.
-//
-// Returns A vector of matching filenames.
-func MatchingFiles(scope *Scope, pattern tf.Output) (filenames tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatchingFiles",
-		Input: []tf.Input{
-			pattern,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Computes the gradient of the sigmoid of `x` wrt its input.
@@ -10269,117 +10710,6 @@ func QuantizedRelu(scope *Scope, features tf.Output, min_features tf.Output, max
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// InitializeTableFromTextFileV2Attr is an optional argument to InitializeTableFromTextFileV2.
-type InitializeTableFromTextFileV2Attr func(optionalAttr)
-
-// InitializeTableFromTextFileV2VocabSize sets the optional vocab_size attribute to value.
-//
-// value: Number of elements of the file, use -1 if unknown.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func InitializeTableFromTextFileV2VocabSize(value int64) InitializeTableFromTextFileV2Attr {
-	return func(m optionalAttr) {
-		m["vocab_size"] = value
-	}
-}
-
-// InitializeTableFromTextFileV2Delimiter sets the optional delimiter attribute to value.
-//
-// value: Delimiter to separate fields in a line.
-// If not specified, defaults to "\t"
-func InitializeTableFromTextFileV2Delimiter(value string) InitializeTableFromTextFileV2Attr {
-	return func(m optionalAttr) {
-		m["delimiter"] = value
-	}
-}
-
-// Initializes a table from a text file.
-//
-// It inserts one key-value pair into the table for each line of the file.
-// The key and value is extracted from the whole line content, elements from the
-// split line based on `delimiter` or the line number (starting from zero).
-// Where to extract the key and value from a line is specified by `key_index` and
-// `value_index`.
-//
-// - A value of -1 means use the line number(starting from zero), expects `int64`.
-// - A value of -2 means use the whole line content, expects `string`.
-// - A value >= 0 means use the index (starting at zero) of the split line based
-//   on `delimiter`.
-//
-// Arguments:
-//	table_handle: Handle to a table which will be initialized.
-//	filename: Filename of a vocabulary text file.
-//	key_index: Column index in a line to get the table `key` values from.
-//	value_index: Column index that represents information of a line to get the table
-// `value` values from.
-//
-// Returns the created operation.
-func InitializeTableFromTextFileV2(scope *Scope, table_handle tf.Output, filename tf.Output, key_index int64, value_index int64, optional ...InitializeTableFromTextFileV2Attr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"key_index": key_index, "value_index": value_index}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "InitializeTableFromTextFileV2",
-		Input: []tf.Input{
-			table_handle, filename,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// ResourceSparseApplyProximalGradientDescentAttr is an optional argument to ResourceSparseApplyProximalGradientDescent.
-type ResourceSparseApplyProximalGradientDescentAttr func(optionalAttr)
-
-// ResourceSparseApplyProximalGradientDescentUseLocking sets the optional use_locking attribute to value.
-//
-// value: If True, the subtraction will be protected by a lock;
-// otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to false
-func ResourceSparseApplyProximalGradientDescentUseLocking(value bool) ResourceSparseApplyProximalGradientDescentAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// Sparse update '*var' as FOBOS algorithm with fixed learning rate.
-//
-// That is for rows we have grad for, we update var as follows:
-// prox_v = var - alpha * grad
-// var = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}
-//
-// Arguments:
-//	var_: Should be from a Variable().
-//	alpha: Scaling factor. Must be a scalar.
-//	l1: L1 regularization. Must be a scalar.
-//	l2: L2 regularization. Must be a scalar.
-//	grad: The gradient.
-//	indices: A vector of indices into the first dimension of var and accum.
-//
-// Returns the created operation.
-func ResourceSparseApplyProximalGradientDescent(scope *Scope, var_ tf.Output, alpha tf.Output, l1 tf.Output, l2 tf.Output, grad tf.Output, indices tf.Output, optional ...ResourceSparseApplyProximalGradientDescentAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceSparseApplyProximalGradientDescent",
-		Input: []tf.Input{
-			var_, alpha, l1, l2, grad, indices,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
 // Computes rectified linear gradients for a Relu operation.
 //
 // Arguments:
@@ -10418,51 +10748,6 @@ func ReciprocalGrad(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// Computes the Cholesky decomposition of one or more square matrices.
-//
-// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-// form square matrices, with the same constraints as the single matrix Cholesky
-// decomposition above. The output is a tensor of the same shape as the input
-// containing the Cholesky decompositions for all input submatrices `[..., :, :]`.
-//
-// Arguments:
-//	input: Shape is `[..., M, M]`.
-//
-// Returns Shape is `[..., M, M]`.
-func Cholesky(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Cholesky",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Writes contents to the file at input filename. Creates file if not existing.
-//
-// Arguments:
-//	filename: scalar. The name of the file to which we write the contents.
-//	contents: scalar. The content to be written to the output file.
-//
-// Returns the created operation.
-func WriteFile(scope *Scope, filename tf.Output, contents tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "WriteFile",
-		Input: []tf.Input{
-			filename, contents,
-		},
-	}
-	return scope.AddOperation(opspec)
 }
 
 // Reverses specific dimensions of a tensor.
@@ -10621,6 +10906,35 @@ func IFFT3D(scope *Scope, input tf.Output) (output tf.Output) {
 		Type: "IFFT3D",
 		Input: []tf.Input{
 			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Looks up keys in a table, outputs the corresponding values.
+//
+// The tensor `keys` must of the same type as the keys of the table.
+// The output `values` is of the type of the table values.
+//
+// The scalar `default_value` is the value output for keys not present in the
+// table. It must also be of the same type as the table values.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys to look up.
+//
+//
+// Returns Same shape as `keys`.  Values found in the table, or `default_values`
+// for missing keys.
+func LookupTableFindV2(scope *Scope, table_handle tf.Output, keys tf.Output, default_value tf.Output) (values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableFindV2",
+		Input: []tf.Input{
+			table_handle, keys, default_value,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -11189,122 +11503,6 @@ func IFFT2D(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
-// MutableHashTableOfTensorsV2Attr is an optional argument to MutableHashTableOfTensorsV2.
-type MutableHashTableOfTensorsV2Attr func(optionalAttr)
-
-// MutableHashTableOfTensorsV2Container sets the optional container attribute to value.
-//
-// value: If non-empty, this table is placed in the given container.
-// Otherwise, a default container is used.
-// If not specified, defaults to ""
-func MutableHashTableOfTensorsV2Container(value string) MutableHashTableOfTensorsV2Attr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// MutableHashTableOfTensorsV2SharedName sets the optional shared_name attribute to value.
-//
-// value: If non-empty, this table is shared under the given name across
-// multiple sessions.
-// If not specified, defaults to ""
-func MutableHashTableOfTensorsV2SharedName(value string) MutableHashTableOfTensorsV2Attr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// MutableHashTableOfTensorsV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
-// If not specified, defaults to false
-func MutableHashTableOfTensorsV2UseNodeNameSharing(value bool) MutableHashTableOfTensorsV2Attr {
-	return func(m optionalAttr) {
-		m["use_node_name_sharing"] = value
-	}
-}
-
-// MutableHashTableOfTensorsV2ValueShape sets the optional value_shape attribute to value.
-// If not specified, defaults to <>
-func MutableHashTableOfTensorsV2ValueShape(value tf.Shape) MutableHashTableOfTensorsV2Attr {
-	return func(m optionalAttr) {
-		m["value_shape"] = value
-	}
-}
-
-// Creates an empty hash table.
-//
-// This op creates a mutable hash table, specifying the type of its keys and
-// values. Each value must be a vector. Data can be inserted into the table using
-// the insert operations. It does not support the initialization operation.
-//
-// Arguments:
-//	key_dtype: Type of the table keys.
-//	value_dtype: Type of the table values.
-//
-// Returns Handle to a table.
-func MutableHashTableOfTensorsV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...MutableHashTableOfTensorsV2Attr) (table_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MutableHashTableOfTensorsV2",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ResourceApplyProximalAdagradAttr is an optional argument to ResourceApplyProximalAdagrad.
-type ResourceApplyProximalAdagradAttr func(optionalAttr)
-
-// ResourceApplyProximalAdagradUseLocking sets the optional use_locking attribute to value.
-//
-// value: If True, updating of the var and accum tensors will be protected by
-// a lock; otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to false
-func ResourceApplyProximalAdagradUseLocking(value bool) ResourceApplyProximalAdagradAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// Update '*var' and '*accum' according to FOBOS with Adagrad learning rate.
-//
-// accum += grad * grad
-// prox_v = var - lr * grad * (1 / sqrt(accum))
-// var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
-//
-// Arguments:
-//	var_: Should be from a Variable().
-//	accum: Should be from a Variable().
-//	lr: Scaling factor. Must be a scalar.
-//	l1: L1 regularization. Must be a scalar.
-//	l2: L2 regularization. Must be a scalar.
-//	grad: The gradient.
-//
-// Returns the created operation.
-func ResourceApplyProximalAdagrad(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.Output, l1 tf.Output, l2 tf.Output, grad tf.Output, optional ...ResourceApplyProximalAdagradAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceApplyProximalAdagrad",
-		Input: []tf.Input{
-			var_, accum, lr, l1, l2, grad,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
 // TensorArrayV3Attr is an optional argument to TensorArrayV3.
 type TensorArrayV3Attr func(optionalAttr)
 
@@ -11612,54 +11810,6 @@ func FractionalMaxPoolGrad(scope *Scope, orig_input tf.Output, orig_output tf.Ou
 		Type: "FractionalMaxPoolGrad",
 		Input: []tf.Input{
 			orig_input, orig_output, out_backprop, row_pooling_sequence, col_pooling_sequence,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// AvgPool3DGradAttr is an optional argument to AvgPool3DGrad.
-type AvgPool3DGradAttr func(optionalAttr)
-
-// AvgPool3DGradDataFormat sets the optional data_format attribute to value.
-//
-// value: The data format of the input and output data. With the
-// default format "NDHWC", the data is stored in the order of:
-//     [batch, in_depth, in_height, in_width, in_channels].
-// Alternatively, the format could be "NCDHW", the data storage order is:
-//     [batch, in_channels, in_depth, in_height, in_width].
-// If not specified, defaults to "NDHWC"
-func AvgPool3DGradDataFormat(value string) AvgPool3DGradAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// Computes gradients of average pooling function.
-//
-// Arguments:
-//	orig_input_shape: The original input dimensions.
-//	grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
-//	ksize: 1-D tensor of length 5. The size of the window for each dimension of
-// the input tensor. Must have `ksize[0] = ksize[4] = 1`.
-//	strides: 1-D tensor of length 5. The stride of the sliding window for each
-// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-//	padding: The type of padding algorithm to use.
-//
-// Returns The backprop for input.
-func AvgPool3DGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksize []int64, strides []int64, padding string, optional ...AvgPool3DGradAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "AvgPool3DGrad",
-		Input: []tf.Input{
-			orig_input_shape, grad,
 		},
 		Attrs: attrs,
 	}
@@ -12745,6 +12895,54 @@ func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// AvgPool3DGradAttr is an optional argument to AvgPool3DGrad.
+type AvgPool3DGradAttr func(optionalAttr)
+
+// AvgPool3DGradDataFormat sets the optional data_format attribute to value.
+//
+// value: The data format of the input and output data. With the
+// default format "NDHWC", the data is stored in the order of:
+//     [batch, in_depth, in_height, in_width, in_channels].
+// Alternatively, the format could be "NCDHW", the data storage order is:
+//     [batch, in_channels, in_depth, in_height, in_width].
+// If not specified, defaults to "NDHWC"
+func AvgPool3DGradDataFormat(value string) AvgPool3DGradAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Computes gradients of average pooling function.
+//
+// Arguments:
+//	orig_input_shape: The original input dimensions.
+//	grad: Output backprop of shape `[batch, depth, rows, cols, channels]`.
+//	ksize: 1-D tensor of length 5. The size of the window for each dimension of
+// the input tensor. Must have `ksize[0] = ksize[4] = 1`.
+//	strides: 1-D tensor of length 5. The stride of the sliding window for each
+// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+//	padding: The type of padding algorithm to use.
+//
+// Returns The backprop for input.
+func AvgPool3DGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksize []int64, strides []int64, padding string, optional ...AvgPool3DGradAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "AvgPool3DGrad",
+		Input: []tf.Input{
+			orig_input_shape, grad,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // TextLineReaderV2Attr is an optional argument to TextLineReaderV2.
 type TextLineReaderV2Attr func(optionalAttr)
 
@@ -13388,39 +13586,6 @@ func ResourceApplyAdadelta(scope *Scope, var_ tf.Output, accum tf.Output, accum_
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// Shuffle dimensions of x according to a permutation.
-//
-// The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
-//   `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`
-func Transpose(scope *Scope, x tf.Output, perm tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Transpose",
-		Input: []tf.Input{
-			x, perm,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Reads and outputs the entire contents of the input filename.
-func ReadFile(scope *Scope, filename tf.Output) (contents tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReadFile",
-		Input: []tf.Input{
-			filename,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Output a fact about factorials.
@@ -14260,37 +14425,6 @@ func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...Gathe
 	return op.Output(0)
 }
 
-// Adjust the contrast of one or more images.
-//
-// `images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
-// interpreted as `[height, width, channels]`.  The other dimensions only
-// represent a collection of images, such as `[batch, height, width, channels].`
-//
-// Contrast is adjusted independently for each channel of each image.
-//
-// For each channel, the Op first computes the mean of the image pixels in the
-// channel and then adjusts each component of each pixel to
-// `(x - mean) * contrast_factor + mean`.
-//
-// Arguments:
-//	images: Images to adjust.  At least 3-D.
-//	contrast_factor: A float multiplier for adjusting contrast.
-//
-// Returns The contrast-adjusted image or images.
-func AdjustContrastv2(scope *Scope, images tf.Output, contrast_factor tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "AdjustContrastv2",
-		Input: []tf.Input{
-			images, contrast_factor,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes softsign gradients for a softsign operation.
 //
 // Arguments:
@@ -14381,31 +14515,6 @@ func Dilation2D(scope *Scope, input tf.Output, filter tf.Output, strides []int64
 			input, filter,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Decode the first frame of a GIF-encoded image to a uint8 tensor.
-//
-// GIF with frame or transparency compression are not supported
-// convert animated GIF from compressed to uncompressed by:
-//
-// convert $src.gif -coalesce $dst.gif
-//
-// Arguments:
-//	contents: 0-D.  The GIF-encoded image.
-//
-// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB order
-func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeGif",
-		Input: []tf.Input{
-			contents,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -14672,6 +14781,70 @@ func SparseSegmentSqrtN(scope *Scope, data tf.Output, indices tf.Output, segment
 	return op.Output(0)
 }
 
+// ResizeBilinearGradAttr is an optional argument to ResizeBilinearGrad.
+type ResizeBilinearGradAttr func(optionalAttr)
+
+// ResizeBilinearGradAlignCorners sets the optional align_corners attribute to value.
+//
+// value: If true, rescale grads by (orig_height - 1) / (height - 1), which
+// exactly aligns the 4 corners of grads and original_image. If false, rescale by
+// orig_height / height. Treat similarly the width dimension.
+// If not specified, defaults to false
+func ResizeBilinearGradAlignCorners(value bool) ResizeBilinearGradAttr {
+	return func(m optionalAttr) {
+		m["align_corners"] = value
+	}
+}
+
+// Computes the gradient of bilinear interpolation.
+//
+// Arguments:
+//	grads: 4-D with shape `[batch, height, width, channels]`.
+//	original_image: 4-D with shape `[batch, orig_height, orig_width, channels]`,
+// The image tensor that was resized.
+//
+// Returns 4-D with shape `[batch, orig_height, orig_width, channels]`.
+// Gradients with respect to the input image. Input image must have been
+// float or double.
+func ResizeBilinearGrad(scope *Scope, grads tf.Output, original_image tf.Output, optional ...ResizeBilinearGradAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResizeBilinearGrad",
+		Input: []tf.Input{
+			grads, original_image,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the number of elements in the given table.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//
+// Returns Scalar that contains number of elements in the table.
+func LookupTableSizeV2(scope *Scope, table_handle tf.Output) (size tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableSizeV2",
+		Input: []tf.Input{
+			table_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Component-wise divides a SparseTensor by a dense Tensor.
 //
 // *Limitation*: this Op only broadcasts the dense side to the sparse side, but not
@@ -14720,95 +14893,6 @@ func ReadVariableOp(scope *Scope, resource tf.Output, dtype tf.DataType) (value 
 		Type: "ReadVariableOp",
 		Input: []tf.Input{
 			resource,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ProdAttr is an optional argument to Prod.
-type ProdAttr func(optionalAttr)
-
-// ProdKeepDims sets the optional keep_dims attribute to value.
-//
-// value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to false
-func ProdKeepDims(value bool) ProdAttr {
-	return func(m optionalAttr) {
-		m["keep_dims"] = value
-	}
-}
-
-// Computes the product of elements across dimensions of a tensor.
-//
-// Reduces `input` along the dimensions given in `reduction_indices`. Unless
-// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `reduction_indices`. If `keep_dims` is true, the reduced dimensions are
-// retained with length 1.
-//
-// Arguments:
-//	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce.
-//
-// Returns The reduced tensor.
-func Prod(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...ProdAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Prod",
-		Input: []tf.Input{
-			input, reduction_indices,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ResizeBilinearAttr is an optional argument to ResizeBilinear.
-type ResizeBilinearAttr func(optionalAttr)
-
-// ResizeBilinearAlignCorners sets the optional align_corners attribute to value.
-//
-// value: If true, rescale input by (new_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of images and resized images. If false, rescale
-// by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
-func ResizeBilinearAlignCorners(value bool) ResizeBilinearAttr {
-	return func(m optionalAttr) {
-		m["align_corners"] = value
-	}
-}
-
-// Resize `images` to `size` using bilinear interpolation.
-//
-// Input images can be of different types but output images are always float.
-//
-// Arguments:
-//	images: 4-D with shape `[batch, height, width, channels]`.
-//	size: = A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
-// new size for the images.
-//
-// Returns 4-D with shape
-// `[batch, new_height, new_width, channels]`.
-func ResizeBilinear(scope *Scope, images tf.Output, size tf.Output, optional ...ResizeBilinearAttr) (resized_images tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResizeBilinear",
-		Input: []tf.Input{
-			images, size,
 		},
 		Attrs: attrs,
 	}
@@ -14983,6 +15067,108 @@ func SparseSegmentMeanGrad(scope *Scope, grad tf.Output, indices tf.Output, segm
 		Input: []tf.Input{
 			grad, indices, segment_ids, output_dim0,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Converts one or more images from RGB to HSV.
+//
+// Outputs a tensor of the same shape as the `images` tensor, containing the HSV
+// value of the pixels. The output is only well defined if the value in `images`
+// are in `[0,1]`.
+//
+// `output[..., 0]` contains hue, `output[..., 1]` contains saturation, and
+// `output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0
+// corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
+//
+// Arguments:
+//	images: 1-D or higher rank. RGB data to convert. Last dimension must be size 3.
+//
+// Returns `images` converted to HSV.
+func RGBToHSV(scope *Scope, images tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RGBToHSV",
+		Input: []tf.Input{
+			images,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MatrixSolveLsAttr is an optional argument to MatrixSolveLs.
+type MatrixSolveLsAttr func(optionalAttr)
+
+// MatrixSolveLsFast sets the optional fast attribute to value.
+// If not specified, defaults to true
+func MatrixSolveLsFast(value bool) MatrixSolveLsAttr {
+	return func(m optionalAttr) {
+		m["fast"] = value
+	}
+}
+
+// Solves one or more linear least-squares problems.
+//
+// `matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
+// form matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.
+// The output is a tensor shape `[..., N, K]` where each output matrix solves
+// each of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]
+// in the least squares sense.
+//
+// matrix and right-hand sides in the batch:
+//
+// `matrix`=\\(A \in \Re^{m \times n}\\),
+// `rhs`=\\(B  \in \Re^{m \times k}\\),
+// `output`=\\(X  \in \Re^{n \times k}\\),
+// `l2_regularizer`=\\(\lambda\\).
+//
+// If `fast` is `True`, then the solution is computed by solving the normal
+// equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
+// \\(X = (A^T A + \lambda I)^{-1} A^T B\\), which solves the least-squares
+// problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k} } ||A Z - B||_F^2 +
+// \lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is computed as
+// \\(X = A^T (A A^T + \lambda I)^{-1} B\\), which (for \\(\lambda = 0\\)) is the
+// minimum-norm solution to the under-determined linear system, i.e.
+// \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k} } ||Z||_F^2 \\), subject to
+// \\(A Z = B\\). Notice that the fast path is only numerically stable when
+// \\(A\\) is numerically full rank and has a condition number
+// \\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach} } }\\) or\\(\lambda\\) is
+// sufficiently large.
+//
+// If `fast` is `False` an algorithm based on the numerically robust complete
+// orthogonal decomposition is used. This computes the minimum-norm
+// least-squares solution, even when \\(A\\) is rank deficient. This path is
+// typically 6-7 times slower than the fast path. If `fast` is `False` then
+// `l2_regularizer` is ignored.
+//
+// Arguments:
+//	matrix: Shape is `[..., M, N]`.
+//	rhs: Shape is `[..., M, K]`.
+//	l2_regularizer: Scalar tensor.
+//
+// @compatibility(numpy)
+// Equivalent to np.linalg.lstsq
+// @end_compatibility
+//
+// Returns Shape is `[..., N, K]`.
+func MatrixSolveLs(scope *Scope, matrix tf.Output, rhs tf.Output, l2_regularizer tf.Output, optional ...MatrixSolveLsAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixSolveLs",
+		Input: []tf.Input{
+			matrix, rhs, l2_regularizer,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -15770,6 +15956,30 @@ func TanhGrad(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Outputs all keys and values in the table.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//
+//
+//
+// Returns Vector of all keys present in the table.Tensor of all values in the table. Indexed in parallel with `keys`.
+func LookupTableExportV2(scope *Scope, table_handle tf.Output, Tkeys tf.DataType, Tvalues tf.DataType) (keys tf.Output, values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tkeys": Tkeys, "Tvalues": Tvalues}
+	opspec := tf.OpSpec{
+		Type: "LookupTableExportV2",
+		Input: []tf.Input{
+			table_handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // AddManySparseToTensorsMapAttr is an optional argument to AddManySparseToTensorsMap.
 type AddManySparseToTensorsMapAttr func(optionalAttr)
 
@@ -15872,6 +16082,153 @@ func StringToHashBucketFast(scope *Scope, input tf.Output, num_buckets int64) (o
 			input,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TensorArrayGatherV3Attr is an optional argument to TensorArrayGatherV3.
+type TensorArrayGatherV3Attr func(optionalAttr)
+
+// TensorArrayGatherV3ElementShape sets the optional element_shape attribute to value.
+//
+// value: The expected shape of an element, if known. Used to
+// validate the shapes of TensorArray elements. If this shape is not
+// fully specified, gathering zero-size TensorArrays is an error.
+// If not specified, defaults to <unknown_rank:true >
+func TensorArrayGatherV3ElementShape(value tf.Shape) TensorArrayGatherV3Attr {
+	return func(m optionalAttr) {
+		m["element_shape"] = value
+	}
+}
+
+// Gather specific elements from the TensorArray into output `value`.
+//
+// All elements selected by `indices` must have the same shape.
+//
+// Arguments:
+//	handle: The handle to a TensorArray.
+//	indices: The locations in the TensorArray from which to read tensor elements.
+//	flow_in: A float scalar that enforces proper chaining of operations.
+//	dtype: The type of the elem that is returned.
+//
+// Returns All of the elements in the TensorArray, concatenated along a new
+// axis (the new dimension 0).
+func TensorArrayGatherV3(scope *Scope, handle tf.Output, indices tf.Output, flow_in tf.Output, dtype tf.DataType, optional ...TensorArrayGatherV3Attr) (value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorArrayGatherV3",
+		Input: []tf.Input{
+			handle, indices, flow_in,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Deprecated. Disallowed in GraphDef version >= 2.
+//
+// DEPRECATED at GraphDef version 2: Use AdjustContrastv2 instead
+func AdjustContrast(scope *Scope, images tf.Output, contrast_factor tf.Output, min_value tf.Output, max_value tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "AdjustContrast",
+		Input: []tf.Input{
+			images, contrast_factor, min_value, max_value,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MaxPoolGradGradAttr is an optional argument to MaxPoolGradGrad.
+type MaxPoolGradGradAttr func(optionalAttr)
+
+// MaxPoolGradGradDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, in_height, in_width, in_channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, in_channels, in_height, in_width].
+// If not specified, defaults to "NHWC"
+func MaxPoolGradGradDataFormat(value string) MaxPoolGradGradAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Computes second-order gradients of the maxpooling function.
+//
+// Arguments:
+//	orig_input: The original input tensor.
+//	orig_output: The original output tensor.
+//	grad: 4-D.  Gradients of gradients w.r.t. the input of `max_pool`.
+//	ksize: The size of the window for each dimension of the input tensor.
+//	strides: The stride of the sliding window for each dimension of the
+// input tensor.
+//	padding: The type of padding algorithm to use.
+//
+// Returns Gradients of gradients w.r.t. the input to `max_pool`.
+func MaxPoolGradGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output, grad tf.Output, ksize []int64, strides []int64, padding string, optional ...MaxPoolGradGradAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MaxPoolGradGrad",
+		Input: []tf.Input{
+			orig_input, orig_output, grad,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// 3D real-valued fast Fourier transform.
+//
+// Computes the 3-dimensional discrete Fourier transform of a real-valued signal
+// over the inner-most 3 dimensions of `input`.
+//
+// Since the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the
+// `fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
+// of `output`: the zero-frequency term, followed by the `fft_length / 2`
+// positive-frequency terms.
+//
+// Arguments:
+//	input: A float32 tensor.
+//	fft_length: An int32 tensor of shape [3]. The FFT length for each dimension.
+//
+// Returns A complex64 tensor of the same rank as `input`. The inner-most 3
+//   dimensions of `input` are replaced with the their 3D Fourier transform. The
+//   inner-most dimension contains `fft_length / 2 + 1` unique frequency
+//   components.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.rfftn with 3 dimensions.
+// @end_compatibility
+func RFFT3D(scope *Scope, input tf.Output, fft_length tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RFFT3D",
+		Input: []tf.Input{
+			input, fft_length,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -16708,6 +17065,30 @@ func FractionalAvgPool(scope *Scope, value tf.Output, pooling_ratio []float32, o
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// Updates the table to associates keys with values.
+//
+// The tensor `keys` must be of the same type as the keys of the table.
+// The tensor `values` must be of the type of the table values.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys to look up.
+//	values: Values to associate with keys.
+//
+// Returns the created operation.
+func LookupTableInsertV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableInsertV2",
+		Input: []tf.Input{
+			table_handle, keys, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Produces the average pool of the input tensor for quantized types.
 //
 // Arguments:
@@ -16992,41 +17373,6 @@ func ComplexAbs(scope *Scope, x tf.Output, optional ...ComplexAbsAttr) (y tf.Out
 			x,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Draw bounding boxes on a batch of images.
-//
-// Outputs a copy of `images` but draws on top of the pixels zero or more bounding
-// boxes specified by the locations in `boxes`. The coordinates of the each
-// bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
-// bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
-// height of the underlying image.
-//
-// For example, if an image is 100 x 200 pixels and the bounding box is
-// `[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the
-// bounding box will be `(10, 40)` to `(50, 180)`.
-//
-// Parts of the bounding box may fall outside the image.
-//
-// Arguments:
-//	images: 4-D with shape `[batch, height, width, depth]`. A batch of images.
-//	boxes: 3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding
-// boxes.
-//
-// Returns 4-D with the same shape as `images`. The batch of input images with
-// bounding boxes drawn on the images.
-func DrawBoundingBoxes(scope *Scope, images tf.Output, boxes tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DrawBoundingBoxes",
-		Input: []tf.Input{
-			images, boxes,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -17501,28 +17847,6 @@ func Log(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// Computes rectified linear 6 gradients for a Relu6 operation.
-//
-// Arguments:
-//	gradients: The backpropagated gradients to the corresponding Relu6 operation.
-//	features: The features passed as input to the corresponding Relu6 operation.
-//
-// Returns The gradients:
-// `gradients * (features > 0) * (features < 6)`.
-func Relu6Grad(scope *Scope, gradients tf.Output, features tf.Output) (backprops tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Relu6Grad",
-		Input: []tf.Input{
-			gradients, features,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // ResizeBicubicAttr is an optional argument to ResizeBicubic.
 type ResizeBicubicAttr func(optionalAttr)
 
@@ -17563,6 +17887,28 @@ func ResizeBicubic(scope *Scope, images tf.Output, size tf.Output, optional ...R
 			images, size,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes rectified linear 6 gradients for a Relu6 operation.
+//
+// Arguments:
+//	gradients: The backpropagated gradients to the corresponding Relu6 operation.
+//	features: The features passed as input to the corresponding Relu6 operation.
+//
+// Returns The gradients:
+// `gradients * (features > 0) * (features < 6)`.
+func Relu6Grad(scope *Scope, gradients tf.Output, features tf.Output) (backprops tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Relu6Grad",
+		Input: []tf.Input{
+			gradients, features,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -17676,181 +18022,6 @@ func RFFT2D(scope *Scope, input tf.Output, fft_length tf.Output) (output tf.Outp
 		Input: []tf.Input{
 			input, fft_length,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Gradients for batch normalization.
-//
-// DEPRECATED at GraphDef version 9: Use tf.nn.batch_normalization()
-//
-// This op is deprecated. See `tf.nn.batch_normalization`.
-//
-// Arguments:
-//	t: A 4D input Tensor.
-//	m: A 1D mean Tensor with size matching the last dimension of t.
-// This is the first output from tf.nn.moments,
-// or a saved moving average thereof.
-//	v: A 1D variance Tensor with size matching the last dimension of t.
-// This is the second output from tf.nn.moments,
-// or a saved moving average thereof.
-//	gamma: A 1D gamma Tensor with size matching the last dimension of t.
-// If "scale_after_normalization" is true, this Tensor will be multiplied
-// with the normalized Tensor.
-//	backprop: 4D backprop Tensor.
-//	variance_epsilon: A small float number to avoid dividing by 0.
-//	scale_after_normalization: A bool indicating whether the resulted tensor
-// needs to be multiplied with gamma.
-//
-// Returns 4D backprop tensor for input.1D backprop tensor for mean.1D backprop tensor for variance.1D backprop tensor for beta.1D backprop tensor for gamma.
-func BatchNormWithGlobalNormalizationGrad(scope *Scope, t tf.Output, m tf.Output, v tf.Output, gamma tf.Output, backprop tf.Output, variance_epsilon float32, scale_after_normalization bool) (dx tf.Output, dm tf.Output, dv tf.Output, db tf.Output, dg tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"variance_epsilon": variance_epsilon, "scale_after_normalization": scale_after_normalization}
-	opspec := tf.OpSpec{
-		Type: "BatchNormWithGlobalNormalizationGrad",
-		Input: []tf.Input{
-			t, m, v, gamma, backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
-}
-
-// EncodeJpegAttr is an optional argument to EncodeJpeg.
-type EncodeJpegAttr func(optionalAttr)
-
-// EncodeJpegFormat sets the optional format attribute to value.
-//
-// value: Per pixel image format.
-// If not specified, defaults to ""
-func EncodeJpegFormat(value string) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["format"] = value
-	}
-}
-
-// EncodeJpegQuality sets the optional quality attribute to value.
-//
-// value: Quality of the compression from 0 to 100 (higher is better and slower).
-// If not specified, defaults to 95
-func EncodeJpegQuality(value int64) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["quality"] = value
-	}
-}
-
-// EncodeJpegProgressive sets the optional progressive attribute to value.
-//
-// value: If True, create a JPEG that loads progressively (coarse to fine).
-// If not specified, defaults to false
-func EncodeJpegProgressive(value bool) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["progressive"] = value
-	}
-}
-
-// EncodeJpegOptimizeSize sets the optional optimize_size attribute to value.
-//
-// value: If True, spend CPU/RAM to reduce size with no quality change.
-// If not specified, defaults to false
-func EncodeJpegOptimizeSize(value bool) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["optimize_size"] = value
-	}
-}
-
-// EncodeJpegChromaDownsampling sets the optional chroma_downsampling attribute to value.
-//
-// value: See http://en.wikipedia.org/wiki/Chroma_subsampling.
-// If not specified, defaults to true
-func EncodeJpegChromaDownsampling(value bool) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["chroma_downsampling"] = value
-	}
-}
-
-// EncodeJpegDensityUnit sets the optional density_unit attribute to value.
-//
-// value: Unit used to specify `x_density` and `y_density`:
-// pixels per inch (`'in'`) or centimeter (`'cm'`).
-// If not specified, defaults to "in"
-func EncodeJpegDensityUnit(value string) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["density_unit"] = value
-	}
-}
-
-// EncodeJpegXDensity sets the optional x_density attribute to value.
-//
-// value: Horizontal pixels per density unit.
-// If not specified, defaults to 300
-func EncodeJpegXDensity(value int64) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["x_density"] = value
-	}
-}
-
-// EncodeJpegYDensity sets the optional y_density attribute to value.
-//
-// value: Vertical pixels per density unit.
-// If not specified, defaults to 300
-func EncodeJpegYDensity(value int64) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["y_density"] = value
-	}
-}
-
-// EncodeJpegXmpMetadata sets the optional xmp_metadata attribute to value.
-//
-// value: If not empty, embed this XMP metadata in the image header.
-// If not specified, defaults to ""
-func EncodeJpegXmpMetadata(value string) EncodeJpegAttr {
-	return func(m optionalAttr) {
-		m["xmp_metadata"] = value
-	}
-}
-
-// JPEG-encode an image.
-//
-// `image` is a 3-D uint8 Tensor of shape `[height, width, channels]`.
-//
-// The attr `format` can be used to override the color format of the encoded
-// output.  Values can be:
-//
-// *   `''`: Use a default format based on the number of channels in the image.
-// *   `grayscale`: Output a grayscale JPEG image.  The `channels` dimension
-//     of `image` must be 1.
-// *   `rgb`: Output an RGB JPEG image. The `channels` dimension
-//     of `image` must be 3.
-//
-// If `format` is not specified or is the empty string, a default format is picked
-// in function of the number of channels in `image`:
-//
-// *   1: Output a grayscale image.
-// *   3: Output an RGB image.
-//
-// Arguments:
-//	image: 3-D with shape `[height, width, channels]`.
-//
-// Returns 0-D. JPEG-encoded image.
-func EncodeJpeg(scope *Scope, image tf.Output, optional ...EncodeJpegAttr) (contents tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "EncodeJpeg",
-		Input: []tf.Input{
-			image,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -18162,6 +18333,117 @@ func ArgMin(scope *Scope, input tf.Output, dimension tf.Output) (output tf.Outpu
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// ResourceSparseApplyProximalGradientDescentAttr is an optional argument to ResourceSparseApplyProximalGradientDescent.
+type ResourceSparseApplyProximalGradientDescentAttr func(optionalAttr)
+
+// ResourceSparseApplyProximalGradientDescentUseLocking sets the optional use_locking attribute to value.
+//
+// value: If True, the subtraction will be protected by a lock;
+// otherwise the behavior is undefined, but may exhibit less contention.
+// If not specified, defaults to false
+func ResourceSparseApplyProximalGradientDescentUseLocking(value bool) ResourceSparseApplyProximalGradientDescentAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// Sparse update '*var' as FOBOS algorithm with fixed learning rate.
+//
+// That is for rows we have grad for, we update var as follows:
+// prox_v = var - alpha * grad
+// var = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	alpha: Scaling factor. Must be a scalar.
+//	l1: L1 regularization. Must be a scalar.
+//	l2: L2 regularization. Must be a scalar.
+//	grad: The gradient.
+//	indices: A vector of indices into the first dimension of var and accum.
+//
+// Returns the created operation.
+func ResourceSparseApplyProximalGradientDescent(scope *Scope, var_ tf.Output, alpha tf.Output, l1 tf.Output, l2 tf.Output, grad tf.Output, indices tf.Output, optional ...ResourceSparseApplyProximalGradientDescentAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceSparseApplyProximalGradientDescent",
+		Input: []tf.Input{
+			var_, alpha, l1, l2, grad, indices,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// InitializeTableFromTextFileV2Attr is an optional argument to InitializeTableFromTextFileV2.
+type InitializeTableFromTextFileV2Attr func(optionalAttr)
+
+// InitializeTableFromTextFileV2VocabSize sets the optional vocab_size attribute to value.
+//
+// value: Number of elements of the file, use -1 if unknown.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func InitializeTableFromTextFileV2VocabSize(value int64) InitializeTableFromTextFileV2Attr {
+	return func(m optionalAttr) {
+		m["vocab_size"] = value
+	}
+}
+
+// InitializeTableFromTextFileV2Delimiter sets the optional delimiter attribute to value.
+//
+// value: Delimiter to separate fields in a line.
+// If not specified, defaults to "\t"
+func InitializeTableFromTextFileV2Delimiter(value string) InitializeTableFromTextFileV2Attr {
+	return func(m optionalAttr) {
+		m["delimiter"] = value
+	}
+}
+
+// Initializes a table from a text file.
+//
+// It inserts one key-value pair into the table for each line of the file.
+// The key and value is extracted from the whole line content, elements from the
+// split line based on `delimiter` or the line number (starting from zero).
+// Where to extract the key and value from a line is specified by `key_index` and
+// `value_index`.
+//
+// - A value of -1 means use the line number(starting from zero), expects `int64`.
+// - A value of -2 means use the whole line content, expects `string`.
+// - A value >= 0 means use the index (starting at zero) of the split line based
+//   on `delimiter`.
+//
+// Arguments:
+//	table_handle: Handle to a table which will be initialized.
+//	filename: Filename of a vocabulary text file.
+//	key_index: Column index in a line to get the table `key` values from.
+//	value_index: Column index that represents information of a line to get the table
+// `value` values from.
+//
+// Returns the created operation.
+func InitializeTableFromTextFileV2(scope *Scope, table_handle tf.Output, filename tf.Output, key_index int64, value_index int64, optional ...InitializeTableFromTextFileV2Attr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_index": key_index, "value_index": value_index}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "InitializeTableFromTextFileV2",
+		Input: []tf.Input{
+			table_handle, filename,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Computes atan of x element-wise.
@@ -18628,33 +18910,36 @@ func Less(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
-// FakeQuantWithMinMaxVarsGradientAttr is an optional argument to FakeQuantWithMinMaxVarsGradient.
-type FakeQuantWithMinMaxVarsGradientAttr func(optionalAttr)
+// BiasAddGradAttr is an optional argument to BiasAddGrad.
+type BiasAddGradAttr func(optionalAttr)
 
-// FakeQuantWithMinMaxVarsGradientNumBits sets the optional num_bits attribute to value.
+// BiasAddGradDataFormat sets the optional data_format attribute to value.
 //
-// value: The bitwidth of the quantization; between 2 and 8, inclusive.
-// If not specified, defaults to 8
-func FakeQuantWithMinMaxVarsGradientNumBits(value int64) FakeQuantWithMinMaxVarsGradientAttr {
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the bias tensor will be added to the last dimension
+// of the value tensor.
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, in_channels, in_height, in_width].
+// The tensor will be added to "in_channels", the third-to-the-last
+//     dimension.
+// If not specified, defaults to "NHWC"
+func BiasAddGradDataFormat(value string) BiasAddGradAttr {
 	return func(m optionalAttr) {
-		m["num_bits"] = value
+		m["data_format"] = value
 	}
 }
 
-// Compute gradients for a FakeQuantWithMinMaxVars operation.
+// The backward operation for "BiasAdd" on the "bias" tensor.
+//
+// It accumulates all the values from out_backprop into the feature dimension.
+// For NHWC data format, the feature dimension is the last. For NCHW data format,
+// the feature dimension is the third-to-last.
 //
 // Arguments:
-//	gradients: Backpropagated gradients above the FakeQuantWithMinMaxVars operation.
-//	inputs: Values passed as inputs to the FakeQuantWithMinMaxVars operation.
-// min, max: Quantization interval, scalar floats.
+//	out_backprop: Any number of dimensions.
 //
-//
-//
-// Returns Backpropagated gradients w.r.t. inputs:
-// `gradients * (inputs >= min && inputs <= max)`.Backpropagated gradients w.r.t. min parameter:
-// `sum(gradients * (inputs < min))`.Backpropagated gradients w.r.t. max parameter:
-// `sum(gradients * (inputs > max))`.
-func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsGradientAttr) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
+// Returns 1-D with size the feature dimension of `out_backprop`.
+func BiasAddGrad(scope *Scope, out_backprop tf.Output, optional ...BiasAddGradAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -18663,29 +18948,11 @@ func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs t
 		a(attrs)
 	}
 	opspec := tf.OpSpec{
-		Type: "FakeQuantWithMinMaxVarsGradient",
+		Type: "BiasAddGrad",
 		Input: []tf.Input{
-			gradients, inputs, min, max,
+			out_backprop,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Returns the min of x and y (i.e. x < y ? x : y) element-wise.
-//
-// *NOTE*: `Minimum` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func Minimum(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Minimum",
-		Input: []tf.Input{
-			x, y,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -19996,65 +20263,6 @@ func QuantizeDownAndShrinkRange(scope *Scope, input tf.Output, input_min tf.Outp
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// DecodePngAttr is an optional argument to DecodePng.
-type DecodePngAttr func(optionalAttr)
-
-// DecodePngChannels sets the optional channels attribute to value.
-//
-// value: Number of color channels for the decoded image.
-// If not specified, defaults to 0
-func DecodePngChannels(value int64) DecodePngAttr {
-	return func(m optionalAttr) {
-		m["channels"] = value
-	}
-}
-
-// DecodePngDtype sets the optional dtype attribute to value.
-// If not specified, defaults to DT_UINT8
-func DecodePngDtype(value tf.DataType) DecodePngAttr {
-	return func(m optionalAttr) {
-		m["dtype"] = value
-	}
-}
-
-// Decode a PNG-encoded image to a uint8 or uint16 tensor.
-//
-// The attr `channels` indicates the desired number of color channels for the
-// decoded image.
-//
-// Accepted values are:
-//
-// *   0: Use the number of channels in the PNG-encoded image.
-// *   1: output a grayscale image.
-// *   3: output an RGB image.
-// *   4: output an RGBA image.
-//
-// If needed, the PNG-encoded image is transformed to match the requested number
-// of color channels.
-//
-// Arguments:
-//	contents: 0-D.  The PNG-encoded image.
-//
-// Returns 3-D with shape `[height, width, channels]`.
-func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (image tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodePng",
-		Input: []tf.Input{
-			contents,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // AudioSummaryV2Attr is an optional argument to AudioSummaryV2.
 type AudioSummaryV2Attr func(optionalAttr)
 
@@ -20219,31 +20427,188 @@ func AudioSummary(scope *Scope, tag tf.Output, tensor tf.Output, sample_rate flo
 	return op.Output(0)
 }
 
-// ResizeNearestNeighborAttr is an optional argument to ResizeNearestNeighbor.
-type ResizeNearestNeighborAttr func(optionalAttr)
-
-// ResizeNearestNeighborAlignCorners sets the optional align_corners attribute to value.
+// Replaces the contents of the table with the specified keys and values.
 //
-// value: If true, rescale input by (new_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of images and resized images. If false, rescale
-// by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
-func ResizeNearestNeighborAlignCorners(value bool) ResizeNearestNeighborAttr {
+// The tensor `keys` must be of the same type as the keys of the table.
+// The tensor `values` must be of the type of the table values.
+//
+// Arguments:
+//	table_handle: Handle to the table.
+//	keys: Any shape.  Keys to look up.
+//	values: Values to associate with keys.
+//
+// Returns the created operation.
+func LookupTableImportV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LookupTableImportV2",
+		Input: []tf.Input{
+			table_handle, keys, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// HashTableV2Attr is an optional argument to HashTableV2.
+type HashTableV2Attr func(optionalAttr)
+
+// HashTableV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func HashTableV2Container(value string) HashTableV2Attr {
 	return func(m optionalAttr) {
-		m["align_corners"] = value
+		m["container"] = value
 	}
 }
 
-// Resize `images` to `size` using nearest neighbor interpolation.
+// HashTableV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func HashTableV2SharedName(value string) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// HashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+//
+// value: If true and shared_name is empty, the table is shared
+// using the node name.
+// If not specified, defaults to false
+func HashTableV2UseNodeNameSharing(value bool) HashTableV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// Creates a non-initialized hash table.
+//
+// This op creates a hash table, specifying the type of its keys and values.
+// Before using the table you will have to initialize it.  After initialization the
+// table will be immutable.
 //
 // Arguments:
-//	images: 4-D with shape `[batch, height, width, channels]`.
-//	size: = A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
-// new size for the images.
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
 //
-// Returns 4-D with shape
-// `[batch, new_height, new_width, channels]`.
-func ResizeNearestNeighbor(scope *Scope, images tf.Output, size tf.Output, optional ...ResizeNearestNeighborAttr) (resized_images tf.Output) {
+// Returns Handle to a table.
+func HashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...HashTableV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "HashTableV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MutableHashTableV2Attr is an optional argument to MutableHashTableV2.
+type MutableHashTableV2Attr func(optionalAttr)
+
+// MutableHashTableV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func MutableHashTableV2Container(value string) MutableHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MutableHashTableV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func MutableHashTableV2SharedName(value string) MutableHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// MutableHashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+//
+// value: If true and shared_name is empty, the table is shared
+// using the node name.
+// If not specified, defaults to false
+func MutableHashTableV2UseNodeNameSharing(value bool) MutableHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// Creates an empty hash table.
+//
+// This op creates a mutable hash table, specifying the type of its keys and
+// values. Each value must be a scalar. Data can be inserted into the table using
+// the insert operations. It does not support the initialization operation.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func MutableHashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...MutableHashTableV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MutableHashTableV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ResourceApplyProximalAdagradAttr is an optional argument to ResourceApplyProximalAdagrad.
+type ResourceApplyProximalAdagradAttr func(optionalAttr)
+
+// ResourceApplyProximalAdagradUseLocking sets the optional use_locking attribute to value.
+//
+// value: If True, updating of the var and accum tensors will be protected by
+// a lock; otherwise the behavior is undefined, but may exhibit less contention.
+// If not specified, defaults to false
+func ResourceApplyProximalAdagradUseLocking(value bool) ResourceApplyProximalAdagradAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// Update '*var' and '*accum' according to FOBOS with Adagrad learning rate.
+//
+// accum += grad * grad
+// prox_v = var - lr * grad * (1 / sqrt(accum))
+// var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	accum: Should be from a Variable().
+//	lr: Scaling factor. Must be a scalar.
+//	l1: L1 regularization. Must be a scalar.
+//	l2: L2 regularization. Must be a scalar.
+//	grad: The gradient.
+//
+// Returns the created operation.
+func ResourceApplyProximalAdagrad(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.Output, l1 tf.Output, l2 tf.Output, grad tf.Output, optional ...ResourceApplyProximalAdagradAttr) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
@@ -20252,11 +20617,163 @@ func ResizeNearestNeighbor(scope *Scope, images tf.Output, size tf.Output, optio
 		a(attrs)
 	}
 	opspec := tf.OpSpec{
-		Type: "ResizeNearestNeighbor",
+		Type: "ResourceApplyProximalAdagrad",
 		Input: []tf.Input{
-			images, size,
+			var_, accum, lr, l1, l2, grad,
 		},
 		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// MutableHashTableOfTensorsV2Attr is an optional argument to MutableHashTableOfTensorsV2.
+type MutableHashTableOfTensorsV2Attr func(optionalAttr)
+
+// MutableHashTableOfTensorsV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func MutableHashTableOfTensorsV2Container(value string) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
+// If not specified, defaults to ""
+func MutableHashTableOfTensorsV2SharedName(value string) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+// If not specified, defaults to false
+func MutableHashTableOfTensorsV2UseNodeNameSharing(value bool) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// MutableHashTableOfTensorsV2ValueShape sets the optional value_shape attribute to value.
+// If not specified, defaults to <>
+func MutableHashTableOfTensorsV2ValueShape(value tf.Shape) MutableHashTableOfTensorsV2Attr {
+	return func(m optionalAttr) {
+		m["value_shape"] = value
+	}
+}
+
+// Creates an empty hash table.
+//
+// This op creates a mutable hash table, specifying the type of its keys and
+// values. Each value must be a vector. Data can be inserted into the table using
+// the insert operations. It does not support the initialization operation.
+//
+// Arguments:
+//	key_dtype: Type of the table keys.
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func MutableHashTableOfTensorsV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, optional ...MutableHashTableOfTensorsV2Attr) (table_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key_dtype": key_dtype, "value_dtype": value_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MutableHashTableOfTensorsV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Table initializer that takes two tensors for keys and values respectively.
+//
+// Arguments:
+//	table_handle: Handle to a table which will be initialized.
+//	keys: Keys of type Tkey.
+//	values: Values of type Tval.
+//
+// Returns the created operation.
+func InitializeTableV2(scope *Scope, table_handle tf.Output, keys tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "InitializeTableV2",
+		Input: []tf.Input{
+			table_handle, keys, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// FakeQuantWithMinMaxVarsGradientAttr is an optional argument to FakeQuantWithMinMaxVarsGradient.
+type FakeQuantWithMinMaxVarsGradientAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsGradientNumBits sets the optional num_bits attribute to value.
+//
+// value: The bitwidth of the quantization; between 2 and 8, inclusive.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsGradientNumBits(value int64) FakeQuantWithMinMaxVarsGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
+// Compute gradients for a FakeQuantWithMinMaxVars operation.
+//
+// Arguments:
+//	gradients: Backpropagated gradients above the FakeQuantWithMinMaxVars operation.
+//	inputs: Values passed as inputs to the FakeQuantWithMinMaxVars operation.
+// min, max: Quantization interval, scalar floats.
+//
+//
+//
+// Returns Backpropagated gradients w.r.t. inputs:
+// `gradients * (inputs >= min && inputs <= max)`.Backpropagated gradients w.r.t. min parameter:
+// `sum(gradients * (inputs < min))`.Backpropagated gradients w.r.t. max parameter:
+// `sum(gradients * (inputs > max))`.
+func FakeQuantWithMinMaxVarsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsGradientAttr) (backprops_wrt_input tf.Output, backprop_wrt_min tf.Output, backprop_wrt_max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FakeQuantWithMinMaxVarsGradient",
+		Input: []tf.Input{
+			gradients, inputs, min, max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Returns the min of x and y (i.e. x < y ? x : y) element-wise.
+//
+// *NOTE*: `Minimum` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func Minimum(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Minimum",
+		Input: []tf.Input{
+			x, y,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -20383,6 +20900,84 @@ func TFRecordReaderV2(scope *Scope, optional ...TFRecordReaderV2Attr) (reader_ha
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Adjust the saturation of one or more images.
+//
+// `images` is a tensor of at least 3 dimensions.  The last dimension is
+// interpretted as channels, and must be three.
+//
+// The input image is considered in the RGB colorspace. Conceptually, the RGB
+// colors are first mapped into HSV. A scale is then applied all the saturation
+// values, and then remapped back to RGB colorspace.
+//
+// Arguments:
+//	images: Images to adjust.  At least 3-D.
+//	scale: A float scale to add to the saturation.
+//
+// Returns The hue-adjusted image or images.
+func AdjustSaturation(scope *Scope, images tf.Output, scale tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "AdjustSaturation",
+		Input: []tf.Input{
+			images, scale,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// SelfAdjointEigV2Attr is an optional argument to SelfAdjointEigV2.
+type SelfAdjointEigV2Attr func(optionalAttr)
+
+// SelfAdjointEigV2ComputeV sets the optional compute_v attribute to value.
+//
+// value: If `True` then eigenvectors will be computed and returned in `v`.
+// Otherwise, only the eigenvalues will be computed.
+// If not specified, defaults to true
+func SelfAdjointEigV2ComputeV(value bool) SelfAdjointEigV2Attr {
+	return func(m optionalAttr) {
+		m["compute_v"] = value
+	}
+}
+
+// Computes the eigen decomposition of one or more square self-adjoint matrices.
+//
+// Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
+// `input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
+//
+// ```prettyprint
+// # a is a tensor.
+// # e is a tensor of eigenvalues.
+// # v is a tensor of eigenvectors.
+// e, v = self_adjoint_eig(a)
+// e = self_adjoint_eig(a, compute_v=False)
+// ```
+//
+// Arguments:
+//	input: `Tensor` input of shape `[N, N]`.
+//
+// Returns Eigenvalues. Shape is `[N]`.Eigenvectors. Shape is `[N, N]`.
+func SelfAdjointEigV2(scope *Scope, input tf.Output, optional ...SelfAdjointEigV2Attr) (e tf.Output, v tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SelfAdjointEigV2",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // MatrixSolveAttr is an optional argument to MatrixSolve.
@@ -21033,371 +21628,6 @@ func SoftmaxCrossEntropyWithLogits(scope *Scope, features tf.Output, labels tf.O
 	return op.Output(0), op.Output(1)
 }
 
-// Computes the number of elements in the given table.
-//
-// Arguments:
-//	table_handle: Handle to the table.
-//
-// Returns Scalar that contains number of elements in the table.
-func LookupTableSizeV2(scope *Scope, table_handle tf.Output) (size tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LookupTableSizeV2",
-		Input: []tf.Input{
-			table_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ResizeBilinearGradAttr is an optional argument to ResizeBilinearGrad.
-type ResizeBilinearGradAttr func(optionalAttr)
-
-// ResizeBilinearGradAlignCorners sets the optional align_corners attribute to value.
-//
-// value: If true, rescale grads by (orig_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of grads and original_image. If false, rescale by
-// orig_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
-func ResizeBilinearGradAlignCorners(value bool) ResizeBilinearGradAttr {
-	return func(m optionalAttr) {
-		m["align_corners"] = value
-	}
-}
-
-// Computes the gradient of bilinear interpolation.
-//
-// Arguments:
-//	grads: 4-D with shape `[batch, height, width, channels]`.
-//	original_image: 4-D with shape `[batch, orig_height, orig_width, channels]`,
-// The image tensor that was resized.
-//
-// Returns 4-D with shape `[batch, orig_height, orig_width, channels]`.
-// Gradients with respect to the input image. Input image must have been
-// float or double.
-func ResizeBilinearGrad(scope *Scope, grads tf.Output, original_image tf.Output, optional ...ResizeBilinearGradAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResizeBilinearGrad",
-		Input: []tf.Input{
-			grads, original_image,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ResizeNearestNeighborGradAttr is an optional argument to ResizeNearestNeighborGrad.
-type ResizeNearestNeighborGradAttr func(optionalAttr)
-
-// ResizeNearestNeighborGradAlignCorners sets the optional align_corners attribute to value.
-//
-// value: If true, rescale grads by (orig_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of grads and original_image. If false, rescale by
-// orig_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
-func ResizeNearestNeighborGradAlignCorners(value bool) ResizeNearestNeighborGradAttr {
-	return func(m optionalAttr) {
-		m["align_corners"] = value
-	}
-}
-
-// Computes the gradient of nearest neighbor interpolation.
-//
-// Arguments:
-//	grads: 4-D with shape `[batch, height, width, channels]`.
-//	size: = A 1-D int32 Tensor of 2 elements: `orig_height, orig_width`. The
-// original input size.
-//
-// Returns 4-D with shape `[batch, orig_height, orig_width, channels]`. Gradients
-// with respect to the input image.
-func ResizeNearestNeighborGrad(scope *Scope, grads tf.Output, size tf.Output, optional ...ResizeNearestNeighborGradAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResizeNearestNeighborGrad",
-		Input: []tf.Input{
-			grads, size,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DecodeJpegAttr is an optional argument to DecodeJpeg.
-type DecodeJpegAttr func(optionalAttr)
-
-// DecodeJpegChannels sets the optional channels attribute to value.
-//
-// value: Number of color channels for the decoded image.
-// If not specified, defaults to 0
-func DecodeJpegChannels(value int64) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["channels"] = value
-	}
-}
-
-// DecodeJpegRatio sets the optional ratio attribute to value.
-//
-// value: Downscaling ratio.
-// If not specified, defaults to 1
-func DecodeJpegRatio(value int64) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["ratio"] = value
-	}
-}
-
-// DecodeJpegFancyUpscaling sets the optional fancy_upscaling attribute to value.
-//
-// value: If true use a slower but nicer upscaling of the
-// chroma planes (yuv420/422 only).
-// If not specified, defaults to true
-func DecodeJpegFancyUpscaling(value bool) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["fancy_upscaling"] = value
-	}
-}
-
-// DecodeJpegTryRecoverTruncated sets the optional try_recover_truncated attribute to value.
-//
-// value: If true try to recover an image from truncated input.
-// If not specified, defaults to false
-func DecodeJpegTryRecoverTruncated(value bool) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["try_recover_truncated"] = value
-	}
-}
-
-// DecodeJpegAcceptableFraction sets the optional acceptable_fraction attribute to value.
-//
-// value: The minimum required fraction of lines before a truncated
-// input is accepted.
-// If not specified, defaults to 1
-func DecodeJpegAcceptableFraction(value float32) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["acceptable_fraction"] = value
-	}
-}
-
-// DecodeJpegDctMethod sets the optional dct_method attribute to value.
-//
-// value: string specifying a hint about the algorithm used for
-// decompression.  Defaults to "" which maps to a system-specific
-// default.  Currently valid values are ["INTEGER_FAST",
-// "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
-// jpeg library changes to a version that does not have that specific
-// option.)
-// If not specified, defaults to ""
-func DecodeJpegDctMethod(value string) DecodeJpegAttr {
-	return func(m optionalAttr) {
-		m["dct_method"] = value
-	}
-}
-
-// Decode a JPEG-encoded image to a uint8 tensor.
-//
-// The attr `channels` indicates the desired number of color channels for the
-// decoded image.
-//
-// Accepted values are:
-//
-// *   0: Use the number of channels in the JPEG-encoded image.
-// *   1: output a grayscale image.
-// *   3: output an RGB image.
-//
-// If needed, the JPEG-encoded image is transformed to match the requested number
-// of color channels.
-//
-// The attr `ratio` allows downscaling the image by an integer factor during
-// decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
-// downscaling the image later.
-//
-// Arguments:
-//	contents: 0-D.  The JPEG-encoded image.
-//
-// Returns 3-D with shape `[height, width, channels]`..
-func DecodeJpeg(scope *Scope, contents tf.Output, optional ...DecodeJpegAttr) (image tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeJpeg",
-		Input: []tf.Input{
-			contents,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// TensorArrayGatherV3Attr is an optional argument to TensorArrayGatherV3.
-type TensorArrayGatherV3Attr func(optionalAttr)
-
-// TensorArrayGatherV3ElementShape sets the optional element_shape attribute to value.
-//
-// value: The expected shape of an element, if known. Used to
-// validate the shapes of TensorArray elements. If this shape is not
-// fully specified, gathering zero-size TensorArrays is an error.
-// If not specified, defaults to <unknown_rank:true >
-func TensorArrayGatherV3ElementShape(value tf.Shape) TensorArrayGatherV3Attr {
-	return func(m optionalAttr) {
-		m["element_shape"] = value
-	}
-}
-
-// Gather specific elements from the TensorArray into output `value`.
-//
-// All elements selected by `indices` must have the same shape.
-//
-// Arguments:
-//	handle: The handle to a TensorArray.
-//	indices: The locations in the TensorArray from which to read tensor elements.
-//	flow_in: A float scalar that enforces proper chaining of operations.
-//	dtype: The type of the elem that is returned.
-//
-// Returns All of the elements in the TensorArray, concatenated along a new
-// axis (the new dimension 0).
-func TensorArrayGatherV3(scope *Scope, handle tf.Output, indices tf.Output, flow_in tf.Output, dtype tf.DataType, optional ...TensorArrayGatherV3Attr) (value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorArrayGatherV3",
-		Input: []tf.Input{
-			handle, indices, flow_in,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MaxPoolGradGradAttr is an optional argument to MaxPoolGradGrad.
-type MaxPoolGradGradAttr func(optionalAttr)
-
-// MaxPoolGradGradDataFormat sets the optional data_format attribute to value.
-//
-// value: Specify the data format of the input and output data. With the
-// default format "NHWC", the data is stored in the order of:
-//     [batch, in_height, in_width, in_channels].
-// Alternatively, the format could be "NCHW", the data storage order of:
-//     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to "NHWC"
-func MaxPoolGradGradDataFormat(value string) MaxPoolGradGradAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// Computes second-order gradients of the maxpooling function.
-//
-// Arguments:
-//	orig_input: The original input tensor.
-//	orig_output: The original output tensor.
-//	grad: 4-D.  Gradients of gradients w.r.t. the input of `max_pool`.
-//	ksize: The size of the window for each dimension of the input tensor.
-//	strides: The stride of the sliding window for each dimension of the
-// input tensor.
-//	padding: The type of padding algorithm to use.
-//
-// Returns Gradients of gradients w.r.t. the input to `max_pool`.
-func MaxPoolGradGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output, grad tf.Output, ksize []int64, strides []int64, padding string, optional ...MaxPoolGradGradAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MaxPoolGradGrad",
-		Input: []tf.Input{
-			orig_input, orig_output, grad,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// 3D real-valued fast Fourier transform.
-//
-// Computes the 3-dimensional discrete Fourier transform of a real-valued signal
-// over the inner-most 3 dimensions of `input`.
-//
-// Since the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the
-// `fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
-// of `output`: the zero-frequency term, followed by the `fft_length / 2`
-// positive-frequency terms.
-//
-// Arguments:
-//	input: A float32 tensor.
-//	fft_length: An int32 tensor of shape [3]. The FFT length for each dimension.
-//
-// Returns A complex64 tensor of the same rank as `input`. The inner-most 3
-//   dimensions of `input` are replaced with the their 3D Fourier transform. The
-//   inner-most dimension contains `fft_length / 2 + 1` unique frequency
-//   components.
-//
-// @compatibility(numpy)
-// Equivalent to np.fft.rfftn with 3 dimensions.
-// @end_compatibility
-func RFFT3D(scope *Scope, input tf.Output, fft_length tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RFFT3D",
-		Input: []tf.Input{
-			input, fft_length,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Deprecated. Disallowed in GraphDef version >= 2.
-//
-// DEPRECATED at GraphDef version 2: Use AdjustContrastv2 instead
-func AdjustContrast(scope *Scope, images tf.Output, contrast_factor tf.Output, min_value tf.Output, max_value tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "AdjustContrast",
-		Input: []tf.Input{
-			images, contrast_factor, min_value, max_value,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Store the input tensor in the state of the current session.
 //
 // Arguments:
@@ -21417,25 +21647,6 @@ func GetSessionHandleV2(scope *Scope, value tf.Output) (handle tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// Restore a Reader to its initial clean state.
-//
-// Arguments:
-//	reader_handle: Handle to a Reader.
-//
-// Returns the created operation.
-func ReaderResetV2(scope *Scope, reader_handle tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReaderResetV2",
-		Input: []tf.Input{
-			reader_handle,
-		},
-	}
-	return scope.AddOperation(opspec)
 }
 
 // Adjust the hue of one or more images.
@@ -21466,232 +21677,21 @@ func AdjustHue(scope *Scope, images tf.Output, delta tf.Output) (output tf.Outpu
 	return op.Output(0)
 }
 
-// SelfAdjointEigV2Attr is an optional argument to SelfAdjointEigV2.
-type SelfAdjointEigV2Attr func(optionalAttr)
-
-// SelfAdjointEigV2ComputeV sets the optional compute_v attribute to value.
-//
-// value: If `True` then eigenvectors will be computed and returned in `v`.
-// Otherwise, only the eigenvalues will be computed.
-// If not specified, defaults to true
-func SelfAdjointEigV2ComputeV(value bool) SelfAdjointEigV2Attr {
-	return func(m optionalAttr) {
-		m["compute_v"] = value
-	}
-}
-
-// Computes the eigen decomposition of one or more square self-adjoint matrices.
-//
-// Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
-// `input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
-//
-// ```prettyprint
-// # a is a tensor.
-// # e is a tensor of eigenvalues.
-// # v is a tensor of eigenvectors.
-// e, v = self_adjoint_eig(a)
-// e = self_adjoint_eig(a, compute_v=False)
-// ```
+// Restore a Reader to its initial clean state.
 //
 // Arguments:
-//	input: `Tensor` input of shape `[N, N]`.
+//	reader_handle: Handle to a Reader.
 //
-// Returns Eigenvalues. Shape is `[N]`.Eigenvectors. Shape is `[N, N]`.
-func SelfAdjointEigV2(scope *Scope, input tf.Output, optional ...SelfAdjointEigV2Attr) (e tf.Output, v tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SelfAdjointEigV2",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// Adjust the saturation of one or more images.
-//
-// `images` is a tensor of at least 3 dimensions.  The last dimension is
-// interpretted as channels, and must be three.
-//
-// The input image is considered in the RGB colorspace. Conceptually, the RGB
-// colors are first mapped into HSV. A scale is then applied all the saturation
-// values, and then remapped back to RGB colorspace.
-//
-// Arguments:
-//	images: Images to adjust.  At least 3-D.
-//	scale: A float scale to add to the saturation.
-//
-// Returns The hue-adjusted image or images.
-func AdjustSaturation(scope *Scope, images tf.Output, scale tf.Output) (output tf.Output) {
+// Returns the created operation.
+func ReaderResetV2(scope *Scope, reader_handle tf.Output) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
-		Type: "AdjustSaturation",
+		Type: "ReaderResetV2",
 		Input: []tf.Input{
-			images, scale,
+			reader_handle,
 		},
 	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// EncodePngAttr is an optional argument to EncodePng.
-type EncodePngAttr func(optionalAttr)
-
-// EncodePngCompression sets the optional compression attribute to value.
-//
-// value: Compression level.
-// If not specified, defaults to -1
-func EncodePngCompression(value int64) EncodePngAttr {
-	return func(m optionalAttr) {
-		m["compression"] = value
-	}
-}
-
-// PNG-encode an image.
-//
-// `image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
-// where `channels` is:
-//
-// *   1: for grayscale.
-// *   2: for grayscale + alpha.
-// *   3: for RGB.
-// *   4: for RGBA.
-//
-// The ZLIB compression level, `compression`, can be -1 for the PNG-encoder
-// default or a value from 0 to 9.  9 is the highest compression level, generating
-// the smallest output, but is slower.
-//
-// Arguments:
-//	image: 3-D with shape `[height, width, channels]`.
-//
-// Returns 0-D. PNG-encoded image.
-func EncodePng(scope *Scope, image tf.Output, optional ...EncodePngAttr) (contents tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "EncodePng",
-		Input: []tf.Input{
-			image,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MatrixSolveLsAttr is an optional argument to MatrixSolveLs.
-type MatrixSolveLsAttr func(optionalAttr)
-
-// MatrixSolveLsFast sets the optional fast attribute to value.
-// If not specified, defaults to true
-func MatrixSolveLsFast(value bool) MatrixSolveLsAttr {
-	return func(m optionalAttr) {
-		m["fast"] = value
-	}
-}
-
-// Solves one or more linear least-squares problems.
-//
-// `matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
-// form matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.
-// The output is a tensor shape `[..., N, K]` where each output matrix solves
-// each of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]
-// in the least squares sense.
-//
-// matrix and right-hand sides in the batch:
-//
-// `matrix`=\\(A \in \Re^{m \times n}\\),
-// `rhs`=\\(B  \in \Re^{m \times k}\\),
-// `output`=\\(X  \in \Re^{n \times k}\\),
-// `l2_regularizer`=\\(\lambda\\).
-//
-// If `fast` is `True`, then the solution is computed by solving the normal
-// equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
-// \\(X = (A^T A + \lambda I)^{-1} A^T B\\), which solves the least-squares
-// problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k} } ||A Z - B||_F^2 +
-// \lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is computed as
-// \\(X = A^T (A A^T + \lambda I)^{-1} B\\), which (for \\(\lambda = 0\\)) is the
-// minimum-norm solution to the under-determined linear system, i.e.
-// \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k} } ||Z||_F^2 \\), subject to
-// \\(A Z = B\\). Notice that the fast path is only numerically stable when
-// \\(A\\) is numerically full rank and has a condition number
-// \\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach} } }\\) or\\(\lambda\\) is
-// sufficiently large.
-//
-// If `fast` is `False` an algorithm based on the numerically robust complete
-// orthogonal decomposition is used. This computes the minimum-norm
-// least-squares solution, even when \\(A\\) is rank deficient. This path is
-// typically 6-7 times slower than the fast path. If `fast` is `False` then
-// `l2_regularizer` is ignored.
-//
-// Arguments:
-//	matrix: Shape is `[..., M, N]`.
-//	rhs: Shape is `[..., M, K]`.
-//	l2_regularizer: Scalar tensor.
-//
-// @compatibility(numpy)
-// Equivalent to np.linalg.lstsq
-// @end_compatibility
-//
-// Returns Shape is `[..., N, K]`.
-func MatrixSolveLs(scope *Scope, matrix tf.Output, rhs tf.Output, l2_regularizer tf.Output, optional ...MatrixSolveLsAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixSolveLs",
-		Input: []tf.Input{
-			matrix, rhs, l2_regularizer,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Converts one or more images from RGB to HSV.
-//
-// Outputs a tensor of the same shape as the `images` tensor, containing the HSV
-// value of the pixels. The output is only well defined if the value in `images`
-// are in `[0,1]`.
-//
-// `output[..., 0]` contains hue, `output[..., 1]` contains saturation, and
-// `output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0
-// corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
-//
-// Arguments:
-//	images: 1-D or higher rank. RGB data to convert. Last dimension must be size 3.
-//
-// Returns `images` converted to HSV.
-func RGBToHSV(scope *Scope, images tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RGBToHSV",
-		Input: []tf.Input{
-			images,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
+	return scope.AddOperation(opspec)
 }

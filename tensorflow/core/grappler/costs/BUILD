@@ -111,6 +111,7 @@ cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
+    defines = if_cuda(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":op_performance_data_cc",
@@ -165,5 +166,31 @@ cc_library(
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/costs:cost_estimator",
         "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+cc_library(
+    name = "op_level_cost_estimator",
+    srcs = ["op_level_cost_estimator.cc"],
+    hdrs = ["op_level_cost_estimator.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_estimator",
+        ":op_performance_data_cc",
+        ":utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_test(
+    name = "op_level_cost_estimator_test",
+    srcs = ["op_level_cost_estimator_test.cc"],
+    deps = [
+        ":op_level_cost_estimator",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
