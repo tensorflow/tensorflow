@@ -70,6 +70,27 @@ temp_workaround_http_archive = repository_rule(
     },
 )
 
+def _http_files_with_build_impl(repo_ctx):
+  repo_ctx.template("BUILD", repo_ctx.attr.build_file, {
+      "%prefix%": ".." if _repos_are_siblings() else "external",
+      "%ws%": repo_ctx.attr.repository
+  }, False)
+  for output, urls in repo_ctx.attr.file_urls.items():
+    repo_ctx.download(urls, output,
+                      repo_ctx.attr.sha256, executable=False)
+
+# Downloads a set of files and adds a BUILD file.
+http_files_with_build = repository_rule(
+    implementation = _http_files_with_build_impl,
+    attrs = {
+        "build_file": attr.label(),
+        "repository": attr.string(),
+        # Map from output file to URLs to download that file from.
+        "file_urls": attr.string_list_dict(default = {}),
+        "sha256": attr.string(default = ""),
+    },
+)
+
 
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
@@ -614,6 +635,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "3c8f25c02e806c3ce0ab5fb7da1817f89fc9732709024e2a81b6b82f7cc792a8",
       strip_prefix = "jemalloc-4.4.0",
       build_file = str(Label("//third_party:jemalloc.BUILD")),
+      repository = tf_repo_name,
+  )
+
+  http_files_with_build(
+      name = "pprof_profile_proto",
+      file_urls = {
+          "pprof/profile.proto":
+          ["https://raw.githubusercontent.com/google/pprof/master/proto/profile.proto"],
+          "pprof/LICENSE":
+          ["https://raw.githubusercontent.com/google/pprof/master/LICENSE"]},
+      build_file = str(Label("//third_party:pprof.BUILD")),
       repository = tf_repo_name,
   )
 
