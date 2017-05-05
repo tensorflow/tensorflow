@@ -35,8 +35,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -55,7 +55,7 @@ class PrepareInputsForRnnTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.initialize_all_tables())
+      sess.run(lookup_ops.tables_initializer())
       features_val = sess.run(features_by_time)
       self.assertAllEqual(expected, features_val)
 
@@ -316,7 +316,7 @@ class StateSavingRnnEstimatorTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.initialize_all_tables())
+      sess.run(lookup_ops.tables_initializer())
       actual_sequence, actual_context = sess.run(
           [sequence, context])
       assert_equal(expected_sequence, actual_sequence)

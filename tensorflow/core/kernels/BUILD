@@ -1327,6 +1327,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "lookup",
+    deps = [
+        ":lookup_table_init_op",
+        ":lookup_table_op",
+    ],
+)
+
 DATA_FLOW_DEPS = [
     ":bounds_check",
     ":concat_lib",
@@ -1450,10 +1458,10 @@ LOOKUP_DEPS = [
     ":initializable_lookup_table",
     ":lookup_util",
     "//tensorflow/core:core_cpu",
-    "//tensorflow/core:data_flow_ops_op_lib",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
+    "//tensorflow/core:lookup_ops_op_lib",
 ]
 
 tf_kernel_library(

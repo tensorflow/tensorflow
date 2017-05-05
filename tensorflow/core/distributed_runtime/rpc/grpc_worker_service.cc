@@ -113,6 +113,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
     // completes, and we may decide to bound some of the request
     // types.
     ENQUEUE_REQUEST(GetStatus, false);
+    ENQUEUE_REQUEST(CreateWorkerSession, false);
     ENQUEUE_REQUEST(CleanupAll, false);
     ENQUEUE_REQUEST(RegisterGraph, false);
     ENQUEUE_REQUEST(DeregisterGraph, false);
@@ -179,6 +180,16 @@ class GrpcWorkerService : public AsyncServiceInterface {
       call->SendResponse(ToGrpcStatus(s));
     });
     ENQUEUE_REQUEST(GetStatus, false);
+  }
+
+  void CreateWorkerSessionHandler(
+      WorkerCall<CreateWorkerSessionRequest, CreateWorkerSessionResponse>*
+          call) {
+    Schedule([this, call]() {
+      Status s = worker_->CreateWorkerSession(&call->request, &call->response);
+      call->SendResponse(ToGrpcStatus(s));
+    });
+    ENQUEUE_REQUEST(CreateWorkerSession, false);
   }
 
   void CleanupAllHandler(
@@ -298,7 +309,6 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
                                  ::grpc::ByteBuffer* response,
                                  StatusCallback done) {
   const int64 step_id = request->step_id();
-  WorkerSession* session = env_->session_mgr->WorkerSessionForStepId(step_id);
   const string& key = request->rendezvous_key();
   TRACEPRINTF("RecvTensor: %lld %s", step_id, key.c_str());
   Rendezvous::ParsedKey parsed;
@@ -317,7 +327,7 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
   // of execution of the callback lambda body below, an RPC
   // cancellation should abort the rendezvous.
   opts->SetCancelCallback([this, step_id]() { AbortStep(step_id); });
-  session->rendezvous_mgr->RecvLocalAsync(
+  env_->rendezvous_mgr->RecvLocalAsync(
       step_id, parsed,
       [opts, response, done, src_dev](const Status& status,
                                       const Rendezvous::Args& send_args,
