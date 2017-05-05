@@ -1414,8 +1414,6 @@ class ControlFlowTest(test.TestCase):
     for (name, dev) in r_devices:
       if not colocate and name.endswith("Square"):
         # Only forward graph contain gpu in Square device
-        print(gpu_dev_name)
-        print(dev)
         self.assertTrue(gpu_short_name in dev)
       elif colocate and "Square" in name:
         # Forward and backward graphs contain gpu in Square/Square_grad devices
