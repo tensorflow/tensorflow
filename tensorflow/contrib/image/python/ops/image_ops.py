@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 
@@ -214,4 +215,41 @@ def _transform_matrices_to_flat(transform_matrices):
   return transforms[:, :8]
 
 
-ops.NotDifferentiable("ImageProjectiveTransform")
+@ops.RegisterGradient("ImageProjectiveTransform")
+def _image_projective_transform_grad(op, grad):
+  """Computes the gradient for ImageProjectiveTransform."""
+  images = op.inputs[0]
+  transforms = op.inputs[1]
+
+  image_or_images = ops.convert_to_tensor(images, name="images")
+  transform_or_transforms = ops.convert_to_tensor(
+      transforms, name="transforms", dtype=dtypes.float32)
+
+  if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
+    raise TypeError("Invalid dtype %s." % image_or_images.dtype)
+  if len(image_or_images.get_shape()) == 2:
+    images = image_or_images[None, :, :, None]
+  elif len(image_or_images.get_shape()) == 3:
+    images = image_or_images[None, :, :, :]
+  elif len(image_or_images.get_shape()) == 4:
+    images = image_or_images
+  else:
+    raise TypeError("Images should have rank between 2 and 4")
+  if len(transform_or_transforms.get_shape()) == 1:
+    transforms = transform_or_transforms[None]
+  elif len(transform_or_transforms.get_shape()) == 2:
+    transforms = transform_or_transforms
+  else:
+    raise TypeError("Transforms should have rank 1 or 2.")
+
+  # Invert transformations
+  transforms = _flat_transforms_to_matrices(transforms=transforms)
+  inverse = linalg_ops.matrix_inverse(transforms)
+  transforms = _transform_matrices_to_flat(inverse)
+  output = gen_image_ops.image_projective_transform(grad, transforms)
+  if len(image_or_images.get_shape()) == 2:
+    return [output[0, :, :, 0], None]
+  elif len(image_or_images.get_shape()) == 3:
+    return [output[0, :, :, :], None]
+  else:
+    return [output, None]

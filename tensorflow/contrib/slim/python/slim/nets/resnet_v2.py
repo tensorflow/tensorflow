@@ -64,6 +64,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 
+resnet_arg_scope = resnet_utils.resnet_arg_scope
+
 
 @add_arg_scope
 def bottleneck(inputs,

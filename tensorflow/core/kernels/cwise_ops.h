@@ -658,6 +658,22 @@ struct zeta : base<T, Eigen::internal::scalar_zeta_op<T>> {};
 template <typename T>
 struct polygamma : base<T, Eigen::internal::scalar_polygamma_op<T>> {};
 
+template <typename Scalar>
+struct scalar_atan2_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_atan2_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& y, const Scalar& x) const {
+#if GOOGLE_CUDA
+    return ::atan2(y, x);
+#else
+    return std::atan2(y, x);
+#endif
+  }
+};
+
+template <typename T>
+struct atan2 : base<T, scalar_atan2_op<T>> {};
+
 template <typename T>
 struct squared_difference
     : base<T, Eigen::internal::scalar_compose_op<

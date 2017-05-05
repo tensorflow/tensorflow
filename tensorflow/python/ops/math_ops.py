@@ -56,6 +56,7 @@ See the @{$python/math_ops} guide.
 @@acos
 @@asin
 @@atan
+@@atan2
 @@lgamma
 @@digamma
 @@erf
@@ -824,7 +825,16 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
       if not isinstance(y, sparse_tensor.SparseTensor):
-        y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+        try:
+          y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+        except TypeError:
+          # If the RHS is not a tensor, it might be a tensor aware object
+          # that can implement the operator with knowledge of itself
+          # and the tensor.
+          if hasattr(type(y), "__r%s__" % op_name):
+            return NotImplemented
+          else:
+            raise
       return func(x, y, name=name)
 
   def binary_op_wrapper_sparse(sp_x, y):
