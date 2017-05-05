@@ -83,6 +83,27 @@ temp_workaround_http_archive = repository_rule(
     },
 )
 
+def _http_files_with_build_impl(repo_ctx):
+  repo_ctx.template("BUILD", repo_ctx.attr.build_file, {
+      "%prefix%": ".." if _repos_are_siblings() else "external",
+      "%ws%": repo_ctx.attr.repository
+  }, False)
+  for output, urls in repo_ctx.attr.file_urls.items():
+    repo_ctx.download(urls, output,
+                      repo_ctx.attr.sha256, executable=False)
+
+# Downloads a set of files and adds a BUILD file.
+http_files_with_build = repository_rule(
+    implementation = _http_files_with_build_impl,
+    attrs = {
+        "build_file": attr.label(),
+        "repository": attr.string(),
+        # Map from output file to URLs to download that file from.
+        "file_urls": attr.string_list_dict(default = {}),
+        "sha256": attr.string(default = ""),
+    },
+)
+
 
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
@@ -498,11 +519,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/8a1f075c93565dd665a10ac38490f644b2c02037.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/8a1f075c93565dd665a10ac38490f644b2c02037.tar.gz",
+          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/13790c8735a78a029dec92d80f5633418d9ffdd6.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/13790c8735a78a029dec92d80f5633418d9ffdd6.tar.gz",
       ],
-      sha256 = "d9ebd0b49544f3b20ee2a412aac18ed8899b8eef376343a6ba8e179563cbfd86",
-      strip_prefix = "llvm-8a1f075c93565dd665a10ac38490f644b2c02037",
+      sha256 = "da4fc7147f1e2706977822934d1b245dcb6248930f8089129362ada14f6119dd",
+      strip_prefix = "llvm-13790c8735a78a029dec92d80f5633418d9ffdd6",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
@@ -633,6 +654,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "3c8f25c02e806c3ce0ab5fb7da1817f89fc9732709024e2a81b6b82f7cc792a8",
       strip_prefix = "jemalloc-4.4.0",
       build_file = str(Label("//third_party:jemalloc.BUILD")),
+      repository = tf_repo_name,
+  )
+
+  http_files_with_build(
+      name = "pprof_profile_proto",
+      file_urls = {
+          "pprof/profile.proto":
+          ["https://raw.githubusercontent.com/google/pprof/master/proto/profile.proto"],
+          "pprof/LICENSE":
+          ["https://raw.githubusercontent.com/google/pprof/master/LICENSE"]},
+      build_file = str(Label("//third_party:pprof.BUILD")),
       repository = tf_repo_name,
   )
 
@@ -816,6 +848,27 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       },
   )
 
+  # TODO: Delete previous rule and rename this one org_d3js
+  filegroup_external(
+      name = "org_d3js_v4",
+      # no @license header
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256_urls_extract = {
+          "b5fac5b296bc196e6aa7b59f9e33986fc44d23d59a0e211705187be9e35b943d": [
+              "http://bazel-mirror.storage.googleapis.com/github.com/d3/d3/releases/download/v4.8.0/d3.zip",
+              "https://github.com/d3/d3/releases/download/v4.8.0/d3.zip",
+          ],
+      },
+      # TODO(jart): Use srcs=["d3.js"] instead of this once supported.
+      generated_rule_name = "all_files",
+      extra_build_file_content = "\n".join([
+          "filegroup(",
+          "    name = \"org_d3js_v4\",",
+          "    srcs = [\"d3.js\"],",
+          ")",
+      ]),
+  )
+
   filegroup_external(
       name = "org_definitelytyped",
       licenses = ["notice"],  # MIT
@@ -825,8 +878,8 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
               "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/chai/chai.d.ts",
           ],
           "177293828c7a206bf2a7f725753d51396d38668311aa37c96445f91bbf8128a7": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/6e2f2280ef16ef277049d0ce8583af167d586c59/d3/d3.d.ts",
-              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/6e2f2280ef16ef277049d0ce8583af167d586c59/d3/d3.d.ts",
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/6e2f2280ef16ef277049d0ce8583af167d586c59/d3/d3.d.ts",  # v3
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/6e2f2280ef16ef277049d0ce8583af167d586c59/d3/d3.d.ts",  # v3
           ],
           "e4cd3d5de0eb3bc7b1063b50d336764a0ac82a658b39b5cf90511f489ffdee60": [
               "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/efd40e67ff323f7147651bdbef03c03ead7b1675/lodash/lodash.d.ts",
@@ -843,6 +896,314 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "691756a6eb455f340c9e834de0d49fff269e7b8c1799c2454465dcd6a4435b80": [
               "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/46719185c564694c5583c4b7ad94dbb786ecad46/webcomponents.js/webcomponents.js.d.ts",
               "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/46719185c564694c5583c4b7ad94dbb786ecad46/webcomponents.js/webcomponents.js.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_array",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "61e7abb7b1f01fbcb0cab8cf39003392f422566209edd681fbd070eaa84ca000": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-array/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-array/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_axis",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "95f75c8dcc89850b2e72581d96a7b5f46ea4ac852f828893f141f14a597421f9": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-axis/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-axis/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_brush",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "a2738e693ce8a8640c2d29001e77582c9c361fd23bda44db471629866b60ada7": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-brush/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-brush/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_chord",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "c54d24756eb6d744b31e538ad9bab3a75f6d54e2288b29cc72338d4a057d3e83": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-chord/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-chord/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_collection",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "f987667167b1d2970911247e325eb1c37ca0823646f81ccec837ae59039822f7": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-collection/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-collection/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_color",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "9580c81f38ddcce7be0ac9bd3d0d083adebc34e17441709f90b9e4dcd1c19a56": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-color/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-color/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_dispatch",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "169f80b4cceca8e2e9ed384d81a5db0624cc01a26451dfb5a7e0cec6ea9cfb06": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-dispatch/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-dispatch/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_drag",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "08d35d139dde58c2722be98d718d01204fd6167d310f09b379e832f3c741489d": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-drag/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-drag/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_dsv",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "62594d00cf9e4bb895339c8e56f64330e202a5eb2a0fa580a1f6e6336f2c93ce": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-dsv/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-dsv/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_ease",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "d1cf8f99b7bf758c2ba3c0a4ce553e151d4d9b4cf45a6e8bd0edec7ce90f725b": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-ease/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-ease/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_force",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "288421e2008668d2076a4684657dd3d29b992832ef02c552981eb94a91042553": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-force/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-force/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_format",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "b42cb17e580c1fd0b64d478f7bd80ca806efaefda24426a833cf1f30a7275bca": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-format/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-format/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_hierarchy",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "a5683f5835d8716c6b89c075235078438cfab5897023ed720bfa492e244e969e": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-hierarchy/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-hierarchy/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_interpolate",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "590a71b741323ac3139b333ec8b743e24717fdd5b32bcff48ee521162a9dfe1c": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-interpolate/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-interpolate/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_path",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "96f35ba041bcaa265e2b373ee675177410d44d31c980e4f7fbeefd4bcba15b00": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-path/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-path/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_polygon",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "ce453451e8105cac6a4f4a4263ca2142ebb4bf442e342f470a81da691f220fcb": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-polygon/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-polygon/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_quadtree",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "238e278f1be5d6985a19800800cffee80f81199f71d848e3bbc288d1791a6f90": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-quadtree/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-quadtree/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_queue",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "e6ae19aad83495475653578de64fb9d6bf9764eda6c84d70f7935ec84bcc482e": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-queue/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-queue/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_random",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "d31b92ed86c23ec0a4776f99fa81ff033c95b96c8304d8aa9baf3b94af779aa8": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-random/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-random/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_request",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "44bb7b07d977028e6567540a3303b06fc9b33fb0960bc75c520e0733c840d89f": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-request/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-request/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_scale",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "02ce7c644ba34bd1abb84da2e832f248b048b6a23812be4365bd837f186c9f1f": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-scale/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-scale/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_selection",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "699043ddb28dfa5e46d87bc6a24cfc6d604237f298259d3fb3c7066e05e8c86e": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-selection/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-selection/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_shape",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "62668a7aaaf6232762b544f9f89c0f557ca7cfb0cd343a358dda7ecbe26f5739": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-shape/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-shape/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_time",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "0502490ce682fd9265fb1d5d693ce6cd82e3b05e5f5ee3433731266ecb03d5fc": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-time/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-time/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_timer",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "6f191f9aea704aa64b1defa40dfdff1447a6e6bb815feff1660f894500a9c94d": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-timer/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-timer/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_transition",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "a0a7c0c9bfb5c7d6d9d22a8d16b4484b66d13f2ed226954037546cb3da4098ba": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-transition/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-transition/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_voronoi",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "c6bd5f229f915151d0ef678fe50b1aa6a62334ea0a8c6fc0effbac9f7032efc7": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-voronoi/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-voronoi/index.d.ts",
+          ],
+      },
+  )
+
+  filegroup_external(
+      name = "org_definitelytyped_types_d3_zoom",
+      licenses = ["notice"],  # MIT
+      sha256_urls = {
+          "a25dc17fbd304cf7a0e5e7bbb8339c930d464eb40c4d6e5f839ce9c0191f4110": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-zoom/index.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/1550dfd1b8e38d9bf104b3fd16ea9bf98a2b358e/types/d3-zoom/index.d.ts",
           ],
       },
   )

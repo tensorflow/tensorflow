@@ -24,8 +24,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 
 _image_ops_so = loader.load_op_library(
@@ -37,7 +37,7 @@ _IMAGE_DTYPES = set(
 ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
 
 
-def rotate(images, angles):
+def rotate(images, angles, interpolation="NEAREST"):
   """Rotate image(s) by the passed angle(s) in radians.
 
   Args:
@@ -46,6 +46,7 @@ def rotate(images, angles):
        (num_rows, num_columns) (HW).
     angles: A scalar angle to rotate all images by, or (if images has rank 4)
        a vector of length num_images, with an angle for each image in the batch.
+    interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
 
   Returns:
     Image(s) with the same type and shape as `images`, rotated by the given
@@ -70,7 +71,8 @@ def rotate(images, angles):
   image_width = math_ops.cast(array_ops.shape(images)[2], dtypes.float32)[None]
   output = transform(
       images,
-      angles_to_projective_transforms(angles, image_width, image_height))
+      angles_to_projective_transforms(angles, image_height, image_width),
+      interpolation=interpolation)
   if len(image_or_images.get_shape()) == 2:
     return output[0, :, :, 0]
   elif len(image_or_images.get_shape()) == 3:
@@ -120,7 +122,7 @@ def angles_to_projective_transforms(angles, image_height, image_width):
       axis=1)
 
 
-def transform(images, transforms):
+def transform(images, transforms, interpolation="NEAREST"):
   """Applies the given transform(s) to the image(s).
 
   Args:
@@ -134,6 +136,7 @@ def transform(images, transforms):
        `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`,
        where `k = c0 x + c1 y + 1`. The transforms are *inverted* compared to
        the transform mapping input points to output points.
+     interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
 
   Returns:
     Image(s) with the same type and shape as `images`, with the given
@@ -163,8 +166,8 @@ def transform(images, transforms):
     transforms = transform_or_transforms
   else:
     raise TypeError("Transforms should have rank 1 or 2.")
-  # pylint: disable=protected-access
-  output = gen_image_ops.image_projective_transform(images, transforms)
+  output = gen_image_ops.image_projective_transform(
+      images, transforms, interpolation=interpolation.upper())
   if len(image_or_images.get_shape()) == 2:
     return output[0, :, :, 0]
   elif len(image_or_images.get_shape()) == 3:
@@ -217,8 +220,10 @@ def _transform_matrices_to_flat(transform_matrices):
 
 @ops.RegisterGradient("ImageProjectiveTransform")
 def _image_projective_transform_grad(op, grad):
+  """Computes the gradient for ImageProjectiveTransform."""
   images = op.inputs[0]
   transforms = op.inputs[1]
+  interpolation = op.get_attr("interpolation")
 
   image_or_images = ops.convert_to_tensor(images, name="images")
   transform_or_transforms = ops.convert_to_tensor(
@@ -245,7 +250,8 @@ def _image_projective_transform_grad(op, grad):
   transforms = _flat_transforms_to_matrices(transforms=transforms)
   inverse = linalg_ops.matrix_inverse(transforms)
   transforms = _transform_matrices_to_flat(inverse)
-  output = gen_image_ops.image_projective_transform(grad, transforms)
+  output = gen_image_ops.image_projective_transform(
+      grad, transforms, interpolation=interpolation)
   if len(image_or_images.get_shape()) == 2:
     return [output[0, :, :, 0], None]
   elif len(image_or_images.get_shape()) == 3:

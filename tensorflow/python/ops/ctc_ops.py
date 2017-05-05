@@ -205,7 +205,8 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
       `decoded.shape`: Shape vector, size `(2)`.
         The shape values are: `[batch_size, max_decoded_length]`
     neg_sum_logits: A `float` matrix `(batch_size x 1)` containing, for the
-        sequence found, the negative of the sum of the greatest logit at each timeframe.
+        sequence found, the negative of the sum of the greatest logit at each
+        timeframe.
   """
   outputs = gen_ctc_ops._ctc_greedy_decoder(
       inputs, sequence_length, merge_repeated=merge_repeated)

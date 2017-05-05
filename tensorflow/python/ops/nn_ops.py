@@ -964,8 +964,12 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     ValueError: If input/output depth does not match `filters`' shape, or if
       padding is other than `'VALID'` or `'SAME'`.
   """
-  return convolution(input=value, filter=filters, padding=padding,
-                     dilation_rate=np.broadcast_to(rate, (2, )), name=name)
+  return convolution(
+      input=value,
+      filter=filters,
+      padding=padding,
+      dilation_rate=np.broadcast_to(rate, (2,)),
+      name=name)
 
 
 def conv2d_transpose(value,
@@ -1231,8 +1235,8 @@ def conv3d_transpose(value,
     axis = 1 if data_format == "NCDHW" else 4
     if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[4]):
       raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[axis], filter.get_shape(
-                       )[4]))
+                       "{} != {}".format(value.get_shape()[axis],
+                                         filter.get_shape()[4]))
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
     if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(5)):

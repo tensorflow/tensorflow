@@ -248,8 +248,8 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
           tdata.size(), do_nothing);
       slices[1] = ::grpc::Slice(s1, ::grpc::Slice::STEAL_REF);
 
-      gpr_slice s2 = gpr_slice_new(const_cast<TensorBuffer*>(buf),
-                                   0, unref_tensorbuffer);
+      gpr_slice s2 =
+          gpr_slice_new(const_cast<TensorBuffer*>(buf), 0, unref_tensorbuffer);
       slices[2] = ::grpc::Slice(s2, ::grpc::Slice::STEAL_REF);
       num_slices += 2;
     }

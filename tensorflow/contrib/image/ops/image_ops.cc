@@ -23,13 +23,13 @@ using shape_inference::InferenceContext;
 
 // TODO(ringwalt): Add a "fill_mode" argument with "constant", "mirror", etc.
 // TODO(ringwalt): Add a "fill_constant" argument for constant mode (default 0).
-// TODO(ringwalt): Add an "interpolation" argument with "none", "bilinear", etc.
 // TODO(ringwalt): Add an "output_shape" argument. This is sufficient to
 // implement "same" and "valid" modes in the Python function.
 REGISTER_OP("ImageProjectiveTransform")
     .Input("images: dtype")
     .Input("transforms: float32")
     .Attr("dtype: {uint8, int32, int64, float32, float64}")
+    .Attr("interpolation: string")
     .Output("transformed_images: dtype")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(0));

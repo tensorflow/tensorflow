@@ -1109,10 +1109,10 @@ class Conv2DTranspose(Conv2D):
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = self.filters
-    out_shape[h_axis] = utils.get_deconv_dim(
-        out_shape[h_axis], stride_h, kernel_h, self.padding)
-    out_shape[w_axis] = utils.get_deconv_dim(
-        out_shape[w_axis], stride_w, kernel_w, self.padding)
+    out_shape[h_axis] = utils.get_deconv_dim(out_shape[h_axis], stride_h,
+                                             kernel_h, self.padding)
+    out_shape[w_axis] = utils.get_deconv_dim(out_shape[w_axis], stride_w,
+                                             kernel_w, self.padding)
     outputs.set_shape(out_shape)
 
     if self.bias:
@@ -1240,7 +1240,8 @@ class Conv3DTranspose(Conv3D):
     name: A string, the name of the layer.
   """
 
-  def __init__(self, filters,
+  def __init__(self,
+               filters,
                kernel_size,
                strides=(1, 1, 1),
                padding='valid',
@@ -1269,12 +1270,13 @@ class Conv3DTranspose(Conv3D):
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
         trainable=trainable,
-        name=name, **kwargs)
+        name=name,
+        **kwargs)
 
   def build(self, input_shape):
     if len(input_shape) != 5:
-      raise ValueError('Inputs should have rank 5, ' +
-                       'received input shape:', str(input_shape))
+      raise ValueError('Inputs should have rank 5, received input shape:',
+                       str(input_shape))
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
@@ -1285,22 +1287,23 @@ class Conv3DTranspose(Conv3D):
     input_dim = input_shape[channel_axis]
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
-    self.kernel = self.add_variable('kernel',
-                                    shape=kernel_shape,
-                                    initializer=self.kernel_initializer,
-                                    regularizer=self.kernel_regularizer,
-                                    trainable=True,
-                                    dtype=self.dtype)
+    self.kernel = self.add_variable(
+        'kernel',
+        shape=kernel_shape,
+        initializer=self.kernel_initializer,
+        regularizer=self.kernel_regularizer,
+        trainable=True,
+        dtype=self.dtype)
     if self.use_bias:
-      self.bias = self.add_variable('bias',
-                                    shape=(self.filters,),
-                                    initializer=self.bias_initializer,
-                                    regularizer=self.bias_regularizer,
-                                    trainable=True,
-                                    dtype=self.dtype)
+      self.bias = self.add_variable(
+          'bias',
+          shape=(self.filters,),
+          initializer=self.bias_initializer,
+          regularizer=self.bias_regularizer,
+          trainable=True,
+          dtype=self.dtype)
     else:
       self.bias = None
-    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -1343,26 +1346,26 @@ class Conv3DTranspose(Conv3D):
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = self.filters
-    out_shape[d_axis] = utils.get_deconv_dim(
-        out_shape[d_axis], stride_d, kernel_d, self.padding)
-    out_shape[h_axis] = utils.get_deconv_dim(
-        out_shape[h_axis], stride_h, kernel_h, self.padding)
-    out_shape[w_axis] = utils.get_deconv_dim(
-        out_shape[w_axis], stride_w, kernel_w, self.padding)
+    out_shape[d_axis] = utils.get_deconv_dim(out_shape[d_axis], stride_d,
+                                             kernel_d, self.padding)
+    out_shape[h_axis] = utils.get_deconv_dim(out_shape[h_axis], stride_h,
+                                             kernel_h, self.padding)
+    out_shape[w_axis] = utils.get_deconv_dim(out_shape[w_axis], stride_w,
+                                             kernel_w, self.padding)
     outputs.set_shape(out_shape)
 
     if self.bias:
       outputs_shape = outputs.shape.as_list()
       if self.data_format == 'channels_first':
-        outputs_4d = array_ops.reshape(outputs,
-                                       [outputs_shape[0], outputs_shape[1],
-                                        outputs_shape[2] * outputs_shape[3],
-                                        outputs_shape[4]])
+        outputs_4d = array_ops.reshape(outputs, [
+            outputs_shape[0], outputs_shape[1],
+            outputs_shape[2] * outputs_shape[3], outputs_shape[4]
+        ])
       else:
-        outputs_4d = array_ops.reshape(outputs,
-                                       [outputs_shape[0],
-                                        outputs_shape[1] * outputs_shape[2],
-                                        outputs_shape[3], outputs_shape[4]])
+        outputs_4d = array_ops.reshape(outputs, [
+            outputs_shape[0], outputs_shape[1] * outputs_shape[2],
+            outputs_shape[3], outputs_shape[4]
+        ])
       outputs_4d = nn.bias_add(
           outputs_4d,
           self.bias,
