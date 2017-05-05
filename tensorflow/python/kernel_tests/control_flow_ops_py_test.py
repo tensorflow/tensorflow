@@ -1391,7 +1391,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(45, rx.eval())
 
   def _testWhileGrad_ColocateGradients(self, colocate):
-    gpu_dev_name = test.gpu_device_name() if test.is_gpu_available(
+    gpu_dev_name = test.gpu_device_name().lower() if test.is_gpu_available(
     ) else "/gpu:0"
     gpu_short_name = gpu_dev_name.split("/")[-1]
 
@@ -1414,6 +1414,8 @@ class ControlFlowTest(test.TestCase):
     for (name, dev) in r_devices:
       if not colocate and name.endswith("Square"):
         # Only forward graph contain gpu in Square device
+        print(gpu_dev_name)
+        print(dev)
         self.assertTrue(gpu_short_name in dev)
       elif colocate and "Square" in name:
         # Forward and backward graphs contain gpu in Square/Square_grad devices
