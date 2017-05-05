@@ -63,7 +63,7 @@ As an example, these steps will create a Maven project that uses TensorFlow:
                <dependency>
                  <groupId>org.tensorflow</groupId>
                  <artifactId>tensorflow</artifactId>
-                 <version>1.1.0</version>
+                 <version>1.1.0-rc2</version>
                </dependency>
              </dependencies>
          </project>
