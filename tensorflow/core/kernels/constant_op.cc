@@ -190,35 +190,6 @@ struct FillFunctor<SYCLDevice, T> {
   }
 };
 }
-
-template <typename T>
-class FillOp<SYCLDevice, T> : public OpKernel {
- public:
-  explicit FillOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    const Tensor& Tdims = context->input(0);
-    OP_REQUIRES(
-        context, IsLegacyVector(Tdims.shape()),
-        errors::InvalidArgument("dims must be a vector of int32, got shape ",
-                                Tdims.shape().DebugString()));
-    const Tensor& Tvalue = context->input(1);
-
-    OP_REQUIRES(context, IsLegacyScalar(Tvalue.shape()),
-                errors::InvalidArgument("value must be a scalar, got shape ",
-                                        Tvalue.shape().DebugString()));
-    auto dims = Tdims.flat<int32>();
-    TensorShape shape;
-    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                reinterpret_cast<const int32*>(dims.data()),
-                                dims.size(), &shape));
-    Tensor* out = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &out));
-    functor::FillFunctor<SYCLDevice, T> functor;
-    functor(context->eigen_device<SYCLDevice>(), out->flat<T>(),
-            Tvalue.scalar<T>());
-  }
-};
 #endif // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNEL(D, TYPE)                         \
