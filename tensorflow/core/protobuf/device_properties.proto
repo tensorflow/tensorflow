@@ -17,6 +17,7 @@ syntax = "proto3";
 
 package tensorflow;
 option cc_enable_arenas = true;
+option java_outer_classname = "DevicePropertiesProtos";
 
 message DeviceProperties {
   // Device type (CPU, GPU, ...)
