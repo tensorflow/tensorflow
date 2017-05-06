@@ -142,7 +142,7 @@ class StageTest(test.TestCase):
       ret = stager.get()
       size = stager.size()
 
-    import Queue
+    from six.moves import queue as Queue
     import threading
 
     queue = Queue.Queue()
@@ -150,6 +150,9 @@ class StageTest(test.TestCase):
     missed = 0
 
     with self.test_session(use_gpu=True) as sess:
+      # Stage data in a separate thread which will block
+      # when it hits the staging area's capacity and thus
+      # not fill the queue with n tokens
       def thread_run():
         for i in range(n):
           sess.run(stage, feed_dict={x: i})
@@ -158,6 +161,7 @@ class StageTest(test.TestCase):
       t = threading.Thread(target=thread_run)
       t.start()
 
+      # Get tokens from the queue, making notes of when we timeout
       for i in range(n):
         try:
           queue.get(timeout=0.05)
@@ -171,10 +175,16 @@ class StageTest(test.TestCase):
       for i in range(n - capacity):
         self.assertTrue(sess.run(ret) == i)
 
-      # This should now succeed
+      # Thread should be able to join now
       t.join()
 
-      self.assertTrue(sess.run(size) == 3)
+      self.assertTrue(sess.run(size) == capacity)
+
+      # Clear the staging area completely
+      for i in range(capacity):
+        self.assertTrue(sess.run(ret) == i+(n-capacity))
+
+      self.assertTrue(sess.run(size) == 0)
 
 if __name__ == '__main__':
   test.main()
