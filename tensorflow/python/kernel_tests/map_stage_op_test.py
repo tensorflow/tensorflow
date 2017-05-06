@@ -1,53 +1,199 @@
-import numpy as np
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
-from map_staging_area import MapStagingArea
 
-blah_key = tf.string_to_hash_bucket_fast('blah', 2**32)
-foo_key = tf.string_to_hash_bucket_fast('foo', 2**32)
+class MapStageTest(test.TestCase):
 
-dtypes = [tf.float32, tf.float32, tf.int32]
-capacity = 2
-msa = MapStagingArea(dtypes, capacity=capacity, ordered=True)
+  def testSimple(self):
+    with self.test_session(use_gpu=True) as sess:
+      with ops.device('/cpu:0'):
+        x = array_ops.placeholder(dtypes.float32)
+        pi = array_ops.placeholder(dtypes.int64)
+        gi = array_ops.placeholder(dtypes.int64)
+        v = 2. * (array_ops.zeros([128, 128]) + x)
+      with ops.device('/gpu:0'):
+        stager = data_flow_ops.MapStagingArea([dtypes.float32])
+        stage = stager.put(pi,[v])
+        y = stager.get(gi)
+        y = math_ops.reduce_max(math_ops.matmul(y, y))
+      sess.run(stage, feed_dict={x: -1, pi: 0})
+      for i in range(10):
+        _, yval = sess.run([stage, y], feed_dict={x: i, pi: i+1, gi:i})
+        self.assertAllClose(4 * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
-with tf.device('/gpu:0'):
-    data1 = [tf.constant(d, dtype=dt) for d, dt in zip([1.0, 3.0, 4], dtypes)]
-    data2 = [tf.constant(d, dtype=dt) for d, dt in zip([2.0, 5.0, 6], dtypes)]
+  def testMultiple(self):
+    with self.test_session(use_gpu=True) as sess:
+      with ops.device('/cpu:0'):
+        x = array_ops.placeholder(dtypes.float32)
+        pi = array_ops.placeholder(dtypes.int64)
+        gi = array_ops.placeholder(dtypes.int64)
+        v = 2. * (array_ops.zeros([128, 128]) + x)
+      with ops.device('/gpu:0'):
+        stager = data_flow_ops.MapStagingArea([dtypes.float32, dtypes.float32])
+        stage = stager.put(pi,[x, v])
+        z, y = stager.get(gi)
+        y = math_ops.reduce_max(z * math_ops.matmul(y, y))
+      sess.run(stage, feed_dict={x: -1, pi: 0})
+      for i in range(10):
+        _, yval = sess.run([stage, y], feed_dict={x: i, pi: i+1, gi:i})
+        self.assertAllClose(
+            4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
-    stage1 = msa.put(blah_key, data1) if True else tf.no_op()
-    stage2 = msa.put(foo_key, data2) if True else tf.no_op()
-    get = msa.get(blah_key) if True else tf.no_op()
-    unstage = msa.pop(blah_key) if True else tf.no_op()
-    pop = msa.popitem() if True else tf.no_op()
-    size = msa.size()
-    clear = msa.clear()
+  def testDictionary(self):
+    with self.test_session(use_gpu=True) as sess:
+      with ops.device('/cpu:0'):
+        x = array_ops.placeholder(dtypes.float32)
+        pi = array_ops.placeholder(dtypes.int64)
+        gi = array_ops.placeholder(dtypes.int64)
+        v = 2. * (array_ops.zeros([128, 128]) + x)
+      with ops.device(test.gpu_device_name()):
+        stager = data_flow_ops.MapStagingArea(
+            [dtypes.float32, dtypes.float32],
+            shapes=[[], [128, 128]],
+            names=['x', 'v'])
+        stage = stager.put(pi,{'x': x, 'v': v})
+        ret = stager.get(gi)
+        z = ret['x']
+        y = ret['v']
+        y = math_ops.reduce_max(z * math_ops.matmul(y, y))
+      sess.run(stage, feed_dict={x: -1, pi: 0})
+      for i in range(10):
+        _, yval = sess.run([stage, y], feed_dict={x: i, pi: i+1, gi:i})
+        self.assertAllClose(
+            4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
-init_op = tf.global_variables_initializer()
+  def testColocation1(self):
+    with ops.device('/cpu:0'):
+      x = array_ops.placeholder(dtypes.float32)
+      v = 2. * (array_ops.zeros([128, 128]) + x)
+    with ops.device('/gpu:0'):
+      stager = data_flow_ops.MapStagingArea([dtypes.float32])
+      y = stager.put(1,[v])
+      self.assertEqual(y.device, '/device:GPU:0')
+    with ops.device('/cpu:0'):
+      x = stager.get(1)
+      self.assertEqual(x.device, '/device:CPU:0')
 
-config = tf.ConfigProto(allow_soft_placement=False)
+  def testPeek(self):
+    with ops.device('/cpu:0'):
+      x = array_ops.placeholder(dtypes.int32, name='x')
+      pi = array_ops.placeholder(dtypes.int64)
+      gi = array_ops.placeholder(dtypes.int64)
+      p = array_ops.placeholder(dtypes.int32, name='p')
+    with ops.device(test.gpu_device_name()):
+      stager = data_flow_ops.MapStagingArea([dtypes.int32, ], shapes=[[]])
+      stage = stager.put(pi,[x])
+      get = stager.get(gi)
 
-with tf.Session(config=config) as S:
-    S.run(init_op)
-    assert S.run(size) == 0
+    with self.test_session(use_gpu=True) as sess:
+      for i in range(10):
+        sess.run(stage, feed_dict={x:i, pi:i})
 
-    S.run(stage1)
-    assert S.run(size) == 1
+      for i in range(10):
+        self.assertTrue(sess.run(get, feed_dict={gi: i}) == i)
 
-    S.run(stage2)
-    assert S.run(size) == 2
+  def testSizeAndClear(self):
+    with ops.device('/cpu:0'):
+      x = array_ops.placeholder(dtypes.float32, name='x')
+      pi = array_ops.placeholder(dtypes.int64)
+      gi = array_ops.placeholder(dtypes.int64)
+      v = 2. * (array_ops.zeros([128, 128]) + x)
+    with ops.device(test.gpu_device_name()):
+      stager = data_flow_ops.MapStagingArea(
+          [dtypes.float32, dtypes.float32],
+          shapes=[[], [128, 128]],
+          names=['x', 'v'])
+      stage = stager.put(pi,{'x': x, 'v': v})
+      ret = stager.get(gi)
+      size = stager.size()
+      clear = stager.clear()
 
-    print S.run(get)
-    assert S.run(size) == 2
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(stage, feed_dict={x: -1, pi: 3})
+      self.assertEqual(sess.run(size), 1)
+      sess.run(stage, feed_dict={x: -1, pi: 1})
+      self.assertEqual(sess.run(size), 2)
+      sess.run(clear)
+      self.assertEqual(sess.run(size), 0)
 
-    print S.run(unstage)
-    assert S.run(size) == 1
 
-    print S.run(pop)
-    assert S.run(size) == 0
+  def testCapacity(self):
+    capacity = 3
 
-    S.run(stage1)
-    assert S.run(size) == 1
+    with ops.device('/cpu:0'):
+      x = array_ops.placeholder(dtypes.int32, name='x')
+      pi = array_ops.placeholder(dtypes.int64, name='pi')
+      gi = array_ops.placeholder(dtypes.int64, name='gi')
+    with ops.device(test.gpu_device_name()):
+      stager = data_flow_ops.MapStagingArea([dtypes.int32, ],
+        capacity=capacity, shapes=[[]])
+      stage = stager.put(pi,[x])
+      popitem = stager.popitem()
+      size = stager.size()
 
-    S.run(clear)
-    assert S.run(size) == 0
+    from six.moves import queue as Queue
+    import threading
+
+    queue = Queue.Queue()
+    n = 5
+    missed = 0
+
+    with self.test_session(use_gpu=True) as sess:
+      # Stage data in a separate thread which will block
+      # when it hits the staging area's capacity and thus
+      # not fill the queue with n tokens
+      def thread_run():
+        for i in range(n):
+          sess.run(stage, feed_dict={x: i, pi: i})
+          queue.put(0)
+
+      t = threading.Thread(target=thread_run)
+      t.start()
+
+      # Get tokens from the queue, making notes of when we timeout
+      for i in range(n):
+        try:
+          queue.get(timeout=0.05)
+        except Queue.Empty:
+          missed += 1
+
+      # We timed out n - capacity times waiting for queue puts
+      self.assertTrue(missed == n - capacity)
+
+      # Clear the staging area out a bit
+      for i in range(n - capacity):
+        sess.run(popitem)
+
+      # This should now succeed
+      t.join()
+
+      self.assertTrue(sess.run(size) == capacity)
+
+      # Clear out the staging area completely
+      for i in range(capacity):
+        sess.run(popitem)
+
+if __name__ == '__main__':
+  test.main()
