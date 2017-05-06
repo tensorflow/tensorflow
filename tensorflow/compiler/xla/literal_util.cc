@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <numeric>
@@ -308,37 +309,16 @@ template <typename T, typename WT>
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::Relayout(
     const Literal& original, const Layout& layout) {
-  // Note: if this were a performance bottleneck, we avoid cloning and just make
-  // an uninitialized array instead, since all values are clobbered below.
   std::unique_ptr<Literal> result = CloneToUnique(original);
   *result->mutable_shape()->mutable_layout() = layout;
-  const PrimitiveType primitive_type = original.shape().element_type();
-  switch (primitive_type) {
-    case F32:
-      LiteralUtil::EachCell<float>(
-          original,
-          [&](tensorflow::gtl::ArraySlice<int64> indices, float value) {
-            LiteralUtil::Set<float>(result.get(), indices, value);
-          });
-      return result;
-    case S32:
-      LiteralUtil::EachCell<int32>(
-          original,
-          [&](tensorflow::gtl::ArraySlice<int64> indices, int32 value) {
-            LiteralUtil::Set<int32>(result.get(), indices, value);
-          });
-      return result;
-    case U32:
-      LiteralUtil::EachCell<uint32>(
-          original,
-          [&](tensorflow::gtl::ArraySlice<int64> indices, uint32 value) {
-            LiteralUtil::Set<uint32>(result.get(), indices, value);
-          });
-      return result;
-    default:
-      LOG(FATAL) << "not yet implemented: "
-                 << PrimitiveType_Name(primitive_type);
-  }
+
+  const Shape& shape = original.shape();
+  std::vector<int64> base(ShapeUtil::Rank(shape), 0);
+  std::vector<int64> copy_size(shape.dimensions().begin(),
+                               shape.dimensions().end());
+
+  TF_CHECK_OK(Copy(original, base, result.get(), base, copy_size));
+  return result;
 }
 
 /* static */ StatusOr<std::unique_ptr<Literal>> LiteralUtil::Reshape(
@@ -346,25 +326,19 @@ template <typename T, typename WT>
   if (ShapeUtil::IsTuple(input.shape())) {
     return InvalidArgument("Reshape does not support tuples.");
   }
-
+  std::unique_ptr<Literal> output;
   if (!LayoutUtil::IsMonotonicWithDim0Major(input.shape().layout())) {
-    return Unimplemented(
-        "Input shape must have a monotonic layout where dimension 0 is major, "
-        "was: %s",
-        LayoutUtil::HumanString(input.shape().layout()).c_str());
+    std::vector<int64> minor_to_major(ShapeUtil::Rank(input.shape()));
+    std::iota(minor_to_major.rbegin(), minor_to_major.rend(),
+              static_cast<int64>(0));
+    output = Relayout(input, LayoutUtil::MakeLayout(minor_to_major));
+  } else {
+    output = CloneToUnique(input);
   }
-  std::vector<int64> layout(dimensions.size());
-  std::iota(layout.rbegin(), layout.rend(), 0);
-
   // Because the layout is monotonic, we can simply reuse the same sequence of
   // values without changing their order.
-  std::unique_ptr<Literal> output = CloneToUnique(input);
-  output->clear_shape();
-  output->mutable_shape()->set_element_type(input.shape().element_type());
-  for (int64 dimension : dimensions) {
-    output->mutable_shape()->add_dimensions(dimension);
-  }
-  *output->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout(layout);
+  *output->mutable_shape() =
+      ShapeUtil::MakeShape(input.shape().element_type(), dimensions);
 
   int64 elements_before = ShapeUtil::ElementsIn(input.shape());
   int64 elements_after = ShapeUtil::ElementsIn(output->shape());
@@ -378,73 +352,42 @@ template <typename T, typename WT>
   return std::move(output);
 }
 
-namespace {
-
-template <class T>
-void TransposeLiteralInternal(const Literal& original,
-                              tensorflow::gtl::ArraySlice<int64> permutation,
-                              Literal* result) {
-  std::vector<int64> new_indices(ShapeUtil::Rank(original.shape()));
-  LiteralUtil::EachCell<T>(
-      original, [&](tensorflow::gtl::ArraySlice<int64> indices, T value) {
-        for (int64 i = 0; i < indices.size(); ++i) {
-          new_indices[i] = indices[permutation[i]];
-        }
-        LiteralUtil::Set<T>(result, new_indices, value);
-      });
-}
-}  // namespace
-
 /* static */ std::unique_ptr<Literal> LiteralUtil::Transpose(
     const Literal& original, tensorflow::gtl::ArraySlice<int64> permutation) {
   CHECK(!ShapeUtil::IsTuple(original.shape()))
-      << "tuple is not supported for transpose";
-  std::vector<int64> dimension_numbers(ShapeUtil::Rank(original.shape()));
-  std::iota(dimension_numbers.begin(), dimension_numbers.end(), 0);
-  CHECK(std::is_permutation(permutation.begin(), permutation.end(),
-                            dimension_numbers.begin()))
-      << "given permutation is not a permutation of dimension numbers";
-  std::vector<int64> new_dimension_sizes;
-  for (const int64 dim : permutation) {
-    new_dimension_sizes.push_back(original.shape().dimensions(dim));
+      << "Tuple is not supported for transpose";
+  CHECK(IsPermutation(permutation, ShapeUtil::Rank(original.shape())))
+      << "Given permutation is not a permutation of dimension numbers";
+  // To transpose the array, we just permute the dimensions and layout, and
+  // do a straight memory copy of the raw data set.
+  // This is considerably faster than iterating over every array element using
+  // the EachCell<>() and Set<>() APIs.
+  std::vector<int64> inverse_permutation = InversePermutation(permutation);
+  Shape shape =
+      ShapeUtil::PermuteDimensions(inverse_permutation, original.shape());
+  // Replace the layout with one affine to the original shape, such that a
+  // transpose operation can be performed by leaving the flat values
+  // representation intact.
+  // For example, consider the shape F32[11,8]{1,0} under a {1,0} permutation.
+  // The shape with affine layout resulting from that operation will be
+  // F32[8,11]{0,1}, since it leave the original most minor (the 8 sized), the
+  // most minor.
+  // Essentially, given MinMaj(Di) the position of the Di dimension within the
+  // minor to major vector, and given T(Di) the index that the original Di
+  // dimension has within the transposed array, a layout is affine if
+  // MinMaj(Di) == TMinMaj(T(Di)), with TMinMaj() being the minor to major
+  // vector of the affine layout.
+  Layout* layout = shape.mutable_layout();
+  layout->clear_minor_to_major();
+  for (auto index : original.shape().layout().minor_to_major()) {
+    layout->add_minor_to_major(inverse_permutation[index]);
   }
-  const auto result_shape = ShapeUtil::MakeShape(
-      original.shape().element_type(), new_dimension_sizes);
-  std::unique_ptr<Literal> result = CloneToUnique(original);
-  *result->mutable_shape() = result_shape;
-  const PrimitiveType primitive_type = original.shape().element_type();
-  switch (primitive_type) {
-    case F32:
-      TransposeLiteralInternal<float>(original, permutation, result.get());
-      return result;
-    case F64:
-      TransposeLiteralInternal<double>(original, permutation, result.get());
-      return result;
-    case PRED:
-      TransposeLiteralInternal<bool>(original, permutation, result.get());
-      return result;
-    case S8:
-      TransposeLiteralInternal<int8>(original, permutation, result.get());
-      return result;
-    case U8:
-      TransposeLiteralInternal<uint8>(original, permutation, result.get());
-      return result;
-    case S32:
-      TransposeLiteralInternal<int32>(original, permutation, result.get());
-      return result;
-    case U32:
-      TransposeLiteralInternal<uint32>(original, permutation, result.get());
-      return result;
-    case S64:
-      TransposeLiteralInternal<int64>(original, permutation, result.get());
-      return result;
-    case U64:
-      TransposeLiteralInternal<uint64>(original, permutation, result.get());
-      return result;
-    default:
-      LOG(FATAL) << "not yet implemented: "
-                 << PrimitiveType_Name(primitive_type);
-  }
+  std::unique_ptr<Literal> new_literal = CreateFromShape(shape);
+  DCHECK_GE(ShapeUtil::ByteSizeOf(new_literal->shape()),
+            ShapeUtil::ByteSizeOf(original.shape()));
+  std::memcpy(MutableInternalData(new_literal.get()), InternalData(original),
+              ShapeUtil::ByteSizeOf(original.shape()));
+  return new_literal;
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::Slice(
