@@ -53,7 +53,10 @@ class CompileOnlyService : public Service {
       const tensorflow::gtl::ArraySlice<AotComputationInstance> computations,
       const AotCompilationOptions& Options);
 
-  // Override Service methods that require an execute backend.
+  // Override Service methods that require or imply the existence of an
+  // execute backend.  Note that this does not include TransferToClient and
+  // TransferToClientInProcess, as computing contants produces global data
+  // that we may wish to transfer.
   tensorflow::Status Execute(const ExecuteRequest* arg,
                              ExecuteResponse* result) override {
     return Unimplemented("CompileOnlyService does not support execution.");
@@ -76,35 +79,29 @@ class CompileOnlyService : public Service {
       WaitForExecutionResponse* result) override {
     return Unimplemented("CompileOnlyService does not support execution.");
   }
-  tensorflow::Status TransferToClient(
-      const TransferToClientRequest* arg,
-      TransferToClientResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support data transfers.");
-  }
-  tensorflow::Status TransferToClientInProcess(
-      const TransferToClientInProcessRequest* arg,
-      TransferToClientInProcessResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support data transfers.");
-  }
   tensorflow::Status TransferToServer(
       const TransferToServerRequest* arg,
       TransferToServerResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support data transfers.");
+    return Unimplemented(
+        "CompileOnlyService does not support device data transfers.");
   }
   tensorflow::Status TransferToInfeed(
       const TransferToInfeedRequest* arg,
       TransferToInfeedResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support data transfers.");
+    return Unimplemented(
+        "CompileOnlyService does not support device data transfers.");
   }
   tensorflow::Status TransferFromOutfeed(
       const TransferFromOutfeedRequest* arg,
       TransferFromOutfeedResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support data transfers.");
+    return Unimplemented(
+        "CompileOnlyService does not support device data transfers.");
   }
   tensorflow::Status TransferToServerInProcess(
       const TransferToServerInProcessRequest* arg,
       TransferToServerInProcessResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support data transfers.");
+    return Unimplemented(
+        "CompileOnlyService does not support device data transfers.");
   }
   tensorflow::Status ResetDevice(const ResetDeviceRequest* arg,
                                  ResetDeviceResponse* result) override {

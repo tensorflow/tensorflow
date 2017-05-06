@@ -330,7 +330,15 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     module_config->enable_hlo_profiling(true);
   }
 
-  module_config->set_replica_count(execute_backend_->Replicas().size());
+  // TODO(bmoses): Fix this properly.  This value is wrong if we are creating a
+  // module for use with the compute_constant_backend_.  However, so long as the
+  // execute_backend_ exists, it works out because we always use a CPU backend
+  // for the compute_constant_backend_ and CPU backends ignore this value.  We
+  // do need to ensure that the execute_backend_ exists, however, to avoid a
+  // segfault when computing constants in a CompileOnlyService.
+  if (execute_backend_) {
+    module_config->set_replica_count(execute_backend_->Replicas().size());
+  }
   module_config->set_fast_math_disabled(execution_options.disable_fast_math());
   module_config->set_seed(execution_options.seed());
 
