@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/cc/training/queue_runner.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -66,16 +67,12 @@ Status SingleMachine::Provision() {
     return status;
   }
 
-  DeviceAttributes attr;
-  attr.set_name("/job:localhost/replica:0/task:0/cpu:0");
-  attr.set_device_type("CPU");
-  devices_.push_back(attr);
+  DeviceProperties attr = GetLocalCPUInfo();
+  devices_["/job:localhost/replica:0/task:0/cpu:0"] = GetLocalCPUInfo();
 
   for (int i = 0; i < num_gpus_; ++i) {
-    DeviceAttributes attr;
-    attr.set_name(strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i));
-    attr.set_device_type("GPU");
-    devices_.push_back(attr);
+    devices_[strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i)] =
+        GetLocalGPUInfo(i);
   }
   return Status::OK();
 }
