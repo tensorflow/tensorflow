@@ -550,7 +550,7 @@ REGISTER_OP("SplitV")
           return errors::InvalidArgument(
               "Length of size_splits should be equal to num_outputs");
         }
-        int cumsum_outputs = 0;
+        int64_t cumsum_outputs = 0;
         bool has_neg_one = false;
         // If the sizes of the splits are known, then
         // make sure that the sizes add up to the expected
@@ -568,7 +568,7 @@ REGISTER_OP("SplitV")
           else
             cumsum_outputs += data[i];
         }
-        int split_dim_size = c->Value(c->Dim(input, split_dim));
+        auto split_dim_size = c->Value(c->Dim(input, split_dim));
         if (has_neg_one) {
           if (cumsum_outputs < split_dim_size)
             cumsum_outputs = split_dim_size;
