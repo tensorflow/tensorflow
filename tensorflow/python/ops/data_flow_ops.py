@@ -1344,68 +1344,21 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         dense_shape=return_val.shape)
 
 
-class StagingArea(object):
-  """Class for staging inputs. No ordering guarantees.
-
-  A `StagingArea` is a TensorFlow data structure that stores tensors across
-  multiple steps, and exposes operations that can put and get tensors.
-
-  Each `StagingArea` element is a tuple of one or more tensors, where each
-  tuple component has a static dtype, and may have a static shape.
-
-  The capacity of a `StagingArea` is unbounded and supports multiple
-  concurrent producers and consumers; and provides exactly-once delivery.
-
-  Each element of a `StagingArea` is a fixed-length tuple of tensors whose
-  dtypes are described by `dtypes`, and whose shapes are optionally described
-  by the `shapes` argument.
-
-  If the `shapes` argument is specified, each component of a staging area
-  element must have the respective fixed shape. If it is
-  unspecified, different elements may have different shapes,
-  """
-
+class BaseStagingArea(object):
+  """Base class for Staging Areas."""
   _identifier = 0
   _lock = threading.Lock()
 
   def __init__(self, dtypes, shapes=None, names=None, shared_name=None,
                   capacity=0):
-    """Constructs a staging area object.
-
-    The two optional lists, `shapes` and `names`, must be of the same length
-    as `dtypes` if provided.  The values at a given index `i` indicate the
-    shape and name to use for the corresponding queue component in `dtypes`.
-
-    The device scope at the time of object creation determines where the
-    storage for the `StagingArea` will reside.  Calls to `put` will incur a copy
-    to this memory space, if necessary.  Tensors returned by `get` will be
-    placed according to the device scope when `get` is called.
-
-    Args:
-      dtypes:  A list of types.  The length of dtypes must equal the number
-        of tensors in each element.
-      capacity: (Optional.) Maximum number of elements.
-        An integer. If zero, the Staging Area is unbounded
-      shapes: (Optional.) Constraints on the shapes of tensors in an element.
-        A list of shape tuples or None. This list is the same length
-        as dtypes.  If the shape of any tensors in the element are constrained,
-        all must be; shapes can be None if the shapes should not be constrained.
-      names: (Optional.) If provided, the `get()` and
-        `put()` methods will use dictionaries with these names as keys.
-        Must be None or a list or tuple of the same length as `dtypes`.
-      shared_name: (Optional.) A name to be used for the shared object. By
-        passing the same name to two different python objects they will share
-        the underlying staging area. Must be a string.
-
-    Raises:
-      ValueError: If one of the arguments is invalid.
-    """
     if shared_name is None:
-      self._name = ops.get_default_graph().unique_name("StagingArea")
+      self._name = (ops.get_default_graph()
+                       .unique_name(self.__class__.__name__))
     elif isinstance(shared_name, six.string_types):
       self._name = shared_name
     else:
       raise ValueError("shared_name must be a string")
+
     self._dtypes = dtypes
 
     if shapes is not None:
@@ -1451,6 +1404,7 @@ class StagingArea(object):
   @property
   def capacity(self):
     """The maximum number of elements of this staging area."""
+    return self._capacity
 
   def _check_put_dtypes(self, vals):
     """Validate and convert `vals` to a list of `Tensor`s.
@@ -1462,6 +1416,9 @@ class StagingArea(object):
     `names` attribute and the dictionary keys must match the staging area names.
     If the staging area was constructed with a `names` attribute, `vals` must
     be a dictionary.
+
+    Checks that the dtype and shape of each value matches that
+    of the staging area.
 
     Args:
       vals: A tensor, a list or tuple of tensors, or a dictionary..
@@ -1490,13 +1447,71 @@ class StagingArea(object):
       if not isinstance(vals, (list, tuple)):
         vals = [vals]
 
+    # Sanity check number of values
+    if not len(vals) == len(self._dtypes):
+      raise ValueError("Unexpected number of inputs '%s' vs '%s'" % (
+                          len(values), len(self._dtypes)))
+
     tensors = []
-    for i, (val, dtype) in enumerate(zip(vals, self._dtypes)):
-      tensors.append(
-          ops.convert_to_tensor(
-              val, dtype=dtype, name="component_%d" % i))
+
+    for i, (val, dtype, shape) in enumerate(zip(vals, self._dtypes, self._shapes)):
+      # Check dtype
+      if not val.dtype == dtype:
+        raise ValueError("Datatypes do not match. '%s' != '%s'" %(
+                        str(val.dtype), str(dtype)))
+
+      # Check shape
+      val.get_shape().assert_is_compatible_with(shape)
+
+      tensors.append(ops.convert_to_tensor(val, dtype=dtype,
+                                          name="component_%d" % i))
 
     return tensors
+
+  def _create_device_transfers(self, tensors):
+    """Encode inter-device transfers if the current device
+    is not the same as the Staging Area's device
+    """
+
+    if not isinstance(tensors, (tuple, list)):
+      tensors = [tensors]
+
+    curr_device_scope = control_flow_ops.no_op().device
+
+    if curr_device_scope != self._coloc_op.device:
+      tensors = [array_ops.identity(t) for t in tensors]
+
+    return tensors
+
+  def _get_return_value(self, tensors):
+    """Return the value to return from a get op.
+
+    If the staging area has names, return a dictionary with the
+    names as keys.  Otherwise return either a single tensor
+    or a list of tensors depending on the length of `tensors`.
+
+    Args:
+      tensors: List of tensors from the get op.
+
+    Returns:
+      A single tensor, a list of tensors, or a dictionary
+      of tensors.
+    """
+
+    tensors = self._create_device_transfers(tensors)
+
+    # Sets shape
+    for output, shape in zip(tensors, self._shapes):
+      output.set_shape(shape)
+
+    if self._names:
+      # The returned values in `tensors` are in the same order as
+      # the names in `self._names`.
+      return {n: tensors[i] for i, n in enumerate(self._names)}
+    elif len(tensors) == 1:
+      return tensors[0]
+    else:
+      return tensors
 
   def _scope_vals(self, vals):
     """Return a list of values to pass to `name_scope()`.
@@ -1514,6 +1529,64 @@ class StagingArea(object):
     else:
       return [vals]
 
+class StagingArea(BaseStagingArea):
+  """Class for staging inputs. No ordering guarantees.
+
+  A `StagingArea` is a TensorFlow data structure that stores tensors across
+  multiple steps, and exposes operations that can put and get tensors.
+
+  Each `StagingArea` element is a tuple of one or more tensors, where each
+  tuple component has a static dtype, and may have a static shape.
+
+  The capacity of a `StagingArea` is unbounded and supports multiple
+  concurrent producers and consumers; and provides exactly-once delivery.
+
+  Each element of a `StagingArea` is a fixed-length tuple of tensors whose
+  dtypes are described by `dtypes`, and whose shapes are optionally described
+  by the `shapes` argument.
+
+  If the `shapes` argument is specified, each component of a staging area
+  element must have the respective fixed shape. If it is
+  unspecified, different elements may have different shapes,
+  """
+
+  def __init__(self, dtypes, shapes=None, names=None, shared_name=None,
+                  capacity=0):
+    """Constructs a staging area object.
+
+    The two optional lists, `shapes` and `names`, must be of the same length
+    as `dtypes` if provided.  The values at a given index `i` indicate the
+    shape and name to use for the corresponding queue component in `dtypes`.
+
+    The device scope at the time of object creation determines where the
+    storage for the `StagingArea` will reside.  Calls to `put` will incur a copy
+    to this memory space, if necessary.  Tensors returned by `get` will be
+    placed according to the device scope when `get` is called.
+
+    Args:
+      dtypes:  A list of types.  The length of dtypes must equal the number
+        of tensors in each element.
+      capacity: (Optional.) Maximum number of elements.
+        An integer. If zero, the Staging Area is unbounded
+      shapes: (Optional.) Constraints on the shapes of tensors in an element.
+        A list of shape tuples or None. This list is the same length
+        as dtypes.  If the shape of any tensors in the element are constrained,
+        all must be; shapes can be None if the shapes should not be constrained.
+      names: (Optional.) If provided, the `get()` and
+        `put()` methods will use dictionaries with these names as keys.
+        Must be None or a list or tuple of the same length as `dtypes`.
+      shared_name: (Optional.) A name to be used for the shared object. By
+        passing the same name to two different python objects they will share
+        the underlying staging area. Must be a string.
+
+    Raises:
+      ValueError: If one of the arguments is invalid.
+    """
+
+    super(StagingArea, self).__init__(dtypes, shapes,
+                                          names, shared_name,
+                                          capacity)
+
   def put(self, values, name=None):
     """Create an op that places a value into the staging area.
 
@@ -1529,17 +1602,8 @@ class StagingArea(object):
     """
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
-      vals = self._check_put_dtypes(values)
-      if len(values) != len(self._dtypes):
-        raise ValueError("Unexpected number of inputs " + str(len(values)) +
-                         "vs " + str(len(self._dtypes)))
-      for val, dtype in zip(vals, self._dtypes):
-        if val.dtype != dtype:
-          raise ValueError("Datatypes do not match. " + str(val.dtype) + " != "
-                           + str(dtype))
 
-      for val, shape in zip(vals, self._shapes):
-        val.get_shape().assert_is_compatible_with(shape)
+      vals = self._check_put_dtypes(values)
 
       with ops.colocate_with(self._coloc_op):
         op = gen_data_flow_ops.stage(values=vals, shared_name=self._name,
@@ -1547,40 +1611,9 @@ class StagingArea(object):
 
       return op
 
-  def _get_return_value(self, tensors):
-    """Return the value to return from a get op.
-
-    If the staging area has names, return a dictionary with the
-    names as keys.  Otherwise return either a single tensor
-    or a list of tensors depending on the length of `tensors`.
-
-    Args:
-      tensors: List of tensors from the get op.
-
-    Returns:
-      A single tensor, a list of tensors, or a dictionary
-      of tensors.
-    """
-    if self._names:
-      # The returned values in `tensors` are in the same order as
-      # the names in `self._names`.
-      return {n: tensors[i] for i, n in enumerate(self._names)}
-    elif len(tensors) == 1:
-      return tensors[0]
-    else:
-      return tensors
-
   def __internal_get(self, get_fn, name):
     with ops.colocate_with(self._coloc_op):
       ret = get_fn()
-
-    curr_device_scope = control_flow_ops.no_op().device
-    if curr_device_scope != self._coloc_op.device:
-      for i in range(len(ret)):
-        ret[i] = array_ops.identity(ret[i])
-
-    for output, shape in zip(ret, self._shapes):
-      output.set_shape(shape)
 
     return self._get_return_value(ret)
 
@@ -1666,7 +1699,7 @@ class StagingArea(object):
                         name=name,
                         capacity=self._capacity)
 
-class MapStagingArea(object):
+class MapStagingArea(BaseStagingArea):
     """
     Class for staging inputs. Similar to `StagingArea` but behaves
     like a hashtable with support for puts, gets, pops, popitems,
@@ -1677,15 +1710,16 @@ class MapStagingArea(object):
 
     def __init__(self, dtypes, capacity=0, ordered=False,
                         shapes=None, names=None,
-                        shared_name=None, name="map_staging_area"):
+                        shared_name=None):
 
-        self._dtypes = data_flow_ops._as_type_list(dtypes)
-        self._capacity = capacity
+        super(MapStagingArea, self).__init__(dtypes, shapes,
+                                          names, shared_name,
+                                          capacity)
+
+        # Defer to different methods depending if the map is ordered
         self._ordered = ordered
 
         if ordered:
-            base_name = "OrderedMapStagingArea"
-
             self._put_fn = gen_data_flow_ops.ordered_map_stage
             self._pop_fn = gen_data_flow_ops.ordered_map_unstage
             self._popitem_fn = gen_data_flow_ops.ordered_map_popitem
@@ -1693,8 +1727,6 @@ class MapStagingArea(object):
             self._size_fn = gen_data_flow_ops.ordered_map_size
             self._clear_fn = gen_data_flow_ops.ordered_map_clear
         else:
-            base_name = "MapStagingArea"
-
             self._put_fn = gen_data_flow_ops.map_stage
             self._pop_fn = gen_data_flow_ops.map_unstage
             self._popitem_fn = gen_data_flow_ops.map_popitem
@@ -1702,40 +1734,13 @@ class MapStagingArea(object):
             self._size_fn = gen_data_flow_ops.map_size
             self._clear_fn = gen_data_flow_ops.map_clear
 
-        if shared_name is None:
-            self._name = (ops.get_default_graph()
-                        .unique_name(base_name))
-        elif isinstance(shared_name, six.string_types):
-            self._name = shared_name
-        else:
-            raise ValueError("shared_name must be a string")
-
-        with ops.name_scope("%s_root" % self._name):
-            self._coloc_op = control_flow_ops.no_op()
-
-    def _scope_values(self, data):
-        if isinstance(data, collections.Sequence):
-            return data
-        elif isinstance(data, collections.Mapping):
-            return data.values()
-        else:
-            return [data]
-
-    @property
-    def dtypes(self):
-        return self._dtypes
-
-    @property
-    def name(self):
-        return self._name
-
-    def put(self, key, data, name=None):
+    def put(self, key, vals, name=None):
         """
         Create an op that stores the (key, data) pair in the staging area
 
         Args:
             key: Key associated with the data
-            data: Tensor (or a tuple of Tensors) to place
+            vals: Tensor (or a tuple of Tensors) to place
                     into the staging area.
             name: A name for the operation (optional)
 
@@ -1746,27 +1751,16 @@ class MapStagingArea(object):
             ValueError: If the number or type of inputs don't match the staging area.
         """
 
-        scope_vals = self._scope_values(data)
-        op_name = "%s_put" % self._name
+        with ops.name_scope(name, "%s_put" % self._name,
+                            self._scope_vals(vals)) as scope:
 
-        with ops.name_scope(name, op_name, scope_vals) as scope:
-            if not len(data) == len(self._dtypes):
-                raise ValueError("Insufficient data values '{}' provided "
-                                "'{}' expected.".format(
-                                    len(data), len(self._dtypes)))
+          vals = self._check_put_dtypes(vals)
 
-
-            for i, (value, dtype) in enumerate(zip(data, self._dtypes)):
-                if not value.dtype == dtype:
-                    raise ValueError("DataType '{}' with value '{}' "
-                                    "does not match "
-                                    "'{}' and '{}'".format(
-                                        i, value, value.dtype, dtype))
-
-            with ops.colocate_with(self._coloc_op):
-                return self._put_fn(key, data, shared_name=self._name,
-                                     name=scope,
-                                     capacity=self._capacity)
+          with ops.colocate_with(self._coloc_op):
+              op = self._put_fn(key, vals, shared_name=self._name,
+                                   name=scope,
+                                   capacity=self._capacity)
+        return op
 
     def get(self, key, name=None):
         """
@@ -1792,10 +1786,7 @@ class MapStagingArea(object):
                             name=name,
                             capacity=self._capacity)
 
-            if not control_flow_ops.no_op().device == self._coloc_op.device:
-                result = [array_ops.identity(r) for r in result]
-
-            return result
+        return self._get_return_value(result)
 
 
     def pop(self, key, name=None):
@@ -1822,10 +1813,7 @@ class MapStagingArea(object):
                             name=name,
                             capacity=self._capacity)
 
-            if not control_flow_ops.no_op().device == self._coloc_op.device:
-                result = [array_ops.identity(r) for r in result]
-
-            return result
+        return self._get_return_value(result)
 
     def popitem(self, name=None):
         """
@@ -1845,15 +1833,15 @@ class MapStagingArea(object):
             name = "%s_popitem" % self._name
 
         with ops.colocate_with(self._coloc_op):
-            result = self._popitem_fn(shared_name=self._name,
+            key, result = self._popitem_fn(shared_name=self._name,
                                     dtypes=self._dtypes,
                                     name=name,
                                     capacity=self._capacity)
 
-            if not control_flow_ops.no_op().device == self._coloc_op.device:
-                result = [array_ops.identity(r) for r in result]
+        key = self._create_device_transfers(key)
+        results = self._get_return_value(result)
 
-            return result
+        return key, result
 
     def size(self, name=None):
         """
