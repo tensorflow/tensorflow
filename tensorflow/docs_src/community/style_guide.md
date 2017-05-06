@@ -163,8 +163,8 @@ operation.
              it's present in the scope.
 
 * Layers that behave differently during training should take:
-  - `is_training`: `bool` indicator to conditionally choose different computation paths (e.g. using `tf.cond`) during execution.
-
+  - `is_training`: `bool` indicator to conditionally choose different 
+                   computation paths (e.g. using `tf.cond`) during execution.
 
 Example:
 
