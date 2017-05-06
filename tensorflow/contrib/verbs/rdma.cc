@@ -477,7 +477,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.qp_state = IBV_QPS_RTR;
     struct ibv_port_attr port_attr;
     CHECK(!ibv_query_port(adapter_->context_, (uint8_t)1, &port_attr))
-            << "Query port failed";
+        << "Query port failed";
     // This assumes both QP's ports are configured with the same MTU
     attr.path_mtu = port_attr.active_mtu;
     attr.dest_qp_num = remoteAddr.qpn;
