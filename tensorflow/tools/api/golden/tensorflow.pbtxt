@@ -638,7 +638,7 @@ tf_module {
   }
   member_method {
     name: "atan2"
-    argspec: "args=[\'x1\', \'x2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'y\', \'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "batch_to_space"

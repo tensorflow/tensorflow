@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
-from tensorflow.contrib.framework.python.framework import deprecated
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator

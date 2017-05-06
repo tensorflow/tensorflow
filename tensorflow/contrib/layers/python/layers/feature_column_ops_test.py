@@ -597,12 +597,15 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         "income":
             constant_op.constant([[20.3, 10], [110.3, 0.4], [-3.0, 30.4]]),
     }
-    output = feature_column_ops.input_from_feature_columns(features, [
-        one_hot_column, embedding_column, real_valued_column])
+    columns = [one_hot_column, embedding_column, real_valued_column]
+    output = feature_column_ops.input_from_feature_columns(features, columns)
+    output_core = fc_core.make_input_layer(features, columns)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(output.eval().shape, [3, 2 + 4 + 10])
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(output.eval().shape, output_core.eval().shape)
 
   def testRealValuedColumn(self):
     real_valued = feature_column.real_valued_column("price")
@@ -712,11 +715,14 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     one_hot_column = feature_column.one_hot_column(weighted_ids_column)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_column])
+    output_core = fc_core.make_input_layer(features, [one_hot_column])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual([[0, 0, 10., 0], [0, 20., 0, 0], [30., 0, 40., 0]],
                           output.eval())
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(output.eval(), output_core.eval())
 
   def testOneHotColumnFromSparseColumnWithKeysSucceedsForDNN(self):
     ids_column = feature_column.sparse_column_with_keys(
@@ -729,12 +735,15 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     features = {"ids": ids_tensor}
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_sparse])
+    output_core = fc_core.make_input_layer(features, [one_hot_sparse])
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 0, 0]],
                           output.eval())
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(output.eval(), output_core.eval())
 
   def testOneHotColumnFromMultivalentSparseColumnWithKeysSucceedsForDNN(self):
     ids_column = feature_column.sparse_column_with_keys(
@@ -747,12 +756,15 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     features = {"ids": ids_tensor}
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_sparse])
+    output_core = fc_core.make_input_layer(features, [one_hot_sparse])
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 1, 0]],
                           output.eval())
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(output.eval(), output_core.eval())
 
   def testOneHotColumnFromSparseColumnWithIntegerizedFeaturePassesForDNN(self):
     ids_column = feature_column.sparse_column_with_integerized_feature(
@@ -767,10 +779,13 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     }
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_sparse])
+    output_core = fc_core.make_input_layer(features, [one_hot_sparse])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 1, 0]],
                           output.eval())
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(output.eval(), output_core.eval())
 
   def testOneHotColumnFromSparseColumnWithHashBucketSucceedsForDNN(self):
     hashed_sparse = feature_column.sparse_column_with_hash_bucket("feat", 10)
@@ -782,10 +797,13 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     one_hot_sparse = feature_column.one_hot_column(hashed_sparse)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_sparse])
+    output_core = fc_core.make_input_layer(features, [one_hot_sparse])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual([3, 10], output.eval().shape)
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(output.eval(), output_core.eval())
 
   def testEmbeddingColumnSucceedsForDNN(self):
     hashed_sparse = feature_column.sparse_column_with_hash_bucket("wire", 10)
@@ -797,9 +815,12 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     embeded_sparse = feature_column.embedding_column(hashed_sparse, 10)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
+    output_core = fc_core.make_input_layer(features, [embeded_sparse])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(output.eval().shape, [4, 10])
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(output.eval().shape, output_core.eval().shape)
 
   def testScatteredEmbeddingColumnSucceedsForDNN(self):
     wire_tensor = sparse_tensor.SparseTensor(
@@ -838,12 +859,15 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         initializer=init_ops.constant_initializer(init_value))
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
+    output_core = fc_core.make_input_layer(features, [embeded_sparse])
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       output_eval = output.eval()
       self.assertAllEqual(output_eval.shape, [2, 10])
       self.assertAllClose(output_eval, np.tile(init_value, [2, 10]))
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(output.eval(), output_core.eval())
 
   def testEmbeddingColumnWithMultipleInitializersFails(self):
     hashed_sparse = feature_column.sparse_column_with_hash_bucket("wire", 10)
@@ -889,10 +913,14 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     embeded_sparse = feature_column.embedding_column(weighted_ids, 10)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
+    output_core = fc_core.make_input_layer(features, [embeded_sparse])
+
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(output.eval().shape, output_core.eval().shape)
 
   def testEmbeddingColumnWithIntegerWeightedSparseColumnSucceedsForDNN(self):
     """Same as the previous test, but with integer weights."""
@@ -1534,9 +1562,12 @@ class WeightedSumTest(test.TestCase):
     features = {"wire": wire_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
+    logits_core = fc_core.make_linear_model(features, [hashed_sparse], units=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(logits.eval(), logits_core.eval())
 
   def testSparseIntColumn(self):
     """Tests a sparse column with int values."""
@@ -1549,9 +1580,12 @@ class WeightedSumTest(test.TestCase):
     features = {"wire": wire_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
+    logits_core = fc_core.make_linear_model(features, [hashed_sparse], units=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(logits.eval(), logits_core.eval())
 
   def testSparseColumnWithDenseInputTensor(self):
     hashed_sparse = feature_column.sparse_column_with_hash_bucket("wire", 10)
@@ -1560,9 +1594,12 @@ class WeightedSumTest(test.TestCase):
     features = {"wire": wire_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
+    logits_core = fc_core.make_linear_model(features, [hashed_sparse], units=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(logits.eval(), logits_core.eval())
 
   def testWeightedSparseColumn(self):
     ids = feature_column.sparse_column_with_keys("ids",
@@ -1579,10 +1616,13 @@ class WeightedSumTest(test.TestCase):
     features = {"ids": ids_tensor, "weights": weights_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [weighted_ids], num_outputs=5)
+    logits_core = fc_core.make_linear_model(features, [weighted_ids], units=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(logits.eval(), logits_core.eval())
 
   def testWeightedSparseColumnWithDenseInputTensor(self):
     ids = feature_column.sparse_column_with_keys(
@@ -1594,11 +1634,14 @@ class WeightedSumTest(test.TestCase):
     features = {"ids": ids_tensor, "weights": weights_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [weighted_ids], num_outputs=5)
+    logits_core = fc_core.make_linear_model(features, [weighted_ids], units=5)
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
+      # Verify cross compatibility: Core builder output should equal to contrib.
+      self.assertAllEqual(logits.eval(), logits_core.eval())
 
   def testCrossedColumn(self):
     a = feature_column.sparse_column_with_hash_bucket(
@@ -1649,6 +1692,8 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [movies], num_outputs=1))
+      logits_core = fc_core.make_linear_model(features, [movies])
+
       with self.test_session() as sess:
         variables_lib.initialize_all_variables().run()
         lookup_ops.tables_initializer().run()
@@ -1659,6 +1704,8 @@ class WeightedSumTest(test.TestCase):
         # score for first example = 0.3 (matrix) + 0.1 (head-on) = 0.4
         # score for second example = 0.5 (winter sleep)
         self.assertAllClose(output.eval(), [[0.4], [0.5]])
+        # Cross compatibility: Core builder output should equal to contrib.
+        self.assertAllEqual(output.eval().shape, logits_core.eval().shape)
 
   def testRealValuedColumnWithMultiDimensions(self):
     real_valued = feature_column.real_valued_column("price", 2)

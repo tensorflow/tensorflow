@@ -136,6 +136,22 @@ cc_library(
 )
 
 cc_library(
+    name = "virtual_placer",
+    srcs = ["virtual_placer.cc"],
+    hdrs = ["virtual_placer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":op_performance_data_cc",
+        ":utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler/clusters:cluster",
+    ],
+)
+
+cc_library(
     name = "virtual_scheduler",
     srcs = ["virtual_scheduler.cc"],
     hdrs = ["virtual_scheduler.h"],
@@ -192,5 +208,26 @@ cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "analytical_cost_estimator",
+    srcs = ["analytical_cost_estimator.cc"],
+    hdrs = ["analytical_cost_estimator.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cost_estimator",
+        ":graph_properties",
+        ":op_level_cost_estimator",
+        ":op_performance_data_cc",
+        ":utils",
+        ":virtual_placer",
+        ":virtual_scheduler",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
     ],
 )
