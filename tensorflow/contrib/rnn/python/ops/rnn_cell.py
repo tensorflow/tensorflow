@@ -75,6 +75,18 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
   return shards
 
 
+def _norm(g, b, inp, scope):
+  shape = inp.get_shape()[-1:]
+  gamma_init = init_ops.constant_initializer(g)
+  beta_init = init_ops.constant_initializer(b)
+  with vs.variable_scope(scope):
+    # Initialize beta and gamma for use by layer_norm.
+    vs.get_variable("gamma", shape=shape, initializer=gamma_init)
+    vs.get_variable("beta", shape=shape, initializer=beta_init)
+  normalized = layers.layer_norm(inp, reuse=True, scope=scope)
+  return normalized
+
+
 class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -107,7 +119,8 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
                initializer=None, num_proj=None, proj_clip=None,
                num_unit_shards=1, num_proj_shards=1,
                forget_bias=1.0, state_is_tuple=True,
-               activation=math_ops.tanh, reuse=None):
+               activation=math_ops.tanh, reuse=None,
+               layer_norm=False, norm_gain=1.0, norm_shift=0.0):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -134,6 +147,11 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
+      layer_norm: If `True`, layer normalization will be applied.
+      norm_gain: float, The layer normalization gain initial value. If
+        `layer_norm` has been set to `False`, this argument will be ignored.
+      norm_shift: float, The layer normalization shift initial value. If
+        `layer_norm` has been set to `False`, this argument will be ignored.
     """
     super(CoupledInputForgetGateLSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
@@ -151,6 +169,9 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
     self._state_is_tuple = state_is_tuple
     self._activation = activation
     self._reuse = reuse
+    self._layer_norm = layer_norm
+    self._g = norm_gain
+    self._b = norm_shift
 
     if num_proj:
       self._state_size = (rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
@@ -219,8 +240,19 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
 
     # j = new_input, f = forget_gate, o = output_gate
     cell_inputs = array_ops.concat([inputs, m_prev], 1)
-    lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
+    lstm_matrix = math_ops.matmul(cell_inputs, concat_w)
+
+    # If layer nomalization is applied, do not add bias
+    if not self._layer_norm:
+      lstm_matrix = nn_ops.bias_add(lstm_matrix, b)
+
     j, f, o = array_ops.split(value=lstm_matrix, num_or_size_splits=3, axis=1)
+
+    # Apply layer normalization
+    if self._layer_norm:
+      j = _norm(self._g, self.b, j, "transform")
+      f = _norm(self._g, self.b, f, "forget")
+      o = _norm(self._g, self.b, o, "output")
 
     # Diagonal connections
     if self._use_peepholes:
@@ -234,6 +266,10 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
     else:
       f_act = sigmoid(f + self._forget_bias)
     c = (f_act * c_prev + (1 - f_act) * self._activation(j))
+
+    # Apply layer normalization
+    if self._layer_norm:
+      c = _norm(self._g, self.b, c, "state")
 
     if self._use_peepholes:
       m = sigmoid(o + w_o_diag * c) * self._activation(c)
