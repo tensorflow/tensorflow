@@ -453,7 +453,7 @@ class GraphRewriter(object):
 
   def round_nodes_recursively(self, current_node):
     """The entry point for simple rounding quantization."""
-    if (current_node.name in self.already_visited) and self.already_visited[current_node.name]:
+    if current_node.name in self.already_visited:
       return
     self.already_visited[current_node.name] = True
     for input_node_name in current_node.input:
@@ -485,7 +485,7 @@ class GraphRewriter(object):
 
   def quantize_nodes_recursively(self, current_node):
     """The entry point for quantizing nodes to eight bit and back."""
-    if self.already_visited[current_node.name]:
+    if current_node.name in self.already_visited:
       return
     self.already_visited[current_node.name] = True
     for input_node_name in current_node.input:
@@ -494,10 +494,6 @@ class GraphRewriter(object):
       self.quantize_nodes_recursively(input_node)
     nodes_to_quantize = ["Conv2D", "BiasAdd", "MatMul"]
     if any(current_node.op in s for s in nodes_to_quantize):
-      for input_name in current_node.input:
-        input_name = node_name_from_input(input_name)
-        input_node = self.nodes_map[input_name]
-        self.quantize_node(input_node)
       self.quantize_node(current_node)
     else:
       new_node = node_def_pb2.NodeDef()
@@ -539,7 +535,7 @@ class GraphRewriter(object):
     set_attr_dtype(min_node, "T", dtypes.float32)
     set_attr_bool(min_node, "keep_dims", False)
     self.add_output_graph_node(min_node)
-    quantize_node = create_node("Quantize", quantize_name,
+    quantize_node = create_node("QuantizeV2", quantize_name,
                                 [original_input_name, min_name, max_name])
     set_attr_dtype(quantize_node, "T", dtypes.quint8)
     set_attr_string(quantize_node, "mode", b"MIN_FIRST")
