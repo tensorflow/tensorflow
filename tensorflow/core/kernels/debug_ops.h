@@ -107,10 +107,10 @@ class BaseDebugOp : public OpKernel {
   explicit BaseDebugOp(const string& debug_op_name,
                        OpKernelConstruction* context)
       : OpKernel(context), debug_op_name_(debug_op_name) {
-    watch_key_ = strings::StrCat(tensor_name_, ":", debug_op_name_);
     OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
     OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
     OP_REQUIRES_OK(context, context->GetAttr("gated_grpc", &gated_grpc_));
+    watch_key_ = strings::StrCat(tensor_name_, ":", debug_op_name_);
   }
 
   bool IsExpensive() override { return false; }

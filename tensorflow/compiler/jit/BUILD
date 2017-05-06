@@ -176,21 +176,32 @@ cc_library(
 )
 
 cc_library(
+    name = "graph_to_functiondef",
+    srcs = ["graph_to_functiondef.cc"],
+    hdrs = ["graph_to_functiondef.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_launch_ops_pass.cc",
         "encapsulate_subgraphs_pass.cc",
-        "graph_to_functiondef.cc",
         "mark_for_compilation_pass.cc",
     ],
     hdrs = [
         "build_xla_launch_ops_pass.h",
         "encapsulate_subgraphs_pass.h",
-        "graph_to_functiondef.h",
         "mark_for_compilation_pass.h",
     ],
     deps = [
         ":common",
+        ":graph_to_functiondef",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
@@ -221,6 +232,7 @@ cc_test(
     deps = [
         ":common",
         ":compilation_passes",
+        ":graph_to_functiondef",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

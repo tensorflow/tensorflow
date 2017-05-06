@@ -257,10 +257,13 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
   if (flags->xla_cpu_parallel) {
     pipeline.AddPass<ParallelizationPreparation>();
   }
-  // Copy insertion should be performed immediately before IR emission to
-  // avoid inserting unnecessary copies (later pass adds an instruction which
-  // materializes the value) or missing a necessary copy (later pass removes
-  // an instruction which materializes a value).
+  // Copy insertion should be performed immediately before IR emission to avoid
+  // inserting unnecessary copies (later pass adds an instruction which
+  // materializes the value) or missing a necessary copy (later pass removes an
+  // instruction which materializes a value). DCE must be run immediately before
+  // (and sometime after) copy insertion, to avoid dead code from interfering
+  // with the rewrites.
+  pipeline.AddPass<HloDCE>();
   pipeline.AddPass<CopyInsertion>();
   if (flags->xla_cpu_parallel) {
     // Re-run the outlining, in case any copies were inserted into the entry

@@ -112,6 +112,8 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import re
+import threading
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -327,11 +329,17 @@ class BaseDebugWrapperSession(session.SessionInterface):
   # TODO(cais): Add on_cont_start and on_cont_end callbacks once the stepper is
   # is available.
 
-  def __init__(self, sess):
+  def __init__(self, sess, thread_name_filter=None):
     """Constructor of `BaseDebugWrapperSession`.
 
     Args:
       sess: An (unwrapped) TensorFlow session instance.
+      thread_name_filter: Regular-expression filter (whitelist) for name(s) of
+        thread(s) on which the wrapper session will be active. This regular
+        expression is used in a start-anchored fashion on the thread name, i.e.,
+        by applying the `match` method of the compiled pattern. The default
+        `None` means that the wrapper session will be active on all threads.
+        E.g., r"MainThread$", r"QueueRunnerThread.*".
 
     Raises:
       ValueError: On invalid `OnSessionInitAction` value.
@@ -348,6 +356,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
     # The session being wrapped.
     self._sess = sess
+    self._thread_name_filter_pattern = (re.compile(thread_name_filter)
+                                        if thread_name_filter else None)
 
     # Keeps track of number of run calls that have been performed on this
     # debug-wrapper session.
@@ -404,6 +414,11 @@ class BaseDebugWrapperSession(session.SessionInterface):
     """
 
     self._run_call_count += 1
+    if self._is_disabled_thread():
+      return self._sess.run(fetches,
+                            feed_dict=feed_dict,
+                            options=options,
+                            run_metadata=run_metadata)
 
     # Invoke on-run-start callback and obtain response.
     run_start_resp = self.on_run_start(
@@ -472,6 +487,11 @@ class BaseDebugWrapperSession(session.SessionInterface):
     # Currently run_end_resp is only a placeholder. No action is taken on it.
 
     return retvals
+
+  def _is_disabled_thread(self):
+    thread_name = threading.current_thread().name or ""
+    return (self._thread_name_filter_pattern and
+            not self._thread_name_filter_pattern.match(thread_name))
 
   def partial_run_setup(self, fetches, feeds=None):
     """Sets up the feeds and fetches for partial runs in the session."""
@@ -656,7 +676,7 @@ class WatchOptions(object):
 class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
   """Base class for non-interactive (i.e., non-CLI) debug wrapper sessions."""
 
-  def __init__(self, sess, watch_fn=None):
+  def __init__(self, sess, watch_fn=None, thread_name_filter=None):
     """Constructor of DumpingDebugWrapperSession.
 
     Args:
@@ -672,11 +692,15 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
            the debug ops to use, the node names, op types and/or tensor data
            types to watch, etc. See the documentation of `tf_debug.WatchOptions`
            for more details.
+      thread_name_filter: Regular-expression white list for threads on which the
+        wrapper session will be active. See doc of `BaseDebugWrapperSession` for
+        more details.
     Raises:
        TypeError: If a non-None `watch_fn` is specified and it is not callable.
     """
 
-    BaseDebugWrapperSession.__init__(self, sess)
+    BaseDebugWrapperSession.__init__(
+        self, sess, thread_name_filter=thread_name_filter)
 
     self._watch_fn = None
     if watch_fn is not None:

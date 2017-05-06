@@ -70,19 +70,24 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
   HeapSimulator heap(std::move(algorithm), size_fn, buffers_to_assign);
   FlatMap<const LogicalBuffer*, FlatSet<const HloInstruction*>> live_buffers;
 
+  const HloInstruction* root = computation.root_instruction();
+  FlatSet<const LogicalBuffer*> output_source_buffers =
+      points_to_analysis.GetPointsToSet(root).CreateFlattenedSet();
+
   for (const HloInstruction* instruction : instruction_sequence) {
     const std::vector<const LogicalBuffer*>& buffers_defined_by_instruction =
         points_to_analysis.GetBuffersDefinedByInstruction(instruction);
-
-    const HloInstruction* root = computation.root_instruction();
-    FlatSet<const LogicalBuffer*> output_source_buffers =
-        points_to_analysis.GetPointsToSet(root).CreateFlattenedSet();
 
     // Initialize live_buffers for each buffer that we're going to assign.  The
     // set of instructions that need to be visited contains all users of all
     // aliases.  The alias itself is not necessary; if it has users, the users
     // are necessarily scheduled after the alias.  And if it has no users, it is
     // either a dead value or an output, both of which are handled below.
+    //
+    // We ignore control dependencies here. The reasoning is that the control
+    // dependencies have already been accounted for in the ordering of the given
+    // 'instruction_sequence', and should not otherwise artificially extend the
+    // lifetime of buffers that aren't already connected by a data dependency.
     std::vector<const LogicalBuffer*> dead_buffers_to_free;
     for (const LogicalBuffer* buffer : buffers_defined_by_instruction) {
       if (heap.IgnoreBuffer(buffer)) {

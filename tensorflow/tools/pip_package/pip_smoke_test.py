@@ -41,6 +41,7 @@ BLACKLIST = [
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     "//tensorflow:no_tensorflow_py_deps",
     "//tensorflow/python:test_ops_2",
+    "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/core:image_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",

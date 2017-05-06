@@ -379,6 +379,9 @@ TEST(QueueRunnerTest, RunMetaDataTest) {
   // race condition where we close the queue before it was populated.
   std::vector<Tensor> dq0;
   TF_EXPECT_OK(session->Run({}, {kDequeueOp0}, {}, &dq0));
+  // Second call to run dequeue op is to make sure the cost graph has been
+  // stored.
+  TF_EXPECT_OK(session->Run({}, {kDequeueOp0}, {}, &dq0));
 
   CostGraphDef cost_graph;
   TF_CHECK_OK(qr->ExportCostGraph(&cost_graph));

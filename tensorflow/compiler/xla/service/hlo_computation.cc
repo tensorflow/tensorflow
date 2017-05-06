@@ -148,7 +148,15 @@ void HloComputation::Reparent(HloInstruction* instruction) {
   instruction->set_parent(this);
 }
 
-bool HloComputation::IsRemovable(const HloOpcode& opcode) {
+bool HloComputation::IsRemovable(const HloInstruction* instruction) {
+  // If the instruction has control predecessors or successors then we cannot
+  // remove the instruction without violating ordering constraints (added, for
+  // example, to avert interference due to buffer aliasing).
+  if (!instruction->control_predecessors().empty() ||
+      !instruction->control_successors().empty()) {
+    return false;
+  }
+  const HloOpcode opcode = instruction->opcode();
   return !((opcode == HloOpcode::kParameter && !is_fusion_computation_) ||
            opcode == HloOpcode::kRecv || opcode == HloOpcode::kSend ||
            opcode == HloOpcode::kTrace || opcode == HloOpcode::kOutfeed);
@@ -159,7 +167,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->user_count() == 0);
-  TF_RET_CHECK(IsRemovable(instruction->opcode()));
+  TF_RET_CHECK(IsRemovable(instruction));
   std::unordered_set<HloInstruction*> removed;
   std::queue<HloInstruction*> worklist;
   worklist.push(instruction);
@@ -168,7 +176,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     worklist.pop();
 
     if (removed.count(item) != 0 || item->user_count() != 0 ||
-        item == root_instruction() || !IsRemovable(item->opcode())) {
+        item == root_instruction() || !IsRemovable(item)) {
       continue;
     }
     for (int i = 0; i < item->operand_count(); ++i) {
@@ -184,7 +192,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
 Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   VLOG(2) << "Removing instruction " << instruction->name()
           << " from computation " << name();
-  TF_RET_CHECK(IsRemovable(instruction->opcode()));
+  TF_RET_CHECK(IsRemovable(instruction));
   TF_RET_CHECK(root_instruction() != instruction)
       << "cannot remove root instruction " << instruction->name();
   TF_RET_CHECK(instruction->user_count() == 0)

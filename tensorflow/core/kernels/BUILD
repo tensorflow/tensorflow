@@ -3826,7 +3826,7 @@ cc_library(
 # tensorflow/contrib/makefile/tf_op_files.txt
 # LINT.IfChange
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "avgpooling_op.h",
         "bounds_check.h",
@@ -3853,6 +3853,11 @@ filegroup(
         "queue_op.h",
         "typed_queue.h",
     ],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
 )
 
 # Core kernels we want on Android. Only a subset of kernels to keep

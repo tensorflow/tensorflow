@@ -27,9 +27,9 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModelFnOps
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.summary import summary
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
@@ -118,7 +118,7 @@ def _kmeans_clustering_model_fn(features, labels, mode, params, config):
            'kmeans_plus_plus_num_retries')).training_graph()
   incr_step = state_ops.assign_add(variables.get_global_step(), 1)
   loss = math_ops.reduce_sum(losses, name=KMeansClustering.LOSS_OP_NAME)
-  logging_ops.scalar_summary('loss/raw', loss)
+  summary.scalar('loss/raw', loss)
   training_op = with_dependencies([training_op, incr_step], loss)
   predictions = {
       KMeansClustering.ALL_SCORES: all_scores[0],
@@ -257,4 +257,3 @@ class KMeansClustering(estimator.Estimator):
   def clusters(self):
     """Returns cluster centers."""
     return super(KMeansClustering, self).get_variable_value(self.CLUSTERS)
-

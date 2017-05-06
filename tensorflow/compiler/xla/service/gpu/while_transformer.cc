@@ -122,10 +122,12 @@ class ExprTree {
   Status Match(const HloInstruction* instruction,
                TaggedInstructionMap* tagged_instructions) const {
     if (opcode_ != instruction->opcode()) {
-      return InvalidArgument("Unexpected opcode: %s",
-                             HloOpcodeString(instruction->opcode()).c_str());
+      return InvalidArgument("got opcode %s, want %s",
+                             HloOpcodeString(instruction->opcode()).c_str(),
+                             HloOpcodeString(opcode_).c_str());
     }
 
+    VLOG(2) << "Matched " << HloOpcodeString(opcode_) << ": " << tag_;
     if (!tag_.empty()) {
       tagged_instructions->insert({tag_, instruction});
     }
@@ -275,6 +277,7 @@ class WhileConditionComputationMatcher : public MatcherBase {
   }
 
   Status MatchExprTree(const ExprTree& expr_tree) override {
+    VLOG(2) << "MATCHING while condition";
     ExprTree::TaggedInstructionMap tagged_instructions;
     TF_RETURN_IF_ERROR(expr_tree.Match(computation_->root_instruction(),
                                        &tagged_instructions));
@@ -344,10 +347,6 @@ class WhileInitOperandMatcher : public MatcherBase {
   //
   //             Const
   //               |
-  //             Tuple1
-  //               |
-  //             GTE0
-  //               |
   //             Copy
   //               |
   //             Tuple0
@@ -355,15 +354,15 @@ class WhileInitOperandMatcher : public MatcherBase {
   //             While
   //
   ExprTree BuildInitExprTree() {
-    ExprTree gte0(HloOpcode::kGetTupleElement, "gte",
-                  ExprTree(HloOpcode::kTuple, tuple_index_,
-                           ExprTree(HloOpcode::kConstant, "loop_start")));
-    return ExprTree(HloOpcode::kWhile, "while",
-                    ExprTree(HloOpcode::kTuple, tuple_index_,
-                             ExprTree(HloOpcode::kCopy, gte0)));
+    return ExprTree(
+        HloOpcode::kWhile, "while",
+        ExprTree(HloOpcode::kTuple, tuple_index_,
+                 ExprTree(HloOpcode::kCopy,
+                          ExprTree(HloOpcode::kConstant, "loop_start"))));
   }
 
   Status MatchExprTree(const ExprTree& expr_tree) override {
+    VLOG(2) << "MATCHING while init";
     ExprTree::TaggedInstructionMap tagged_instructions;
     TF_RETURN_IF_ERROR(expr_tree.Match(while_hlo_, &tagged_instructions));
 
@@ -373,14 +372,6 @@ class WhileInitOperandMatcher : public MatcherBase {
     if (while_hlo != while_hlo_) {
       return InvalidArgument("Expected While for instruction : %s",
                              while_hlo->name().c_str());
-    }
-
-    // Get tagged GTE instruction and check 'tuple_index_'.
-    TF_ASSIGN_OR_RETURN(const HloInstruction* gte,
-                        GetTaggedInstruction("gte", tagged_instructions));
-    if (gte->tuple_index() != tuple_index_) {
-      return InvalidArgument("Unexpected tuple index instruction : %s",
-                             gte->name().c_str());
     }
 
     // Get tagged Constant instruction and parse 'loop_start_'.
@@ -427,10 +418,6 @@ class WhileBodyComputationMatcher : public MatcherBase {
   //                     \  /              \  /
   //                    Fusion -----------> Add
   //                      |
-  //                     Tuple1
-  //                      |
-  //                     GTE0
-  //                      |
   //                     Copy
   //                      |
   //                     Tuple0
@@ -450,15 +437,13 @@ class WhileBodyComputationMatcher : public MatcherBase {
     fusion.SetFusedRoot(fused_root);
 
     // Build top-level computation.
-    ExprTree tuple0(
-        HloOpcode::kTuple, tuple_index_,
-        ExprTree(HloOpcode::kCopy,
-                 ExprTree(HloOpcode::kGetTupleElement, "gte",
-                          ExprTree(HloOpcode::kTuple, tuple_index_, fusion))));
+    ExprTree tuple0(HloOpcode::kTuple, tuple_index_,
+                    ExprTree(HloOpcode::kCopy, fusion));
     return tuple0;
   }
 
   Status MatchExprTree(const ExprTree& expr_tree) override {
+    VLOG(2) << "MATCHING while body";
     ExprTree::TaggedInstructionMap tagged_instructions;
     TF_RETURN_IF_ERROR(expr_tree.Match(computation_->root_instruction(),
                                        &tagged_instructions));
