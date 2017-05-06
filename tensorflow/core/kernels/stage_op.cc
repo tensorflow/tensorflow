@@ -55,6 +55,11 @@ class Buffer : public ResourceBase {
     return buf_.size();
   }
 
+  void Clear() {
+    mutex_lock l(mu_);
+    buf_.clear();
+  }
+
   string DebugString() {
     mutex_lock l(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
@@ -165,6 +170,29 @@ REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size")
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size")
                         .Device(DEVICE_SYCL), StageSizeOp);
+#endif // TENSORFLOW_USE_SYCL
+
+class StageClearOp : public OpKernel {
+ public:
+  explicit StageClearOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  // Using this op in such a way that it blocks forever
+  // is an error.  As such cancellation is not handled.
+  void Compute(OpKernelContext* ctx) override {
+    Buffer* buf = nullptr;
+    OP_REQUIRES_OK(ctx, GetBuffer(ctx, def(), &buf));
+    core::ScopedUnref scope(buf);
+
+    buf->Clear();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("StageClear").Device(DEVICE_CPU), StageClearOp);
+#if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("StageClear").Device(DEVICE_GPU), StageClearOp);
+#endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("StageClear").Device(DEVICE_SYCL), StageClearOp);
 #endif // TENSORFLOW_USE_SYCL
 
 

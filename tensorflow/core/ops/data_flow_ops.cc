@@ -1971,6 +1971,13 @@ REGISTER_OP("StageSize")
     .SetIsStateful()
     .Doc(R"doc(Staging Area Size)doc");
 
+REGISTER_OP("StageClear")
+    .Attr("capacity: int = 0")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(Staging Area Clear)doc");
 
 REGISTER_OP("RecordInput")
     .Output("records: string")

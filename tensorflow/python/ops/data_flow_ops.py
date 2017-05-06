@@ -1597,6 +1597,14 @@ class StagingArea(object):
       output.set_shape(shape)
 
     return self._get_return_value(ret)
+  def clear(self, name=None):
+    """Empties the staging area."""
+    if name is None:
+      name = "%s_clear" % self._name
+
+    return gen_data_flow_ops.stage_clear(shared_name=self._name,
+                        name=name,
+                        capacity=self._capacity)
 
 class MapStagingArea(object):
     """

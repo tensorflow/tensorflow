@@ -90,6 +90,27 @@ class StageTest(test.TestCase):
       x = stager.get()
       self.assertEqual(x.device, '/device:CPU:0')
 
+  def testSizeAndClear(self):
+    with ops.device('/cpu:0'):
+      x = array_ops.placeholder(dtypes.float32, name='x')
+      v = 2. * (array_ops.zeros([128, 128]) + x)
+    with ops.device(test.gpu_device_name()):
+      stager = data_flow_ops.StagingArea(
+          [dtypes.float32, dtypes.float32],
+          shapes=[[], [128, 128]],
+          names=['x', 'v'])
+      stage = stager.put({'x': x, 'v': v})
+      ret = stager.get()
+      size = stager.size()
+      clear = stager.clear()
+
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(stage, feed_dict={x: -1})
+      self.assertEqual(sess.run(size), 1)
+      sess.run(stage, feed_dict={x: -1})
+      self.assertEqual(sess.run(size), 2)
+      sess.run(clear)
+      self.assertEqual(sess.run(size), 0)
 
 if __name__ == '__main__':
   test.main()
