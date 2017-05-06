@@ -1087,7 +1087,7 @@ def convolution2d_transpose(
   """Adds a convolution2d_transpose with an optional batch normalization layer.
 
   The function creates a variable called `weights`, representing the
-  kernel, that is convolved with the input. If `batch_norm_params` is `None`, a
+  kernel, that is convolved with the input. If `normalizer_fn` is `None`, a
   second variable called 'biases' is added to the result of the operation.
 
   Args:
@@ -1847,9 +1847,9 @@ def separable_convolution2d(
   This op first performs a depthwise convolution that acts separately on
   channels, creating a variable called `depthwise_weights`. If `num_outputs`
   is not None, it adds a pointwise convolution that mixes channels, creating a
-  variable called `pointwise_weights`. Then, if `batch_norm_params` is None,
-  it adds bias to the result, creating a variable called 'biases', otherwise
-  it adds a batch normalization layer. It finally applies an activation function
+  variable called `pointwise_weights`. Then, if `normalizer_fn` is None,
+  it adds bias to the result, creating a variable called 'biases', otherwise,
+  the `normalizer_fn` is applied. It finally applies an activation function
   to produce the end result.
 
   Args:
