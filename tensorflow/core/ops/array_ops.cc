@@ -518,7 +518,17 @@ REGISTER_OP("SplitV")
       } else if (rank == 0) {
         // Throw error if input is a scalar.
         return errors::InvalidArgument("Can't split scalars");
-      } else if (size_splits == nullptr || !c->ValueKnown(split_dimension)) {
+      } else if (size_splits == nullptr && c->ValueKnown(split_dimension)) {
+        // If split dimension is known, but the sizes are unknown, then
+        // only the split dimension is unknown
+        output_shape = input;
+        TF_RETURN_IF_ERROR(c->ReplaceDim(output_shape,
+                                         c->Value(split_dimension),
+                                         c->UnknownDim(), &output_shape));
+        for (int i = 0; i < num_outputs; ++i) {
+          c->set_output(i, output_shape);
+        }
+      } else if (size_splits == nullptr && !c->ValueKnown(split_dimension)) {
         // If split dimension or tensor containing the split sizes is unknown,
         // then return unknown shapes of same rank as input.
         output_shape = c->UnknownShapeOfRank(rank);
@@ -540,12 +550,37 @@ REGISTER_OP("SplitV")
           return errors::InvalidArgument(
               "Length of size_splits should be equal to num_outputs");
         }
+        int cumsum_outputs = 0;
+        bool has_neg_one = false;
+        // If the sizes of the splits are known, then
+        // make sure that the sizes add up to the expected
+        // dimension size, with the possibility of a -1.
+        // Specify the full output shapes.
         for (int i = 0; i < num_outputs; ++i) {
           output_shape = c->UnknownShapeOfRank(rank);
           TF_RETURN_IF_ERROR(c->ReplaceDim(input, split_dim,
                                            c->MakeDim(data[i]), &output_shape));
           c->set_output(i, output_shape);
+          if (data[i] == -1 && !has_neg_one)
+            has_neg_one = true;
+          else if (data[i] == -1 && has_neg_one)
+            return errors::InvalidArgument("size_splits can only have one -1");
+          else
+            cumsum_outputs += data[i];
         }
+        int split_dim_size = c->Value(c->Dim(input, split_dim));
+        if (has_neg_one) {
+          if (cumsum_outputs < split_dim_size)
+            cumsum_outputs = split_dim_size;
+          else
+            cumsum_outputs = split_dim_size + 1;
+        }
+        if (cumsum_outputs != c->Value(c->Dim(input, split_dim)))
+          return errors::InvalidArgument(
+              "Sum of output sizes must match "
+              "the size of the original Tensor along the split dimension "
+              "or the sum of the positive sizes must be less if it contains a "
+              "-1");
       }
 
       return Status::OK();

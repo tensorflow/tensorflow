@@ -84,7 +84,6 @@ from __future__ import print_function
 
 import sys
 import numpy as np
-import six
 
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -1165,13 +1164,14 @@ def sparse_mask(a, mask_indices, name=None):
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor into sub tensors.
 
-  If `num_or_size_splits` is a scalar, `num_split`, then splits `value` along
-  dimension `axis` into `num_split` smaller tensors.
+  If `num_or_size_splits` is an integer type, `num_split`, then splits `value`
+  along dimension `axis` into `num_split` smaller tensors.
   Requires that `num_split` evenly divides `value.shape[axis]`.
 
-  If `num_or_size_splits` is a tensor, `size_splits`, then splits `value` into
-  `len(size_splits)` pieces. The shape of the `i`-th piece has the same size as
-  the `value` except along dimension `axis` where the size is `size_splits[i]`.
+  If `num_or_size_splits` is not an integer type, it is presumed to be a Tensor
+  `size_splits`, then splits `value` into `len(size_splits)` pieces. The shape
+  of the `i`-th piece has the same size as the `value` except along dimension
+  `axis` where the size is `size_splits[i]`.
 
   For example:
 
@@ -1189,11 +1189,11 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   Args:
     value: The `Tensor` to split.
-    num_or_size_splits: Either an integer indicating the number of splits along
-      split_dim or a 1-D Tensor containing the sizes of each output tensor
-      along split_dim. If an integer then it must evenly divide
-      `value.shape[axis]`; otherwise the sum of sizes along the split
-      dimension must match that of the `value`.
+    num_or_size_splits: Either a 0-D integer `Tensor` indicating the number of
+      splits along split_dim or a 1-D integer `Tensor` integer tensor containing
+      the sizes of each output tensor along split_dim. If a scalar then it must
+      evenly divide `value.shape[axis]`; otherwise the sum of sizes along the
+      split dimension must match that of the `value`.
     axis: A 0-D `int32` `Tensor`. The dimension along which to split.
       Must be in the range `[0, rank(value))`. Defaults to 0.
     num: Optional, used to specify the number of outputs when it cannot be
@@ -1209,11 +1209,11 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   Raises:
     ValueError: If `num` is unspecified and cannot be inferred.
   """
-  if isinstance(num_or_size_splits, six.integer_types):
+  size_splits = ops.convert_to_tensor(num_or_size_splits)
+  if size_splits.get_shape().ndims == 0 and size_splits.dtype.is_integer:
     return gen_array_ops._split(
         split_dim=axis, num_split=num_or_size_splits, value=value, name=name)
   else:
-    size_splits = ops.convert_to_tensor(num_or_size_splits)
     if num is None:
       size_splits_shape = size_splits.get_shape()
       num = size_splits_shape.dims[0]
