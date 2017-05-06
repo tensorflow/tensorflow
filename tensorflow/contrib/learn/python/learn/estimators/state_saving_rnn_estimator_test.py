@@ -455,6 +455,7 @@ class LegacyConstructorTest(test.TestCase):
       return {'inputs': inputs}, labels
     return input_fn
 
+
 # TODO(jtbates): move all tests below to a benchmark test.
 class StateSavingRNNEstimatorLearningTest(test.TestCase):
   """Learning tests for state saving RNN Estimators."""

@@ -97,6 +97,29 @@ py_test(
     ],
 )
 
+py_library(
+    name = "pprof_profiler",
+    srcs = ["pprof_profiler.py"],
+    srcs_version = "PY2AND3",
+    deps = ["@pprof_profile_proto//:pprof_proto_py"],
+)
+
+py_test(
+    name = "pprof_profiler_test",
+    srcs = ["pprof_profiler_test.py"],
+    main = "pprof_profiler_test.py",
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # TODO(annarev): get it working with pip.
+    deps = [
+        ":pprof_profiler",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "@pprof_profile_proto//:pprof_proto_py",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
 

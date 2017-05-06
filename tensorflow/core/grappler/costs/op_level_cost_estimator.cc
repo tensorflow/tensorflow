@@ -80,7 +80,8 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
     const OpInfo::DeviceProperties local_cpu = GetLocalCPUInfo();
     // Check if vector instructions are available, and refine performance
     // prediction based on this.
-    gflops = local_cpu.num_cores() * local_cpu.frequency();
+    // Frequencies are stored in MHz in the DeviceProperties.
+    gflops = local_cpu.num_cores() * local_cpu.frequency() * 1e-3;
     if (bandwidth < 0) {
       if (local_cpu.bandwidth() > 0) {
         bandwidth = local_cpu.bandwidth() / 1e6;
@@ -105,7 +106,7 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
       // Pascal.
       cores_per_multiprocessor = 64;
     }
-    gflops = local_gpu.num_cores() * local_gpu.frequency() *
+    gflops = local_gpu.num_cores() * local_gpu.frequency() * 1e-3 *
              cores_per_multiprocessor * kOpsPerMac;
     if (bandwidth < 0) {
       CHECK(local_gpu.bandwidth() > 0);

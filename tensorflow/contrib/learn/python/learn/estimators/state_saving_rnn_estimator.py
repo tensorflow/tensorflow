@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.contrib import layers
 from tensorflow.contrib import rnn as rnn_cell
-from tensorflow.contrib.framework.python.framework import deprecated
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn.estimators import constants

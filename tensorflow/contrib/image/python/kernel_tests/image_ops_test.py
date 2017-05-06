@@ -25,8 +25,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 _DTYPES = set(
@@ -111,22 +111,71 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                              [0, 1, 0, 1],
                              [0, 1, 1, 1]])
 
+  def test_bilinear(self):
+    with self.test_session():
+      image = constant_op.constant(
+          [[0, 0, 0, 0, 0],
+           [0, 1, 1, 1, 0],
+           [0, 1, 0, 1, 0],
+           [0, 1, 1, 1, 0],
+           [0, 0, 0, 0, 0]],
+          dtypes.float32)
+      # The following result matches:
+      # >>> scipy.ndimage.rotate(image, 45, order=1, reshape=False)
+      # which uses spline interpolation of order 1, equivalent to bilinear
+      # interpolation.
+      self.assertAllClose(
+          image_ops.rotate(image, np.pi / 4.0, interpolation="BILINEAR").eval(),
+          [[0.000, 0.000, 0.343, 0.000, 0.000],
+           [0.000, 0.586, 0.914, 0.586, 0.000],
+           [0.343, 0.914, 0.000, 0.914, 0.343],
+           [0.000, 0.586, 0.914, 0.586, 0.000],
+           [0.000, 0.000, 0.343, 0.000, 0.000]],
+          atol=0.001)
+      self.assertAllClose(
+          image_ops.rotate(image, np.pi / 4.0, interpolation="NEAREST").eval(),
+          [[0, 0, 1, 0, 0],
+           [0, 1, 1, 1, 0],
+           [1, 1, 0, 1, 1],
+           [0, 1, 1, 1, 0],
+           [0, 0, 1, 0, 0]])
+
+  def test_bilinear_uint8(self):
+    with self.test_session():
+      image = constant_op.constant(
+          np.asarray(
+              [[0.0, 0.0, 0.0, 0.0, 0.0],
+               [0.0, 255, 255, 255, 0.0],
+               [0.0, 255, 0.0, 255, 0.0],
+               [0.0, 255, 255, 255, 0.0],
+               [0.0, 0.0, 0.0, 0.0, 0.0]],
+              np.uint8),
+          dtypes.uint8)
+      # == np.rint((expected image above) * 255)
+      self.assertAllEqual(
+          image_ops.rotate(image, np.pi / 4.0, interpolation="BILINEAR").eval(),
+          [[0.0, 0.0, 87., 0.0, 0.0],
+           [0.0, 149, 233, 149, 0.0],
+           [87., 233, 0.0, 233, 87.],
+           [0.0, 149, 233, 149, 0.0],
+           [0.0, 0.0, 87., 0.0, 0.0]])
 
   def _test_grad(self, shape_to_test):
     with self.test_session():
       test_image_shape = shape_to_test
       test_image = np.random.randn(*test_image_shape)
-      test_image_tensor = constant_op.constant(test_image, 
-                                               shape=test_image_shape)
-      test_transform = image_ops.angles_to_projective_transforms(np.pi / 2, 
-                                                                 4, 
-                                                                 4)
-      test_transform_shape = test_transform.shape
+      test_image_tensor = constant_op.constant(
+          test_image, shape=test_image_shape)
+      test_transform = image_ops.angles_to_projective_transforms(
+          np.pi / 2, 4, 4)
 
       output_shape = test_image_shape
       output = image_ops.transform(test_image_tensor, test_transform)
       left_err = gradient_checker.compute_gradient_error(
-          test_image_tensor, test_image_shape, output, output_shape,
+          test_image_tensor,
+          test_image_shape,
+          output,
+          output_shape,
           x_init_value=test_image)
       self.assertLess(left_err, 1e-10)
 

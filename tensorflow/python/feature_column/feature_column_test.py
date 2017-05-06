@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variable_scope
@@ -1826,6 +1827,199 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         # 'marlo' -> 2: wire_var[2] = 3
         # 'skywalker' -> None, 'omar' -> 0: wire_var[0] = 1
         self.assertAllClose(((3.,), (1.,)), predictions.eval())
+
+
+class IdentityCategoricalColumnTest(test.TestCase):
+
+  def test_constructor(self):
+    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+    self.assertEqual('aaa', column.name)
+    # pylint: disable=protected-access
+    self.assertEqual(3, column._num_buckets)
+    self.assertEqual({
+        'aaa': parsing_ops.VarLenFeature(dtypes.int64)
+    }, column._parse_example_config)
+    # pylint: enable=protected-access
+
+  def test_deep_copy(self):
+    """Tests deepcopy of categorical_column_with_hash_bucket."""
+    original = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+    for column in (original, copy.deepcopy(original)):
+      self.assertEqual('aaa', column.name)
+      # pylint: disable=protected-access
+      self.assertEqual(3, column._num_buckets)
+      self.assertEqual({
+          'aaa': parsing_ops.VarLenFeature(dtypes.int64)
+      }, column._parse_example_config)
+      # pylint: enable=protected-access
+
+  def test_invalid_num_buckets_zero(self):
+    with self.assertRaisesRegexp(ValueError, 'num_buckets 0 < 1'):
+      fc.categorical_column_with_identity(key='aaa', num_buckets=0)
+
+  def test_invalid_num_buckets_negative(self):
+    with self.assertRaisesRegexp(ValueError, 'num_buckets -1 < 1'):
+      fc.categorical_column_with_identity(key='aaa', num_buckets=-1)
+
+  def test_invalid_default_value_too_small(self):
+    with self.assertRaisesRegexp(ValueError, 'default_value -1 not in range'):
+      fc.categorical_column_with_identity(
+          key='aaa', num_buckets=3, default_value=-1)
+
+  def test_invalid_default_value_too_big(self):
+    with self.assertRaisesRegexp(ValueError, 'default_value 3 not in range'):
+      fc.categorical_column_with_identity(
+          key='aaa', num_buckets=3, default_value=3)
+
+  def test_invalid_input_dtype(self):
+    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('omar', 'stringer', 'marlo'),
+        dense_shape=(2, 2))
+    with self.assertRaisesRegexp(ValueError, 'Invalid input, not integer'):
+      # pylint: disable=protected-access
+      column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+      # pylint: enable=protected-access
+
+  def test_get_sparse_tensors(self):
+    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(0, 1, 0),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((0, 1, 0), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_dense_input(self):
+    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(fc._LazyBuilder({
+        'aaa': ((0, -1), (1, 0))
+    }))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=np.array((0, 1, 0), dtype=np.int64),
+              dense_shape=(2, 2)),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_with_inputs_too_small(self):
+    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(1, -1, 0),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      with self.assertRaisesRegexp(
+          errors.OpError, 'assert_greater_or_equal_0'):
+        id_weight_pair.id_tensor.eval()
+
+  def test_get_sparse_tensors_with_inputs_too_big(self):
+    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(1, 99, 0),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      with self.assertRaisesRegexp(
+          errors.OpError, 'assert_less_than_num_buckets'):
+        id_weight_pair.id_tensor.eval()
+
+  def test_get_sparse_tensors_with_default_value(self):
+    column = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=4, default_value=3)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(1, -1, 99),
+        dense_shape=(2, 2))
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((1, 3, 3), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
+  def test_get_sparse_tensors_with_default_value_and_placeholder_inputs(self):
+    column = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=4, default_value=3)
+    input_indices = array_ops.placeholder(dtype=dtypes.int64)
+    input_values = array_ops.placeholder(dtype=dtypes.int32)
+    input_shape = array_ops.placeholder(dtype=dtypes.int64)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=input_indices,
+        values=input_values,
+        dense_shape=input_shape)
+    # pylint: disable=protected-access
+    id_weight_pair = column._get_sparse_tensors(
+        fc._LazyBuilder({'aaa': inputs}))
+    # pylint: enable=protected-access
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=np.array(((0, 0), (1, 0), (1, 1)), dtype=np.int64),
+              values=np.array((1, 3, 3), dtype=np.int64),
+              dense_shape=np.array((2, 2), dtype=np.int64)),
+          id_weight_pair.id_tensor.eval(feed_dict={
+              input_indices: ((0, 0), (1, 0), (1, 1)),
+              input_values: (1, -1, 99),
+              input_shape: (2, 2),
+          }))
+
+  def test_make_linear_model(self):
+    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+    self.assertEqual(3, column._num_buckets)
+    with ops.Graph().as_default():
+      predictions = fc.make_linear_model({
+          column.name: sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=(0, 2, 1),
+              dense_shape=(2, 2))
+      }, (column,))
+      bias = get_linear_model_bias()
+      weight_var = get_linear_model_column_var(column)
+      with _initialized_session():
+        self.assertAllClose((0.,), bias.eval())
+        self.assertAllClose(((0.,), (0.,), (0.,)), weight_var.eval())
+        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        weight_var.assign(((1.,), (2.,), (3.,))).eval()
+        # weight_var[0] = 1
+        # weight_var[2] + weight_var[1] = 3+2 = 5
+        self.assertAllClose(((1.,), (5.,)), predictions.eval())
 
 
 if __name__ == '__main__':

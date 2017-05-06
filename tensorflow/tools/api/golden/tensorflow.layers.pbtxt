@@ -33,6 +33,10 @@ tf_module {
     argspec: "args=[\'inputs\', \'filters\', \'kernel_size\', \'strides\', \'padding\', \'data_format\', \'dilation_rate\', \'activation\', \'use_bias\', \'kernel_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'bias_regularizer\', \'activity_regularizer\', \'trainable\', \'name\', \'reuse\'], varargs=None, keywords=None, defaults=[\'(1, 1, 1)\', \'valid\', \'channels_last\', \'(1, 1, 1)\', \'None\', \'True\', \'None\', \'<tensorflow.python.ops.init_ops.Zeros object instance>\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
   }
   member_method {
+    name: "conv3d_transpose"
+    argspec: "args=[\'inputs\', \'filters\', \'kernel_size\', \'strides\', \'padding\', \'data_format\', \'activation\', \'use_bias\', \'kernel_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'bias_regularizer\', \'activity_regularizer\', \'trainable\', \'name\', \'reuse\'], varargs=None, keywords=None, defaults=[\'(1, 1, 1)\', \'valid\', \'channels_last\', \'None\', \'True\', \'None\', \'<tensorflow.python.ops.init_ops.Zeros object instance>\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "dense"
     argspec: "args=[\'inputs\', \'units\', \'activation\', \'use_bias\', \'kernel_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'bias_regularizer\', \'activity_regularizer\', \'trainable\', \'name\', \'reuse\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'<tensorflow.python.ops.init_ops.Zeros object instance>\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
   }

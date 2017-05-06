@@ -68,9 +68,8 @@ void CleanNodeName(string* name) {
 }
 
 Status HloTfGraphBuilder::AddComputation(const HloComputation& computation) {
-  LOG(INFO) << "Adding computation " << computation.name();
+  VLOG(2) << "Adding computation " << computation.name();
   for (auto embedded : computation.MakeEmbeddedComputationsList()) {
-    LOG(INFO) << "Adding embedded computation " << embedded->name();
     for (auto& instruction : embedded->instructions()) {
       TF_RETURN_IF_ERROR(AddInstruction(instruction.get()));
     }
