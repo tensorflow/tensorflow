@@ -2067,7 +2067,7 @@ REGISTER_OP("MapPopitem")
     .Doc(R"doc(MapPopitem)doc");
 
 REGISTER_OP("MapSize")
-    .Output("size: int64")
+    .Output("size: int32")
     .Attr("capacity: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -2130,7 +2130,7 @@ REGISTER_OP("OrderedMapPopitem")
     .Doc(R"doc(OrderedMapPopitem)doc");
 
 REGISTER_OP("OrderedMapSize")
-    .Output("size: int64")
+    .Output("size: int32")
     .Attr("capacity: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
