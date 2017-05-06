@@ -44,9 +44,7 @@ class Buffer : public ResourceBase {
 
   void Get(Tuple* tuple) {  // TODO(zhifengc): Support cancellation.
     mutex_lock l(mu_);
-    while (buf_.empty()) {
-      non_empty_cond_var_.wait(l);
-    }
+    non_empty_cond_var_.wait(l, [this]() { return !buf_.empty(); });
 
     *tuple = std::move(buf_.front());
     buf_.pop_front();
