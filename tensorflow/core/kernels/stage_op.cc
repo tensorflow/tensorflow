@@ -52,6 +52,11 @@ class Buffer : public ResourceBase {
     buf_.pop_front();
   }
 
+  size_t Size() {
+    mutex_lock l(mu_);
+    return buf_.size();
+  }
+
   string DebugString() {
     mutex_lock l(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
@@ -132,5 +137,37 @@ REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_GPU), UnstageOp);
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_SYCL), UnstageOp);
 #endif // TENSORFLOW_USE_SYCL
+
+class StageSizeOp : public OpKernel {
+ public:
+  explicit StageSizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  // Using this op in such a way that it blocks forever
+  // is an error.  As such cancellation is not handled.
+  void Compute(OpKernelContext* ctx) override {
+    Buffer* buf = nullptr;
+    OP_REQUIRES_OK(ctx, GetBuffer(ctx, def(), &buf));
+    core::ScopedUnref scope(buf);
+
+    // Allocate size output tensor
+    Tensor * size = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}),
+                                                     &size));
+
+    // Set it to the actual size
+    size->scalar<int32>().setConstant(buf->Size());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("StageSize").Device(DEVICE_CPU), StageSizeOp);
+#if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size")
+                        .Device(DEVICE_GPU), StageSizeOp);
+#endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size")
+                        .Device(DEVICE_SYCL), StageSizeOp);
+#endif // TENSORFLOW_USE_SYCL
+
 
 }  // namespace tensorflow

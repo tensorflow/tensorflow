@@ -1963,6 +1963,15 @@ dequeue with many fewer capabilities and options.  This Op is optimized for
 performance.
     )doc");
 
+REGISTER_OP("StageSize")
+    .Output("size: int32")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(Staging Area Size)doc");
+
+
 REGISTER_OP("RecordInput")
     .Output("records: string")
     .Attr("file_pattern: string")
