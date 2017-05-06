@@ -1368,7 +1368,8 @@ class StagingArea(object):
   _identifier = 0
   _lock = threading.Lock()
 
-  def __init__(self, dtypes, shapes=None, names=None, shared_name=None):
+  def __init__(self, dtypes, shapes=None, names=None, shared_name=None,
+                  capacity=0):
     """Constructs a staging area object.
 
     The two optional lists, `shapes` and `names`, must be of the same length
@@ -1383,6 +1384,8 @@ class StagingArea(object):
     Args:
       dtypes:  A list of types.  The length of dtypes must equal the number
         of tensors in each element.
+      capacity: (Optional.) Maximum number of elements.
+        An integer. If zero, the Staging Area is unbounded
       shapes: (Optional.) Constraints on the shapes of tensors in an element.
         A list of shape tuples or None. This list is the same length
         as dtypes.  If the shape of any tensors in the element are constrained,
@@ -1404,18 +1407,22 @@ class StagingArea(object):
     else:
       raise ValueError("shared_name must be a string")
     self._dtypes = dtypes
+
     if shapes is not None:
       if len(shapes) != len(dtypes):
         raise ValueError("StagingArea shapes must be the same length as dtypes")
       self._shapes = [tensor_shape.TensorShape(s) for s in shapes]
     else:
       self._shapes = [tensor_shape.unknown_shape() for _ in self._dtypes]
+
     if names is not None:
       if len(names) != len(dtypes):
         raise ValueError("StagingArea names must be the same length as dtypes")
       self._names = names
     else:
       self._names = None
+
+    self._capacity = capacity
 
     # all get and put ops must colocate with this op
     with ops.name_scope("%s_root" % self._name):
@@ -1440,6 +1447,10 @@ class StagingArea(object):
   def names(self):
     """The list of names for each component of a staging area element."""
     return self._names
+
+  @property
+  def capacity(self):
+    """The maximum number of elements of this staging area."""
 
   def _check_put_dtypes(self, vals):
     """Validate and convert `vals` to a list of `Tensor`s.
@@ -1532,7 +1543,7 @@ class StagingArea(object):
 
       with ops.colocate_with(self._coloc_op):
         op = gen_data_flow_ops.stage(values=vals, shared_name=self._name,
-                                     name=scope)
+                                     name=scope, capacity=self._capacity)
 
       return op
 
@@ -1559,6 +1570,20 @@ class StagingArea(object):
     else:
       return tensors
 
+  def __internal_get(self, get_fn, name):
+    with ops.colocate_with(self._coloc_op):
+      ret = get_fn()
+
+    curr_device_scope = control_flow_ops.no_op().device
+    if curr_device_scope != self._coloc_op.device:
+      for i in range(len(ret)):
+        ret[i] = array_ops.identity(ret[i])
+
+    for output, shape in zip(ret, self._shapes):
+      output.set_shape(shape)
+
+    return self._get_return_value(ret)
+
   def get(self, name=None):
     """Gets one element from this staging area.
 
@@ -1584,19 +1609,54 @@ class StagingArea(object):
     if name is None:
       name = "%s_get" % self._name
 
-    with ops.colocate_with(self._coloc_op):
-      ret = gen_data_flow_ops.unstage(dtypes=self._dtypes,
-                                      shared_name=self._name, name=name)
+    fn = lambda: gen_data_flow_ops.unstage(dtypes=self._dtypes,
+                    shared_name=self._name, name=name,
+                    capacity=self._capacity)
 
-    curr_device_scope = control_flow_ops.no_op().device
-    if curr_device_scope != self._coloc_op.device:
-      for i in range(len(ret)):
-        ret[i] = array_ops.identity(ret[i])
+    return self.__internal_get(fn, name)
 
-    for output, shape in zip(ret, self._shapes):
-      output.set_shape(shape)
+  def peek(self, index, name=None):
+    """Peeks at an element in the staging area.
 
-    return self._get_return_value(ret)
+    If the staging area is empty when this operation executes,
+    it will block until there are elements to peek at.
+
+    The placement of the returned tensor will be determined by the current
+    device scope when this function is called.
+
+    Args:
+      index: The index of the tensor within the staging area
+              to look up.
+      name: A name for the operation (optional).
+
+    Returns:
+      The tuple of tensors that was gotten.
+    """
+    if name is None:
+      name = "%s_peek" % self._name
+
+    fn = lambda: gen_data_flow_ops.stage_peek(index,
+                    dtypes=self._dtypes, shared_name=self._name,
+                    name=name, capacity=self._capacity)
+
+    return self.__internal_get(fn, name)
+
+  def size(self, name=None):
+    """Returns the number of elements in the staging area.
+
+    Args:
+        name: A name for the operation (optional)
+
+    Returns:
+        The created op
+    """
+    if name is None:
+        name = "%s_size" % self._name
+
+    return gen_data_flow_ops.stage_size(shared_name=self._name,
+                        name=name,
+                        capacity=self._capacity)
+
   def clear(self, name=None):
     """Empties the staging area."""
     if name is None:
@@ -1697,7 +1757,6 @@ class MapStagingArea(object):
 
 
             for i, (value, dtype) in enumerate(zip(data, self._dtypes)):
-                print value, value.dtype, dtype
                 if not value.dtype == dtype:
                     raise ValueError("DataType '{}' with value '{}' "
                                     "does not match "

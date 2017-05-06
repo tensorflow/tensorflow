@@ -90,6 +90,23 @@ class StageTest(test.TestCase):
       x = stager.get()
       self.assertEqual(x.device, '/device:CPU:0')
 
+  def testPeek(self):
+    with ops.device('/cpu:0'):
+      x = array_ops.placeholder(dtypes.int32, name='x')
+      p = array_ops.placeholder(dtypes.int32, name='p')
+    with ops.device(test.gpu_device_name()):
+      stager = data_flow_ops.StagingArea([dtypes.int32, ], shapes=[[]])
+      stage = stager.put([x])
+      peek = stager.peek(p)
+      ret = stager.get()
+
+    with self.test_session(use_gpu=True) as sess:
+      for i in range(10):
+        sess.run(stage, feed_dict={x:i})
+
+      for i in range(10):
+        self.assertTrue(sess.run(peek, feed_dict={p:i}) == i)
+
   def testSizeAndClear(self):
     with ops.device('/cpu:0'):
       x = array_ops.placeholder(dtypes.float32, name='x')
@@ -111,6 +128,53 @@ class StageTest(test.TestCase):
       self.assertEqual(sess.run(size), 2)
       sess.run(clear)
       self.assertEqual(sess.run(size), 0)
+
+  def testCapacity(self):
+    capacity = 3
+
+    with ops.device('/cpu:0'):
+      x = array_ops.placeholder(dtypes.int32, name='x')
+      p = array_ops.placeholder(dtypes.int32, name='p')
+    with ops.device(test.gpu_device_name()):
+      stager = data_flow_ops.StagingArea([dtypes.int32, ],
+        capacity=capacity, shapes=[[]])
+      stage = stager.put([x])
+      ret = stager.get()
+      size = stager.size()
+
+    import Queue
+    import threading
+
+    queue = Queue.Queue()
+    n = 5
+    missed = 0
+
+    with self.test_session(use_gpu=True) as sess:
+      def thread_run():
+        for i in range(n):
+          sess.run(stage, feed_dict={x: i})
+          queue.put(0)
+
+      t = threading.Thread(target=thread_run)
+      t.start()
+
+      for i in range(n):
+        try:
+          queue.get(timeout=0.05)
+        except Queue.Empty:
+          missed += 1
+
+      # We timed out n - capacity times waiting for queue puts
+      self.assertTrue(missed == n - capacity)
+
+      # Clear the staging area out a bit
+      for i in range(n - capacity):
+        self.assertTrue(sess.run(ret) == i)
+
+      # This should now succeed
+      t.join()
+
+      self.assertTrue(sess.run(size) == 3)
 
 if __name__ == '__main__':
   test.main()

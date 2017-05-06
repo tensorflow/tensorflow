@@ -30,26 +30,80 @@ namespace {
 
 class Buffer : public ResourceBase {
  public:
-  explicit Buffer() {}
+    typedef std::vector<Tensor> Tuple;
 
-  typedef std::vector<Tensor> Tuple;
+ public:
+  explicit Buffer(int capacity) {
+    capacity_ = capacity;
+  }
+
+  bool HasBoundedCapacity() {
+    return capacity_ > 0;
+  }
+
+  bool IsFull() {
+    return buf_.size() >= capacity_;
+  }
 
   // the Buffer takes ownership of the Tuple
   void Put(Tuple* tuple) {
     mutex_lock l(mu_);
+
+    // If buffer capacity is bounded wait until elements have been removed
+    if(HasBoundedCapacity()) {
+      full_cond_var_.wait(l, [this]() {
+        return !this->IsFull();
+      });
+    }
+
     buf_.push_back(std::move(*tuple));
-    non_empty_cond_var_.notify_one();  // maybe possible to optimize by reducing
-                                       // how often this signal is sent
+
+    l.unlock();
+    // maybe possible to optimize by reducing
+    // how often this signal is sent
+    non_empty_cond_var_.notify_one();
   }
 
+  // Get tuple at front of the buffer
   void Get(Tuple* tuple) {  // TODO(zhifengc): Support cancellation.
     mutex_lock l(mu_);
-    non_empty_cond_var_.wait(l, [this]() { return !buf_.empty(); });
 
+    // Wait for data if the buffer is emptys
+    non_empty_cond_var_.wait(l, [this]() {
+      return !buf_.empty();
+    });
+
+    // Move data into the output tuple
     *tuple = std::move(buf_.front());
     buf_.pop_front();
+
+    notify_inserters_if_bounded(l);
   }
 
+  // Return tuple at index
+  Status Peek(int index, Tuple* tuple) {
+    mutex_lock l(mu_);
+
+    // Wait if the buffer is empty
+    non_empty_cond_var_.wait(l, [this]() {
+      return !buf_.empty();
+    });
+
+    if(index < 0 || index >= buf_.size()) {
+      return Status(errors::OutOfRange("Index ", index,
+        " falls outside the Staging Area's size of ",
+        buf_.size(), "."));
+    }
+
+    // Place tensors in the output tuple
+    for(const auto & tensor: buf_[index]) {
+      tuple->push_back(tensor);
+    }
+
+    return Status::OK();
+  }
+
+  // Buffer size
   size_t Size() {
     mutex_lock l(mu_);
     return buf_.size();
@@ -66,22 +120,43 @@ class Buffer : public ResourceBase {
   }
 
  private:
+  // If the buffer is configured for bounded capacity, notify
+  // waiting inserters that space is now available
+  void notify_inserters_if_bounded(mutex_lock & l)
+  {
+    if(HasBoundedCapacity())
+    {
+      l.unlock();
+      full_cond_var_.notify_one();
+    }
+  }
+
+
+ private:
+  int capacity_;
   mutex mu_;
   condition_variable non_empty_cond_var_;
+  condition_variable full_cond_var_;
   std::deque<Tuple> buf_ GUARDED_BY(mu_);
 };
-
-Status CreateBuffer(Buffer** ret) {
-  *ret = new Buffer;
-  return Status::OK();
-}
 
 Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {
   auto rm = ctx->resource_manager();
   ContainerInfo cinfo;
+
+  // Lambda for creating the Staging Area
+  auto create_fn = [&ndef](Buffer** ret) -> Status
+  {
+    int capacity;
+    TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
+    *ret = new Buffer(capacity);
+    return Status::OK();
+  };
+
+
   TF_RETURN_IF_ERROR(cinfo.Init(rm, ndef, true /* use name() */));
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<Buffer>(cinfo.container(), cinfo.name(),
-                                                buf, CreateBuffer));
+                                                buf, create_fn));
   return Status::OK();
 }
 
@@ -122,11 +197,13 @@ class UnstageOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetBuffer(ctx, def(), &buf));
     core::ScopedUnref scope(buf);
     Buffer::Tuple tuple;
+
     buf->Get(&tuple);
-    OP_REQUIRES(
-        ctx, tuple.size() == (size_t)ctx->num_outputs(),
+
+    OP_REQUIRES(ctx, tuple.size() == (size_t)ctx->num_outputs(),
         errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
                                 " vs. ", ctx->num_outputs()));
+
     for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i, tuple[i]);
     }
@@ -140,6 +217,44 @@ REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_GPU), UnstageOp);
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_SYCL), UnstageOp);
 #endif // TENSORFLOW_USE_SYCL
+
+class StagePeekOp : public OpKernel {
+ public:
+  explicit StagePeekOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  // Using this op in such a way that it blocks forever
+  // is an error.  As such cancellation is not handled.
+  void Compute(OpKernelContext* ctx) override {
+    Buffer* buf = nullptr;
+    OP_REQUIRES_OK(ctx, GetBuffer(ctx, def(), &buf));
+    core::ScopedUnref scope(buf);
+    Buffer::Tuple tuple;
+
+    int index = ctx->input(0).scalar<int>()();
+
+    OP_REQUIRES_OK(ctx, buf->Peek(index, &tuple));
+
+    OP_REQUIRES(ctx, tuple.size() == (size_t)ctx->num_outputs(),
+        errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
+                                " vs. ", ctx->num_outputs()));
+
+    for (size_t i = 0; i < tuple.size(); ++i) {
+      ctx->set_output(i, tuple[i]);
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("StagePeek").Device(DEVICE_CPU),
+                                              StagePeekOp);
+#if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("StagePeek").HostMemory("index").
+                            Device(DEVICE_GPU), StagePeekOp);
+#endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("StagePeek").HostMemory("index")
+                          .Device(DEVICE_SYCL), StagePeekOp);
+#endif // TENSORFLOW_USE_SYCL
+
 
 class StageSizeOp : public OpKernel {
  public:

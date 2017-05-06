@@ -1934,6 +1934,7 @@ handle: The handle for a tensor stored in the session state.
 
 REGISTER_OP("Stage")
     .Input("values: dtypes")
+    .Attr("capacity: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -1952,6 +1953,7 @@ shared_name: It is necessary to match this name to the matching Unstage Op.
 
 REGISTER_OP("Unstage")
     .Output("values: dtypes")
+    .Attr("capacity: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -1963,8 +1965,25 @@ dequeue with many fewer capabilities and options.  This Op is optimized for
 performance.
     )doc");
 
+REGISTER_OP("StagePeek")
+    .Input("index: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op is similar to a lightweight Dequeue.  The basic funtionality is similar to
+dequeue with many fewer capabilities and options.  This Op is optimized for
+performance.
+    )doc");
+
+
 REGISTER_OP("StageSize")
     .Output("size: int32")
+    .Attr("capacity: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(shape_inference::ScalarShape)
