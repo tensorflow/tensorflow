@@ -135,7 +135,7 @@ class StatusOr {
   // operators, to support move-only types and avoid unnecessary copying.
   StatusOr(T&& value);  // NOLINT
 
-  // Move conversion operator to avoid unecessary copy.
+  // Move conversion operator to avoid unnecessary copy.
   // T must be assignable from U.
   // Not marked with explicit so the implicit conversion can happen.
   template <typename U>

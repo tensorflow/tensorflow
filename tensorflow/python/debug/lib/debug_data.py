@@ -975,7 +975,7 @@ class DebugDumpDir(object):
       slot = datum.output_slot
       # In some cases (e.g., system clocks with insufficient precision),
       # the upstream and downstream tensors may have identical timestamps, the
-      # following check examines this possibilty and avoids raising an error if
+      # following check examines this possibility and avoids raising an error if
       # that is the case.
       if not self._satisfied_at_timestamp(
           pending_inputs[node], datum.timestamp, start_i=i + 1):

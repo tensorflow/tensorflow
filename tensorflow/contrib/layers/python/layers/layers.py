@@ -278,7 +278,7 @@ def _fused_batch_norm(
         trainable=trainable_gamma)
 
     # Create moving_mean and moving_variance variables and add them to the
-    # appropiate collections.
+    # appropriate collections.
     moving_mean_collections = utils.get_variable_collections(
         variables_collections, 'moving_mean')
     moving_mean_initializer = param_initializers.get(
@@ -632,7 +632,7 @@ def batch_norm(inputs,
                                        trainable=trainable)
 
     # Create moving_mean and moving_variance variables and add them to the
-    # appropiate collections. We disable variable partitioning while creating
+    # appropriate collections. We disable variable partitioning while creating
     # them, because assign_moving_average is not yet supported for partitioned
     # variables.
     partitioner = variable_scope.get_variable_scope().partitioner
