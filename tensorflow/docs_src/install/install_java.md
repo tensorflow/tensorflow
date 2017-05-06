@@ -106,7 +106,7 @@ As an example, these steps will create a Maven project that uses TensorFlow:
 
 
 The preceding command should output <tt>Hello from <i>version</i></tt>. If it
-does, you've succesfully set up TensorFlow for Java and are ready to use it in
+does, you've successfully set up TensorFlow for Java and are ready to use it in
 Maven projects. If not, check
 [Stack Overflow](http://stackoverflow.com/questions/tagged/tensorflow)
 for possible solutions.  You can skip reading the rest of this document.

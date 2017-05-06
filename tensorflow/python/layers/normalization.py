@@ -322,7 +322,7 @@ class BatchNormalization(base.Layer):
 
     def _broadcast(v):
       if needs_broadcasting and v is not None:
-        # In this case we must explictly broadcast all parameters.
+        # In this case we must explicitly broadcast all parameters.
         return array_ops.reshape(v, broadcast_shape)
       return v
 

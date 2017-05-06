@@ -169,7 +169,7 @@ class BatchNormalization(Layer):
 
       def normalize_inference():
         if needs_broadcasting:
-          # In this case we must explictly broadcast all parameters.
+          # In this case we must explicitly broadcast all parameters.
           broadcast_moving_mean = K.reshape(self.moving_mean, broadcast_shape)
           broadcast_moving_variance = K.reshape(self.moving_variance,
                                                 broadcast_shape)
