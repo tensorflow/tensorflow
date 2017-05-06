@@ -206,8 +206,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros(
           [batch_size, input_size])
         m = array_ops.zeros([batch_size - 1, state_size])
-        with self.assertRaisesRegexp(ValueError,
-            r"Dimension 0 in both shapes must be equal"):
+        with self.assertRaises(ValueError):
           g, out_m = core_rnn_cell_impl.BasicLSTMCell(
             num_units, state_is_tuple=False)(x, m)
           sess.run([variables_lib.global_variables_initializer()])
@@ -228,8 +227,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros(
           [batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
-        with self.assertRaisesRegexp(ValueError,
-            r"Dimensions must be equal, but are 3 and 2"):
+        with self.assertRaises(ValueError):
           g, out_m = core_rnn_cell_impl.BasicLSTMCell(
             num_units, state_is_tuple=False)(x, m)
           sess.run([variables_lib.global_variables_initializer()])
