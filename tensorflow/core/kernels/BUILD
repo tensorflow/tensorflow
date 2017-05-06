@@ -1332,6 +1332,7 @@ cc_library(
         ":sparse_conditional_accumulator_op",
         ":stack_ops",
         ":stage_op",
+        ":map_stage_op",
         ":tensor_array_ops",
     ],
 )
