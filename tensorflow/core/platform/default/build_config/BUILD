@@ -171,8 +171,14 @@ cc_library(
 )
 
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = glob(["*.h"]),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
 )
 

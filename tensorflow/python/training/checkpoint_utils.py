@@ -227,7 +227,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
       # and create variable to variable mapping.
       scope_variables = set()
       for var_name in store_vars:
-        if var_name.startswith(scopes):
+        if not scopes or var_name.startswith(scopes + "/"):
           # Consume /part_ if partitioned variable.
           if "/part_" in var_name:
             var_name = var_name[:var_name.index("/part_")]

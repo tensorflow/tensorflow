@@ -287,6 +287,51 @@ class FeatureColumnTest(test.TestCase):
     self.assertEqual(column.name, "a_one_hot")
     self.assertEqual(column.length, 4)
 
+  def testRealValuedVarLenColumn(self):
+    c = fc._real_valued_var_len_column("ccc", is_sparse=True)
+    self.assertTrue(c.is_sparse)
+    self.assertTrue(c.default_value is None)
+    # default_value is an integer.
+    c5 = fc._real_valued_var_len_column("c5", default_value=2)
+    self.assertEqual(c5.default_value, 2)
+    # default_value is a float.
+    d4 = fc._real_valued_var_len_column("d4", is_sparse=True)
+    self.assertEqual(d4.default_value, None)
+    self.assertEqual(d4.is_sparse, True)
+    # Default value is a list but dimension is None.
+    with self.assertRaisesRegexp(ValueError,
+                                 "Only scalar default value.*"):
+      fc._real_valued_var_len_column("g5", default_value=[2., 3.])
+
+  def testRealValuedVarLenColumnDtypes(self):
+    rvc = fc._real_valued_var_len_column("rvc", is_sparse=True)
+    self.assertDictEqual(
+        {
+            "rvc": parsing_ops.VarLenFeature(dtype=dtypes.float32)
+        }, rvc.config)
+
+    rvc = fc._real_valued_var_len_column("rvc", default_value=0,
+                                         is_sparse=False)
+    self.assertDictEqual(
+        {
+            "rvc": parsing_ops.FixedLenSequenceFeature(shape=[],
+                                                       dtype=dtypes.float32,
+                                                       allow_missing=True,
+                                                       default_value=0.0)
+        }, rvc.config)
+
+    rvc = fc._real_valued_var_len_column("rvc", dtype=dtypes.int32,
+                                         default_value=0, is_sparse=True)
+    self.assertDictEqual(
+        {
+            "rvc": parsing_ops.VarLenFeature(dtype=dtypes.int32)
+        }, rvc.config)
+
+    with self.assertRaisesRegexp(TypeError,
+                                 "dtype must be convertible to float"):
+      fc._real_valued_var_len_column("rvc", dtype=dtypes.string,
+                                     default_value="", is_sparse=True)
+
   def testRealValuedColumn(self):
     a = fc.real_valued_column("aaa")
     self.assertEqual(a.name, "aaa")
@@ -294,9 +339,6 @@ class FeatureColumnTest(test.TestCase):
     b = fc.real_valued_column("bbb", 10)
     self.assertEqual(b.dimension, 10)
     self.assertTrue(b.default_value is None)
-    c = fc.real_valued_column("ccc", dimension=None)
-    self.assertIsNone(c.dimension)
-    self.assertTrue(c.default_value is None)
 
     with self.assertRaisesRegexp(TypeError, "dimension must be an integer"):
       fc.real_valued_column("d3", dimension=1.0)
@@ -319,8 +361,6 @@ class FeatureColumnTest(test.TestCase):
     c4 = fc.real_valued_column(
         "c4", dimension=4, default_value=2, dtype=dtypes.int32)
     self.assertListEqual(list(c4.default_value), [2, 2, 2, 2])
-    c5 = fc.real_valued_column("c5", dimension=None, default_value=2)
-    self.assertListEqual(list(c5.default_value), [2])
 
     # default_value is a float.
     d1 = fc.real_valued_column("d1", default_value=2.)
@@ -330,8 +370,6 @@ class FeatureColumnTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError,
                                  "default_value must be compatible with dtype"):
       fc.real_valued_column("d3", default_value=2., dtype=dtypes.int32)
-    d4 = fc.real_valued_column("d4", dimension=None, default_value=2.)
-    self.assertListEqual(list(d4.default_value), [2.])
 
     # default_value is neither integer nor float.
     with self.assertRaisesRegexp(TypeError,
@@ -361,12 +399,6 @@ class FeatureColumnTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError, "The length of default_value must be equal to dimension"):
       fc.real_valued_column("g4", dimension=3, default_value=[2.])
-
-    # Default value is a list but dimension is None.
-    with self.assertRaisesRegexp(ValueError,
-                                 "Only scalar default value is supported "
-                                 "when dimension is None"):
-      fc.real_valued_column("g5", dimension=None, default_value=[2., 3.])
 
     # Test that the normalizer_fn gets stored for a real_valued_column
     normalizer = lambda x: x - 1
@@ -404,30 +436,13 @@ class FeatureColumnTest(test.TestCase):
   def testRealValuedColumnDensification(self):
     """Tests densification behavior of `RealValuedColumn`."""
     # No default value, dimension 1 float.
-    real_valued_column = fc.real_valued_column(
-        "sparse_real_valued1", dimension=None)
+    real_valued_column = fc._real_valued_var_len_column(
+        "sparse_real_valued1", is_sparse=True)
     sparse_tensor = sparse_tensor_lib.SparseTensor(
         values=[2.0, 5.0], indices=[[0, 0], [2, 0]], dense_shape=[3, 1])
-    densified_output = real_valued_column._to_dnn_input_layer(sparse_tensor)
-
-    # With default value, dimension 2 int.
-    real_valued_column_with_default = fc.real_valued_column(
-        "sparse_real_valued2",
-        dimension=None,
-        default_value=-1,
-        dtype=dtypes.int32)
-    sparse_tensor2 = sparse_tensor_lib.SparseTensor(
-        values=[2, 5, 9, 0],
-        indices=[[0, 0], [1, 1], [2, 0], [2, 1]],
-        dense_shape=[3, 2])
-    densified_output2 = real_valued_column_with_default._to_dnn_input_layer(
-        sparse_tensor2)
-
-    with self.test_session() as sess:
-      densified_output_eval, densified_output_eval2 = sess.run(
-          [densified_output, densified_output2])
-      self.assertAllEqual(densified_output_eval, [[2.0], [0.0], [5.0]])
-      self.assertAllEqual(densified_output_eval2, [[2, -1], [-1, 5], [9, 0]])
+    with self.assertRaisesRegexp(
+        ValueError, "Calling an abstract method."):
+      real_valued_column._to_dnn_input_layer(sparse_tensor)
 
   def testRealValuedColumnDeepCopy(self):
     column = fc.real_valued_column(
@@ -452,9 +467,11 @@ class FeatureColumnTest(test.TestCase):
               column_name="bbb", bucket_size=10), [0])
 
   def testBucketizedColumnRequiresRealValuedColumnDimension(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "source_column must have a defined dimension"):
-      fc.bucketized_column(fc.real_valued_column("bbb", dimension=None), [0])
+    with self.assertRaisesRegexp(
+        TypeError, "source_column must be an instance of _RealValuedColumn.*"):
+      fc.bucketized_column(fc._real_valued_var_len_column("bbb",
+                                                          is_sparse=True),
+                           [0])
 
   def testBucketizedColumnRequiresSortedBuckets(self):
     with self.assertRaisesRegexp(ValueError,
@@ -564,12 +581,6 @@ class FeatureColumnTest(test.TestCase):
         },
         rvc.config)
 
-    rvc = fc.real_valued_column("rvc", dimension=None)
-    self.assertDictEqual(
-        {
-            "rvc": parsing_ops.VarLenFeature(dtype=dtypes.float32)
-        }, rvc.config)
-
     rvc = fc.real_valued_column("rvc", dtype=dtypes.int32)
     self.assertDictEqual(
         {
@@ -578,19 +589,9 @@ class FeatureColumnTest(test.TestCase):
         },
         rvc.config)
 
-    rvc = fc.real_valued_column("rvc", dimension=None, dtype=dtypes.int32)
-    self.assertDictEqual(
-        {
-            "rvc": parsing_ops.VarLenFeature(dtype=dtypes.int32)
-        }, rvc.config)
-
     with self.assertRaisesRegexp(ValueError,
                                  "dtype must be convertible to float"):
       fc.real_valued_column("rvc", dtype=dtypes.string)
-
-    with self.assertRaisesRegexp(ValueError,
-                                 "dtype must be convertible to float"):
-      fc.real_valued_column("rvc", dimension=None, dtype=dtypes.string)
 
   def testSparseColumnDtypes(self):
     sc = fc.sparse_column_with_integerized_feature("sc", 10)
@@ -696,8 +697,11 @@ class FeatureColumnTest(test.TestCase):
                                                 "str_id_weights_column")
     real_valued_col1 = fc.real_valued_column("real_valued_column1")
     real_valued_col2 = fc.real_valued_column("real_valued_column2", 5)
-    real_valued_col3 = fc.real_valued_column(
-        "real_valued_column3", dimension=None)
+    real_valued_col3 = fc._real_valued_var_len_column(
+        "real_valued_column3", is_sparse=True)
+    real_valued_col4 = fc._real_valued_var_len_column(
+        "real_valued_column4", dtype=dtypes.int64, default_value=0,
+        is_sparse=False)
     bucketized_col1 = fc.bucketized_column(
         fc.real_valued_column("real_valued_column_for_bucketization1"), [0, 4])
     bucketized_col2 = fc.bucketized_column(
@@ -713,8 +717,8 @@ class FeatureColumnTest(test.TestCase):
     feature_columns = set([
         sparse_col, embedding_col, weighted_id_col, int32_sparse_id_col,
         int64_sparse_id_col, real_valued_col1, real_valued_col2,
-        real_valued_col3, bucketized_col1, bucketized_col2, cross_col,
-        one_hot_col, scattered_embedding_col
+        real_valued_col3, real_valued_col4, bucketized_col1, bucketized_col2,
+        cross_col, one_hot_col, scattered_embedding_col
     ])
     expected_config = {
         "sparse_column":
@@ -737,6 +741,9 @@ class FeatureColumnTest(test.TestCase):
                 [5], dtype=dtypes.float32),
         "real_valued_column3":
             parsing_ops.VarLenFeature(dtype=dtypes.float32),
+        "real_valued_column4":
+            parsing_ops.FixedLenSequenceFeature(
+                [], dtype=dtypes.int64, allow_missing=True, default_value=0),
         "real_valued_column_for_bucketization1":
             parsing_ops.FixedLenFeature(
                 [1], dtype=dtypes.float32),
@@ -773,14 +780,17 @@ class FeatureColumnTest(test.TestCase):
         "real_valued_column3", default_value=[8])
     real_valued_col4 = fc.real_valued_column(
         "real_valued_column4", 3, default_value=[1, 0, 6])
-    real_valued_col5 = fc.real_valued_column(
-        "real_valued_column5", dimension=None, default_value=2)
+    real_valued_col5 = fc._real_valued_var_len_column(
+        "real_valued_column5", default_value=2, is_sparse=True)
+    real_valued_col6 = fc._real_valued_var_len_column(
+        "real_valued_column6", dtype=dtypes.int64, default_value=1,
+        is_sparse=False)
     feature_columns = [
         real_valued_col1, real_valued_col2, real_valued_col3, real_valued_col4,
-        real_valued_col5
+        real_valued_col5, real_valued_col6
     ]
     config = fc.create_feature_spec_for_parsing(feature_columns)
-    self.assertEqual(5, len(config))
+    self.assertEqual(6, len(config))
     self.assertDictEqual(
         {
             "real_valued_column1":
@@ -798,7 +808,11 @@ class FeatureColumnTest(test.TestCase):
                 parsing_ops.FixedLenFeature(
                     [3], dtype=dtypes.float32, default_value=[1., 0., 6.]),
             "real_valued_column5":
-                parsing_ops.VarLenFeature(dtype=dtypes.float32)
+                parsing_ops.VarLenFeature(dtype=dtypes.float32),
+            "real_valued_column6":
+                parsing_ops.FixedLenSequenceFeature(
+                    [], dtype=dtypes.int64, allow_missing=True,
+                    default_value=1)
         },
         config)
 
@@ -816,12 +830,14 @@ class FeatureColumnTest(test.TestCase):
     real_valued_col1 = fc.real_valued_column("real_valued_column", dimension=2)
     real_valued_col2 = fc.real_valued_column(
         "real_valued_default_column", dimension=5, default_value=3.0)
-    real_valued_col3 = fc.real_valued_column(
-        "real_valued_var_len_column", dimension=None, default_value=3.0)
+    real_valued_col3 = fc._real_valued_var_len_column(
+        "real_valued_var_len_column", default_value=3.0, is_sparse=True)
+    real_valued_col4 = fc._real_valued_var_len_column(
+        "real_valued_var_len_dense_column", default_value=4.0, is_sparse=False)
 
     feature_columns = set([
         sparse_col, embedding_col, weighted_id_col, real_valued_col1,
-        real_valued_col2, real_valued_col3
+        real_valued_col2, real_valued_col3, real_valued_col4
     ])
 
     feature_spec = fc._create_sequence_feature_spec_for_parsing(feature_columns)
@@ -842,7 +858,11 @@ class FeatureColumnTest(test.TestCase):
             parsing_ops.FixedLenSequenceFeature(
                 shape=[5], dtype=dtypes.float32, allow_missing=True),
         "real_valued_var_len_column":
-            parsing_ops.VarLenFeature(dtype=dtypes.float32)
+            parsing_ops.VarLenFeature(dtype=dtypes.float32),
+        "real_valued_var_len_dense_column":
+            parsing_ops.FixedLenSequenceFeature(
+                shape=[], dtype=dtypes.float32, allow_missing=True,
+                default_value=4.0),
     }
 
     self.assertDictEqual(expected_feature_spec, feature_spec)
@@ -851,8 +871,8 @@ class FeatureColumnTest(test.TestCase):
     sparse_col = fc.sparse_column_with_hash_bucket(
         "sparse_column", hash_bucket_size=100)
     real_valued_col = fc.real_valued_column("real_valued_column", 5)
-    vlen_real_valued_col = fc.real_valued_column(
-        "vlen_real_valued_column", dimension=None)
+    vlen_real_valued_col = fc._real_valued_var_len_column(
+        "vlen_real_valued_column", is_sparse=True)
 
     bucketized_col = fc.bucketized_column(
         fc.real_valued_column("real_valued_column_for_bucketization"), [0, 4])

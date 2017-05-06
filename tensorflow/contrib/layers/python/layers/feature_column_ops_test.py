@@ -52,8 +52,8 @@ class TransformerTest(test.TestCase):
       self.assertAllEqual(output.eval(), [[20.], [110], [-3]])
 
   def testSparseRealValuedColumnIdentityTransformation(self):
-    sparse_real_valued = feature_column.real_valued_column(
-        "rating", dimension=None)
+    sparse_real_valued = feature_column._real_valued_var_len_column(
+        "rating", is_sparse=True)
     rating_tensor = sparse_tensor.SparseTensor(
         values=[2.0, 5.0], indices=[[0, 0], [2, 0]], dense_shape=[3, 1])
     features = {"rating": rating_tensor}
@@ -68,11 +68,10 @@ class TransformerTest(test.TestCase):
   def testSparseRealValuedColumnWithTransformation(self):
 
     def square_fn(x):
-      return sparse_tensor.SparseTensor(
-          values=x.values**2, indices=x.indices, dense_shape=x.dense_shape)
+      return x**2
 
-    sparse_real_valued = feature_column.real_valued_column(
-        "rating", dimension=None, normalizer=square_fn)
+    sparse_real_valued = feature_column._real_valued_var_len_column(
+        "rating", normalizer=square_fn, is_sparse=True)
     rating_tensor = sparse_tensor.SparseTensor(
         values=[2.0, 5.0], indices=[[0, 0], [2, 0]], dense_shape=[3, 1])
     features = {"rating": rating_tensor}
@@ -561,15 +560,9 @@ class CreateInputLayersForDNNsTest(test.TestCase):
       feature_column_ops.input_from_feature_columns(
           features, {"feature": real_valued})
 
-  def testAllDNNColumns(self):
-    sparse_column = feature_column.sparse_column_with_keys(
-        "ids", ["a", "b", "c", "unseen"])
-
-    real_valued_column = feature_column.real_valued_column("income", 2)
-    sparse_real_valued_column = feature_column.real_valued_column(
-        "rating", dimension=None)
-    one_hot_column = feature_column.one_hot_column(sparse_column)
-    embedding_column = feature_column.embedding_column(sparse_column, 10)
+  def testSparseTensorRealValuedColumn(self):
+    var_len_sparse_real_valued_column = (
+        feature_column._real_valued_var_len_column("rating", is_sparse=True))
     features = {
         "ids":
             sparse_tensor.SparseTensor(
@@ -582,14 +575,33 @@ class CreateInputLayersForDNNsTest(test.TestCase):
             sparse_tensor.SparseTensor(
                 values=[3.5, 5.0], indices=[[0, 0], [2, 0]], dense_shape=[3, 1])
     }
+    with self.assertRaisesRegexp(
+        ValueError,
+        "dd"):
+      feature_column_ops.input_from_feature_columns(
+          features, [var_len_sparse_real_valued_column])
+
+  def testAllDNNColumns(self):
+    sparse_column = feature_column.sparse_column_with_keys(
+        "ids", ["a", "b", "c", "unseen"])
+    real_valued_column = feature_column.real_valued_column("income", 2)
+    one_hot_column = feature_column.one_hot_column(sparse_column)
+    embedding_column = feature_column.embedding_column(sparse_column, 10)
+    features = {
+        "ids":
+            sparse_tensor.SparseTensor(
+                values=["c", "b", "a"],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+        "income":
+            constant_op.constant([[20.3, 10], [110.3, 0.4], [-3.0, 30.4]]),
+    }
     output = feature_column_ops.input_from_feature_columns(features, [
-        one_hot_column, embedding_column, real_valued_column,
-        sparse_real_valued_column
-    ])
+        one_hot_column, embedding_column, real_valued_column])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       data_flow_ops.tables_initializer().run()
-      self.assertAllEqual(output.eval().shape, [3, 3 + 4 + 10])
+      self.assertAllEqual(output.eval().shape, [3, 2 + 4 + 10])
 
   def testRealValuedColumn(self):
     real_valued = feature_column.real_valued_column("price")
@@ -610,15 +622,15 @@ class CreateInputLayersForDNNsTest(test.TestCase):
       self.assertAllClose(output.eval(), features["price"].eval())
 
   def testRealValuedColumnSparse(self):
-    sparse_real_valued = feature_column.real_valued_column(
-        "rating", dimension=None, default_value=-1)
-    rating_tensor = sparse_tensor.SparseTensor(
-        values=[2.0, 5.0], indices=[[0, 0], [2, 0]], dense_shape=[3, 1])
-    features = {"rating": rating_tensor}
-    output = feature_column_ops.input_from_feature_columns(features,
-                                                           [sparse_real_valued])
-    with self.test_session():
-      self.assertAllClose(output.eval(), [[2.0], [-1.0], [5.0]])
+    sparse_real_valued = feature_column._real_valued_var_len_column(
+        "rating", default_value=-1)
+    rating = [[2.0], [-1.0], [5.0]]
+    features = {"rating": constant_op.constant(rating)}
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Error creating input layer for column: rating.*"):
+      feature_column_ops.input_from_feature_columns(features,
+                                                    [sparse_real_valued])
 
   def testRealValuedColumnWithNormalizer(self):
     real_valued = feature_column.real_valued_column(
@@ -2033,7 +2045,9 @@ class WeightedSumTest(test.TestCase):
     age = feature_column.real_valued_column("age")
     # The following RealValuedColumn has no predefined dimension so it
     # can be missing.
-    height = feature_column.real_valued_column("height", dimension=None)
+    height = feature_column._real_valued_var_len_column("height",
+                                                        default_value=0,
+                                                        is_sparse=False)
     # The following RealValuedColumn has 3 dimensions.
     incomes = feature_column.real_valued_column("incomes", 3)
     with ops.Graph().as_default():
@@ -2043,10 +2057,7 @@ class WeightedSumTest(test.TestCase):
           "incomes":
               constant_op.constant([[100., 200., 300.], [10., 20., 30.]]),
           "height":
-              sparse_tensor.SparseTensor(
-                  values=[5.0, 4.0, 6.0],
-                  indices=[[0, 0], [0, 1], [1, 1]],
-                  dense_shape=[2, 2]),
+              constant_op.constant([[5., 4.], [0., 6.]]),
           "country":
               sparse_tensor.SparseTensor(
                   values=["US", "SV"],

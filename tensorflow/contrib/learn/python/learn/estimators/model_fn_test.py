@@ -56,7 +56,6 @@ class ModelFnopsTest(test.TestCase):
             "metric_key": (constant_op.constant(1.), control_flow_ops.no_op()),
             "loss": (constant_op.constant(1.), control_flow_ops.no_op()),
         },
-        # zzz
         training_chief_hooks=[basic_session_run_hooks.StepCounterHook()],
         training_hooks=[basic_session_run_hooks.StepCounterHook()],
         output_alternatives=output_alternatives,
@@ -73,9 +72,10 @@ class ModelFnopsTest(test.TestCase):
     self.assertEqual(model_fn_ops.train_op, estimator_spec.train_op)
     self.assertEqual(expected_eval_metric_ops,
                      estimator_spec.eval_metric_ops)
-    self.assertEqual(model_fn_ops.training_chief_hooks,
-                     estimator_spec.training_chief_hooks)
-    self.assertEqual(model_fn_ops.training_hooks, estimator_spec.training_hooks)
+    self.assertAllEqual(model_fn_ops.training_chief_hooks,
+                        estimator_spec.training_chief_hooks)
+    self.assertAllEqual(model_fn_ops.training_hooks,
+                        estimator_spec.training_hooks)
     self.assertEqual(model_fn_ops.scaffold, estimator_spec.scaffold)
 
   def testEstimatorSpec_except_export(self):

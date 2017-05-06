@@ -63,10 +63,12 @@ The given SavedModel SignatureDef contains the following input(s):
 inputs['inputs'] tensor_info:
     dtype: DT_FLOAT
     shape: (-1, 1)
+    name: x2:0
 The given SavedModel SignatureDef contains the following output(s):
 outputs['scores'] tensor_info:
     dtype: DT_FLOAT
     shape: (-1, 1)
+    name: y3:0
 Method name is: tensorflow/serving/classify
 
 signature_def['classify_x_to_y']:
@@ -74,10 +76,12 @@ The given SavedModel SignatureDef contains the following input(s):
 inputs['inputs'] tensor_info:
     dtype: DT_STRING
     shape: unknown_rank
+    name: tf_example:0
 The given SavedModel SignatureDef contains the following output(s):
 outputs['scores'] tensor_info:
     dtype: DT_FLOAT
     shape: (-1, 1)
+    name: y:0
 Method name is: tensorflow/serving/classify
 
 signature_def['regress_x2_to_y3']:
@@ -85,10 +89,12 @@ The given SavedModel SignatureDef contains the following input(s):
 inputs['inputs'] tensor_info:
     dtype: DT_FLOAT
     shape: (-1, 1)
+    name: x2:0
 The given SavedModel SignatureDef contains the following output(s):
 outputs['outputs'] tensor_info:
     dtype: DT_FLOAT
     shape: (-1, 1)
+    name: y3:0
 Method name is: tensorflow/serving/regress
 
 signature_def['regress_x_to_y']:
@@ -96,10 +102,12 @@ The given SavedModel SignatureDef contains the following input(s):
 inputs['inputs'] tensor_info:
     dtype: DT_STRING
     shape: unknown_rank
+    name: tf_example:0
 The given SavedModel SignatureDef contains the following output(s):
 outputs['outputs'] tensor_info:
     dtype: DT_FLOAT
     shape: (-1, 1)
+    name: y:0
 Method name is: tensorflow/serving/regress
 
 signature_def['regress_x_to_y2']:
@@ -107,10 +115,12 @@ The given SavedModel SignatureDef contains the following input(s):
 inputs['inputs'] tensor_info:
     dtype: DT_STRING
     shape: unknown_rank
+    name: tf_example:0
 The given SavedModel SignatureDef contains the following output(s):
 outputs['outputs'] tensor_info:
     dtype: DT_FLOAT
     shape: (-1, 1)
+    name: y2:0
 Method name is: tensorflow/serving/regress
 
 signature_def['serving_default']:
@@ -118,10 +128,12 @@ The given SavedModel SignatureDef contains the following input(s):
 inputs['x'] tensor_info:
     dtype: DT_FLOAT
     shape: (-1, 1)
+    name: x:0
 The given SavedModel SignatureDef contains the following output(s):
 outputs['y'] tensor_info:
     dtype: DT_FLOAT
     shape: (-1, 1)
+    name: y:0
 Method name is: tensorflow/serving/predict"""
     # pylint: enable=line-too-long
     self.assertMultiLineEqual(output, exp_out)
@@ -180,10 +192,10 @@ Method name is: tensorflow/serving/predict"""
     expected_output = (
         'The given SavedModel SignatureDef contains the following input(s):\n'
         'inputs[\'x\'] tensor_info:\n'
-        '    dtype: DT_FLOAT\n    shape: (-1, 1)\n'
+        '    dtype: DT_FLOAT\n    shape: (-1, 1)\n    name: x:0\n'
         'The given SavedModel SignatureDef contains the following output(s):\n'
         'outputs[\'y\'] tensor_info:\n'
-        '    dtype: DT_FLOAT\n    shape: (-1, 1)\n'
+        '    dtype: DT_FLOAT\n    shape: (-1, 1)\n    name: y:0\n'
         'Method name is: tensorflow/serving/predict')
     self.assertEqual(output, expected_output)
     self.assertEqual(err.getvalue().strip(), '')

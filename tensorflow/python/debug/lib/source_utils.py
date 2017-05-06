@@ -44,7 +44,7 @@ def _convert_watch_key_to_tensor_name(watch_key):
   return watch_key[:watch_key.rfind(":")]
 
 
-def _guess_is_tensorflow_py_library(py_file_path):
+def guess_is_tensorflow_py_library(py_file_path):
   """Guess whether a Python source file is a part of the tensorflow library.
 
   Special cases:
@@ -231,7 +231,7 @@ def list_source_files_against_dump(dump,
   for file_path in path_to_node_names:
     output.append((
         file_path,
-        _guess_is_tensorflow_py_library(file_path),
+        guess_is_tensorflow_py_library(file_path),
         len(path_to_node_names.get(file_path, {})),
         len(path_to_tensor_names.get(file_path, {})),
         path_to_num_dumps.get(file_path, 0),

@@ -159,6 +159,7 @@ class Node {
   // Returns into '*n' the node that has an output connected to the
   // 'idx' input of this Node.
   Status input_node(int idx, const Node** n) const;
+  Status input_node(int idx, Node** n) const;
 
  private:
   friend class Graph;

@@ -13,10 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+#
+# Usage:
+#     ./install_deb_packages [--without_cmake]
+# Pass --without_cmake to prevent cmake from being installed with apt-get
 
 set -e
 ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' | \
   awk -F'.' '{print $1}')
+
+if [[ "$1" != "" ]] && [[ "$1" != "--without_cmake" ]]; then
+  echo "Unknown argument '$1'"
+  exit 1
+fi
 
 # Install dependencies from ubuntu deb repository.
 apt-get update
@@ -32,7 +41,6 @@ apt-get install -y --no-install-recommends \
     autoconf \
     automake \
     build-essential \
-    cmake \
     curl \
     ffmpeg \
     git \
@@ -48,11 +56,18 @@ apt-get install -y --no-install-recommends \
     python3-setuptools \
     rsync \
     sudo \
+    subversion \
     swig \
     unzip \
     wget \
     zip \
     zlib1g-dev
+
+if [[ "$1" != "--without_cmake" ]]; then
+  apt-get install -y --no-install-recommends \
+    cmake
+fi
+
 
 # Install ca-certificates, and update the certificate store.
 apt-get install -y ca-certificates-java

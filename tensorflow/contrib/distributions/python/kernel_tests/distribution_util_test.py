@@ -41,42 +41,44 @@ from tensorflow.python.platform import tf_logging as logging
 class AssertCloseTest(test.TestCase):
 
   def testAssertCloseIntegerDtype(self):
-    x = [1, 5, 10, 15, 20]
+    x = array_ops.placeholder(dtypes.int32)
     y = x
-    z = [2, 5, 10, 15, 20]
+    z = array_ops.placeholder(dtypes.int32)
+    feed_dict = {x: [1, 5, 10, 15, 20], z: [2, 5, 10, 15, 20]}
     with self.test_session():
       with ops.control_dependencies([distribution_util.assert_close(x, y)]):
-        array_ops.identity(x).eval()
+        array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with ops.control_dependencies([distribution_util.assert_close(y, x)]):
-        array_ops.identity(x).eval()
+        array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x ~= y"):
         with ops.control_dependencies([distribution_util.assert_close(x, z)]):
-          array_ops.identity(x).eval()
+          array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x ~= y"):
         with ops.control_dependencies([distribution_util.assert_close(y, z)]):
-          array_ops.identity(y).eval()
+          array_ops.identity(y).eval(feed_dict=feed_dict)
 
   def testAssertCloseNonIntegerDtype(self):
-    x = np.array([1., 5, 10, 15, 20], dtype=np.float32)
+    x = array_ops.placeholder(dtypes.float32)
     y = x + 1e-8
-    z = [2., 5, 10, 15, 20]
+    z = array_ops.placeholder(dtypes.float32)
+    feed_dict = {x: [1., 5, 10, 15, 20], z: [2., 5, 10, 15, 20]}
     with self.test_session():
       with ops.control_dependencies([distribution_util.assert_close(x, y)]):
-        array_ops.identity(x).eval()
+        array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with ops.control_dependencies([distribution_util.assert_close(y, x)]):
-        array_ops.identity(x).eval()
+        array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x ~= y"):
         with ops.control_dependencies([distribution_util.assert_close(x, z)]):
-          array_ops.identity(x).eval()
+          array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x ~= y"):
         with ops.control_dependencies([distribution_util.assert_close(y, z)]):
-          array_ops.identity(y).eval()
+          array_ops.identity(y).eval(feed_dict=feed_dict)
 
   def testAssertCloseEpsilon(self):
     x = [0., 5, 10, 15, 20]
@@ -98,30 +100,32 @@ class AssertCloseTest(test.TestCase):
 
   def testAssertIntegerForm(self):
     # This should only be detected as an integer.
-    x = [1., 5, 10, 15, 20]
-    y = [1.1, 5, 10, 15, 20]
+    x = array_ops.placeholder(dtypes.float32)
+    y = array_ops.placeholder(dtypes.float32)
     # First component isn't less than float32.eps = 1e-7
-    z = [1.0001, 5, 10, 15, 20]
+    z = array_ops.placeholder(dtypes.float32)
     # This shouldn"t be detected as an integer.
-    w = [1e-8, 5, 10, 15, 20]
+    w = array_ops.placeholder(dtypes.float32)
+    feed_dict = {x: [1., 5, 10, 15, 20], y: [1.1, 5, 10, 15, 20],
+                 z: [1.0001, 5, 10, 15, 20], w: [1e-8, 5, 10, 15, 20]}
     with self.test_session():
       with ops.control_dependencies([distribution_util.assert_integer_form(x)]):
-        array_ops.identity(x).eval()
+        array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("x has non-integer components"):
         with ops.control_dependencies(
             [distribution_util.assert_integer_form(y)]):
-          array_ops.identity(y).eval()
+          array_ops.identity(y).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("x has non-integer components"):
         with ops.control_dependencies(
             [distribution_util.assert_integer_form(z)]):
-          array_ops.identity(z).eval()
+          array_ops.identity(z).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("x has non-integer components"):
         with ops.control_dependencies(
             [distribution_util.assert_integer_form(w)]):
-          array_ops.identity(w).eval()
+          array_ops.identity(w).eval(feed_dict=feed_dict)
 
 
 class GetLogitsAndProbsTest(test.TestCase):

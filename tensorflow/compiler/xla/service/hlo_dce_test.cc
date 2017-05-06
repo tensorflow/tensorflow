@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -91,6 +92,66 @@ TEST_F(HloDceTest, DeadParameters) {
 
   EXPECT_EQ(4, computation->instruction_count());
   EXPECT_EQ(0, dead_param1->user_count());
+}
+
+TEST_F(HloDceTest, ControlDependencies) {
+  // Verify that instructions with control dependencies are not removed.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(123.0f)));
+
+  // Create two dead instructions: a negate and an add.
+  auto dead_negate = builder.AddInstruction(HloInstruction::CreateUnary(
+      constant1->shape(), HloOpcode::kNegate, constant1));
+  auto dead_add = builder.AddInstruction(HloInstruction::CreateBinary(
+      constant1->shape(), HloOpcode::kAdd, constant1, constant2));
+
+  // Create the same two instructions again, but these will have a control
+  // dependency added.
+  auto dead_negate_with_control_dep =
+      builder.AddInstruction(HloInstruction::CreateUnary(
+          constant1->shape(), HloOpcode::kNegate, constant1));
+  auto dead_add_with_control_dep =
+      builder.AddInstruction(HloInstruction::CreateBinary(
+          constant1->shape(), HloOpcode::kAdd, constant1, constant2));
+
+  // Create a root so the previously added instruction is dead.
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      constant1->shape(), HloOpcode::kAdd, constant1, constant2));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  // Add a control dependency between two instructions.
+  TF_ASSERT_OK(dead_negate_with_control_dep->AddControlDependencyTo(
+      dead_add_with_control_dep));
+
+  // Returns whether the given instruction exists in the test computation.
+  auto has_instruction = [computation](const HloInstruction* instruction) {
+    for (auto& inst : computation->instructions()) {
+      if (inst.get() == instruction) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  EXPECT_EQ(7, computation->instruction_count());
+  EXPECT_TRUE(has_instruction(dead_negate));
+  EXPECT_TRUE(has_instruction(dead_add));
+  EXPECT_TRUE(has_instruction(dead_negate_with_control_dep));
+  EXPECT_TRUE(has_instruction(dead_add_with_control_dep));
+
+  HloDCE dce;
+  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+
+  EXPECT_EQ(5, computation->instruction_count());
+  EXPECT_FALSE(has_instruction(dead_negate));
+  EXPECT_FALSE(has_instruction(dead_add));
+  EXPECT_TRUE(has_instruction(dead_negate_with_control_dep));
+  EXPECT_TRUE(has_instruction(dead_add_with_control_dep));
 }
 
 }  // namespace

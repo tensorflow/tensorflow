@@ -39,7 +39,10 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
   `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
   """
 
-  def __init__(self, ui_type="curses", dump_root=None):
+  def __init__(self,
+               ui_type="curses",
+               dump_root=None,
+               thread_name_filter=None):
     """Create a local debugger command-line interface (CLI) hook.
 
     Args:
@@ -48,10 +51,14 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
         directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
         `run()` calls and removed afterwards.
+      thread_name_filter: Regular-expression white list for threads on which the
+        wrapper session will be active. See doc of `BaseDebugWrapperSession` for
+        more details.
     """
 
     self._ui_type = ui_type
     self._dump_root = dump_root
+    self._thread_name_filter = thread_name_filter
     self._wrapper_initialized = False
     self._pending_tensor_filters = {}
 
@@ -85,7 +92,8 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
           self,
           run_context.session,
           ui_type=self._ui_type,
-          dump_root=self._dump_root)
+          dump_root=self._dump_root,
+          thread_name_filter=self._thread_name_filter)
 
       # Actually register tensor filters registered prior to the construction
       # of the underlying LocalCLIDebugWrapperSession object.
@@ -168,7 +176,11 @@ class DumpingDebugHook(session_run_hook.SessionRunHook,
   `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
   """
 
-  def __init__(self, session_root, watch_fn=None, log_usage=True):
+  def __init__(self,
+               session_root,
+               watch_fn=None,
+               thread_name_filter=None,
+               log_usage=True):
     """Create a local debugger command-line interface (CLI) hook.
 
     Args:
@@ -176,11 +188,15 @@ class DumpingDebugHook(session_run_hook.SessionRunHook,
         `dumping_wrapper.DumpingDebugWrapperSession.__init__`.
       watch_fn: See doc of
         `dumping_wrapper.DumpingDebugWrapperSession.__init__`.
+      thread_name_filter: Regular-expression white list for threads on which the
+        wrapper session will be active. See doc of `BaseDebugWrapperSession` for
+        more details.
       log_usage: (bool) Whether usage is to be logged.
     """
 
     self._session_root = session_root
     self._watch_fn = watch_fn
+    self._thread_name_filter = thread_name_filter
     self._log_usage = log_usage
     self._wrapper_initialized = False
 
@@ -196,6 +212,7 @@ class DumpingDebugHook(session_run_hook.SessionRunHook,
           run_context.session,
           self._session_root,
           watch_fn=self._watch_fn,
+          thread_name_filter=self._thread_name_filter,
           log_usage=self._log_usage)
       self._wrapper_initialized = True
 
@@ -240,6 +257,7 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
   def __init__(self,
                grpc_debug_server_addresses,
                watch_fn=None,
+               thread_name_filter=None,
                log_usage=True):
     """Constructs a GrpcDebugHook.
 
@@ -250,6 +268,9 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
       watch_fn: A function that allows for customizing which ops to watch at
         which specific steps. See doc of
         `dumping_wrapper.DumpingDebugWrapperSession.__init__` for details.
+      thread_name_filter: Regular-expression white list for threads on which the
+        wrapper session will be active. See doc of `BaseDebugWrapperSession` for
+        more details.
       log_usage: (bool) Whether usage is to be logged.
 
     Raises:
@@ -265,6 +286,7 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
 
     # A wrapper session responsible for GRPC communication.
     self._grpc_debug_wrapper_session = None
+    self._thread_name_filter = thread_name_filter
 
     self._grpc_debug_server_addresses = grpc_debug_server_addresses
     self._watch_fn = watch_fn
@@ -286,6 +308,7 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
           run_context.session,
           self._grpc_debug_server_addresses,
           watch_fn=self._watch_fn,
+          thread_name_filter=self._thread_name_filter,
           log_usage=self._log_usage)
 
     fetches = run_context.original_args.fetches

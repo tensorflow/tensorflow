@@ -374,8 +374,12 @@ class HloInstruction {
 
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
-  // complete.
-  Status Accept(DfsHloVisitor* visitor, bool call_finish_visit = true);
+  // complete. If ignore_control_predecessors is true, instructions only
+  // reachable via control dependencies will not be visited, and the postorder
+  // will not take control dependencies into account. It is as if the control
+  // dependencies didn't exist in the graph at all.
+  Status Accept(DfsHloVisitor* visitor, bool call_finish_visit = true,
+                bool ignore_control_predecessors = false);
 
   // Same as Accept() above, but the order of operand and control predecessor
   // visitation is determined by the given operand order; if compare(A, B) ==
@@ -782,7 +786,8 @@ class HloInstruction {
   // Inner DFS traversal function -- this function being called (rather than
   // Accept above) allows us to distinguish the root of the traversal.
   Status AcceptInternal(DfsHloVisitor* visitor,
-                        const CompareFunction* operand_order);
+                        const CompareFunction* operand_order,
+                        bool ignore_control_predecessors);
 
   // CHECKs various invariants of a fusion instruction.
   void CheckFusionInstruction() const;

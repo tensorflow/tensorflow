@@ -263,8 +263,6 @@ BundleWriter::BundleWriter(Env* env, StringPiece prefix)
   VLOG(1) << "Writing to file " << tmp_data_path_;
 }
 
-BundleWriter::~BundleWriter() { CHECK(out_ == nullptr); }
-
 Status BundleWriter::Add(StringPiece key, const Tensor& val) {
   if (!status_.ok()) return status_;
   CHECK_NE(key, kHeaderEntryKey);

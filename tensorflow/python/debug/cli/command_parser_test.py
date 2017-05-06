@@ -490,6 +490,25 @@ class ParseInterval(test_util.TensorFlowTestCase):
         "equal to end of interval."):
       command_parser.parse_memory_interval("[5k, 3k]")
 
+  def testIntervalContains(self):
+    interval = command_parser.Interval(
+        start=1, start_included=True, end=10, end_included=True)
+    self.assertTrue(interval.contains(1))
+    self.assertTrue(interval.contains(10))
+    self.assertTrue(interval.contains(5))
+
+    interval.start_included = False
+    self.assertFalse(interval.contains(1))
+    self.assertTrue(interval.contains(10))
+
+    interval.end_included = False
+    self.assertFalse(interval.contains(1))
+    self.assertFalse(interval.contains(10))
+
+    interval.start_included = True
+    self.assertTrue(interval.contains(1))
+    self.assertFalse(interval.contains(10))
+
 
 if __name__ == "__main__":
   googletest.main()

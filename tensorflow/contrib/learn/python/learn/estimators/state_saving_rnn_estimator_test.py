@@ -455,57 +455,6 @@ class LegacyConstructorTest(test.TestCase):
       return {'inputs': inputs}, labels
     return input_fn
 
-  def testClassifierConstructor(self):
-    batch_size = 16
-    num_classes = 2
-    num_unroll = 32
-    sequence_length = 32
-    num_units = 4
-    learning_rate = 0.5
-    steps = 100
-    input_fn = self._get_input_fn(sequence_length,
-                                  seed=1234)
-    model_dir = tempfile.mkdtemp()
-    seq_columns = [
-        feature_column.real_valued_column(
-            'inputs', dimension=num_units)
-    ]
-    estimator = ssre.multi_value_rnn_classifier(num_classes,
-                                                num_units,
-                                                num_unroll,
-                                                batch_size,
-                                                seq_columns,
-                                                learning_rate=learning_rate,
-                                                model_dir=model_dir,
-                                                queue_capacity=batch_size+2,
-                                                seed=1234)
-    estimator.fit(input_fn=input_fn, steps=steps)
-
-  def testRegressorConstructor(self):
-    batch_size = 16
-    num_unroll = 32
-    sequence_length = 32
-    num_units = 4
-    learning_rate = 0.5
-    steps = 100
-    input_fn = self._get_input_fn(sequence_length,
-                                  seed=4321)
-    model_dir = tempfile.mkdtemp()
-    seq_columns = [
-        feature_column.real_valued_column(
-            'inputs', dimension=num_units)
-    ]
-    estimator = ssre.multi_value_rnn_regressor(num_units,
-                                               num_unroll,
-                                               batch_size,
-                                               seq_columns,
-                                               learning_rate=learning_rate,
-                                               model_dir=model_dir,
-                                               queue_capacity=batch_size+2,
-                                               seed=1234)
-    estimator.fit(input_fn=input_fn, steps=steps)
-
-
 # TODO(jtbates): move all tests below to a benchmark test.
 class StateSavingRNNEstimatorLearningTest(test.TestCase):
   """Learning tests for state saving RNN Estimators."""

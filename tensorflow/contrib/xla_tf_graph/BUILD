@@ -42,6 +42,7 @@ cc_library(
 cc_test(
     name = "xla_tf_graph_util_test",
     srcs = ["xla_tf_graph_util_test.cc"],
+    linkstatic = 1,
     deps = [
         ":xla_tf_graph_util",
         "//tensorflow/cc:cc_ops",

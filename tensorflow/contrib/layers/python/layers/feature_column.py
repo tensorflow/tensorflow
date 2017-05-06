@@ -131,6 +131,7 @@ import math
 import six
 
 from tensorflow.contrib import lookup
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.layers.python.ops import bucketization_op
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
@@ -316,7 +317,7 @@ class _SparseColumn(_FeatureColumn,
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
       For more information: `tf.embedding_lookup_sparse`.
-    dtype: Type of features, such as `tf.string` or `tf.int64`.
+    dtype: Type of features, either `tf.string` or `tf.int64`.
 
   Raises:
     TypeError: if lookup_config is not a _SparseIdLookupConfig.
@@ -1367,17 +1368,143 @@ def _reshape_real_valued_tensor(input_tensor, output_rank, column_name=None):
   return layers._inner_flatten(input_tensor, output_rank)  # pylint: disable=protected-access
 
 
+class _RealValuedVarLenColumn(_FeatureColumn, collections.namedtuple(
+    "_RealValuedVarLenColumn",
+    ["column_name", "default_value", "dtype", "normalizer", "is_sparse"])):
+  """Represents a real valued feature column for variable length Features.
+
+  Instances of this class are immutable.
+  If is_sparse=False, the dictionary returned by InputBuilder contains a
+  ("column_name", Tensor) pair with a Tensor shape of (batch_size, dimension).
+  If is_sparse=True, the dictionary contains a ("column_name", SparseTensor)
+  pair instead with shape inferred after parsing.
+  """
+
+  @property
+  def name(self):
+    return self.column_name
+
+  @property
+  def config(self):
+    if self.is_sparse:
+      return {self.column_name: parsing_ops.VarLenFeature(self.dtype)}
+    else:
+      return {self.column_name: parsing_ops.FixedLenSequenceFeature(
+          [], self.dtype, allow_missing=True,
+          default_value=self.default_value)}
+
+  @property
+  def key(self):
+    """Returns a string which will be used as a key when we do sorting."""
+    return self._key_without_properties(["normalizer"])
+
+  @property
+  def normalizer_fn(self):
+    """Returns the function used to normalize the column."""
+    return self.normalizer
+
+  def _normalized_input_tensor(self, input_tensor):
+    """Returns the input tensor after custom normalization is applied."""
+    if self.normalizer is None:
+      return input_tensor
+    if self.is_sparse:
+      return sparse_tensor_py.SparseTensor(
+          input_tensor.indices,
+          self.normalizer(input_tensor.values),
+          input_tensor.dense_shape)
+    else:
+      return self.normalizer(input_tensor)
+
+  def insert_transformed_feature(self, columns_to_tensors):
+    """Apply transformation and inserts it into columns_to_tensors.
+
+    Args:
+      columns_to_tensors: A mapping from feature columns to tensors. 'string'
+        key means a base feature (not-transformed). It can have _FeatureColumn
+        as a key too. That means that _FeatureColumn is already transformed.
+    """
+    # Transform the input tensor according to the normalizer function.
+    input_tensor = self._normalized_input_tensor(columns_to_tensors[self.name])
+    columns_to_tensors[self] = math_ops.to_float(input_tensor)
+
+  def _to_dense_tensor(self, input_tensor):
+    if not self.is_sparse:
+      return input_tensor
+    raise ValueError("Set is_sparse to False if you want a dense Tensor for "
+                     "column_name: {}".format(self.name))
+
+
+@experimental
+def _real_valued_var_len_column(column_name,
+                                default_value=None,
+                                dtype=dtypes.float32,
+                                normalizer=None,
+                                is_sparse=False):
+  """Creates a `_RealValuedVarLenColumn` for variable-length numeric data.
+
+  Note, this is not integrated with any of the DNNEstimators, except the RNN
+  ones DynamicRNNEstimator and the StateSavingRNNEstimator.
+
+  It can either create a parsing config for a SparseTensor (with is_sparse=True)
+  or a padded Tensor.
+  The (dense_)shape of the result will be [batch_size, None], which can be used
+  with is_sparse=False as input into an RNN (see DynamicRNNEstimator or
+  StateSavingRNNEstimator) or with is_sparse=True as input into a tree (see
+  gtflow).
+
+  Use real_valued_column if the Feature has a fixed length. Use some
+  SparseColumn for columns to be embedded / one-hot-encoded.
+
+  Args:
+    column_name: A string defining real valued column name.
+    default_value: A scalar value compatible with dtype. Needs to be specified
+      if is_sparse=False.
+    dtype: Defines the type of values. Default value is tf.float32. Needs to be
+      convertible to tf.float32.
+    normalizer: If not None, a function that can be used to normalize the value
+      of the real valued column after default_value is applied for parsing.
+      Normalizer function takes the input tensor as its argument, and returns
+      the output tensor. (e.g. lambda x: (x - 3.0) / 4.2). Note that for
+      is_sparse=False, the normalizer will be run on the values of the
+      `SparseTensor`.
+    is_sparse: A boolean defining whether to create a SparseTensor or a Tensor.
+  Returns:
+    A _RealValuedSparseColumn.
+  Raises:
+    TypeError: if default_value is not a scalar value compatible with dtype.
+    TypeError: if dtype is not convertible to tf.float32.
+    ValueError: if default_value is None and is_sparse is False.
+  """
+  if not (dtype.is_integer or dtype.is_floating):
+    raise TypeError("dtype must be convertible to float. "
+                    "dtype: {}, column_name: {}".format(dtype, column_name))
+
+  if default_value is None and not is_sparse:
+    raise ValueError("default_value must be provided when is_sparse=False to "
+                     "parse a padded Tensor. "
+                     "column_name: {}".format(column_name))
+  if isinstance(default_value, list):
+    raise ValueError(
+        "Only scalar default value. default_value: {}, column_name: {}".format(
+            default_value, column_name))
+  if default_value is not None:
+    if dtype.is_integer:
+      default_value = int(default_value)
+    elif dtype.is_floating:
+      default_value = float(default_value)
+
+  return _RealValuedVarLenColumn(column_name, default_value, dtype, normalizer,
+                                 is_sparse)
+
+
 class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
     "_RealValuedColumn",
     ["column_name", "dimension", "default_value", "dtype", "normalizer"])):
   """Represents a real valued feature column also known as continuous features.
 
-  Instances of this class are immutable. A real valued column with a specified
-  dimension means features are dense, otherwise they're sparse.
-  In the dense case, the dictionary returned by InputBuilder contains a
-  ("column_name", Tensor) pair with a Tensor shape of (batch_size, dimension).
-  In the sparse shape, the dictionary contains a ("column_name", SparseTensor)
-  pair instead with shape inferred after parsing.
+  Instances of this class are immutable. The dictionary returned by InputBuilder
+  contains a ("column_name", Tensor) pair with a Tensor shape of
+  (batch_size, dimension).
   """
 
   def __new__(cls, column_name, dimension, default_value,
@@ -1394,15 +1521,12 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
 
   @property
   def config(self):
-    if self.dimension is None:
-      return {self.column_name: parsing_ops.VarLenFeature(self.dtype)}
-    else:
-      default_value = self.default_value
-      if default_value is not None:
-        default_value = list(default_value)
-      return {self.column_name: parsing_ops.FixedLenFeature([self.dimension],
-                                                            self.dtype,
-                                                            default_value)}
+    default_value = self.default_value
+    if default_value is not None:
+      default_value = list(default_value)
+    return {self.column_name: parsing_ops.FixedLenFeature([self.dimension],
+                                                          self.dtype,
+                                                          default_value)}
 
   @property
   def key(self):
@@ -1443,11 +1567,6 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
     return _reshape_real_valued_tensor(input_tensor, output_rank, self.name)
 
   def _to_dense_tensor(self, input_tensor):
-    if isinstance(input_tensor, sparse_tensor_py.SparseTensor):
-      default_value = (self.default_value[0] if self.default_value is not None
-                       else 0)
-      return sparse_ops.sparse_tensor_to_dense(
-          input_tensor, default_value=default_value)
     return input_tensor
 
 
@@ -1461,10 +1580,7 @@ def real_valued_column(column_name,
   Args:
     column_name: A string defining real valued column name.
     dimension: An integer specifying dimension of the real valued column.
-      The default is 1. When dimension is not None, the Tensor representing
-      the _RealValuedColumn will have the shape of [batch_size, dimension].
-      A None dimension means the feature column should be treat as variable
-      length and will be parsed as a `SparseTensor`.
+      The default is 1.
     default_value: A single value compatible with dtype or a list of values
       compatible with dtype which the column takes on during tf.Example parsing
       if data is missing. When dimension is not None, a default value of None
@@ -1492,15 +1608,19 @@ def real_valued_column(column_name,
     ValueError: if dtype is not convertible to tf.float32.
   """
 
-  if dimension is not None:
-    if not isinstance(dimension, int):
-      raise TypeError("dimension must be an integer. "
-                      "dimension: {}, column_name: {}".format(dimension,
-                                                              column_name))
-    if dimension < 1:
-      raise ValueError("dimension must be greater than 0. "
-                       "dimension: {}, column_name: {}".format(dimension,
-                                                               column_name))
+  if dimension is None:
+    raise TypeError("dimension must be an integer. Use the "
+                    "_real_valued_var_len_column for variable length features."
+                    "dimension: {}, column_name: {}".format(dimension,
+                                                            column_name))
+  if not isinstance(dimension, int):
+    raise TypeError("dimension must be an integer. "
+                    "dimension: {}, column_name: {}".format(dimension,
+                                                            column_name))
+  if dimension < 1:
+    raise ValueError("dimension must be greater than 0. "
+                     "dimension: {}, column_name: {}".format(dimension,
+                                                             column_name))
 
   if not (dtype.is_integer or dtype.is_floating):
     raise ValueError("dtype must be convertible to float. "
@@ -1531,11 +1651,6 @@ def real_valued_column(column_name,
                                normalizer)
 
   if isinstance(default_value, list):
-    if dimension is None:
-      raise ValueError(
-          "Only scalar default value is supported when dimension is None. "
-          "default_value: {}, column_name: {}".format(
-              default_value, column_name))
     if len(default_value) != dimension:
       raise ValueError(
           "The length of default_value must be equal to dimension. "
@@ -2028,6 +2143,7 @@ def _get_feature_config(feature_column):
         "Given column is {}".format(feature_column))
   if isinstance(feature_column, (_SparseColumn, _WeightedSparseColumn,
                                  _EmbeddingColumn, _RealValuedColumn,
+                                 _RealValuedVarLenColumn,
                                  _BucketizedColumn, _CrossedColumn,
                                  _OneHotColumn, _ScatteredEmbeddingColumn)):
     return feature_column.config
@@ -2097,7 +2213,8 @@ def _create_sequence_feature_spec_for_parsing(sequence_feature_columns,
   feature_spec = create_feature_spec_for_parsing(sequence_feature_columns)
   sequence_feature_spec = {}
   for key, feature in feature_spec.items():
-    if isinstance(feature, parsing_ops.VarLenFeature):
+    if (isinstance(feature, parsing_ops.VarLenFeature) or
+        isinstance(feature, parsing_ops.FixedLenSequenceFeature)):
       sequence_feature = feature
     elif isinstance(feature, parsing_ops.FixedLenFeature):
       default_is_set = feature.default_value is not None
