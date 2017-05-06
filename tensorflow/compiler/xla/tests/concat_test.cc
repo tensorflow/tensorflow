@@ -57,6 +57,15 @@ XLA_TEST_F(ConcatTest, Concat_R1_With_Nothing) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
+XLA_TEST_F(ConcatTest, Concat_R1_L0_With_Nothing) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({});
+  auto concatenated = builder.ConcatInDim({a}, 0);
+
+  std::vector<float> expected = {};
+  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+}
+
 // Show that we can't concatenate R0 with R0 because we can't name the dimension
 // to concatenate on.
 XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {

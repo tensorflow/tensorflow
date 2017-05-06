@@ -125,7 +125,7 @@ XlaDevice::XlaDevice(const SessionOptions& options,
                      const DeviceType& jit_device_name,
                      perftools::gputools::Platform* platform,
                      Allocator* xla_allocator)
-    : LocalDevice(options, attrs, xla_allocator),
+    : LocalDevice(options, attrs),
       device_ordinal_(device_ordinal),
       jit_device_name_(jit_device_name),
       xla_allocator_(xla_allocator),

@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -646,6 +648,66 @@ TEST_F(LiteralUtilTest, ReplicateR2U32) {
        {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
        {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}}});
   EXPECT_TRUE(LiteralUtil::Equal(*output, *expected));
+}
+
+TEST_F(LiteralUtilTest, Copy) {
+  const int64 dimensions[] = {17, 15, 34, 21};
+  const int64 layouts[][4] = {
+      {3, 2, 1, 0}, {0, 2, 1, 3}, {0, 1, 2, 3}, {2, 0, 3, 1}, {1, 3, 0, 2}};
+  for (const auto& layout : layouts) {
+    Shape shape = ShapeUtil::MakeShapeWithLayout(
+        primitive_util::NativeToPrimitiveType<uint32>(), dimensions, layout);
+    auto blank = LiteralUtil::CreateFromShape(shape);
+    auto source = LiteralUtil::CreateFromShape(shape);
+    const int64 sbase[] = {0, 0, 0, 0};
+    const int64 incr[] = {1, 1, 1, 1};
+    uint32 seqnr = 0;
+    auto init_proc = [&](const std::vector<int64>& indexes) {
+      LiteralUtil::Set(source.get(), indexes, ++seqnr);
+      return true;
+    };
+
+    ShapeUtil::ForEachIndex(source->shape(), sbase, dimensions, incr,
+                            init_proc);
+
+    const int64 src_base[] = {3, 1, 5, 7};
+    const int64 dest_base[] = {6, 4, 12, 2};
+    const int64 copy_size[] = {7, 8, 11, 9};
+
+    TF_EXPECT_OK(LiteralUtil::Copy(*source, src_base, blank.get(), dest_base,
+                                   copy_size));
+    std::vector<int64> source_indexes(TF_ARRAYSIZE(dimensions), 0);
+    std::vector<int64> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
+    bool matched = true;
+    auto check_proc = [&](const std::vector<int64>& indexes) {
+      std::copy(indexes.begin(), indexes.end(), source_indexes.begin());
+      std::transform(source_indexes.begin(), source_indexes.end(), src_base,
+                     source_indexes.begin(), std::plus<int64>());
+      std::copy(indexes.begin(), indexes.end(), blank_indexes.begin());
+      std::transform(blank_indexes.begin(), blank_indexes.end(), dest_base,
+                     blank_indexes.begin(), std::plus<int64>());
+      auto bval = LiteralUtil::Get<uint32>(*blank, blank_indexes);
+      matched = (bval != 0 &&
+                 bval == LiteralUtil::Get<uint32>(*source, source_indexes));
+      return matched;
+    };
+    ShapeUtil::ForEachIndex(source->shape(), sbase, copy_size, incr,
+                            check_proc);
+    EXPECT_TRUE(matched);
+  }
+}
+
+TEST_F(LiteralUtilTest, CopyScalars) {
+  auto zero = LiteralUtil::CreateR0<uint32>(0);
+  auto nine = LiteralUtil::CreateR0<uint32>(9);
+  TF_EXPECT_OK(LiteralUtil::Copy(*nine, {}, zero.get(), {}, {}));
+  EXPECT_TRUE(LiteralUtil::Equal(*zero, *nine));
+
+  auto vect = LiteralUtil::CreateR1<uint32>({3, 4, 9, 12, 5, 17, 21});
+  TF_EXPECT_OK(LiteralUtil::Copy(*vect, {5}, zero.get(), {}, {}));
+  EXPECT_EQ(LiteralUtil::Get<uint32>(*zero, {}), 17);
+  TF_EXPECT_OK(LiteralUtil::Copy(*zero, {}, vect.get(), {4}, {}));
+  EXPECT_EQ(LiteralUtil::Get<uint32>(*vect, {4}), 17);
 }
 
 }  // namespace

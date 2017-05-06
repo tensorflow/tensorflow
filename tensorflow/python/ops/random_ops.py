@@ -324,7 +324,7 @@ def multinomial(logits, num_samples, seed=None, name=None):
 
   Args:
     logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
-      `[i, :]` represents the unnormalized log probabilities for all classes.
+      `[i, :]` represents the log-odds for all classes.
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A Python integer. Used to create a random seed for the distribution.
       See

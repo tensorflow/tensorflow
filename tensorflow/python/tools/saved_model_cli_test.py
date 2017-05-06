@@ -201,28 +201,37 @@ Method name is: tensorflow/serving/predict"""
     self.assertEqual(err.getvalue().strip(), '')
 
   def testInputPreProcessFormats(self):
-    input_str = 'input1=/path/file.txt[ab3], input2=file2,,'
-    input_dict = saved_model_cli.preprocess_input_arg_string(input_str)
+    input_str = 'input1=/path/file.txt[ab3];input2=file2'
+    input_expr_str = 'input3=np.zeros([2,2]);input4=[4,5]'
+    input_dict = saved_model_cli.preprocess_inputs_arg_string(input_str)
+    input_expr_dict = saved_model_cli.preprocess_input_exprs_arg_string(
+        input_expr_str)
     self.assertTrue(input_dict['input1'] == ('/path/file.txt', 'ab3'))
     self.assertTrue(input_dict['input2'] == ('file2', None))
-
-  def testInputPreProcessQuoteAndWhitespace(self):
-    input_str = '\' input1 = file[v_1]\', input2=file ["sd"] '
-    input_dict = saved_model_cli.preprocess_input_arg_string(input_str)
-    self.assertTrue(input_dict['input1'] == ('file', 'v_1'))
-    self.assertTrue(input_dict['input2'] == ('file', 'sd'))
+    self.assertTrue(input_expr_dict['input3'] == 'np.zeros([2,2])')
+    self.assertTrue(input_expr_dict['input4'] == '[4,5]')
     self.assertTrue(len(input_dict) == 2)
+    self.assertTrue(len(input_expr_dict) == 2)
+
+  def testInputPreProcessFileNames(self):
+    input_str = (r'inputx=C:\Program Files\data.npz[v:0];'
+                 r'input:0=c:\PROGRA~1\data.npy')
+    input_dict = saved_model_cli.preprocess_inputs_arg_string(input_str)
+    print(input_dict)
+    self.assertTrue(input_dict['inputx'] == (r'C:\Program Files\data.npz',
+                                             'v:0'))
+    self.assertTrue(input_dict['input:0'] == (r'c:\PROGRA~1\data.npy', None))
 
   def testInputPreProcessErrorBadFormat(self):
     input_str = 'inputx=file[[v1]v2'
     with self.assertRaises(RuntimeError):
-      saved_model_cli.preprocess_input_arg_string(input_str)
+      saved_model_cli.preprocess_inputs_arg_string(input_str)
     input_str = 'inputx:file'
     with self.assertRaises(RuntimeError):
-      saved_model_cli.preprocess_input_arg_string(input_str)
-    input_str = 'inputx=file(v_1)'
+      saved_model_cli.preprocess_inputs_arg_string(input_str)
+    input_str = 'inputx:np.zeros((5))'
     with self.assertRaises(RuntimeError):
-      saved_model_cli.preprocess_input_arg_string(input_str)
+      saved_model_cli.preprocess_input_exprs_arg_string(input_str)
 
   def testInputParserNPY(self):
     x0 = np.array([[1], [2]])
@@ -231,8 +240,8 @@ Method name is: tensorflow/serving/predict"""
     input1_path = os.path.join(test.get_temp_dir(), 'input1.npy')
     np.save(input0_path, x0)
     np.save(input1_path, x1)
-    input_str = 'x0=' + input0_path + '[x0],x1=' + input1_path
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(input_str)
+    input_str = 'x0=' + input0_path + '[x0];x1=' + input1_path
+    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(input_str, '')
     self.assertTrue(np.all(feed_dict['x0'] == x0))
     self.assertTrue(np.all(feed_dict['x1'] == x1))
 
@@ -240,8 +249,8 @@ Method name is: tensorflow/serving/predict"""
     x0 = np.array([[1], [2]])
     input_path = os.path.join(test.get_temp_dir(), 'input.npz')
     np.savez(input_path, a=x0)
-    input_str = 'x=' + input_path + '[a],y=' + input_path
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(input_str)
+    input_str = 'x=' + input_path + '[a];y=' + input_path
+    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(input_str, '')
     self.assertTrue(np.all(feed_dict['x'] == x0))
     self.assertTrue(np.all(feed_dict['y'] == x0))
 
@@ -258,24 +267,49 @@ Method name is: tensorflow/serving/predict"""
       pickle.dump(pkl1, f)
     with open(input_path2, 'wb') as f:
       pickle.dump(pkl2, f)
-    input_str = 'x=' + input_path0 + '[b],y=' + input_path1 + '[c],'
+    input_str = 'x=' + input_path0 + '[b];y=' + input_path1 + '[c];'
     input_str += 'z=' + input_path2
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(input_str)
+    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(input_str, '')
     self.assertTrue(np.all(feed_dict['x'] == pkl0['b']))
     self.assertTrue(np.all(feed_dict['y'] == pkl1))
     self.assertTrue(np.all(feed_dict['z'] == pkl2))
 
-  def testInputParserQuoteAndWhitespace(self):
+  def testInputParserPythonExpression(self):
+    x1 = np.ones([2, 10])
+    x2 = np.array([[1], [2], [3]])
+    x3 = np.mgrid[0:5, 0:5]
+    x4 = [[3], [4]]
+    input_expr_str = ('x1=np.ones([2,10]);x2=np.array([[1],[2],[3]]);'
+                      'x3=np.mgrid[0:5,0:5];x4=[[3],[4]]')
+    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
+        '', input_expr_str)
+    self.assertTrue(np.all(feed_dict['x1'] == x1))
+    self.assertTrue(np.all(feed_dict['x2'] == x2))
+    self.assertTrue(np.all(feed_dict['x3'] == x3))
+    self.assertTrue(np.all(feed_dict['x4'] == x4))
+
+  def testInputParserBoth(self):
     x0 = np.array([[1], [2]])
-    x1 = np.array(range(6)).reshape(2, 3)
-    input0_path = os.path.join(test.get_temp_dir(), 'input0.npy')
-    input1_path = os.path.join(test.get_temp_dir(), 'input1.npy')
-    np.save(input0_path, x0)
-    np.save(input1_path, x1)
-    input_str = '"x0=' + input0_path + '[x0] , x1 = ' + input1_path + '"'
-    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(input_str)
+    input_path = os.path.join(test.get_temp_dir(), 'input.npz')
+    np.savez(input_path, a=x0)
+    x1 = np.ones([2, 10])
+    input_str = 'x0=' + input_path + '[a]'
+    input_expr_str = 'x1=np.ones([2,10])'
+    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
+        input_str, input_expr_str)
     self.assertTrue(np.all(feed_dict['x0'] == x0))
     self.assertTrue(np.all(feed_dict['x1'] == x1))
+
+  def testInputParserBothDuplicate(self):
+    x0 = np.array([[1], [2]])
+    input_path = os.path.join(test.get_temp_dir(), 'input.npz')
+    np.savez(input_path, a=x0)
+    x1 = np.ones([2, 10])
+    input_str = 'x0=' + input_path + '[a]'
+    input_expr_str = 'x0=np.ones([2,10])'
+    feed_dict = saved_model_cli.load_inputs_from_input_arg_string(
+        input_str, input_expr_str)
+    self.assertTrue(np.all(feed_dict['x0'] == x1))
 
   def testInputParserErrorNoName(self):
     x0 = np.array([[1], [2]])
@@ -284,7 +318,7 @@ Method name is: tensorflow/serving/predict"""
     np.savez(input_path, a=x0, b=x1)
     input_str = 'x=' + input_path
     with self.assertRaises(RuntimeError):
-      saved_model_cli.load_inputs_from_input_arg_string(input_str)
+      saved_model_cli.load_inputs_from_input_arg_string(input_str, '')
 
   def testInputParserErrorWrongName(self):
     x0 = np.array([[1], [2]])
@@ -293,7 +327,7 @@ Method name is: tensorflow/serving/predict"""
     np.savez(input_path, a=x0, b=x1)
     input_str = 'x=' + input_path + '[c]'
     with self.assertRaises(RuntimeError):
-      saved_model_cli.load_inputs_from_input_arg_string(input_str)
+      saved_model_cli.load_inputs_from_input_arg_string(input_str, '')
 
   def testRunCommandExistingOutdir(self):
     self.parser = saved_model_cli.create_parser()
@@ -373,6 +407,16 @@ Method name is: tensorflow/serving/predict"""
         test.get_temp_dir()
     ])
     with self.assertRaises(RuntimeError):
+      saved_model_cli.run(args)
+
+  def testRunCommandInputNotGivenError(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    args = self.parser.parse_args([
+        'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
+        'serving_default'
+    ])
+    with self.assertRaises(AttributeError):
       saved_model_cli.run(args)
 
   def testRunCommandWithDebuggerEnabled(self):

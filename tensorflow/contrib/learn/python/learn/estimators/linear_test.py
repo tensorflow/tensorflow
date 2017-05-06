@@ -172,6 +172,49 @@ class LinearClassifierTest(test.TestCase):
     scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
 
+  def testMultiClassLabelKeys(self):
+    """Tests n_classes > 2 with label_keys vocabulary for labels."""
+    # Byte literals needed for python3 test to pass.
+    label_keys = [b'label0', b'label1', b'label2']
+
+    def _input_fn(num_epochs=None):
+      features = {
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      labels = constant_op.constant(
+          [[label_keys[1]], [label_keys[0]], [label_keys[0]]],
+          dtype=dtypes.string)
+      return features, labels
+
+    language_column = feature_column_lib.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+
+    classifier = linear.LinearClassifier(
+        n_classes=3,
+        feature_columns=[language_column],
+        label_keys=label_keys)
+
+    classifier.fit(input_fn=_input_fn, steps=50)
+
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+    self.assertIn('loss', scores)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predicted_classes = list(
+        classifier.predict_classes(
+            input_fn=predict_input_fn, as_iterable=True))
+    self.assertEqual(3, len(predicted_classes))
+    for pred in predicted_classes:
+      self.assertIn(pred, label_keys)
+    predictions = list(
+        classifier.predict(input_fn=predict_input_fn, as_iterable=True))
+    self.assertAllEqual(predicted_classes, predictions)
+
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
 

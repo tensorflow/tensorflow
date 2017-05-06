@@ -173,7 +173,7 @@ class FeatureColumnTest(test.TestCase):
     for i in range(len(b1_value)):
       self.assertAllClose(b1_value[i], b2_value[i])
 
-    # Test the case when a shared_embedding_name is explictly specified.
+    # Test the case when a shared_embedding_name is explicitly specified.
     d = fc.shared_embedding_columns(
         [a1, a2],
         dimension=4,

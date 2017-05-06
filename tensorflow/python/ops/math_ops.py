@@ -242,6 +242,12 @@ def abs(x, name=None):
 # pylint: enable=g-docstring-has-escape
 
 
+# pylint: disable=redefined-builtin
+def _bucketize(input, boundaries, name=None):
+  return gen_math_ops._bucketize(input=input, boundaries=boundaries, name=name)
+# pylint: enable=redefined-builtin
+
+
 class DivideDelegateWithName(object):
   """Use Python2/Python3 division delegation to implement divide for tensors."""
 
@@ -819,7 +825,16 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
   def binary_op_wrapper(x, y):
     with ops.name_scope(None, op_name, [x, y]) as name:
       if not isinstance(y, sparse_tensor.SparseTensor):
-        y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+        try:
+          y = ops.convert_to_tensor(y, dtype=x.dtype.base_dtype, name="y")
+        except TypeError:
+          # If the RHS is not a tensor, it might be a tensor aware object
+          # that can implement the operator with knowledge of itself
+          # and the tensor.
+          if hasattr(type(y), "__r%s__" % op_name):
+            return NotImplemented
+          else:
+            raise
       return func(x, y, name=name)
 
   def binary_op_wrapper_sparse(sp_x, y):
@@ -1921,6 +1936,12 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   NOTE: This operation is not differentiable and cannot be used if inputs depend
   on trainable variables. Please use `tf.add_n` for such cases.
 
+  Aside from differentiability, `tf.accumulate_n` performs the same operation as
+  `tf.add_n`, but does not wait for all of its inputs to be ready before
+  beginning to sum. This can save memory if inputs are ready at different times,
+  since minimum temporary storage is proportional to the output size rather than
+  the inputs size.
+
   For example:
 
   ```python
@@ -2310,7 +2331,7 @@ def tensordot(a, b, axes, name=None):
     using `array_ops.transpose` and `array_ops.reshape`. The method takes a
     tensor and performs the correct transpose and reshape operation for a given
     set of indices. It returns the reshaped tensor as well as a list of indices
-    necesary to reshape the tensor again after matrix multiplication.
+    necessary to reshape the tensor again after matrix multiplication.
 
     Args:
       a: `Tensor`.

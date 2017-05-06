@@ -118,6 +118,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/types.proto"
     "tensorflow/core/framework/versions.proto"
     "tensorflow/core/lib/core/error_codes.proto"
+    "tensorflow/core/protobuf/cluster.proto"
     "tensorflow/core/protobuf/config.proto"
     "tensorflow/core/protobuf/debug.proto"
     "tensorflow/core/protobuf/rewriter_config.proto"

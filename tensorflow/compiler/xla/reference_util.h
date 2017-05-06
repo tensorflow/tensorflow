@@ -162,6 +162,12 @@ class ReferenceUtil {
       const std::function<float(float, float)>& reduce_func,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+  static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
+      const Array4D<float>& operand, float init,
+      const std::function<float(float, float)>& reduce_func,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride,
+      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
 
   // Performs select and scatter with Greater Than or equal as the select, plus
   // as the scatter, and Same Padding.
@@ -400,7 +406,46 @@ class ReferenceUtil {
                                    const PaddingConfig& padding,
                                    const float pad);
 
+  // ApplyElementwise2D(f, x, y, ...) returns the Array2D formed by running
+  // f(x[i], y[i], ...) for each array element in the Array2Ds x, y, ....
+  //
+  // The given arrays must have the same size and element type, and the return
+  // type of f must be implicitly convertible to the arrays' element type.
+  //
+  // Example usage:
+  //
+  //   Array2D<float> x, y, z = ...;
+  //   std::unique_ptr<Array2D> result = ReferenceUtil::ApplyElementwise2D(
+  //     [](float a, float b, float c) { return a * b + c; }, x, y, z);
+  //
+  template <typename F, typename T1, typename... Ts>
+  static std::unique_ptr<Array2D<T1>> ApplyElementwise2D(
+      F&& f, const Array2D<T1>& array1, const Array2D<Ts>&... arrays) {
+    AssertSameSize2D(array1, arrays...);
+    auto result = MakeUnique<Array2D<T1>>(array1.n1(), array1.n2());
+    for (int64 i = 0; i < array1.n1(); ++i) {
+      for (int64 j = 0; j < array1.n2(); ++j) {
+        (*result)(i, j) = f(array1(i, j), arrays(i, j)...);
+      }
+    }
+    return result;
+  }
+
  private:
+  template <typename T1, typename T2, typename... Ts>
+  static void AssertSameSize2D(const Array2D<T1>& array1,
+                               const Array2D<T2>& array2,
+                               const Array2D<Ts>&... arrays) {
+    static_assert(std::is_same<T1, T2>::value, "Args must be same type.");
+    CHECK_EQ(array1.n1(), array2.n1());
+    CHECK_EQ(array1.n2(), array2.n2());
+    AssertSameSize2D(array2, arrays...);
+  }
+
+  // Recursive base case for AssertSameSize2D.
+  template <typename Array1>
+  static void AssertSameSize2D(const Array1& array1) {}
+
   TF_DISALLOW_COPY_AND_ASSIGN(ReferenceUtil);
 };
 

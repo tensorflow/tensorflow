@@ -182,7 +182,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples):
     return d
 
   def _get_deprecated_positional_arguments(names_to_ok_vals, arg_spec):
-    """Builds a dictionary from deprecated arguments to thier spec.
+    """Builds a dictionary from deprecated arguments to their spec.
 
     Returned dict is keyed by argument name.
     Each value is a DeprecatedArgSpec with the following fields:

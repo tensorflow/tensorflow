@@ -582,7 +582,7 @@ string Print(const GraphDef& gdef) {
   for (size_t i = 0; i < arg.size(); ++i) {
     const NodeDef* n = arg[i];
     if (i > 0) strings::StrAppend(&out, ", ");
-    CHECK_EQ(2, n->attr_size());
+    CHECK_GE(n->attr_size(), 2);
     strings::StrAppend(&out, n->name(), ":", get_type(*n));
   }
   strings::StrAppend(&out, ") -> (");
@@ -881,6 +881,12 @@ Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
     return errors::InvalidArgument("Function with name: ",
                                    fdef.signature().name(),
                                    " already exists in function library.");
+  }
+  const OpDef* op_def;
+  if (default_registry_->LookUpOpDef(fdef.signature().name(), &op_def).ok()) {
+    return errors::InvalidArgument(
+        "Cannot add function '", fdef.signature().name(),
+        "' because an op with the same name already exists.");
   }
   ptr.reset(new FunctionDefAndOpRegistration(fdef));
   return Status::OK();

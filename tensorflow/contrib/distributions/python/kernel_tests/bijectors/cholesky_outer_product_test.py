@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import bijectors
-from tensorflow.contrib.distributions.python.ops import gamma as gamma_lib
-from tensorflow.contrib.distributions.python.ops import transformed_distribution as transformed_distribution_lib
-from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_scalar_congruency
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.distributions import gamma as gamma_lib
+from tensorflow.python.ops.distributions import transformed_distribution as transformed_distribution_lib
+from tensorflow.python.ops.distributions.bijector_test_util import assert_scalar_congruency
 from tensorflow.python.platform import test
 
 

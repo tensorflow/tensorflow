@@ -470,7 +470,10 @@ def _SliceHelper(tensor, slice_spec, var=None):
     else:
       begin.append(s)
       end.append(s + 1)
-      strides.append(1)
+      if isinstance(s, ops.Tensor):
+        strides.append(constant(1, s.dtype))
+      else:
+        strides.append(np.ones_like(s).dtype.type(1))
       shrink_axis_mask |= (1 << index)
     index += 1
 
@@ -557,7 +560,13 @@ def strided_slice(input_,
                   shrink_axis_mask=0,
                   var=None,
                   name=None):
-  """Extracts a strided slice from a tensor.
+  """Extracts a strided slice of a tensor (generalized python array indexing).
+
+  **Most users will want to use @{tf.Tensor.__getitem__} and
+  @{tf.Variable.__getitem__}.** That allows  NumPy style slicing syntax (i.e.
+  `tensor[..., 3:4:-1, tf.newaxis, 3]`).
+  This op is the low-level interface that are used to implement operators.
+  Those interfaces are much more friendly, and highly recommended.
 
   To a first order, this operation extracts a slice of size `end - begin`
   from a tensor `input`
