@@ -55,6 +55,7 @@ from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
 from tensorflow.core.protobuf.config_pb2 import *
+from tensorflow.core.protobuf.tensorflow_server_pb2 import *
 from tensorflow.core.protobuf.rewriter_config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
@@ -131,6 +132,7 @@ _allowed_symbols = [
     'AttrValue',
     'AutoParallelOptions',
     'ConfigProto',
+    'ClusterDef',
     'DeviceSpec',
     'Event',
     'GPUOptions',

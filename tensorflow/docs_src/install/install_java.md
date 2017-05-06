@@ -34,7 +34,7 @@ following to the project's `pom.xml` to use the TensorFlow Java APIs:
 <dependency>
   <groupId>org.tensorflow</groupId>
   <artifactId>tensorflow</artifactId>
-  <version>1.1.0-rc2</version>
+  <version>1.1.0</version>
 </dependency>
 ```
 
@@ -63,7 +63,7 @@ As an example, these steps will create a Maven project that uses TensorFlow:
                <dependency>
                  <groupId>org.tensorflow</groupId>
                  <artifactId>tensorflow</artifactId>
-                 <version>1.1.0-rc2</version>
+                 <version>1.1.0</version>
                </dependency>
              </dependencies>
          </project>
@@ -106,7 +106,7 @@ As an example, these steps will create a Maven project that uses TensorFlow:
 
 
 The preceding command should output <tt>Hello from <i>version</i></tt>. If it
-does, you've succesfully set up TensorFlow for Java and are ready to use it in
+does, you've successfully set up TensorFlow for Java and are ready to use it in
 Maven projects. If not, check
 [Stack Overflow](http://stackoverflow.com/questions/tagged/tensorflow)
 for possible solutions.  You can skip reading the rest of this document.
@@ -122,7 +122,7 @@ refer to the simpler instructions above instead.
 Take the following steps to install TensorFlow for Java on Linux or Mac OS:
 
   1. Download
-     [libtensorflow.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-1.1.0-rc2.jar),
+     [libtensorflow.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-1.1.0.jar),
      which is the TensorFlow Java Archive (JAR).
 
   2. Decide whether you will run TensorFlow for Java on CPU(s) only or with
@@ -141,7 +141,7 @@ Take the following steps to install TensorFlow for Java on Linux or Mac OS:
          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
          mkdir -p ./jni
          curl -L \
-           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-${TF_TYPE}-${OS}-x86_64-1.1.0-rc2.tar.gz" |
+           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-${TF_TYPE}-${OS}-x86_64-1.1.0.tar.gz" |
            tar -xz -C ./jni
 
 ### Install on Windows
@@ -149,10 +149,10 @@ Take the following steps to install TensorFlow for Java on Linux or Mac OS:
 Take the following steps to install TensorFlow for Java on Windows:
 
   1. Download
-     [libtensorflow.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-1.1.0-rc2.jar),
+     [libtensorflow.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-1.1.0.jar),
      which is the TensorFlow Java Archive (JAR).
   2. Download the following Java Native Interface (JNI) file appropriate for
-     [TensorFlow for Java on Windows](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-windows-x86_64-1.1.0-rc2.zip).
+     [TensorFlow for Java on Windows](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-windows-x86_64-1.1.0.zip).
   3. Extract this .zip file.
 
 
@@ -200,7 +200,7 @@ must be part of your `classpath`. For example, you can include the
 downloaded `.jar` in your `classpath` by using the `-cp` compilation flag
 as follows:
 
-<pre><b>javac -cp libtensorflow-1.1.0-rc2.jar HelloTF.java</b></pre>
+<pre><b>javac -cp libtensorflow-1.1.0.jar HelloTF.java</b></pre>
 
 
 ### Running
@@ -211,15 +211,20 @@ two files are available to the JVM:
   * the downloaded `.jar` file
   * the extracted JNI library
 
-For example, the following command line executes the `HelloTF` program:
+For example, the following command line executes the `HelloTF` program on Linux
+and Mac OS X:
 
-<pre><b>java -cp libtensorflow-1.1.0-rc2.jar:. -Djava.library.path=./jni HelloTF</b></pre>
+<pre><b>java -cp libtensorflow-1.1.0.jar:. -Djava.library.path=./jni HelloTF</b></pre>
+
+And the following comand line executes the `HelloTF` program on Windows:
+
+<pre><b>java -cp libtensorflow-1.1.0.jar;. -Djava.library.path=jni HelloTF</b></pre>
 
 If the program prints <tt>Hello from <i>version</i></tt>, you've successfully
 installed TensorFlow for Java and are ready to use the API.  If the program
 outputs something else, check
-[Stack Overflow](http://stackoverflow.com/questions/tagged/tensorflow)
-for possible solutions.
+[Stack Overflow](http://stackoverflow.com/questions/tagged/tensorflow) for
+possible solutions.
 
 
 ### Advanced Example

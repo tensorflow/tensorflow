@@ -155,7 +155,8 @@ void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
     const int col_dimension = input_rank - 1;
     const int64 num_rows = in.dim_size(row_dimension);
     const int64 num_cols = in.dim_size(col_dimension);
-    input_matrix_shapes->emplace_back(std::initializer_list<int64>({num_rows, num_cols}));
+    input_matrix_shapes->emplace_back(
+        std::initializer_list<int64>({num_rows, num_cols}));
     inputs->emplace_back(&in);
   }
   // Have the derived class validate that the inputs are as expected.
@@ -233,8 +234,7 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
     matrix_inputs.emplace_back(
         inputs[i]->flat<Scalar>().data() +
             matrix_index * input_matrix_shapes[i].num_elements(),
-        input_matrix_shapes[i].dim_size(0),
-        input_matrix_shapes[i].dim_size(1));
+        input_matrix_shapes[i].dim_size(0), input_matrix_shapes[i].dim_size(1));
   }
 
   MatrixMaps matrix_outputs;

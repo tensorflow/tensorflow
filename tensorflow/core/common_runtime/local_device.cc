@@ -60,10 +60,8 @@ struct LocalDevice::EigenThreadPoolInfo {
 };
 
 LocalDevice::LocalDevice(const SessionOptions& options,
-                         const DeviceAttributes& attributes,
-                         Allocator* device_allocator)
-    : Device(options.env, attributes, device_allocator),
-      owned_tp_info_(nullptr) {
+                         const DeviceAttributes& attributes)
+    : Device(options.env, attributes), owned_tp_info_(nullptr) {
   // If we're running on the CPU, log warnings if we're not compiled using the
   // best flags for performance.
   port::WarnAboutUnusedCPUFeatures();

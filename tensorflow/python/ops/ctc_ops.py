@@ -35,11 +35,9 @@ def ctc_loss(labels, inputs, sequence_length,
 
   This op implements the CTC loss as presented in the article:
 
-  A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
+  [A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
   Connectionist Temporal Classification: Labelling Unsegmented Sequence Data
-  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA, pp. 369-376.
-
-  http://www.cs.toronto.edu/~graves/icml_2006.pdf
+  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA, pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
 
   Input requirements:
 
@@ -207,7 +205,8 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
       `decoded.shape`: Shape vector, size `(2)`.
         The shape values are: `[batch_size, max_decoded_length]`
     neg_sum_logits: A `float` matrix `(batch_size x 1)` containing, for the
-        sequence found, the negative of the sum of the greatest logit at each timeframe.
+        sequence found, the negative of the sum of the greatest logit at each
+        timeframe.
   """
   outputs = gen_ctc_ops._ctc_greedy_decoder(
       inputs, sequence_length, merge_repeated=merge_repeated)

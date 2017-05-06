@@ -58,6 +58,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
     ],

@@ -91,6 +91,7 @@ cc_library(
     deps = [
         ":array_grad",
         ":math_grad",
+        ":nn_grad",
     ],
 )
 
@@ -383,6 +384,16 @@ tf_gen_op_wrappers_cc(
     include_internal_ops = 1,
     op_lib_names = [
         "function_ops",
+    ],
+    pkg = "//tensorflow/core",
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_gen_op_wrappers_cc(
+    name = "functional_ops",
+    include_internal_ops = 1,
+    op_lib_names = [
+        "functional_ops",
     ],
     pkg = "//tensorflow/core",
     visibility = ["//tensorflow:internal"],

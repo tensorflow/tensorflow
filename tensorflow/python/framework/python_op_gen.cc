@@ -629,10 +629,10 @@ static string GetPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
 }
 
 void GenerateLowerCaseOpName(const string& str, string* result) {
-  char joiner = '_';
-  int last_index = str.size() - 1;
+  const char joiner = '_';
+  const int last_index = str.size() - 1;
   for (int i = 0; i <= last_index; ++i) {
-    char c = str[i];
+    const char c = str[i];
     // Emit a joiner only if a previous-lower-to-now-upper or a
     // now-upper-to-next-lower transition happens.
     if (isupper(c) && (i > 0)) {
@@ -731,8 +731,8 @@ void PrintPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
   printf("%s", GetPythonOps(ops, hidden_ops, require_shapes).c_str());
 }
 
-string GetPythonWrappers(const char* op_wrapper_buf, size_t op_wrapper_len) {
-  string op_list_str(op_wrapper_buf, op_wrapper_len);
+string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
+  string op_list_str(op_list_buf, op_list_len);
   OpList ops;
   ops.ParseFromString(op_list_str);
   return GetPythonOps(ops, {}, false);

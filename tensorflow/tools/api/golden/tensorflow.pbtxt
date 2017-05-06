@@ -638,7 +638,7 @@ tf_module {
   }
   member_method {
     name: "atan2"
-    argspec: "args=[\'x1\', \'x2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'y\', \'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "batch_to_space"
@@ -722,7 +722,7 @@ tf_module {
   }
   member_method {
     name: "cond"
-    argspec: "args=[\'pred\', \'fn1\', \'fn2\', \'strict\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'pred\', \'true_fn\', \'false_fn\', \'strict\', \'name\', \'fn1\', \'fn2\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "confusion_matrix"
@@ -894,27 +894,27 @@ tf_module {
   }
   member_method {
     name: "fake_quant_with_min_max_args"
-    argspec: "args=[\'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_args_gradient"
-    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars"
-    argspec: "args=[\'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars_gradient"
-    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars_per_channel"
-    argspec: "args=[\'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "fake_quant_with_min_max_vars_per_channel_gradient"
-    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'gradients\', \'inputs\', \'min\', \'max\', \'num_bits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "fft"

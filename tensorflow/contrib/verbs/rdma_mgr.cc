@@ -69,6 +69,8 @@ void RdmaMgr::SetupChannels() {
     channel_info->set_lid(rc->self_.lid);
     channel_info->set_qpn(rc->self_.qpn);
     channel_info->set_psn(rc->self_.psn);
+    channel_info->set_snp(rc->self_.snp);
+    channel_info->set_iid(rc->self_.iid);
     for (int i = 0; i < RdmaChannel::kNumMessageBuffers; i++) {
       MemoryRegion* mr = req.add_mr();
       mr->set_remote_addr(
@@ -85,6 +87,8 @@ void RdmaMgr::SetupChannels() {
       ra.lid = resp.channel().lid();
       ra.qpn = resp.channel().qpn();
       ra.psn = resp.channel().psn();
+      ra.snp = resp.channel().snp();
+      ra.iid = resp.channel().iid();
       rc->SetRemoteAddress(ra, false);
       rc->Connect();
       int i = 0;

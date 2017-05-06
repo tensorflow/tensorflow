@@ -966,34 +966,39 @@ TEST_F(HloInstructionTest, CloneSuffixNames) {
   // Test that the suffix string added to cloned instructions is not
   // duplicated. Rather a numeric incrementing value should be appended. That
   // is, we want "foo.clone2", not "foo.clone.clone".
-  auto foo = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.f));
-  foo->set_name("foo");
 
   // Test cloning the same instruction multiple times.
-  EXPECT_EQ(foo->Clone()->name(), "foo.clone");
-  EXPECT_EQ(foo->Clone()->Clone()->name(), "foo.clone2");
-  EXPECT_EQ(foo->Clone()->Clone()->Clone()->name(), "foo.clone3");
+  auto foo =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "foo");
+  EXPECT_EQ(foo->Clone()->name(), "%foo.clone");
+  EXPECT_EQ(foo->Clone()->Clone()->name(), "%foo.clone2");
+  EXPECT_EQ(foo->Clone()->Clone()->Clone()->name(), "%foo.clone3");
 
   // Test custom suffixes.
-  EXPECT_EQ(foo->Clone("bar")->name(), "foo.bar");
-  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->name(), "foo.bar2");
-  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->Clone()->name(), "foo.bar2.clone");
+  EXPECT_EQ(foo->Clone("bar")->name(), "%foo.bar");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->name(), "%foo.bar2");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->Clone()->name(),
+            "%foo.bar2.clone");
 
   // Test instruction name with a dot.
-  foo->set_name("foo.baz");
-  EXPECT_EQ(foo->Clone()->name(), "foo.baz.clone");
+  auto foo_baz = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.baz");
+  EXPECT_EQ(foo_baz->Clone()->name(), "%foo.baz.clone");
 
   // Test incrementing a large number after the suffix.
-  foo->set_name("foo.clone234");
-  EXPECT_EQ(foo->Clone()->name(), "foo.clone235");
+  auto foo_clone234 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.clone234");
+  EXPECT_EQ(foo_clone234->Clone()->name(), "%foo.clone235");
 
   // Test a non-numeric string after the cloning suffix.
-  foo->set_name("foo.clonexyz");
-  EXPECT_EQ(foo->Clone()->name(), "foo.clonexyz.clone");
+  auto foo_clonexyz = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.clonexyz");
+  EXPECT_EQ(foo_clonexyz->Clone()->name(), "%foo.clonexyz.clone");
 
   // Test a name with multiple appearances of the suffix.
-  foo->set_name("foo.clone.clone3");
-  EXPECT_EQ(foo->Clone()->name(), "foo.clone.clone4");
+  auto foo_clone_clone3 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.clone.clone3");
+  EXPECT_EQ(foo_clone_clone3->Clone()->name(), "%foo.clone.clone4");
 }
 
 }  // namespace

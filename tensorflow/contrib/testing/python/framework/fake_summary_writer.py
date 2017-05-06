@@ -127,6 +127,6 @@ class FakeSummaryWriter(object):
 
   def reopen(self):
     pass
-  
+
   def close(self):
     pass

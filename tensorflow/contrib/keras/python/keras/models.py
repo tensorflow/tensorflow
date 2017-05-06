@@ -35,6 +35,7 @@ from tensorflow.contrib.keras.python.keras.engine.topology import Input
 from tensorflow.contrib.keras.python.keras.engine.topology import Layer
 from tensorflow.contrib.keras.python.keras.engine.training import Model
 from tensorflow.contrib.keras.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.framework import ops
 
 
 # pylint: disable=g-import-not-at-top
@@ -220,7 +221,7 @@ def load_model(filepath, custom_objects=None):
         obj: object, dict, or list.
 
     Returns:
-        The same structure, where occurences
+        The same structure, where occurrences
             of a custom object name have been replaced
             with the custom object.
     """
@@ -419,6 +420,14 @@ class Sequential(Model):
       prefix = 'sequential_'
       name = prefix + str(K.get_uid(prefix))
     self.name = name
+
+    # The following properties are not actually used by Keras;
+    # they exist for compatibility with TF's variable scoping mechanism.
+    self._updates = []
+    self._scope = None
+    self._reuse = None
+    self._base_name = name
+    self._graph = ops.get_default_graph()
 
     # Add to the model any layers passed to the constructor.
     if layers:

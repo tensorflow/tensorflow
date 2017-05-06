@@ -74,7 +74,41 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 2])
-        g, _ = core_rnn_cell_impl.BasicRNNCell(2)(x, m)
+        cell = core_rnn_cell_impl.BasicRNNCell(2)
+        g, _ = cell(x, m)
+        self.assertEqual(
+            ["root/basic_rnn_cell/%s:0"
+             % core_rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+             "root/basic_rnn_cell/%s:0"
+             % core_rnn_cell_impl._BIAS_VARIABLE_NAME],
+            [v.name for v in cell.trainable_variables])
+        self.assertFalse(cell.non_trainable_variables)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run(
+            [g], {x.name: np.array([[1., 1.]]),
+                  m.name: np.array([[0.1, 0.1]])})
+        self.assertEqual(res[0].shape, (1, 2))
+
+  def testBasicRNNCellNotTrainable(self):
+    with self.test_session() as sess:
+      def not_trainable_getter(getter, *args, **kwargs):
+        kwargs["trainable"] = False
+        return getter(*args, **kwargs)
+
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5),
+          custom_getter=not_trainable_getter):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 2])
+        cell = core_rnn_cell_impl.BasicRNNCell(2)
+        g, _ = cell(x, m)
+        self.assertFalse(cell.trainable_variables)
+        self.assertEqual(
+            ["root/basic_rnn_cell/%s:0"
+             % core_rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+             "root/basic_rnn_cell/%s:0"
+             % core_rnn_cell_impl._BIAS_VARIABLE_NAME],
+            [v.name for v in cell.non_trainable_variables])
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
             [g], {x.name: np.array([[1., 1.]]),
@@ -114,10 +148,23 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 8])
-        g, out_m = core_rnn_cell_impl.MultiRNNCell(
+        cell = core_rnn_cell_impl.MultiRNNCell(
             [core_rnn_cell_impl.BasicLSTMCell(
                 2, state_is_tuple=False) for _ in range(2)],
-            state_is_tuple=False)(x, m)
+            state_is_tuple=False)
+        g, out_m = cell(x, m)
+        expected_variable_names = [
+            "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0"
+            % core_rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0"
+            % core_rnn_cell_impl._BIAS_VARIABLE_NAME,
+            "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0"
+            % core_rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0"
+            % core_rnn_cell_impl._BIAS_VARIABLE_NAME]
+        self.assertEqual(
+            expected_variable_names, [v.name for v in cell.trainable_variables])
+        self.assertFalse(cell.non_trainable_variables)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
             [g, out_m],
@@ -125,15 +172,7 @@ class RNNCellTest(test.TestCase):
              m.name: 0.1 * np.ones([1, 8])})
         self.assertEqual(len(res), 2)
         variables = variables_lib.global_variables()
-        self.assertEqual(4, len(variables))
-        self.assertEquals(variables[0].op.name,
-                          "root/multi_rnn_cell/cell_0/basic_lstm_cell/weights")
-        self.assertEquals(variables[1].op.name,
-                          "root/multi_rnn_cell/cell_0/basic_lstm_cell/biases")
-        self.assertEquals(variables[2].op.name,
-                          "root/multi_rnn_cell/cell_1/basic_lstm_cell/weights")
-        self.assertEquals(variables[3].op.name,
-                          "root/multi_rnn_cell/cell_1/basic_lstm_cell/biases")
+        self.assertEqual(expected_variable_names, [v.name for v in variables])
         # The numbers in results were not calculated, this is just a smoke test.
         self.assertAllClose(res[0], [[0.24024698, 0.24024698]])
         expected_mem = np.array([[
@@ -154,6 +193,44 @@ class RNNCellTest(test.TestCase):
             {x.name: np.array([[1., 1., 1.]]),
              m.name: 0.1 * np.ones([1, 4])})
         self.assertEqual(len(res), 2)
+
+  def testBasicLSTMCellDimension0Error(self):
+    """Tests that dimension 0 in both(x and m) shape must be equal."""
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        num_units = 2
+        state_size = num_units * 2
+        batch_size = 3
+        input_size = 4
+        x = array_ops.zeros([batch_size, input_size])
+        m = array_ops.zeros([batch_size - 1, state_size])
+        with self.assertRaises(ValueError):
+          g, out_m = core_rnn_cell_impl.BasicLSTMCell(
+              num_units, state_is_tuple=False)(x, m)
+          sess.run([variables_lib.global_variables_initializer()])
+          sess.run([g, out_m],
+                   {x.name: 1 * np.ones([batch_size, input_size]),
+               m.name: 0.1 * np.ones([batch_size - 1, state_size])})
+
+  def testBasicLSTMCellStateSizeError(self):
+    """Tests that state_size must be num_units * 2."""
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        num_units = 2
+        state_size = num_units * 3 # state_size must be num_units * 2
+        batch_size = 3
+        input_size = 4
+        x = array_ops.zeros([batch_size, input_size])
+        m = array_ops.zeros([batch_size, state_size])
+        with self.assertRaises(ValueError):
+          g, out_m = core_rnn_cell_impl.BasicLSTMCell(
+              num_units, state_is_tuple=False)(x, m)
+          sess.run([variables_lib.global_variables_initializer()])
+          sess.run([g, out_m],
+                   {x.name: 1 * np.ones([batch_size, input_size]),
+                    m.name: 0.1 * np.ones([batch_size, state_size])})
 
   def testBasicLSTMCellStateTupleType(self):
     with self.test_session():

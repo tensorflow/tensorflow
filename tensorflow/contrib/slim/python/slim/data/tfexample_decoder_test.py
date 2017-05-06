@@ -730,6 +730,43 @@ class TFExampleDecoderTest(test.TestCase):
 
     self.assertAllClose(np_bboxes, bboxes)
 
+  def testDecodeExampleWithRepeatedImages(self):
+    image_shape = (2, 3, 3)
+    image_format = 'png'
+    image, _ = self.GenerateImage(
+        image_format=image_format, image_shape=image_shape)
+    tf_encoded = self._Encoder(image, image_format)
+    with self.test_session():
+      tf_string = tf_encoded.eval()
+
+    example = example_pb2.Example(features=feature_pb2.Features(feature={
+        'image/encoded': feature_pb2.Feature(bytes_list=feature_pb2.BytesList(
+            value=[tf_string, tf_string])),
+        'image/format': self._StringFeature(image_format),
+    }))
+    serialized_example = example.SerializeToString()
+
+    with self.test_session():
+      serialized_example = array_ops.reshape(serialized_example, shape=[])
+
+      decoder = tfexample_decoder.TFExampleDecoder(
+          keys_to_features={
+              'image/encoded':
+                  parsing_ops.FixedLenFeature(
+                      (2,), dtypes.string),
+              'image/format':
+                  parsing_ops.FixedLenFeature(
+                      (), dtypes.string, default_value=image_format),
+          },
+          items_to_handlers={'image': tfexample_decoder.Image(repeated=True)})
+      [tf_image] = decoder.decode(serialized_example, ['image'])
+
+      output_image = tf_image.eval()
+
+      self.assertEqual(output_image.shape, (2, 2, 3, 3))
+      self.assertAllEqual(np.squeeze(output_image[0, :, :, :]), image)
+      self.assertAllEqual(np.squeeze(output_image[1, :, :, :]), image)
+
 
 if __name__ == '__main__':
   test.main()

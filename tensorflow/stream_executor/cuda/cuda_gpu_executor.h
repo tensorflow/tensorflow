@@ -37,17 +37,6 @@ limitations under the License.
 
 namespace perftools {
 namespace gputools {
-namespace blas {
-class BlasSupport;
-}
-namespace internal {
-class RngSupport;
-}  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
-
-namespace perftools {
-namespace gputools {
 namespace cuda {
 
 // CUDA-platform implementation of the platform-agnostic

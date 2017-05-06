@@ -42,8 +42,8 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
@@ -436,13 +436,13 @@ class EstimatorTrainTest(test.TestCase):
         model_dir=model_dir1,
         model_fn=model_fn_global_step_incrementer)
     est1.train(dummy_input_fn, steps=5)
-    
+
     # We have to clear the cache before we can rename the directory,
     # otherwise open file handles will prevent the delete on Windows.
     writer_cache.FileWriterCache.clear()
     model_dir2 = os.path.join(tmpdir, 'model_dir2')
     os.renames(model_dir1, model_dir2)
-    
+
     est2 = estimator.Estimator(
         model_dir=model_dir2,
         model_fn=model_fn_global_step_incrementer)
@@ -545,6 +545,8 @@ class EstimatorTrainTest(test.TestCase):
     # Mocking the SessionManager.wait_for_session, so that worker doesn't wait
     # for chief.
     def get_initialized_session(*args, **kwargs):
+      # Session doesn't take 'max_wait_secs' argument.
+      kwargs.pop('max_wait_secs', None)
       scaffold = training.Scaffold().finalize()
       sess = session.Session(*args, **kwargs)
       sess.run(scaffold.init_op)
@@ -1394,9 +1396,10 @@ class EstimatorExportTest(test.TestCase):
       my_int = variables.Variable(1, name='my_int',
                                   collections=[ops.GraphKeys.LOCAL_VARIABLES])
       scores = constant_op.constant([3.])
-      with ops.control_dependencies(
-          [variables.local_variables_initializer(),
-           data_flow_ops.tables_initializer()]):
+      with ops.control_dependencies([
+          variables.local_variables_initializer(),
+          lookup_ops.tables_initializer()
+      ]):
         assign_op = state_ops.assign(my_int, 12345)
 
       # local_initSop must be an Operation, not a Tensor.

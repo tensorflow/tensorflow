@@ -141,11 +141,9 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   {
     TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(&module));
     EXPECT_TRUE(result);
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> flat_call_graph,
-                           CallGraph::Build(&module));
-    TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* c_node,
-                           flat_call_graph->GetNode(c_computation));
-    EXPECT_EQ(1, c_node->caller_callsites().size());
+    std::unique_ptr<CallGraph> flat_call_graph = CallGraph::Build(&module);
+    const CallGraphNode& c_node = flat_call_graph->GetNode(c_computation);
+    EXPECT_EQ(1, c_node.caller_callsites().size());
   }
 }
 
@@ -178,21 +176,17 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   }
 
   {
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
-                           CallGraph::Build(&module));
-    TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* cond_node,
-                           call_graph->GetNode(cond_computation));
-    EXPECT_EQ(2, cond_node->caller_callsites().size());
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(&module);
+    const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
+    EXPECT_EQ(2, cond_node.caller_callsites().size());
   }
 
   {
     TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(&module));
     EXPECT_TRUE(result);
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
-                           CallGraph::Build(&module));
-    TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* cond_node,
-                           call_graph->GetNode(cond_computation));
-    EXPECT_EQ(1, cond_node->caller_callsites().size());
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(&module);
+    const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
+    EXPECT_EQ(1, cond_node.caller_callsites().size());
   }
 }
 
@@ -219,17 +213,14 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
 
   TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(&module));
   EXPECT_TRUE(result);
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
-                         CallGraph::Build(&module));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(&module);
   EXPECT_EQ(7, module.computations().size());
 
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* c_node,
-                         call_graph->GetNode(c_computation));
-  EXPECT_EQ(1, c_node->caller_callsites().size());
+  const CallGraphNode& c_node = call_graph->GetNode(c_computation);
+  EXPECT_EQ(1, c_node.caller_callsites().size());
 
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* b_node,
-                         call_graph->GetNode(b_computation));
-  EXPECT_EQ(1, b_node->caller_callsites().size());
+  const CallGraphNode& b_node = call_graph->GetNode(b_computation);
+  EXPECT_EQ(1, b_node.caller_callsites().size());
 }
 
 }  // namespace

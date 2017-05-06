@@ -55,7 +55,7 @@ class ProfileDatum(object):
 
   @property
   def exec_time(self):
-    """Measures compute function exection time plus pre- and post-processing."""
+    """Measures compute function execution time plus pre- and post-processing."""
     return self.node_exec_stats.all_end_rel_micros
 
 

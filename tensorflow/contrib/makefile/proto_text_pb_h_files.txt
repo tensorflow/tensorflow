@@ -7,6 +7,7 @@ tensorflow/core/protobuf/saver.pb.h
 tensorflow/core/protobuf/queue_runner.pb.h
 tensorflow/core/protobuf/named_tensor.pb.h
 tensorflow/core/protobuf/meta_graph.pb.h
+tensorflow/core/protobuf/cluster.pb.h
 tensorflow/core/protobuf/config.pb.h
 tensorflow/core/protobuf/debug.pb.h
 tensorflow/core/protobuf/rewriter_config.pb.h

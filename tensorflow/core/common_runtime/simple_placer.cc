@@ -341,11 +341,10 @@ class ColocationGraph {
             std::sort(device_names.begin(), device_names.end());
 
             return errors::InvalidArgument(
-                "Could not satisfy explicit device specification '",
-                node->def().device(),
-                "' because no devices matching that specification "
-                "are registered in this process; available devices: ",
-                str_util::Join(device_names, ", "), debug_info);
+                "Operation was explicitly assigned to ", node->def().device(),
+                " but available devices are [ ",
+                str_util::Join(device_names, ", "), " ]. Make sure ",
+                "the device specification refers to a valid device.");
           } else if (specified_device_name.has_type) {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",
@@ -741,7 +740,7 @@ Status SimplePlacer::Run() {
     status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
       return AttachDef(
-          errors::InvalidArgument("Cannot assign a device to node '",
+          errors::InvalidArgument("Cannot assign a device for operation '",
                                   node->name(), "': ", status.error_message()),
           node->def());
     }
@@ -783,7 +782,7 @@ Status SimplePlacer::Run() {
     status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
       return AttachDef(
-          errors::InvalidArgument("Cannot assign a device to node '",
+          errors::InvalidArgument("Cannot assign a device for operation '",
                                   node->name(), "': ", status.error_message()),
           node->def());
     }
@@ -801,7 +800,7 @@ Status SimplePlacer::Run() {
             return e->dst()->assigned_device_name() == output_device_name;
           });
 
-      if (consumers_on_same_device && 
+      if (consumers_on_same_device &&
           CanAssignToDevice(output_device_name, devices)) {
         assigned_device = output_device_name;
       }

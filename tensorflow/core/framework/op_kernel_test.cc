@@ -613,6 +613,36 @@ TEST_F(OpKernelBuilderTest, BadConstraint) {
                 error::INVALID_ARGUMENT);
 }
 
+REGISTER_OP("ListOut").Output("a: int32").Output("b: T").Attr("T: list(type)");
+REGISTER_KERNEL_BUILDER(Name("ListOut").Device(tensorflow::DEVICE_CPU),
+                        DummyKernel);
+
+TEST_F(OpKernelBuilderTest, OpOutputList) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  params.record_tensor_accesses = false;
+  std::unique_ptr<DummyDevice> device(
+      new DummyDevice(env, params.record_tensor_accesses));
+  params.device = device.get();
+  Status status;
+  std::unique_ptr<OpKernel> op(CreateOpKernel(
+      DEVICE_CPU, params.device, cpu_allocator(),
+      CreateNodeDef("ListOut", {"T|list(type)|[DT_FLOAT, DT_INT32]"}),
+      TF_GRAPH_DEF_VERSION, &status));
+  EXPECT_TRUE(status.ok()) << status.ToString();
+  params.op_kernel = op.get();
+  gtl::InlinedVector<TensorValue, 4> inputs{};
+  params.inputs = &inputs;
+  std::unique_ptr<OpKernelContext> ctx(new OpKernelContext(&params));
+
+  EXPECT_EQ(DT_INT32, ctx->expected_output_dtype(0));
+  OpOutputList out_list;
+  EXPECT_FALSE(ctx->output_list("non_existent_output", &out_list).ok());
+  ASSERT_TRUE(ctx->output_list("b", &out_list).ok());
+  EXPECT_EQ(DT_FLOAT, out_list.expected_output_dtype(0));
+  EXPECT_EQ(DT_INT32, out_list.expected_output_dtype(1));
+}
+
 class GetAttrKernel : public ::tensorflow::OpKernel {
  public:
   explicit GetAttrKernel(OpKernelConstruction* context) : OpKernel(context) {

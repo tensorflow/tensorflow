@@ -117,6 +117,8 @@ Status GrpcVerbsService::GetRemoteAddressSync(
   ra.lid = request->channel().lid();
   ra.qpn = request->channel().qpn();
   ra.psn = request->channel().psn();
+  ra.snp = request->channel().snp();
+  ra.iid = request->channel().iid();
   rc->SetRemoteAddress(ra, false);
   rc->Connect();
   int i = 0;
@@ -146,6 +148,8 @@ Status GrpcVerbsService::GetRemoteAddressSync(
   channel_info->set_lid(rc->self().lid);
   channel_info->set_qpn(rc->self().qpn);
   channel_info->set_psn(rc->self().psn);
+  channel_info->set_snp(rc->self().snp);
+  channel_info->set_iid(rc->self().iid);
   for (int i = 0; i < RdmaChannel::kNumMessageBuffers; i++) {
     MemoryRegion* mr = response->add_mr();
     mr->set_remote_addr(reinterpret_cast<uint64>(mb[i]->buffer()));
