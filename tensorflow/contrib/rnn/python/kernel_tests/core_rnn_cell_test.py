@@ -203,17 +203,15 @@ class RNNCellTest(test.TestCase):
         state_size = num_units * 2
         batch_size = 3
         input_size = 4
-        x = array_ops.zeros(
-          [batch_size, input_size])
+        x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size - 1, state_size])
         with self.assertRaises(ValueError):
           g, out_m = core_rnn_cell_impl.BasicLSTMCell(
-            num_units, state_is_tuple=False)(x, m)
+              num_units, state_is_tuple=False)(x, m)
           sess.run([variables_lib.global_variables_initializer()])
-          sess.run(
-            [g, out_m],
-            {x.name: 1 * np.ones([batch_size, input_size]),
-             m.name: 0.1 * np.ones([batch_size - 1, state_size])})
+          sess.run([g, out_m],
+                   {x.name: 1 * np.ones([batch_size, input_size]),
+               m.name: 0.1 * np.ones([batch_size - 1, state_size])})
 
   def testBasicLSTMCellStateSizeError(self):
     """Tests that state_size must be num_units * 2."""
@@ -224,17 +222,15 @@ class RNNCellTest(test.TestCase):
         state_size = num_units * 3 # state_size must be num_units * 2
         batch_size = 3
         input_size = 4
-        x = array_ops.zeros(
-          [batch_size, input_size])
+        x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
         with self.assertRaises(ValueError):
           g, out_m = core_rnn_cell_impl.BasicLSTMCell(
-            num_units, state_is_tuple=False)(x, m)
+              num_units, state_is_tuple=False)(x, m)
           sess.run([variables_lib.global_variables_initializer()])
-          sess.run(
-            [g, out_m],
-            {x.name: 1 * np.ones([batch_size, input_size]),
-             m.name: 0.1 * np.ones([batch_size, state_size])})
+          sess.run([g, out_m],
+                   {x.name: 1 * np.ones([batch_size, input_size]),
+                    m.name: 0.1 * np.ones([batch_size, state_size])})
 
   def testBasicLSTMCellStateTupleType(self):
     with self.test_session():
