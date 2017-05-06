@@ -176,10 +176,10 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::Run(
   TF_RETURN_IF_ERROR(ValidateExecutionOptions(arguments, options, *backend_));
 
   ExecutableRunOptions actual_options = options;
-  Backend::StreamPtr stream;
   if (options.stream() == nullptr) {
     TF_ASSIGN_OR_RETURN(
-        stream, BorrowStreamForDevice(options.device_ordinal(), backend_));
+        Backend::StreamPtr stream,
+        BorrowStreamForDevice(options.device_ordinal(), backend_));
     actual_options.set_stream(stream.get());
   }
   if (options.allocator() == nullptr) {
