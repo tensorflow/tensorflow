@@ -123,7 +123,7 @@ def print_model_analysis(graph,
   """Print model statistics.
 
     Prints the model statistics to stdout. Also returns the results
-    in a TFGraphNodeProto proto. See go/tfprof or run tfprof tool:
+    in a TFProfNode proto. See go/tfprof or run tfprof tool:
     'bazel run third_party/tensorflow/tools/tfprof help'
 
     Examples:
@@ -142,19 +142,15 @@ def print_model_analysis(graph,
               'micros' and 'bytes'.
     op_log: tensorflow::tfprof::OpLog proto. users can use this proto to
             group together ops and use a op_type to select the group.
-    tfprof_cmd: string. Either 'scope', 'graph', 'code'.
-                'scope' view organize outputs using ops' name scope.
-                'graph' view organize outputs using op's inputs/outputs.
-                'code' view organize outputs using Python call stack.
+    tfprof_cmd: string. Either 'scope' or 'graph'. 'scope' view organize
+                ops using their name scopes. 'graph' view organize ops using
+                their graph inputs.
     tfprof_options: See 'tfprof help' for details.
   Returns:
-    If tfprof_cmd is 'scope' or 'graph', returns TFGraphNodeProto proto.
-    If tfprof_cmd is 'code', returns TFCodeNodeProto proto.
-    Side effect: a formatted output to stdout.
+    TFProfNode proto. Side effect: a formatted output to stdout.
   """
   # pylint: disable=protected-access
-  op_log = tfprof_logger._merge_default_with_oplog(
-      graph, op_log, run_meta, add_trace=tfprof_cmd == 'code')
+  op_log = tfprof_logger._merge_default_with_oplog(graph, op_log, run_meta)
   # pylint: enable=protected-access
   opts = tfprof_options_pb2.OptionsProto()
   opts.max_depth = tfprof_options['max_depth']
@@ -182,24 +178,11 @@ def print_model_analysis(graph,
   opts.dump_to_file = tfprof_options['dump_to_file']
 
   run_meta_str = run_meta.SerializeToString() if run_meta else b''
+  op_log_str = op_log.SerializeToString() if op_log else b''
 
-  if tfprof_cmd == 'code':
-    tfprof_node = tfprof_output_pb2.TFCodeNodeProto()
-    tfprof_node.ParseFromString(
-        print_mdl.PrintModelAnalysis(
-            graph.as_graph_def().SerializeToString(),
-            run_meta_str,
-            op_log.SerializeToString(),
-            tfprof_cmd.encode('utf-8'),
-            opts.SerializeToString()))
-  else:
-    tfprof_node = tfprof_output_pb2.TFGraphNodeProto()
-    tfprof_node.ParseFromString(
-        print_mdl.PrintModelAnalysis(
-            graph.as_graph_def().SerializeToString(),
-            run_meta_str,
-            op_log.SerializeToString(),
-            tfprof_cmd.encode('utf-8'),
-            opts.SerializeToString()))
-
+  tfprof_node = tfprof_output_pb2.TFProfNode()
+  tfprof_node.ParseFromString(
+      print_mdl.PrintModelAnalysis(
+          graph.as_graph_def().SerializeToString(), run_meta_str, op_log_str,
+          tfprof_cmd.encode('utf-8'), opts.SerializeToString()))
   return tfprof_node

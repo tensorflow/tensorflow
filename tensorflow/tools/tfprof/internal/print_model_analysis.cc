@@ -40,13 +40,13 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
   graph_ptr->ParseFromString(*graph);
 
   std::unique_ptr<RunMetadata> run_meta_ptr;
-  if (run_meta && !run_meta->empty()) {
+  if (run_meta) {
     run_meta_ptr.reset(new RunMetadata());
     run_meta_ptr->ParseFromString(*run_meta);
   }
 
   std::unique_ptr<OpLog> op_log_ptr;
-  if (op_log && !op_log->empty()) {
+  if (op_log) {
     op_log_ptr.reset(new OpLog());
     op_log_ptr->ParseFromString(*op_log);
   }
@@ -58,27 +58,16 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
 
   Options opts = Options::FromProtoStr(*options);
 
-  // TODO(xpan): We should have dump_to_file/print_stdout/etc to control
-  // side-effects independently instead of one controlling the other.
   if (opts.dump_to_file.empty()) {
     printf("\n=========================Options=============================\n");
     printf("%s", opts.ToString().c_str());
     printf("\n==================Model Analysis Report======================\n");
-    string ret = "";
-    if (*command == kCmds[2]) {
-      ret = tf_stats.PrintCode(opts).SerializeAsString();
-    } else {
-      ret = tf_stats.PrintGraph(*command, opts).SerializeAsString();
-    }
+    TFProfNode root(tf_stats.PrintGraph(*command, opts));
     printf("\n======================End of Report==========================\n");
     fflush(stdout);
-    return ret;
+    return root.SerializeAsString();
   }
-  if (*command == kCmds[2]) {
-    return tf_stats.PrintCode(opts).SerializeAsString();
-  } else {
-    return tf_stats.PrintGraph(*command, opts).SerializeAsString();
-  }
+  return tf_stats.PrintGraph(*command, opts).SerializeAsString();
 }
 }  // namespace tfprof
 }  // namespace tensorflow

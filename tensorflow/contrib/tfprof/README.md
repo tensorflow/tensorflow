@@ -11,12 +11,7 @@ Consultants: Jon Shlens, Pete Warden
 1.  Measure model parameters, float operations, tensor shapes.
 2.  Measure op execution times, requested memory size and device placement.
 3.  Inspect checkpoint tensors' shapes and their values.
-4.  3 ways to view and explore TensorFlow model profiles
-
-    *  Organize by Python code call stack.
-    *  Organize by TensorFlow operation name scope hierarchies.
-    *  Organize by TensorFlow operation inputs/outputs graph.
-
+4.  Explore model based on name scope or graph structure.
 5.  Selectively grouping/filtering/accounting/ordering ops.
 
 tfprof can be used as Python API, Interactive CLI and One-shot Script.
@@ -33,8 +28,7 @@ param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
     tfprof_options=tf.contrib.tfprof.model_analyzer.
         TRAINABLE_VARS_PARAMS_STAT_OPTIONS)
 
-# param_stats is tensorflow.tfprof.TFGraphNodeProto proto.
-# It organize the statistics
+# param_stats is tensorflow.tfprof.TFProfNode proto. It organize the statistics
 # of each graph node in tree scructure. Let's print the root below.
 sys.stdout.write('total_params: %d\n' % param_stats.total_parameters)
 ```

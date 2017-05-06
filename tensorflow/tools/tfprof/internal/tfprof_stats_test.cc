@@ -76,9 +76,9 @@ TEST_F(TFProfStatsTest, CustomOpType) {
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
                false);
-  const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
+  const TFProfNode& root = tf_stats_->PrintGraph("scope", opts);
 
-  TFGraphNodeProto expected;
+  TFProfNode expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 5\ntotal_requested_bytes: 1480\ntotal_parameters: "
@@ -108,9 +108,9 @@ TEST_F(TFProfStatsTest, CheckPointOpType) {
       3, 0, 0, 0, 0, {".*"}, "name", {kCkptVarType},  // accout_type_regexes
       {".*"}, {""}, {".*"}, {""}, false,
       {"params", "bytes", "micros", "float_ops", "num_hidden_ops"}, false);
-  const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
+  const TFProfNode& root = tf_stats_->PrintGraph("scope", opts);
 
-  TFGraphNodeProto expected;
+  TFProfNode expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 5\ntotal_requested_bytes: 1480\ntotal_parameters: "
@@ -141,9 +141,9 @@ TEST_F(TFProfStatsTest, TestGraph) {
                {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
                false);
-  const TFGraphNodeProto& root = tf_stats_->PrintGraph("graph", opts);
+  const TFProfNode& root = tf_stats_->PrintGraph("graph", opts);
 
-  TFGraphNodeProto expected;
+  TFProfNode expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: 0\ninputs: "
       "0\ntotal_exec_micros: 0\ntotal_requested_bytes: 0\ntotal_parameters: "
@@ -155,9 +155,9 @@ TEST_F(TFProfStatsTest, TestGraph) {
 TEST_F(TFProfStatsTest, TestFloatOps) {
   Options opts(10, 0, 0, 0, 1, {".*"}, "name", {".*"}, {".*"}, {""}, {".*"},
                {""}, false, {"float_ops"}, false);
-  const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
+  const TFProfNode& root = tf_stats_->PrintGraph("scope", opts);
 
-  TFGraphNodeProto expected;
+  TFProfNode expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 96\ntotal_requested_bytes: "
@@ -187,9 +187,9 @@ TEST_F(TFProfStatsTest, TestAccountShownNameOnly) {
                {"unit_2_1.*DW"},  // show_name_regexes.
                {""}, true,        // account_displayed_op_only.
                {"params"}, false);
-  const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
+  const TFProfNode& root = tf_stats_->PrintGraph("scope", opts);
 
-  TFGraphNodeProto expected;
+  TFProfNode expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 0\ntotal_requested_bytes: 0\ntotal_parameters: "
@@ -203,8 +203,8 @@ TEST_F(TFProfStatsTest, TestShowTensorValue) {
                {"unit_1_0.*gamma"}, {""}, false,
                {"tensor_value"},  // Show tensor value from checkpoint.
                false);
-  const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
-  TFGraphNodeProto expected;
+  const TFProfNode& root = tf_stats_->PrintGraph("scope", opts);
+  TFProfNode expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 96\ntotal_requested_bytes: "

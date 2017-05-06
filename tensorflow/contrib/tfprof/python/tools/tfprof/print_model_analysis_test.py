@@ -96,13 +96,12 @@ class PrintModelAnalysisTest(test.TestCase):
 
     with session.Session() as sess, ops.device('/cpu:0'):
       _ = self._BuildSmallModel()
-      tfprof_pb = tfprof_output_pb2.TFGraphNodeProto()
+      tfprof_pb = tfprof_output_pb2.TFProfNode()
       tfprof_pb.ParseFromString(
-          print_mdl.PrintModelAnalysis(
-              sess.graph.as_graph_def().SerializeToString(),
-              b'', b'', b'scope', opts.SerializeToString()))
+          print_mdl.PrintModelAnalysis(sess.graph.as_graph_def(
+          ).SerializeToString(), b'', b'', b'scope', opts.SerializeToString()))
 
-      expected_pb = tfprof_output_pb2.TFGraphNodeProto()
+      expected_pb = tfprof_output_pb2.TFProfNode()
       text_format.Merge(r"""name: "_TFProfRoot"
       exec_micros: 0
       requested_bytes: 0

@@ -39,7 +39,7 @@ namespace tfprof {
 
 class ScopeNode : public ShowNode {
  public:
-  explicit ScopeNode(const TFGraphNode* node) : ShowNode(node) {}
+  explicit ScopeNode(TFNode* node) : ShowNode(node) {}
   ~ScopeNode() override {}
 
   void AggregateTotalStats(ScopeNode* node) {
@@ -59,7 +59,7 @@ class TFScope : public TFShow {
       : TFShow(ckpt_reader) {}
   ~TFScope() override {}
 
-  void AddNode(TFGraphNode* node) override;
+  void AddNode(TFNode* node) override;
 
   void Build() override;
 
@@ -79,7 +79,7 @@ class TFScope : public TFShow {
 
   std::vector<ScopeNode*> roots_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;
-  std::map<string, std::unique_ptr<TFGraphNode>> parent_nodes_;
+  std::map<string, std::unique_ptr<TFNode>> parent_nodes_;
   std::map<string, std::unique_ptr<ScopeNode>> nodes_map_;
 };
 }  // namespace tfprof

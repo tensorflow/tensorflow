@@ -10,17 +10,12 @@ Consultants: Jon Shlens, Pete Warden
 1.  Measure model parameters, float operations, tensor shapes.
 2.  Measure op execution times, requested memory size and device placement.
 3.  Inspect checkpoint tensors' shapes and their values.
-4.  3 ways to view and explore TensorFlow model profiles
-
-    *  Organize by Python code call stack.
-    *  Organize by TensorFlow operation name scope hierarchies.
-    *  Organize by TensorFlow operation inputs/outputs graph.
-
+4.  Explore model based on name scope or graph structure.
 5.  Selectively grouping/filtering/accounting/ordering ops.
 
 [Python API Tutorials](#python-api-tutorials): It can be called directly from
 Python codes. Results are either printed
-to stdout or dumped to file. tensorflow.tfprof.TFGraphNodeProto proto is returned from
+to stdout or dumped to file. tensorflow.tfprof.TFProfNode proto is returned from
 the API to allow users to perform further analysis.
 
 [CLI Tutorials](#cli-tutorials):
@@ -38,23 +33,13 @@ tfprof is part of TensorFlow core. Simply ```import tensorflow as tf```.
 ### Examine the shapes and sizes of all trainable Variables.
 ```python
 # Print trainable variable parameter statistics to stdout.
-# By default, statistics are associated with each graph node.
 param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
     tf.get_default_graph(),
     tfprof_options=tf.contrib.tfprof.model_analyzer.
         TRAINABLE_VARS_PARAMS_STAT_OPTIONS)
 
-
-# Set tfprof_cmd='code' to associate statistics with Python codes.
-opts = tf.contrib.tfprof.model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS
-opts['show_name_regexes'] = ['.*my_code1.py.*', '.*my_code2.py.*']
-param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
-    tf.get_default_graph(),
-    tfprof_cmd='code'
-    tfprof_options=opts)
-
-# param_stats is tensorflow.tfprof.TFGraphNodeProto proto.
-# Let's print the root below.
+# param_stats is tensorflow.tfprof.TFProfNode proto. It organize the statistics
+# of each graph node in tree scructure. Let's print the root below.
 sys.stdout.write('total_params: %d\n' % param_stats.total_parameters)
 ```
 
@@ -99,20 +84,8 @@ Finally, you may run `print_model_analysis` to explore the timing and memory
 demands of the model.
 
 ``` python
-# See model_analyzer_test.py for more examples.
-#
 # Print to stdout an analysis of the memory usage and the timing information
-# broken down by python codes.
-opts = tf.contrib.tfprof.model_analyzer.PRINT_ALL_TIMING_MEMORY.copy()
-opts['show_name_regexes'] = ['.*my_code.py.*']
-tf.contrib.tfprof.model_analyzer.print_model_analysis(
-    tf.get_default_graph(),
-    run_meta=run_metadata,
-    tfprof_cmd='code',
-    tfprof_options=opts)
-
-# Print to stdout an analysis of the memory usage and the timing information
-# broken down by operations.
+# from running the graph broken down by operations.
 tf.contrib.tfprof.model_analyzer.print_model_analysis(
     tf.get_default_graph(),
     run_meta=run_metadata,
@@ -165,9 +138,9 @@ bazel-bin/tensorflow/tools/tfprof/tfprof \
     --run_meta_path=run_meta \
     --checkpoint_path=model.ckpt
 #
-# tfprof_log is used to define customized op types, float ops and code traces.
+# tfprof_log is used to define customized op types and float ops.
 # Use tfprof_logger.write_op_log() to create tfprof_log.
-# See 12) in Examples section on generating tfprof_log file.
+# See 11) in Examples section on generating tfprof_log file.
 bazel-bin/tensorflow/tools/tfprof/tfprof \
     --graph_path=graph.pbtxt \
     --run_meta_path=run_meta \
@@ -201,28 +174,7 @@ tfprof>
 -dump_to_file
 ```
 
-3) I want to see which line of my python codes costs most time!
-
-```shell
-# Requires --graph_path --op_log_path
-tfprof> code -max_depth 1000 -show_name_regexes .*model_analyzer.*py.* -select micros -account_type_regexes .* -order_by micros
-_TFProfRoot (0us/22.44ms)
-  model_analyzer_test.py:149:run_filename_as_m...:none (0us/22.44ms)
-    model_analyzer_test.py:33:_run_code_in_main:none (0us/22.44ms)
-      model_analyzer_test.py:208:<module>:test.main() (0us/22.44ms)
-        model_analyzer_test.py:132:testComplexCodeView:x = lib.BuildFull... (0us/22.44ms)
-          model_analyzer_testlib.py:63:BuildFullModel:return sgd_op.min... (0us/21.83ms)
-          model_analyzer_testlib.py:58:BuildFullModel:cell, array_ops.c... (0us/333us)
-          model_analyzer_testlib.py:54:BuildFullModel:seq.append(array_... (0us/254us)
-            model_analyzer_testlib.py:42:BuildSmallModel:x = nn_ops.conv2d... (0us/134us)
-            model_analyzer_testlib.py:46:BuildSmallModel:initializer=init_... (0us/40us)
-            ...
-          model_analyzer_testlib.py:61:BuildFullModel:loss = nn_ops.l2_... (0us/28us)
-          model_analyzer_testlib.py:60:BuildFullModel:target = array_op... (0us/0us)
-        model_analyzer_test.py:134:testComplexCodeView:sess.run(variable... (0us/0us)
-```
-
-4) I want to see the `BatchNorm`'s gamma value in checkpoint.
+3) I want to see the `BatchNorm`'s gamma value in checkpoint.
 
 ```shell
 # Requires --graph_path, --checkpoint_path.
@@ -234,7 +186,7 @@ _TFProfRoot ()
 [1.57 1.83 1.30 1.25 1.59 1.14 1.26 0.82 1.19 1.10 1.48 1.01 0.82 1.23 1.21 1.14 ],
 ```
 
-5) I want to see my checkpoint tensors shape and number of parameters.
+4) I want to see my checkpoint tensors shape and number of parameters.
 
 ```shell
 # Requires --graph_path, --checkpoint_path.
@@ -253,7 +205,7 @@ _TFProfRoot (--/930.58k params)
   unit_last/final_bn/moving_variance (64, 64/64 params)
 ```
 
-6) I defined an op named ‘cost’ to calculate the loss. I want to know what ops
+5) I defined an op named ‘cost’ to calculate the loss. I want to know what ops
 it depends on take a long time to run. Hint: Use the ‘graph’ command to explore
 graph dependencies.
 
@@ -269,7 +221,7 @@ _TFProfRoot (0us/3.61sec)
   unit_3_3/sub2/conv2/Conv2D (10.26ms/3.60sec)
 ```
 
-7) I want to know the expensive operations during the back propagation.
+6) I want to know the expensive operations during the back propagation.
 Hint: tensorflow prepend ‘gradient’ to your defined name scopes. Use the ‘scope’
 command to explore based on name scope hierarchies.
 
@@ -286,7 +238,7 @@ _TFProfRoot (0us/2.29sec)
   ...
 ```
 
-8) Show the number of float operations in the model.
+7) Show the number of float operations in the model.
 Note: float operations calculation depends on
 1) op.RegisterStatistics. If an op doesn’t
 have RegisterStatistics defined, its float operations cannot be counted.
@@ -311,7 +263,7 @@ _TFProfRoot (0/17.63b flops)
   ...
 ```
 
-9) Show the number of parameters of all `tf.trainable_variables()` in the model.
+8) Show the number of parameters of all `tf.trainable_variables()` in the model.
 
 ```shell
 # Requires --graph_path --op_log_path.
@@ -331,7 +283,7 @@ generated by write_op_log() Python API. write_op_log() help users create some
 common op types implicitly. Users can define their own op types and log it
 through the write_op_log() API.
 
-109) What if I’m lazy and don’t want to define op type? I have given my ops
+9) What if I’m lazy and don’t want to define op type? I have given my ops
 well-defined names in my model’s code. And want to use names to select a group
 of ops. Let’s try it!
 
@@ -349,7 +301,7 @@ in terminal. Otherwise, tfprof accounts all ops matched by
 `-account_type_regexes` recursively even if they are hidden due to some
 options such as -max_depth.
 
-11) TensorFlow has built-in op types. For example, built-in op type `Variable`
+10) TensorFlow has built-in op types. For example, built-in op type `Variable`
 seems to include `Variable's` created by your model. However, be careful when
 depending on it because TensorFlow creates extra `Variable` ops implicitly and
 the implicitly created ops can have the same prefix as the `Variable's` you
@@ -375,7 +327,7 @@ _TFProfRoot (--/930.58k params)
 ```
 
 
-12) A example of defining extra op type for ops using `OpLog`
+11) A example of defining extra op type for ops using `OpLog`
 
 First, in Python code, create an `OpLog` proto and add op type
 information to it:

@@ -30,16 +30,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
-#include "tensorflow/tools/tfprof/tfprof_log.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
 
-class TFGraphNode {
+class TFNode {
  public:
-  TFGraphNode(const NodeDef* node)
+  TFNode(const NodeDef* node)
       : node_(node),
-        code_(nullptr),
         step_stat_(nullptr),
         op_start_micros_(0),
         op_schedule_micros_(0),
@@ -72,9 +70,9 @@ class TFGraphNode {
     device_ = node->device();
   }
 
-  TFGraphNode() : TFGraphNode(nullptr) {}
+  TFNode() : TFNode(nullptr) {}
 
-  void AddInput(TFGraphNode* input) { inputs_[input->name()] = input; }
+  void AddInput(TFNode* input) { inputs_[input->node_def()->name()] = input; }
 
   void AddOpType(const string& op_type) { op_types_.insert(op_type); }
 
@@ -85,32 +83,27 @@ class TFGraphNode {
 
   void AddFloatOps(int64 float_ops) { float_ops_ = float_ops; }
 
-  void AddCode(const CodeDef* code) { code_ = code; }
-
-  const string& name() const { return node_->name(); }
   const NodeDef* node_def() { return node_; }
-  const std::map<string, TFGraphNode*>& inputs() const { return inputs_; }
+  const std::map<string, TFNode*>& inputs() { return inputs_; }
   int64 op_start_micros() { return op_start_micros_; }
   // This is time spent in Op::Compute(), which is GPU kernel schedule time.
   // Currently not used.
   int64 op_schedule_micros() { return op_schedule_micros_; }
   // This is time spent in kernel execution.
-  int64 kernel_compute_micros() const { return kernel_compute_micros_; }
+  int64 kernel_compute_micros() { return kernel_compute_micros_; }
   int64 all_spent_micros() { return all_spent_micros_; }
-  int64 requested_bytes() const { return requested_bytes_; }
-  int64 float_ops() const { return float_ops_; }
-  const CodeDef* code() { return code_; }
-  string device() const { return device_; }
-  const std::set<string>& op_types() const { return op_types_; }
+  int64 requested_byptes() { return requested_bytes_; }
+  int64 float_ops() { return float_ops_; }
+  string device() { return device_; }
+  const std::set<string>& op_types() { return op_types_; }
 
-  const std::vector<int64>& shape() const { return shape_; }
+  const std::vector<int64>& shape() { return shape_; }
 
  private:
   void update_shape(const std::vector<int64>& shape) { shape_ = shape; }
 
-  std::map<string, TFGraphNode*> inputs_;
+  std::map<string, TFNode*> inputs_;
   const NodeDef* node_;
-  const CodeDef* code_;
   const NodeExecStats* step_stat_;
 
   std::vector<int64> shape_;
@@ -124,71 +117,6 @@ class TFGraphNode {
   int64 float_ops_;
 };
 
-class TFCodeNode {
- public:
-  TFCodeNode(const string& trace)
-      : trace_(trace),
-        kernel_compute_micros_(0),
-        requested_bytes_(0),
-        float_ops_(0) {}
-
-  void AddGraphNode(const TFGraphNode* node) {
-    if (nodes_.find(node->name()) != nodes_.end()) {
-      return;
-    }
-    nodes_[node->name()] = node;
-
-    kernel_compute_micros_ += node->kernel_compute_micros();
-    requested_bytes_ += node->requested_bytes();
-    float_ops_ += node->float_ops();
-    op_types_.insert(node->op_types().begin(), node->op_types().end());
-    if (node->shape().size() > 0) {
-      shapes_.push_back(node->shape());
-    }
-    if (!node->device().empty()) {
-      devices_.insert(node->device());
-    }
-  }
-  const std::map<string, const TFGraphNode*>& graph_nodes() const {
-    return nodes_;
-  }
-
-  void AddChildren(const string& trace) {
-    if (children_.find(trace) != children_.end()) {
-      return;
-    }
-    children_[trace].reset(new TFCodeNode(trace));
-  }
-  std::map<string, std::unique_ptr<TFCodeNode>>& children() {
-    return children_;
-  }
-
-  const string& name() const { return trace_; }
-
-  int64 kernel_compute_micros() const { return kernel_compute_micros_; }
-
-  int64 requested_bytes() const { return requested_bytes_; }
-
-  int64 float_ops() const { return float_ops_; }
-
-  const std::set<string>& devices() const { return devices_; }
-
-  const std::set<string>& op_types() const { return op_types_; }
-
-  const std::vector<std::vector<int64>>& shapes() const { return shapes_; }
-
- private:
-  const string trace_;
-  std::set<string> op_types_;
-  int64 kernel_compute_micros_;
-  int64 requested_bytes_;
-  int64 float_ops_;
-
-  std::set<string> devices_;
-  std::vector<std::vector<int64>> shapes_;
-  std::map<string, const TFGraphNode*> nodes_;
-  std::map<string, std::unique_ptr<TFCodeNode>> children_;
-};
 }  // namespace tfprof
 }  // namespace tensorflow
 

@@ -58,9 +58,9 @@ TEST_F(TFProfTensorTest, Basics) {
   Options opts(3, 0, 0, 0, 0, {".*"}, "name", {"VariableV2"}, {".*"}, {""},
                {".*"}, {""}, false, {"tensor_value"},  // show the tensor value.
                false);
-  const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
+  const TFProfNode& root = tf_stats_->PrintGraph("scope", opts);
 
-  TFGraphNodeProto expected;
+  TFProfNode expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 0\ntotal_requested_bytes: 0\ntotal_parameters: "

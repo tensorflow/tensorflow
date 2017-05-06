@@ -31,14 +31,14 @@ GraphNode* TFGraph::CreateParentNode(const string& name) {
   node_defs_.back()->set_name(name);
   node_defs_.back()->set_op(kTFGraphParent);
   parent_nodes_[name] =
-      std::unique_ptr<TFGraphNode>(new TFGraphNode(node_defs_.back().get()));
+      std::unique_ptr<TFNode>(new TFNode(node_defs_.back().get()));
   nodes_map_[name] =
       std::unique_ptr<GraphNode>(new GraphNode(parent_nodes_[name].get()));
   return nodes_map_[name].get();
 }
 
-void TFGraph::AddNode(TFGraphNode* node) {
-  string name = node->name();
+void TFGraph::AddNode(TFNode* node) {
+  string name = node->node_def()->name();
   nodes_map_[name] = std::unique_ptr<GraphNode>(new GraphNode(node));
 }
 
@@ -49,7 +49,7 @@ void TFGraph::Build() {
   // Filter out the root nodes (node not input of any other node).
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     GraphNode* node = it->second.get();
-    const std::map<string, TFGraphNode*>& inputs = node->node->inputs();
+    const std::map<string, TFNode*>& inputs = node->node->inputs();
     for (auto inputs_it = inputs.cbegin(); inputs_it != inputs.cend();
          inputs_it++) {
       nonroots.insert(inputs_it->first);

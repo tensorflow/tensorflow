@@ -15,7 +15,6 @@ cc_library(
     srcs = ["tfprof_stats.cc"],
     hdrs = ["tfprof_stats.h"],
     deps = [
-        ":tfprof_code",
         ":tfprof_graph",
         ":tfprof_node",
         ":tfprof_options",
@@ -63,27 +62,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tfprof_code",
-    srcs = ["tfprof_code.cc"],
-    hdrs = ["tfprof_code.h"],
-    deps = [
-        ":tfprof_constants",
-        ":tfprof_node",
-        ":tfprof_options",
-        ":tfprof_show_code",
-        ":tfprof_tensor",
-        ":tfprof_utils",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:regexp_internal",
-        "//tensorflow/tools/tfprof:protos_all_cc",
-    ],
-)
-
-cc_library(
     name = "tfprof_graph",
     srcs = ["tfprof_graph.cc"],
     hdrs = ["tfprof_graph.h"],
@@ -110,26 +88,6 @@ cc_library(
         ":tfprof_constants",
         ":tfprof_node",
         ":tfprof_options",
-        ":tfprof_tensor",
-        ":tfprof_utils",
-        "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:regexp_internal",
-        "//tensorflow/tools/tfprof:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "tfprof_show_code",
-    srcs = ["tfprof_show_code.cc"],
-    hdrs = ["tfprof_show_code.h"],
-    deps = [
-        ":tfprof_constants",
-        ":tfprof_node",
-        ":tfprof_options",
-        ":tfprof_scope",
-        ":tfprof_show",
         ":tfprof_tensor",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
