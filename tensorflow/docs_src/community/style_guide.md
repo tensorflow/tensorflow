@@ -163,7 +163,7 @@ operation.
              it's present in the scope.
 
 * Layers that behave differently during training should have:
-  - `is_training`: `bool` to indicate if a training graph is been built.
+  - `is_training`: `bool` (`Tensor`) to indicate if to run the graph in training mode.
 
 
 Example:
