@@ -144,7 +144,7 @@ def _prepare_features_for_sqss(features, labels, mode,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
 
@@ -261,7 +261,7 @@ def _read_batch(cell,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     num_threads: The Python integer number of threads enqueuing input examples
@@ -420,7 +420,7 @@ def _get_rnn_model_fn(cell_type,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     predict_probabilities: A boolean indicating whether to predict probabilities
@@ -563,7 +563,7 @@ class StateSavingRnnEstimator(estimator.Estimator):
         describing sequence features. All items in the set should be instances
         of classes derived from `FeatureColumn`.
       context_feature_columns: An iterable containing all the feature columns
-        describing context features, i.e., features that apply accross all time
+        describing context features, i.e., features that apply across all time
         steps. All items in the set should be instances of classes derived from
         `FeatureColumn`.
       num_classes: The number of classes for categorization. Used only and

@@ -2331,7 +2331,7 @@ def tensordot(a, b, axes, name=None):
     using `array_ops.transpose` and `array_ops.reshape`. The method takes a
     tensor and performs the correct transpose and reshape operation for a given
     set of indices. It returns the reshaped tensor as well as a list of indices
-    necesary to reshape the tensor again after matrix multiplication.
+    necessary to reshape the tensor again after matrix multiplication.
 
     Args:
       a: `Tensor`.

@@ -221,7 +221,7 @@ def load_model(filepath, custom_objects=None):
         obj: object, dict, or list.
 
     Returns:
-        The same structure, where occurences
+        The same structure, where occurrences
             of a custom object name have been replaced
             with the custom object.
     """

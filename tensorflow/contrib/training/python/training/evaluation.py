@@ -254,7 +254,7 @@ def checkpoints_iterator(checkpoint_dir,
         logging.info('Timed-out waiting for a checkpoint.')
         return
       if timeout_fn():
-        # The timeout_fn indicated that we are truely done.
+        # The timeout_fn indicated that we are truly done.
         return
       else:
         # The timeout_fn indicated that more checkpoints may come.

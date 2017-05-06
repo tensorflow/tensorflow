@@ -895,7 +895,7 @@ class BinaryClassificationHeadTest(test.TestCase):
       _assert_summary_tags(self, ["loss"])
       # logloss: z:label, x:logit
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
-      # expected_loss is (total_weighted_loss)/1 since htere is 1 nonzero
+      # expected_loss is (total_weighted_loss)/1 since there is 1 nonzero
       # weight.
       expected_loss = 0.062652342
       _assert_metrics(

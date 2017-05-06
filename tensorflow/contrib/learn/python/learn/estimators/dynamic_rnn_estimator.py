@@ -115,7 +115,7 @@ def dict_to_state_tuple(input_dict, cell):
 
 
 def _concatenate_context_input(sequence_input, context_input):
-  """Replicates `context_input` accross all timesteps of `sequence_input`.
+  """Replicates `context_input` across all timesteps of `sequence_input`.
 
   Expands dimension 1 of `context_input` then tiles it `sequence_length` times.
   This value is appended to `sequence_input` on dimension 2 and the result is
@@ -177,7 +177,7 @@ def build_sequence_input(features,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features i.e. features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     weight_collections: List of graph collections to which weights are added.
@@ -419,7 +419,7 @@ def _get_dynamic_rnn_model_fn(
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     predict_probabilities: A boolean indicating whether to predict probabilities
@@ -603,7 +603,7 @@ class DynamicRnnEstimator(estimator.Estimator):
         describing sequence features. All items in the iterable should be
         instances of classes derived from `FeatureColumn`.
       context_feature_columns: An iterable containing all the feature columns
-        describing context features, i.e., features that apply accross all time
+        describing context features, i.e., features that apply across all time
         steps. All items in the set should be instances of classes derived from
         `FeatureColumn`.
       num_classes: the number of classes for a classification problem. Only

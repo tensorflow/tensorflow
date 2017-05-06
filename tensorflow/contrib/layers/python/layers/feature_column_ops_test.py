@@ -1467,8 +1467,8 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     expected_input_shape = [4, 3, embedding_dimension]
     self.assertAllEqual(expected_input_shape, model_input.shape)
 
-    # `ids_tensor` consists of 7 instances of <empty>, 3 occurences of "b",
-    # 2 occurences of "c" and 1 instance of "a".
+    # `ids_tensor` consists of 7 instances of <empty>, 3 occurrences of "b",
+    # 2 occurrences of "c" and 1 instance of "a".
     expected_gradient_values = sorted([0., 3., 2., 1.] * embedding_dimension)
     actual_gradient_values = np.sort(gradients[0].values, axis=None)
     self.assertAllClose(expected_gradient_values, actual_gradient_values)

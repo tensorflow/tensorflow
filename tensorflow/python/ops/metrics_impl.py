@@ -1735,7 +1735,7 @@ def _streaming_sparse_true_positive_at_k(labels,
     A tuple of `Variable` and update `Operation`.
 
   Raises:
-    ValueError: If `weights` is not `None` and has an incomptable shape.
+    ValueError: If `weights` is not `None` and has an incompatible shape.
   """
   with ops.name_scope(
       name, _at_k_name('true_positive', k, class_id=class_id),
@@ -1831,7 +1831,7 @@ def _streaming_sparse_false_negative_at_k(labels,
     A tuple of `Variable` and update `Operation`.
 
   Raises:
-    ValueError: If `weights` is not `None` and has an incomptable shape.
+    ValueError: If `weights` is not `None` and has an incompatible shape.
   """
   with ops.name_scope(
       name, _at_k_name('false_negative', k, class_id=class_id),
@@ -2653,7 +2653,7 @@ def _streaming_sparse_false_positive_at_k(labels,
     A tuple of `Variable` and update `Operation`.
 
   Raises:
-    ValueError: If `weights` is not `None` and has an incomptable shape.
+    ValueError: If `weights` is not `None` and has an incompatible shape.
   """
   with ops.name_scope(
       name, _at_k_name('false_positive', k, class_id=class_id),
