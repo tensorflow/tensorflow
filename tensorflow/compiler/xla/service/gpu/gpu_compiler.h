@@ -71,6 +71,7 @@ class GpuCompiler : public Compiler {
   // StreamExecutor (b/24776264).
   tensorflow::mutex mutex_;
   std::vector<std::unique_ptr<string>> generated_ptxes_ GUARDED_BY(mutex_);
+  std::vector<std::unique_ptr<string>> generated_cubins_ GUARDED_BY(mutex_);
 
   // The size in bytes of a pointer. Used for computing ShapeSizeBytes.
   int64 pointer_size_;
