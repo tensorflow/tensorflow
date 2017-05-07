@@ -874,7 +874,7 @@ def _create_cuda_repository(repository_ctx):
       cuda_include_path, '').splitlines()
   if '/cudnn.h' not in included_files:
     genrules.append(_symlink_genrule_for_dir(repository_ctx, None, "",
-        "cudnn-include", [cudnn_header_dir + "/cudnn.h"], ["include/cudnn.h"]))
+        "cudnn-include", [cudnn_header_dir + "/cudnn.h"], ["cudnn.h"]))
   else:
     genrules.append(
             'filegroup(\n' +
