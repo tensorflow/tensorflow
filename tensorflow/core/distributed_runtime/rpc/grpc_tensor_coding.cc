@@ -166,7 +166,7 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
         (e_skeleton.size() +
          VarLengthEncodingSize(TensorProto::kTensorContentFieldNumber,
                                tdata.size()));
-    string header;  // All of RecvTensorRequest except the tensor() field
+    string header;  // All of RecvTensorResponse except the tensor() field
     response.AppendToString(&header);
 
     size_t expected_size =
