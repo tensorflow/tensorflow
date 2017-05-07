@@ -736,47 +736,14 @@ template <typename T, typename WT>
     const Literal& literal,
     const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
                              const string& value)>& per_cell) {
-  if (ShapeUtil::Rank(literal.shape()) == 1) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      per_cell({i0}, GetAsString(literal, {i0}));
-    }
+  if (ShapeUtil::HasZeroElements(literal.shape())) {
     return;
   }
-
-  if (ShapeUtil::Rank(literal.shape()) == 2) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      for (int64 i1 = 0; i1 < literal.shape().dimensions(1); ++i1) {
-        per_cell({i0, i1}, GetAsString(literal, {i0, i1}));
-      }
-    }
-    return;
-  }
-
-  if (ShapeUtil::Rank(literal.shape()) == 3) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      for (int64 i1 = 0; i1 < literal.shape().dimensions(1); ++i1) {
-        for (int64 i2 = 0; i2 < literal.shape().dimensions(2); ++i2) {
-          per_cell({i0, i1, i2}, GetAsString(literal, {i0, i1, i2}));
-        }
-      }
-    }
-    return;
-  }
-
-  if (ShapeUtil::Rank(literal.shape()) == 4) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      for (int64 i1 = 0; i1 < literal.shape().dimensions(1); ++i1) {
-        for (int64 i2 = 0; i2 < literal.shape().dimensions(2); ++i2) {
-          for (int64 i3 = 0; i3 < literal.shape().dimensions(3); ++i3) {
-            per_cell({i0, i1, i2, i3}, GetAsString(literal, {i0, i1, i2, i3}));
-          }
-        }
-      }
-    }
-    return;
-  }
-
-  LOG(FATAL) << "unhandled rank: " << ShapeUtil::Rank(literal.shape());
+  std::vector<int64> indices = IndexUtil::LinearIndexToMultidimensionalIndex(
+      literal.shape(), /*linear_index=*/0);
+  do {
+    per_cell(indices, GetAsString(literal, indices));
+  } while (IndexUtil::BumpIndices(literal.shape(), &indices));
 }
 
 namespace {
