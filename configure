@@ -195,15 +195,17 @@ done
 OSNAME=`uname -s`
 
 if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
-  fromuser=""
-  read -p "Do you wish to download MKL LIB from the web? [Y/n] " INPUT
-  fromuser="1"
-  case $INPUT in
-    [Yy]* ) TF_DOWNLOAD_MKL=1;;
-    [Nn]* ) TF_DOWNLOAD_MKL=0;;
-    "" )    TF_DOWNLOAD_MKL=1;;
-    * )     echo "Invalid selection: " $INPUT; exit 1;;
-  esac
+  while [ "$TF_DOWNLOAD_MKL" == "" ]; do
+    fromuser=""
+    read -p "Do you wish to download MKL LIB from the web? [Y/n] " INPUT
+    fromuser="1"
+    case $INPUT in
+      [Yy]* ) TF_DOWNLOAD_MKL=1;;
+      [Nn]* ) TF_DOWNLOAD_MKL=0;;
+      "" )    TF_DOWNLOAD_MKL=1;;
+      * )     echo "Invalid selection: " $INPUT; exit 1;;
+    esac
+  done
 
   if [[ "$TF_DOWNLOAD_MKL" == "1" ]]; then
     DST=`dirname $0`
@@ -260,10 +262,6 @@ if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
       ln -sf $loc third_party/mkl/libdl.so.2
   else
       echo "ERROR: $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} nor $MKL_INSTALL_PATH/${MKL_RT_LIB_PATH} exists";
-      exit 1
-  fi
-
-  if [ -z "$fromuser" ]; then
       exit 1
   fi
 
