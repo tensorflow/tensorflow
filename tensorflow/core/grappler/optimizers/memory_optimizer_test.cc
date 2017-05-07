@@ -55,8 +55,8 @@ TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
   NodeDef* transformed_e = post_transform_node_map.GetNode(e.name());
   EXPECT_EQ(2, transformed_e->input_size());
   EXPECT_EQ("d", transformed_e->input(0));
-  EXPECT_EQ("Recomputed-b", transformed_e->input(1));
-  NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed-b");
+  EXPECT_EQ("Recomputed/b", transformed_e->input(1));
+  NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed/b");
   EXPECT_EQ(2, recomputed_b->input_size());
   EXPECT_EQ("a", recomputed_b->input(0));
   EXPECT_EQ("^d", recomputed_b->input(1).substr(0, 2));
@@ -94,23 +94,23 @@ TEST_F(RecomputeSubgraphTest, MultiNode) {
   NodeDef* transformed_e = post_transform_node_map.GetNode(e.name());
   EXPECT_EQ(2, transformed_e->input_size());
   EXPECT_EQ("BN1Grad", transformed_e->input(0));
-  EXPECT_EQ("Recomputed-ReLU", transformed_e->input(1));
+  EXPECT_EQ("Recomputed/ReLU", transformed_e->input(1));
   NodeDef* transformed_f = post_transform_node_map.GetNode(f.name());
   EXPECT_EQ(2, transformed_f->input_size());
   EXPECT_EQ("Conv1Grad", transformed_f->input(0));
-  EXPECT_EQ("Recomputed-ReLU", transformed_f->input(1));
+  EXPECT_EQ("Recomputed/ReLU", transformed_f->input(1));
   NodeDef* transformed_g = post_transform_node_map.GetNode(g.name());
   EXPECT_EQ(2, transformed_g->input_size());
   EXPECT_EQ("ReLUGrad", transformed_g->input(0));
   EXPECT_EQ("Conv", transformed_g->input(1));
 
-  NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed-BN");
+  NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed/BN");
   EXPECT_EQ(2, recomputed_b->input_size());
   EXPECT_EQ("Conv", recomputed_b->input(0));
   EXPECT_EQ("^BN1Grad", recomputed_b->input(1).substr(0, 8));
-  NodeDef* recomputed_c = post_transform_node_map.GetNode("Recomputed-ReLU");
+  NodeDef* recomputed_c = post_transform_node_map.GetNode("Recomputed/ReLU");
   EXPECT_EQ(2, recomputed_c->input_size());
-  EXPECT_EQ("Recomputed-BN", recomputed_c->input(0));
+  EXPECT_EQ("Recomputed/BN", recomputed_c->input(0));
   EXPECT_EQ("^BN1Grad", recomputed_c->input(1).substr(0, 8));
 }
 

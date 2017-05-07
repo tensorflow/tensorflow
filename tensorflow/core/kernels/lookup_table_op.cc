@@ -624,7 +624,10 @@ class LookupTableFindOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {DT_STRING_REF, table->key_dtype(),
+    // Input 0 could be a STRING_REF or a RESOURCE
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     DataTypeVector expected_outputs = {table->value_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
@@ -647,6 +650,8 @@ class LookupTableFindOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableFind").Device(DEVICE_CPU),
                         LookupTableFindOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableFindV2").Device(DEVICE_CPU),
+                        LookupTableFindOp);
 
 // Table insert op.
 class LookupTableInsertOp : public OpKernel {
@@ -658,7 +663,9 @@ class LookupTableInsertOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {DT_STRING_REF, table->key_dtype(),
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
 
@@ -680,6 +687,8 @@ class LookupTableInsertOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableInsert").Device(DEVICE_CPU),
                         LookupTableInsertOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableInsertV2").Device(DEVICE_CPU),
+                        LookupTableInsertOp);
 
 // Op that returns the size of the given table.
 class LookupTableSizeOp : public OpKernel {
@@ -699,6 +708,8 @@ class LookupTableSizeOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableSize").Device(DEVICE_CPU),
                         LookupTableSizeOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableSizeV2").Device(DEVICE_CPU),
+                        LookupTableSizeOp);
 
 // Op that outputs tensors of all keys and all values.
 class LookupTableExportOp : public OpKernel {
@@ -716,6 +727,8 @@ class LookupTableExportOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableExport").Device(DEVICE_CPU),
                         LookupTableExportOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableExportV2").Device(DEVICE_CPU),
+                        LookupTableExportOp);
 
 // Clear the table and insert data.
 class LookupTableImportOp : public OpKernel {
@@ -727,7 +740,9 @@ class LookupTableImportOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {DT_STRING_REF, table->key_dtype(),
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
 
@@ -749,11 +764,20 @@ class LookupTableImportOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableImport").Device(DEVICE_CPU),
                         LookupTableImportOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableImportV2").Device(DEVICE_CPU),
+                        LookupTableImportOp);
 
 // Register the HashTable op with the currently supported key and value types.
 #define REGISTER_KERNEL(key_dtype, value_dtype)                           \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("HashTable")                                                   \
+          .Device(DEVICE_CPU)                                             \
+          .TypeConstraint<key_dtype>("key_dtype")                         \
+          .TypeConstraint<value_dtype>("value_dtype"),                    \
+      LookupTableOp<lookup::HashTable<key_dtype, value_dtype>, key_dtype, \
+                    value_dtype>)                                         \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("HashTableV2")                                                 \
           .Device(DEVICE_CPU)                                             \
           .TypeConstraint<key_dtype>("key_dtype")                         \
           .TypeConstraint<value_dtype>("value_dtype"),                    \
@@ -779,6 +803,13 @@ REGISTER_KERNEL(string, bool);
           .TypeConstraint<key_dtype>("key_dtype")                              \
           .TypeConstraint<value_dtype>("value_dtype"),                         \
       LookupTableOp<lookup::MutableHashTableOfScalars<key_dtype, value_dtype>, \
+                    key_dtype, value_dtype>)                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MutableHashTableV2")                                               \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      LookupTableOp<lookup::MutableHashTableOfScalars<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
 REGISTER_KERNEL(string, float);
@@ -797,6 +828,13 @@ REGISTER_KERNEL(int64, float);
           .TypeConstraint<key_dtype>("key_dtype")                              \
           .TypeConstraint<value_dtype>("value_dtype"),                         \
       LookupTableOp<lookup::MutableHashTableOfTensors<key_dtype, value_dtype>, \
+                    key_dtype, value_dtype>)                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MutableHashTableOfTensorsV2")                                      \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      LookupTableOp<lookup::MutableHashTableOfTensors<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
 REGISTER_KERNEL(string, float);
@@ -810,6 +848,13 @@ REGISTER_KERNEL(string, bool);
 #define REGISTER_KERNEL(key_dtype, value_dtype)                            \
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("MutableDenseHashTable")                                        \
+          .Device(DEVICE_CPU)                                              \
+          .TypeConstraint<key_dtype>("key_dtype")                          \
+          .TypeConstraint<value_dtype>("value_dtype"),                     \
+      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>, \
+                    key_dtype, value_dtype>)                               \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("MutableDenseHashTableV2")                                      \
           .Device(DEVICE_CPU)                                              \
           .TypeConstraint<key_dtype>("key_dtype")                          \
           .TypeConstraint<value_dtype>("value_dtype"),                     \

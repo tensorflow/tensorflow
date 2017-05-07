@@ -73,8 +73,8 @@ pip2 install py-cpuinfo
 pip3 install py-cpuinfo
 
 # pylint tests require the following:
-pip2 install pylint
-pip3 install pylint
+pip2 install pylint==1.6.4
+pip3 install pylint==1.6.4
 
 # pep8 tests require the following:
 pip2 install pep8

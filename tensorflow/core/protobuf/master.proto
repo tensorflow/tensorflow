@@ -38,6 +38,9 @@ message CreateSessionRequest {
 
   // Configuration options.
   ConfigProto config = 2;
+
+  // The target string used from the client's perspective.
+  string target = 3;
 }
 
 message CreateSessionResponse {

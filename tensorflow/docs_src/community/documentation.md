@@ -4,12 +4,24 @@ We welcome contributions to the Tensorflow documentation from the community.
 This document explains how you can contribute to that documentation. In
 particular, this document explains the following:
 
-- Where the documentation is located.
-- How to make conformant edits.
-- How to build and test your documentation changes before you submit them.
+* Where the documentation is located.
+* How to make conformant edits.
+* How to build and test your documentation changes before you submit them.
 
-You can view Tensorflow documentation on tensorflow.org, and you can view and
-edit the raw files on Github.
+You can view Tensorflow documentation on https://www.tensorflow.org, and you
+can view and edit the raw files on Github. We're publishing our docs on Github
+so everybody can contribute. Whatever gets checked in tensorflow/docs_src will
+be published soon after on https://www.tensorflow.org. 
+
+Republishing TensorFlow documentation in different forms is absolutely allowed,
+but we are unlikely to accept other documentation formats (or the tooling to
+generate them) into our repository. If you do choose to republish our
+documentation in another form, please be sure to include:
+
+* The version of the API this represents (i.e. r1.0, master, etc.)
+* The commit or version from which the documentation was generated
+* Where to get the latest documentation (that is, https://www.tensorflow.org)
+* The Apache 2.0 license.
 
 ## A Note on Versions
 

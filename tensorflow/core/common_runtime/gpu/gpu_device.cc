@@ -179,10 +179,9 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
                              int gpu_id, const string& physical_device_desc,
                              Allocator* gpu_allocator, Allocator* cpu_allocator,
                              bool sync_every_op, int32 max_streams)
-    : LocalDevice(options,
-                  Device::BuildDeviceAttributes(name, DEVICE_GPU, memory_limit,
-                                                locality, physical_device_desc),
-                  gpu_allocator),
+    : LocalDevice(options, Device::BuildDeviceAttributes(name, DEVICE_GPU,
+                                                         memory_limit, locality,
+                                                         physical_device_desc)),
       gpu_allocator_(gpu_allocator),
       cpu_allocator_(cpu_allocator),
       gpu_id_(gpu_id),
@@ -465,6 +464,14 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                               DataTypeString(parsed.dtype()), " tensor");
     }
     Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
+
+    // If the tensor is not initialized, we likely ran out of memory.
+    if (!copy.IsInitialized()) {
+      return errors::ResourceExhausted(
+          "OOM when allocating tensor of shape ", parsed.shape().DebugString(),
+          " and type ", DataTypeString(parsed.dtype()));
+    }
+
     port::Tracing::ScopedAnnotation annotation("MakeTensorFromProto");
     Notification n;
     device_contexts_[0]->CopyCPUTensorToDevice(&parsed, this, &copy,

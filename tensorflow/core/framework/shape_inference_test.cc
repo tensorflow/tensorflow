@@ -558,6 +558,11 @@ TEST_F(ShapeInferenceTest, MergeShape) {
   EXPECT_TRUE(SameHandle(c.Dim(s_1_u, 0), c.Dim(out, 0)));
   EXPECT_TRUE(SameHandle(c.Dim(s_u_2, 1), c.Dim(out, 1)));
 
+  auto s_u1 = c.UnknownShapeOfRank(1);
+  auto s_u2 = c.UnknownShapeOfRank(1);
+  TF_EXPECT_OK(c.Merge(s_u1, s_u2, &out));
+  EXPECT_TRUE(SameHandle(s_u1, out));
+
   // Incompatible merges give errors and set out to nullptr.
   out = s_unknown;
   EXPECT_TRUE(

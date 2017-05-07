@@ -93,6 +93,8 @@ tensorboard_ts_library(
         "dashboard-behavior.ts",
         "reload-behavior.ts",
     ],
+    deps_mgmt = "off",
+    runtime = "nodejs",
     deps = [
         "//tensorflow/tensorboard/components:common_deps",
         "//tensorflow/tensorboard/components/vz_sorting:legacy_ts",

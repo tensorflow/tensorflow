@@ -293,8 +293,7 @@ class LearnRunnerRunWithRunConfigTest(test.TestCase):
     def _experiment_fn(run_config, hparams):
       del run_config, hparams  # unused.
       # Explicitly use a new run_config.
-      new_config = run_config_lib.RunConfig(
-          model_dir=_MODIR_DIR, save_checkpoints_steps=123)
+      new_config = run_config_lib.RunConfig(model_dir=_MODIR_DIR + "/123")
 
       return TestExperiment(config=new_config)
 

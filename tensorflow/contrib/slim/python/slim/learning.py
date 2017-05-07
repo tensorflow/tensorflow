@@ -261,7 +261,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
@@ -657,7 +657,7 @@ def train(train_op,
       if local_init_op == _USE_DEFAULT:
         local_init_op = control_flow_ops.group(
             tf_variables.local_variables_initializer(),
-            data_flow_ops.tables_initializer())
+            lookup_ops.tables_initializer())
 
       if sync_optimizer is not None and isinstance(
           sync_optimizer, sync_replicas_optimizer.SyncReplicasOptimizer):

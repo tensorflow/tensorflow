@@ -120,7 +120,7 @@ class KerasInitializersTest(test.TestCase):
                    target_mean=0., target_std=None, target_max=2 * scale)
 
   def test_orthogonal(self):
-    tensor_shape = (10, 10)
+    tensor_shape = (20, 20)
     with self.test_session():
       self._runner(keras.initializers.orthogonal(seed=123), tensor_shape,
                    target_mean=0.)

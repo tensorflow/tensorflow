@@ -33,6 +33,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
 
 
@@ -41,6 +42,7 @@ __all__ = [
     "BeamSearchDecoderState",
     "BeamSearchDecoder",
     "FinalBeamSearchDecoderOutput",
+    "tile_batch",
 ]
 
 
@@ -68,6 +70,44 @@ class FinalBeamSearchDecoderOutput(
       the state of the beam search.
   """
   pass
+
+
+def tile_batch(t, multiplier, name=None):
+  """Tile the batch dimension of tensor t.
+
+  This function takes a tensor t shaped `[batch_size, s0, s1, ...]` composed of
+  minibatch entries `t[0], ..., t[batch_size - 1]` and tiles it to have a shape
+  `[batch_size * multiplier, s0, s1, ...]` composed of minibatch entries
+  `t[0], t[0], ..., t[1], t[1], ...` where each minibatch entry is repeated
+  `multiplier` times.
+
+  Args:
+    t: `Tensor` shaped `[batch_size, ...]`.
+    multiplier: Python int.
+    name: Name scope for any created operations.
+
+  Returns:
+    A `Tensor` shaped `[batch_size * multiplier, ...]`.
+
+  Raises:
+    ValueError: if `t` does not have a statically known rank or it's < 1.
+  """
+  with ops.name_scope(name, "tile_batch", [t, multiplier]):
+    t = ops.convert_to_tensor(t, name="t")
+    shape_t = array_ops.shape(t)
+    if t.shape.ndims is None or t.shape.ndims < 1:
+      raise ValueError("t must have statically known rank")
+    tiling = [1] * (t.shape.ndims + 1)
+    tiling[1] = multiplier
+    tiled_static_batch_size = (
+        t.shape[0].value * multiplier if t.shape[0].value is not None else None)
+    tiled = array_ops.tile(array_ops.expand_dims(t, 1), tiling)
+    tiled = array_ops.reshape(
+        tiled, array_ops.concat(([shape_t[0] * multiplier], shape_t[1:]), 0))
+    tiled.set_shape(
+        tensor_shape.TensorShape(
+            [tiled_static_batch_size]).concatenate(t.shape[1:]))
+    return tiled
 
 
 class BeamSearchDecoder(decoder.Decoder):
@@ -106,7 +146,7 @@ class BeamSearchDecoder(decoder.Decoder):
     if not isinstance(cell, core_rnn_cell.RNNCell):
       raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
     if (output_layer is not None
-        and not isinstance(output_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(output_layer, layers_base.Layer)):
       raise TypeError(
           "output_layer must be a Layer, received: %s" % type(output_layer))
     self._cell = cell
@@ -130,8 +170,9 @@ class BeamSearchDecoder(decoder.Decoder):
     self._batch_size = array_ops.size(start_tokens)
     self._beam_width = beam_width
     self._length_penalty_weight = length_penalty_weight
-    self._initial_cell_state = nest.map_structure(self._maybe_split_batch_beams,
-                                                  initial_state)
+    self._initial_cell_state = nest.map_structure(
+        self._maybe_split_batch_beams,
+        initial_state, self._cell.state_size)
     self._start_tokens = array_ops.tile(
         array_ops.expand_dims(self._start_tokens, 1), [1, self._beam_width])
     self._start_inputs = self._embedding_fn(self._start_tokens)
@@ -223,19 +264,23 @@ class BeamSearchDecoder(decoder.Decoder):
         beam_search_decoder_output=outputs, predicted_ids=predicted_ids)
     return outputs, final_state
 
-  def _merge_batch_beams(self, t):
+  def _merge_batch_beams(self, t, s=None):
     """Merges the tensor from a batch of beams into a batch by beams.
 
-    More exactly, t is a tensor of dimension [batch_size, beam_width, ...]. We
-    reshape this into [batch_size*beam_width, ...]
+    More exactly, t is a tensor of dimension [batch_size, beam_width, s]. We
+    reshape this into [batch_size*beam_width, s]
 
     Args:
-      t: Tensor of dimension [batch_size, beam_width, ...]
+      t: Tensor of dimension [batch_size, beam_width, s]
+      s: (Possibly known) depth shape.
 
     Returns:
-      A reshaped version of t with dimension [batch_size * beam_width, ...].
+      A reshaped version of t with dimension [batch_size * beam_width, s].
     """
-    t_static_shape = t.shape
+    if isinstance(s, ops.Tensor):
+      s = tensor_util.constant_value_as_shape(s)
+    else:
+      s = tensor_shape.TensorShape(s)
     t_shape = array_ops.shape(t)
     static_batch_size = tensor_util.constant_value(self._batch_size)
     batch_size_beam_width = (
@@ -245,67 +290,105 @@ class BeamSearchDecoder(decoder.Decoder):
         t, array_ops.concat(
             ([self._batch_size * self._beam_width], t_shape[2:]), 0))
     reshaped_t.set_shape(
-        (tensor_shape.TensorShape([batch_size_beam_width])
-         .concatenate(t_static_shape[2:])))
+        (tensor_shape.TensorShape([batch_size_beam_width]).concatenate(s)))
     return reshaped_t
 
-  def _split_batch_beams(self, t):
+  def _split_batch_beams(self, t, s=None):
     """Splits the tensor from a batch by beams into a batch of beams.
 
-    More exactly, t is a tensor of dimension [batch_size*beam_width, ...]. We
-    reshape this into [batch_size, beam_width, ...]
+    More exactly, t is a tensor of dimension [batch_size*beam_width, s]. We
+    reshape this into [batch_size, beam_width, s]
 
     Args:
-      t: Tensor of dimension [batch_size*beam_width, ...]
+      t: Tensor of dimension [batch_size*beam_width, s].
+      s: (Possibly known) depth shape.
 
     Returns:
-      A reshaped version of t with dimension [batch_size, beam_width, ...].
+      A reshaped version of t with dimension [batch_size, beam_width, s].
+
+    Raises:
+      ValueError: If, after reshaping, the new tensor is not shaped
+        `[batch_size, beam_width, s]` (assuming batch_size and beam_width
+        are known statically).
     """
-    t_static_shape = t.shape
+    if isinstance(s, ops.Tensor):
+      s = tensor_util.constant_value_as_shape(s)
+    else:
+      s = tensor_shape.TensorShape(s)
     t_shape = array_ops.shape(t)
     reshaped_t = array_ops.reshape(
         t, array_ops.concat(
             ([self._batch_size, self._beam_width], t_shape[1:]), 0))
     static_batch_size = tensor_util.constant_value(self._batch_size)
-    reshaped_t.set_shape(
-        (tensor_shape.TensorShape([static_batch_size, self._beam_width])
-         .concatenate(t_static_shape[1:])))
+    expected_reshaped_shape = tensor_shape.TensorShape(
+        [static_batch_size, self._beam_width]).concatenate(s)
+    if not reshaped_t.shape.is_compatible_with(expected_reshaped_shape):
+      raise ValueError("Unexpected behavior when reshaping between beam width "
+                       "and batch size.  The reshaped tensor has shape: %s.  "
+                       "We expected it to have shape "
+                       "(batch_size, beam_width, depth) == %s.  Perhaps you "
+                       "forgot to create a zero_state with "
+                       "batch_size=encoder_batch_size * beam_width?"
+                       % (reshaped_t.shape, expected_reshaped_shape))
+    reshaped_t.set_shape(expected_reshaped_shape)
     return reshaped_t
 
-  def _maybe_split_batch_beams(self, t):
+  def _maybe_split_batch_beams(self, t, s):
     """Maybe splits the tensor from a batch by beams into a batch of beams.
 
     We do this so that we can use nest and not run into problems with shapes.
 
     Args:
-      t: Tensor of dimension [batch_size*beam_width, ...]
+      t: Tensor of dimension [batch_size*beam_width, s]
+      s: Tensor, Python int, or TensorShape.
 
     Returns:
       Either a reshaped version of t with dimension
-      [batch_size, beam_width, ...] if t's first dimension is of size
+      [batch_size, beam_width, s] if t's first dimension is of size
       batch_size*beam_width or t if not.
+
+    Raises:
+      TypeError: If t is an instance of TensorArray.
+      ValueError: If the rank of t is not statically known.
     """
-    t_shape = t.get_shape().as_list()
-    if len(t_shape) >= 1:
-      return self._split_batch_beams(t)
+    if isinstance(t, tensor_array_ops.TensorArray):
+      raise TypeError(
+          "TensorArray state is not supported by BeamSearchDecoder: %s"
+          % t.name)
+    if t.shape.ndims is None:
+      raise ValueError(
+          "Expected tensor (%s) to have known rank, but ndims == None." % t)
+    if t.shape.ndims >= 1:
+      return self._split_batch_beams(t, s)
     else:
       return t
 
-  def _maybe_merge_batch_beams(self, t):
+  def _maybe_merge_batch_beams(self, t, s):
     """Splits the tensor from a batch by beams into a batch of beams.
 
-    More exactly, t is a tensor of dimension [batch_size*beam_width, ...]. We
-    reshape this into [batch_size, beam_width, ...]
+    More exactly, t is a tensor of dimension [batch_size*beam_width, s]. We
+    reshape this into [batch_size, beam_width, s]
 
     Args:
-      t: Tensor of dimension [batch_size*beam_width, ...]
+      t: Tensor of dimension [batch_size*beam_width, s]
+      s: Tensor, Python int, or TensorShape.
 
     Returns:
-      A reshaped version of t with dimension [batch_size, beam_width, ...].
+      A reshaped version of t with dimension [batch_size, beam_width, s].
+
+    Raises:
+      TypeError: If t is an instance of TensorArray.
+      ValueError:  If the rank of t is not statically known.
     """
-    t_shape = t.get_shape().as_list()
-    if len(t_shape) >= 2:
-      return self._merge_batch_beams(t)
+    if isinstance(t, tensor_array_ops.TensorArray):
+      raise TypeError(
+          "TensorArray state is not supported by BeamSearchDecoder: %s"
+          % t.name)
+    if t.shape.ndims is None:
+      raise ValueError(
+          "Expected tensor (%s) to have known rank, but ndims == None." % t)
+    if t.shape.ndims >= 2:
+      return self._merge_batch_beams(t, s)
     else:
       return t
 
@@ -328,20 +411,18 @@ class BeamSearchDecoder(decoder.Decoder):
 
     with ops.name_scope(name, "BeamSearchDecoderStep", (time, inputs, state)):
       cell_state = state.cell_state
-      inputs = nest.map_structure(self._merge_batch_beams, inputs)
-      cell_state = nest.map_structure(self._maybe_merge_batch_beams, cell_state)
-      try:
-        cell_outputs, next_cell_state = self._cell(
-            inputs, cell_state, tiling_factor=beam_width)
-      except TypeError as e:
-        if "unexpected keyword argument 'tiling_factor'" in str(e):
-          cell_outputs, next_cell_state = self._cell(inputs, cell_state)
-        else:
-          raise
+      inputs = nest.map_structure(
+          lambda inp: self._merge_batch_beams(inp, s=inp.shape[2:]), inputs)
+      cell_state = nest.map_structure(
+          self._maybe_merge_batch_beams,
+          cell_state, self._cell.state_size)
+      cell_outputs, next_cell_state = self._cell(inputs, cell_state)
 
-      cell_outputs = nest.map_structure(self._split_batch_beams, cell_outputs)
-      next_cell_state = nest.map_structure(self._maybe_split_batch_beams,
-                                           next_cell_state)
+      cell_outputs = nest.map_structure(
+          lambda out: self._split_batch_beams(out, out.shape[1:]), cell_outputs)
+      next_cell_state = nest.map_structure(
+          self._maybe_split_batch_beams,
+          next_cell_state, self._cell.state_size)
 
       if self._output_layer is not None:
         cell_outputs = self._output_layer(cell_outputs)
@@ -371,10 +452,12 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
     time: Beam search time step, should start at 0. At time 0 we assume
       that all beams are equal and consider only the first beam for
       continuations.
-    logits: Logits at the current time step. A tensor of shape `[B, vocab_size]`
-    beam_state: Current state of the beam search. An instance of `BeamState`
+    logits: Logits at the current time step. A tensor of shape
+      `[batch_size, beam_width, vocab_size]`
+    beam_state: Current state of the beam search.
+      An instance of `BeamSearchDecoderState`.
     batch_size: The batch size for this input.
-    beam_width: The size of the beams.
+    beam_width: Python int.  The size of the beams.
     end_token: The int32 end token.
     length_penalty_weight: Float weight to penalize length. Disabled with 0.0.
 
@@ -389,20 +472,22 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
 
   # Calculate the total log probs for the new hypotheses
   # Final Shape: [batch_size, beam_width, vocab_size]
-  probs = nn_ops.log_softmax(logits)
-  probs = _mask_probs(probs, end_token, previously_finished)
-  total_probs = array_ops.expand_dims(beam_state.log_probs, 2) + probs
+  step_log_probs = nn_ops.log_softmax(logits)
+  step_log_probs = _mask_probs(step_log_probs, end_token, previously_finished)
+  total_probs = array_ops.expand_dims(beam_state.log_probs, 2) + step_log_probs
 
   # Calculate the continuation lengths by adding to all continuing beams.
-  vocab_size = logits.get_shape().as_list()[-1]
+  vocab_size = logits.shape[-1].value
   lengths_to_add = array_ops.one_hot(
-      array_ops.tile(
+      indices=array_ops.tile(
           array_ops.reshape(end_token, [1, 1]), [batch_size, beam_width]),
-      vocab_size, 0, 1)
+      depth=vocab_size,
+      on_value=0,
+      off_value=1)
   add_mask = (1 - math_ops.to_int32(previously_finished))
   lengths_to_add = array_ops.expand_dims(add_mask, 2) * lengths_to_add
-  new_prediction_lengths = array_ops.expand_dims(prediction_lengths,
-                                                 2) + lengths_to_add
+  new_prediction_lengths = (
+      lengths_to_add + array_ops.expand_dims(prediction_lengths, 2))
 
   # Calculate the scores for each beam
   scores = _get_scores(
@@ -410,10 +495,11 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
       sequence_lengths=new_prediction_lengths,
       length_penalty_weight=length_penalty_weight)
 
-  scores_flat = array_ops.reshape(scores, [batch_size, -1])
+  time = ops.convert_to_tensor(time, name="time")
   # During the first time step we only consider the initial beam
   scores_flat = control_flow_ops.cond(
-      ops.convert_to_tensor(time) > 0, lambda: scores_flat,
+      time > 0,
+      lambda: array_ops.reshape(scores, [batch_size, -1]),
       lambda: scores[:, 0])
 
   # Pick the next beams according to the specified successors function
@@ -498,7 +584,11 @@ def _length_penalty(sequence_lengths, penalty_factor):
   Returns:
     The length penalty factor, a tensor fo shape [beam_size].
   """
-  # TODO(ebrevdo): cleanup based on constant-value of penalty_factor.
+  penalty_factor = ops.convert_to_tensor(penalty_factor, name="penalty_factor")
+  penalty_factor.set_shape(())  # penalty should be a scalar.
+  static_penalty = tensor_util.constant_value(penalty_factor)
+  if static_penalty is not None and static_penalty == 0:
+    return 1.0
   return math_ops.div((5. + math_ops.to_float(sequence_lengths))
                       **penalty_factor, (5. + 1.)**penalty_factor)
 
@@ -532,9 +622,9 @@ def _mask_probs(probs, eos_token, finished):
   finished_row = array_ops.one_hot(
       eos_token,
       vocab_size,
-      dtype=dtypes.float32,
+      dtype=probs.dtype,
       on_value=0.,
-      off_value=dtypes.float32.min)
+      off_value=probs.dtype.min)
   finished_examples = (1. - finished_mask) * finished_row
   return finished_examples + non_finished_examples
 

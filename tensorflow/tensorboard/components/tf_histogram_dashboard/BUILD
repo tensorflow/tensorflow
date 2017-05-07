@@ -38,6 +38,7 @@ tensorboard_webcomponent_library(
     name = "legacy",
     srcs = [
         "tf-histogram-dashboard.html",
+        ":legacy_ts",
     ],
     destdir = "tf-histogram-dashboard",
     deps = [
@@ -52,9 +53,10 @@ tensorboard_webcomponent_library(
     ],
 )
 
+# This is needed: components/BUILD seeks a legacy_ts rule in this package.
 tensorboard_ts_library(
     name = "legacy_ts",
-    srcs = [
-    ],
-    deps = ["//tensorflow/tensorboard/components:common_deps"],
+    srcs = [],
+    deps_mgmt = "off",
+    runtime = "nodejs",
 )

@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <numeric>
 #include <vector>
 
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -32,6 +34,115 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
+
+/* static */ std::unique_ptr<Literal> LiteralUtil::CreateFromShape(
+    const Shape& shape) {
+  auto literal = MakeUnique<Literal>();
+  *literal->mutable_shape() = shape;
+  Reserve(ShapeUtil::ElementsIn(literal->shape()), literal.get());
+  return literal;
+}
+
+/* static */ std::unique_ptr<Literal> LiteralUtil::CreateFromDimensions(
+    PrimitiveType primitive_type,
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
+  return CreateFromShape(ShapeUtil::MakeShape(primitive_type, dimensions));
+}
+
+template <typename T, typename WT>
+/* static */ Status LiteralUtil::CopyRange(
+    const Literal& src_literal, tensorflow::gtl::ArraySlice<int64> src_base,
+    Literal* dest_literal, tensorflow::gtl::ArraySlice<int64> dest_base,
+    tensorflow::gtl::ArraySlice<int64> copy_size) {
+  const Shape& src_shape = src_literal.shape();
+  const Shape& dest_shape = dest_literal->shape();
+  tensorflow::gtl::ArraySlice<T> src_data = GetArraySlice<T>(src_literal);
+  tensorflow::protobuf::RepeatedField<WT>* dest_data =
+      GetMutableRepeatedField<WT>(dest_literal);
+
+  TF_RET_CHECK(ShapeUtil::Rank(src_shape) == src_base.size());
+  TF_RET_CHECK(ShapeUtil::Rank(dest_shape) == dest_base.size());
+  if (ShapeUtil::Rank(src_shape) == 0 || ShapeUtil::Rank(dest_shape) == 0) {
+    // If any of the two shapes are scalars, we can just call the StridedCopy()
+    // directly, and we know we will be copying only one value.
+    TF_RET_CHECK(copy_size.empty());
+    StridedCopy(dest_data, LinearIndex(*dest_literal, dest_base), 0, src_data,
+                LinearIndex(src_literal, src_base), 0, 1);
+  } else if (!ShapeUtil::HasZeroElements(dest_shape)) {
+    TF_RET_CHECK(!ShapeUtil::HasZeroElements(src_shape));
+    TF_RET_CHECK(src_base.size() == dest_base.size());
+    TF_RET_CHECK(src_base.size() == copy_size.size());
+
+    // Scan the source from minor, stepping in copy size blocks, then within
+    // the index enumaration functor, do a strided copy advancing source index
+    // by one (walking through the minor dimension), and destination index by
+    // proper stride size at the matching dimension.
+    std::vector<int64> src_indexes(src_base.size(), 0);
+    std::vector<int64> dest_indexes(dest_base.size(), 0);
+    std::vector<int64> base(src_base.size(), 0);
+    std::vector<int64> incr(src_base.size(), 1);
+    int64 sdim = src_shape.layout().minor_to_major()[0];
+    int64 dest_stride = IndexUtil::GetDimensionStride(dest_shape, sdim);
+
+    incr[sdim] = copy_size[sdim];
+    auto copy_proc = [&](const std::vector<int64>& indexes) {
+      // Map from multi-dimensional index, to source index.
+      std::copy(indexes.begin(), indexes.end(), src_indexes.begin());
+      std::transform(src_indexes.begin(), src_indexes.end(), src_base.begin(),
+                     src_indexes.begin(), std::plus<int64>());
+      // Map from multi-dimensional index, to destination index.
+      std::copy(indexes.begin(), indexes.end(), dest_indexes.begin());
+      std::transform(dest_indexes.begin(), dest_indexes.end(),
+                     dest_base.begin(), dest_indexes.begin(),
+                     std::plus<int64>());
+
+      int64 src_index = LinearIndex(src_literal, src_indexes);
+      int64 dest_index = LinearIndex(*dest_literal, dest_indexes);
+
+      StridedCopy(dest_data, dest_index, dest_stride, src_data, src_index, 1,
+                  copy_size[sdim]);
+      return true;
+    };
+
+    ShapeUtil::ForEachIndex(src_shape, base, copy_size, incr, copy_proc);
+  }
+  return Status::OK();
+}
+
+/* static */ Status LiteralUtil::Copy(
+    const Literal& src_literal, tensorflow::gtl::ArraySlice<int64> src_base,
+    Literal* dest_literal, tensorflow::gtl::ArraySlice<int64> dest_base,
+    tensorflow::gtl::ArraySlice<int64> copy_size) {
+  TF_RET_CHECK(
+      ShapeUtil::SameElementType(src_literal.shape(), dest_literal->shape()));
+  switch (src_literal.shape().element_type()) {
+    case U32:
+      return CopyRange<uint32>(src_literal, src_base, dest_literal, dest_base,
+                               copy_size);
+    case U64:
+      return CopyRange<uint64, tensorflow::protobuf_uint64>(
+          src_literal, src_base, dest_literal, dest_base, copy_size);
+    case S32:
+      return CopyRange<int32>(src_literal, src_base, dest_literal, dest_base,
+                              copy_size);
+    case S64:
+      return CopyRange<int64, tensorflow::protobuf_int64>(
+          src_literal, src_base, dest_literal, dest_base, copy_size);
+    case F32:
+      return CopyRange<float>(src_literal, src_base, dest_literal, dest_base,
+                              copy_size);
+    case F64:
+      return CopyRange<double>(src_literal, src_base, dest_literal, dest_base,
+                               copy_size);
+    case PRED:
+      return CopyRange<bool>(src_literal, src_base, dest_literal, dest_base,
+                             copy_size);
+    default:
+      break;
+  }
+  return Unimplemented("Unhandled primitive type %d",
+                       src_literal.shape().element_type());
+}
 
 /* static */ Literal LiteralUtil::Zero(PrimitiveType primitive_type) {
   switch (primitive_type) {
@@ -680,9 +791,8 @@ void TransposeLiteralInternal(const Literal& original,
 
 /* static */ void LiteralUtil::EachCellAsString(
     const Literal& literal,
-    std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
-                       const string& value)>
-        per_cell) {
+    const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
+                             const string& value)>& per_cell) {
   if (ShapeUtil::Rank(literal.shape()) == 1) {
     for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
       per_cell({i0}, GetAsString(literal, {i0}));

@@ -199,15 +199,13 @@ class MklMatMulOp : public OpKernel {
   }
 };
 
-#define REGISTER_CPU(T)                                                      \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"),              \
-      MklMatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);       \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T").Label("MKL"), \
-      MklMatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>)
+#define REGISTER_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(                                      \
+      Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      MklMatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);
 
-// TODO:Consider template specialization when adding/removing additional types
+// TODO(inteltf) Consider template specialization when adding/removing
+// additional types
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);

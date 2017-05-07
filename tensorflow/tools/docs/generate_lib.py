@@ -148,7 +148,8 @@ def write_docs(output_dir, parser_config, yaml_toc):
                 + '\n')
 
         symbols_in_module = module_children.get(module, [])
-        symbols_in_module.sort(key=lambda a: a.upper())
+        # Sort case-insensitive, if equal sort case sensitive (upper first)
+        symbols_in_module.sort(key=lambda a: (a.upper(), a))
 
         for full_name in symbols_in_module:
           f.write('    - title: ' + full_name[len(module) + 1:] + '\n'
@@ -189,7 +190,6 @@ def _get_default_do_not_descend_map():
           'tensor_forest',
           'tensorboard',
           'testing',
-          'training',
           'tfprof',
       ],
       'contrib.bayesflow': [

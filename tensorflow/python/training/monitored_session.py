@@ -26,7 +26,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -238,7 +238,7 @@ class Scaffold(object):
   @staticmethod
   def _default_local_init_op():
     return control_flow_ops.group(variables.local_variables_initializer(),
-                                  data_flow_ops.tables_initializer())
+                                  lookup_ops.tables_initializer())
 
 
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
@@ -422,7 +422,9 @@ class WorkerSessionCreator(SessionCreator):
   def create_session(self):
     self._scaffold.finalize()
     return self._get_session_manager().wait_for_session(
-        self._master, config=self._config)
+        self._master, config=self._config,
+        max_wait_secs=30 * 60  # Wait up to 30 mins for the session to be ready.
+    )
 
 
 class _MonitoredSession(object):
@@ -557,7 +559,7 @@ class MonitoredSession(_MonitoredSession):
 
   ```python
   saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
+  summary_hook = SummarySaverHook(...)
   with MonitoredSession(session_creator=ChiefSessionCreator(...),
                         hooks=[saver_hook, summary_hook]) as sess:
     while not sess.should_stop():
@@ -646,7 +648,7 @@ class SingularMonitoredSession(_MonitoredSession):
   Example usage:
   ```python
   saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
+  summary_hook = SummarySaverHook(...)
   with SingularMonitoredSession(hooks=[saver_hook, summary_hook]) as sess:
     while not sess.should_stop():
       sess.run(train_op)

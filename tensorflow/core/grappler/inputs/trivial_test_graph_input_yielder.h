@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace grappler {
 
 class Cluster;
-class GrapplerItem;
+struct GrapplerItem;
 
 class TrivialTestGraphInputYielder : public InputYielder {
  public:

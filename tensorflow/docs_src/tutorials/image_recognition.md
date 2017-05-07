@@ -36,7 +36,7 @@ images into [1000 classes], like "Zebra", "Dalmatian", and "Dishwasher".
 For example, here are the results from [AlexNet] classifying some images:
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/AlexClassification.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/AlexClassification.png">
 </div>
 
 To compare models, we examine how often the model fails to predict the
@@ -75,7 +75,7 @@ Start by cloning the [TensorFlow models repo](https://github.com/tensorflow/mode
 The above command will classify a supplied image of a panda bear.
 
 <div style="width:15%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/cropped_panda.jpg">
+  <img style="width:100%" src="https://www.tensorflow.org/images/cropped_panda.jpg">
 </div>
 
 If the model runs correctly, the script will produce the following output:
@@ -137,7 +137,7 @@ score of 0.8.
 
 
 <div style="width:45%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/grace_hopper.jpg">
+  <img style="width:100%" src="https://www.tensorflow.org/images/grace_hopper.jpg">
 </div>
 
 Next, try it out on your own images by supplying the --image= argument, e.g.

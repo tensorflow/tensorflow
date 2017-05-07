@@ -19,15 +19,23 @@ set -e
 
 usage() {
   echo "Usage: QUALCOMM_SDK=<path to qualcomm sdk. Not needed if you specify -p> NDK_ROOT=<path to ndk root> $(basename "$0")"
+  echo "Optional: NNLIB_DIR=<path to downloaded nnlib dir>"
   echo "-b build only"
+  echo "-c test count"
   echo "-p use prebuilt hexagon binaries"
+  echo "-s skip download if files already exist"
   exit 1
 }
 
-while getopts "bp" opt_name; do
+TEST_COUNT=1
+SKIP_DOWNLOAD_IF_EXIST=false
+
+while getopts "bc:ps" opt_name; do
   case "$opt_name" in
+    c) TEST_COUNT="${OPTARG}";;
     b) BUILD_ONLY="true";;
     p) USE_PREBUILT_HEXAOGON_BINARIES="true";;
+    s) SKIP_DOWNLOAD_IF_EXIST="true";;
     *) usage;;
   esac
 done
@@ -79,14 +87,27 @@ if [[ "${USE_PREBUILT_HEXAOGON_BINARIES}" == "true" ]]; then
         NN_LIB_PUSH_DEST="/vendor/lib/rfsa/adsp"
     fi
     download_and_push "${URL_BASE}/deps/hexagon/libhexagon_controller.so" \
-"${GEN_LIBS_DIR}/libhexagon_controller.so" "${CONTROLLER_PUSH_DEST}"
+"${GEN_LIBS_DIR}/libhexagon_controller.so" "${CONTROLLER_PUSH_DEST}" \
+"${SKIP_DOWNLOAD_IF_EXIST}"
 
     download_and_push "${URL_BASE}/deps/hexagon/libhexagon_nn_skel.so" \
-"${GEN_LIBS_DIR}/libhexagon_nn_skel.so" "${NN_LIB_PUSH_DEST}"
+"${GEN_LIBS_DIR}/libhexagon_nn_skel.so" "${NN_LIB_PUSH_DEST}" \
+"${SKIP_DOWNLOAD_IF_EXIST}"
 else
     echo "Build hexagon binaries from source code"
     cd "${GEN_DIR}"
-    git clone https://source.codeaurora.org/quic/hexagon_nn/nnlib
+    if [[ -z "${NNLIB_DIR}" ]]; then
+      git clone https://source.codeaurora.org/quic/hexagon_nn/nnlib
+    else
+      if [[ ! -f "${NNLIB_DIR}/Makefile" ]]; then
+        echo "Couldn't locate ${NNLIB_DIR}/Makefile" 1>&2
+        exit 1
+      fi
+      echo "Use nnlib in ${NNLIB_DIR}" 1>&2
+      GEN_NNLIB_DIR="${GEN_DIR}/nnlib"
+      mkdir -p "${GEN_NNLIB_DIR}"
+      cp -af "${NNLIB_DIR}/"* "${GEN_NNLIB_DIR}"
+    fi
 
     cd "${QUALCOMM_SDK}"
     source "${QUALCOMM_SDK}/setup_sdk_env.sh"
@@ -160,15 +181,18 @@ if [[ "${BUILD_ONLY}" != "true" ]]; then
 fi
 
 download_and_push "${URL_BASE}/example_images/img_299x299.bmp" \
-"${GEN_DOWNLOAD_DIR}/img_299x299.bmp" "${BIN_PUSH_DEST}"
+"${GEN_DOWNLOAD_DIR}/img_299x299.bmp" "${BIN_PUSH_DEST}" \
+"${SKIP_DOWNLOAD_IF_EXIST}"
 
 download_and_push \
 "${URL_BASE}/models/tensorflow_inception_v3_stripped_optimized_quantized.pb" \
 "${GEN_DOWNLOAD_DIR}/tensorflow_inception_v3_stripped_optimized_quantized.pb" \
-"${BIN_PUSH_DEST}"
+"${BIN_PUSH_DEST}" \
+"${SKIP_DOWNLOAD_IF_EXIST}"
 
 download_and_push "${URL_BASE}/models/imagenet_comp_graph_label_strings.txt" \
-"${GEN_DOWNLOAD_DIR}/imagenet_comp_graph_label_strings.txt" "${BIN_PUSH_DEST}"
+"${GEN_DOWNLOAD_DIR}/imagenet_comp_graph_label_strings.txt" "${BIN_PUSH_DEST}" \
+"${SKIP_DOWNLOAD_IF_EXIST}"
 
 # By default this script runs a test to fuse and run the model
 gtest_args+=("--gtest_filter=GraphTransferer.RunInceptionV3OnHexagonExampleWithTfRuntime")
@@ -195,6 +219,9 @@ if [[ "${BUILD_ONLY}" != "true" ]]; then
     adb shell chmod "${ANDROID_EXEC_FILE_MODE}" \
         "/data/local/tmp/hexagon_graph_execution"
     adb wait-for-device
-    adb shell 'LD_LIBRARY_PATH=/data/local/tmp:$LD_LIBRARY_PATH' \
-        "/data/local/tmp/hexagon_graph_execution" ${gtest_args[@]}
+
+    for i in $(seq 1 "${TEST_COUNT}"); do
+      adb shell 'LD_LIBRARY_PATH=/data/local/tmp:$LD_LIBRARY_PATH' \
+          "/data/local/tmp/hexagon_graph_execution" ${gtest_args[@]}
+    done
 fi

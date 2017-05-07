@@ -88,6 +88,7 @@ class SparseAddTest(test.TestCase):
       for sp_a in (self._SparseTensorValue_3x3(), self._SparseTensor_3x3()):
         for sp_b in (self._SparseTensorValue_3x3(), self._SparseTensor_3x3()):
           sp_sum = sparse_ops.sparse_add(sp_a, sp_b)
+          self.assertAllEqual((3, 3), sp_sum.get_shape())
 
           sum_out = sess.run(sp_sum)
 

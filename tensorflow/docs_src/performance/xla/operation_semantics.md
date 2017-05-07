@@ -178,7 +178,7 @@ Concat({a, b}, 0)
 
 Diagram:
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/ops_concatenate.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/ops_concatenate.png">
 </div>
 
 ## ConvertElementType
@@ -707,7 +707,7 @@ are all 0. Figure below shows examples of different `edge_padding` and
 `interior_padding` values for a two dimensional array.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/ops_pad.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/ops_pad.png">
 </div>
 
 ## Reduce
@@ -781,13 +781,13 @@ Here's an example of reducing a 2D array (matrix). The shape has rank 2,
 dimension 0 of size 2 and dimension 1 of size 3:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:35%" src="../../images/ops_2d_matrix.png">
+  <img style="width:35%" src="https://www.tensorflow.org/images/ops_2d_matrix.png">
 </div>
 
 Results of reducing dimensions 0 or 1 with an "add" function:
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:35%" src="../../images/ops_reduce_from_2d_matrix.png">
+  <img style="width:35%" src="https://www.tensorflow.org/images/ops_reduce_from_2d_matrix.png">
 </div>
 
 Note that both reduction results are 1D arrays. The diagram shows one as column
@@ -798,7 +798,7 @@ size 4, dimension 1 of size 2 and dimension 2 of size 3. For simplicity, the
 values 1 to 6 are replicated across dimension 0.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:35%" src="../../images/ops_reduce_from_3d_matrix.png">
+  <img style="width:35%" src="https://www.tensorflow.org/images/ops_reduce_from_3d_matrix.png">
 </div>
 
 Similarly to the 2D example, we can reduce just one dimension. If we reduce
@@ -890,7 +890,7 @@ builder.ReduceWindow(
 ```
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:35%" src="../../images/ops_reduce_window.png">
+  <img style="width:35%" src="https://www.tensorflow.org/images/ops_reduce_window.png">
 </div>
 
 Stride of 1 in a dimension specifies that the position of a window in the
@@ -902,7 +902,7 @@ are the same as though the input came in with the dimensions it has after
 padding.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:75%" src="../../images/ops_reduce_window_stride.png">
+  <img style="width:75%" src="https://www.tensorflow.org/images/ops_reduce_window_stride.png">
 </div>
 
 The evaluation order of the reduction function is arbitrary and may be
@@ -1144,7 +1144,7 @@ addition `scatter` function produces the output element of value 8 (2 + 6).
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%"
-    src="../../images/ops_scatter_to_selected_window_element.png">
+    src="https://www.tensorflow.org/images/ops_scatter_to_selected_window_element.png">
 </div>
 
 The evaluation order of the `scatter` function is arbitrary and may be
@@ -1482,5 +1482,5 @@ while (result(0) < 1000) {
 ```
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../../images/ops_while.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/ops_while.png">
 </div>
