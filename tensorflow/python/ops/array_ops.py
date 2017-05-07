@@ -1690,21 +1690,21 @@ def meshgrid(*args, **kwargs):
   results in
 
   ```prettyprint
-    X = [[1, 1, 1],
-         [2, 2, 2],
-         [3, 3, 3]]
-    Y = [[4, 5, 6],
-         [4, 5, 6],
-         [4, 5, 6]]
+    X = [[1, 2, 3],
+         [1, 2, 3],
+         [1, 2, 3]]
+    Y = [[4, 4, 4],
+         [5, 5, 5],
+         [6, 6, 6]]
   ```
 
   Args:
-    *args: `Tensor`s with rank 1
-    indexing: Either 'xy' or 'ij' (optional, default: 'xy')
+    *args: `Tensor`s with rank 1.
+    indexing: Either 'xy' or 'ij' (optional, default: 'xy').
     name: A name for the operation (optional).
 
   Returns:
-    outputs: A list of N `Tensor`s with rank N
+    outputs: A list of N `Tensor`s with rank N.
   """
 
   indexing = kwargs.pop("indexing", "xy")
