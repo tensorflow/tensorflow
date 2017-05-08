@@ -32,7 +32,7 @@ set_target_properties(lib_tf PROPERTIES IMPORTED_LOCATION
 # Change to compile flags should be replicated into bazel build file
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DIS_SLIM_BUILD \
                      -std=c++11 -fno-rtti -fno-exceptions \
-                     -O2 -Wno-narrowing \
+                     -O3 -DUSE_GEMM_FOR_CONV -Wno-narrowing \
                      -mfpu=neon -mfloat-abi=softfp -fPIE \
                      -DGOOGLE_PROTOBUF_NO_RTTI \
                      -DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER")
