@@ -160,7 +160,7 @@ or `clang` available on your system. The binary PIP package installs the header
 files and the library that you need to compile your op in locations that are
 system specific. However, the TensorFlow python library provides the
 `get_include` function to get the header directory.
-Here is the output of this function on a Ubuntu machine.
+Here is the output of this function on an Ubuntu machine.
 
 ```bash
 $ python
