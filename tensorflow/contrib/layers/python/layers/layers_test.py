@@ -2812,6 +2812,76 @@ class MaxPool2DTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
 
 
+class MaxPool3DTest(test.TestCase):
+
+  def testInvalidDataFormat(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3))
+    with self.assertRaisesRegexp(ValueError,
+                                 'data_format has to be either NCDHW or NDHWC.'):
+      _layers.max_pool3d(images, [3, 3, 3], data_format='CDHWN')
+
+  def testCreateMaxPool(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3)).astype(np.float32)
+    output = _layers.max_pool3d(images, [3, 3, 3])
+    self.assertEqual(output.op.name, 'MaxPool3D/MaxPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateMaxPoolNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, 3, depth, height, width)).astype(np.float32)
+    output = _layers.max_pool3d(images, [3, 3, 3], data_format='NCDHW')
+    self.assertEquals(output.op.name, 'MaxPool3D/transpose_1')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 1, 2, 4])
+
+  def testCollectOutputs(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], outputs_collections='outputs')
+    output_collected = ops.get_collection('outputs')[0]
+    self.assertEqual(output_collected.aliases, ['MaxPool3D'])
+    self.assertEqual(output_collected, output)
+
+  def testCreateSquareMaxPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, 3)
+    self.assertEqual(output.op.name, 'MaxPool3D/MaxPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateMaxPoolWithScope(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], scope='pool1')
+    self.assertEqual(output.op.name, 'pool1/MaxPool3D')
+
+  def testCreateMaxPoolWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 3, 5, 3])
+
+  def testCreateMaxPoolWithSamePaddingNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, 3, depth, height, width), seed=1)
+    output = _layers.max_pool3d(
+        images, [3, 3, 3], padding='SAME', data_format='NCDHW')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 2, 3, 5])
+
+  def testCreateMaxPoolStrideWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], stride=1, padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, depth, height, width, 3])
+
+  def testGlobalMaxPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, images.get_shape()[1:4], stride=1)
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 1, 3])
+
+
 class OneHotEncodingTest(test.TestCase):
 
   def testOneHotEncodingCreate(self):
