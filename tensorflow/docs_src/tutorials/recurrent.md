@@ -53,17 +53,18 @@ sentence. The memory state of the network is initialized with a vector of zeros
 and gets updated after reading each word. For computational reasons, we will
 process data in mini-batches of size `batch_size`.  In this example, it is important to note that `current_batch_of_words` does not correspond to a "sentence" of words.  Every word in a batch should correspond to time t.  Tensorflow will automatically sum the gradients of each batch for you.
 
-E.g.
-Batch 0:
+For example:
+```
  t=0  t=1  t=2     t=3
 [The, fox, is,     quick]
-[The, fox, jumped, high].
+[The, fox, jumped, high]
 
 words_in_dataset[0] = [The, The]
 words_in_dataset[1] = [fox, fox]
 words_in_dataset[2] = [is, jumped]
 words_in_dataset[3] = [quick, high]
 num_batches = 4, batch_size = 2
+```
 
 The basic pseudocode is as follows:
 
