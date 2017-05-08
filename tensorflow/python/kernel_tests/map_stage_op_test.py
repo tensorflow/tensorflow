@@ -195,5 +195,42 @@ class MapStageTest(test.TestCase):
       for i in range(capacity):
         sess.run(popitem)
 
+  def testOrdering(self):
+    import six
+    import random
+
+    with ops.device('/cpu:0'):
+      x = array_ops.placeholder(dtypes.int32, name='x')
+      pi = array_ops.placeholder(dtypes.int64, name='pi')
+      gi = array_ops.placeholder(dtypes.int64, name='gi')
+    with ops.device(test.gpu_device_name()):
+      stager = data_flow_ops.MapStagingArea([dtypes.int32, ],
+        shapes=[[]], ordered=True)
+      stage = stager.put(pi,[x])
+      popitem = stager.popitem()
+      size = stager.size()
+
+    n = 10
+
+    with self.test_session(use_gpu=True) as sess:
+      # Keys 0..n-1
+      keys = list(six.moves.range(n))
+
+      # Shuffle them for random insert
+      shuffle_keys = [i for i in keys]
+      random.shuffle(shuffle_keys)
+
+      for i in keys:
+        sess.run(stage, feed_dict={pi: i, x: i})
+
+      self.assertTrue(sess.run(size) == n)
+
+      # Check that key, values come out in ascending order
+      for k in keys:
+        pop_key, values = sess.run(popitem)
+        self.assertTrue(k == pop_key == values)
+
+      self.assertTrue(sess.run(size) == 0)
+
 if __name__ == '__main__':
   test.main()

@@ -1838,8 +1838,10 @@ class MapStagingArea(BaseStagingArea):
                                     name=name,
                                     capacity=self._capacity)
 
-        key = self._create_device_transfers(key)
-        results = self._get_return_value(result)
+        # Separate keys and results out from
+        # underlying namedtuple
+        key = self._create_device_transfers(key)[0]
+        result = self._get_return_value(result)
 
         return key, result
 
