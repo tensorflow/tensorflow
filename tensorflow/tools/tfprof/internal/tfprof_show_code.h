@@ -15,8 +15,8 @@ limitations under the License.
 
 // Parent class and utilities for tfprof_graph and tfprof_scope.
 
-#ifndef THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_H_
-#define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_H_
+#ifndef THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_CODE_H_
+#define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_CODE_H_
 
 #include <algorithm>
 #include <string>
@@ -35,59 +35,58 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-class ShowNode {
+class ShowCodeNode {
  public:
-  explicit ShowNode(const TFGraphNode* node);
-  virtual ~ShowNode() {}
+  explicit ShowCodeNode(const TFCodeNode* node);
+  virtual ~ShowCodeNode() {}
 
   const string& name() const { return node->name(); }
-  TFGraphNodeProto* mutable_proto();
-  const TFGraphNodeProto& proto() const;
+  TFCodeNodeProto* mutable_proto();
+  const TFCodeNodeProto& proto() const;
 
   string Format(const Options& opts);
 
   string FormatMeta(const Options& opts);
 
-  const TFGraphNode* node;
+  const TFCodeNode* node;
   bool account;
   string formatted_str;
 
  protected:
-  void AggregateTotalStats(ShowNode* node);
+  void AggregateTotalStats(ShowCodeNode* node);
 
   void AddSelfToTotalStats();
 
   void ResetTotalStats();
 
-  TFGraphNodeProto proto_;
+  TFCodeNodeProto proto_;
 };
 
-class TFShow {
+class TFShowCode {
  public:
-  explicit TFShow(checkpoint::CheckpointReader* ckpt_reader)
-      : ckpt_reader_(ckpt_reader) {}
-  virtual ~TFShow() {}
+  explicit TFShowCode() {}
+  virtual ~TFShowCode() {}
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  const TFGraphNodeProto& Show(const Options& opts);
+  const TFCodeNodeProto& Show(const Options& opts);
 
  protected:
-  virtual const ShowNode* ShowInternal(const Options& opts) = 0;
+  virtual const ShowCodeNode* ShowInternal(const Options& opts) = 0;
 
   bool LookUpCheckPoint(const string& name,
                         std::unique_ptr<TFProfTensor>* tensor);
 
   // Overridden by subclass if extra requirements need to be met.
-  virtual bool ShouldShowIfExtra(ShowNode* node, const Options& opts,
+  virtual bool ShouldShowIfExtra(ShowCodeNode* node, const Options& opts,
                                  int depth) {
     return true;
   }
 
-  bool ShouldShow(ShowNode* node, const Options& opts, int depth);
+  bool ShouldShow(ShowCodeNode* node, const Options& opts, int depth);
 
-  bool ShouldTrim(ShowNode* node, const std::vector<string>& regexes);
+  bool ShouldTrim(ShowCodeNode* node, const std::vector<string>& regexes);
 
-  bool ShouldAccount(ShowNode* node, const Options& opts);
+  bool ShouldAccount(ShowCodeNode* node, const Options& opts);
 
   template <typename T>
   std::vector<T*> SortNodes(const std::vector<T*>& nodes, const Options& opts) {
@@ -95,33 +94,33 @@ class TFShow {
       return nodes;
     }
     std::vector<T*> sorted_nodes = nodes;
-    std::sort(sorted_nodes.begin(), sorted_nodes.end(), [&opts](const T* n1,
-                                                                const T* n2) {
-      if (n1->name() == kTFProfRoot) return true;
-      if (n2->name() == kTFProfRoot) return false;
-      bool name_cmp = n1->name() < n2->name();
-      if (opts.order_by == kOrderBy[0]) {
-        return name_cmp;
-      } else if (opts.order_by == kOrderBy[1]) {
-        return n1->proto().total_requested_bytes() >
-               n2->proto().total_requested_bytes();
-      } else if (opts.order_by == kOrderBy[2]) {
-        return n1->proto().total_exec_micros() >
-               n2->proto().total_exec_micros();
-      } else if (opts.order_by == kOrderBy[3]) {
-        return n1->proto().total_parameters() > n2->proto().total_parameters();
-      } else if (opts.order_by == kOrderBy[4]) {
-        return n1->proto().total_float_ops() > n2->proto().total_float_ops();
-      }
-      return name_cmp;
-    });
+    std::sort(sorted_nodes.begin(), sorted_nodes.end(),
+              [&opts](const T* n1, const T* n2) {
+                if (n1->name() == kTFProfRoot) return true;
+                if (n2->name() == kTFProfRoot) return false;
+                bool name_cmp = n1->name() < n2->name();
+                if (opts.order_by == kOrderBy[0]) {
+                  return name_cmp;
+                } else if (opts.order_by == kOrderBy[1]) {
+                  return n1->proto().total_requested_bytes() >
+                         n2->proto().total_requested_bytes();
+                } else if (opts.order_by == kOrderBy[2]) {
+                  return n1->proto().total_exec_micros() >
+                         n2->proto().total_exec_micros();
+                } else if (opts.order_by == kOrderBy[3]) {
+                  return n1->proto().total_parameters() >
+                         n2->proto().total_parameters();
+                } else if (opts.order_by == kOrderBy[4]) {
+                  return n1->proto().total_float_ops() >
+                         n2->proto().total_float_ops();
+                }
+                return name_cmp;
+              });
     return sorted_nodes;
   }
-
-  checkpoint::CheckpointReader* ckpt_reader_;
 };
 
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_H_
+#endif  // THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_CODE_H_

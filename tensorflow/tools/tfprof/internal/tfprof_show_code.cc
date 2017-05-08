@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tools/tfprof/internal/tfprof_show.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_show_code.h"
 
 #include <memory>
 #include <set>
@@ -22,50 +22,64 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_scope.h"
 
 namespace tensorflow {
 namespace tfprof {
-ShowNode::ShowNode(const TFGraphNode* node) : node(node), account(true) {
-  mutable_proto()->set_name(name());
-  if (!node->device().empty()) {
-    mutable_proto()->set_device(node->device());
+ShowCodeNode::ShowCodeNode(const TFCodeNode* node) : node(node), account(true) {
+  std::vector<ScopeNode> snodes;
+  for (auto it : node->graph_nodes()) {
+    ScopeNode snode(it.second);
+    snodes.push_back(snode);
+    snodes[snodes.size() - 1].AddSelfToTotalStats();
+    *mutable_proto()->mutable_graph_nodes()->Add() =
+        snodes[snodes.size() - 1].proto();
   }
+
+  mutable_proto()->set_name(name());
   mutable_proto()->set_exec_micros(node->kernel_compute_micros());
   mutable_proto()->set_requested_bytes(node->requested_bytes());
   mutable_proto()->set_float_ops(node->float_ops());
 
-  if (!node->shape().empty()) {
-    int64 params = 1;
-    bool complete_shape = true;
-    for (int64 d : node->shape()) {
-      // Sometimes parameters could be <0 when a dim is unknown.
-      if (d < 0) {
-        complete_shape = false;
-        break;
+  if (!node->shapes().empty()) {
+    for (const std::vector<int64>& shape : node->shapes()) {
+      int64 params = 1;
+      bool complete_shape = true;
+      for (int64 d : shape) {
+        // Sometimes parameters could be <0 when a dim is unknown.
+        if (d < 0) {
+          complete_shape = false;
+          break;
+        }
+        params *= d;
       }
-      params *= d;
-    }
-    if (complete_shape) {
-      mutable_proto()->set_parameters(proto_.parameters() + params);
-    } else {
-      fprintf(stderr, "Incomplete shape.");
+      if (complete_shape) {
+        mutable_proto()->set_parameters(proto().parameters() + params);
+      } else {
+        fprintf(stderr, "Incomplete shape.");
+      }
     }
   }
 }
 
-string ShowNode::Format(const Options& opts) {
+string ShowCodeNode::Format(const Options& opts) {
   if (opts.select.empty()) {
     return name();
   }
   return strings::Printf("%s (%s)", name().c_str(), FormatMeta(opts).c_str());
 }
 
-string ShowNode::FormatMeta(const Options& opts) {
+string ShowCodeNode::FormatMeta(const Options& opts) {
   std::vector<string> info;
+  std::vector<string> shapes;
   if (opts.select.find(kShown[2]) != opts.select.end()) {
-    const string shape = FormatShapes(node->shape());
-    if (!shape.empty()) {
-      info.push_back(shape);
+    for (const std::vector<int64>& shape : node->shapes()) {
+      if (!shape.empty()) {
+        shapes.push_back(FormatShapes(shape));
+      }
+    }
+    if (!shapes.empty()) {
+      info.push_back(str_util::Join(shapes, "|"));
     }
     string params = FormatNumber(proto().total_parameters()) + " params";
     if (account) {
@@ -104,27 +118,25 @@ string ShowNode::FormatMeta(const Options& opts) {
     info.push_back(time);
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
-    if (!proto().device().empty()) {
-      info.push_back(proto().device());
+    if (!node->devices().empty()) {
+      info.push_back(str_util::Join(node->devices(), "|"));
     }
   }
   if (opts.select.find(kShown[7]) != opts.select.end()) {
     std::set<string> op_types = node->op_types();
     // Device is considered a type.
-    if (!proto().device().empty()) {
-      op_types.insert(proto().device());
-    }
+    op_types.insert(node->devices().cbegin(), node->devices().cend());
     info.push_back(str_util::Join(op_types, "|"));
   }
   return str_util::Join(info, ", ");
 }
 
-TFGraphNodeProto* ShowNode::mutable_proto() { return &proto_; }
+TFCodeNodeProto* ShowCodeNode::mutable_proto() { return &proto_; }
 
-const TFGraphNodeProto& ShowNode::proto() const { return proto_; }
+const TFCodeNodeProto& ShowCodeNode::proto() const { return proto_; }
 
-void ShowNode::AggregateTotalStats(ShowNode* node) {
-  TFGraphNodeProto* node_pb = node->mutable_proto();
+void ShowCodeNode::AggregateTotalStats(ShowCodeNode* node) {
+  TFCodeNodeProto* node_pb = node->mutable_proto();
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          node_pb->total_exec_micros());
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
@@ -135,7 +147,7 @@ void ShowNode::AggregateTotalStats(ShowNode* node) {
                                        node_pb->total_float_ops());
 }
 
-void ShowNode::AddSelfToTotalStats() {
+void ShowCodeNode::AddSelfToTotalStats() {
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          proto().exec_micros());
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
@@ -146,7 +158,7 @@ void ShowNode::AddSelfToTotalStats() {
                                        proto().float_ops());
 }
 
-void ShowNode::ResetTotalStats() {
+void ShowCodeNode::ResetTotalStats() {
   mutable_proto()->set_total_exec_micros(0);
   mutable_proto()->set_total_requested_bytes(0);
   mutable_proto()->set_total_parameters(0);
@@ -154,8 +166,8 @@ void ShowNode::ResetTotalStats() {
   mutable_proto()->mutable_children()->Clear();
 }
 
-const TFGraphNodeProto& TFShow::Show(const Options& opts) {
-  const ShowNode* root = ShowInternal(opts);
+const TFCodeNodeProto& TFShowCode::Show(const Options& opts) {
+  const ShowCodeNode* root = ShowInternal(opts);
   if (opts.dump_to_file.empty()) {
     printf("%s", root->formatted_str.c_str());
     fflush(stdout);
@@ -169,34 +181,23 @@ const TFGraphNodeProto& TFShow::Show(const Options& opts) {
   return root->proto();
 }
 
-bool TFShow::LookUpCheckPoint(const string& name,
-                              std::unique_ptr<TFProfTensor>* tensor) {
-  if (name == kTFProfRoot || !ckpt_reader_ || !tensor) {
-    return false;
-  }
-  std::unique_ptr<Tensor> out_tensor;
-  TF_Status* status = TF_NewStatus();
-  ckpt_reader_->GetTensor(name, &out_tensor, status);
-  if (TF_GetCode(status) != TF_OK) {
-    fprintf(stderr, "%s\n", TF_Message(status));
-    TF_DeleteStatus(status);
-    return false;
-  }
-  tensor->reset(new TFProfTensor(std::move(out_tensor)));
-  TF_DeleteStatus(status);
-  return true;
-}
-
-bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
+bool TFShowCode::ShouldShow(ShowCodeNode* node, const Options& opts,
+                            int depth) {
   // Always show kTFProfRoot.
   if (node->name() == kTFProfRoot) return true;
 
   if (!node->account) return false;
-
-  if (node->proto().requested_bytes() < opts.min_bytes ||
-      node->proto().exec_micros() < opts.min_micros ||
-      node->proto().parameters() < opts.min_params ||
-      node->proto().float_ops() < opts.min_float_ops ||
+  // TODO(xpan): Think more carefully about node filtering in code view.
+  // Unlike graph/scope view, which users want to see the exact leaf op.
+  // In code view, users want to see the middle code traces they wrote.
+  //
+  // This is a subtle difference from scope/graph view. Usually mostly
+  // want to see the middle code traces (i.e. their own codes.), instead
+  // of the TensorFlow internal codes traces.
+  if (node->proto().total_requested_bytes() < opts.min_bytes ||
+      node->proto().total_exec_micros() < opts.min_micros ||
+      node->proto().total_parameters() < opts.min_params ||
+      node->proto().total_float_ops() < opts.min_float_ops ||
       depth > opts.max_depth || !ShouldShowIfExtra(node, opts, depth)) {
     return false;
   }
@@ -206,10 +207,13 @@ bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
     show = true;
   } else {
     for (const string& regex : opts.device_regexes) {
-      if (RE2::FullMatch(node->proto().device(), regex)) {
-        show = true;
-        break;
+      for (const string& device : node->node->devices()) {
+        if (RE2::FullMatch(device, regex)) {
+          show = true;
+          break;
+        }
       }
+      if (show) break;
     }
   }
   // Don't show if device_regexes don't cover it.
@@ -235,7 +239,8 @@ bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
   return true;
 }
 
-bool TFShow::ShouldTrim(ShowNode* node, const std::vector<string>& regexes) {
+bool TFShowCode::ShouldTrim(ShowCodeNode* node,
+                            const std::vector<string>& regexes) {
   for (const string& regex : regexes) {
     if (RE2::FullMatch(node->name(), regex)) {
       return true;
@@ -244,7 +249,7 @@ bool TFShow::ShouldTrim(ShowNode* node, const std::vector<string>& regexes) {
   return false;
 }
 
-bool TFShow::ShouldAccount(ShowNode* node, const Options& opts) {
+bool TFShowCode::ShouldAccount(ShowCodeNode* node, const Options& opts) {
   if (opts.account_type_regexes.size() == 1 &&
       opts.account_type_regexes[0] == ".*") {
     return true;
@@ -255,11 +260,12 @@ bool TFShow::ShouldAccount(ShowNode* node, const Options& opts) {
         return true;
       }
     }
-    if (RE2::FullMatch(node->proto().device(), regex)) {
-      return true;
+    for (const string& device : node->node->devices()) {
+      if (RE2::FullMatch(device, regex)) {
+        return true;
+      }
     }
   }
-
   return false;
 }
 
