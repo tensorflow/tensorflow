@@ -28,11 +28,7 @@ function is_macos() {
 
 function is_windows() {
   # On windows, the shell script is actually running in msys
-  if [[ "${PLATFORM}" =~ msys_nt*|mingw*|cygwin*|uwin* ]]; then
-    true
-  else
-    false
-  fi
+  [[ "${PLATFORM}" =~ msys_nt*|mingw*|cygwin*|uwin* ]]
 }
 
 function sed_in_place() {
@@ -133,8 +129,8 @@ function setup_python {
     exit 1
   fi
 
-  local python_major_version=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; import sys; print(sys.version_info[0]);')
-  if [ "$python_major_version" == "" ]; then
+  local python_major_version=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; import sys; print(sys.version_info[0]);' | head -c1)
+  if [ -z "$python_major_version" ]; then
     echo -e "\n\nERROR: Problem getting python version.  Is $PYTHON_BIN_PATH the correct python binary?"
     exit 1
   fi

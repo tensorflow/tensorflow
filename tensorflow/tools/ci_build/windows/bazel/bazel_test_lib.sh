@@ -197,6 +197,11 @@ function run_configure_for_gpu_build {
   if [ -z "$CC_OPT_FLAGS" ]; then
     export CC_OPT_FLAGS="-march=native"
   fi
+  export TF_NEED_VERBS=0
+  export TF_NEED_MKL=0
+  export TF_NEED_GCP=0
+  export TF_NEED_HDFS=0
+  export TF_NEED_OPENCL=0
   echo "" | ./configure
 }
 
