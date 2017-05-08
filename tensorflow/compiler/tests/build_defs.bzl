@@ -40,7 +40,6 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
     disabled_backends = []
 
   enabled_backends = [b for b in all_backends() if b not in disabled_backends]
-
   test_names = []
   for backend in enabled_backends:
     test_name = "{}_{}".format(name, backend)
