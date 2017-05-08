@@ -36,7 +36,7 @@ class MapStageTest(test.TestCase):
       with ops.device('/gpu:0'):
         stager = data_flow_ops.MapStagingArea([dtypes.float32])
         stage = stager.put(pi,[v])
-        y = stager.get(gi)
+        y = stager.pop(gi)
         y = math_ops.reduce_max(math_ops.matmul(y, y))
       sess.run(stage, feed_dict={x: -1, pi: 0})
       for i in range(10):
@@ -53,7 +53,7 @@ class MapStageTest(test.TestCase):
       with ops.device('/gpu:0'):
         stager = data_flow_ops.MapStagingArea([dtypes.float32, dtypes.float32])
         stage = stager.put(pi,[x, v])
-        z, y = stager.get(gi)
+        z, y = stager.pop(gi)
         y = math_ops.reduce_max(z * math_ops.matmul(y, y))
       sess.run(stage, feed_dict={x: -1, pi: 0})
       for i in range(10):
@@ -74,7 +74,7 @@ class MapStageTest(test.TestCase):
             shapes=[[], [128, 128]],
             names=['x', 'v'])
         stage = stager.put(pi,{'x': x, 'v': v})
-        ret = stager.get(gi)
+        ret = stager.pop(gi)
         z = ret['x']
         y = ret['v']
         y = math_ops.reduce_max(z * math_ops.matmul(y, y))
@@ -93,8 +93,12 @@ class MapStageTest(test.TestCase):
       y = stager.put(1,[v])
       self.assertEqual(y.device, '/device:GPU:0')
     with ops.device('/cpu:0'):
-      x = stager.get(1)
+      x = stager.pop(1)
+      y = stager.peek(1)
+      _, z = stager.popitem()
       self.assertEqual(x.device, '/device:CPU:0')
+      self.assertEqual(y.device, '/device:CPU:0')
+      self.assertEqual(z.device, '/device:CPU:0')
 
   def testPeek(self):
     with ops.device('/cpu:0'):
@@ -105,14 +109,19 @@ class MapStageTest(test.TestCase):
     with ops.device(test.gpu_device_name()):
       stager = data_flow_ops.MapStagingArea([dtypes.int32, ], shapes=[[]])
       stage = stager.put(pi,[x])
-      get = stager.get(gi)
+      peek = stager.peek(gi)
+      size = stager.size()
+
+    n = 10
 
     with self.test_session(use_gpu=True) as sess:
-      for i in range(10):
+      for i in range(n):
         sess.run(stage, feed_dict={x:i, pi:i})
 
-      for i in range(10):
-        self.assertTrue(sess.run(get, feed_dict={gi: i}) == i)
+      for i in range(n):
+        self.assertTrue(sess.run(peek, feed_dict={gi: i}) == i)
+
+      self.assertTrue(sess.run(size) == 10)
 
   def testSizeAndClear(self):
     with ops.device('/cpu:0'):
@@ -126,7 +135,6 @@ class MapStageTest(test.TestCase):
           shapes=[[], [128, 128]],
           names=['x', 'v'])
       stage = stager.put(pi,{'x': x, 'v': v})
-      ret = stager.get(gi)
       size = stager.size()
       clear = stager.clear()
 

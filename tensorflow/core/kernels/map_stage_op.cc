@@ -319,10 +319,10 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage").HostMemory("key")
 #endif // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
-class MapGetOp : public OpKernel
+class MapPeekOp : public OpKernel
 {
  public:
-  explicit MapGetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit MapPeekOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   // Using this op in such a way that it blocks forever
   // is an error.  As such cancellation is not handled.
@@ -351,22 +351,22 @@ class MapGetOp : public OpKernel
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("MapGet").Device(DEVICE_CPU),
-                      MapGetOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapGet").Device(DEVICE_CPU),
-                      MapGetOp<true>);
+REGISTER_KERNEL_BUILDER(Name("MapPeek").Device(DEVICE_CPU),
+                      MapPeekOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek").Device(DEVICE_CPU),
+                      MapPeekOp<true>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("MapGet").HostMemory("key")
-                      .Device(DEVICE_GPU), MapGetOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapGet").HostMemory("key")
-                      .Device(DEVICE_GPU), MapGetOp<true>);
+REGISTER_KERNEL_BUILDER(Name("MapPeek").HostMemory("key")
+                      .Device(DEVICE_GPU), MapPeekOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek").HostMemory("key")
+                      .Device(DEVICE_GPU), MapPeekOp<true>);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapGet").HostMemory("key")
-                      .Device(DEVICE_SYCL), MapGetOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapGet").HostMemory("key")
-                      .Device(DEVICE_SYCL), MapGetOp<true>);
+REGISTER_KERNEL_BUILDER(Name("MapPeek").HostMemory("key")
+                      .Device(DEVICE_SYCL), MapPeekOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek").HostMemory("key")
+                      .Device(DEVICE_SYCL), MapPeekOp<true>);
 #endif // TENSORFLOW_USE_SYCL
 
 

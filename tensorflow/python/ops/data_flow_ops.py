@@ -1723,14 +1723,14 @@ class MapStagingArea(BaseStagingArea):
             self._put_fn = gen_data_flow_ops.ordered_map_stage
             self._pop_fn = gen_data_flow_ops.ordered_map_unstage
             self._popitem_fn = gen_data_flow_ops.ordered_map_popitem
-            self._get_fn = gen_data_flow_ops.ordered_map_get
+            self._peek_fn = gen_data_flow_ops.ordered_map_peek
             self._size_fn = gen_data_flow_ops.ordered_map_size
             self._clear_fn = gen_data_flow_ops.ordered_map_clear
         else:
             self._put_fn = gen_data_flow_ops.map_stage
             self._pop_fn = gen_data_flow_ops.map_unstage
             self._popitem_fn = gen_data_flow_ops.map_popitem
-            self._get_fn = gen_data_flow_ops.map_get
+            self._peek_fn = gen_data_flow_ops.map_peek
             self._size_fn = gen_data_flow_ops.map_size
             self._clear_fn = gen_data_flow_ops.map_clear
 
@@ -1762,9 +1762,9 @@ class MapStagingArea(BaseStagingArea):
                                    capacity=self._capacity)
         return op
 
-    def get(self, key, name=None):
+    def peek(self, key, name=None):
         """
-        Gets data associated with the key from the staging area.
+        Peeks at staging area data associated with the key .
 
         If the staging area is empty when this operation executes,
         it will block until there is an element to dequeue.
@@ -1781,7 +1781,7 @@ class MapStagingArea(BaseStagingArea):
             name = "%s_pop" % self._name
 
         with ops.colocate_with(self._coloc_op):
-            result = self._get_fn(key, shared_name=self._name,
+            result = self._peek_fn(key, shared_name=self._name,
                             dtypes=self._dtypes,
                             name=name,
                             capacity=self._capacity)

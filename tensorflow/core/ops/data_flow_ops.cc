@@ -2033,7 +2033,7 @@ REGISTER_OP("MapStage")
     .SetIsStateful()
     .Doc(R"doc(MapStage)doc");
 
-REGISTER_OP("MapGet")
+REGISTER_OP("MapPeek")
     .Input("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
@@ -2042,7 +2042,7 @@ REGISTER_OP("MapGet")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(MapGet)doc");
+    .Doc(R"doc(MapPeek)doc");
 
 REGISTER_OP("MapUnstage")
     .Input("key: int64")
@@ -2096,7 +2096,7 @@ REGISTER_OP("OrderedMapStage")
     .SetIsStateful()
     .Doc(R"doc(OrderedMapStage)doc");
 
-REGISTER_OP("OrderedMapGet")
+REGISTER_OP("OrderedMapPeek")
     .Input("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
@@ -2105,7 +2105,7 @@ REGISTER_OP("OrderedMapGet")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(OrderedMapGet)doc");
+    .Doc(R"doc(OrderedMapPeek)doc");
 
 REGISTER_OP("OrderedMapUnstage")
     .Input("key: int64")
