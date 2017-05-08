@@ -273,28 +273,6 @@ def _VerifyGeneratedGradients(grads, op):
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))
-    for i in xrange(len(grads)):
-      grad = grads[i]
-      inp = op.inputs[i]
-      if grad is None:
-        continue
-      if grad.dtype.is_floating:
-        if not inp.dtype.is_floating:
-          raise TypeError("Gradient type %s generated for real-valued op %s "
-                           "with type %s must be real" %
-                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
-                            dtypes.as_dtype(inp.dtype).name))
-      elif grad.dtype.is_complex:
-        if not inp.dtype.is_complex:
-          raise TypeError("Gradient type %s generated for complex-valued op %s"
-                           " with type %s must be complex" %
-                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
-                            dtypes.as_dtype(inp.dtype).name))
-      else:
-        raise TypeError("Gradient type %s generated for op %s "
-                         "with type %s must be either real or complex" %
-                         (dtypes.as_dtype(grad.dtype).name, op.node_def,
-                          dtypes.as_dtype(inp.dtype).name))
 
 
 def _StopOps(from_ops, pending_count):
