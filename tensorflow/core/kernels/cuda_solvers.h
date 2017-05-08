@@ -53,9 +53,9 @@ class HostLapackInfo;
 // Notice: All the computational member functions are asynchronous and simply
 // launch one or more Cuda kernels on the Cuda stream wrapped by the CudaSolver
 // object. To check the final status of the kernels run, call
-// RegisterLapackInfoCheckerCallback() on the CudaSolver object to set a
-// callback that will be invoked with the status of the kernels launched thus
-// far as arguments.
+// CopyLapackInfoToHostAsync() on the CudaSolver object to set a callback that
+// will be invoked with the status of the kernels launched thus far as
+// arguments.
 //
 // Example of an asynchronous TensorFlow kernel using CudaSolver:
 //
@@ -90,8 +90,7 @@ class HostLapackInfo;
 //                                       dev_info.back().mutable_data()),
 //                          done);
 //
-//     // 4. Register a callback to check the status after the computation
-//     // finishes and call done.
+//     // 4. Check the status after the computation finishes and call done.
 //     auto check_status = [context, done](const Status& status,
 //       const std::vector<HostLapackInfo>& /* unused */) {
 //           // In this example we don't care about the exact cause of
@@ -100,8 +99,8 @@ class HostLapackInfo;
 //           done();
 //     };
 //     OP_REQUIRES_OK_ASYNC(context,
-//                          solver.RegisterLapackInfoCheckerCallback(
-//                            dev_info, check_status);
+//                          solver.CopyLapackInfoToHostAsync(
+//                            dev_info, std::move(check_status));
 //                          done);
 //   }
 // };
