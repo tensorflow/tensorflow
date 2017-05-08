@@ -1058,6 +1058,8 @@ you'll need to specify the path explicitly in the second (g++) command above.
 For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in
 `/usr/local/cuda-8.0`.
 
+>   Note in some linux settings, additional options to `nvcc` compiling step are needed. Add `-D_MWAITXINTRIN_H_INCLUDED` to the `nvcc` command line to avoid errors from `mwaitxintrin.h`.
+
 ### Implement the gradient in Python {#implement-gradient}
 
 Given a graph of ops, TensorFlow uses automatic differentiation
