@@ -39,6 +39,7 @@ from __future__ import print_function
 
 import argparse
 import sys
+import six
 
 from google.protobuf import text_format
 
@@ -93,7 +94,14 @@ def freeze_graph(input_graph,
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
-      text_format.Merge(f.read(), input_graph_def)
+      text = f.read()
+      if six.PY3:
+        # The Merge function in the text_format module applies split('\n') upon its
+        # first argument, which has type 'bytes' in Python3 and not compatible with
+        # the '\n' in split('\n'). Thus decode() is required to transform text into
+        # a 'str' type object.
+        text = text.decode()
+      text_format.Merge(text, input_graph_def)
   # Remove all the explicit device specifications for this node. This helps to
   # make the graph more portable.
   if clear_devices:
@@ -109,7 +117,10 @@ def freeze_graph(input_graph,
         if input_binary:
           saver_def.ParseFromString(f.read())
         else:
-          text_format.Merge(f.read(), saver_def)
+          text = f.read()
+          if six.PY3:
+            text = text.decode()
+          text_format.Merge(text, saver_def)
         saver = saver_lib.Saver(saver_def=saver_def)
         saver.restore(sess, input_checkpoint)
     else:
