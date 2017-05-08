@@ -2041,16 +2041,24 @@ tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
     hdrs = ["cuda_solvers.h"],
+    gpu_srcs = [
+        "cuda_solvers.h",
+        "cuda_solvers_gpu.cu.cc",
+    ],
     # @local_config_cuda//cuda:cusolver, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
     # and f2c helper functions in global namespace. Tell the compiler to
     # allow multiple definitions when linking this.
-    linkopts = ["-Wl,-zmuldefs"],
+    linkopts = select({
+        "//tensorflow:darwin": [],
+        "//conditions:default": ["-Wl,-z,muldefs"],
+    }),
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "@local_config_cuda//cuda:cublas",
         "@local_config_cuda//cuda:cusolver",
     ],
 )
@@ -2099,7 +2107,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_inverse_op",
     prefix = "matrix_inverse_op",
-    deps = LINALG_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+    ]) + LINALG_DEPS,
 )
 
 tf_kernel_library(
