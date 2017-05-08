@@ -1057,7 +1057,8 @@ def _check_feature_columns(feature_columns):
     raise ValueError('Expected feature_columns to be iterable, found dict.')
   for column in feature_columns:
     if not isinstance(column, _FeatureColumn):
-      raise ValueError('Items of feature_columns must be a _FeatureColumn.')
+      raise ValueError('Items of feature_columns must be a _FeatureColumn.'
+                       'Given: {}.'.format(column))
   name_to_column = dict()
   for column in feature_columns:
     if column.name in name_to_column:
