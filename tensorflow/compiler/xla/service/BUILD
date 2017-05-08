@@ -1203,6 +1203,7 @@ cc_library(
         ":buffer_liveness",
         ":hlo",
         ":hlo_pass",
+        ":liveness_util",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:status_macros",
