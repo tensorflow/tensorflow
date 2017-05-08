@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -274,7 +275,8 @@ class Image(ItemHandler):
                format_key=None,
                shape=None,
                channels=3,
-               dtype=dtypes.uint8):
+               dtype=dtypes.uint8,
+               repeated=False):
     """Initializes the image.
 
     Args:
@@ -292,6 +294,8 @@ class Image(ItemHandler):
           See tf.image.decode_png,
               tf.decode_raw,
               tf.image.decode_jpeg: only supports tf.uint8
+      repeated: if False, decodes a single image. If True, decodes a
+        variable number of image strings from a 1D tensor of strings.
     """
     if not image_key:
       image_key = 'image/encoded'
@@ -304,13 +308,18 @@ class Image(ItemHandler):
     self._shape = shape
     self._channels = channels
     self._dtype = dtype
+    self._repeated = repeated
 
   def tensors_to_item(self, keys_to_tensors):
     """See base class."""
     image_buffer = keys_to_tensors[self._image_key]
     image_format = keys_to_tensors[self._format_key]
 
-    return self._decode(image_buffer, image_format)
+    if self._repeated:
+      return functional_ops.map_fn(lambda x: self._decode(x, image_format),
+                                   image_buffer, dtype=self._dtype)
+    else:
+      return self._decode(image_buffer, image_format)
 
   def _decode(self, image_buffer, image_format):
     """Decodes the image buffer.

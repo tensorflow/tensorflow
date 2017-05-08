@@ -315,7 +315,7 @@ limitations under the License.
                   <div class="sub-list-table-cell">[[_nodeStatsFormattedBytes]]</div>
                 </div>
               </template>
-              <template is="dom-if" if="{{_nodeStats.totalMicros}}">
+              <template is="dom-if" if="{{_getTotalMicros(_nodeStats)}}">
                 <div class="sub-list-table-row">
                   <div class="sub-list-table-cell">Compute Time</div>
                   <div class="sub-list-table-cell">[[_nodeStatsFormattedComputeTime]]</div>
@@ -456,6 +456,9 @@ limitations under the License.
           }
           return null;
         },
+        _getTotalMicros: function(stats) {
+          return stats.getTotalMicros();
+        },
         _getHasDisplayableNodeStats: function(stats) {
           return tf.graph.util.hasDisplayableNodeStats(stats);
         },
@@ -468,12 +471,12 @@ limitations under the License.
               stats.totalBytes, tf.graph.util.MEMORY_UNITS);
         },
         _getNodeStatsFormattedComputeTime: function(stats) {
-          if (!stats || !stats.totalMicros) {
+          if (!stats || !stats.getTotalMicros()) {
             return;
           }
 
           return tf.graph.util.convertUnitsToHumanReadable(
-              stats.totalMicros, tf.graph.util.TIME_UNITS);
+              stats.getTotalMicros(), tf.graph.util.TIME_UNITS);
         },
         _getNodeStatsFormattedOutputSizes: function(stats) {
           if (!stats || !stats.outputSize || !stats.outputSize.length) {

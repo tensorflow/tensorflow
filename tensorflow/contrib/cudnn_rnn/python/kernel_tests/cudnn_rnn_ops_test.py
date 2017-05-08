@@ -58,9 +58,8 @@ class CudnnRNNTest(TensorFlowTestCase):
       params: a Variable for weight and bias parameters.
       model: a CudnnRNN model.
     """
-    params_saveable = cudnn_rnn_ops.RNNParamsSaveable(model.params_to_canonical,
-                                                      model.canonical_to_params,
-                                                      params)
+    params_saveable = cudnn_rnn_ops.RNNParamsSaveable(
+        model.params_to_canonical, model.canonical_to_params, [params])
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, params_saveable)
 
   def _testSaveRestoreVariable(self, rnn_mode):

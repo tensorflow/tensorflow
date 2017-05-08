@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 
 
 def _random_pd_matrix(n, rng):
-  """Random postive definite matrix."""
+  """Random positive definite matrix."""
   temp = rng.randn(n, n)
   return temp.dot(temp.T)
 

@@ -229,6 +229,12 @@ if (tensorflow_ENABLE_GPU)
   endif()
 endif()
 
+# Find python executable
+include(FindPythonInterp)
+if(NOT ${PYTHONINTERP_FOUND})
+    message(FATAL_ERROR "CMake was unable to find a python interpreter.")
+endif()
+
 # Let's get to work!
 include(tf_core_framework.cmake)
 # NOTE: Disabled until issue #3996 is fixed.

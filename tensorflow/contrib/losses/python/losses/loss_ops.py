@@ -236,7 +236,7 @@ def get_regularization_losses(scope=None):
     scope: an optional scope for filtering the losses to return.
 
   Returns:
-    A list of loss variables.
+    A list of regularization losses as Tensors.
   """
   return ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES, scope)
 

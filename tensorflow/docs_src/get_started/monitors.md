@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
 Copy the above code into a file, and download the corresponding
 [training](http://download.tensorflow.org/data/iris_training.csv) and
-@{tf.test} data sets to the same
+[test](http://download.tensorflow.org/data/iris_test.csv) data sets to the same
 directory.
 
 In the following sections, you'll progressively make updates to the above code
@@ -401,6 +401,6 @@ Then navigate to `http://0.0.0.0:`*`<port_number>`* in your browser, where
 If you click on the accuracy field, you'll see an image like the following,
 which shows accuracy plotted against step count:
 
-![Accuracy over step count in TensorBoard](../images/validation_monitor_tensorboard_accuracy.png "Accuracy over step count in TensorBoard")
+![Accuracy over step count in TensorBoard](https://www.tensorflow.org/images/validation_monitor_tensorboard_accuracy.png "Accuracy over step count in TensorBoard")
 
 For more on using TensorBoard, see @{$summaries_and_tensorboard$TensorBoard: Visualizing Learning} and @{$graph_viz$TensorBoard: Graph Visualization}.

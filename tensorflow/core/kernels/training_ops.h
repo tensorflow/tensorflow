@@ -148,7 +148,6 @@ struct ApplyCenteredRMSProp {
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad);
 };
-
 }  // end namespace functor
 }  // end namespace tensorflow
 

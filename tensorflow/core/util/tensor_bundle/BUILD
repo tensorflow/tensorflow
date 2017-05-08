@@ -9,15 +9,20 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 
-# To be exported to tensorflow/core:android_srcs.
+# To be exported to tensorflow/core:mobile_srcs.
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "naming.cc",
         "naming.h",
         "tensor_bundle.cc",
         "tensor_bundle.h",
     ],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
 )
 
 cc_library(

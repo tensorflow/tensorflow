@@ -1,4 +1,8 @@
 performance_guide.md
+performance_models.md
+benchmarks.md
+quantization.md
+>>>
 xla/index.md
 xla/broadcasting.md
 xla/developing_new_backend.md
@@ -6,4 +10,3 @@ xla/jit.md
 xla/operation_semantics.md
 xla/shapes.md
 xla/tfcompile.md
-quantization.md

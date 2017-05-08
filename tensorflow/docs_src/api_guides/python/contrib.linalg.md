@@ -21,7 +21,7 @@ Subclasses of `LinearOperator` provide a access to common methods on a
 *   @{tf.contrib.linalg.LinearOperatorDiag}
 *   @{tf.contrib.linalg.LinearOperatorIdentity}
 *   @{tf.contrib.linalg.LinearOperatorScaledIdentity}
-*   @{tf.contrib.linalg.LinearOperatorMatrix}
+*   @{tf.contrib.linalg.LinearOperatorFullMatrix}
 *   @{tf.contrib.linalg.LinearOperatorTriL}
 *   @{tf.contrib.linalg.LinearOperatorUDVHUpdate}
 

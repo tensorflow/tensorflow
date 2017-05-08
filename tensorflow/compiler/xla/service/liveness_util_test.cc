@@ -150,6 +150,25 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
                                              *points_to_analysis_));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, CopyNeverShares) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param));
+  auto copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCopy, exp));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_TRUE(
+      CanShareOperandBufferWithUser(param, {}, exp, {}, *points_to_analysis_));
+  EXPECT_FALSE(
+      CanShareOperandBufferWithUser(exp, {}, copy, {}, *points_to_analysis_));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
   auto builder = HloComputation::Builder(TestName());
 

@@ -191,7 +191,7 @@ string InstructionSequenceGraph(
                   RandomDistribution_Name(instruction->random_distribution()));
         break;
       case HloOpcode::kConstant:
-        shape = "boxed";
+        shape = "box";
         color = "palegreen";
         if (ShapeUtil::IsScalar(instruction->shape())) {
           StrAppend(&name, "\\n", "value=", LiteralUtil::GetAsString(

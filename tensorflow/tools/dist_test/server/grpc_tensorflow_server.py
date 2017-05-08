@@ -36,6 +36,7 @@ from __future__ import print_function
 import argparse
 import sys
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.platform import app
 from tensorflow.python.training import server_lib
@@ -103,8 +104,11 @@ def main(unused_args):
     raise ValueError("Invalid task_id: %d" % FLAGS.task_id)
   server_def.task_index = FLAGS.task_id
 
+  config = config_pb2.ConfigProto(gpu_options=config_pb2.GPUOptions(
+      per_process_gpu_memory_fraction=FLAGS.gpu_memory_fraction))
+
   # Create GRPC Server instance
-  server = server_lib.Server(server_def)
+  server = server_lib.Server(server_def, config=config)
 
   # join() is blocking, unlike start()
   server.join()
@@ -138,6 +142,11 @@ if __name__ == "__main__":
       help="Task index, e.g., 0"
   )
   parser.add_argument(
+      "--gpu_memory_fraction",
+      type=float,
+      default=1.0,
+      help="Fraction of GPU memory allocated",)
+  parser.add_argument(
       "--verbose",
       type="bool",
       nargs="?",
@@ -145,5 +154,6 @@ if __name__ == "__main__":
       default=False,
       help="Verbose mode"
   )
+
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)

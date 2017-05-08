@@ -278,7 +278,7 @@ def _fused_batch_norm(
         trainable=trainable_gamma)
 
     # Create moving_mean and moving_variance variables and add them to the
-    # appropiate collections.
+    # appropriate collections.
     moving_mean_collections = utils.get_variable_collections(
         variables_collections, 'moving_mean')
     moving_mean_initializer = param_initializers.get(
@@ -632,7 +632,7 @@ def batch_norm(inputs,
                                        trainable=trainable)
 
     # Create moving_mean and moving_variance variables and add them to the
-    # appropiate collections. We disable variable partitioning while creating
+    # appropriate collections. We disable variable partitioning while creating
     # them, because assign_moving_average is not yet supported for partitioned
     # variables.
     partitioner = variable_scope.get_variable_scope().partitioner
@@ -844,7 +844,7 @@ def convolution(inputs,
   variable would be created and added the activations. Finally, if
   `activation_fn` is not `None`, it is applied to the activations as well.
 
-  Performs a'trous convolution with input stride/dilation rate equal to `rate`
+  Performs atrous convolution with input stride/dilation rate equal to `rate`
   if a value > 1 for any dimension of `rate` is specified.  In this case
   `stride` values != 1 are not supported.
 
@@ -870,7 +870,7 @@ def convolution(inputs,
       "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
       For N=3, the valid values are "NDHWC" (default) and "NCDHW".
     rate: A sequence of N positive integers specifying the dilation rate to use
-      for a'trous convolution.  Can be a single integer to specify the same
+      for atrous convolution.  Can be a single integer to specify the same
       value for all spatial dimensions.  Specifying any `rate` value != 1 is
       incompatible with specifying any `stride` value != 1.
     activation_fn: Activation function. The default value is a ReLU function.
@@ -1087,7 +1087,7 @@ def convolution2d_transpose(
   """Adds a convolution2d_transpose with an optional batch normalization layer.
 
   The function creates a variable called `weights`, representing the
-  kernel, that is convolved with the input. If `batch_norm_params` is `None`, a
+  kernel, that is convolved with the input. If `normalizer_fn` is `None`, a
   second variable called 'biases' is added to the result of the operation.
 
   Args:
@@ -1847,9 +1847,9 @@ def separable_convolution2d(
   This op first performs a depthwise convolution that acts separately on
   channels, creating a variable called `depthwise_weights`. If `num_outputs`
   is not None, it adds a pointwise convolution that mixes channels, creating a
-  variable called `pointwise_weights`. Then, if `batch_norm_params` is None,
-  it adds bias to the result, creating a variable called 'biases', otherwise
-  it adds a batch normalization layer. It finally applies an activation function
+  variable called `pointwise_weights`. Then, if `normalizer_fn` is None,
+  it adds bias to the result, creating a variable called 'biases', otherwise,
+  the `normalizer_fn` is applied. It finally applies an activation function
   to produce the end result.
 
   Args:
@@ -1865,7 +1865,7 @@ def separable_convolution2d(
       depthwise convolution stride. Can be an int if both strides are the same.
     padding: One of 'VALID' or 'SAME'.
     rate: A list of length 2: [rate_height, rate_width], specifying the dilation
-      rates for a'trous convolution. Can be an int if both rates are the same.
+      rates for atrous convolution. Can be an int if both rates are the same.
       If any value is larger than one, then both stride values need to be one.
     activation_fn: Activation function. The default value is a ReLU function.
       Explicitly set it to None to skip it and maintain a linear activation.

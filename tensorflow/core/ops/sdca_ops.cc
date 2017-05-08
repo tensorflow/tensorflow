@@ -72,17 +72,17 @@ optimizer applies each update one example at a time. Examples are sampled
 uniformly, and the optimizer is learning rate free and enjoys linear convergence
 rate.
 
-Proximal Stochastic Dual Coordinate Ascent, Shalev-Shwartz, Shai; Zhang, Tong.
-2012 arXiv1211.2717S: http://arxiv.org/pdf/1211.2717v1.pdf
+[Proximal Stochastic Dual Coordinate Ascent](http://arxiv.org/pdf/1211.2717v1.pdf).<br>
+Shai Shalev-Shwartz, Tong Zhang. 2012
 
-  Loss objective = \sum f_{i}(wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|
+$$Loss Objective = \sum f_{i} (wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|$$
 
-Adding vs. Averaging in Distributed Primal-Dual Optimization.
-Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan, Peter Richtarik,
-Martin Takac http://arxiv.org/abs/1502.03508
+[Adding vs. Averaging in Distributed Primal-Dual Optimization](http://arxiv.org/abs/1502.03508).<br>
+Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan,
+Peter Richtarik, Martin Takac. 2015
 
-Stochastic Dual Coordinate Ascent with Adaptive Probabilities
-Dominik Csiba, Zheng Qu, Peter Richtarik https://arxiv.org/abs/1502.08053
+[Stochastic Dual Coordinate Ascent with Adaptive Probabilities](https://arxiv.org/abs/1502.08053).<br>
+Dominik Csiba, Zheng Qu, Peter Richtarik. 2015
 
 loss_type: Type of the primal loss. Currently SdcaSolver supports logistic,
   squared and hinge losses.

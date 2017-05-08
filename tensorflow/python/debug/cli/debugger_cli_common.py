@@ -648,7 +648,7 @@ class CommandHandlerRegistry(object):
         3) the handler is found for the prefix, but it fails to return a
           RichTextLines or raise any exception.
       CommandLineExit:
-        If the command handler raises this type of exception, tihs method will
+        If the command handler raises this type of exception, this method will
         simply pass it along.
     """
     if not prefix:
