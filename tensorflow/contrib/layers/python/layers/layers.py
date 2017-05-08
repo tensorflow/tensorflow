@@ -59,6 +59,7 @@ __all__ = ['avg_pool2d',
            'convolution2d',
            'convolution2d_in_plane',
            'convolution2d_transpose',
+           'convolution3d',
            'dropout',
            'elu',
            'flatten',
@@ -1011,6 +1012,7 @@ def convolution(inputs,
                                        sc.original_name_scope, outputs)
 
 convolution2d = convolution
+convolution3d = convolution
 
 
 @add_arg_scope
@@ -2344,6 +2346,7 @@ linear = functools.partial(fully_connected, activation_fn=None)
 
 # Simple alias.
 conv2d = convolution2d
+conv3d = convolution3d
 conv2d_transpose = convolution2d_transpose
 conv2d_in_plane = convolution2d_in_plane
 separable_conv2d = separable_convolution2d
