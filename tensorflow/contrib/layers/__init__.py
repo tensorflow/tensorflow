@@ -32,6 +32,7 @@ See the @{$python/contrib.layers} guide.
 @@layer_norm
 @@linear
 @@max_pool2d
+@@max_pool3d
 @@one_hot_encoding
 @@relu
 @@relu6

@@ -67,6 +67,7 @@ __all__ = ['avg_pool2d',
            'linear',
            'pool',
            'max_pool2d',
+           'max_pool3d',
            'one_hot_encoding',
            'relu',
            'relu6',
@@ -1667,6 +1668,55 @@ def max_pool2d(inputs,
     df = ('channels_first' if data_format and data_format.startswith('NC')
           else 'channels_last')
     layer = pooling_layers.MaxPooling2D(pool_size=kernel_size,
+                                        strides=stride,
+                                        padding=padding,
+                                        data_format=df,
+                                        _scope=sc)
+    outputs = layer.apply(inputs)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
+def max_pool3d(inputs,
+               kernel_size,
+               stride=2,
+               padding='VALID',
+               data_format=DATA_FORMAT_NDHWC,
+               outputs_collections=None,
+               scope=None):
+  """Adds a 3D Max Pooling op.
+
+  It is assumed that the pooling is done per image but not in batch or channels.
+
+  Args:
+    inputs: A 5-D tensor of shape `[batch_size, depth, height, width, channels]` if
+      `data_format` is `NDHWC`, and `[batch_size, channels, depth, height, width]` if
+      `data_format` is `NCDHW`.
+    kernel_size: A list of length 3: [kernel_depth, kernel_height, kernel_width] of the
+      pooling kernel over which the op is computed. Can be an int if both
+      values are the same.
+    stride: A list of length 3: [stride_depth, stride_height, stride_width].
+      Can be an int if both strides are the same. Note that presently
+      both strides must have the same value.
+    padding: The padding method, either 'VALID' or 'SAME'.
+    data_format: A string. `NDHWC` (default) and `NCDHW` are supported.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: If `data_format` is neither `NDHWC` nor `NCDHW`.
+    ValueError: If 'kernel_size' is not a 3-D list
+  """
+  if data_format not in (DATA_FORMAT_NCDHW, DATA_FORMAT_NDHWC):
+    raise ValueError('data_format has to be either NCDHW or NDHWC.')
+  with ops.name_scope(scope, 'MaxPool3D', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    df = ('channels_first' if data_format and data_format.startswith('NC')
+          else 'channels_last')
+    layer = pooling_layers.MaxPooling3D(pool_size=kernel_size,
                                         strides=stride,
                                         padding=padding,
                                         data_format=df,
