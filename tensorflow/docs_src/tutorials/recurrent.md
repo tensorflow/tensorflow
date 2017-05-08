@@ -59,10 +59,11 @@ Batch 0:
 [The, fox, is,     quick]
 [The, fox, jumped, high].
 
-Batch 1:
- t=0  t=1  t=2     t=3
-[The, dog, is,     lazy]
-[The, dog, jumped, low].
+words_in_dataset[0] = [The, The]
+words_in_dataset[1] = [fox, fox]
+words_in_dataset[2] = [is, jumped]
+words_in_dataset[3] = [quick, high]
+num_batches = 4, batch_size = 2
 
 The basic pseudocode is as follows:
 
