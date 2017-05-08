@@ -27,7 +27,6 @@
 
 # 1. Resolve the installed version of Python (for Python.h and python).
 # TODO(mrry): Parameterize the build script to enable Python 3 building.
-include(FindPythonInterp)
 if(NOT PYTHON_INCLUDE_DIR)
   set(PYTHON_NOT_FOUND false)
   exec_program("${PYTHON_EXECUTABLE}"
@@ -203,6 +202,7 @@ add_python_module("tensorflow/python/estimator")
 add_python_module("tensorflow/python/estimator/export")
 add_python_module("tensorflow/python/estimator/inputs")
 add_python_module("tensorflow/python/estimator/inputs/queues")
+add_python_module("tensorflow/python/feature_column")
 add_python_module("tensorflow/python/framework")
 add_python_module("tensorflow/python/grappler")
 add_python_module("tensorflow/python/kernel_tests")
@@ -596,6 +596,7 @@ GENERATE_PYTHON_OP_LIB("image_ops")
 GENERATE_PYTHON_OP_LIB("io_ops")
 GENERATE_PYTHON_OP_LIB("linalg_ops")
 GENERATE_PYTHON_OP_LIB("logging_ops")
+GENERATE_PYTHON_OP_LIB("lookup_ops")
 GENERATE_PYTHON_OP_LIB("nn_ops")
 GENERATE_PYTHON_OP_LIB("parsing_ops")
 GENERATE_PYTHON_OP_LIB("random_ops")

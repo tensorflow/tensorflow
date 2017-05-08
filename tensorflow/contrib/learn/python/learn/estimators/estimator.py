@@ -57,7 +57,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -1292,7 +1292,7 @@ class Estimator(BaseEstimator):
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),
             resources.initialize_resources(resources.shared_resources()),
-            data_flow_ops.tables_initializer())
+            lookup_ops.tables_initializer())
 
         # Perform the export
         builder = saved_model_builder.SavedModelBuilder(export_dir)

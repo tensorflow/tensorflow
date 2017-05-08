@@ -44,7 +44,7 @@ class VisitableAllocator : public Allocator {
 };
 
 // Needed for cases when a VisitableAllocator gets wrapped for tracking.
-// Multiple-inheritance is considered acceptible in this case because
+// Multiple-inheritance is considered acceptable in this case because
 // VisitableAllocator is a pure virtual interface and only TrackingAllocator
 // has default implementation.
 class TrackingVisitableAllocator : public TrackingAllocator,

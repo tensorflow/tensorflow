@@ -31,10 +31,6 @@ import org.tensorflow.demo.env.SplitTimer;
 public class TensorFlowYoloDetector implements Classifier {
   private static final Logger LOGGER = new Logger();
 
-  static {
-    System.loadLibrary("tensorflow_demo");
-  }
-
   // Only return this many results with at least this confidence.
   private static final int MAX_RESULTS = 5;
 

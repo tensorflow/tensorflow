@@ -55,6 +55,18 @@ java_test(
 )
 
 java_test(
+    name = "OperationTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/OperationTest.java"],
+    test_class = "org.tensorflow.OperationTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
     name = "SavedModelBundleTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/SavedModelBundleTest.java"],

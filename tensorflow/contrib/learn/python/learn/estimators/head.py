@@ -163,7 +163,7 @@ class Head(object):
           ModeFnOps.loss to compute and apply gradients.
       logits: logits `Tensor` to be used by the head.
       logits_input: `Tensor` from which to build logits, often needed when you
-        don't want to compute the logits. Typicaly this is the activation of the
+        don't want to compute the logits. Typically this is the activation of the
         last hidden layer in a DNN. Some heads (like the ones responsible for
         candidate sampling) intrinsically avoid computing full logits and only
         accepts logits_input.

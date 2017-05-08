@@ -726,23 +726,23 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
       context->allocate_temp(DataTypeToEnum<bool>::value, TensorShape({}),
                              &isvalid_host_tensor, alloc_attr),
       done);
-  typename TTypes<bool, 0>::Tensor isvalid_host =
-      isvalid_host_tensor.tensor<bool, 0>();
-
   perftools::gputools::DeviceMemoryBase wrapped(isvalid_dev.data(),
                                                 sizeof(bool));
-  const bool status = stream
-                          ->ThenMemcpy(isvalid_host.data() /* destination */,
-                                       wrapped /* source */, sizeof(bool))
-                          .ok();
+  const bool status =
+      stream
+          ->ThenMemcpy(
+              isvalid_host_tensor.scalar<bool>().data() /* destination */,
+              wrapped /* source */, sizeof(bool))
+          .ok();
   OP_REQUIRES_ASYNC(
       context, status,
       errors::Internal("Failed to launch copy of isvalid from device to host."),
       done);
 
-  auto wrapped_callback = [context, isvalid_host, compute, done]() {
+  auto wrapped_callback = [context, isvalid_host_tensor, compute, done]() {
+    const bool isvalid = isvalid_host_tensor.scalar<bool>()();
     OP_REQUIRES_ASYNC(
-        context, isvalid_host(),
+        context, isvalid,
         errors::OutOfRange("box_index has values outside [0, batch_size)"),
         done);
     compute();

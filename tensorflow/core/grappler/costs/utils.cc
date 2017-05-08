@@ -147,7 +147,7 @@ OpInfo::DeviceProperties GetLocalCPUInfo() {
   // Combine cpu family and model into the model string.
   device.set_model(
       strings::StrCat((port::CPUFamily() << 4) + port::CPUModelNum()));
-  device.set_frequency(port::NominalCPUFrequency());
+  device.set_frequency(port::NominalCPUFrequency() * 1e-6);
   device.set_num_cores(port::NumSchedulableCPUs());
   device.set_l1_cache_size(Eigen::l1CacheSize());
   device.set_l2_cache_size(Eigen::l2CacheSize());
@@ -175,7 +175,7 @@ OpInfo::DeviceProperties GetLocalGPUInfo(int gpu_id) {
   if (error == cudaSuccess) {
     device.set_vendor("NVidia");
     device.set_model(properties.name);
-    device.set_frequency(properties.clockRate / 1000);
+    device.set_frequency(properties.clockRate * 1e-3);
     device.set_num_cores(properties.multiProcessorCount);
     device.set_num_registers(properties.regsPerMultiprocessor);
     // For compute capability less than 5, l1 cache size is configurable to
@@ -195,6 +195,8 @@ OpInfo::DeviceProperties GetLocalGPUInfo(int gpu_id) {
                          properties.memoryClockRate * 2);
   }
 
+  (*device.mutable_environment())["architecture"] =
+      strings::StrCat(properties.major, ".", properties.minor);
   (*device.mutable_environment())["cuda"] = strings::StrCat(CUDA_VERSION);
   (*device.mutable_environment())["cudnn"] = strings::StrCat(CUDNN_VERSION);
 #endif

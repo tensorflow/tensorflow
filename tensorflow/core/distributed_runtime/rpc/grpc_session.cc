@@ -43,7 +43,7 @@ const size_t kSchemePrefixLength = strlen(kSchemePrefix);
 /* static */
 Status GrpcSession::Create(const SessionOptions& options,
                            std::unique_ptr<GrpcSession>* out_session) {
-  std::unique_ptr<GrpcSession> ret(new GrpcSession(options));
+  std::unique_ptr<GrpcSession> session(new GrpcSession(options));
   std::unique_ptr<MasterInterface> master;
   // For testing, we enable the client to disable the use of the local
   // master registry, so that the RPC stack is exercised.
@@ -56,8 +56,8 @@ Status GrpcSession::Create(const SessionOptions& options,
         options.target.substr(kSchemePrefixLength), &master_channel));
     master.reset(NewGrpcMaster(master_channel));
   }
-  ret->SetRemoteMaster(std::move(master));
-  *out_session = std::move(ret);
+  session->SetRemoteMaster(std::move(master));
+  *out_session = std::move(session);
   return Status::OK();
 }
 
@@ -102,6 +102,7 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
   CreateSessionRequest req;
   *req.mutable_config() = options_.config;
   *req.mutable_graph_def() = graph;
+  req.set_target(options_.target);
   ReEncodeConsts(req.mutable_graph_def());
   CreateSessionResponse resp;
   Status s = master_->CreateSession(call_options, &req, &resp);
