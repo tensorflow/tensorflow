@@ -121,6 +121,76 @@ class AvgPool2DTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
 
 
+class AvgPool3DTest(test.TestCase):
+
+  def testInvalidDataFormat(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3))
+    with self.assertRaisesRegexp(ValueError,
+                                 'data_format has to be either NCDHW or NDHWC.'):
+      _layers.avg_pool3d(images, [3, 3, 3], data_format='CDHWN')
+
+  def testCreateAvgPool(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3))
+    output = _layers.avg_pool3d(images, [3, 3, 3])
+    self.assertEqual(output.op.name, 'AvgPool3D/AvgPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateAvgPoolNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, 2, depth, height, width))
+    output = _layers.avg_pool3d(images, [3, 3, 3], data_format='NCDHW')
+    self.assertEquals(output.op.name, 'AvgPool3D/transpose_1')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 1, 2, 4])
+
+  def testCollectOutputs(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], outputs_collections='outputs')
+    output_collected = ops.get_collection('outputs')[0]
+    self.assertEqual(output_collected.aliases, ['AvgPool3D'])
+    self.assertEqual(output_collected, output)
+
+  def testCreateSquareAvgPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, 3)
+    self.assertEqual(output.op.name, 'AvgPool3D/AvgPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateAvgPoolWithScope(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], scope='pool1')
+    self.assertEqual(output.op.name, 'pool1/AvgPool3D')
+
+  def testCreateAvgPoolWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 3, 5, 3])
+
+  def testCreateAvgPoolWithSamePaddingNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, 3, depth, height, width), seed=1)
+    output = _layers.avg_pool3d(
+        images, [3, 3, 3], padding='SAME', data_format='NCDHW')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 2, 3, 5])
+
+  def testCreateAvgPoolStrideWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], stride=1, padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, depth, height, width, 3])
+
+  def testGlobalAvgPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, images.get_shape()[1:4], stride=1)
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 1, 3])
+
+
 class PoolTest(test.TestCase):
 
   def testCreatePool(self):
