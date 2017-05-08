@@ -17,8 +17,11 @@
 #
 # Update this file with your device and supported types
 # - please don't check it in!
+# - if you want to remove it from 'git status' then you can do:
+#   git update-index --assume-unchanged tensorflow/compiler/tests/plugin.bzl
 #
 
-plugin_device = ""
+plugin_device = "XLA_IPU"
 plugin_types = "DT_FLOAT,DT_INT32"
+
 
