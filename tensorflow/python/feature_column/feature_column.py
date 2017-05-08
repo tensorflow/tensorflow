@@ -324,14 +324,15 @@ def numeric_column(key,
 
   ```python
   price = numeric_column('price')
-  all_feature_columns = [price, ...]
-  dense_tensor = make_input_layer(features, all_feature_columns)
+  columns = [price, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
 
   # or
   bucketized_price = bucketized_column(price, boundaries=[...])
-  all_feature_columns = [bucketized_price, ...]
-  linear_prediction = make_linear_model(features, all_feature_columns)
-
+  columns = [bucketized_price, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  linear_prediction = make_linear_model(features, columns)
   ```
 
   Args:
@@ -409,12 +410,14 @@ def bucketized_column(source_column, boundaries):
   ```python
   price = numeric_column('price')
   bucketized_price = bucketized_column(price, boundaries=[...])
-  all_feature_columns = [bucketized_price, ...]
-  linear_prediction = make_linear_model(features, all_feature_columns)
+  columns = [bucketized_price, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  linear_prediction = make_linear_model(features, columns)
 
   # or
-  all_feature_columns = [bucketized_price, ...]
-  dense_tensor = make_input_layer(features, all_feature_columns)
+  columns = [bucketized_price, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
   ```
 
   Args:
@@ -458,19 +461,27 @@ def categorical_column_with_hash_bucket(key,
                                         dtype=dtypes.string):
   """Represents sparse feature where ids are set by hashing.
 
-  Use this when your sparse features are in string or integer format where you
+  Use this when your sparse features are in string or integer format, and you
   want to distribute your inputs into a finite number of buckets by hashing.
   output_id = Hash(input_feature_string) % bucket_size
+
+  `features[key]` are either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  values can be represented by `-1` for int and `''` for string. Note that these
+  values are independent of the `default_value` argument.
 
   Example:
 
   ```python
   keywords = categorical_column_with_hash_bucket("keywords", 10K)
-  linear_prediction = make_linear_model(features, [keywords, ...])
+  columns = [keywords, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  linear_prediction = make_linear_model(features, columns)
 
   # or
   keywords_embedded = embedding_column(keywords, 16)
-  dense_tensor = make_input_layer(features, [keywords_embedded, ...])
+  columns = [keywords_embedded, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
   ```
 
   Args:
@@ -511,9 +522,9 @@ def categorical_column_with_vocabulary_file(
   `num_oov_buckets` and `default_value` to specify how to include
   out-of-vocabulary values.
 
-  Inputs can be either `Tensor` or `SparseTensor`. If `Tensor`, missing values
-  can be represented by `-1` for int and `''` for string. Note that these values
-  are independent of the `default_value` argument.
+  `features[key]` are either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  values can be represented by `-1` for int and `''` for string. Note that these
+  values are independent of the `default_value` argument.
 
   Example with `num_oov_buckets`:
   File '/us/states.txt' contains 50 lines, each with a 2-character U.S. state
@@ -524,7 +535,9 @@ def categorical_column_with_vocabulary_file(
   states = categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
       num_oov_buckets=5)
-  linear_prediction = make_linear_model(features, [states, ...])
+  columns = [states, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  linear_prediction = make_linear_model(features, columns)
   ```
 
   Example with `default_value`:
@@ -536,11 +549,15 @@ def categorical_column_with_vocabulary_file(
   states = categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=51,
       default_value=0)
-  linear_prediction, _, _ = make_linear_model(features, [states, ...])
+  columns = [states, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  linear_prediction, _, _ = make_linear_model(features, columns)
 
   And to make an embedding with either:
   ```python
-  dense_tensor = make_input_layer(features, [embedding_column(states, 3),...])
+  columns = [embedding_column(states, 3),...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
   ```
 
   Args:
@@ -606,9 +623,9 @@ def categorical_column_with_vocabulary_list(
   out-of-vocabulary values are ignored. Use `default_value` to specify how to
   include out-of-vocabulary values.
 
-  Inputs can be either `Tensor` or `SparseTensor`. If `Tensor`, missing values
-  can be represented by `-1` for int and `''` for string. Note that these values
-  are independent of the `default_value` argument.
+  `features[key]` are either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  values can be represented by `-1` for int and `''` for string. Note that these
+  values are independent of the `default_value` argument.
 
   In the following examples, each input in `vocabulary_list` is assigned an ID
   0-4 corresponding to its index (e.g., input 'B' produces output 2). All other
@@ -618,12 +635,16 @@ def categorical_column_with_vocabulary_list(
   ```python
   colors = categorical_column_with_vocabulary_list(
       key='colors', vocabulary_list=('X', 'R', 'G', 'B', 'Y'), default_value=0)
-  linear_prediction, _, _ = make_linear_model(features, [colors, ...])
+  columns = [colors, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  linear_prediction, _, _ = make_linear_model(features, columns)
   ```
 
   Embedding for a DNN model:
   ```python
-  dense_tensor = make_input_layer(features, [embedding_column(colors, 3),...])
+  columns = [embedding_column(colors, 3),...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
   ```
 
   Args:
@@ -675,7 +696,28 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   outside this range will result in `default_value` if specified, otherwise it
   will fail.
 
-  Inputs can be either `Tensor` or `SparseTensor`.
+  `features[key]` are either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  values can be represented by `-1` for int and `''` for string. Note that these
+  values are independent of the `default_value` argument.
+
+  In the following examples, each input in the range `[0, 1000000)` is assigned
+  the same value. All other inputs are assigned `default_value` 0. Note that a
+  literal 0 in inputs will result in the same default ID.
+
+  Linear model:
+  ```python
+  video_id = categorical_column_with_identity(
+      key='video_id', num_buckets=1000000, default_value=0)
+  columns = [video_id, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  linear_prediction, _, _ = make_linear_model(features, columns)
+  ```
+
+  Embedding for a DNN model:
+  ```python
+  columns = [embedding_column(video_id, 9),...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
   ```
 
   Args:
