@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
+import six
+
 
 class TaskType(object):
   MASTER = 'master'
@@ -27,6 +31,9 @@ class TaskType(object):
 
 class RunConfig(object):
   """This class specifies the configurations for an `Estimator` run."""
+
+  def __init__(self):
+    self._model_dir = None
 
   @property
   def cluster_spec(self):
@@ -90,4 +97,55 @@ class RunConfig(object):
 
   @property
   def model_dir(self):
-    return None
+    return self._model_dir
+
+  def replace(self, **kwargs):
+    """Returns a new instance of `RunConfig` replacing specified properties.
+
+    Only the properties in the following list are allowed to be replaced:
+      - `model_dir`.
+
+    Args:
+      **kwargs: keyword named properties with new values.
+
+    Raises:
+      ValueError: If any property name in `kwargs` does not exist or is not
+        allowed to be replaced.
+
+    Returns:
+      a new instance of `RunConfig`.
+    """
+    return self._replace(allowed_properties_list=['model_dir'], **kwargs)
+
+  def _replace(self, allowed_properties_list=None, **kwargs):
+    """See `replace`.
+
+    N.B.: This implementation assumes that for key named "foo", the underlying
+    property the RunConfig holds is "_foo" (with one leading underscore).
+
+    Args:
+      allowed_properties_list: The property name list allowed to be replaced.
+      **kwargs: keyword named properties with new values.
+
+    Raises:
+      ValueError: If any property name in `kwargs` does not exist or is not
+        allowed to be replaced.
+
+    Returns:
+      a new instance of `RunConfig`.
+    """
+
+    new_copy = copy.deepcopy(self)
+
+    allowed_properties_list = allowed_properties_list or []
+
+    for key, new_value in six.iteritems(kwargs):
+      if key in allowed_properties_list:
+        setattr(new_copy, '_' + key, new_value)
+        continue
+
+      raise ValueError(
+          'Replacing {} is not supported. Allowed properties are {}.'.format(
+              key, allowed_properties_list))
+
+    return new_copy

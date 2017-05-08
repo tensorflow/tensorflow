@@ -28,6 +28,7 @@ from tensorflow.python.training import server_lib
 
 TEST_DIR = "test_dir"
 ANOTHER_TEST_DIR = "another_test_dir"
+MASTER = "master_"
 RANDOM_SEED = 123
 
 patch = test.mock.patch
@@ -253,13 +254,31 @@ class RunConfigTest(test.TestCase):
     new_config = config.replace(model_dir=ANOTHER_TEST_DIR)
     self.assertEqual(ANOTHER_TEST_DIR, new_config.model_dir)
     self.assertEqual(RANDOM_SEED, new_config.tf_random_seed)
-
-    self.assertEqual(TEST_DIR, config.model_dir)
     self.assertEqual(RANDOM_SEED, config.tf_random_seed)
 
+  def test_replace_with_allowed_properties(self):
+    config = run_config_lib.RunConfig().replace(
+        tf_random_seed=11,
+        save_summary_steps=12,
+        save_checkpoints_steps=13,
+        save_checkpoints_secs=14,
+        session_config=15,
+        keep_checkpoint_max=16,
+        keep_checkpoint_every_n_hours=17)
+    self.assertEqual(11, config.tf_random_seed)
+    self.assertEqual(12, config.save_summary_steps)
+    self.assertEqual(13, config.save_checkpoints_steps)
+    self.assertEqual(14, config.save_checkpoints_secs)
+    self.assertEqual(15, config.session_config)
+    self.assertEqual(16, config.keep_checkpoint_max)
+    self.assertEqual(17, config.keep_checkpoint_every_n_hours)
+
+  def test_replace_with_disallowallowed_properties(self):
+    config = run_config_lib.RunConfig(
+        tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
     with self.assertRaises(ValueError):
       # tf_random_seed is not allowed to be replaced.
-      config.replace(tf_random_seed=RANDOM_SEED)
+      config.replace(master=MASTER)
 
     with self.assertRaises(ValueError):
       config.replace(some_undefined_property=RANDOM_SEED)

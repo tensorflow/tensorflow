@@ -152,8 +152,10 @@ class EstimatorConstructorTest(test.TestCase):
     def model_fn(features, labels):
       _, _ = features, labels
 
-    est = estimator.Estimator(model_fn=model_fn)
-    self.assertTrue(est.model_dir is not None)
+    with test.mock.patch.object(tempfile, 'mkdtemp', return_value=_TMP_DIR):
+      est = estimator.Estimator(model_fn=model_fn)
+      self.assertEqual(_TMP_DIR, est.config.model_dir)
+      self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_model_dir_in_constructor(self):
 
@@ -161,6 +163,7 @@ class EstimatorConstructorTest(test.TestCase):
       _, _ = features, labels
 
     est = estimator.Estimator(model_fn=model_fn, model_dir=_TMP_DIR)
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_model_dir_in_run_config(self):
@@ -175,6 +178,7 @@ class EstimatorConstructorTest(test.TestCase):
       _, _ = features, labels
 
     est = estimator.Estimator(model_fn=model_fn, config=FakeConfig())
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_same_model_dir_in_constructor_and_run_config(self):
@@ -190,6 +194,7 @@ class EstimatorConstructorTest(test.TestCase):
 
     est = estimator.Estimator(
         model_fn=model_fn, config=FakeConfig(), model_dir=_TMP_DIR)
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_different_model_dir_in_constructor_and_run_config(self):

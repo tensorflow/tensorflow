@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import copy
 import json
 import os
 
@@ -32,6 +31,9 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
 
+# A list of the property names in RunConfig user allows to change. They will
+# not affect the execution framework, so when execution framework checks the
+# `uid` of the RunConfig, it should be ingored.
 _DEFAULT_UID_WHITE_LIST = [
     'tf_random_seed',
     'save_summary_steps',
@@ -300,7 +302,14 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     """Returns a new instance of `RunConfig` replacing specified properties.
 
     Only the properties in the following list are allowed to be replaced:
-      - `model_dir`.
+      - `model_dir`,
+      - `tf_random_seed`,
+      - `save_summary_steps`,
+      - `save_checkpoints_steps`,
+      - `save_checkpoints_secs`,
+      - `session_config`,
+      - `keep_checkpoint_max`,
+      - `keep_checkpoint_every_n_hours`,
 
     Args:
       **kwargs: keyword named properties with new values.
@@ -312,18 +321,11 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     Returns:
       a new instance of `RunConfig`.
     """
-
-    new_copy = copy.deepcopy(self)
-
-    # TODO(b/33295821): Allow more fields to be replaced.
-    for key, new_value in six.iteritems(kwargs):
-      if key == 'model_dir':
-        new_copy._model_dir = new_value  # pylint: disable=protected-access
-        continue
-
-      raise ValueError('{} is not supported by RunConfig replace'.format(key))
-
-    return new_copy
+    # In addition to the _DEFAULT_UID_WHITE_LIST, also allow model_dir to be
+    # replaced, as most execution frameworks change it.
+    return super(RunConfig, self)._replace(
+        allowed_properties_list=['model_dir'] + _DEFAULT_UID_WHITE_LIST,
+        **kwargs)
 
   @experimental
   def uid(self, whitelist=None):
