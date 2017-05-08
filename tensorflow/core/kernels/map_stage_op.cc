@@ -372,10 +372,10 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek").HostMemory("key")
 
 
 template <bool Ordered>
-class MapPopitemOp : public OpKernel
+class MapUnstageNoKeyOp : public OpKernel
 {
  public:
-  explicit MapPopitemOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit MapUnstageNoKeyOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   // Using this op in such a way that it blocks forever
   // is an error.  As such cancellation is not handled.
@@ -408,23 +408,23 @@ class MapPopitemOp : public OpKernel
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("MapPopitem").Device(DEVICE_CPU),
-                      MapPopitemOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapPopitem").Device(DEVICE_CPU),
-                      MapPopitemOp<true>);
+REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey").Device(DEVICE_CPU),
+                      MapUnstageNoKeyOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey").Device(DEVICE_CPU),
+                      MapUnstageNoKeyOp<true>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("MapPopitem").HostMemory("key")
-                      .Device(DEVICE_GPU), MapPopitemOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapPopitem").HostMemory("key")
-                      .Device(DEVICE_GPU), MapPopitemOp<true>);
+REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey").HostMemory("key")
+                      .Device(DEVICE_GPU), MapUnstageNoKeyOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey").HostMemory("key")
+                      .Device(DEVICE_GPU), MapUnstageNoKeyOp<true>);
 
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapPopitem").HostMemory("key")
-                      .Device(DEVICE_SYCL), MapPopitemOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapPopitem").HostMemory("key")
-                      .Device(DEVICE_SYCL), MapPopitemOp<true>);
+REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey").HostMemory("key")
+                      .Device(DEVICE_SYCL), MapUnstageNoKeyOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey").HostMemory("key")
+                      .Device(DEVICE_SYCL), MapUnstageNoKeyOp<true>);
 #endif // TENSORFLOW_USE_SYCL
 
 

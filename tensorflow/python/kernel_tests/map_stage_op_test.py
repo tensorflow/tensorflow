@@ -36,7 +36,7 @@ class MapStageTest(test.TestCase):
       with ops.device('/gpu:0'):
         stager = data_flow_ops.MapStagingArea([dtypes.float32])
         stage = stager.put(pi,[v])
-        y = stager.pop(gi)
+        k, y = stager.get(gi)
         y = math_ops.reduce_max(math_ops.matmul(y, y))
       sess.run(stage, feed_dict={x: -1, pi: 0})
       for i in range(10):
@@ -53,7 +53,7 @@ class MapStageTest(test.TestCase):
       with ops.device('/gpu:0'):
         stager = data_flow_ops.MapStagingArea([dtypes.float32, dtypes.float32])
         stage = stager.put(pi,[x, v])
-        z, y = stager.pop(gi)
+        k, (z, y) = stager.get(gi)
         y = math_ops.reduce_max(z * math_ops.matmul(y, y))
       sess.run(stage, feed_dict={x: -1, pi: 0})
       for i in range(10):
@@ -74,7 +74,7 @@ class MapStageTest(test.TestCase):
             shapes=[[], [128, 128]],
             names=['x', 'v'])
         stage = stager.put(pi,{'x': x, 'v': v})
-        ret = stager.pop(gi)
+        key, ret = stager.get(gi)
         z = ret['x']
         y = ret['v']
         y = math_ops.reduce_max(z * math_ops.matmul(y, y))
@@ -93,9 +93,9 @@ class MapStageTest(test.TestCase):
       y = stager.put(1,[v])
       self.assertEqual(y.device, '/device:GPU:0')
     with ops.device('/cpu:0'):
-      x = stager.pop(1)
+      _, x = stager.get(1)
       y = stager.peek(1)
-      _, z = stager.popitem()
+      _, z = stager.get()
       self.assertEqual(x.device, '/device:CPU:0')
       self.assertEqual(y.device, '/device:CPU:0')
       self.assertEqual(z.device, '/device:CPU:0')
@@ -158,7 +158,7 @@ class MapStageTest(test.TestCase):
       stager = data_flow_ops.MapStagingArea([dtypes.int32, ],
         capacity=capacity, shapes=[[]])
       stage = stager.put(pi,[x])
-      popitem = stager.popitem()
+      get = stager.get()
       size = stager.size()
 
     from six.moves import queue as Queue
@@ -192,7 +192,7 @@ class MapStageTest(test.TestCase):
 
       # Clear the staging area out a bit
       for i in range(n - capacity):
-        sess.run(popitem)
+        sess.run(get)
 
       # This should now succeed
       t.join()
@@ -201,7 +201,7 @@ class MapStageTest(test.TestCase):
 
       # Clear out the staging area completely
       for i in range(capacity):
-        sess.run(popitem)
+        sess.run(get)
 
   def testOrdering(self):
     import six
@@ -215,7 +215,7 @@ class MapStageTest(test.TestCase):
       stager = data_flow_ops.MapStagingArea([dtypes.int32, ],
         shapes=[[]], ordered=True)
       stage = stager.put(pi,[x])
-      popitem = stager.popitem()
+      get = stager.get()
       size = stager.size()
 
     n = 10
@@ -235,8 +235,8 @@ class MapStageTest(test.TestCase):
 
       # Check that key, values come out in ascending order
       for k in keys:
-        pop_key, values = sess.run(popitem)
-        self.assertTrue(k == pop_key == values)
+        get_key, values = sess.run(get)
+        self.assertTrue(k == get_key == values)
 
       self.assertTrue(sess.run(size) == 0)
 

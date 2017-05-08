@@ -2055,7 +2055,7 @@ REGISTER_OP("MapUnstage")
     .SetIsStateful()
     .Doc(R"doc(MapUnstage)doc");
 
-REGISTER_OP("MapPopitem")
+REGISTER_OP("MapUnstageNoKey")
     .Output("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
@@ -2064,7 +2064,7 @@ REGISTER_OP("MapPopitem")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(MapPopitem)doc");
+    .Doc(R"doc(MapUnstageNoKey)doc");
 
 REGISTER_OP("MapSize")
     .Output("size: int32")
@@ -2118,7 +2118,7 @@ REGISTER_OP("OrderedMapUnstage")
     .SetIsStateful()
     .Doc(R"doc(OrderedMapUnstage)doc");
 
-REGISTER_OP("OrderedMapPopitem")
+REGISTER_OP("OrderedMapUnstageNoKey")
     .Output("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
@@ -2127,7 +2127,7 @@ REGISTER_OP("OrderedMapPopitem")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(OrderedMapPopitem)doc");
+    .Doc(R"doc(OrderedMapUnstageNoKey)doc");
 
 REGISTER_OP("OrderedMapSize")
     .Output("size: int32")

@@ -1722,14 +1722,14 @@ class MapStagingArea(BaseStagingArea):
         if ordered:
             self._put_fn = gen_data_flow_ops.ordered_map_stage
             self._pop_fn = gen_data_flow_ops.ordered_map_unstage
-            self._popitem_fn = gen_data_flow_ops.ordered_map_popitem
+            self._popitem_fn = gen_data_flow_ops.ordered_map_unstage_no_key
             self._peek_fn = gen_data_flow_ops.ordered_map_peek
             self._size_fn = gen_data_flow_ops.ordered_map_size
             self._clear_fn = gen_data_flow_ops.ordered_map_clear
         else:
             self._put_fn = gen_data_flow_ops.map_stage
             self._pop_fn = gen_data_flow_ops.map_unstage
-            self._popitem_fn = gen_data_flow_ops.map_popitem
+            self._popitem_fn = gen_data_flow_ops.map_unstage_no_key
             self._peek_fn = gen_data_flow_ops.map_peek
             self._size_fn = gen_data_flow_ops.map_size
             self._clear_fn = gen_data_flow_ops.map_clear
@@ -1788,11 +1788,35 @@ class MapStagingArea(BaseStagingArea):
 
         return self._get_return_value(result)
 
-
-    def pop(self, key, name=None):
+    def get(self, key=None, name=None):
         """
-        Removes and returns data associated with
-        the key from the staging area.
+        If the key is provided, the associated (key, value)
+        is returned from the staging area.
+
+        If no key is provided and the staging area is ordered,
+        the (key, value) with the smallest key will be returned.
+        Otherwise, a random (key, value) will be returned.
+
+        If the staging area is empty when this operation executes,
+        it will block until there is an element to dequeue.
+
+        Args:
+            key: Key associated with the required data (Optional)
+            name: A name for the operation (optional)
+
+        Returns:
+            The created op
+        """
+        if key is None:
+          return self._popitem(name)
+        else:
+          return self._pop(key, name)
+
+
+    def _pop(self, key, name=None):
+        """
+        If the key is provided, it will remove and return
+        (key, value) associated with the key from the staging area.
 
         If the staging area is empty when this operation executes,
         it will block until there is an element to dequeue.
@@ -1805,7 +1829,7 @@ class MapStagingArea(BaseStagingArea):
             The created op
         """
         if name is None:
-            name = "%s_pop" % self._name
+            name = "%s_get" % self._name
 
         with ops.colocate_with(self._coloc_op):
             result = self._pop_fn(key, shared_name=self._name,
@@ -1813,11 +1837,13 @@ class MapStagingArea(BaseStagingArea):
                             name=name,
                             capacity=self._capacity)
 
-        return self._get_return_value(result)
+        return key, self._get_return_value(result)
 
-    def popitem(self, name=None):
+    def _popitem(self, name=None):
         """
-        Removes and returns a random (key, data) pair from the staging area.
+        If the staging area is ordered,
+        the (key, value) with the smallest key will be returned.
+        Otherwise, a random (key, value) will be returned.
 
         If the staging area is empty when this operation executes,
         it will block until there is an element to dequeue.
@@ -1830,7 +1856,7 @@ class MapStagingArea(BaseStagingArea):
             The created op
         """
         if name is None:
-            name = "%s_popitem" % self._name
+            name = "%s_get_nokey" % self._name
 
         with ops.colocate_with(self._coloc_op):
             key, result = self._popitem_fn(shared_name=self._name,
