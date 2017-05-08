@@ -51,11 +51,23 @@ The core of the model consists of an LSTM cell that processes one word at a
 time and computes probabilities of the possible values for the next word in the
 sentence. The memory state of the network is initialized with a vector of zeros
 and gets updated after reading each word. For computational reasons, we will
-process data in mini-batches of size `batch_size`.
+process data in mini-batches of size `batch_size`.  In this example, it is important to note that `current_batch_of_words` does not correspond to a "sentence" of words.  Every word in a batch should correspond to time t.  Tensorflow will automatically sum the gradients of each batch for you.
+
+E.g.
+Batch 0:
+ t=0  t=1  t=2     t=3
+[The, fox, is,     quick]
+[The, fox, jumped, high].
+
+Batch 1:
+ t=0  t=1  t=2     t=3
+[The, dog, is,     lazy]
+[The, dog, jumped, low].
 
 The basic pseudocode is as follows:
 
 ```python
+words_in_dataset = tf.placeholder(tf.float32, [num_batches, batch_size, num_features])
 lstm = tf.contrib.rnn.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
 state = tf.zeros([batch_size, lstm.state_size])
