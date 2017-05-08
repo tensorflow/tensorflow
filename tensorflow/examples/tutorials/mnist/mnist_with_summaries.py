@@ -40,14 +40,14 @@ flags.DEFINE_string('summaries_dir', '/tmp/mnist_logs', 'Summaries directory')
 
 
 def train():
-  # Import data
+  # 导入训练相关数据
   mnist = input_data.read_data_sets(FLAGS.data_dir,
                                     one_hot=True,
                                     fake_data=FLAGS.fake_data)
 
   sess = tf.InteractiveSession()
 
-  # Create a multilayer model.
+  # 创建一个多层的模型
 
   # Input placehoolders
   with tf.name_scope('input'):
@@ -105,13 +105,15 @@ def train():
       tf.histogram_summary(layer_name + '/activations', activations)
       return activations
 
+   #第一层，输出是500维
   hidden1 = nn_layer(x, 784, 500, 'layer1')
 
+  #每层后面直接进行dropout
   with tf.name_scope('dropout'):
     keep_prob = tf.placeholder(tf.float32)
     tf.scalar_summary('dropout_keep_probability', keep_prob)
     dropped = tf.nn.dropout(hidden1, keep_prob)
-
+ #第二层，输出是10维
   y = nn_layer(dropped, 500, 10, 'layer2', act=tf.nn.softmax)
 
   with tf.name_scope('cross_entropy'):
@@ -120,10 +122,12 @@ def train():
       cross_entropy = -tf.reduce_mean(diff)
     tf.scalar_summary('cross entropy', cross_entropy)
 
+  #采用adam进行优化
   with tf.name_scope('train'):
     train_step = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(
         cross_entropy)
 
+  #计算正确数量
   with tf.name_scope('accuracy'):
     with tf.name_scope('correct_prediction'):
       correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
