@@ -21,7 +21,7 @@
 #   git update-index --assume-unchanged tensorflow/compiler/tests/plugin.bzl
 #
 
-plugin_device = "XLA_IPU"
+plugin_device = ""
 plugin_types = "DT_FLOAT,DT_INT32"
 
 
