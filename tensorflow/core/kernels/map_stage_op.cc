@@ -84,18 +84,13 @@ public:
   {
     mutex_lock l(mu_);
 
-    // Wait until map is not empty
-    not_empty_.wait(l, [this]() { return !this->map_.empty(); });
+    typename map_type::const_iterator it;
 
-    // Try find the entry
-    auto it = map_.find(*key);
-
-    // Not found
-    if(it == map_.end())
-    {
-        return Status(errors::NotFound("Entry for ",
-                                      *key, " not found"));
-    }
+    // Wait until the element with the requested key is present
+    not_empty_.wait(l, [&, this]() {
+      it = map_.find(*key);
+      return it != map_.end();
+    });
 
     // Copy tensors into the tuple
     for(const auto & tensor : it->second)
@@ -108,18 +103,13 @@ public:
   {
     mutex_lock l(mu_);
 
-    // Wait for inserts if empty
-    not_empty_.wait(l, [this]() { return !this->map_.empty(); });
+    typename map_type::iterator it;
 
-    // Try find the entry
-    auto it = map_.find(*key);
-
-    // Not found
-    if(it == map_.end())
-    {
-        return Status(errors::NotFound("Entry for ",
-                                      *key, " not found"));
-    }
+    // Wait until the element with the requested key is present
+    not_empty_.wait(l, [&, this]() {
+      it = map_.find(*key);
+      return it != this->map_.end();
+    });
 
     // Move from the entry as its erased anyway
     *tuple = std::move(it->second);

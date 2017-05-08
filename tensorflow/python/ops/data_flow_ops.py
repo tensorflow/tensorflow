@@ -1651,8 +1651,9 @@ class StagingArea(BaseStagingArea):
   def peek(self, index, name=None):
     """Peeks at an element in the staging area.
 
-    If the staging area is empty when this operation executes,
-    it will block until there are elements to peek at.
+    If the staging area is too small to contain the element at
+    the specified index, it will block until enough elements
+    are inserted to complete the operation.
 
     The placement of the returned tensor will be determined by the current
     device scope when this function is called.
@@ -1766,8 +1767,8 @@ class MapStagingArea(BaseStagingArea):
         """
         Peeks at staging area data associated with the key .
 
-        If the staging area is empty when this operation executes,
-        it will block until there is an element to dequeue.
+        If the key is not in the staging area, it will block
+        until the associated (key, value) is inserted.
 
         Args:
             key: Key associated with the required data
@@ -1791,7 +1792,9 @@ class MapStagingArea(BaseStagingArea):
     def get(self, key=None, name=None):
         """
         If the key is provided, the associated (key, value)
-        is returned from the staging area.
+        is returned from the staging area. If the key is not
+        in the staging area, this method will block until
+        the associated (key, value) is inserted.
 
         If no key is provided and the staging area is ordered,
         the (key, value) with the smallest key will be returned.
@@ -1815,11 +1818,10 @@ class MapStagingArea(BaseStagingArea):
 
     def _pop(self, key, name=None):
         """
-        If the key is provided, it will remove and return
-        (key, value) associated with the key from the staging area.
-
-        If the staging area is empty when this operation executes,
-        it will block until there is an element to dequeue.
+        Remove and return the associated (key, value)
+        is returned from the staging area. If the key is not
+        in the staging area, this method will block until
+        the associated (key, value) is inserted.
 
         Args:
             key: Key associated with the required data

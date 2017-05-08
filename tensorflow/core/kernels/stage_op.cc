@@ -84,16 +84,10 @@ class Buffer : public ResourceBase {
   Status Peek(int index, Tuple* tuple) {
     mutex_lock l(mu_);
 
-    // Wait if the buffer is empty
-    non_empty_cond_var_.wait(l, [this]() {
-      return !buf_.empty();
+    // Wait if the requested index is not available
+    non_empty_cond_var_.wait(l, [&, this]() {
+      return index < this->buf_.size();
     });
-
-    if(index < 0 || index >= buf_.size()) {
-      return Status(errors::OutOfRange("Index ", index,
-        " falls outside the Staging Area's size of ",
-        buf_.size(), "."));
-    }
 
     // Place tensors in the output tuple
     for(const auto & tensor: buf_[index]) {
