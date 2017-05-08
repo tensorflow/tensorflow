@@ -4,9 +4,8 @@ node_modules
 /.bazelrc
 /.tf_configure.bazelrc
 /bazel-*
-/tensorflow/compiler/tests/plugin_config.py
-/third_party/py/numpy/numpy_include
 /tools/bazel.rc
+/third_party/py/numpy/numpy_include
 /bazel_pip
 /third_party/eigen3/mkl_include
 /third_party/mkl/*
