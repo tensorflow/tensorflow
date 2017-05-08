@@ -42,6 +42,7 @@ cc_library(
         ":xla_cpu_jit",
         ":xla_gpu_device",
         ":xla_gpu_jit",
+        "//tensorflow/compiler/plugin:plugin",
     ],
     alwayslink = 1,
 )
