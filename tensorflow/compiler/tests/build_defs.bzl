@@ -1,13 +1,14 @@
 """Build rules for Tensorflow/XLA testing."""
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
-load("//tensorflow/compiler/tests:plugin.bzl", "plugin_device", "plugin_types")
+load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 
 def all_backends():
   b = ["cpu", "plugin"]
   if cuda_is_configured():
-    b += ["gpu"]
-  return b
+    return ["cpu", "gpu"] + plugins.keys()
+  else:
+    return ["cpu"] + plugins.keys()
 
 def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
                    disabled_backends=None, **kwargs):
@@ -54,12 +55,9 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
       backend_args += ["--test_device=XLA_GPU",
                        "--types=DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL"]
       backend_tags += ["requires-gpu-sm35"]
-    elif backend == "plugin":
-      if plugin_device != "":
-        backend_args += ["--test_device=" + plugin_device,
-                         "--types=" + plugin_types]
-      else:
-        continue
+    elif backend in plugins:
+      backend_args += ["--test_device=" + plugins[backend]["device"],
+                       "--types=" + plugins[backend]["types"]]
     else:
       fail("Unknown backend {}".format(backend))
 

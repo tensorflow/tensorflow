@@ -12,16 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Configuration for unit testing an XLA plugin device."""
+"""Additional XLA devices to be included in the unit test suite."""
 
-#
-# Update this file with your device and supported types
-# - please don't check it in!
-# - if you want to remove it from 'git status' then you can do:
+# If you wish to edit this file without checking it into the repo, consider:
 #   git update-index --assume-unchanged tensorflow/compiler/tests/plugin.bzl
-#
 
-plugin_device = ""
-plugin_types = "DT_FLOAT,DT_INT32"
-
+plugins = {
+  #"poplar": {"device":"XLA_IPU", "types":"DT_FLOAT,DT_INT32"},
+}
 
