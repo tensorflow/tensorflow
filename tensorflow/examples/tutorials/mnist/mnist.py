@@ -71,6 +71,7 @@ def inference(images, hidden1_units, hidden2_units):
     biases = tf.Variable(tf.zeros([hidden2_units]),
                          name='biases')
     hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
+    
   # Linear
   with tf.name_scope('softmax_linear'):
     weights = tf.Variable(
