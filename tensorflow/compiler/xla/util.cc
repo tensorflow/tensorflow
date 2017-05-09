@@ -33,7 +33,7 @@ namespace {
 // Adds a backtrace to the provided status iff the xla_status_add_backtrace flag
 // is set. This is useful for quickly tracing status errors observed coming out
 // of the service.
-Status MaybeAddBacktrace(Status prior) {
+Status MaybeAddBacktrace(const Status& prior) {
   DCHECK(!prior.ok());
   if (legacy_flags::GetUtilFlags()->xla_status_add_backtrace) {
     return Status{prior.code(),

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/index_util.h"
@@ -675,7 +676,7 @@ namespace {
 // Helper for ForEachSubshape which visits the subshapes of the given shape in
 // DFS pre-order starting with the index.
 Status ForEachSubshapeHelper(const Shape& shape,
-                             const ShapeUtil::VisitorFunction func,
+                             const ShapeUtil::VisitorFunction& func,
                              ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(shape)) {
@@ -692,7 +693,7 @@ Status ForEachSubshapeHelper(const Shape& shape,
 // Helper for ForEachMutableSubshape which visits the subshapes of the given
 // shape in DFS pre-order starting with the index.
 Status ForEachMutableSubshapeHelper(
-    Shape* shape, const ShapeUtil::MutatingVisitorFunction func,
+    Shape* shape, const ShapeUtil::MutatingVisitorFunction& func,
     ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(*shape)) {
@@ -709,13 +710,13 @@ Status ForEachMutableSubshapeHelper(
 }  // namespace
 
 /* static */ Status ShapeUtil::ForEachSubshape(const Shape& shape,
-                                               VisitorFunction func) {
+                                               const VisitorFunction& func) {
   ShapeIndex index;
   return ForEachSubshapeHelper(shape, func, &index);
 }
 
 /* static */ Status ShapeUtil::ForEachMutableSubshape(
-    Shape* shape, MutatingVisitorFunction func) {
+    Shape* shape, const MutatingVisitorFunction& func) {
   ShapeIndex index;
   return ForEachMutableSubshapeHelper(shape, func, &index);
 }

@@ -810,7 +810,8 @@ TEST(Tensor, Slice_Basic) {
 
 namespace {
 template <typename T>
-Tensor MkTensor(DataType dt, TensorShape shape, std::vector<T> init_values) {
+Tensor MkTensor(DataType dt, const TensorShape& shape,
+                std::vector<T> init_values) {
   Tensor x(dt, shape);
   const int limit = x.NumElements();
   int vi = 0;

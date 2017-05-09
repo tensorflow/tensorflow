@@ -43,7 +43,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
  public:
   ReduceWindowTest() : builder_(client_, TestName()) {}
 
-  void ReduceWindowAdd(ComputationDataHandle input,
+  void ReduceWindowAdd(const ComputationDataHandle& input,
                        tensorflow::gtl::ArraySlice<int64> window_dimensions,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
@@ -52,7 +52,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
                           window_dimensions, window_strides, padding);
   }
 
-  void ReduceWindowMax(ComputationDataHandle input,
+  void ReduceWindowMax(const ComputationDataHandle& input,
                        tensorflow::gtl::ArraySlice<int64> window_dimensions,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
@@ -61,7 +61,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
         CreateScalarMax(), window_dimensions, window_strides, padding);
   }
 
-  void ReduceWindowMin(ComputationDataHandle input,
+  void ReduceWindowMin(const ComputationDataHandle& input,
                        tensorflow::gtl::ArraySlice<int64> window_dimensions,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {

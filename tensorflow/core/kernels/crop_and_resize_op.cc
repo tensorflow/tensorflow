@@ -79,13 +79,13 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
 template <typename Device>
 inline void RunIfBoxIndexIsValid(
     OpKernelContext* context, typename TTypes<int32, 1>::ConstTensor box_index,
-    int batch_size, Callback compute, Callback done);
+    int batch_size, const Callback& compute, const Callback& done);
 
 // Specialization of CheckValidBoxIndex for a CPUDevice.
 template <>
 inline void RunIfBoxIndexIsValid<CPUDevice>(
     OpKernelContext* context, typename TTypes<int32, 1>::ConstTensor box_index,
-    int batch_size, Callback compute, Callback done) {
+    int batch_size, const Callback& compute, const Callback& done) {
   const int num_boxes = box_index.dimension(0);
   for (int b = 0; b < num_boxes; ++b) {
     OP_REQUIRES_ASYNC(
@@ -690,7 +690,7 @@ namespace {
 template <>
 inline void RunIfBoxIndexIsValid<GPUDevice>(
     OpKernelContext* context, typename TTypes<int32, 1>::ConstTensor box_index,
-    int batch_size, Callback compute, Callback done) {
+    int batch_size, const Callback& compute, const Callback& done) {
   const int num_boxes = box_index.dimension(0);
   if (num_boxes == 0) {
     compute();

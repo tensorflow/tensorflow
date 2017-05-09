@@ -29,7 +29,8 @@ namespace tensorflow {
 // during the common subexpression elimination.
 //
 // Returns true if and only if 'g' is mutated.
-extern bool OptimizeCSE(Graph* g, std::function<bool(const Node*)> consider_fn);
+extern bool OptimizeCSE(Graph* g,
+                        const std::function<bool(const Node*)>& consider_fn);
 
 }  // namespace tensorflow
 

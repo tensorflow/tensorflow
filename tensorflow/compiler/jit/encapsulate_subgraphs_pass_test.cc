@@ -109,7 +109,7 @@ Node* Binary(ops::NodeOut a, ops::NodeOut b,
   return ops::BinaryOp("BinaryTest", a, b, opts);
 }
 
-Node* AddNLike(std::vector<ops::NodeOut> inputs,
+Node* AddNLike(const std::vector<ops::NodeOut>& inputs,
                const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
   NodeBuilder node_builder(opts.GetNameForOp("AddN"), "AddNLikeTest",

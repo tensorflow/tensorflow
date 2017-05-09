@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -807,7 +808,7 @@ static KernelRegistry* GlobalKernelRegistryTyped() {
   return reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
 }
 
-static string Key(StringPiece op_type, DeviceType device_type,
+static string Key(StringPiece op_type, const DeviceType& device_type,
                   StringPiece label) {
   return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
                          label);
@@ -892,7 +893,8 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
   return Status::OK();
 }
 
-Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
+Status FindKernelRegistration(const DeviceType& device_type,
+                              const NodeDef& node_def,
                               const KernelRegistration** reg,
                               bool* was_attr_mismatch) {
   *reg = nullptr;
@@ -924,7 +926,7 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
 
 }  // namespace
 
-Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
+Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
   bool was_attr_mismatch;
@@ -1006,8 +1008,8 @@ std::unique_ptr<OpKernel> CreateOpKernel(
     DeviceType device_type, DeviceBase* device, Allocator* allocator,
     const NodeDef& node_def, int graph_def_version, Status* status) {
   OpKernel* kernel = nullptr;
-  *status = CreateOpKernel(device_type, device, allocator, nullptr, node_def,
-                           graph_def_version, &kernel);
+  *status = CreateOpKernel(std::move(device_type), device, allocator, nullptr,
+                           node_def, graph_def_version, &kernel);
   return std::unique_ptr<OpKernel>(kernel);
 }
 

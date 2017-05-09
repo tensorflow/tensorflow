@@ -32,6 +32,7 @@ limitations under the License.
 // The googlenet_graph.pb file included by default is created from Inception.
 
 #include <fstream>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/cc/ops/const_op.h"
@@ -62,7 +63,7 @@ using tensorflow::int32;
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
 // of the result is a multiple of 16, because our model expects that.
-Status ReadLabelsFile(string file_name, std::vector<string>* result,
+Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
                       size_t* found_label_count) {
   std::ifstream file(file_name);
   if (!file) {
@@ -84,7 +85,7 @@ Status ReadLabelsFile(string file_name, std::vector<string>* result,
 
 // Given an image file name, read in the data, try to decode it as an image,
 // resize it to the requested size, and then scale the values as desired.
-Status ReadTensorFromImageFile(string file_name, const int input_height,
+Status ReadTensorFromImageFile(const string& file_name, const int input_height,
                                const int input_width, const float input_mean,
                                const float input_std,
                                std::vector<Tensor>* out_tensors) {
@@ -138,7 +139,7 @@ Status ReadTensorFromImageFile(string file_name, const int input_height,
 
 // Reads a model graph definition from disk, and creates a session object you
 // can use to run it.
-Status LoadGraph(string graph_file_name,
+Status LoadGraph(const string& graph_file_name,
                  std::unique_ptr<tensorflow::Session>* session) {
   tensorflow::GraphDef graph_def;
   Status load_graph_status =
@@ -185,7 +186,7 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
 // Given the output of a model run, and the name of a file containing the labels
 // this prints out the top five highest-scoring values.
 Status PrintTopLabels(const std::vector<Tensor>& outputs,
-                      string labels_file_name) {
+                      const string& labels_file_name) {
   std::vector<string> labels;
   size_t label_count;
   Status read_labels_status =
