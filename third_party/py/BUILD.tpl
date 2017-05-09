@@ -5,13 +5,13 @@ package(default_visibility = ["//visibility:public"])
 cc_library(
     name = "python_headers",
     hdrs = [":python_include"],
-    includes = [":python_include"],
+    includes = ["python_include"],
 )
 
 cc_library(
     name = "numpy_headers",
     hdrs = [":numpy_include"],
-    includes = [":numpy_include"],
+    includes = ["numpy_include"],
 )
 
 config_setting(
