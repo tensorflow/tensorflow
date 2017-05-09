@@ -739,7 +739,10 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
       errors::Internal("Failed to launch copy of isvalid from device to host."),
       done);
 
-  auto wrapped_callback = [context, isvalid_host_tensor, compute, done]() {
+  // We capture both temporary tensors to prevent them from being deallocated
+  // when ComputeAsync returns and before the closure runs.
+  auto wrapped_callback = [context, isvalid_host_tensor, isvalid_dev_tensor,
+                           compute, done]() {
     const bool isvalid = isvalid_host_tensor.scalar<bool>()();
     OP_REQUIRES_ASYNC(
         context, isvalid,
