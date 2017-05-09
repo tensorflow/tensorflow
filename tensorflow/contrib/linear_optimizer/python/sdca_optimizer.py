@@ -99,16 +99,16 @@ class SDCAOptimizer(object):
   def symmetric_l2_regularization(self):
     return self._symmetric_l2_regularization
 
-  def get_train_step(self, columns_to_variables,
-                     weight_column_name, loss_type, features, targets,
-                     global_step):
+  def get_train_step(self, columns_to_variables, weight_column_name, loss_type,
+                     features, targets, global_step):
     """Returns the training operation of an SdcaModel optimizer."""
 
-    def _tensor_to_sparse_feature_column(dense_tensor):
+    def _dense_tensor_to_sparse_feature_column(dense_tensor):
       """Returns SparseFeatureColumn for the input dense_tensor."""
       ignore_value = 0.0
-      sparse_indices = array_ops.where(math_ops.not_equal(
-          dense_tensor, math_ops.cast(ignore_value, dense_tensor.dtype)))
+      sparse_indices = array_ops.where(
+          math_ops.not_equal(dense_tensor,
+                             math_ops.cast(ignore_value, dense_tensor.dtype)))
       sparse_values = array_ops.gather_nd(dense_tensor, sparse_indices)
       # TODO(sibyl-Aix6ihai, sibyl-vie3Poto): Makes this efficient, as now SDCA supports
       # very sparse features with weights and not weights.
@@ -133,10 +133,9 @@ class SDCAOptimizer(object):
       dense_features, sparse_features, sparse_feature_with_values = [], [], []
       dense_feature_weights = []
       sparse_feature_weights, sparse_feature_with_values_weights = [], []
-      # pylint: disable=protected-access
       for column in sorted(columns_to_variables.keys(), key=lambda x: x.key):
         transformed_tensor = features[column]
-        if isinstance(column, layers.feature_column._RealValuedColumn):
+        if isinstance(column, layers.feature_column._RealValuedColumn):  # pylint: disable=protected-access
           # A real-valued column corresponds to a dense feature in SDCA. A
           # transformed tensor corresponding to a RealValuedColumn has rank 2
           # (its shape is typically [batch_size, column.dimension]) and so it
@@ -145,22 +144,28 @@ class SDCAOptimizer(object):
           # For real valued columns, the variables list contains exactly one
           # element.
           dense_feature_weights.append(columns_to_variables[column][0])
-        elif isinstance(column, layers.feature_column._BucketizedColumn):
+        elif isinstance(column, layers.feature_column._BucketizedColumn):  # pylint: disable=protected-access
           # A bucketized column corresponds to a sparse feature in SDCA. The
           # bucketized feature is "sparsified" for SDCA by converting it to a
           # SparseFeatureColumn respresenting the one-hot encoding of the
           # bucketized feature.
-          dense_bucket_tensor = layers.input_from_feature_columns(
-              {column: transformed_tensor}, [column])
-          sparse_feature_column = _tensor_to_sparse_feature_column(
+          #
+          # TODO(sibyl-vie3Poto): Explore whether it is more efficient to translate a
+          # bucketized feature column to a dense feature in SDCA. This will
+          # likely depend on the number of buckets.
+          dense_bucket_tensor = column._to_dnn_input_layer(transformed_tensor)  # pylint: disable=protected-access
+          sparse_feature_column = _dense_tensor_to_sparse_feature_column(
               dense_bucket_tensor)
           sparse_feature_with_values.append(sparse_feature_column)
           # For bucketized columns, the variables list contains exactly one
           # element.
           sparse_feature_with_values_weights.append(
               columns_to_variables[column][0])
-        elif isinstance(column, (layers.feature_column._CrossedColumn,
-                                 layers.feature_column._SparseColumn)):
+        elif isinstance(
+            column,
+            (
+                layers.feature_column._CrossedColumn,  # pylint: disable=protected-access
+                layers.feature_column._SparseColumn)):  # pylint: disable=protected-access
           sparse_features.append(
               SparseFeatureColumn(
                   array_ops.reshape(
@@ -168,10 +173,9 @@ class SDCAOptimizer(object):
                           value=transformed_tensor.indices,
                           num_or_size_splits=2,
                           axis=1)[0], [-1]),
-                  array_ops.reshape(transformed_tensor.values, [-1]),
-                  None))
+                  array_ops.reshape(transformed_tensor.values, [-1]), None))
           sparse_feature_weights.append(columns_to_variables[column][0])
-        elif isinstance(column, layers.feature_column._WeightedSparseColumn):
+        elif isinstance(column, layers.feature_column._WeightedSparseColumn):  # pylint: disable=protected-access
           id_tensor = column.id_tensor(transformed_tensor)
           weight_tensor = column.weight_tensor(transformed_tensor)
           sparse_feature_with_values.append(
@@ -183,11 +187,10 @@ class SDCAOptimizer(object):
                   array_ops.reshape(id_tensor.values, [-1]),
                   array_ops.reshape(weight_tensor.values, [-1])))
           sparse_feature_with_values_weights.append(
-            columns_to_variables[column][0])
+              columns_to_variables[column][0])
         else:
           raise ValueError('SDCAOptimizer does not support column type %s.' %
                            type(column).__name__)
-      # pylint: enable=protected-access
 
       example_weights = array_ops.reshape(
           features[weight_column_name],
@@ -195,12 +198,13 @@ class SDCAOptimizer(object):
       example_ids = features[self._example_id_column]
       sparse_feature_with_values.extend(sparse_features)
       sparse_feature_with_values_weights.extend(sparse_feature_weights)
-      examples = dict(sparse_features=sparse_feature_with_values,
-                      dense_features=dense_features,
-                      example_labels=math_ops.to_float(array_ops.reshape(
-                          targets, shape=[-1])),
-                      example_weights=example_weights,
-                      example_ids=example_ids)
+      examples = dict(
+          sparse_features=sparse_feature_with_values,
+          dense_features=dense_features,
+          example_labels=math_ops.to_float(
+              array_ops.reshape(targets, shape=[-1])),
+          example_weights=example_weights,
+          example_ids=example_ids)
       sdca_variables = dict(
           sparse_features_weights=sparse_feature_with_values_weights,
           dense_features_weights=dense_feature_weights)

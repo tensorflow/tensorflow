@@ -35,15 +35,15 @@ ScopeNode* TFScope::CreateParentNode(const string& name) {
   node_defs_.back()->set_name(name);
   node_defs_.back()->set_op(kTFScopeParent);
   parent_nodes_[name] =
-      std::unique_ptr<TFNode>(new TFNode(node_defs_.back().get()));
+      std::unique_ptr<TFGraphNode>(new TFGraphNode(node_defs_.back().get()));
   nodes_map_[name] =
       std::unique_ptr<ScopeNode>(new ScopeNode(parent_nodes_[name].get()));
   return nodes_map_[name].get();
 }
 
-void TFScope::AddNode(TFNode* node) {
-  string name = node->node_def()->name();
-  if (nodes_map_.find(node->node_def()->name()) == nodes_map_.end()) {
+void TFScope::AddNode(TFGraphNode* node) {
+  string name = node->name();
+  if (nodes_map_.find(node->name()) == nodes_map_.end()) {
     nodes_map_[name] = std::unique_ptr<ScopeNode>(new ScopeNode(node));
   }
 

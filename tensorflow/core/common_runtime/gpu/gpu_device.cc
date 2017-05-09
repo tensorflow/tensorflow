@@ -567,15 +567,14 @@ int64 MinSystemMemory(int64 available_memory) {
   // We use the following heuristic for now:
   //
   // If the available_memory is < 2GiB, we allocate 200MiB to system memory.
-  // Otherwise, allocate 300MiB to system memory.
+  // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
   //
-  // In the future we could be more sophisticated by using a table of
-  // devices.
+  // In the future we could be more sophisticated by using a table of devices.
   if (available_memory < (1LL << 31)) {
     // 200MiB
     return 209715200LL;
   } else {
-    // max(300 MiB, 0.95 * available_memory)
+    // max(300 MiB, 0.05 * available_memory)
     return std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
   }
 }
