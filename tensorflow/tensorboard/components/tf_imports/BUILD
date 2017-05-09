@@ -15,11 +15,9 @@ webfiles(
 
 webfiles(
     name = "lodash",
-    srcs = [
-        "lodash.html",
-        "@com_lodash",
-    ],
+    srcs = ["lodash.html"],
     path = "/tf-imports",
+    deps = ["@com_lodash"],
 )
 
 webfiles(

@@ -15,11 +15,37 @@ webfiles(
 
 webfiles(
     name = "lodash",
-    srcs = [
-        "lodash.html",
-        "@com_lodash",
-    ],
+    srcs = ["lodash.html"],
     path = "/tf-imports-d3v4",
+    deps = ["@com_lodash"],
+)
+
+webfiles(
+    name = "threejs",
+    srcs = [
+        "threejs.html",
+        "@org_threejs//:OrbitControls.js",
+        "@org_threejs//:three.js",
+    ],
+    path = "/tf-imports",
+)
+
+webfiles(
+    name = "numericjs",
+    srcs = [
+        "numericjs.html",
+        "@com_numericjs",
+    ],
+    path = "/tf-imports",
+)
+
+webfiles(
+    name = "weblas",
+    srcs = [
+        "weblas.html",
+        "@io_github_waylonflinn_weblas",
+    ],
+    path = "/tf-imports",
 )
 
 webfiles(

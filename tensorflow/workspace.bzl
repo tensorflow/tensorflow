@@ -738,15 +738,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   ##############################################################################
   # TensorBoard JavaScript Production Dependencies
 
-  filegroup_external(
+  webfiles_external(
       name = "com_lodash",
       licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "7c7b391810bc08cf815683431857c51b5ee190062ae4f557e1e4689d6dd910ea": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/lodash/lodash/3.8.0/lodash.js",
-              "https://raw.githubusercontent.com/lodash/lodash/3.8.0/lodash.js",
-          ],
-      },
+      sha256 = "0e88207e5f90af4ce8790d6e1e7d09d2702d81bce0bafdc253d18c0a5bf7661e",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/lodash/lodash/archive/3.10.1.tar.gz",
+          "https://github.com/lodash/lodash/archive/3.10.1.tar.gz",
+      ],
+      strip_prefix = "lodash-3.10.1",
+      path = "/lodash",
+      srcs = ["lodash.js"],
   )
 
   filegroup_external(
@@ -869,6 +871,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "695a03dd2ccb238161d97160b239ab841562710e5c4e42886aefd4ace2ce152e": [
               "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/mocha/mocha.d.ts",
               "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/mocha/mocha.d.ts",
+          ],
+          "513ccd9ee1c708881120eeacd56788fc3b3da8e5c6172b20324cebbe858803fe": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/708609e0764daeb5eb64104af7aca50c520c4e6e/sinon/sinon.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/708609e0764daeb5eb64104af7aca50c520c4e6e/sinon/sinon.d.ts",
           ],
           "44eba36339bd1c0792072b7b204ee926fe5ffe1e9e2da916e67ac55548e3668a": [
               "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/a872802c0c84ba98ff207d5e673a1fa867c67fd6/polymer/polymer.d.ts",
@@ -1201,33 +1207,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "0e98ded15bb7fe398a655667e76b39909d36c0973a8950d01c62f65f93161c27": [
               "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/mrdoob/three.js/ad419d40bdaab80abbb34b8f359b4ee840033a02/examples/js/controls/OrbitControls.js",
               "https://raw.githubusercontent.com/mrdoob/three.js/ad419d40bdaab80abbb34b8f359b4ee840033a02/examples/js/controls/OrbitControls.js",
-          ],
-      },
-  )
-
-  ##############################################################################
-  # TensorBoard JavaScript Testing Dependencies
-
-  filegroup_external(
-      name = "com_chaijs",
-      # no @license header
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "b926b325ad9843bf0b7a6d580ef78bb560e47c484b98680098d4fd9b31b77cd9": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/chaijs/chai/2.3.0/chai.js",
-              "https://raw.githubusercontent.com/chaijs/chai/2.3.0/chai.js",
-          ],
-      },
-  )
-
-  filegroup_external(
-      name = "org_mochajs",
-      # no @license header
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "e36d865a17ffdf5868e55e736526ae30f3d4bc667c85a2a28cd5c850a82361e2": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/mochajs/mocha/2.3.4/mocha.js",
-              "https://raw.githubusercontent.com/mochajs/mocha/2.3.4/mocha.js",
           ],
       },
   )
@@ -2438,7 +2417,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       path = "/promise-polyfill",
       srcs = [
-          "Promise.js", "Promise-Statics.js", "promise-polyfill.html",
+          "Promise.js",
+          "Promise-Statics.js",
+          "promise-polyfill.html",
           "promise-polyfill-lite.html"
       ],
       deps = ["@org_polymer"],
@@ -2481,4 +2462,131 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "webcomponents-lite.js",
           "webcomponents-lite.min.js",
       ],
+  )
+
+  ##############################################################################
+  # TensorBoard Testing Dependencies
+
+  webfiles_external(
+      name = "org_npmjs_registry_accessibility_developer_tools",
+      licenses = ["notice"],  # Apache License 2.0
+      sha256 = "1d6a72f401c9d53f68238c617dd43a05cd85ca5aa2e676a5b3c352711448e093",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/registry.npmjs.org/accessibility-developer-tools/-/accessibility-developer-tools-2.10.0.tgz",
+          "https://registry.npmjs.org/accessibility-developer-tools/-/accessibility-developer-tools-2.10.0.tgz",
+      ],
+      strip_prefix = "package",
+      path = "/accessibility-developer-tools",
+  )
+
+  webfiles_external(
+      name = "org_npmjs_registry_async",
+      licenses = ["notice"],  # MIT
+      sha256 = "08655255ae810bf4d1cb1642df57658fcce823776d3ba8f4b46f4bbff6c87ece",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/registry.npmjs.org/async/-/async-1.5.0.tgz",
+          "https://registry.npmjs.org/async/-/async-1.5.0.tgz",
+      ],
+      strip_prefix = "package",
+      path = "/async",
+  )
+
+  webfiles_external(
+      name = "org_npmjs_registry_chai",
+      licenses = ["notice"],  # MIT
+      sha256 = "aca8137bed5bb295bd7173325b7ad604cd2aeb341d739232b4f9f0b26745be90",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/registry.npmjs.org/chai/-/chai-3.5.0.tgz",
+          "https://registry.npmjs.org/chai/-/chai-3.5.0.tgz",
+      ],
+      strip_prefix = "package",
+      path = "/chai",
+  )
+
+  webfiles_external(
+      name = "org_npmjs_registry_mocha",
+      licenses = ["notice"],  # MIT
+      sha256 = "13ef37a071196a2fba680799b906555d3f0ab61e80a7e8f73f93e77914590dd4",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/registry.npmjs.org/mocha/-/mocha-2.5.3.tgz",
+          "https://registry.npmjs.org/mocha/-/mocha-2.5.3.tgz",
+      ],
+      suppress = ["strictDependencies"],
+      strip_prefix = "package",
+      path = "/mocha",
+  )
+
+  webfiles_external(
+      name = "org_npmjs_registry_sinon",
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256 = "49edb057695fc9019aae992bf7e677a07de7c6ce2bf9f9facde4a245045d1532",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/registry.npmjs.org/sinon/-/sinon-1.17.4.tgz",
+          "https://registry.npmjs.org/sinon/-/sinon-1.17.4.tgz",
+      ],
+      strip_prefix = "package/lib",
+      path = "/sinonjs",
+  )
+
+  webfiles_external(
+      name = "org_npmjs_registry_sinon_chai",
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256 = "b85fc56f713832960b56fe9269ee4bb2cd41edd2ceb130b0936e5bdbed5dea63",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/registry.npmjs.org/sinon-chai/-/sinon-chai-2.8.0.tgz",
+          "https://registry.npmjs.org/sinon-chai/-/sinon-chai-2.8.0.tgz",
+      ],
+      strip_prefix = "package",
+      path = "/sinon-chai",
+  )
+
+  webfiles_external(
+      name = "org_npmjs_registry_stacky",
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256 = "c659e60f7957d9d80c23a7aacc4d71b19c6421a08f91174c0062de369595acae",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/registry.npmjs.org/stacky/-/stacky-1.3.1.tgz",
+          "https://registry.npmjs.org/stacky/-/stacky-1.3.1.tgz",
+      ],
+      strip_prefix = "package",
+      path = "/stacky",
+  )
+
+  webfiles_external(
+      name = "org_npmjs_registry_web_component_tester",
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256 = "9d4ebd4945df8a936916d4d32b7f280f2a3afa35f79e7ca8ad3ed0a42770c537",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/registry.npmjs.org/web-component-tester/-/web-component-tester-4.3.6.tgz",
+          "https://registry.npmjs.org/web-component-tester/-/web-component-tester-4.3.6.tgz",
+      ],
+      strip_prefix = "package",
+      path = "/web-component-tester",
+      suppress = [
+          "absolutePaths",
+          "strictDependencies",
+      ],
+      deps = [
+          "@com_lodash",
+          "@org_npmjs_registry_accessibility_developer_tools",
+          "@org_npmjs_registry_async",
+          "@org_npmjs_registry_chai",
+          "@org_npmjs_registry_mocha",
+          "@org_npmjs_registry_sinon",
+          "@org_npmjs_registry_sinon_chai",
+          "@org_npmjs_registry_stacky",
+          "@org_polymer_test_fixture",
+      ],
+  )
+
+  webfiles_external(
+      name = "org_polymer_test_fixture",
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256 = "59d6cfb1187733b71275becfea181fe0aa1f734df5ff77f5850c806bbbf9a0d9",
+      strip_prefix = "test-fixture-2.0.1",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/test-fixture/archive/v2.0.1.tar.gz",
+          "https://github.com/PolymerElements/test-fixture/archive/v2.0.1.tar.gz",
+      ],
+      path = "/test-fixture",
   )
