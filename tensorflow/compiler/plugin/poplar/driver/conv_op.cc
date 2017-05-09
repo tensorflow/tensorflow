@@ -85,12 +85,6 @@ CreateConv2D(poplar::Graph &graph,
   unsigned int ph_y = window.dimensions(0).padding_high();
   unsigned int ph_x = window.dimensions(1).padding_high();
 
-  if (pl_y != ph_y || pl_x != ph_x) {
-    return port::Status(
-            port::error::FAILED_PRECONDITION,
-            port::StrCat("Unequal paddings not supported on ", inst->name()));
-  }
-
   poplar::Tensor conv_in = popconv::createInput(graph, dtype,
                                                 n_b, n_y, n_x, n_i,
                                                 f_y, f_x, n_o,
