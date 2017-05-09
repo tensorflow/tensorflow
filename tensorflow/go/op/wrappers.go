@@ -13951,9 +13951,10 @@ func MutableDenseHashTableV2MaxLoadFactor(value float32) MutableDenseHashTableV2
 	}
 }
 
-// Creates an empty hash table that uses tensors as the backing store. It uses
+// Creates an empty hash table that uses tensors as the backing store.
 //
-// "open addressing" with quadratic reprobing to resolve collisions.
+// It uses "open addressing" with quadratic reprobing to resolve
+// collisions.
 //
 // This op creates a mutable hash table, specifying the type of its keys and
 // values. Each value must be a scalar. Data can be inserted into the table using
