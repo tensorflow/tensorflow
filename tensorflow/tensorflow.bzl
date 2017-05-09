@@ -133,8 +133,7 @@ def tf_copts():
           clean_dep("//tensorflow:android"): [
               "-std=c++11",
               "-DTF_LEAN_BINARY",
-              "-DUSE_GEMM_FOR_CONV",
-              "-O3",
+              "-O2",
           ],
           clean_dep("//tensorflow:darwin"): [],
           clean_dep("//tensorflow:windows"): [
