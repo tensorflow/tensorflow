@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/linalg_ops_common.h"
 
+#include <utility>
+
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -153,10 +155,9 @@ void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
     const int col_dimension = input_rank - 1;
     const int64 num_rows = in.dim_size(row_dimension);
     const int64 num_cols = in.dim_size(col_dimension);
-    // TODO(rmlarsen): Use emplace_back when it is added to InlinedVector. Same
-    // in several places below.
-    input_matrix_shapes->push_back(TensorShape({num_rows, num_cols}));
-    inputs->push_back(&in);
+    input_matrix_shapes->emplace_back(
+        std::initializer_list<int64>({num_rows, num_cols}));
+    inputs->emplace_back(&in);
   }
   // Have the derived class validate that the inputs are as expected.
   ValidateInputMatrixShapes(context, *input_matrix_shapes);
@@ -198,9 +199,7 @@ void LinearAlgebraOp<Scalar>::PrepareOutputs(
       // concatenated with the output_matrix_shape (if the output is not
       // scalar).
       output_tensor_shape = batch_shape;
-      for (int dim = 0; dim < output_matrix_shape.dims(); ++dim) {
-        output_tensor_shape.AddDim(output_matrix_shape.dim_size(dim));
-      }
+      output_tensor_shape.AppendShape(output_matrix_shape);
     }
     Tensor* out = nullptr;
     // See if there is an input buffer we can reuse for this output.
@@ -219,7 +218,7 @@ void LinearAlgebraOp<Scalar>::PrepareOutputs(
       OP_REQUIRES_OK(context, context->allocate_output(
                                   output_idx, output_tensor_shape, &out));
     }
-    outputs->push_back(out);
+    outputs->emplace_back(out);
   }
 }
 
@@ -232,11 +231,10 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
   for (size_t i = 0; i < inputs.size(); ++i) {
     // TODO(kalakris): Handle alignment if possible. Eigen::Map is
     // unaligned by default.
-    matrix_inputs.push_back(
-        ConstMatrixMap(inputs[i]->flat<Scalar>().data() +
-                           matrix_index * input_matrix_shapes[i].num_elements(),
-                       input_matrix_shapes[i].dim_size(0),
-                       input_matrix_shapes[i].dim_size(1)));
+    matrix_inputs.emplace_back(
+        inputs[i]->flat<Scalar>().data() +
+            matrix_index * input_matrix_shapes[i].num_elements(),
+        input_matrix_shapes[i].dim_size(0), input_matrix_shapes[i].dim_size(1));
   }
 
   MatrixMaps matrix_outputs;
@@ -248,10 +246,10 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
     int num_output_cols = output_matrix_shapes[i].dims() == 2
                               ? output_matrix_shapes[i].dim_size(1)
                               : 1;
-    matrix_outputs.push_back(
-        MatrixMap(outputs[i]->flat<Scalar>().data() +
-                      matrix_index * output_matrix_shapes[i].num_elements(),
-                  num_output_rows, num_output_cols));
+    matrix_outputs.emplace_back(
+        outputs[i]->flat<Scalar>().data() +
+            matrix_index * output_matrix_shapes[i].num_elements(),
+        num_output_rows, num_output_cols);
   }
   ComputeMatrix(context, matrix_inputs, &matrix_outputs);
 }

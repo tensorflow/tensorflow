@@ -67,5 +67,7 @@ tensorboard_ts_library(
         "vz-chart-helpers.ts",
         "vz-line-chart.ts",
     ],
+    deps_mgmt = "off",
+    runtime = "nodejs",
     deps = ["//tensorflow/tensorboard/components:common_deps"],
 )

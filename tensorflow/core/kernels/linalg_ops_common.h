@@ -21,10 +21,7 @@ limitations under the License.
 // computations across different threads if necessary.
 #include <algorithm>
 
-#define EIGEN_USE_THREADS
-
 #include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"

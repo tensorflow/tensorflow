@@ -594,6 +594,9 @@ class BaseSession(SessionInterface):
       try:
         status = tf_session.TF_NewStatus()
         tf_session.TF_DeleteDeprecatedSession(self._session, status)
+      except AttributeError:
+        # 'NoneType' object has no attribute 'TF_NewStatus'
+        pass
       finally:
         if status is not None:
           tf_session.TF_DeleteStatus(status)

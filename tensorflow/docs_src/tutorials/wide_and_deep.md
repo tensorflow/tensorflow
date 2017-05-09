@@ -17,8 +17,7 @@ large-scale regression and classification problems with sparse input features
 you're interested in learning more about how Wide & Deep Learning works, please
 check out our [research paper](http://arxiv.org/abs/1606.07792).
 
-![Wide & Deep Spectrum of Models]
-(../images/wide_n_deep.svg "Wide & Deep")
+![Wide & Deep Spectrum of Models](https://www.tensorflow.org/images/wide_n_deep.svg "Wide & Deep")
 
 The figure above shows a comparison of a wide model (logistic regression with
 sparse features and transformations), a deep model (feed-forward neural network

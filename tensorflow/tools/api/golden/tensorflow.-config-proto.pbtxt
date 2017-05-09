@@ -7,6 +7,10 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "CLUSTER_DEF_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "DESCRIPTOR"
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }

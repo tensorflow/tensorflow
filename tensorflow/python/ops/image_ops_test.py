@@ -1175,12 +1175,7 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
     offset_height, offset_width = [0, 0]
     target_height, target_width = [2, 2]
 
-    for x_shape in ([3, 5],):
-      self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
-                         target_width,
-                         "'image' must be at least three-dimensional.")
-
-    for x_shape in ([1, 3, 5, 1, 1],):
+    for x_shape in ([3, 5], [1, 3, 5, 1, 1]):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
                          target_width,
                          "'image' must have either 3 or 4 dimensions.")
@@ -1426,12 +1421,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     offset_height, offset_width = [0, 0]
     target_height, target_width = [2, 2]
 
-    for x_shape in ([3, 5],):
-      self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
-                         target_width,
-                         "'image' must be at least three-dimensional")
-
-    for x_shape in ([1, 3, 5, 1, 1],):
+    for x_shape in ([3, 5], [1, 3, 5, 1, 1]):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
                          target_width,
                          "'image' must have either 3 or 4 dimensions.")
@@ -1652,8 +1642,8 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     self.assertEqual(y.get_shape().as_list(), [None] + post_shape)
 
   def shouldRunOnGPU(self, opt, nptype):
-    if opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR \
-            and nptype in [np.float32, np.float64]:
+    if (opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR and
+        nptype in [np.float32, np.float64]):
       return True
     else:
       return False
@@ -1676,15 +1666,13 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       img_np = np.array(data, dtype=nptype).reshape(img_shape)
 
       for opt in self.OPTIONS:
-        if test.is_gpu_available() and self.shouldRunOnGPU(opt, nptype):
-          with self.test_session(use_gpu=True) as sess:
-            image = constant_op.constant(img_np, shape=img_shape)
-            y = image_ops.resize_images(image, [target_height, target_width],
-                                        opt)
-            yshape = array_ops.shape(y)
-            resized, newshape = sess.run([y, yshape])
-            self.assertAllEqual(img_shape, newshape)
-            self.assertAllClose(resized, img_np, atol=1e-5)
+        with self.test_session(use_gpu=True) as sess:
+          image = constant_op.constant(img_np, shape=img_shape)
+          y = image_ops.resize_images(image, [target_height, target_width], opt)
+          yshape = array_ops.shape(y)
+          resized, newshape = sess.run([y, yshape])
+          self.assertAllEqual(img_shape, newshape)
+          self.assertAllClose(resized, img_np, atol=1e-5)
 
       # Resizing with a single image must leave the shape unchanged also.
       with self.test_session(use_gpu=True):
@@ -1822,7 +1810,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               resized = y.eval()
               self.assertAllClose(resized, expected, atol=1e-5)
 
-  def testResizeUp(self):
+  def testResizeUpAlignCornersFalse(self):
     img_shape = [1, 3, 2, 1]
     data = [64, 32,
             32, 64,
@@ -1857,16 +1845,63 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
           image_ops.ResizeMethod.BILINEAR,
           image_ops.ResizeMethod.NEAREST_NEIGHBOR,
           image_ops.ResizeMethod.AREA]:
-        if test.is_gpu_available() and self.shouldRunOnGPU(opt, nptype):
-          with self.test_session(use_gpu=True):
-            img_np = np.array(data, dtype=nptype).reshape(img_shape)
-            image = constant_op.constant(img_np, shape=img_shape)
-            y = image_ops.resize_images(
-                image, [target_height, target_width], opt)
-            resized = y.eval()
-            expected = np.array(expected_data[opt]).reshape(
-                [1, target_height, target_width, 1])
-            self.assertAllClose(resized, expected, atol=1e-05)
+        with self.test_session(use_gpu=True):
+          img_np = np.array(data, dtype=nptype).reshape(img_shape)
+          image = constant_op.constant(img_np, shape=img_shape)
+          y = image_ops.resize_images(
+              image, [target_height, target_width], opt, align_corners=False)
+          resized = y.eval()
+          expected = np.array(expected_data[opt]).reshape(
+              [1, target_height, target_width, 1])
+          self.assertAllClose(resized, expected, atol=1e-05)
+
+  def testResizeUpAlignCornersTrue(self):
+    img_shape = [1, 3, 2, 1]
+    data = [6, 3,
+            3, 6,
+            6, 9]
+    target_height = 5
+    target_width = 4
+    expected_data = {}
+    expected_data[image_ops.ResizeMethod.BILINEAR] = [
+        6.0, 5.0, 4.0, 3.0,
+        4.5, 4.5, 4.5, 4.5,
+        3.0, 4.0, 5.0, 6.0,
+        4.5, 5.5, 6.5, 7.5,
+        6.0, 7.0, 8.0, 9.0
+    ]
+    expected_data[image_ops.ResizeMethod.NEAREST_NEIGHBOR] = [
+        6.0, 6.0, 3.0, 3.0,
+        3.0, 3.0, 6.0, 6.0,
+        3.0, 3.0, 6.0, 6.0,
+        6.0, 6.0, 9.0, 9.0,
+        6.0, 6.0, 9.0, 9.0
+    ]
+    # TODO(b/37749740): Improve alignment of ResizeMethod.AREA when
+    # align_corners=True.
+    expected_data[image_ops.ResizeMethod.AREA] = [
+        6.0, 6.0, 6.0, 3.0,
+        6.0, 6.0, 6.0, 3.0,
+        3.0, 3.0, 3.0, 6.0,
+        3.0, 3.0, 3.0, 6.0,
+        6.0, 6.0, 6.0, 9.0
+    ]
+
+    for nptype in self.TYPES:
+      for opt in [
+          image_ops.ResizeMethod.BILINEAR,
+          image_ops.ResizeMethod.NEAREST_NEIGHBOR,
+          image_ops.ResizeMethod.AREA
+      ]:
+        with self.test_session(use_gpu=True):
+          img_np = np.array(data, dtype=nptype).reshape(img_shape)
+          image = constant_op.constant(img_np, shape=img_shape)
+          y = image_ops.resize_images(
+              image, [target_height, target_width], opt, align_corners=True)
+          resized = y.eval()
+          expected = np.array(expected_data[opt]).reshape(
+              [1, target_height, target_width, 1])
+          self.assertAllClose(resized, expected, atol=1e-05)
 
   def testResizeUpBicubic(self):
     img_shape = [1, 6, 6, 1]

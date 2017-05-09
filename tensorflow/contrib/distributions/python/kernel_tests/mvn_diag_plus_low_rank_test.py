@@ -185,19 +185,19 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
 
       sample_kl_identity = math_ops.reduce_mean(
           dist.log_prob(samps) - mvn_identity.log_prob(samps), 0)
-      analytical_kl_identity = ds.kl(dist, mvn_identity)
+      analytical_kl_identity = ds.kl_divergence(dist, mvn_identity)
 
       sample_kl_scaled = math_ops.reduce_mean(
           dist.log_prob(samps) - mvn_scaled.log_prob(samps), 0)
-      analytical_kl_scaled = ds.kl(dist, mvn_scaled)
+      analytical_kl_scaled = ds.kl_divergence(dist, mvn_scaled)
 
       sample_kl_diag = math_ops.reduce_mean(
           dist.log_prob(samps) - mvn_diag.log_prob(samps), 0)
-      analytical_kl_diag = ds.kl(dist, mvn_diag)
+      analytical_kl_diag = ds.kl_divergence(dist, mvn_diag)
 
       sample_kl_chol = math_ops.reduce_mean(
           dist.log_prob(samps) - mvn_chol.log_prob(samps), 0)
-      analytical_kl_chol = ds.kl(dist, mvn_chol)
+      analytical_kl_chol = ds.kl_divergence(dist, mvn_chol)
 
       n = int(10e3)
       baseline = ds.MultivariateNormalDiag(
@@ -208,19 +208,21 @@ class MultivariateNormalDiagPlusLowRankTest(test.TestCase):
 
       sample_kl_identity_diag_baseline = math_ops.reduce_mean(
           baseline.log_prob(samps) - mvn_identity.log_prob(samps), 0)
-      analytical_kl_identity_diag_baseline = ds.kl(baseline, mvn_identity)
+      analytical_kl_identity_diag_baseline = ds.kl_divergence(
+          baseline, mvn_identity)
 
       sample_kl_scaled_diag_baseline = math_ops.reduce_mean(
           baseline.log_prob(samps) - mvn_scaled.log_prob(samps), 0)
-      analytical_kl_scaled_diag_baseline = ds.kl(baseline, mvn_scaled)
+      analytical_kl_scaled_diag_baseline = ds.kl_divergence(
+          baseline, mvn_scaled)
 
       sample_kl_diag_diag_baseline = math_ops.reduce_mean(
           baseline.log_prob(samps) - mvn_diag.log_prob(samps), 0)
-      analytical_kl_diag_diag_baseline = ds.kl(baseline, mvn_diag)
+      analytical_kl_diag_diag_baseline = ds.kl_divergence(baseline, mvn_diag)
 
       sample_kl_chol_diag_baseline = math_ops.reduce_mean(
           baseline.log_prob(samps) - mvn_chol.log_prob(samps), 0)
-      analytical_kl_chol_diag_baseline = ds.kl(baseline, mvn_chol)
+      analytical_kl_chol_diag_baseline = ds.kl_divergence(baseline, mvn_chol)
 
       [
           sample_mean_,

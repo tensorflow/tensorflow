@@ -68,9 +68,8 @@ void CleanNodeName(string* name) {
 }
 
 Status HloTfGraphBuilder::AddComputation(const HloComputation& computation) {
-  LOG(INFO) << "Adding computation " << computation.name();
+  VLOG(2) << "Adding computation " << computation.name();
   for (auto embedded : computation.MakeEmbeddedComputationsList()) {
-    LOG(INFO) << "Adding embedded computation " << embedded->name();
     for (auto& instruction : embedded->instructions()) {
       TF_RETURN_IF_ERROR(AddInstruction(instruction.get()));
     }
@@ -88,12 +87,18 @@ const string& HloTfGraphBuilder::GetNodeNameForInstruction(
   if (ContainsKey(instruction_to_node_name_, instruction)) {
     return instruction_to_node_name_[instruction];
   }
+  string node_name;
   // If an instruction is fused, put it in the subgraph of the fusion;
   // otherwise, put it in the computation subgraph.
-  string node_name =
-      instruction->IsFused()
-          ? GetNodeNameForInstruction(instruction->fusion_instruction())
-          : instruction->parent()->name();
+  if (instruction->IsFused()) {
+    node_name = GetNodeNameForInstruction(instruction->fusion_instruction());
+  } else {
+    node_name = instruction->parent()->name();
+    if (!instruction->metadata().op_name().empty()) {
+      // Always make computations contain TF ops but not the other way around.
+      StrAppend(&node_name, "/", instruction->metadata().op_name());
+    }
+  }
   string instruction_name = instruction->name();
   if (instruction->opcode() == HloOpcode::kParameter) {
     StrAppend(&instruction_name, ".", instruction->parameter_number());

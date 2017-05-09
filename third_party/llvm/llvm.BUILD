@@ -366,6 +366,7 @@ llvm_target_list = [
             ("-gen-asm-matcher", "lib/Target/ARM/ARMGenAsmMatcher.inc"),
             ("-gen-dag-isel", "lib/Target/ARM/ARMGenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/ARM/ARMGenFastISel.inc"),
+            ("-gen-global-isel", "lib/Target/ARM/ARMGenGlobalISel.inc"),
             ("-gen-callingconv", "lib/Target/ARM/ARMGenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/ARM/ARMGenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/ARM/ARMGenDisassemblerTables.inc"),
@@ -1116,6 +1117,7 @@ cc_library(
     ]),
     deps = [
         ":analysis",
+        ":bit_reader",
         ":bit_writer",
         ":config",
         ":core",
@@ -1695,6 +1697,7 @@ cc_library(
         ":demangle",
         "@zlib_archive//:zlib",
     ],
+    linkopts = ["-lpthread", "-ldl"],
 )
 
 cc_library(

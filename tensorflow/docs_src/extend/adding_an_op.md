@@ -42,7 +42,7 @@ To incorporate your custom op you'll need to:
     Python @{tf.test.compute_gradient_error$gradient checker}.
     See
     [`relu_op_test.py`](https://www.tensorflow.org/code/tensorflow/python/kernel_tests/relu_op_test.py) as
-    an example that does tests the forward functions of Relu-like operators and
+    an example that tests the forward functions of Relu-like operators and
     their gradients.
 
 PREREQUISITES:
@@ -188,7 +188,7 @@ building the `.so` file.
 >   the older ABI. If you compile your op library with `gcc>=5`, add
 >   `-D_GLIBCXX_USE_CXX11_ABI=0` to the command line to make the library
 >   compatible with the older abi.
->   Furthermore if you are using TensorFlow package created from source remember to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
+>   Furthermore if you are using TensorFlow package created from source remember to add `--cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
 >   as bazel command to compile the Python package.
 
 ### Compile the op using bazel (TensorFlow source installation)
@@ -225,7 +225,7 @@ TensorFlow Python API provides the
 load the dynamic library and register the op with the TensorFlow
 framework. `load_op_library` returns a Python module that contains the Python
 wrappers for the op and the kernel. Thus, once you have built the op, you can
-do the following to run it from Python :
+do the following to run it from Python:
 
 ```python
 import tensorflow as tf

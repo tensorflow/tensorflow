@@ -60,9 +60,9 @@ tensorboard_webcomponent_library(
 
 tensorboard_ts_library(
     name = "legacy_ts",
-    srcs = [
-        "storage.ts",
-    ],
+    srcs = ["storage.ts"],
+    deps_mgmt = "off",
+    runtime = "nodejs",
     deps = [
         "//tensorflow/tensorboard/components:common_deps",
         "//tensorflow/tensorboard/components/tf_globals:legacy_ts",

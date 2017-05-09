@@ -276,7 +276,7 @@ def subscribe(tensors, side_effects):
     Subscribed tensors, which are identity copies of the passed in tensors
       in the same passed in structure, but the graph has been modified
       such that these are downstream of the control dependencies for
-      the side effect graphs. Use these functionally equivelant tensors
+      the side effect graphs. Use these functionally equivalent tensors
       instead of the passed in tensors for further construction or running.
   """
   if not hasattr(side_effects, '__iter__'):

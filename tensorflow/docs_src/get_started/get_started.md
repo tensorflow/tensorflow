@@ -123,7 +123,7 @@ TensorFlow provides a utility called TensorBoard that can display a picture of
 the computational graph. Here is a screenshot showing how TensorBoard
 visualizes the graph:
 
-![TensorBoard screenshot](../images/getting_started_add.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_add.png)
 
 As it stands, this graph is not especially interesting because it always
 produces a constant result. A graph can be parameterized to accept external
@@ -154,7 +154,7 @@ resulting in the output
 
 In TensorBoard, the graph looks like this:
 
-![TensorBoard screenshot](../images/getting_started_adder.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_adder.png)
 
 We can make the computational graph more complex by adding another operation.
 For example,
@@ -170,7 +170,7 @@ produces the output
 
 The preceding computational graph would look as follows in TensorBoard:
 
-![TensorBoard screenshot](../images/getting_started_triple.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_triple.png)
 
 In machine learning we will typically want a model that can take arbitrary
 inputs, such as the one above.  To make the model trainable, we need to be able
@@ -336,7 +336,7 @@ program your loss will not be exactly the same, because the model is initialized
 with random values.
 
 This more complicated program can still be visualized in TensorBoard
-![TensorBoard final model visualization](../images/getting_started_final.png)
+![TensorBoard final model visualization](https://www.tensorflow.org/images/getting_started_final.png)
 
 ## `tf.contrib.learn`
 
@@ -372,25 +372,36 @@ features = [tf.contrib.layers.real_valued_column("x", dimension=1)]
 estimator = tf.contrib.learn.LinearRegressor(feature_columns=features)
 
 # TensorFlow provides many helper methods to read and set up data sets.
-# Here we use `numpy_input_fn`. We have to tell the function how many batches
+# Here we use two data sets: one for training and one for evaluation
+# We have to tell the function how many batches
 # of data (num_epochs) we want and how big each batch should be.
-x = np.array([1., 2., 3., 4.])
-y = np.array([0., -1., -2., -3.])
-input_fn = tf.contrib.learn.io.numpy_input_fn({"x":x}, y, batch_size=4,
+x_train = np.array([1., 2., 3., 4.])
+y_train = np.array([0., -1., -2., -3.])
+x_eval = np.array([2., 5., 8., 1.])
+y_eval = np.array([-1.01, -4.1, -7, 0.])
+input_fn = tf.contrib.learn.io.numpy_input_fn({"x":x_train}, y_train,
+                                              batch_size=4,
                                               num_epochs=1000)
+eval_input_fn = tf.contrib.learn.io.numpy_input_fn(
+    {"x":x_eval}, y_eval, batch_size=4, num_epochs=1000)
 
-# We can invoke 1000 training steps by invoking the `fit` method and passing the
+# We can invoke 1000 training steps by invoking the  method and passing the
 # training data set.
 estimator.fit(input_fn=input_fn, steps=1000)
 
-# Here we evaluate how well our model did. In a real example, we would want
-# to use a separate validation and testing data set to avoid overfitting.
-print(estimator.evaluate(input_fn=input_fn))
+# Here we evaluate how well our model did.
+train_loss = estimator.evaluate(input_fn=input_fn)
+eval_loss = estimator.evaluate(input_fn=eval_input_fn)
+print("train loss: %r"% train_loss)
+print("eval loss: %r"% eval_loss)
 ```
 When run, it produces
 ```
-    {'global_step': 1000, 'loss': 1.9650059e-11}
+    train loss: {'global_step': 1000, 'loss': 4.3049088e-08}
+    eval loss: {'global_step': 1000, 'loss': 0.0025487561}
 ```
+Notice how our eval data has a higher loss, but it is still close to zero.
+That means we are learning properly.
 
 ### A custom model
 
@@ -432,19 +443,25 @@ def model(features, labels, mode):
       train_op=train)
 
 estimator = tf.contrib.learn.Estimator(model_fn=model)
-# define our data set
-x = np.array([1., 2., 3., 4.])
-y = np.array([0., -1., -2., -3.])
-input_fn = tf.contrib.learn.io.numpy_input_fn({"x": x}, y, 4, num_epochs=1000)
+# define our data sets
+x_train = np.array([1., 2., 3., 4.])
+y_train = np.array([0., -1., -2., -3.])
+x_eval = np.array([2., 5., 8., 1.])
+y_eval = np.array([-1.01, -4.1, -7, 0.])
+input_fn = tf.contrib.learn.io.numpy_input_fn({"x": x_train}, y_train, 4, num_epochs=1000)
 
 # train
 estimator.fit(input_fn=input_fn, steps=1000)
-# evaluate our model
-print(estimator.evaluate(input_fn=input_fn, steps=10))
+# Here we evaluate how well our model did. 
+train_loss = estimator.evaluate(input_fn=input_fn)
+eval_loss = estimator.evaluate(input_fn=eval_input_fn)
+print("train loss: %r"% train_loss)
+print("eval loss: %r"% eval_loss)
 ```
 When run, it produces
-```python
-{'loss': 5.9819476e-11, 'global_step': 1000}
+```
+train loss: {'global_step': 1000, 'loss': 4.9380226e-11}
+eval loss: {'global_step': 1000, 'loss': 0.01010081}
 ```
 
 Notice how the contents of the custom `model()` function are very similar

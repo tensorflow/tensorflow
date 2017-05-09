@@ -65,7 +65,8 @@ class SparseTensorDenseMatMulOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a_indices->shape()),
                 errors::InvalidArgument("Tensor 'a_indices' is not a matrix"));
 
-    OP_REQUIRES(ctx, a_indices->shape().dim_size(0) == a_values->NumElements(),
+    const int64 nnz = a_indices->shape().dim_size(0);
+    OP_REQUIRES(ctx, nnz == a_values->NumElements(),
                 errors::InvalidArgument("Number of rows of a_indices does not "
                                         "match number of entries in a_values"));
 
@@ -102,8 +103,28 @@ class SparseTensorDenseMatMulOp : public OpKernel {
             inner_left, " vs. ", inner_right,
             ".  Did you forget a transpose?  "
             "Dimensions of A: [",
-            a_shape_t(0), ", ", a_shape_t(1), ").  Dimensions of B: ",
-            b->shape().DebugString()));
+            a_shape_t(0), ", ", a_shape_t(1),
+            ").  Dimensions of B: ", b->shape().DebugString()));
+
+    if (std::is_same<Device, GPUDevice>::value) {
+      // The GPU implementation is optimized to use 32 bit indexing, so
+      // give a friendly error to the programmer early on if they
+      // exceed.
+      const int int32max = std::numeric_limits<int>::max();
+      OP_REQUIRES(
+          ctx,
+          (FastBoundsCheck(inner_left, int32max) &&
+           FastBoundsCheck(inner_right, int32max) &&
+           FastBoundsCheck(outer_left, int32max) &&
+           FastBoundsCheck(outer_right, int32max) &&
+           FastBoundsCheck(b->NumElements(), int32max) &&
+           FastBoundsCheck(outer_left * outer_right, int32max) &&
+           FastBoundsCheck(a_values->NumElements(), int32max)),
+          errors::InvalidArgument("Cannot use GPU for > 2^31 entry inputs"));
+      OP_REQUIRES(ctx, FastBoundsCheck(nnz * outer_right, int32max),
+                  errors::InvalidArgument(
+                      "Cannot use GPU when output.shape[1] * nnz(a) > 2^31"));
+    }
 
     TensorShape out_shape(b->shape());
     out_shape.set_dim(ndim - 2, outer_left);
@@ -126,34 +147,6 @@ class SparseTensorDenseMatMulOp : public OpKernel {
       return;
     }
 
-    Tensor scratch;
-
-    if (std::is_same<Device, GPUDevice>::value) {
-      // The GPU implementation is optimized to use 32 bit indexing, so
-      // give a friendly error to the programmer early on if they exceed.
-      OP_REQUIRES(
-          ctx,
-          FastBoundsCheck(inner_left, std::numeric_limits<int>::max()) &&
-              FastBoundsCheck(inner_right, std::numeric_limits<int>::max()) &&
-              FastBoundsCheck(outer_left, std::numeric_limits<int>::max()) &&
-              FastBoundsCheck(outer_right, std::numeric_limits<int>::max()) &&
-              FastBoundsCheck(b->NumElements(),
-                              std::numeric_limits<int>::max()) &&
-              FastBoundsCheck(out->NumElements(),
-                              std::numeric_limits<int>::max()) &&
-              FastBoundsCheck(a_values->NumElements(),
-                              std::numeric_limits<int>::max()),
-          errors::InvalidArgument("Cannot use GPU for > 2^31 entry inputs"));
-      const int nnz = static_cast<const int>(a_values->NumElements());
-      // Need nnz length vec scratch space on the GPU.
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                             TensorShape({nnz}), &scratch));
-    } else {
-      // We don't need scratch space on the CPU.
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                             TensorShape({0}), &scratch));
-    }
-
     switch (ndim) {
 #define MAYBE_ADJOINT(ADJ_A, ADJ_B, N)                               \
   if (adjoint_a_ == ADJ_A && adjoint_b_ == ADJ_B) {                  \
@@ -162,8 +155,7 @@ class SparseTensorDenseMatMulOp : public OpKernel {
             ctx->eigen_device<Device>(),                             \
             out->tensor<T, N>(),                                     \
             a_indices->matrix<Tindices>(),                           \
-            a_values->vec<T>(), b->tensor<T, N>(),                   \
-            scratch.vec<T>());                                       \
+            a_values->vec<T>(), b->tensor<T, N>());                  \
     OP_REQUIRES_OK(ctx, functor_status);                             \
   }
   
@@ -224,8 +216,7 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, NDIM>::Tensor out,                \
       typename TTypes<Tindices>::ConstMatrix a_indices,                        \
       typename TTypes<T>::ConstVec a_values,                                   \
-      typename TTypes<T, NDIM>::ConstTensor b,                                 \
-      typename TTypes<T>::Vec scratch);                                        \
+      typename TTypes<T, NDIM>::ConstTensor b);                                \
   extern template struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices,\
                                                         ADJ_A, ADJ_B, NDIM>;
 
@@ -243,6 +234,7 @@ DECLARE_ADJOINT_GPU_SPEC(float, 2);
 DECLARE_ADJOINT_GPU_SPEC(float, 3);
 DECLARE_ADJOINT_GPU_SPEC(float, 4);
 DECLARE_ADJOINT_GPU_SPEC(float, 5);
+  
 #undef DECLARE_ADJOINT_GPU_SPEC
 #undef DECLARE_GPU_SPEC
 #undef REGISTER_GPU_SPEC
@@ -291,8 +283,8 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
   static Status Compute(const CPUDevice& d, typename TTypes<T, NDIM>::Tensor out,
                         typename TTypes<Tindices>::ConstMatrix a_indices,
                         typename TTypes<T>::ConstVec a_values,
-                        typename TTypes<T, NDIM>::ConstTensor b,
-                        typename TTypes<T>::Vec scratch) {
+                        typename TTypes<T, NDIM>::ConstTensor b) {
+                        typename TTypes<T>::ConstMatrix b) {
     const std::size_t nnz = a_values.size();
     const std::size_t rhs_right = (ADJ_B ? b.dimension(NDIM-2) : b.dimension(NDIM-1));
     const std::size_t lhs_right = (ADJ_B ? b.dimension(NDIM-1) : b.dimension(NDIM-2));

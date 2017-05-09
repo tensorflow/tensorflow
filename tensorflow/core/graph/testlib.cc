@@ -416,24 +416,6 @@ Node* Cast(Graph* g, Node* in, DataType dst) {
   return ret;
 }
 
-Node* BroadcastArgs(Graph* g, Node* s0, Node* s1) {
-  Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastArgs")
-                  .Input(s0)
-                  .Input(s1)
-                  .Finalize(g, &ret));
-  return ret;
-}
-
-Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1) {
-  Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastGradientArgs")
-                  .Input(s0)
-                  .Input(s1)
-                  .Finalize(g, &ret));
-  return ret;
-}
-
 Node* Gather(Graph* g, Node* in0, Node* in1) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Gather")

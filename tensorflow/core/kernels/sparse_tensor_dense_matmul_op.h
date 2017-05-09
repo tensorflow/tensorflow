@@ -33,8 +33,7 @@ struct SparseTensorDenseMatMulFunctor {
       typename TTypes<T, NDIM>::Tensor out,
       typename TTypes<Tindices>::ConstMatrix a_indices,
       typename TTypes<T>::ConstVec a_values,
-      typename TTypes<T, NDIM>::ConstTensor b,
-      typename TTypes<T>::Vec scratch);
+      typename TTypes<T, NDIM>::ConstTensor b);
 };
 
 template <typename MATRIX, bool ADJ, int NDIM>

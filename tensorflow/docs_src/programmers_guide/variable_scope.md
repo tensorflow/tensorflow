@@ -5,7 +5,7 @@ in the way described in the @{$variables$Variables HowTo}.
 But when building complex models you often need to share large sets of
 variables and you might want to initialize all of them in one place.
 This tutorial shows how this can be done using `tf.variable_scope()` and
-the `tf.get_variable()`.
+`tf.get_variable()`.
 
 ## The Problem
 
@@ -368,6 +368,6 @@ sequence-to-sequence models.
 
 File | What's in it?
 --- | ---
-`models/tutorials/image/cifar10/cifar10.py` | Model for detecting objects in images.
-`models/tutorials/rnn/rnn_cell.py` | Cell functions for recurrent neural networks.
-`models/tutorials/rnn/seq2seq.py` | Functions for building sequence-to-sequence models.
+`tutorials/image/cifar10/cifar10.py` | Model for detecting objects in images.
+`tutorials/rnn/rnn_cell.py` | Cell functions for recurrent neural networks.
+`tutorials/rnn/seq2seq.py` | Functions for building sequence-to-sequence models.
