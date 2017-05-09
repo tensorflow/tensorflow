@@ -4151,7 +4151,7 @@ op {
   }
   output_arg {
     name: "offset"
-    description: "The `N` int32 vectors representing the starting offset\n        of input tensors within the concatenated output.\n\nThis is typically used by gradient computations for a concat operation."
+    description: "The `N` int32 vectors representing the starting offset\nof input tensors within the concatenated output."
     type: DT_INT32
     number_attr: "N"
   }
@@ -4162,7 +4162,7 @@ op {
     minimum: 2
   }
   summary: "Computes offsets of concat inputs within its output."
-  description: "For example:\n\n```\n# \'x\' is [2, 2, 7]\n# \'y\' is [2, 3, 7]\n# \'z\' is [2, 5, 7]\nconcat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]\n```"
+  description: "For example:\n\n```\n# \'x\' is [2, 2, 7]\n# \'y\' is [2, 3, 7]\n# \'z\' is [2, 5, 7]\nconcat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]\n```\n\nThis is typically used by gradient computations for a concat operation."
 }
 op {
   name: "ConcatV2"
