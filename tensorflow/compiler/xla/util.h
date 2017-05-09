@@ -143,11 +143,11 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(tensorflow::protobuf::RepeatedField<D>* dest, int64 dest_base,
+void StridedCopy(tensorflow::gtl::MutableArraySlice<D> dest, int64 dest_base,
                  int64 dest_stride, tensorflow::gtl::ArraySlice<S> src,
                  int64 src_base, int64 src_stride, int64 count) {
   for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
-    dest->Set(dest_base, static_cast<D>(src[src_base]));
+    dest[dest_base] = static_cast<D>(src[src_base]);
   }
 }
 
