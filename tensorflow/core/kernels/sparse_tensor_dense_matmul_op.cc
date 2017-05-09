@@ -284,7 +284,6 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
                         typename TTypes<Tindices>::ConstMatrix a_indices,
                         typename TTypes<T>::ConstVec a_values,
                         typename TTypes<T, NDIM>::ConstTensor b) {
-                        typename TTypes<T>::ConstMatrix b) {
     const std::size_t nnz = a_values.size();
     const std::size_t rhs_right = (ADJ_B ? b.dimension(NDIM-2) : b.dimension(NDIM-1));
     const std::size_t lhs_right = (ADJ_B ? b.dimension(NDIM-1) : b.dimension(NDIM-2));
