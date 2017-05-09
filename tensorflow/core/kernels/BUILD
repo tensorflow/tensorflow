@@ -4301,6 +4301,7 @@ filegroup(
             "string_to_hash_bucket_op.*",
             "sdca_ops.*",
             "sdca_internal.*",
+            "sparse_cross_op.*",
             "text_line_reader_op.*",
             "summary_image_op.*",
             "encode_png_op.*",
