@@ -2597,6 +2597,18 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "sparse_cross_op_test",
+    size = "small",
+    srcs = ["sparse_cross_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_ops",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

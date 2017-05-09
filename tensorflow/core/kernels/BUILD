@@ -3173,6 +3173,7 @@ cc_library(
         ":sparse_add_grad_op",
         ":sparse_add_op",
         ":sparse_concat_op",
+        ":sparse_cross_op",
         ":sparse_dense_binary_op_shared",
         ":sparse_reduce_sum_op",
         ":sparse_reorder_op",
@@ -3214,6 +3215,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_concat_op",
     prefix = "sparse_concat_op",
+    deps = SPARSE_DEPS,
+)
+
+tf_kernel_library(
+    name = "sparse_cross_op",
+    prefix = "sparse_cross_op",
     deps = SPARSE_DEPS,
 )
 
