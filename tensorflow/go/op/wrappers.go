@@ -2946,7 +2946,10 @@ func AbortExitWithoutError(value bool) AbortAttr {
 	}
 }
 
-// Raise a exception to abort the process when called. If exit_without_error is true, the process will exit normally, otherwise it will exit with a SIGABORT signal.
+// Raise a exception to abort the process when called.
+//
+// If exit_without_error is true, the process will exit normally,
+// otherwise it will exit with a SIGABORT signal.
 //
 // Returns nothing but an exception.
 //
@@ -3436,10 +3439,10 @@ func StageSharedName(value string) StageAttr {
 	}
 }
 
-// Stage values similar to a lightweight Enqueue.  The basic functionality of this
+// Stage values similar to a lightweight Enqueue.
 //
-// Op is similar to a queue with many fewer capabilities and options.  This Op is
-// optimized for performance.
+// The basic functionality of this Op is similar to a queue with many
+// fewer capabilities and options.  This Op is optimized for performance.
 //
 // Arguments:
 //	values: a list of tensors
@@ -3624,9 +3627,10 @@ func ResourceGather(scope *Scope, resource tf.Output, indices tf.Output, dtype t
 	return op.Output(0)
 }
 
-// Delete the TensorArray from its resource container.  This enables
+// Delete the TensorArray from its resource container.
 //
-// the user to close and release the resource in the middle of a step/run.
+// This enables the user to close and release the resource in the middle
+// of a step/run.
 //
 // Arguments:
 //	handle: The handle to a TensorArray (output of TensorArray or TensorArrayGrad).
@@ -4148,24 +4152,24 @@ func QueueDequeueUpToV2TimeoutMs(value int64) QueueDequeueUpToV2Attr {
 	}
 }
 
-// Dequeues n tuples of one or more tensors from the given queue.
+// Dequeues `n` tuples of one or more tensors from the given queue.
 //
 // This operation is not supported by all queues.  If a queue does not support
 // DequeueUpTo, then an Unimplemented error is returned.
 //
-// If the queue is closed and there are more than 0 but less than n elements
-// remaining, then instead of returning an OutOfRange error like
-// QueueDequeueMany, less than `n` elements are returned immediately.  If the queue
-// is closed and there are 0 elements left in the queue, then an OutOfRange
-// error is returned just like in QueueDequeueMany.  Otherwise the behavior
-// is identical to QueueDequeueMany:
+// If the queue is closed and there are more than 0 but less than `n`
+// elements remaining, then instead of returning an OutOfRange error like
+// QueueDequeueMany, less than `n` elements are returned immediately.  If
+// the queue is closed and there are 0 elements left in the queue, then
+// an OutOfRange error is returned just like in QueueDequeueMany.
+// Otherwise the behavior is identical to QueueDequeueMany:
 //
 // This operation concatenates queue-element component tensors along the
 // 0th dimension to make a single component tensor.  All of the components
 // in the dequeued tuple will have size n in the 0th dimension.
 //
-// This operation has k outputs, where k is the number of components in
-// the tuples stored in the given queue, and output i is the ith
+// This operation has `k` outputs, where `k` is the number of components in
+// the tuples stored in the given queue, and output `i` is the ith
 // component of the dequeued tuple.
 //
 // Arguments:
@@ -4233,20 +4237,20 @@ func QueueDequeueManyV2TimeoutMs(value int64) QueueDequeueManyV2Attr {
 	}
 }
 
-// Dequeues n tuples of one or more tensors from the given queue.
+// Dequeues `n` tuples of one or more tensors from the given queue.
 //
-// If the queue is closed and there are fewer than n elements, then an
+// If the queue is closed and there are fewer than `n` elements, then an
 // OutOfRange error is returned.
 //
 // This operation concatenates queue-element component tensors along the
 // 0th dimension to make a single component tensor.  All of the components
-// in the dequeued tuple will have size n in the 0th dimension.
+// in the dequeued tuple will have size `n` in the 0th dimension.
 //
-// This operation has k outputs, where k is the number of components in
-// the tuples stored in the given queue, and output i is the ith
+// This operation has `k` outputs, where `k` is the number of components in
+// the tuples stored in the given queue, and output `i` is the ith
 // component of the dequeued tuple.
 //
-// N.B. If the queue is empty, this operation will block until n elements
+// N.B. If the queue is empty, this operation will block until `n` elements
 // have been dequeued (or 'timeout_ms' elapses, if specified).
 //
 // Arguments:
@@ -4348,10 +4352,10 @@ func UnstageSharedName(value string) UnstageAttr {
 	}
 }
 
-// Op is similar to a lightweight Dequeue.  The basic funtionality is similar to
+// Op is similar to a lightweight Dequeue.
 //
-// dequeue with many fewer capabilities and options.  This Op is optimized for
-// performance.
+// The basic funtionality is similar to dequeue with many fewer
+// capabilities and options.  This Op is optimized for performance.
 func Unstage(scope *Scope, dtypes []tf.DataType, optional ...UnstageAttr) (values []tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -11820,9 +11824,9 @@ func TensorArrayV3TensorArrayName(value string) TensorArrayV3Attr {
 	}
 }
 
-// An array of Tensors of given size, with data written via Write and read
+// An array of Tensors of given size.
 //
-// via Read or Pack.
+// Write data via Write and read via Read or Pack.
 //
 // Arguments:
 //	size: The size of the array.
