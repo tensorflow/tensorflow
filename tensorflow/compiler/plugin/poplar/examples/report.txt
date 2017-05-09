@@ -1,0 +1,4495 @@
+Number of vertices: 697610
+Number of edges: 2162580
+Memory usage: 57711013 (18.1%)
+  Breakdown by vertex type:
+    RandomNormal<float>:                                 5022720 bytes
+    LessThan<float>:                                     2232320 bytes
+    GreaterThan<float>:                                  2232320 bytes
+    LogicalOr<bool>:                                     2232320 bytes
+    Select<float>:                                       1395200 bytes
+    Mul<float>:                                          1116160 bytes
+    ReductionOr<bool>:                                       120 bytes
+    Other (exchange supervisor code, message memory) :  43479853 bytes
+  Breakdown by category:
+    Vertex data:                2790400 bytes
+    Tensor data:               37064641 bytes
+    Edge pointers:              8650320 bytes
+    Copy pointers:              3449344 bytes
+    Message memory:                   0 bytes
+    Run instructions:           2945064 bytes
+    Exchange supervisor code:   2811244 bytes
+      Send:                      197536 bytes
+      Send with delay:                0 bytes
+      Send with put mux:           6840 bytes
+      Send with put address:         28 bytes
+      Send with put format:           0 bytes
+      Receive mux:               683180 bytes
+      Receive address:            46380 bytes
+      Receive format:              2488 bytes
+      Exchange:                  994684 bytes
+      Delay:                     880108 bytes
+Tile memory balance: 
+  Range             Histogram                                Count
+    44244 -  178005 ***************************************  (1215) 
+   178006 -  311768                                          (   0) 
+   311769 -  445531                                          (   0) 
+   445532 -  579294                                          (   0) 
+   579295 -  713057                                          (   0) 
+   713058 -  846820                                          (   0) 
+   846821 -  980583                                          (   0) 
+   980584 - 1114346                                          (   0) 
+  1114347 - 1248108                                          (   0) 
+  1248109 - 1381871                                          (   0) 
+  1381872 - 1515634                                          (   0) 
+  1515635 - 1649397                                          (   0) 
+  1649398 - 1783160                                          (   0) 
+  1783161 - 1916923                                          (   0) 
+  1916924 - 2050686                                          (   0) 
+  2050687 - 2184449                                          (   1) 
+Out of memory on 1 tiles
+Total memory overspill: 2184449 bytes
+Top tile by memory usage:
+Tile 0 memory usage: 2184449 bytes
+  Breakdown by vertex type:
+    RandomNormal<float>:                                    4320 bytes
+    LessThan<float>:                                        1920 bytes
+    GreaterThan<float>:                                     1920 bytes
+    LogicalOr<bool>:                                        1920 bytes
+    Select<float>:                                          1200 bytes
+    Mul<float>:                                              960 bytes
+    ReductionOr<bool>:                                       120 bytes
+    Other (exchange supervisor code, message memory) :   2172089 bytes
+  Breakdown by category:
+    Vertex data:                   2400 bytes
+    Tensor data:                2070061 bytes
+    Edge pointers:                 7520 bytes
+    Copy pointers:                 3096 bytes
+    Message memory:                   0 bytes
+    Run instructions:              2600 bytes
+    Exchange supervisor code:     98772 bytes
+      Send:                         576 bytes
+      Send with delay:                0 bytes
+      Send with put mux:             16 bytes
+      Send with put address:         28 bytes
+      Send with put format:           0 bytes
+      Receive mux:                44028 bytes
+      Receive address:            43892 bytes
+      Receive format:                 0 bytes
+      Exchange:                    9592 bytes
+      Delay:                        640 bytes
+Number of cycles: 1066676 (666.7us @ 1.600GHz)
+  Compute cycles:         4940.3 (0.5%)
+    Tensor to tensor copies         :  4653.5 (  0.4%)
+    RandomNormal<float>             :    57.4 (  0.0%)
+    Mul<float>                      :    57.4 (  0.0%)
+    LogicalOr<bool>                 :    57.4 (  0.0%)
+    LessThan<float>                 :    57.4 (  0.0%)
+    GreaterThan<float>              :    57.4 (  0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:  525039.4 (49.2%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:          536696.2 (50.3%)
+    Tile sync                       :   286.9 (  0.0%)
+    IPU sync                        :536409.3 ( 50.3%)
+  Number of syncs: 111.0
+    IPU syncs: 111.0
+%rng = f32[2048,1000]{1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "fc/weights/Initializer/truncated_normal/TruncatedNormal"-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     112.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.07
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29176 bytes
+    Send:                              8 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%rng = f32[2048,1000]{1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "fc/weights/Initializer/truncated_normal/TruncatedNormal" (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    RandomNormal<float>             :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%rng = f32[2048,1000]{1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "fc/weights/Initializer/truncated_normal/TruncatedNormal"-post-exchange (45 executions)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:            5400.0 (0.5%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :  5400.0 (  0.5%)
+  Number of syncs: 45.0
+    IPU syncs: 45.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  0
+%greater-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than-pre-copy (1 execution)
+  Compute cycles:          620.0 (0.1%)
+    Tensor to tensor copies         :   620.0 (  0.1%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 68096 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    GreaterThan<float>              :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than-pre-copy (1 execution)
+  Compute cycles:          620.0 (0.1%)
+    Tensor to tensor copies         :   620.0 (  0.1%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 68096 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LessThan<float>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%logical-or (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LogicalOr<bool>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%reduce-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:  256297.9 (24.0%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:          256072.1 (24.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :256072.1 ( 24.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      24332 bytes
+    Send:                           9728 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 4 bytes
+    Send with put address:             4 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    4864 bytes
+    Receive address:                4856 bytes
+    Receive format:                    0 bytes
+    Exchange:                          8 bytes
+    Delay:                          4868 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce (1 execution)
+  Compute cycles:            0.0 (0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               7.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     7.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     8 bytes
+  Run instructions:                  4 bytes
+    Num Vertices: 1
+  Num tiles exchanging: 0
+  Num tiles computing:  1
+%reduce-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.1 (0.0%)
+    Average bytes sent per cycle: 0.05
+    Average bytes received per cycle: 0.05
+  Sync cycles:             178.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   178.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:         36 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       8 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                            12 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 2
+  Num tiles computing:  0
+%multiply-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%multiply-pre-copy (1 execution)
+  Compute cycles:          620.0 (0.1%)
+    Tensor to tensor copies         :   620.0 (  0.1%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 68096 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%multiply (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    Mul<float>                      :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%rng.1 = f32[1,1,512,2048]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale5-1/b/weights/Initializer/truncated_normal/TruncatedNormal"-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     112.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.07
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29176 bytes
+    Send:                              8 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%rng.1 = f32[1,1,512,2048]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale5-1/b/weights/Initializer/truncated_normal/TruncatedNormal" (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    RandomNormal<float>             :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than-pre-copy (1 execution)
+  Compute cycles:          344.0 (0.0%)
+    Tensor to tensor copies         :   344.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 68096 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    GreaterThan<float>              :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than-pre-copy (1 execution)
+  Compute cycles:          344.0 (0.0%)
+    Tensor to tensor copies         :   344.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 68096 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LessThan<float>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%logical-or (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LogicalOr<bool>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%reduce-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:  131426.9 (12.3%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:          131407.1 (12.3%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :131407.1 ( 12.3%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      24332 bytes
+    Send:                           9728 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 4 bytes
+    Send with put address:             4 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    4864 bytes
+    Receive address:                4856 bytes
+    Receive format:                    0 bytes
+    Exchange:                          8 bytes
+    Delay:                          4868 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce (1 execution)
+  Compute cycles:            0.0 (0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               7.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     7.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     8 bytes
+  Run instructions:                  4 bytes
+    Num Vertices: 1
+  Num tiles exchanging: 0
+  Num tiles computing:  1
+%reduce-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.1 (0.0%)
+    Average bytes sent per cycle: 0.05
+    Average bytes received per cycle: 0.05
+  Sync cycles:             178.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   178.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:         36 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       8 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                            12 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 2
+  Num tiles computing:  0
+%multiply.1-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%multiply.1-pre-copy (1 execution)
+  Compute cycles:          344.0 (0.0%)
+    Tensor to tensor copies         :   344.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 68096 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%multiply.1 (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    Mul<float>                      :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%rng.2 = f32[1,1,1024,512]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale5-1/a/weights/Initializer/truncated_normal/TruncatedNormal"-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     112.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.07
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29176 bytes
+    Send:                              8 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%rng.2 = f32[1,1,1024,512]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale5-1/a/weights/Initializer/truncated_normal/TruncatedNormal" (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    RandomNormal<float>             :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than-pre-copy (1 execution)
+  Compute cycles:          187.4 (0.0%)
+    Tensor to tensor copies         :   187.4 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              12.6 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    12.6 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 66560 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    GreaterThan<float>              :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than-pre-copy (1 execution)
+  Compute cycles:          187.4 (0.0%)
+    Tensor to tensor copies         :   187.4 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              12.6 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    12.6 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 66560 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LessThan<float>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%logical-or (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LogicalOr<bool>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%reduce-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:   65708.9 (6.2%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:           65797.1 (6.2%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        : 65797.1 (  6.2%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      24328 bytes
+    Send:                           9724 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 4 bytes
+    Send with put address:             4 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    4864 bytes
+    Receive address:                4856 bytes
+    Receive format:                    0 bytes
+    Exchange:                          8 bytes
+    Delay:                          4868 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce (1 execution)
+  Compute cycles:            0.0 (0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               7.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     7.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     8 bytes
+  Run instructions:                  4 bytes
+    Num Vertices: 1
+  Num tiles exchanging: 0
+  Num tiles computing:  1
+%reduce-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.1 (0.0%)
+    Average bytes sent per cycle: 0.05
+    Average bytes received per cycle: 0.05
+  Sync cycles:             178.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   178.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:         36 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       8 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                            12 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 2
+  Num tiles computing:  0
+%multiply.2-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%multiply.2-pre-copy (1 execution)
+  Compute cycles:          187.4 (0.0%)
+    Tensor to tensor copies         :   187.4 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              12.6 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    12.6 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 66560 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%multiply.2 (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    Mul<float>                      :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%rng.3 = f32[1,1,256,1024]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale4-1/b/weights/Initializer/truncated_normal/TruncatedNormal"-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     112.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.07
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29176 bytes
+    Send:                              8 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%rng.3 = f32[1,1,256,1024]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale4-1/b/weights/Initializer/truncated_normal/TruncatedNormal" (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    RandomNormal<float>             :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than-pre-copy (1 execution)
+  Compute cycles:          102.5 (0.0%)
+    Tensor to tensor copies         :   102.5 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              25.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    25.5 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 62464 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    GreaterThan<float>              :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than-pre-copy (1 execution)
+  Compute cycles:          102.5 (0.0%)
+    Tensor to tensor copies         :   102.5 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              25.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    25.5 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 62464 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LessThan<float>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%logical-or (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LogicalOr<bool>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%reduce-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:   32849.9 (3.1%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:           32992.1 (3.1%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        : 32992.1 (  3.1%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      19464 bytes
+    Send:                           4864 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 4 bytes
+    Send with put address:             4 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    4864 bytes
+    Receive address:                4856 bytes
+    Receive format:                    0 bytes
+    Exchange:                          8 bytes
+    Delay:                          4864 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce (1 execution)
+  Compute cycles:            0.0 (0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               7.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     7.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     8 bytes
+  Run instructions:                  4 bytes
+    Num Vertices: 1
+  Num tiles exchanging: 0
+  Num tiles computing:  1
+%reduce-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.1 (0.0%)
+    Average bytes sent per cycle: 0.05
+    Average bytes received per cycle: 0.05
+  Sync cycles:             178.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   178.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:         36 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       8 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                            12 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 2
+  Num tiles computing:  0
+%multiply.3-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%multiply.3-pre-copy (1 execution)
+  Compute cycles:          102.5 (0.0%)
+    Tensor to tensor copies         :   102.5 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              25.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    25.5 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 62464 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%multiply.3 (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    Mul<float>                      :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%rng.4 = f32[1,1,512,256]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale4-1/a/weights/Initializer/truncated_normal/TruncatedNormal"-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     112.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.07
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29176 bytes
+    Send:                              8 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%rng.4 = f32[1,1,512,256]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale4-1/a/weights/Initializer/truncated_normal/TruncatedNormal" (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    RandomNormal<float>             :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than-pre-copy (1 execution)
+  Compute cycles:           71.5 (0.0%)
+    Tensor to tensor copies         :    71.5 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              20.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    20.5 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 60416 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    GreaterThan<float>              :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than-pre-copy (1 execution)
+  Compute cycles:           71.5 (0.0%)
+    Tensor to tensor copies         :    71.5 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              20.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    20.5 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 60416 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LessThan<float>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%logical-or (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LogicalOr<bool>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%reduce-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:   16421.4 (1.5%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:           16589.6 (1.6%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        : 16589.6 (  1.6%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      19464 bytes
+    Send:                           4860 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    4864 bytes
+    Receive address:                4856 bytes
+    Receive format:                    0 bytes
+    Exchange:                         24 bytes
+    Delay:                          4860 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce (1 execution)
+  Compute cycles:            0.0 (0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               7.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     7.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     8 bytes
+  Run instructions:                  4 bytes
+    Num Vertices: 1
+  Num tiles exchanging: 0
+  Num tiles computing:  1
+%reduce-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.1 (0.0%)
+    Average bytes sent per cycle: 0.05
+    Average bytes received per cycle: 0.05
+  Sync cycles:             178.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   178.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:         36 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       8 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                            12 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 2
+  Num tiles computing:  0
+%multiply.4-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%multiply.4-pre-copy (1 execution)
+  Compute cycles:           71.5 (0.0%)
+    Tensor to tensor copies         :    71.5 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              20.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    20.5 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 60416 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%multiply.4 (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    Mul<float>                      :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%rng.5 = f32[1,1,128,512]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale3-1/b/weights/Initializer/truncated_normal/TruncatedNormal"-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     112.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.07
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29176 bytes
+    Send:                              8 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%rng.5 = f32[1,1,128,512]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale3-1/b/weights/Initializer/truncated_normal/TruncatedNormal" (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    RandomNormal<float>             :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than-pre-copy (1 execution)
+  Compute cycles:           58.8 (0.0%)
+    Tensor to tensor copies         :    58.8 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              15.2 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    15.2 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 50688 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              24832 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    GreaterThan<float>              :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than-pre-copy (1 execution)
+  Compute cycles:           58.8 (0.0%)
+    Tensor to tensor copies         :    58.8 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              15.2 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    15.2 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 50688 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              24832 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LessThan<float>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%logical-or (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LogicalOr<bool>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%reduce-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:    8509.9 (0.8%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:            8692.1 (0.8%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :  8692.1 (  0.8%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      19456 bytes
+    Send:                           4864 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             4 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    4868 bytes
+    Receive address:                4856 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                          4852 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce (1 execution)
+  Compute cycles:            0.0 (0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               7.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     7.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     8 bytes
+  Run instructions:                  4 bytes
+    Num Vertices: 1
+  Num tiles exchanging: 0
+  Num tiles computing:  1
+%reduce-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.1 (0.0%)
+    Average bytes sent per cycle: 0.05
+    Average bytes received per cycle: 0.05
+  Sync cycles:             178.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   178.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:         36 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       8 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                            12 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 2
+  Num tiles computing:  0
+%multiply.5-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%multiply.5-pre-copy (1 execution)
+  Compute cycles:           58.8 (0.0%)
+    Tensor to tensor copies         :    58.8 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:              15.2 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :    15.2 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 50688 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              24832 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%multiply.5 (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    Mul<float>                      :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%rng.6 = f32[1,1,256,128]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale3-1/a/weights/Initializer/truncated_normal/TruncatedNormal"-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     112.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.07
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29176 bytes
+    Send:                              8 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%rng.6 = f32[1,1,256,128]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale3-1/a/weights/Initializer/truncated_normal/TruncatedNormal" (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    RandomNormal<float>             :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than-pre-copy (1 execution)
+  Compute cycles:           57.0 (0.0%)
+    Tensor to tensor copies         :    57.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 48640 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              24320 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    GreaterThan<float>              :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than-pre-copy (1 execution)
+  Compute cycles:           57.0 (0.0%)
+    Tensor to tensor copies         :    57.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 48640 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              24320 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LessThan<float>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%logical-or (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LogicalOr<bool>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%reduce-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:    4250.4 (0.4%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:            4439.6 (0.4%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :  4439.6 (  0.4%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      19440 bytes
+    Send:                           4864 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             4 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    4868 bytes
+    Receive address:                4856 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                          4836 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce (1 execution)
+  Compute cycles:            0.0 (0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               7.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     7.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     8 bytes
+  Run instructions:                  4 bytes
+    Num Vertices: 1
+  Num tiles exchanging: 0
+  Num tiles computing:  1
+%reduce-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.1 (0.0%)
+    Average bytes sent per cycle: 0.05
+    Average bytes received per cycle: 0.05
+  Sync cycles:             178.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   178.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:         36 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       8 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                            12 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 2
+  Num tiles computing:  0
+%multiply.6-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%multiply.6-pre-copy (1 execution)
+  Compute cycles:           57.0 (0.0%)
+    Tensor to tensor copies         :    57.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 48640 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              24320 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%multiply.6 (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    Mul<float>                      :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%rng.7 = f32[1,1,64,256]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale2-1/b/weights/Initializer/truncated_normal/TruncatedNormal"-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     112.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.07
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29176 bytes
+    Send:                              8 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%rng.7 = f32[1,1,64,256]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale2-1/b/weights/Initializer/truncated_normal/TruncatedNormal" (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    RandomNormal<float>             :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than-pre-copy (1 execution)
+  Compute cycles:           55.0 (0.0%)
+    Tensor to tensor copies         :    55.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 48640 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              24320 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    GreaterThan<float>              :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than-pre-copy (1 execution)
+  Compute cycles:           55.0 (0.0%)
+    Tensor to tensor copies         :    55.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 48640 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              24320 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LessThan<float>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%logical-or (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LogicalOr<bool>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%reduce-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:    2445.8 (0.2%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:            2617.2 (0.2%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :  2617.2 (  0.2%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      19448 bytes
+    Send:                           4864 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             4 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    4860 bytes
+    Receive address:                4848 bytes
+    Receive format:                    0 bytes
+    Exchange:                         28 bytes
+    Delay:                          4844 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce (1 execution)
+  Compute cycles:            0.0 (0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               7.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     7.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     8 bytes
+  Run instructions:                  4 bytes
+    Num Vertices: 1
+  Num tiles exchanging: 0
+  Num tiles computing:  1
+%reduce-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.1 (0.0%)
+    Average bytes sent per cycle: 0.05
+    Average bytes received per cycle: 0.05
+  Sync cycles:             178.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   178.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:         36 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       8 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                            12 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 2
+  Num tiles computing:  0
+%multiply.7-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%multiply.7-pre-copy (1 execution)
+  Compute cycles:           55.0 (0.0%)
+    Tensor to tensor copies         :    55.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 48640 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:              24320 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%multiply.7 (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    Mul<float>                      :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%rng.8 = f32[1,1,64,64]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale2-1/a/weights/Initializer/truncated_normal/TruncatedNormal"-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:      61.4 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.07
+  Sync cycles:             213.6 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   213.6 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      16388 bytes
+    Send:                              8 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    4096 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                       6824 bytes
+    Delay:                          5460 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 683
+  Num tiles computing:  0
+%rng.8 = f32[1,1,64,64]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale2-1/a/weights/Initializer/truncated_normal/TruncatedNormal" (1 execution)
+  Compute cycles:            3.4 (0.0%)
+    RandomNormal<float>             :     3.4 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               8.6 (0.0%)
+    Tile sync                       :     3.4 (  0.0%)
+    IPU sync                        :     5.3 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 49152 bytes
+  Run instructions:              16384 bytes
+    Num Vertices: 4096
+  Num tiles exchanging: 0
+  Num tiles computing:  683
+%rng.8 = f32[1,1,64,64]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale2-1/a/weights/Initializer/truncated_normal/TruncatedNormal"-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:      81.1 (0.0%)
+    Average bytes sent per cycle: 0.17
+    Average bytes received per cycle: 0.17
+  Sync cycles:             144.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   144.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      43164 bytes
+    Send:                           5976 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:               880 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                   10028 bytes
+    Receive address:                  28 bytes
+    Receive format:                   28 bytes
+    Exchange:                      14264 bytes
+    Delay:                         11960 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:      58.2 (0.0%)
+    Average bytes sent per cycle: 0.23
+    Average bytes received per cycle: 0.27
+  Sync cycles:             174.8 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   174.8 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      34900 bytes
+    Send:                           6280 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:               556 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                   10000 bytes
+    Receive address:                 392 bytes
+    Receive format:                  392 bytes
+    Exchange:                       7040 bytes
+    Delay:                         10240 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than (1 execution)
+  Compute cycles:            3.4 (0.0%)
+    GreaterThan<float>              :     3.4 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               8.6 (0.0%)
+    Tile sync                       :     3.4 (  0.0%)
+    IPU sync                        :     5.3 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 49152 bytes
+  Run instructions:              16384 bytes
+    Num Vertices: 4096
+  Num tiles exchanging: 0
+  Num tiles computing:  683
+%greater-than-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:      78.3 (0.0%)
+    Average bytes sent per cycle: 0.07
+    Average bytes received per cycle: 0.07
+  Sync cycles:             143.7 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   143.7 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      42776 bytes
+    Send:                           5524 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    9364 bytes
+    Receive address:                  64 bytes
+    Receive format:                   64 bytes
+    Exchange:                      14904 bytes
+    Delay:                         12856 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:      58.2 (0.0%)
+    Average bytes sent per cycle: 0.23
+    Average bytes received per cycle: 0.27
+  Sync cycles:             174.8 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   174.8 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      34900 bytes
+    Send:                           6280 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:               556 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                   10000 bytes
+    Receive address:                 392 bytes
+    Receive format:                  392 bytes
+    Exchange:                       7040 bytes
+    Delay:                         10240 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than (1 execution)
+  Compute cycles:            3.4 (0.0%)
+    LessThan<float>                 :     3.4 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               8.6 (0.0%)
+    Tile sync                       :     3.4 (  0.0%)
+    IPU sync                        :     5.3 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 49152 bytes
+  Run instructions:              16384 bytes
+    Num Vertices: 4096
+  Num tiles exchanging: 0
+  Num tiles computing:  683
+%less-than-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:      78.3 (0.0%)
+    Average bytes sent per cycle: 0.07
+    Average bytes received per cycle: 0.07
+  Sync cycles:             143.7 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   143.7 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      42776 bytes
+    Send:                           5524 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    9364 bytes
+    Receive address:                  64 bytes
+    Receive format:                   64 bytes
+    Exchange:                      14904 bytes
+    Delay:                         12856 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%logical-or-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:      51.6 (0.0%)
+    Average bytes sent per cycle: 0.21
+    Average bytes received per cycle: 0.21
+  Sync cycles:             181.4 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   181.4 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      40228 bytes
+    Send:                          12976 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    8676 bytes
+    Receive address:                  16 bytes
+    Receive format:                   16 bytes
+    Exchange:                       8004 bytes
+    Delay:                         10540 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%logical-or (1 execution)
+  Compute cycles:            3.4 (0.0%)
+    LogicalOr<bool>                 :     3.4 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               8.6 (0.0%)
+    Tile sync                       :     3.4 (  0.0%)
+    IPU sync                        :     5.3 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 49152 bytes
+  Run instructions:              16384 bytes
+    Num Vertices: 4096
+  Num tiles exchanging: 0
+  Num tiles computing:  683
+%logical-or-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:      78.3 (0.0%)
+    Average bytes sent per cycle: 0.07
+    Average bytes received per cycle: 0.07
+  Sync cycles:             143.7 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   143.7 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      42776 bytes
+    Send:                           5524 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    9364 bytes
+    Receive address:                  64 bytes
+    Receive format:                   64 bytes
+    Exchange:                      14904 bytes
+    Delay:                         12856 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     597.4 (0.1%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:             794.6 (0.1%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   794.6 (  0.1%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      19256 bytes
+    Send:                           4860 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                     220 bytes
+    Receive address:                 212 bytes
+    Receive format:                    0 bytes
+    Exchange:                       9308 bytes
+    Delay:                          4656 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce (1 execution)
+  Compute cycles:            0.0 (0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               7.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     7.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     8 bytes
+  Run instructions:                  4 bytes
+    Num Vertices: 1
+  Num tiles exchanging: 0
+  Num tiles computing:  1
+%reduce-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.1 (0.0%)
+    Average bytes sent per cycle: 0.05
+    Average bytes received per cycle: 0.05
+  Sync cycles:             178.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   178.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:         36 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       8 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                            12 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 2
+  Num tiles computing:  0
+%multiply.8-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:      58.2 (0.0%)
+    Average bytes sent per cycle: 0.23
+    Average bytes received per cycle: 0.27
+  Sync cycles:             174.8 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   174.8 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      34900 bytes
+    Send:                           6280 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:               556 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                   10000 bytes
+    Receive address:                 392 bytes
+    Receive format:                  392 bytes
+    Exchange:                       7040 bytes
+    Delay:                         10240 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%multiply.8 (1 execution)
+  Compute cycles:            3.4 (0.0%)
+    Mul<float>                      :     3.4 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               8.6 (0.0%)
+    Tile sync                       :     3.4 (  0.0%)
+    IPU sync                        :     5.3 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 49152 bytes
+  Run instructions:              16384 bytes
+    Num Vertices: 4096
+  Num tiles exchanging: 0
+  Num tiles computing:  683
+%multiply.8-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:      81.1 (0.0%)
+    Average bytes sent per cycle: 0.17
+    Average bytes received per cycle: 0.17
+  Sync cycles:             144.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   144.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      43164 bytes
+    Send:                           5976 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:               880 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                   10028 bytes
+    Receive address:                  28 bytes
+    Receive format:                   28 bytes
+    Exchange:                      14264 bytes
+    Delay:                         11960 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%rng.9 = f32[7,7,4,64]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale1/weights/Initializer/truncated_normal/TruncatedNormal"-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     112.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.07
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29176 bytes
+    Send:                              8 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%rng.9 = f32[7,7,4,64]{3,2,1,0} rng(f32[] %constant, f32[] %constant.2) # metadata=op_type: "TruncatedNormal" op_name: "scale1/weights/Initializer/truncated_normal/TruncatedNormal" (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    RandomNormal<float>             :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%greater-than-pre-copy (1 execution)
+  Compute cycles:           55.0 (0.0%)
+    Tensor to tensor copies         :    55.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 19456 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:               9728 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%greater-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    GreaterThan<float>              :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%less-than-pre-copy (1 execution)
+  Compute cycles:           55.0 (0.0%)
+    Tensor to tensor copies         :    55.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 19456 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:               9728 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%less-than (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LessThan<float>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%logical-or (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    LogicalOr<bool>                 :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%reduce-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:    1823.4 (0.2%)
+    Average bytes sent per cycle: 0.01
+    Average bytes received per cycle: 0.01
+  Sync cycles:            2009.6 (0.2%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :  2009.6 (  0.2%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      19436 bytes
+    Send:                           4860 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    4848 bytes
+    Receive address:                4840 bytes
+    Receive format:                    0 bytes
+    Exchange:                         60 bytes
+    Delay:                          4828 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%reduce (1 execution)
+  Compute cycles:            0.0 (0.0%)
+    ReductionOr<bool>               :     0.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               7.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     7.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     8 bytes
+  Run instructions:                  4 bytes
+    Num Vertices: 1
+  Num tiles exchanging: 0
+  Num tiles computing:  1
+%reduce-post-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:       0.1 (0.0%)
+    Average bytes sent per cycle: 0.05
+    Average bytes received per cycle: 0.05
+  Sync cycles:             178.9 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   178.9 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:         36 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       8 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                         12 bytes
+    Delay:                            12 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 2
+  Num tiles computing:  0
+%multiply.9-pre-exchange (1 execution)
+  Compute cycles:            0.0 (0.0%)
+  IPU exchange cycles:     111.5 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.04
+  Sync cycles:             162.5 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :   162.5 (  0.0%)
+  Number of syncs: 1.0
+    IPU syncs: 1.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:      29172 bytes
+    Send:                              4 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                    7292 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                      12152 bytes
+    Delay:                          9724 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:                  0 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 1216
+  Num tiles computing:  0
+%multiply.9-pre-copy (1 execution)
+  Compute cycles:           55.0 (0.0%)
+    Tensor to tensor copies         :    55.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               0.0 (0.0%)
+    Tile sync                       :     0.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                 19456 bytes
+  Edge pointers:                     0 bytes
+  Run instructions:               9728 bytes
+    Num Vertices: 0
+  Num tiles exchanging: 0
+  Num tiles computing:  1216
+%multiply.9 (1 execution)
+  Compute cycles:            6.0 (0.0%)
+    Mul<float>                      :     6.0 (  0.0%)
+  IPU exchange cycles:       0.0 (0.0%)
+    Average bytes sent per cycle: 0.00
+    Average bytes received per cycle: 0.00
+  Sync cycles:               6.0 (0.0%)
+    Tile sync                       :     6.0 (  0.0%)
+    IPU sync                        :     0.0 (  0.0%)
+  Number of syncs: 0.0
+    IPU syncs: 0.0
+  Message memory:                    0 bytes
+  Exchange supervisor code:          0 bytes
+    Send:                              0 bytes
+    Send with delay:                   0 bytes
+    Send with put mux:                 0 bytes
+    Send with put address:             0 bytes
+    Send with put format:              0 bytes
+    Receive mux:                       0 bytes
+    Receive address:                   0 bytes
+    Receive format:                    0 bytes
+    Exchange:                          0 bytes
+    Delay:                             0 bytes
+  Copy pointers:                     0 bytes
+  Edge pointers:                 87552 bytes
+  Run instructions:              29184 bytes
+    Num Vertices: 7296
+  Num tiles exchanging: 0
+  Num tiles computing:  1216

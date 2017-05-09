@@ -370,7 +370,10 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
         if (report_filename != NULL) {
           std::ofstream stream;
           stream.open(report_filename);
-          engine->report(stream);
+
+          poplar::Engine::ReportOptions opts;
+          opts.doLayerWiseProfile = true;
+          engine->report(stream, opts);
         }
       } catch (std::logic_error e) {
         LOG(WARNING) << "Error producing execution report: " << e.what();

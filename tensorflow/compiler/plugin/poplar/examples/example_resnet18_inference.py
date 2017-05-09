@@ -22,16 +22,16 @@ def inference(x):
     x = max_pool(x, ksize=3, stride=2)
 
   with tf.variable_scope('scale2-1', use_resource=True):
-    x = block(x, 1, 64, 256)
+    x = block(x, 1, 64)
 
   with tf.variable_scope('scale3-1', use_resource=True):
-    x = block(x, 2, 128, 512)
+    x = block(x, 2, 128)
 
   with tf.variable_scope('scale4-1', use_resource=True):
-    x = block(x, 2, 256, 1024)
+    x = block(x, 2, 256)
 
   with tf.variable_scope('scale5-1', use_resource=True):
-    x = block(x, 2, 512, 2048)
+    x = block(x, 2, 512)
 
   x = tf.reduce_mean(x, reduction_indices=[1, 2])
 
@@ -41,28 +41,25 @@ def inference(x):
   return x
 
 
-def block(x, first_stride, internal_filters, final_filters):
+def block(x, first_stride, out_filters):
   shape_in = x.get_shape()
 
   shortcut = x
 
   with tf.variable_scope('a', use_resource=True):
-    x = conv(x, 1, first_stride, internal_filters)
+    x = conv(x, 3, first_stride, out_filters)
     x = tf.nn.relu(x)
 
   with tf.variable_scope('b', use_resource=True):
-    x = conv(x, 1, 1, final_filters)
+    x = conv(x, 3, 1, out_filters)
 
   with tf.variable_scope('shortcut', use_resource=True):
-    pad = int(x.get_shape()[-1] - shape_in[-1])
-    kernel = np.reshape(np.concatenate((np.identity(shape_in[-1], dtype=np.float32),
-                                        np.zeros([pad, shape_in[-1]]))),
-                        [1, 1, shape_in[-1], final_filters])
-
-    shortcut = tf.nn.conv2d(shortcut,
-                            kernel,
-                            [1,first_stride,first_stride,1],
-                            padding='SAME')
+    if (first_stride != 1):
+      shortcut = tf.strided_slice(shortcut, [0,0,0,0], shortcut.get_shape(),
+                                  strides=[1, first_stride, first_stride, 1])
+    pad = int(x.get_shape()[3] - shape_in[3])
+    if (pad != 0):
+      shortcut = tf.pad(shortcut, paddings=[[0,0],[0,0],[0,0],[0,pad]])
 
   return tf.nn.relu(x + shortcut)
 
