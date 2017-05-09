@@ -12155,8 +12155,8 @@ op {
     }
     description: "The maximum ratio between number of entries and number of\nbuckets before growing the table. Must be between 0 and 1."
   }
-  summary: "Creates an empty hash table that uses tensors as the backing store. It uses"
-  description: "\"open addressing\" with quadratic reprobing to resolve collisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
+  summary: "Creates an empty hash table that uses tensors as the backing store."
+  description: "It uses \"open addressing\" with quadratic reprobing to resolve\ncollisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
   is_stateful: true
 }
 op {
@@ -12229,8 +12229,8 @@ op {
     }
     description: "The maximum ratio between number of entries and number of\nbuckets before growing the table. Must be between 0 and 1."
   }
-  summary: "Creates an empty hash table that uses tensors as the backing store. It uses"
-  description: "\"open addressing\" with quadratic reprobing to resolve collisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
+  summary: "Creates an empty hash table that uses tensors as the backing store."
+  description: "It uses \"open addressing\" with quadratic reprobing to resolve\ncollisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
   is_stateful: true
 }
 op {
