@@ -2390,14 +2390,14 @@ func Split(scope *Scope, split_dim tf.Output, value tf.Output, num_split int64) 
 // concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
 // ```
 //
+// This is typically used by gradient computations for a concat operation.
+//
 // Arguments:
 //	concat_dim: The dimension along which to concatenate.
 //	shape: The `N` int32 vectors representing shape of tensors being concatenated.
 //
 // Returns The `N` int32 vectors representing the starting offset
-//         of input tensors within the concatenated output.
-//
-// This is typically used by gradient computations for a concat operation.
+// of input tensors within the concatenated output.
 func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset []tf.Output) {
 	if scope.Err() != nil {
 		return
