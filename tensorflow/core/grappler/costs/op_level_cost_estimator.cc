@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/grappler/costs/utils.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
 
 namespace tensorflow {
 namespace grappler {

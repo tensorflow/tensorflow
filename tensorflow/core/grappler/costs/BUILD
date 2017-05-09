@@ -118,6 +118,7 @@ cc_library(
     deps = [
         ":op_performance_data_cc",
         "//third_party/eigen3",
+        "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -195,9 +196,8 @@ cc_library(
     deps = [
         ":cost_estimator",
         ":op_performance_data_cc",
-        ":utils",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core/grappler/clusters:utils",
     ],
 )
 
