@@ -62,6 +62,18 @@ module Categorizer {
         assert.deepEqual(
             topLevelNamespaceCategorizer(['a']), [{name: 'a', tags: ['a']}]);
       });
+
+      it('only create 1 category per run', () => {
+        // TensorBoard separates runs from tags using the / and _ characters
+        // *only* during sorting. The categorizer should group all tags under
+        // their correct categories - and create only 1 category per run.
+        const tags = ['foo/bar', 'foo_in_between_run/baz', 'foo/quux'];
+        const expected = [
+          {name: 'foo', tags: ['foo/bar', 'foo/quux']},
+          {name: 'foo_in_between_run', tags: ['foo_in_between_run/baz']},
+        ];
+        assert.deepEqual(topLevelNamespaceCategorizer(tags), expected);
+      });
     });
 
     describe('customCategorizer', () => {

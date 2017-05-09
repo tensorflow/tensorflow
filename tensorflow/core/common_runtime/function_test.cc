@@ -391,6 +391,90 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   }
 }
 
+// Verifies that control dependencies on the caller are added as control
+// dependencies on any function calls created by inlining.
+TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
+  Init({test::function::XTimesTwo(), test::function::XTimesFour()});
+
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  {
+    Scope s = Scope::NewRootScope();
+    TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto c = ops::NoOp(s.WithOpName("c"));
+    auto b = Call(&s, "b", "XTimesFour", {a});
+    s.graph()->AddControlEdge(c.operation.node(), b.node());
+    auto ret = ops::_Retval(s.WithOpName("b_RetVal"), b, 0);
+    TF_ASSERT_OK(s.ToGraph(g.get()));
+  }
+
+  ExpandInlineFunctions(lib_.get(), g.get());
+  {
+    Scope s = Scope::NewRootScope();
+    TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto c = ops::NoOp(s.WithOpName("c"));
+    auto func0 =
+        ops::NoOp(s.WithOpName("Func/_0").WithControlDependencies({c}));
+    auto func1 = ops::Identity(
+        s.WithOpName("Func/_1").WithControlDependencies({func0}), a);
+    auto b_x2 = Call(&s, "b/x2", "XTimesTwo", {func1});
+    s.graph()->AddControlEdge(func0.operation.node(), b_x2.node());
+    auto b_y = Call(&s, "b/y", "XTimesTwo", {b_x2});
+    s.graph()->AddControlEdge(func0.operation.node(), b_y.node());
+    auto func2 = ops::Identity(s.WithOpName("Func/_2"), b_y);
+    auto ret = ops::_Retval(s.WithOpName("b_RetVal"), func2, 0);
+    GraphDef expected;
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  ExpandInlineFunctions(lib_.get(), g.get());
+  {
+    Scope s = Scope::NewRootScope();
+    TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto c = ops::NoOp(s.WithOpName("c"));
+    auto func0 =
+        ops::NoOp(s.WithOpName("Func/_0").WithControlDependencies({c}));
+    auto func1 = ops::Identity(
+        s.WithOpName("Func/_1").WithControlDependencies({func0}), a);
+
+    auto func3 =
+        ops::NoOp(s.WithOpName("Func/_3").WithControlDependencies({func0}));
+    auto func4 = ops::Identity(
+        s.WithOpName("Func/_4").WithControlDependencies({func3}), func1);
+    auto b_x2_two = ops::Const(
+        s.WithOpName("b/x2/two").WithControlDependencies({func3}), 2LL);
+    auto b_x2_scale = ops::Cast(s.WithOpName("b/x2/scale"), b_x2_two, DT_FLOAT);
+    auto b_x2_y = ops::Mul(s.WithOpName("b/x2/y"), func4, b_x2_scale);
+    auto func5 = ops::Identity(s.WithOpName("Func/_5"), b_x2_y);
+
+    auto func6 =
+        ops::NoOp(s.WithOpName("Func/_6").WithControlDependencies({func0}));
+    auto func7 = ops::Identity(
+        s.WithOpName("Func/_7").WithControlDependencies({func6}), func5);
+    auto b_y_two = ops::Const(
+        s.WithOpName("b/y/two").WithControlDependencies({func6}), 2LL);
+    auto b_y_scale = ops::Cast(s.WithOpName("b/y/scale"), b_y_two, DT_FLOAT);
+    auto b_y_y = ops::Mul(s.WithOpName("b/y/y"), func7, b_y_scale);
+    auto func8 = ops::Identity(s.WithOpName("Func/_8"), b_y_y);
+
+    auto func2 = ops::Identity(s.WithOpName("Func/_2"), func8);
+    auto ret = ops::_Retval(s.WithOpName("b_RetVal"), func2, 0);
+
+    GraphDef expected;
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+}
+
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});

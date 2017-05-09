@@ -8,11 +8,13 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "opt_py",
     srcs = [
         "__init__.py",
+        "python/training/drop_stale_gradient_optimizer.py",
         "python/training/external_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
         "python/training/moving_average_optimizer.py",
@@ -101,6 +103,22 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "drop_stale_gradient_optimizer_test",
+    srcs = ["python/training/drop_stale_gradient_optimizer_test.py"],
+    additional_deps = [
+        ":opt_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 

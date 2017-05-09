@@ -393,6 +393,17 @@ def bucketized_column(source_column, boundaries):
   `boundaries=[0., 1., 2.]` generates buckets `(-inf, 0.)`, `[0., 1.)`,
   `[1., 2.)`, and `[2., +inf)`.
 
+  For example, if the inputs are
+    `boundaries` = [0, 10, 100]
+    input tensor = [[-5, 10000]
+                    [150,   10]
+                    [5,    100]]
+
+  then the output will be
+    output = [[0, 3]
+              [3, 2]
+              [1, 3]]
+
   Example:
 
   ```python

@@ -18,35 +18,48 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/devices.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
 
 VirtualPlacer::VirtualPlacer(Cluster* cluster) : has_gpu_(false) {
-  devices_["CPU"] = GetLocalCPUInfo();
-  if (GetNumAvailableGPUs() > 0) {
-    has_gpu_ = true;
-    devices_["GPU"] = GetLocalGPUInfo(0);
+  devices_ = cluster->GetDevices();
+  for (const auto& device : cluster->GetDevices()) {
+    if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
+      has_gpu_ = true;
+    }
   }
+
   unknown_device_.set_type("UNKNOWN");
 }
 
-const OpInfo::DeviceProperties& VirtualPlacer::get_device(
-    const NodeDef& node) const {
-  string device_type;
+const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
   DeviceNameUtils::ParsedName parsed;
-  if (!node.device().empty() &&
-      DeviceNameUtils::ParseFullName(node.device(), &parsed)) {
-    device_type = parsed.type;
-  } else {
-    if (has_gpu_) {
-      device_type = "GPU";
-    } else {
-      device_type = "CPU";
+  if (!node.device().empty()) {
+    auto it = devices_.find(node.device());
+    if (it != devices_.end()) {
+      return it->second;
     }
+    if (DeviceNameUtils::ParseFullName(node.device(), &parsed)) {
+      string device_name =
+          strings::StrCat("/job:localhost/replica:0/task:0/",
+                          str_util::Lowercase(parsed.type), ":", parsed.id);
+      it = devices_.find(device_name);
+      if (it != devices_.end()) {
+        return it->second;
+      }
+    }
+    return unknown_device_;
   }
-  auto it = devices_.find(device_type);
+  string device;
+  if (has_gpu_) {
+    device = "/job:localhost/replica:0/task:0/gpu:0";
+  } else {
+    device = "/job:localhost/replica:0/task:0/cpu:0";
+  }
+  auto it = devices_.find(device);
   if (it == devices_.end()) {
     return unknown_device_;
   }

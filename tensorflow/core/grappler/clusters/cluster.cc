@@ -56,5 +56,15 @@ void Cluster::DisableDetailedStats(bool disable) {
   }
 }
 
+const std::vector<string> Cluster::GetDeviceNames() const {
+  std::vector<string> device_names;
+  device_names.reserve(devices_.size());
+  for (const auto& device : devices_) {
+    device_names.push_back(device.first);
+  }
+  std::sort(device_names.begin(), device_names.end());
+  return device_names;
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -121,6 +121,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/protobuf/cluster.proto"
     "tensorflow/core/protobuf/config.proto"
     "tensorflow/core/protobuf/debug.proto"
+    "tensorflow/core/protobuf/device_properties.proto"
     "tensorflow/core/protobuf/rewriter_config.proto"
     "tensorflow/core/protobuf/tensor_bundle.proto"
     "tensorflow/core/protobuf/saver.proto"
