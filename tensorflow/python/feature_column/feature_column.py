@@ -122,6 +122,7 @@ import abc
 import collections
 
 import numpy as np
+import six
 
 from tensorflow.python.feature_column import lookup_ops
 from tensorflow.python.framework import dtypes
@@ -330,7 +331,7 @@ def _transform_features(features, feature_columns):
       source_column=numeric_column("price"), boundaries=[...])
 
   columns = [crosses_a_x_b, price_buckets]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   transformed = transform_features(features=features, feature_columns=columns)
 
   assertCountEqual(columns, transformed.keys())
@@ -357,6 +358,63 @@ def _transform_features(features, feature_columns):
   return outputs
 
 
+def make_parse_example_spec(feature_columns):
+  """Creates parsing spec dictionary from input feature_columns.
+
+  The returned dictionary can be used as arg 'features' in `tf.parse_example`.
+
+  Typical usage example:
+
+  ```python
+  # Define features and transformations
+  feature_a = categorical_column_with_vocabulary_file(...)
+  feature_b = numeric_column(...)
+  feature_c_bucketized = bucketized_column(numeric_column("feature_c"), ...)
+  feature_a_x_feature_c = crossed_column(
+    columns=[feature_a, feature_c_bucketized], ...)
+
+  feature_columns = set(
+    [feature_b, feature_c_bucketized, feature_a_x_feature_c])
+  features = tf.parse_example(
+      serialized=serialized_examples,
+      features=make_parse_example_spec(feature_columns))
+  ```
+
+  For the above example, make_parse_example_spec would return the dict:
+  {
+    "feature_a": parsing_ops.VarLenFeature(tf.string),
+    "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+    "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
+  }
+
+  Args:
+    feature_columns: An iterable containing all feature columns. All items
+      should be instances of classes derived from `_FeatureColumn`.
+
+  Returns:
+    A dict mapping each feature key to a `FixedLenFeature` or `VarLenFeature`
+    value.
+
+  Raises:
+    ValueError: If any of the given `feature_columns` is not a `_FeatureColumn`
+      instance.
+  """
+  result = {}
+  for column in feature_columns:
+    if not isinstance(column, _FeatureColumn):
+      raise ValueError(
+          'All feature_columns must be _FeatureColumn instances. '
+          'Given: {}'.format(column))
+    config = column._parse_example_config  # pylint: disable=protected-access
+    for key, value in six.iteritems(config):
+      if key in result and value != result[key]:
+        raise ValueError(
+            'feature_columns contain different parse_spec for key '
+            '{}. Given {} and {}'.format(key, value, result[key]))
+    result.update(config)
+  return result
+
+
 def numeric_column(key,
                    shape=(1,),
                    default_value=None,
@@ -369,13 +427,13 @@ def numeric_column(key,
   ```python
   price = numeric_column('price')
   columns = [price, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = make_input_layer(features, columns)
 
   # or
   bucketized_price = bucketized_column(price, boundaries=[...])
   columns = [bucketized_price, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   linear_prediction = make_linear_model(features, columns)
   ```
 
@@ -455,12 +513,12 @@ def bucketized_column(source_column, boundaries):
   price = numeric_column('price')
   bucketized_price = bucketized_column(price, boundaries=[...])
   columns = [bucketized_price, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   linear_prediction = make_linear_model(features, columns)
 
   # or
   columns = [bucketized_price, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = make_input_layer(features, columns)
   ```
 
@@ -518,13 +576,13 @@ def categorical_column_with_hash_bucket(key,
   ```python
   keywords = categorical_column_with_hash_bucket("keywords", 10K)
   columns = [keywords, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   linear_prediction = make_linear_model(features, columns)
 
   # or
   keywords_embedded = embedding_column(keywords, 16)
   columns = [keywords_embedded, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = make_input_layer(features, columns)
   ```
 
@@ -580,7 +638,7 @@ def categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
       num_oov_buckets=5)
   columns = [states, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   linear_prediction = make_linear_model(features, columns)
   ```
 
@@ -594,13 +652,13 @@ def categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=51,
       default_value=0)
   columns = [states, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   linear_prediction, _, _ = make_linear_model(features, columns)
 
   And to make an embedding with either:
   ```python
   columns = [embedding_column(states, 3),...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = make_input_layer(features, columns)
   ```
 
@@ -680,14 +738,14 @@ def categorical_column_with_vocabulary_list(
   colors = categorical_column_with_vocabulary_list(
       key='colors', vocabulary_list=('X', 'R', 'G', 'B', 'Y'), default_value=0)
   columns = [colors, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   linear_prediction, _, _ = make_linear_model(features, columns)
   ```
 
   Embedding for a DNN model:
   ```python
   columns = [embedding_column(colors, 3),...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = make_input_layer(features, columns)
   ```
 
@@ -753,14 +811,14 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   video_id = categorical_column_with_identity(
       key='video_id', num_buckets=1000000, default_value=0)
   columns = [video_id, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   linear_prediction, _, _ = make_linear_model(features, columns)
   ```
 
   Embedding for a DNN model:
   ```python
   columns = [embedding_column(video_id, 9),...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = make_input_layer(features, columns)
   ```
 

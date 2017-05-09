@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 
 import numpy as np
@@ -1187,6 +1188,86 @@ class MakeInputLayerTest(test.TestCase):
       with _initialized_session():
         self.assertAllClose([[1., 3.]], net1.eval())
         self.assertAllClose([[1., 3.]], net2.eval())
+
+
+class MakeParseExampleSpecTest(test.TestCase):
+
+  class _TestFeatureColumn(
+      fc._FeatureColumn,
+      collections.namedtuple('_TestFeatureColumn', ['parse_config'])):
+
+    @property
+    def _parse_example_config(self):
+      return self.parse_config
+
+  def test_no_feature_columns(self):
+    actual = fc.make_parse_example_spec([])
+    self.assertDictEqual({}, actual)
+
+  def test_invalid_type(self):
+    key1 = 'key1'
+    parse_spec1 = parsing_ops.FixedLenFeature(
+        shape=(2,), dtype=dtypes.float32, default_value=0.)
+    with self.assertRaisesRegexp(
+        ValueError,
+        'All feature_columns must be _FeatureColumn instances.*invalid_column'):
+      fc.make_parse_example_spec(
+          (self._TestFeatureColumn({key1: parse_spec1}), 'invalid_column'))
+
+  def test_one_feature_column(self):
+    key1 = 'key1'
+    parse_spec1 = parsing_ops.FixedLenFeature(
+        shape=(2,), dtype=dtypes.float32, default_value=0.)
+    actual = fc.make_parse_example_spec(
+        (self._TestFeatureColumn({key1: parse_spec1}),))
+    self.assertDictEqual({key1: parse_spec1}, actual)
+
+  def test_two_feature_columns(self):
+    key1 = 'key1'
+    parse_spec1 = parsing_ops.FixedLenFeature(
+        shape=(2,), dtype=dtypes.float32, default_value=0.)
+    key2 = 'key2'
+    parse_spec2 = parsing_ops.VarLenFeature(dtype=dtypes.string)
+    actual = fc.make_parse_example_spec(
+        (self._TestFeatureColumn({key1: parse_spec1}),
+         self._TestFeatureColumn({key2: parse_spec2})))
+    self.assertDictEqual({key1: parse_spec1, key2: parse_spec2}, actual)
+
+  def test_equal_keys_different_parse_spec(self):
+    key1 = 'key1'
+    parse_spec1 = parsing_ops.FixedLenFeature(
+        shape=(2,), dtype=dtypes.float32, default_value=0.)
+    parse_spec2 = parsing_ops.VarLenFeature(dtype=dtypes.string)
+    with self.assertRaisesRegexp(
+        ValueError,
+        'feature_columns contain different parse_spec for key key1'):
+      fc.make_parse_example_spec(
+          (self._TestFeatureColumn({key1: parse_spec1}),
+           self._TestFeatureColumn({key1: parse_spec2})))
+
+  def test_equal_keys_equal_parse_spec(self):
+    key1 = 'key1'
+    parse_spec1 = parsing_ops.FixedLenFeature(
+        shape=(2,), dtype=dtypes.float32, default_value=0.)
+    actual = fc.make_parse_example_spec(
+        (self._TestFeatureColumn({key1: parse_spec1}),
+         self._TestFeatureColumn({key1: parse_spec1})))
+    self.assertDictEqual({key1: parse_spec1}, actual)
+
+  def test_multiple_features_dict(self):
+    """parse_spc for one column is a dict with length > 1."""
+    key1 = 'key1'
+    parse_spec1 = parsing_ops.FixedLenFeature(
+        shape=(2,), dtype=dtypes.float32, default_value=0.)
+    key2 = 'key2'
+    parse_spec2 = parsing_ops.VarLenFeature(dtype=dtypes.string)
+    key3 = 'key3'
+    parse_spec3 = parsing_ops.VarLenFeature(dtype=dtypes.int32)
+    actual = fc.make_parse_example_spec(
+        (self._TestFeatureColumn({key1: parse_spec1}),
+         self._TestFeatureColumn({key2: parse_spec2, key3: parse_spec3})))
+    self.assertDictEqual(
+        {key1: parse_spec1, key2: parse_spec2, key3: parse_spec3}, actual)
 
 
 def _assert_sparse_tensor_value(test_case, expected, actual):
