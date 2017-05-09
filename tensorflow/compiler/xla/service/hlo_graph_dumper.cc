@@ -107,6 +107,14 @@ string NodeColorAttributes(ColorScheme color) {
       font_color, stroke_color, fill_color);
 }
 
+// Replaces <> with &lt;&gt;, so that this string is safe(er) for use in a
+// graphviz HTML-like string.
+string HtmlLikeStringSanitize(tensorflow::StringPiece s) {
+  return tensorflow::str_util::StringReplace(
+      tensorflow::str_util::StringReplace(s, "<", "&lt;", /*replace_all=*/true),
+      ">", "&gt;", /*replace_all=*/true);
+}
+
 // Returns the dot graph identifier for the given instruction.
 string InstructionId(const HloInstruction* instruction) {
   return Printf("%lld", reinterpret_cast<uint64>(instruction));
@@ -172,16 +180,21 @@ string InstructionSequenceGraph(
   for (auto& instruction : instructions) {
     ColorScheme color = kYellow;
     string shape = "box";
-    string name = StrCat("<b>", instruction->ExtendedOpcodeStr(), "</b> ",
-                         instruction->name());
+    string name =
+        StrCat("<b>", HtmlLikeStringSanitize(instruction->ExtendedOpcodeStr()),
+               "</b> ", HtmlLikeStringSanitize(instruction->name()));
     if (HloOpcode::kConvolution == instruction->opcode()) {
-      StrAppend(&name, "<br/>",
-                instruction->ConvolutionDimensionNumbersToString(), "<br/>",
-                window_util::ToString(instruction->window()));
+      StrAppend(
+          &name, "<br/>",
+          HtmlLikeStringSanitize(
+              instruction->ConvolutionDimensionNumbersToString()),
+          "<br/>",
+          HtmlLikeStringSanitize(window_util::ToString(instruction->window())));
     }
 
     if (!instruction->metadata().op_name().empty()) {
-      StrAppend(&name, "<br/>", instruction->metadata().op_name());
+      StrAppend(&name, "<br/>",
+                HtmlLikeStringSanitize(instruction->metadata().op_name()));
     }
     if (!instruction->metadata().source_file().empty() &&
         instruction->metadata().source_line() != 0) {
