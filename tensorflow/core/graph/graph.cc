@@ -103,7 +103,7 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   SetClass(NC_GET_SESSION_HANDLE, {"GetSessionHandleV2"});
   SetClass(NC_GET_SESSION_TENSOR, {"GetSessionTensor"});
   SetClass(NC_DELETE_SESSION_TENSOR, {"DeleteSessionTensor"});
-  SetClass(NC_MUX, {"Mux"});
+  SetClass(NC_MUX, {"Mux", "RefMux"});
   if (class_ == NC_UNINITIALIZED) {
     class_ = NC_OTHER;  // Catch all
   }
@@ -419,7 +419,7 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
     for (size_t i = 0; i < inputs.size(); ++i) {
       const Edge* edge = inputs[i];
       if (edge == nullptr) {
-        node_def->add_input(node->def().input(i));
+        //node_def->add_input(node->def().input(i));
       } else {
         const Node* src = edge->src();
         if (!src->IsOp()) continue;

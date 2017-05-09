@@ -43,6 +43,7 @@ RefMerge
 Exit
 RefExit
 Mux
+RefMux
 Demux
 
 # ctc_ops

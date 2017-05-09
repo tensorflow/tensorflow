@@ -660,4 +660,11 @@ REGISTER_KERNEL_BUILDER(Name("Mux").Device(DEVICE_GPU), MuxOp);
 REGISTER_KERNEL_BUILDER(Name("Mux").Device(DEVICE_SYCL), MuxOp);
 #endif
 
+REGISTER_KERNEL_BUILDER(Name("RefMux").Device(DEVICE_CPU), MuxOp);
+REGISTER_KERNEL_BUILDER(Name("RefMux").Device(DEVICE_GPU), MuxOp);
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("RefMux").Device(DEVICE_SYCL), MuxOp);
+#endif
+
 }  // namespace tensorflow
