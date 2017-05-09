@@ -335,7 +335,7 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
     name: A name for this operation (optional).
 
   Returns:
-    `(output_false, output_false)`: If `pred` is true, data will be forwarded to
+    `(output_false, output_true)`: If `pred` is true, data will be forwarded to
     `output_true`, otherwise it goes to `output_false`.
 
   Raises:
@@ -1049,15 +1049,19 @@ class ControlFlowState(object):
     """
     loop_exits = []
     for _, grad_state in self._map.items():
+      # pylint: disable=protected-access
       for y in grad_state.forward_loop_exits:
-        # pylint: disable=protected-access
         if pending_count[y.op._id] == 0:
           grad_state.pending_exits_count -= 1
           if y.op._id not in to_ops_set:
             grad_state.unused_exits.append(y)
           if grad_state.pending_exits_count == 0:
             loop_exits.extend(grad_state.unused_exits)
-        # pylint: enable=protected-access
+      # Need to include Enters in backprop for higher-order gradients.
+      for y in grad_state.forward_context.loop_enters:
+        if pending_count[y.op._id] == 0:
+          pending_count[y.op._id] = 1
+      # pylint: enable=protected-access
     return loop_exits
 
   def EnterGradWhileContext(self, op, before):
@@ -1927,6 +1931,8 @@ class WhileContext(ControlFlowContext):
     self._pivot = None
     # The list of exit tensors for loop variables.
     self._loop_exits = []
+    # The list of enter tensors for loop variables.
+    self._loop_enters = []
 
   def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `WhileContext` from protocol buffer.
@@ -1956,6 +1962,10 @@ class WhileContext(ControlFlowContext):
     self._loop_exits = [g.as_graph_element(
         ops.prepend_name_scope(exit_name, import_scope))
                         for exit_name in context_def.loop_exit_names]
+    # The list of enter tensors for loop variables.
+    self._loop_enters = [g.as_graph_element(
+        ops.prepend_name_scope(enter_name, import_scope))
+                         for enter_name in context_def.loop_enter_names]
     super(WhileContext, self).__init__(values_def=context_def.values_def,
                                        import_scope=import_scope)
 
@@ -1982,6 +1992,11 @@ class WhileContext(ControlFlowContext):
   def pivot(self):
     """The boolean tensor representing the loop termination condition."""
     return self._pivot
+
+  @property
+  def loop_enters(self):
+    """The list of enter tensors for loop variables."""
+    return self._loop_enters
 
   @property
   def loop_exits(self):
@@ -2016,10 +2031,12 @@ class WhileContext(ControlFlowContext):
           self._pivot_for_body.name, export_scope)
       context_def.pivot_name = ops.strip_name_scope(
           self._pivot.name, export_scope)
-      if self._loop_exits:
-        context_def.loop_exit_names.extend(
-            [ops.strip_name_scope(l.name, export_scope)
-             for l in self._loop_exits])
+      context_def.loop_exit_names.extend(
+          [ops.strip_name_scope(l.name, export_scope)
+           for l in self._loop_exits])
+      context_def.loop_enter_names.extend(
+          [ops.strip_name_scope(l.name, export_scope)
+           for l in self._loop_enters])
       context_def.values_def.MergeFrom(
           super(WhileContext, self)._to_proto(
               export_scope=export_scope))
@@ -2199,6 +2216,8 @@ class WhileContext(ControlFlowContext):
     enter_n = _Enter(n, self._name, is_constant=False,
                      parallel_iterations=self._parallel_iterations,
                      name="f_count")
+    self.loop_enters.append(enter_n)
+
     merge_n = merge([enter_n, enter_n])[0]
     switch_n = switch(merge_n, self._pivot)
 
@@ -2239,6 +2258,8 @@ class WhileContext(ControlFlowContext):
     enter_count = _Enter(count, self._name, is_constant=False,
                          parallel_iterations=self._parallel_iterations,
                          name="b_count")
+    self.loop_enters.append(enter_count)
+
     merge_count = merge([enter_count, enter_count])[0]
     self._pivot_for_pred = merge_count
 
@@ -2326,6 +2347,8 @@ class WhileContext(ControlFlowContext):
     enter_acc = _Enter(acc, self._name, is_constant=False,
                        parallel_iterations=self._parallel_iterations,
                        name="b_acc")
+    self.loop_enters.append(enter_acc)
+
     merge_acc = merge([enter_acc, enter_acc], name="b_acc")[0]
     switch_acc_false, switch_acc_true = switch(merge_acc, self._pivot)
 
@@ -2333,10 +2356,10 @@ class WhileContext(ControlFlowContext):
     next_acc = _NextIteration(add_acc)
     merge_acc.op._update_input(1, next_acc)  # pylint: disable=protected-access
 
-    acc_result = exit(switch_acc_false, name="b_acc")
-    self.loop_exits.append(acc_result)
-    self.ExitResult([acc_result])
-    return acc_result
+    result_acc = exit(switch_acc_false, name="b_acc")
+    self.loop_exits.append(result_acc)
+    self.ExitResult([result_acc])
+    return result_acc
 
   def AddBackPropIndexedSlicesAccumulator(self, op, grad):
     """This is used for accumulating gradients that are IndexedSlices.
@@ -2393,6 +2416,8 @@ class WhileContext(ControlFlowContext):
     enter_acc = [_Enter(x, self._name, is_constant=False,
                         parallel_iterations=self._parallel_iterations,
                         name="b_acc") for x in init_acc]
+    self.loop_enters.extend(enter_acc)
+
     merge_acc = [merge([x, x], name="b_acc")[0] for x in enter_acc]
     switch_acc = [switch(x, self._pivot) for x in merge_acc]
 
@@ -2410,13 +2435,13 @@ class WhileContext(ControlFlowContext):
     for xm, xn in zip(merge_acc, next_acc):
       xm.op._update_input(1, xn)  # pylint: disable=protected-access
 
-    acc_exits = [exit(x[0], name="b_acc") for x in switch_acc]
-    self.loop_exits.extend(acc_exits)
+    exit_acc = [exit(x[0], name="b_acc") for x in switch_acc]
+    self.loop_exits.extend(exit_acc)
 
-    self.ExitResult(acc_exits)
+    self.ExitResult(exit_acc)
     return ops.IndexedSlices(
-        indices=acc_exits[0], values=acc_exits[1],
-        dense_shape=acc_exits[2] if shape_acc is not None else None)
+        indices=exit_acc[0], values=exit_acc[1],
+        dense_shape=exit_acc[2] if shape_acc is not None else None)
 
   def _InitializeValues(self, values):
     """Makes the values known to this context."""
@@ -2467,6 +2492,7 @@ class WhileContext(ControlFlowContext):
     # Fix the control inputs and control flow context of these enter ops.
     self._FixControlInputsAndContext(enter_vars)
     self._InitializeValues(enter_vars)
+    self._loop_enters = enter_vars
 
     merge_vars = [merge([x, x])[0] for x in enter_vars]
     self._pivot_for_pred = merge_vars[0]
