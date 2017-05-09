@@ -16,9 +16,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/poplar/driver/ops.h"
-#include "tensorflow/compiler/poplar/driver/tensor.h"
-#include "tensorflow/compiler/poplar/driver/visitor_map.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_call.h"
 
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -34,22 +34,20 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-PoplarMapVisitor::PoplarMapVisitor(poplar::Graph* graph,
-                                   CompilerResources& res,
-                                   const std::vector<poplar::Tensor>& inputs,
-                                   const xla::Shape& shape)
-        : PoplarBaseVisitor(graph, res),
-          operands_(std::move(inputs)),
-          shape_(shape) {
+PoplarCallVisitor::PoplarCallVisitor(poplar::Graph* graph,
+                                     CompilerResources& res,
+                                     const std::vector<poplar::Tensor>& inputs)
+        : PoplarFullVisitor(graph, res),
+          operands_(std::move(inputs)) {
 }
 
-Status PoplarMapVisitor::HandleParameter(HloInstruction* inst) {
+Status PoplarCallVisitor::HandleParameter(HloInstruction* inst) {
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0,
                                      operands_[inst->parameter_number()]));
   return Status::OK();
 }
 
-Status PoplarMapVisitor::FinishVisit(HloInstruction* inst) {
+Status PoplarCallVisitor::FinishVisit(HloInstruction* inst) {
   int64 c = 1;
   if (ShapeUtil::IsTuple(inst->shape())) {
     c = ShapeUtil::TupleElementCount(inst->shape());

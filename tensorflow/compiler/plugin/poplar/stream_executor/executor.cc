@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/poplar/stream_executor/executor.h"
-#include "tensorflow/compiler/poplar/stream_executor/poplar_platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/stream_executor/executor.h"
+#include "tensorflow/compiler/plugin/poplar/stream_executor/platform_id.h"
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -387,7 +387,7 @@ std::string PoplarExecutor::GetPathToGraphProgFile() {
   if (dladdr(&dummy, &dlInfo)) {
     std::string path(dlInfo.dli_fname);
     path = path.substr(0, path.find_last_of( '/' ) + 1);
-    path = path + "../compiler/poplar/tf.gp";
+    path = path + "../compiler/plugin/poplar/tf.gp";
     return path;
   }
   return "";

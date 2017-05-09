@@ -19,13 +19,13 @@ limitations under the License.
 #include <stdlib.h>
 #include <fstream>
 
-#include "tensorflow/compiler/poplar/driver/compiler.h"
-#include "tensorflow/compiler/poplar/driver/executable.h"
-#include "tensorflow/compiler/poplar/driver/ops.h"
-#include "tensorflow/compiler/poplar/driver/tensor.h"
-#include "tensorflow/compiler/poplar/driver/visitor_full.h"
-#include "tensorflow/compiler/poplar/driver/compiler_resources.h"
-#include "tensorflow/compiler/poplar/stream_executor/executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/executable.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/stream_executor/executor.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"

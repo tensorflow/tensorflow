@@ -16,10 +16,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_CALL_H_
-#define TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_CALL_H_
+#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_MAP_H_
+#define TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_MAP_H_
 
-#include "tensorflow/compiler/poplar/driver/visitor_full.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_base.h"
 
 namespace poplar {
 class Graph;
@@ -29,14 +29,20 @@ class Tensor;
 namespace xla {
 namespace poplarplugin {
 
-class PoplarCallVisitor : public PoplarFullVisitor {
+class PoplarMapVisitor : public PoplarBaseVisitor {
 public:
-  PoplarCallVisitor(poplar::Graph* graph,
-                    CompilerResources& res,
-                    const std::vector<poplar::Tensor>& inputs);
+  PoplarMapVisitor(poplar::Graph* graph,
+                   CompilerResources& res,
+                   const std::vector<poplar::Tensor>& inputs,
+                   const xla::Shape& shape);
+
 
   Status HandleParameter(HloInstruction* inst) override;
   Status FinishVisit(HloInstruction* inst) override;
+
+  const Shape& GetOutputShape(HloInstruction*) const override {
+    return shape_;
+  }
 
   const std::vector<poplar::Tensor>& output() {
     return output_;
@@ -45,9 +51,10 @@ public:
 private:
   std::vector<poplar::Tensor> operands_;
   std::vector<poplar::Tensor> output_;
+  xla::Shape shape_;
 };
 
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_CALL_H_
+#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_MAP_H_

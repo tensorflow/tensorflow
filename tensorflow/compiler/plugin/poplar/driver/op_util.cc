@@ -1,6 +1,6 @@
 #include <algorithm>
 
-#include "tensorflow/compiler/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 
