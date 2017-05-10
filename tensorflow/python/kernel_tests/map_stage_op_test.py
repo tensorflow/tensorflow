@@ -33,7 +33,7 @@ class MapStageTest(test.TestCase):
         pi = array_ops.placeholder(dtypes.int64)
         gi = array_ops.placeholder(dtypes.int64)
         v = 2. * (array_ops.zeros([128, 128]) + x)
-      with ops.device('/gpu:0'):
+      with ops.device(test.gpu_device_name()):
         stager = data_flow_ops.MapStagingArea([dtypes.float32])
         stage = stager.put(pi,[v])
         k, y = stager.get(gi)
@@ -50,7 +50,7 @@ class MapStageTest(test.TestCase):
         pi = array_ops.placeholder(dtypes.int64)
         gi = array_ops.placeholder(dtypes.int64)
         v = 2. * (array_ops.zeros([128, 128]) + x)
-      with ops.device('/gpu:0'):
+      with ops.device(test.gpu_device_name()):
         stager = data_flow_ops.MapStagingArea([dtypes.float32, dtypes.float32])
         stage = stager.put(pi,[x, v])
         k, (z, y) = stager.get(gi)
@@ -88,7 +88,7 @@ class MapStageTest(test.TestCase):
     with ops.device('/cpu:0'):
       x = array_ops.placeholder(dtypes.float32)
       v = 2. * (array_ops.zeros([128, 128]) + x)
-    with ops.device('/gpu:0'):
+    with ops.device(test.gpu_device_name()):
       stager = data_flow_ops.MapStagingArea([dtypes.float32])
       y = stager.put(1,[v])
       self.assertEqual(y.device, '/device:GPU:0')
