@@ -239,6 +239,11 @@ class LiteralUtil {
   // Clones literal into an owned unique_ptr version.
   static std::unique_ptr<Literal> CloneToUnique(const Literal& literal);
 
+  // Returns the linear index of the given index within the literal's
+  // element_type repeated field.
+  static int64 LinearIndex(const Literal& literal,
+                           tensorflow::gtl::ArraySlice<int64> multi_index);
+
   // Gets or sets an element in the literal at the given index. The index is
   // CHECKed against the dimension sizes.
   template <typename NativeT>
@@ -426,11 +431,6 @@ class LiteralUtil {
     static_assert(!std::is_same<NativeT, NativeT>::value,
                   "Cannot map native type to primitive type.");
   }
-
-  // Returns the linear index of the given index within the literal's
-  // element_type repeated field.
-  static int64 LinearIndex(const Literal& literal,
-                           tensorflow::gtl::ArraySlice<int64> multi_index);
 
   // Internal template helper for the Copy() API, matching its arguments one by
   // one.

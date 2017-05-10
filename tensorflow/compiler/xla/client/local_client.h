@@ -148,7 +148,7 @@ class LocalExecutable {
   const ExecutableBuildOptions& build_options_;
 };
 
-// An XLA service client object for use when the client and service run in
+// An XLA Client specialization for use when the client and service run in
 // the same process.
 class LocalClient : public Client {
  public:
@@ -181,30 +181,6 @@ class LocalClient : public Client {
       const Computation& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
       const ExecutableBuildOptions& options);
-
-  // A description of a computation to compile using CompileAheadOfTime.
-  struct AheadOfTimeComputationInstance {
-    const Computation* computation;
-    // Inform the compiler of the expected layout for arguments.
-    std::vector<const Shape*> argument_layouts;
-    // Specifies the expected result layout.
-    const Shape* result_layout;
-  };
-
-  // Compiles a list of computations for ahead-of-time execution.  This is
-  // intended for use in static compilation. The |options| parameter describes
-  // the target for which the compiler should emit code.
-  //
-  // TODO(b/31222190): This doesn't really belong in LocalClient. Move it to its
-  // own library.
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      const tensorflow::gtl::ArraySlice<AheadOfTimeComputationInstance>
-          computations,
-      const AotCompilationOptions& options);
-
-  // Returns the size of a pointer in bytes for a given triple.
-  static int64 PointerSizeForTriple(tensorflow::StringPiece triple);
 
   // Returns the platform that the underlying service targets.
   perftools::gputools::Platform* platform() const;

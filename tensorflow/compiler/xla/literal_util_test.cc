@@ -469,6 +469,26 @@ TEST_F(LiteralUtilTest, ReshapeR4) {
   EXPECT_TRUE(LiteralUtil::Equal(*expected, *reshape));
 }
 
+TEST_F(LiteralUtilTest, ReshapeR4Dim0Minor) {
+  // clang-format off
+  // F32[1x3x2x4]
+  auto original = LiteralUtil::CreateR4WithLayout<float>({{
+     {{10, 11, 12, 13}, {14, 15, 16, 17}},
+     {{18, 19, 20, 21}, {22, 23, 24, 25}},
+     {{26, 27, 28, 29}, {30, 31, 32, 33}},
+  }}, layout_r4_dim0minor_);
+  // F32[1x3x4x2]
+  auto expected = LiteralUtil::CreateR3WithLayout<float>({
+    {{10, 11}, {12, 13}, {14, 15}, {16, 17}},
+    {{18, 19}, {20, 21}, {22, 23}, {24, 25}},
+    {{26, 27}, {28, 29}, {30, 31}, {32, 33}},
+  }, layout_r3_dim0major_);
+  // clang-format on
+  auto reshape = LiteralUtil::Reshape(*original, {3, 4, 2}).ConsumeValueOrDie();
+
+  EXPECT_TRUE(LiteralUtil::Equal(*expected, *reshape));
+}
+
 TEST_F(LiteralUtilTest, TransposeR0) {
   auto original = LiteralUtil::CreateR0<float>(1.7f);
   auto reshape = LiteralUtil::Transpose(*original, /*permutation=*/{});
@@ -659,15 +679,15 @@ TEST_F(LiteralUtilTest, Copy) {
         primitive_util::NativeToPrimitiveType<uint32>(), dimensions, layout);
     auto blank = LiteralUtil::CreateFromShape(shape);
     auto source = LiteralUtil::CreateFromShape(shape);
-    const int64 sbase[] = {0, 0, 0, 0};
-    const int64 incr[] = {1, 1, 1, 1};
+    const int64 zero_base[] = {0, 0, 0, 0};
+    const int64 step[] = {1, 1, 1, 1};
     uint32 seqnr = 0;
     auto init_proc = [&](const std::vector<int64>& indexes) {
       LiteralUtil::Set(source.get(), indexes, ++seqnr);
       return true;
     };
 
-    ShapeUtil::ForEachIndex(source->shape(), sbase, dimensions, incr,
+    ShapeUtil::ForEachIndex(source->shape(), zero_base, dimensions, step,
                             init_proc);
 
     const int64 src_base[] = {3, 1, 5, 7};
@@ -691,7 +711,7 @@ TEST_F(LiteralUtilTest, Copy) {
                  bval == LiteralUtil::Get<uint32>(*source, source_indexes));
       return matched;
     };
-    ShapeUtil::ForEachIndex(source->shape(), sbase, copy_size, incr,
+    ShapeUtil::ForEachIndex(source->shape(), zero_base, copy_size, step,
                             check_proc);
     EXPECT_TRUE(matched);
   }
@@ -708,6 +728,44 @@ TEST_F(LiteralUtilTest, CopyScalars) {
   EXPECT_EQ(LiteralUtil::Get<uint32>(*zero, {}), 17);
   TF_EXPECT_OK(LiteralUtil::Copy(*zero, {}, vect.get(), {4}, {}));
   EXPECT_EQ(LiteralUtil::Get<uint32>(*vect, {4}), 17);
+}
+
+TEST_F(LiteralUtilTest, Populate) {
+  struct PopulateData {
+    std::vector<int64> dimensions;
+    std::vector<int64> layout;
+  } populate_data[] = {
+      {{}, {}},
+      {{16}, {0}},
+      {{4, 16}, {1, 0}},
+      {{21, 12}, {0, 1}},
+      {{6, 11, 17}, {2, 0, 1}},
+      {{6, 11, 5, 17}, {3, 2, 0, 1}},
+  };
+  for (const auto& data : populate_data) {
+    Shape shape = ShapeUtil::MakeShapeWithLayout(
+        primitive_util::NativeToPrimitiveType<uint32>(), data.dimensions,
+        data.layout);
+    auto literal = LiteralUtil::CreateFromShape(shape);
+    auto generator = [&](tensorflow::gtl::ArraySlice<int64> indexes) -> uint32 {
+      // Offsets from linear index just to avoid R0 literals to be initialized
+      // with zero.
+      return LiteralUtil::LinearIndex(*literal, indexes) + 17;
+    };
+    TF_EXPECT_OK(LiteralUtil::Populate<uint32>(literal.get(), generator));
+
+    std::vector<int64> zero_base(data.dimensions.size(), 0);
+    std::vector<int64> step(data.dimensions.size(), 1);
+    bool matched = true;
+    auto check_function = [&](const std::vector<int64>& indexes) {
+      auto value = LiteralUtil::Get<uint32>(*literal, indexes);
+      matched = matched && (value == generator(indexes));
+      return matched;
+    };
+    ShapeUtil::ForEachIndex(literal->shape(), zero_base, data.dimensions, step,
+                            check_function);
+    EXPECT_TRUE(matched);
+  }
 }
 
 }  // namespace

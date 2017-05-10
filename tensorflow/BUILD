@@ -342,6 +342,7 @@ filegroup(
         "//tensorflow/tensorboard/components/tf_globals:all_files",
         "//tensorflow/tensorboard/components/tf_globals_d3v4:all_files",
         "//tensorflow/tensorboard/components/tf_graph_common:all_files",
+        "//tensorflow/tensorboard/components/tf_graph_loader:all_files",
         "//tensorflow/tensorboard/components/tf_histogram_dashboard:all_files",
         "//tensorflow/tensorboard/components/tf_histogram_dashboard/demo:all_files",
         "//tensorflow/tensorboard/components/tf_image_dashboard:all_files",

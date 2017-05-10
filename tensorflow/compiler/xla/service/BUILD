@@ -407,6 +407,27 @@ cc_library(
 )
 
 cc_library(
+    name = "compile_only_service",
+    srcs = ["compile_only_service.cc"],
+    hdrs = ["compile_only_service.h"],
+    deps = [
+        ":backend",
+        ":compiler",
+        ":computation_layout",
+        ":computation_tracker",
+        ":platform_util",
+        ":service",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
     name = "cpu_plugin",
     deps = [
         ":cpu_transfer_manager",

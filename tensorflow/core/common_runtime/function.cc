@@ -829,12 +829,30 @@ static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
 // Given a "caller" in "graph", which is a function call of a function
 // to "fbody". Replaces the "caller" with fbody->graph and connects
 // edges properly.
-static void InlineFunctionBody(Graph* g, Node* caller,
+static void InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
+                               Graph* g, Node* caller,
                                const FunctionBody* fbody) {
   if (!ValidateInlining(caller, fbody)) {
     LOG(WARNING) << "Inlining mismatch: " << caller->DebugString() << " vs. "
                  << DebugString(fbody->graph);
     return;
+  }
+
+  // Input edges. For data edges coming into "caller", we first compute the
+  // <src>:<src_output> for the i-th input in "inputs".
+  // If "caller" has any input control dependencies, we add a NoOp
+  // node "input_control_node", which depends on "caller"'s control inputs.
+  std::vector<Endpoint> inputs(caller->num_inputs());
+  Node* input_control_node = nullptr;
+  for (const Edge* e : caller->in_edges()) {
+    if (e->IsControlEdge()) {
+      if (input_control_node == nullptr) {
+        input_control_node = AddNoOp(g);
+      }
+      g->AddControlEdge(e->src(), input_control_node);
+    } else {
+      inputs[e->dst_input()] = {e->src(), e->src_output()};
+    }
   }
 
   // Duplicate fbody->graph into 'g'.  First, we copy the nodes of
@@ -850,8 +868,35 @@ static void InlineFunctionBody(Graph* g, Node* caller,
     CHECK(n->IsOp());
     NodeDef ndef = n->def();
     ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
-    node_map[n->id()] = g->AddNode(ndef, &s);
+    Node* clone = g->AddNode(ndef, &s);
     TF_CHECK_OK(s);
+    node_map[n->id()] = clone;
+
+    // If there is an input control node, and one of:
+    // a) the node has no data or control inputs, or
+    // b) the node is a function call or SymbolicGradient,
+    // then add a control edge from the input control node to the clone.
+    //
+    // We must not execute any nodes if the original function call would not
+    // have executed. This is especially critical when the function call is
+    // inside a control-flow construct like tf.cond(). Case (a) ensures that
+    // such nodes do not run.
+    //
+    // The purpose of case (b) is to ensure that instances of case (a) created
+    // by further inlining steps also receive the control dependency.
+    if (input_control_node) {
+      bool has_inputs = false;
+      for (const Edge* e : n->in_edges()) {
+        if (!e->src()->IsSource()) {
+          has_inputs = true;
+          break;
+        }
+      }
+      if (!has_inputs || flib_def.Find(clone->type_string()) != nullptr ||
+          clone->type_string() == "SymbolicGradient") {
+        g->AddControlEdge(input_control_node, clone);
+      }
+    }
   }
   for (const Edge* e : fbody->graph->edges()) {
     if (e->src()->IsSource() || e->src()->IsSink() || e->dst()->IsSource() ||
@@ -865,29 +910,12 @@ static void InlineFunctionBody(Graph* g, Node* caller,
 
   // Connect input edges.
   //
-  // For data edges coming into "caller", we first compute the
-  // <src>:<src_output> for the i-th input in "inputs". We create one
-  // Identity node for each input. Then, we connect inputs[i] to to
-  // the i-th identity node added. The nodes that previously connects
-  // to the j-th output of i-th arg node are reconnected to th i-th
+  // We create one Identity node for each input. Then, we connect inputs[i] to
+  // the i-th identity node added. The nodes that previously connected
+  // to the j-th output of i-th arg node are reconnected to the i-th
   // identity node.
   //
-  // If "caller" has any input control dependencies, we add a NoOp
-  // node "input_control_node". This "input_control_node" depends on
-  // what "caller" depends on, and the added identity nodes depend on
-  // "input_control_node".
-  std::vector<Endpoint> inputs(caller->num_inputs());
-  Node* input_control_node = nullptr;
-  for (const Edge* e : caller->in_edges()) {
-    if (e->IsControlEdge()) {
-      if (input_control_node == nullptr) {
-        input_control_node = AddNoOp(g);
-      }
-      g->AddControlEdge(e->src(), input_control_node);
-    } else {
-      inputs[e->dst_input()] = {e->src(), e->src_output()};
-    }
-  }
+  // The added identity nodes depend on "input_control_node".
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
     Node* arg = node_map[fbody->arg_nodes[i]->id()];
     Node* n = AddIdentity(g, inputs[i]);
@@ -982,7 +1010,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
     candidates.push_back({node, fbody});
   }
   for (const auto& p : candidates) {
-    InlineFunctionBody(graph, p.first, p.second);
+    InlineFunctionBody(*fld, graph, p.first, p.second);
   }
   return !candidates.empty();
 }

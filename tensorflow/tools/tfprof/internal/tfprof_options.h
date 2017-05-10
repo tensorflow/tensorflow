@@ -55,7 +55,7 @@ static const char* const kShown[] = {
 };
 
 static const char* const kCmds[] = {
-    "scope", "graph", "set", "help",
+    "scope", "graph", "code", "set", "help",
 };
 
 struct Options {

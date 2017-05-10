@@ -125,7 +125,7 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   return inputs;
 }
 
-OpInfo::DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
+DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
   DeviceNameUtils::ParsedName parsed;
   if (DeviceNameUtils::ParseFullName(node.device(), &parsed)) {
     if (parsed.type == "GPU") {
@@ -134,13 +134,13 @@ OpInfo::DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
       return GetLocalCPUInfo();
     }
   }
-  OpInfo::DeviceProperties device;
+  DeviceProperties device;
   device.set_type("UNKNOWN");
   return device;
 }
 
-OpInfo::DeviceProperties GetLocalCPUInfo() {
-  OpInfo::DeviceProperties device;
+DeviceProperties GetLocalCPUInfo() {
+  DeviceProperties device;
   device.set_type("CPU");
 
   device.set_vendor(port::CPUVendorIDString());
@@ -165,8 +165,8 @@ OpInfo::DeviceProperties GetLocalCPUInfo() {
   return device;
 }
 
-OpInfo::DeviceProperties GetLocalGPUInfo(int gpu_id) {
-  OpInfo::DeviceProperties device;
+DeviceProperties GetLocalGPUInfo(int gpu_id) {
+  DeviceProperties device;
   device.set_type("GPU");
 
 #if GOOGLE_CUDA

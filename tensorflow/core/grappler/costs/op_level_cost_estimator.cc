@@ -69,7 +69,7 @@ Costs OpLevelCostEstimator::PredictCosts(const OpInfo& op_features) const {
 }
 
 std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
-    const OpInfo::DeviceProperties& device) const {
+    const DeviceProperties& device) const {
   double gflops = -1;
   double bandwidth = -1;
   if (device.bandwidth() > 0) {
@@ -77,7 +77,7 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
   }
 
   if (device.type() == "CPU") {
-    const OpInfo::DeviceProperties local_cpu = GetLocalCPUInfo();
+    const DeviceProperties local_cpu = GetLocalCPUInfo();
     // Check if vector instructions are available, and refine performance
     // prediction based on this.
     // Frequencies are stored in MHz in the DeviceProperties.
@@ -90,7 +90,7 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
       }
     }
   } else if (device.type() == "GPU") {
-    const OpInfo::DeviceProperties local_gpu = GetLocalGPUInfo(0);
+    const DeviceProperties local_gpu = GetLocalGPUInfo(0);
     const string architecture = local_gpu.environment().at("architecture");
     int cores_per_multiprocessor;
     if (architecture < "3") {

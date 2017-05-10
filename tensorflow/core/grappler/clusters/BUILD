@@ -60,6 +60,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:utils",
         "//tensorflow/core/kernels:ops_util",
     ],
 )

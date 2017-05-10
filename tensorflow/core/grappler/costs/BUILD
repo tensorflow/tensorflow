@@ -25,7 +25,9 @@ tf_proto_library(
     name = "op_performance_data",
     srcs = ["op_performance_data.proto"],
     cc_api_version = 2,
-    protodeps = ["//tensorflow/core:protos_all"],
+    protodeps = [
+        "//tensorflow/core:protos_all",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -141,10 +143,10 @@ cc_library(
     hdrs = ["virtual_placer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":op_performance_data_cc",
         ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler/clusters:cluster",

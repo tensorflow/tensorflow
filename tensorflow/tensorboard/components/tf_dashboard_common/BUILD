@@ -46,6 +46,7 @@ tensorboard_typescript_genrule(
     ],
     typings = [
         "@org_definitelytyped//:d3.d.ts",
+        "@org_definitelytyped//:lodash.d.ts",
         "//tensorflow/tensorboard/components/vz_sorting:ts_typings",
     ],
 )

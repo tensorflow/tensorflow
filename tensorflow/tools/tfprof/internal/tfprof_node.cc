@@ -20,7 +20,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-void TFNode::AddStepStat(const string& device, const NodeExecStats* step_stat) {
+void TFGraphNode::AddStepStat(const string& device,
+                              const NodeExecStats* step_stat) {
   if (!device.empty()) {
     // This might override device from GraphDef.
     device_ = device;
@@ -44,7 +45,7 @@ void TFNode::AddStepStat(const string& device, const NodeExecStats* step_stat) {
   }
 }
 
-void TFNode::AddNodeStat(const CostGraphDef::Node* cost_node) {
+void TFGraphNode::AddNodeStat(const CostGraphDef::Node* cost_node) {
   kernel_compute_micros_ = cost_node->compute_cost();
 }
 }  // namespace tfprof
