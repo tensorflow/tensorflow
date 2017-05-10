@@ -55,15 +55,15 @@ process data in mini-batches of size `batch_size`.  In this example, it is impor
 
 For example:
 ```
- t=0  t=1  t=2     t=3
-[The, fox, is,     quick]
-[The, fox, jumped, high]
+ t=0  t=1    t=2  t=3     t=5
+[The, brown, fox, is,     quick]
+[The, red,   fox, jumped, high]
 
 words_in_dataset[0] = [The, The]
 words_in_dataset[1] = [fox, fox]
 words_in_dataset[2] = [is, jumped]
 words_in_dataset[3] = [quick, high]
-num_batches = 4, batch_size = 2
+num_batches = 4, batch_size = 2, time_steps = 5
 ```
 
 The basic pseudocode is as follows:
