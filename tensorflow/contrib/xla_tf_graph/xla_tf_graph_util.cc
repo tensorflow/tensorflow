@@ -230,8 +230,9 @@ ConvertTfGraphToXlaSessionModule(const std::vector<XlaCompiler::Argument>& args,
 
   // Compile graph and build computation
   XlaCompiler::CompilationResult result;
-  TF_CHECK_OK(compiler->CompileGraph(GRAPH_NAME, std::move(graph), flr.get(),
-                                     args, &result));
+  TF_CHECK_OK(compiler->CompileGraph(XlaCompiler::CompileOptions(), GRAPH_NAME,
+                                     std::move(graph), flr.get(), args,
+                                     &result));
 
   return result.computation.Snapshot();
 }

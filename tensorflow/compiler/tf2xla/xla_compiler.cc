@@ -76,22 +76,9 @@ int64 XlaCompiler::NextStepId() {
   return next_step_id_++;
 }
 
-// Prunes any nodes from a function that are not dependencies of the _Retval
-// nodes. Used to prune stateful ops from within a function body, such as
-// variable initializers, that should not be executed unless requested.
-static void PruneUnreachableNodes(Graph* graph) {
-  std::unordered_set<const Node*> nodes;
-  for (Node* node : graph->nodes()) {
-    if (node->type_string() == "_Retval" ||
-        StringPiece(node->type_string()).ends_with("Send")) {
-      nodes.insert(node);
-    }
-  }
-  PruneForReverseReachability(graph, nodes);
-}
-
 Status XlaCompiler::CompileFunction(
-    FunctionLibraryRuntime* flr, const NameAttrList& function,
+    const XlaCompiler::CompileOptions& options, FunctionLibraryRuntime* flr,
+    const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     XlaCompiler::CompilationResult* result) {
   const string function_id = Canonicalize(function.name(), function.attr());
@@ -130,7 +117,7 @@ Status XlaCompiler::CompileFunction(
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
-      CompileGraph(function_id, std::move(graph), flr, args, result));
+      CompileGraph(options, function_id, std::move(graph), flr, args, result));
   VLOG(1) << "====================================================";
 
   return Status::OK();
@@ -379,7 +366,8 @@ Status BuildComputation(
 
 }  // namespace
 
-Status XlaCompiler::CompileGraph(string const& name,
+Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
+                                 string const& name,
                                  std::unique_ptr<Graph> graph,
                                  FunctionLibraryRuntime* flib,
                                  const std::vector<XlaCompiler::Argument>& args,
@@ -395,17 +383,13 @@ Status XlaCompiler::CompileGraph(string const& name,
                      options_.resolve_compile_time_constants);
   core::ScopedUnref context_unref(context);
 
-  result->tuple_arg = options_.use_tuple_arg;
+  result->tuple_arg = options.use_tuple_arg;
 
   std::vector<XlaContext::Argument> context_args;
-  TF_RETURN_IF_ERROR(BuildArguments(args, options_.use_tuple_arg, &builder,
+  TF_RETURN_IF_ERROR(BuildArguments(args, options.use_tuple_arg, &builder,
                                     &context_args, &result->input_mapping,
                                     &result->xla_input_shapes));
   context->set_args(std::move(context_args));
-
-  if (options_.prune_unreachable_nodes) {
-    PruneUnreachableNodes(graph.get());
-  }
 
   TF_RETURN_IF_ERROR(
       ExecuteGraph(context, std::move(graph), device_, flib, NextStepId()));
@@ -413,13 +397,13 @@ Status XlaCompiler::CompileGraph(string const& name,
   int num_nonconst_outputs;
   TF_RETURN_IF_ERROR(BuildComputation(
       context->retvals(), context->variables(), context->has_side_effects(),
-      options_.return_updated_values_for_all_variables, &builder,
+      options.return_updated_values_for_all_variables, &builder,
       &result->computation, &num_nonconst_outputs, &result->variable_updates));
 
   result->requires_runtime_context = context->has_context_parameter();
 
   // Tuple arguments and runtime context parameters are incompatible.
-  CHECK(!(options_.use_tuple_arg && result->requires_runtime_context));
+  CHECK(!(options.use_tuple_arg && result->requires_runtime_context));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;

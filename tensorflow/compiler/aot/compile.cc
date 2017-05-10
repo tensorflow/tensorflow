@@ -297,7 +297,8 @@ Status ConvertGraphToXla(xla::CompileOnlyClient* client,
       compiler.device_mgr(), Env::Default(), compiler.device(),
       graph->versions().producer(), &graph->flib_def(), OptimizerOptions()));
   XlaCompiler::CompilationResult result;
-  TF_RETURN_IF_ERROR(compiler.CompileGraph("tfcompile", std::move(graph),
+  TF_RETURN_IF_ERROR(compiler.CompileGraph(XlaCompiler::CompileOptions(),
+                                           "tfcompile", std::move(graph),
                                            flib_run.get(), xla_args, &result));
   *has_context_arg = result.requires_runtime_context;
   *computation = std::move(result.computation);

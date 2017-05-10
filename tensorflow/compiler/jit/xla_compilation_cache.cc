@@ -270,8 +270,9 @@ Status XlaCompilationCache::Compile(
         OptimizerOptions(), nullptr /* custom_kernel_creator */));
 
     entry->compiled = true;
-    entry->compilation_status = compiler_.CompileFunction(
-        flr.get(), function, args, &entry->compilation_result);
+    entry->compilation_status =
+        compiler_.CompileFunction(XlaCompiler::CompileOptions(), flr.get(),
+                                  function, args, &entry->compilation_result);
   }
   *compilation_result = &entry->compilation_result;
   if (entry->compilation_status.ok() && executable) {

@@ -78,7 +78,8 @@ static void DumpHloGraphForDebug(const std::vector<XlaCompiler::Argument>& args,
 
   // Compile graph
   XlaCompiler::CompilationResult result;
-  TF_CHECK_OK(compiler->CompileGraph("dump", std::move(graph), flr.get(), args,
+  TF_CHECK_OK(compiler->CompileGraph(XlaCompiler::CompileOptions(), "dump",
+                                     std::move(graph), flr.get(), args,
                                      &result));
 
   // Convert to hlo

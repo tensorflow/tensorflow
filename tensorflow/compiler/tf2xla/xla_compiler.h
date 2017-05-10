@@ -198,6 +198,19 @@ class XlaCompiler {
     // computation.
     bool resolve_compile_time_constants = true;
 
+    // If not nullptr, populate_resource_manager is called with the
+    // compilation device's resource manager when the compilation
+    // device is created, and can be used to create metadata objects
+    // that can be accessed by XLA op kernels.
+    std::function<Status(ResourceMgr*)>* populate_resource_manager = nullptr;
+  };
+
+  explicit XlaCompiler(Options options);
+  ~XlaCompiler();
+
+  // Options pertaining to an individual call to CompileGraph() or
+  // CompileFunction().
+  struct CompileOptions {
     // If `use_tuple_arg` is true, a single tuple parameter will be used for all
     // arguments; if false, each argument gets its own parameter.
     bool use_tuple_arg = false;
@@ -208,22 +221,7 @@ class XlaCompiler {
     // modified by the computation. Used when compiling loop bodies to ensure
     // the input and output signatures match.
     bool return_updated_values_for_all_variables = false;
-
-    // If 'prune_unreachable_nodes' is true, then nodes that are not
-    // dependencies of graph's _Retval nodes will be pruned before compilation.
-    // This is useful to prune stateful operators that should not be executed
-    // from a function body.
-    bool prune_unreachable_nodes = false;
-
-    // If not nullptr, populate_resource_manager is called with the
-    // compilation device's resource manager when the compilation
-    // device is created, and can be used to create metadata objects
-    // that can be accessed by XLA op kernels.
-    std::function<Status(ResourceMgr*)>* populate_resource_manager = nullptr;
   };
-
-  explicit XlaCompiler(Options options);
-  ~XlaCompiler();
 
   // Compiles a Tensorflow function `fn_name_attrs` into an XLA computation.
   // `args` describes the arguments to the function, each of which must either
@@ -235,7 +233,8 @@ class XlaCompiler {
   // arguments are returned as host memory tensors in the output list and are
   // not included in the XLA computation's outputs. The XLA computation is
   // null if there are no data-dependent outputs and no side effects.
-  Status CompileFunction(FunctionLibraryRuntime* flr,
+  Status CompileFunction(const CompileOptions& options,
+                         FunctionLibraryRuntime* flr,
                          const NameAttrList& fn_name_attrs,
                          const std::vector<Argument>& args,
                          CompilationResult* result);
@@ -243,8 +242,8 @@ class XlaCompiler {
   // Compiles a tensorflow::Graph into an xla::Computation.
   // Similar to CompileFunction, but takes a Graph as input rather than a
   // function.
-  Status CompileGraph(string const& name, std::unique_ptr<Graph> graph,
-                      FunctionLibraryRuntime* flr,
+  Status CompileGraph(const CompileOptions& options, string const& name,
+                      std::unique_ptr<Graph> graph, FunctionLibraryRuntime* flr,
                       const std::vector<Argument>& args,
                       CompilationResult* result);
 

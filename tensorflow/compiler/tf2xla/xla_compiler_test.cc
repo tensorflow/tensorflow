@@ -131,7 +131,8 @@ TEST_F(XlaCompilerTest, EmptyReturnValues) {
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(compiler.CompileGraph("add", std::move(graph), flr.get(),
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph), flr.get(),
                                      /*args=*/{}, &result));
 
   // No computation should be generated.
@@ -163,8 +164,9 @@ TEST_F(XlaCompilerTest, Simple) {
   auto flr = BuildFunctionLibraryRuntime(compiler);
 
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(
-      compiler.CompileGraph("add", std::move(graph), flr.get(), args, &result));
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph), flr.get(), args,
+                                     &result));
 
   // Tests that the generated computation works.
   std::unique_ptr<xla::Literal> param0_literal =
@@ -219,7 +221,8 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     CopyGraph(*graph, graph_copy.get());
 
     XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph("constants", std::move(graph_copy),
+    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(),
+                                       "constants", std::move(graph_copy),
                                        flr.get(), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
@@ -256,7 +259,8 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     CopyGraph(*graph, graph_copy.get());
 
     XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph("constants", std::move(graph_copy),
+    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(),
+                                       "constants", std::move(graph_copy),
                                        flr.get(), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
@@ -317,7 +321,8 @@ TEST_F(XlaCompilerTest, ResourceManager) {
   EXPECT_EQ(0, resource->Get());
 
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(compiler.CompileGraph("dummy", std::move(graph), flr.get(), args,
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "dummy",
+                                     std::move(graph), flr.get(), args,
                                      &result));
 
   EXPECT_EQ(1, resource->Get());
