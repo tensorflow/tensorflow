@@ -633,16 +633,27 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                           fc_core.make_input_layer(features,
                                                    [real_valued]).eval())
 
-  def testRealValuedColumnSparse(self):
-    sparse_real_valued = feature_column._real_valued_var_len_column(
+  def testRealValuedColumnDense(self):
+    var_len_real_valued = feature_column._real_valued_var_len_column(
         "rating", default_value=-1)
-    rating = [[2.0], [-1.0], [5.0]]
+    rating = np.array([[0., 1., 2., -1.],
+                       [3., 4., 5., 6.]])
     features = {"rating": constant_op.constant(rating)}
-    with self.assertRaisesRegexp(
-        ValueError,
-        "Error creating input layer for column: rating.*"):
-      feature_column_ops.input_from_feature_columns(features,
-                                                    [sparse_real_valued])
+    with self.test_session() as sess:
+      output = sess.run(feature_column_ops.input_from_feature_columns(
+          features, [var_len_real_valued]))
+    self.assertAllClose(rating, output)
+
+  def testRealValuedColumnTypeConversion(self):
+    var_len_real_valued = feature_column._real_valued_var_len_column(
+        "rating", default_value=-1)
+    rating = np.array([[0, 1, 2, -1],
+                       [3, 4, 5, 6]])
+    features = {"rating": constant_op.constant(rating, dtype=dtypes.int64)}
+    with self.test_session() as sess:
+      output = sess.run(feature_column_ops.input_from_feature_columns(
+          features, [var_len_real_valued]))
+    self.assertAllClose(rating.astype(np.float32), output)
 
   def testRealValuedColumnWithNormalizer(self):
     real_valued = feature_column.real_valued_column(
@@ -1266,6 +1277,19 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     with self.test_session() as sess:
       model_inputs = sess.run(model_input_tensor)
     self.assertAllClose(measurement_input, model_inputs)
+
+  def testRealValuedVarLenColumn(self):
+    var_len_real_valued = feature_column._real_valued_var_len_column(
+        "rating", default_value=-1)
+    rating = np.array([[0., 1., 2., -1.],
+                       [3., 4., 5., 6.]])
+    features = {"rating": constant_op.constant(rating)}
+    with self.test_session() as sess:
+      output = sess.run(
+          feature_column_ops.sequence_input_from_feature_columns(
+              features, [var_len_real_valued]))
+    reshaped_rating = np.reshape(rating, [2, 4, 1])
+    self.assertAllClose(reshaped_rating, output)
 
   def testRealValuedColumnWithExtraDimensions(self):
     batch_size = 4

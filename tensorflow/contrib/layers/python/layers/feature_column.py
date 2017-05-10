@@ -1649,6 +1649,15 @@ class _RealValuedVarLenColumn(_FeatureColumn, collections.namedtuple(
     input_tensor = self._normalized_input_tensor(columns_to_tensors[self.name])
     columns_to_tensors[self] = math_ops.to_float(input_tensor)
 
+  # pylint: disable=unused-argument
+  def _to_dnn_input_layer(self,
+                          input_tensor,
+                          weight_collections=None,
+                          trainable=True,
+                          output_rank=2):
+    return _reshape_real_valued_tensor(
+        self._to_dense_tensor(input_tensor), output_rank, self.name)
+
   def _to_dense_tensor(self, input_tensor):
     if not self.is_sparse:
       return input_tensor

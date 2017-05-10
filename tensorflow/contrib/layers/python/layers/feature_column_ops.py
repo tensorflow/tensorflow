@@ -856,7 +856,8 @@ def _add_variable_collection(weight_collections):
 # pylint: disable=protected-access
 _SUPPORTED_SEQUENCE_COLUMNS = (fc._OneHotColumn,
                                fc._EmbeddingColumn,
-                               fc._RealValuedColumn)
+                               fc._RealValuedColumn,
+                               fc._RealValuedVarLenColumn)
 
 _FORBIDDEN_SEQUENCE_COLUMNS = (fc._ScatteredEmbeddingColumn,
                                fc._BucketizedColumn,
