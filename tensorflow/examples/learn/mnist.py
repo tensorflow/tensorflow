@@ -86,24 +86,24 @@ def main(unused_args):
   ### Linear classifier.
   feature_columns = learn.infer_real_valued_columns_from_input(
       mnist.train.images)
-  classifier = learn.LinearClassifier(
-      feature_columns=feature_columns, n_classes=10)
+  classifier = learn.SKCompat(learn.LinearClassifier(
+      feature_columns=feature_columns, n_classes=10))
   classifier.fit(mnist.train.images,
                  mnist.train.labels.astype(np.int32),
                  batch_size=100,
                  steps=1000)
   score = metrics.accuracy_score(mnist.test.labels,
-                                 list(classifier.predict(mnist.test.images)))
+                                 classifier.predict(mnist.test.images)['classes'])
   print('Accuracy: {0:f}'.format(score))
 
   ### Convolutional network
-  classifier = learn.Estimator(model_fn=conv_model)
+  classifier = learn.SKCompat(learn.Estimator(model_fn=conv_model))
   classifier.fit(mnist.train.images,
                  mnist.train.labels,
                  batch_size=100,
                  steps=20000)
   score = metrics.accuracy_score(mnist.test.labels,
-                                 list(classifier.predict(mnist.test.images)))
+                                 classifier.predict(mnist.test.images)['classes'])
   print('Accuracy: {0:f}'.format(score))
 
 
