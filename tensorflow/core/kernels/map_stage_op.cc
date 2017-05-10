@@ -251,7 +251,7 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapStage").HostMemory("key")
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("MapStage").HostMemory("key")
                       .Device(DEVICE_SYCL), MapStageOp<false>);
-REGISTER_KERNEL_BUILDER(Name("MapStage").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("OrderedMapStage").HostMemory("key")
                       .Device(DEVICE_SYCL), MapStageOp<true>);
 
 #endif // TENSORFLOW_USE_SYCL
