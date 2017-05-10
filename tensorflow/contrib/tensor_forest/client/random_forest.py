@@ -117,6 +117,7 @@ def get_model_fn(params,
                  graph_builder_class,
                  device_assigner,
                  weights_name=None,
+                 keys_name=None,
                  early_stopping_rounds=100,
                  num_trainers=1,
                  trainer_id=0,
@@ -129,6 +130,10 @@ def get_model_fn(params,
     weights = None
     if weights_name and weights_name in features:
       weights = features.pop(weights_name)
+
+    keys = None
+    if keys_name and keys_name in features:
+      keys = features.pop(keys_name)
 
     # If we're doing eval, optionally ignore device_assigner.
     # Also ignore device assigner if we're exporting (mode == INFER)
@@ -152,6 +157,9 @@ def get_model_fn(params,
       if report_feature_importances:
         inference[eval_metrics.FEATURE_IMPORTANCE_NAME] = (
             graph_builder.feature_importances())
+
+      if keys is not None:
+        inference[keys_name] = keys
 
     # labels might be None if we're doing prediction (which brings up the
     # question of why we force everything to adhere to a single model_fn).
@@ -236,7 +244,7 @@ class TensorForestEstimator(estimator.Estimator):
 
   def __init__(self, params, device_assigner=None, model_dir=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
-               config=None, weights_name=None,
+               config=None, weights_name=None, keys_name=None,
                feature_engineering_fn=None,
                early_stopping_rounds=100,
                num_trainers=1, trainer_id=0,
@@ -260,6 +268,9 @@ class TensorForestEstimator(estimator.Estimator):
       weights_name: A string defining feature column name representing
         weights. Will be multiplied by the loss of the example. Used to
         downweight or boost examples during training.
+      keys_name: A string naming one of the features to strip out and
+        pass through into the inference/eval results dict.  Useful for
+        associating specific examples with their prediction.
       feature_engineering_fn: Feature engineering function. Takes features and
         labels which are the output of `input_fn` and returns features and
         labels which will be fed into the model.
@@ -284,6 +295,7 @@ class TensorForestEstimator(estimator.Estimator):
             graph_builder_class,
             device_assigner,
             weights_name=weights_name,
+            keys_name=keys_name,
             early_stopping_rounds=early_stopping_rounds,
             num_trainers=num_trainers,
             trainer_id=trainer_id,
