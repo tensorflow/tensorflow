@@ -1128,19 +1128,23 @@ class DebugAnalyzer(object):
 
     lines.append(head)
 
-    for item in source_list:
-      path_attributes = [debugger_cli_common.MenuItem(
-          None, "ps %s -b %d" % (item[0], item[5])), color]
+    for (file_path, _, num_nodes, num_tensors, num_dumps,
+         first_line_num) in source_list:
+      path_attributes = [color]
+      if source_utils.is_extension_uncompiled_python_source(file_path):
+        path_attributes.append(
+            debugger_cli_common.MenuItem(None, "ps %s -b %d" %
+                                         (file_path, first_line_num)))
 
-      line = RL(item[0], path_attributes)
+      line = RL(file_path, path_attributes)
       line += " " * (path_column_width - len(line))
       line += RL(
-          str(item[2]) + " " * (num_nodes_column_width - len(str(item[2]))),
+          str(num_nodes) + " " * (num_nodes_column_width - len(str(num_nodes))),
           color)
       line += RL(
-          str(item[3]) + " " * (num_tensors_column_width - len(str(item[3]))),
-          color)
-      line += RL(str(item[4]), color)
+          str(num_tensors) + " " *
+          (num_tensors_column_width - len(str(num_tensors))), color)
+      line += RL(str(num_dumps), color)
       lines.append(line)
     lines.append(RL())
 

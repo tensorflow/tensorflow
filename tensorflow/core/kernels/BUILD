@@ -17,7 +17,10 @@ licenses(["notice"])  # Apache 2.0
 
 package_group(
     name = "friends",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/brain/contrib/...",
+        "//tensorflow/...",
+    ],
 )
 
 load(
@@ -41,6 +44,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -359,10 +363,35 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "split_lib_hdrs",
+    hdrs = [
+        "split_lib.h",
+    ],
+    deps = [
+        ":eigen_helpers",
+        ":ops_util_hdrs",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "typed_queue",
     hdrs = ["typed_queue.h"],
     deps = [
         ":queue_base",
+    ],
+)
+
+cc_library(
+    name = "training_op_helpers",
+    srcs = ["training_op_helpers.cc"],
+    hdrs = ["training_op_helpers.h"],
+    visibility = [":friends"],
+    deps = [
+        ":variable_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -373,6 +402,15 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "warn_about_ints",
+    srcs = ["warn_about_ints.cc"],
+    hdrs = ["warn_about_ints.h"],
+    deps = [
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -1028,6 +1066,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/debug:debug_io_utils",
     ],
 )
 
@@ -1039,6 +1078,25 @@ tf_cuda_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":quantize_and_dequantize_op",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "dequantize_op_test",
+    size = "small",
+    srcs = ["dequantize_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantized_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -1269,6 +1327,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "lookup",
+    deps = [
+        ":lookup_table_init_op",
+        ":lookup_table_op",
+    ],
+)
+
 DATA_FLOW_DEPS = [
     ":bounds_check",
     ":concat_lib",
@@ -1392,10 +1458,10 @@ LOOKUP_DEPS = [
     ":initializable_lookup_table",
     ":lookup_util",
     "//tensorflow/core:core_cpu",
-    "//tensorflow/core:data_flow_ops_op_lib",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
+    "//tensorflow/core:lookup_ops_op_lib",
 ]
 
 tf_kernel_library(
@@ -1971,6 +2037,24 @@ cc_library(
     ],
 )
 
+tf_kernel_library(
+    name = "cuda_solvers",
+    srcs = ["cuda_solvers.cc"],
+    hdrs = ["cuda_solvers.h"],
+    # @local_config_cuda//cuda:cusolver, //third_party/eigen3:blas,
+    # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
+    # and f2c helper functions in global namespace. Tell the compiler to
+    # allow multiple definitions when linking this.
+    linkopts = ["-Wl,-zmuldefs"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "@local_config_cuda//cuda:cusolver",
+    ],
+)
+
 LINALG_DEPS = [
     ":linalg_ops_common",
     "//third_party/eigen3",
@@ -1982,7 +2066,10 @@ LINALG_DEPS = [
 tf_kernel_library(
     name = "cholesky_op",
     prefix = "cholesky_op",
-    deps = LINALG_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+        ":matrix_band_part_op",
+    ]) + LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -2030,7 +2117,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_triangular_solve_op",
     prefix = "matrix_triangular_solve_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+    ]),
 )
 
 tf_kernel_library(
@@ -2171,6 +2260,7 @@ cc_library(
         ":batch_matmul_op",
         ":betainc_op",
         ":bincount_op",
+        ":bucketize_op",
         ":cast_op",
         ":check_numerics_op",
         ":cross_op",
@@ -2209,6 +2299,12 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "bucketize_op",
+    prefix = "bucketize_op",
+    deps = MATH_DEPS,
+)
+
+tf_kernel_library(
     name = "cast_op",
     prefix = "cast_op",
     deps = MATH_DEPS,
@@ -2237,7 +2333,9 @@ tf_kernel_library(
     prefix = "fft_ops",
     deps = MATH_DEPS + [
         "//tensorflow/core:spectral_ops_op_lib",
-    ],
+    ] + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cufft_plugin",
+    ]),
 )
 
 tf_kernel_library(
@@ -2262,6 +2360,8 @@ tf_kernel_library(
         "//conditions:default": [],
     }) + if_mkl([
         "//third_party/mkl:intel_binary_blob",
+    ]) + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]),
 )
 
@@ -2541,7 +2641,10 @@ tf_kernel_library(
             "@libxsmm_archive//:xsmm_avx",
         ],
         "//conditions:default": [],
-    }),
+    }) + if_cuda([
+        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/core/platform/default/build_config:cudnn_plugin",
+    ]),
 )
 
 tf_kernel_library(
@@ -2655,13 +2758,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "softplus_op",
     prefix = "softplus_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [":warn_about_ints"],
 )
 
 tf_kernel_library(
     name = "softsign_op",
     prefix = "softsign_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [":warn_about_ints"],
 )
 
 tf_kernel_library(
@@ -3011,6 +3114,18 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "stateless_random_ops",
+    prefix = "stateless_random_ops",
+    deps = [
+        ":bounds_check",
+        ":random_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stateless_random_ops_op_lib",
     ],
 )
 
@@ -3421,6 +3536,7 @@ tf_kernel_library(
     prefix = "training_ops",
     deps = [
         ":bounds_check",
+        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3537,13 +3653,243 @@ tf_kernel_library(
     ],
 )
 
+filegroup(
+    name = "spectrogram_test_data",
+    srcs = [
+        "spectrogram_test_data/short_test_segment.wav",
+        "spectrogram_test_data/short_test_segment_spectrogram.csv.bin",
+        "spectrogram_test_data/short_test_segment_spectrogram_400_200.csv.bin",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "spectrogram",
+    srcs = ["spectrogram.cc"],
+    hdrs = ["spectrogram.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/fft2d:fft2d_headers",
+        "@fft2d//:fft2d",
+    ],
+)
+
+cc_library(
+    name = "spectrogram_test_utils",
+    testonly = 1,
+    srcs = ["spectrogram_test_utils.cc"],
+    hdrs = ["spectrogram_test_utils.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_binary(
+    name = "spectrogram_convert_test_data",
+    testonly = 1,
+    srcs = ["spectrogram_convert_test_data.cc"],
+    deps = [
+        ":spectrogram_test_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "spectrogram_test",
+    size = "medium",
+    srcs = ["spectrogram_test.cc"],
+    data = [":spectrogram_test_data"],
+    deps = [
+        ":spectrogram",
+        ":spectrogram_test_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "spectrogram_op",
+    prefix = "spectrogram_op",
+    deps = [
+        ":spectrogram",
+        "//tensorflow/core:audio_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_cc_test(
+    name = "spectrogram_op_test",
+    size = "small",
+    srcs = ["spectrogram_op_test.cc"],
+    deps = [
+        ":ops_util",
+        ":spectrogram_op",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "mfcc_dct",
+    srcs = ["mfcc_dct.cc"],
+    hdrs = ["mfcc_dct.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "mfcc_dct_test",
+    size = "small",
+    srcs = ["mfcc_dct_test.cc"],
+    deps = [
+        ":mfcc_dct",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "mfcc_mel_filterbank",
+    srcs = ["mfcc_mel_filterbank.cc"],
+    hdrs = ["mfcc_mel_filterbank.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "mfcc_mel_filterbank_test",
+    size = "small",
+    srcs = ["mfcc_mel_filterbank_test.cc"],
+    deps = [
+        ":mfcc_mel_filterbank",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "mfcc",
+    srcs = ["mfcc.cc"],
+    hdrs = ["mfcc.h"],
+    copts = tf_copts(),
+    deps = [
+        ":mfcc_dct",
+        ":mfcc_mel_filterbank",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "mfcc_test",
+    size = "small",
+    srcs = ["mfcc_test.cc"],
+    deps = [
+        ":mfcc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_test_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "mfcc_op",
+    prefix = "mfcc_op",
+    deps = [
+        ":mfcc",
+        "//tensorflow/core:audio_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+    alwayslink = 1,
+)
+
+tf_cuda_cc_test(
+    name = "mfcc_op_test",
+    size = "small",
+    srcs = ["mfcc_op_test.cc"],
+    deps = [
+        ":mfcc_op",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "audio",
+    deps = [
+        ":decode_wav_op",
+        ":encode_wav_op",
+        ":mfcc_op",
+        ":spectrogram_op",
+    ],
+)
+
 # Android libraries -----------------------------------------------------------
 
 # Changes to the Android srcs here should be replicated in
 # tensorflow/contrib/makefile/tf_op_files.txt
 # LINT.IfChange
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "avgpooling_op.h",
         "bounds_check.h",
@@ -3570,6 +3916,11 @@ filegroup(
         "queue_op.h",
         "typed_queue.h",
     ],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
 )
 
 # Core kernels we want on Android. Only a subset of kernels to keep
@@ -3717,6 +4068,7 @@ filegroup(
         "relu_op.h",
         "relu_op_functor.h",
         "resize_bilinear_op.h",
+        "resize_nearest_neighbor_op.h",
         "reverse_op.h",
         "save_restore_tensor.h",
         "softplus_op.h",
@@ -3726,9 +4078,11 @@ filegroup(
         "tensor_array.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
+        "training_op_helpers.h",
         "training_ops.h",
         "transpose_functor.h",
         "transpose_op.h",
+        "warn_about_ints.h",
         "where_op.h",
         "xent_op.h",
     ],
@@ -3825,6 +4179,7 @@ filegroup(
         "queue_base.cc",
         "queue_ops.cc",
         "random_op.cc",
+        "reduction_ops_all.cc",
         "reduction_ops_any.cc",
         "reduction_ops_common.cc",
         "reduction_ops_max.cc",
@@ -3861,9 +4216,11 @@ filegroup(
         "tile_ops_cpu_impl_6.cc",
         "tile_ops_cpu_impl_7.cc",
         "topk_op.cc",
+        "training_op_helpers.cc",
         "training_ops.cc",
         "transpose_functor_cpu.cc",
         "transpose_op.cc",
+        "warn_about_ints.cc",
         "where_op.cc",
         "xent_op.cc",
         ":android_extended_ops_headers",
@@ -3940,6 +4297,7 @@ filegroup(
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
+            "spectrogram_convert_test_data.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             "scatter_nd_op*",
@@ -4540,6 +4898,46 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_fused_batch_norm_op",
+    srcs = ["mkl_fused_batch_norm_op.cc"],
+    deps = NN_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_concat_op",
+    prefix = "mkl_concat_op",
+    deps = ARRAY_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_reshape_op",
+    prefix = "mkl_reshape_op",
+    deps = ARRAY_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_identity_op",
+    prefix = "mkl_identity_op",
+    deps = ARRAY_DEPS + [
+        "//third_party/mkl:intel_binary_blob",
+    ],
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_lrn_op",
+    prefix = "mkl_lrn_op",
+    deps = NN_DEPS + [
         "//third_party/mkl:intel_binary_blob",
     ],
 )

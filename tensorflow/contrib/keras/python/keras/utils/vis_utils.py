@@ -18,17 +18,24 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-
+import sys
 
 try:
   # pydot-ng is a fork of pydot that is better maintained.
   import pydot_ng as pydot  # pylint: disable=g-import-not-at-top
 except ImportError:
   # Fall back on pydot if necessary.
+  # Silence a `print` statement that occurs in case of import error,
+  # by temporarily replacing sys.stdout.
+  _stdout = sys.stdout
+  sys.stdout = sys.stderr
   try:
     import pydot  # pylint: disable=g-import-not-at-top
   except ImportError:
     pydot = None
+  finally:
+    # Restore sys.stdout.
+    sys.stdout = _stdout
 
 
 def _check_pydot():

@@ -43,9 +43,6 @@ from tensorflow.tensorboard.backend import http_util
 from tensorflow.tensorboard.backend import process_graph
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
-from tensorflow.tensorboard.plugins.debugger import debugger_plugin
-from tensorflow.tensorboard.plugins.projector import projector_plugin
-from tensorflow.tensorboard.plugins.text import text_plugin
 
 
 DEFAULT_SIZE_GUIDANCE = {
@@ -97,17 +94,26 @@ class _OutputFormat(object):
   CSV = 'csv'
 
 
-def standard_tensorboard_wsgi(logdir, purge_orphaned_data, reload_interval):
-  """Construct a TensorBoardWSGIApp with standard plugins and multiplexer."""
+def standard_tensorboard_wsgi(
+    logdir,
+    purge_orphaned_data,
+    reload_interval,
+    plugins):
+  """Construct a TensorBoardWSGIApp with standard plugins and multiplexer.
+
+  Args:
+    logdir: The path to the directory containing events files.
+    purge_orphaned_data: Whether to purge orphaned data.
+    reload_interval: The interval at which the backend reloads more data in
+        seconds.
+    plugins: A list of plugins for TensorBoard to initialize.
+
+  Returns:
+    The new TensorBoard WSGI application.
+  """
   multiplexer = event_multiplexer.EventMultiplexer(
       size_guidance=DEFAULT_SIZE_GUIDANCE,
       purge_orphaned_data=purge_orphaned_data)
-
-  plugins = [
-      debugger_plugin.DebuggerPlugin(),
-      projector_plugin.ProjectorPlugin(),
-      text_plugin.TextPlugin(),
-  ]
 
   return TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval)
 

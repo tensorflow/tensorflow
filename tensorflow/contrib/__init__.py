@@ -56,7 +56,9 @@ from tensorflow.contrib import seq2seq
 from tensorflow.contrib import slim
 from tensorflow.contrib import solvers
 from tensorflow.contrib import sparsemax
+from tensorflow.contrib import staging
 from tensorflow.contrib import stat_summarizer
+from tensorflow.contrib import stateless
 from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard
 from tensorflow.contrib import testing
@@ -65,6 +67,11 @@ from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.ndlstm import python as ndlstm
 from tensorflow.contrib.specs import python as specs
+
+from tensorflow.python.util.lazy_loader import LazyLoader
+ffmpeg = LazyLoader("ffmpeg", globals(),
+                    "tensorflow.contrib.ffmpeg")
+del LazyLoader
 
 del absolute_import
 del division

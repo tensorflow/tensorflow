@@ -25,7 +25,9 @@ namespace grappler {
 // Automatically parallelize a graph by splitting in the batch dimension.
 class AutoParallel : public GraphOptimizer {
  public:
-  AutoParallel(int num_replicas) : num_replicas_(num_replicas) {}
+  AutoParallel(int num_replicas) : num_replicas_(num_replicas) {
+    CHECK(num_replicas_ >= 2);
+  }
   ~AutoParallel() override {}
 
   string name() const override { return "autoparallel"; };

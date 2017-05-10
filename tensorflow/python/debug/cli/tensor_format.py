@@ -24,6 +24,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.lib import debug_data
 
 _NUMPY_OMISSION = "...,"
 _NUMPY_DEFAULT_EDGE_ITEMS = 3
@@ -112,10 +113,10 @@ def format_tensor(tensor,
           (8 + proper_len + 1, 8 + proper_len + 1 + debug_op_len, "yellow")
       ]
 
-  if tensor is None:
+  if isinstance(tensor, debug_data.InconvertibleTensorProto):
     if lines:
       lines.append("")
-    lines.append("Uninitialized tensor")
+    lines.extend(str(tensor).split("\n"))
     return debugger_cli_common.RichTextLines(lines)
   elif not isinstance(tensor, np.ndarray):
     # If tensor is not a np.ndarray, return simple text-line representation of

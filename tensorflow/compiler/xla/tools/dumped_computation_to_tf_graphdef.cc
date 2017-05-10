@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Usage: dumped_computation_to_tf_graph \
-//          --output_dir=/tmp/graphs/ some_binary_snapshot_proto*
+// Usage: dumped_computation_to_tf_graph some_binary_snapshot_proto*
 //
 // Dumps a tensorflow GraphDef in text format for a snapshot computation. The
 // dumped graph is an HLO computation with HLO instructions as nodes and can be
@@ -31,87 +30,31 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/legacy_flags/hlo_graph_dumper_flags.h"
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/tools/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 
 using tensorflow::Env;
-using tensorflow::io::JoinPath;
-using tensorflow::strings::StrAppend;
 
 namespace xla {
 namespace tools {
-namespace {
 
-// Dumps all computations in the module to the given directory.
-void DumpTfGraph(const HloModule& module, const string& directory_path) {
-  Env* env = Env::Default();
-  TF_CHECK_OK(env->RecursivelyCreateDir(directory_path));
-  string fname = module.name();
-  std::replace(fname.begin(), fname.end(), '/', '_');
-  // Since the file name will be used as the top-level scope name, clean it up
-  // to make it a valid scope name.
-  CleanNodeName(&fname);
-  StrAppend(&fname, ".pbtxt");
-  string path = JoinPath(directory_path, fname);
-  HloTfGraphBuilder builder;
-  TF_CHECK_OK(builder.AddComputation(*module.entry_computation()));
-  std::cout << "Dumping " << module.name() << " to " << path << std::endl;
-  TF_CHECK_OK(WriteTextProto(env, path, builder.GetGraphDef()));
-}
-
-}  // namespace
-
-void RealMain(tensorflow::gtl::ArraySlice<char*> args,
-              const string& output_dir) {
-  LocalClient* client = ClientLibrary::LocalClientOrDie();
-  // To avoid adding a new flag, use local service and lower the computations
-  // locally.
-  LocalService* local_service =
-      ClientLibrary::GetXlaService(client->platform());
-  // Build HloModule for each Computation and dump to file.
+void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
+  Client* client = ClientLibrary::LocalClientOrDie();
   for (char* arg : args) {
-    SessionModule session_module;
-    TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg,
-                                            &session_module));
-    auto computation_status = client->LoadSnapshot(session_module);
-    if (!computation_status.ok()) {
-      fprintf(stderr, "could not load snapshot for %s: %s\n", arg,
-              computation_status.status().ToString().c_str());
-      continue;
-    }
-    Computation computation = computation_status.ConsumeValueOrDie();
-
-    StatusOr<UserComputation*> user_computation_status =
-        local_service->computation_tracker().Resolve(computation.handle());
-    if (!user_computation_status.ok()) {
-      fprintf(stderr,
-              "failed to resolve computation to UserComputation %s: %s\n", arg,
-              user_computation_status.status().ToString().c_str());
-      continue;
-    }
-
-    auto* user_computation = user_computation_status.ValueOrDie();
-    StatusOr<std::unique_ptr<HloModule>> module_status =
-        local_service->computation_tracker().BuildHloModule(
-            user_computation->GetVersionedHandle());
-
-    if (!module_status.ok()) {
-      fprintf(stderr, "failed to build HloModule %s: %s\n", arg,
-              module_status.status().ToString().c_str());
-      continue;
-    }
-
-    DumpTfGraph(*module_status.ValueOrDie(), output_dir);
+    SessionModule module;
+    TF_CHECK_OK(
+        tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg, &module));
+    Computation computation = client->LoadSnapshot(module).ConsumeValueOrDie();
+    ComputationStats stats =
+        client->GetComputationStats(computation).ConsumeValueOrDie();
+    fprintf(stdout, ">>> %s :: %s\n", arg, stats.DebugString().c_str());
   }
 }
 
@@ -119,21 +62,17 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args,
 }  // namespace xla
 
 int main(int argc, char** argv) {
-  string output_dir = "";
-  const std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("output_dir", &output_dir,
-                       "Directory to write GraphDef data to."),
-  };
-
-  string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_ok || output_dir.empty()) {
-    LOG(QFATAL) << usage;
-  }
   tensorflow::port::InitMain(argv[0], &argc, &argv);
+
+  xla::legacy_flags::ServiceFlags* flags = xla::legacy_flags::GetServiceFlags();
+  flags->xla_generate_hlo_graph = ".*";
+
+  xla::legacy_flags::HloGraphDumperFlags* dumper_flags =
+      xla::legacy_flags::GetHloGraphDumperFlags();
+  dumper_flags->xla_hlo_dump_as_graphdef = true;
 
   tensorflow::gtl::ArraySlice<char*> args(argv, argc);
   args.pop_front();  // Pop off the binary name, argv[0]
-  xla::tools::RealMain(args, output_dir);
+  xla::tools::RealMain(args);
   return 0;
 }

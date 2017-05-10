@@ -126,7 +126,11 @@ string PrintString(const string& str) {
   return strings::StrCat("\"", str_util::CEscape(str), "\"");
 }
 
-string PrintTensorShape(const TensorShape& shape) {
+string PrintTensorShape(const TensorShapeProto& shape_proto) {
+  PartialTensorShape shape(shape_proto);
+  if (shape.IsIdenticalTo(PartialTensorShape())) {
+    return "::tensorflow::PartialTensorShape() /* unknown */";
+  }
   string ret = "{";
   for (int d = 0; d < shape.dims(); ++d) {
     if (d > 0) strings::StrAppend(&ret, ", ");
@@ -188,6 +192,12 @@ string PrintTensor(const TensorProto& tensor_proto) {
   }
 }
 
+string PrintTensorProto(const TensorProto& proto) {
+  return strings::StrCat("Input::Initializer(", "{", PrintTensor(proto), "}, ",
+                         PrintTensorShape(proto.tensor_shape()),
+                         ").AsTensorProto()");
+}
+
 string PrintAttrValue(string op, const AttrValue& attr_value) {
   switch (attr_value.value_case()) {
     case AttrValue::kS:
@@ -203,12 +213,9 @@ string PrintAttrValue(string op, const AttrValue& attr_value) {
     case AttrValue::kType:
       return EnumName_DataType(attr_value.type());
     case AttrValue::kShape:
-      return PrintTensorShape(TensorShape(attr_value.shape()));
+      return PrintTensorShape(attr_value.shape());
     case AttrValue::kTensor:
-      return strings::StrCat(
-          "Input::Initializer(", "{", PrintTensor(attr_value.tensor()), "}, ",
-          PrintTensorShape(TensorShape(attr_value.tensor().tensor_shape())),
-          ").AsTensorProto()");
+      return PrintTensorProto(attr_value.tensor());
     case AttrValue::kList: {
       string ret = "{";
       if (attr_value.list().s_size() > 0) {
@@ -241,8 +248,14 @@ string PrintAttrValue(string op, const AttrValue& attr_value) {
       } else if (attr_value.list().shape_size() > 0) {
         for (int i = 0; i < attr_value.list().shape_size(); ++i) {
           if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(
-              &ret, PrintTensorShape(TensorShape(attr_value.list().shape(i))));
+          strings::StrAppend(&ret,
+                             PrintTensorShape(attr_value.list().shape(i)));
+        }
+      } else if (attr_value.list().tensor_size() > 0) {
+        for (int i = 0; i < attr_value.list().tensor_size(); ++i) {
+          if (i > 0) strings::StrAppend(&ret, ", ");
+          strings::StrAppend(&ret,
+                             PrintTensorProto(attr_value.list().tensor(i)));
         }
       }
       strings::StrAppend(&ret, "}");
@@ -292,8 +305,8 @@ std::pair<const char*, bool> AttrTypeName(StringPiece attr_type) {
           {"list(bool)", {"gtl::ArraySlice<bool>", true}},
           {"type", {"DataType", false}},
           {"list(type)", {"DataTypeSlice", true}},
-          {"shape", {"TensorShape", false}},
-          {"list(shape)", {"gtl::ArraySlice<TensorShape>", true}},
+          {"shape", {"PartialTensorShape", false}},
+          {"list(shape)", {"gtl::ArraySlice<PartialTensorShape>", true}},
           {"tensor", {"TensorProto", true}},
           {"list(tensor)", {"gtl::ArraySlice<TensorProto>", true}},
           {"func", {"NameAttrList", true}},
@@ -717,7 +730,7 @@ void OpInfo::GetOutput(string* out) const {
     // One output, no need for NameRangeMap
     if (is_list_output[0]) {
       strings::StrAppend(out,
-                         "  for (int64 i = 0; i < ret->num_outputs(); ++i)\n");
+                         "  for (int32 i = 0; i < ret->num_outputs(); ++i)\n");
       strings::StrAppend(out, "    this->", output_names[0],
                          ".push_back(Output(ret, i));\n");
     } else {
@@ -740,7 +753,7 @@ void OpInfo::GetOutput(string* out) const {
     const string arg_range = strings::StrCat(
         "_outputs_range[\"", graph_op_def.output_arg(i).name(), "\"]");
     if (is_list_output[i]) {
-      strings::StrAppend(out, "  for (int64 i = ", arg_range, ".first; i < ",
+      strings::StrAppend(out, "  for (int32 i = ", arg_range, ".first; i < ",
                          arg_range, ".second; ++i)\n");
       strings::StrAppend(out, "    this->", output_names[i],
                          ".push_back(Output(ret, i));\n");

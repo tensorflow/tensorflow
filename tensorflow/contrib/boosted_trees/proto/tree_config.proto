@@ -13,6 +13,8 @@ message TreeNode {
     SparseFloatBinarySplitDefaultRight sparse_float_binary_split_default_right =
         4;
     CategoricalIdBinarySplit categorical_id_binary_split = 5;
+    CategoricalIdSetMembershipBinarySplit
+        categorical_id_set_membership_binary_split = 6;
   }
   TreeNodeMetadata node_metadata = 777;
 }
@@ -81,6 +83,20 @@ message CategoricalIdBinarySplit {
   int32 right_id = 4;
 }
 
+// Split rule for categorical features with a set of feature Ids.
+message CategoricalIdSetMembershipBinarySplit {
+  // Categorical feature column and Id describing
+  // the rule feature ∈ feature_ids.
+  int32 feature_column = 1;
+  // Sorted list of Ids in the set.
+  repeated int64 feature_ids = 2;
+
+  // Node children indexing into a contiguous
+  // vector of nodes starting from the root.
+  int32 left_id = 3;
+  int32 right_id = 4;
+}
+
 // DecisionTreeConfig describes a list of connected nodes.
 // Node 0 must be the root and can carry any payload including a leaf
 // in the case of representing the bias.
@@ -101,9 +117,21 @@ message DecisionTreeMetadata {
   bool is_finalized = 3;
 }
 
+message GrowingMetadata {
+  // Number of trees that we have attempted to build. After pruning, these
+  // trees might have been removed.
+  int64 num_trees_attempted = 1;
+  // Number of layers that we have attempted to build. After pruning, these
+  // layers might have been removed.
+  int64 num_layers_attempted = 2;
+}
+
 // DecisionTreeEnsembleConfig describes an ensemble of decision trees.
 message DecisionTreeEnsembleConfig {
   repeated DecisionTreeConfig trees = 1;
   repeated float tree_weights = 2;
   repeated DecisionTreeMetadata tree_metadata = 3;
+
+  // Metadata that is used during the training.
+  GrowingMetadata growing_metadata = 4;
 }

@@ -128,12 +128,13 @@ pair takes space.
 )doc");
 
 REGISTER_OP("SparseTensorDenseMatMul")
-    .Input("a_indices: int64")
+    .Input("a_indices: Tindices")
     .Input("a_values: T")
     .Input("a_shape: int64")
     .Input("b: T")
     .Output("product: T")
     .Attr("T: type")
+    .Attr("Tindices: {int32,int64} = DT_INT64")
     .Attr("adjoint_a: bool = false")
     .Attr("adjoint_b: bool = false")
     .SetShapeFn([](InferenceContext* c) {

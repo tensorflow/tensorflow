@@ -271,11 +271,14 @@ void StatSummarizer::ComputeStatsByType(
     std::map<string, int64>* node_type_map_time,
     std::map<string, int64>* node_type_map_memory,
     int64* accumulated_us) const {
+  int64 run_count = run_total_us_.count();
+
   for (const auto& det : details_) {
     const string node_name = det.first;
     const Detail& detail = det.second;
 
-    int64 curr_time_val = detail.rel_end_us.avg();
+    int64 curr_time_val =
+        static_cast<int64>(detail.rel_end_us.sum() / run_count);
     *accumulated_us += curr_time_val;
 
     int64 curr_memory_val = detail.mem_used.newest();

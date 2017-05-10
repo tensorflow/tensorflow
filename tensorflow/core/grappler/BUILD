@@ -15,17 +15,26 @@ filegroup(
 )
 
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "devices.cc",
         "devices.h",
+        "grappler_item.cc",
         "grappler_item.h",
+        "op_types.cc",
+        "op_types.h",
         "utils.cc",
         "utils.h",
         "//tensorflow/core/grappler/clusters:android_srcs",
         "//tensorflow/core/grappler/inputs:android_srcs",
         "//tensorflow/core/grappler/optimizers:android_srcs",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
     visibility = ["//tensorflow:__subpackages__"],
 )
 
@@ -83,6 +92,7 @@ cc_library(
     hdrs = ["grappler_item.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_types",
         ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

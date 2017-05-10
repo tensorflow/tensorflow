@@ -28,7 +28,9 @@ import numpy as np
 from werkzeug import test as werkzeug_test
 from werkzeug import wrappers
 from google.protobuf import text_format
+from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import image_ops
@@ -86,11 +88,32 @@ class ProjectorAppTest(test.TestCase):
     run_json = self._GetJson('/data/plugin/projector/runs')
     self.assertEqual(run_json, [])
 
-  def testInfoWithValidCheckpoint(self):
+  def testInfoWithValidCheckpointNoEventsData(self):
     self._GenerateProjectorTestData()
     self._SetupWSGIApp()
 
     info_json = self._GetJson('/data/plugin/projector/info?run=.')
+    self.assertItemsEqual(info_json['embeddings'], [{
+        'tensorShape': [1, 2],
+        'tensorName': 'var1',
+        'bookmarksPath': 'bookmarks.json'
+    }, {
+        'tensorShape': [10, 10],
+        'tensorName': 'var2'
+    }, {
+        'tensorShape': [100, 100],
+        'tensorName': 'var3'
+    }])
+
+  def testInfoWithValidCheckpointAndEventsData(self):
+    self._GenerateProjectorTestData()
+    self._GenerateEventsData()
+    self._SetupWSGIApp()
+
+    run_json = self._GetJson('/data/plugin/projector/runs')
+    self.assertTrue(run_json)
+    run = run_json[0]
+    info_json = self._GetJson('/data/plugin/projector/info?run=%s' % run)
     self.assertItemsEqual(info_json['embeddings'], [{
         'tensorShape': [1, 2],
         'tensorName': 'var1',
@@ -400,6 +423,17 @@ class ProjectorAppTest(test.TestCase):
     if response.headers.get('Content-Encoding') == 'gzip':
       data = gzip.GzipFile('', 'rb', 9, io.BytesIO(data)).read()
     return json.loads(data.decode('utf-8'))
+
+  def _GenerateEventsData(self):
+    fw = writer.FileWriter(self.log_dir)
+    event = event_pb2.Event(
+        wall_time=1,
+        step=1,
+        summary=summary_pb2.Summary(
+            value=[summary_pb2.Summary.Value(
+                tag='s1', simple_value=0)]))
+    fw.add_event(event)
+    fw.close()
 
   def _GenerateProjectorTestData(self):
     config_path = os.path.join(self.log_dir, 'projector_config.pbtxt')
@@ -723,6 +757,44 @@ class ProjectorPluginAssetTest(test.TestCase):
     self.assertFalse(
         gfile.Exists(plugin_dir),
         'The projector plugin directory should not exist.')
+
+
+class LRUCacheTest(test.TestCase):
+
+  def testInvalidSize(self):
+    with self.assertRaises(ValueError):
+      projector_plugin.LRUCache(0)
+
+  def testSimpleGetAndSet(self):
+    cache = projector_plugin.LRUCache(1)
+    value = cache.get('a')
+    self.assertIsNone(value)
+    cache.set('a', 10)
+    self.assertEqual(cache.get('a'), 10)
+
+  def testErrorsWhenSettingNoneAsValue(self):
+    cache = projector_plugin.LRUCache(1)
+    with self.assertRaises(ValueError):
+      cache.set('a', None)
+
+  def testLRUReplacementPolicy(self):
+    cache = projector_plugin.LRUCache(2)
+    cache.set('a', 1)
+    cache.set('b', 2)
+    cache.set('c', 3)
+    self.assertIsNone(cache.get('a'))
+    self.assertEqual(cache.get('b'), 2)
+    self.assertEqual(cache.get('c'), 3)
+
+    # Make 'b' the most recently used.
+    cache.get('b')
+    cache.set('d', 4)
+
+    # Make sure 'c' got replaced with 'd'.
+    self.assertIsNone(cache.get('c'))
+    self.assertEqual(cache.get('b'), 2)
+    self.assertEqual(cache.get('d'), 4)
+
 
 if __name__ == '__main__':
   test.main()

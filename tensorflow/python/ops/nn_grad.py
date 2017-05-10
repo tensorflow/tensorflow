@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -387,7 +388,14 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   softmax_grad = op.outputs[1]
   grad = _BroadcastMul(grad_loss, softmax_grad)
 
-  if grad_grad.op.type not in ("ZerosLike", "Zeros"):
+  def IsZero(g):
+    # Some introspection to check if the gradient is feeding zeros
+    if g.op.type in ("ZerosLike", "Zeros"):
+      return True
+    const_fill_value = tensor_util.constant_value(g)
+    return const_fill_value is not None and (const_fill_value == 0).all()
+
+  if not IsZero(grad_grad):
     logits = op.inputs[0]
     softmax = nn_ops.softmax(logits)
 
@@ -502,6 +510,16 @@ def _MaxPoolGrad(op, grad):
                                    op.get_attr("strides"),
                                    padding=op.get_attr("padding"),
                                    data_format=op.get_attr("data_format"))
+
+
+@ops.RegisterGradient("MaxPoolWithArgmax")
+def _MaxPoolGradWithArgmax(op, grad, unused_argmax_grad):
+  return gen_nn_ops._max_pool_grad_with_argmax(op.inputs[0],
+                                               grad,
+                                               op.outputs[1],
+                                               op.get_attr("ksize"),
+                                               op.get_attr("strides"),
+                                               padding=op.get_attr("padding"))
 
 
 @ops.RegisterGradient("MaxPoolGrad")

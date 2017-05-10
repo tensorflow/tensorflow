@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_gateway.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <unordered_map>
 
 #include "tensorflow/core/debug/debug_graph_utils.h"
@@ -757,6 +758,10 @@ TEST_F(SessionDebugVariableTest, VariableAssignWithDebugOps) {
   tensor_watch_opts->set_output_slot(0);
   tensor_watch_opts->add_debug_ops(debug_identity);
   tensor_watch_opts->add_debug_ops(debug_nan_count);
+
+  char tempdir_template[] = "/tmp/tfdbg_XXXXXX";
+  string temp_dir(mkdtemp(tempdir_template));
+  tensor_watch_opts->add_debug_urls(strings::StrCat("file://", temp_dir));
 
   // Expected name of the inserted debug node
   string debug_identity_node_name = DebugNodeInserter::GetDebugNodeName(

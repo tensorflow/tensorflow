@@ -87,3 +87,7 @@ class RunConfig(object):
   @property
   def keep_checkpoint_every_n_hours(self):
     return 10000
+
+  @property
+  def model_dir(self):
+    return None

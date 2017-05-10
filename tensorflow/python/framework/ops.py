@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import contextlib
 import copy
 import linecache
 import re
@@ -44,6 +43,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import tf_contextlib
 
 
 def _override_helper(clazz_object, operator, func):
@@ -70,25 +70,33 @@ def _override_helper(clazz_object, operator, func):
   setattr(clazz_object, operator, func)
 
 
-def _convert_stack(stack):
+def _convert_stack(stack, include_func_start_lineno=False):
   """Converts a stack extracted using _extract_stack() to a traceback stack.
 
   Args:
-    stack: A list of n 4-tuples, (filename, lineno, name, frame_globals).
+    stack: A list of n 5-tuples,
+      (filename, lineno, name, frame_globals, func_start_lineno).
+    include_func_start_lineno: True if function start line number should be
+      included as the 5th entry in return tuples.
 
   Returns:
-    A list of n 4-tuples (filename, lineno, name, code), where the code tuple
-    element is calculated from the corresponding elements of the input tuple.
+    A list of n 4-tuples or 5-tuples
+    (filename, lineno, name, code, [optional: func_start_lineno]), where the
+    code tuple element is calculated from the corresponding elements of the
+    input tuple.
   """
   ret = []
-  for filename, lineno, name, frame_globals in stack:
+  for filename, lineno, name, frame_globals, func_start_lineno in stack:
     linecache.checkcache(filename)
     line = linecache.getline(filename, lineno, frame_globals)
     if line:
       line = line.strip()
     else:
       line = None
-    ret.append((filename, lineno, name, line))
+    if include_func_start_lineno:
+      ret.append((filename, lineno, name, line, func_start_lineno))
+    else:
+      ret.append((filename, lineno, name, line))
   return ret
 
 
@@ -103,7 +111,8 @@ def _extract_stack():
     be formatted etc. using traceback methods.
 
   Returns:
-    A list of 4-tuples (filename, lineno, name, frame_globals) corresponding to
+    A list of 5-tuples
+    (filename, lineno, name, frame_globals, func_start_lineno) corresponding to
     the call stack of the current thread.
   """
   # pylint: enable=line-too-long
@@ -118,7 +127,8 @@ def _extract_stack():
     filename = co.co_filename
     name = co.co_name
     frame_globals = f.f_globals
-    ret.append((filename, lineno, name, frame_globals))
+    func_start_lineno = co.co_firstlineno
+    ret.append((filename, lineno, name, frame_globals, func_start_lineno))
     f = f.f_back
   ret.reverse()
   return ret
@@ -1206,7 +1216,11 @@ class Operation(object):
     else:
       if not all(x.is_compatible_with(i.dtype)
                  for i, x in zip(self._inputs, input_types)):
-        raise TypeError("Inputs are not compatible with input types")
+        raise TypeError("In op '%s', input types (%s) are not compatible "
+                        "with expected types (%s)" % (
+                            self.node_def.name,
+                            [i.dtype for i in self._inputs],
+                            input_types))
     self._input_types = input_types
 
     # Build the list of control inputs.
@@ -1500,6 +1514,15 @@ class Operation(object):
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
     return _convert_stack(self._traceback)
+
+  @property
+  def traceback_with_start_lines(self):
+    """Same as traceback but includes start line of function definition.
+
+    Returns:
+      A list of 5-tuples (filename, lineno, name, code, func_start_lineno).
+    """
+    return _convert_stack(self._traceback, include_func_start_lineno=True)
 
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
@@ -2682,11 +2705,11 @@ class Graph(object):
     Args:
       name: The key for the collection. For example, the `GraphKeys` class
         contains many standard names for collections.
-      scope: (Optional.) If supplied, the resulting list is filtered to include
-        only items whose `name` attribute matches using `re.match`. Items
-        without a `name` attribute are never returned if a scope is supplied and
-        the choice or `re.match` means that a `scope` without special tokens
-        filters by prefix.
+      scope: (Optional.) A string. If supplied, the resulting list is filtered
+        to include only items whose `name` attribute matches `scope` using
+        `re.match`. Items without a `name` attribute are never returned if a
+        scope is supplied. The choice of `re.match` means that a `scope` without
+        special tokens filters by prefix.
 
     Returns:
       The list of values in the collection with the given `name`, or
@@ -2725,7 +2748,7 @@ class Graph(object):
       if name in self._collections:
         del self._collections[name]
 
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def _original_op(self, op):
     """Python 'with' handler to help annotate ops with their originator.
 
@@ -2751,7 +2774,7 @@ class Graph(object):
       self._default_original_op = old_original_op
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def name_scope(self, name):
     r"""Returns a context manager that creates hierarchical names for operations.
 
@@ -2907,7 +2930,24 @@ class Graph(object):
         self._names_in_use[name] = 1
     return name
 
-  @contextlib.contextmanager
+  def get_name_scope(self):
+    """Returns the current name scope.
+
+    For example:
+
+    ```python
+    with tf.name_scope('scope1'):
+      with tf.name_scope('scope2'):
+        print(tf.get_default_graph().get_name_scope())
+    ```
+    would print the string `scope1/scope2`.
+
+    Returns:
+      A string representing the current name scope.
+    """
+    return self._name_stack
+
+  @tf_contextlib.contextmanager
   def colocate_with(self, op, ignore_existing=False):
     """Returns a context manager that specifies an op to colocate with.
 
@@ -2982,7 +3022,7 @@ class Graph(object):
       if ignore_existing:
         self._colocation_stack = current_stack
 
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def device(self, device_name_or_function):
     """Returns a context manager that specifies the default device to use.
 
@@ -3064,7 +3104,7 @@ class Graph(object):
       op._set_device(device_function(op))
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def container(self, container_name):
     """Returns a context manager that specifies the resource container to use.
 
@@ -3332,7 +3372,7 @@ class Graph(object):
     return self._ControlDependenciesController(self, control_ops)
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def _attr_scope(self, attr_map):
     """EXPERIMENTAL: A context manager for setting attributes on operators.
 
@@ -3397,7 +3437,7 @@ class Graph(object):
   # pylint: enable=g-doc-return-or-yield
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def _kernel_label_map(self, op_to_kernel_label_map):
     """EXPERIMENTAL: A context manager for setting kernel labels.
 
@@ -3459,7 +3499,7 @@ class Graph(object):
   # pylint: enable=g-doc-return-or-yield
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def gradient_override_map(self, op_type_map):
     """EXPERIMENTAL: A context manager for overriding gradient functions.
 
@@ -3617,7 +3657,7 @@ class _DefaultStack(threading.local):
   def enforce_nesting(self, value):
     self._enforce_nesting = value
 
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def get_controller(self, default):
     """A context manager for manipulating a default stack."""
     try:
@@ -3960,9 +4000,13 @@ class GraphKeys(object):
     for more details.
   * `REGULARIZATION_LOSSES`: regularization losses collected during graph
     construction.
-  * `WEIGHTS`: weights inside neural network layers
-  * `BIASES`: biases inside neural network layers
-  * `ACTIVATIONS`: activations of neural network layers
+
+  The following standard keys are _defined_, but their collections are **not**
+  automatically populated as many of the others are:
+
+  * `WEIGHTS`
+  * `BIASES`
+  * `ACTIVATIONS`
   """
 
   # Key to collect Variable objects that are global (shared across machines).
@@ -4120,7 +4164,7 @@ def get_all_collection_keys():
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def name_scope(name, default_name=None, values=None):
   """Returns a context manager for use when defining a Python op.
 
@@ -4210,7 +4254,7 @@ def prepend_name_scope(name, import_scope):
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def op_scope(values, name, default_name=None):
   """DEPRECATED. Same as name_scope above, just different argument order."""
   logging.warn("tf.op_scope(values, name, default_name) is deprecated,"

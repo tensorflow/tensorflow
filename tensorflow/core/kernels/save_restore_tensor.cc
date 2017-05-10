@@ -268,7 +268,8 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
                                          &parsed_slice, &parsed_slice_shape));
       if (!restored_full_shape.IsSameSize(parsed_full_shape)) {
         return errors::InvalidArgument(
-            "Shape in shape_and_slice spec ", parsed_full_shape.DebugString(),
+            "tensor_name = ", tensor_name, "; shape in shape_and_slice spec ",
+            parsed_full_shape.DebugString(),
             " does not match the shape stored in checkpoint: ",
             restored_full_shape.DebugString());
       }
@@ -279,10 +280,10 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
           reader.LookupSlice(tensor_name, parsed_slice, restored_tensor));
     }
     if (dtypes[i] != restored_tensor->dtype()) {
-      return errors::InvalidArgument("Expected dtype ",
-                                     DataTypeString(dtypes[i]),
-                                     " does not equal restored dtype ",
-                                     DataTypeString(restored_tensor->dtype()));
+      return errors::InvalidArgument(
+          "tensor_name = ", tensor_name, "; expected dtype ",
+          DataTypeString(dtypes[i]), " does not equal restored dtype ",
+          DataTypeString(restored_tensor->dtype()));
     }
   }
   return Status::OK();

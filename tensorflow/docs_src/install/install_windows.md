@@ -103,7 +103,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
   2. Create a conda environment named <tt>tensorflow</tt>
      by invoking the following command:
 
-     <pre>C:\> <b>conda create -n tensorflow</b> </pre>
+     <pre>C:\> <b>conda create -n tensorflow python=3.5</b> </pre>
 
   3. Activate the conda environment by issuing the following command:
 
@@ -114,12 +114,12 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      environment. To install the CPU-only version of TensorFlow, enter the
      following command:
 
-     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-1.1.0rc1-cp35-cp35m-win_amd64.whl</b> </pre>
+     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-1.1.0-cp35-cp35m-win_amd64.whl</b> </pre>
 
      To install the GPU version of TensorFlow, enter the following command
      (on a single line):
 
-     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-1.1.0rc1-cp35-cp35m-win_amd64.whl</b> </pre>
+     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-1.1.0-cp35-cp35m-win_amd64.whl</b> </pre>
 
 ## Validate your installation
 
@@ -192,6 +192,21 @@ ImportError: cannot import name 'descriptor'</pre>
   <td><a href="https://stackoverflow.com/q/42011070">42011070</a></td>
   <td><pre>No module named "pywrap_tensorflow"</pre></td>
 </tr>
+
+<tr>
+  <td><a href="https://stackoverflow.com/q/42217532">42217532</a></td>
+  <td>
+  <pre>OpKernel ('op: "BestSplits" device_type: "CPU"') for unknown op: BestSplits</pre>
+  </td>
+</tr>
+
+<tr>
+  <td><a href="https://stackoverflow.com/q/43134753">43134753</a></td>
+  <td>
+  <pre>The TensorFlow library wasn't compiled to use SSE instructions</pre>
+  </td>
+</tr>
+
 
 </table>
 

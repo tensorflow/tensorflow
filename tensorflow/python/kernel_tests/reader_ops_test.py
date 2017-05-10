@@ -352,8 +352,19 @@ class FixedLengthRecordReaderTest(test.TestCase):
     self._record_bytes = 3
     self._footer_bytes = 2
 
+    self._hop_bytes = 2
+    self._num_overlapped_records = 3
+
   def _Record(self, f, r):
     return compat.as_bytes(str(f * 2 + r) * self._record_bytes)
+
+  def _OverlappedRecord(self, f, r):
+    record_str = "".join([
+        str(i)[0]
+        for i in range(r * self._hop_bytes,
+                       r * self._hop_bytes + self._record_bytes)
+    ])
+    return compat.as_bytes(record_str)
 
   def _CreateFiles(self):
     filenames = []
@@ -367,6 +378,23 @@ class FixedLengthRecordReaderTest(test.TestCase):
         f.write(b"F" * self._footer_bytes)
     return filenames
 
+  def _CreateOverlappedRecordFiles(self):
+    filenames = []
+    for i in range(self._num_files):
+      fn = os.path.join(self.get_temp_dir(),
+                        "fixed_length_overlapped_record.%d.txt" % i)
+      filenames.append(fn)
+      with open(fn, "wb") as f:
+        f.write(b"H" * self._header_bytes)
+        all_records_str = "".join([
+            str(i)[0]
+            for i in range(self._record_bytes + self._hop_bytes *
+                           (self._num_overlapped_records - 1))
+        ])
+        f.write(compat.as_bytes(all_records_str))
+        f.write(b"F" * self._footer_bytes)
+    return filenames
+
   def testOneEpoch(self):
     files = self._CreateFiles()
     with self.test_session() as sess:
@@ -374,6 +402,7 @@ class FixedLengthRecordReaderTest(test.TestCase):
           header_bytes=self._header_bytes,
           record_bytes=self._record_bytes,
           footer_bytes=self._footer_bytes,
+          hop_bytes=0,
           name="test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
@@ -385,6 +414,31 @@ class FixedLengthRecordReaderTest(test.TestCase):
           k, v = sess.run([key, value])
           self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
           self.assertAllEqual(self._Record(i, j), v)
+
+      with self.assertRaisesOpError("is closed and has insufficient elements "
+                                    "\\(requested 1, current size 0\\)"):
+        k, v = sess.run([key, value])
+
+  def testOneEpochWithHopBytes(self):
+    files = self._CreateOverlappedRecordFiles()
+    with self.test_session() as sess:
+      reader = io_ops.FixedLengthRecordReader(
+          header_bytes=self._header_bytes,
+          record_bytes=self._record_bytes,
+          footer_bytes=self._footer_bytes,
+          hop_bytes=self._hop_bytes,
+          name="test_reader")
+      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+      key, value = reader.read(queue)
+
+      queue.enqueue_many([files]).run()
+      queue.close().run()
+      for i in range(self._num_files):
+        for j in range(self._num_overlapped_records):
+          k, v = sess.run([key, value])
+          print(v)
+          self.assertAllEqual("%s:%d" % (files[i], j), compat.as_text(k))
+          self.assertAllEqual(self._OverlappedRecord(i, j), v)
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):

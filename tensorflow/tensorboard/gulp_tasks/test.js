@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-var gulp = require('gulp');
-var tester = require('web-component-tester').test;
+const gulp = require('gulp');
+const tester = require('web-component-tester').test;
 
 module.exports = function(done) {
   tester({}, function(error) {

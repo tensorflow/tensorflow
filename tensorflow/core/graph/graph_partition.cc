@@ -1028,9 +1028,10 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     }
   }
 
-  // Set versions
+  // Set versions and function library
   for (auto& it : *partitions) {
     it.second.mutable_versions()->CopyFrom(g->versions());
+    *it.second.mutable_library() = g->flib_def().ToProto();
   }
 
   // Set the start times for recvs at the very end.

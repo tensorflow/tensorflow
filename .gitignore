@@ -4,12 +4,11 @@ node_modules
 /.bazelrc
 /.tf_configure.bazelrc
 /bazel-*
-/third_party/py/numpy/numpy_include
-/tools/bazel.rc
+/bazel_pip
+/third_party/eigen3/mkl_include
+/third_party/mkl/*
 /tools/python_bin_path.sh
 /tools/git/gen
-/util/python/python_include
-/util/python/python_lib
 /pip_test
 /_python_build
 *.pyc

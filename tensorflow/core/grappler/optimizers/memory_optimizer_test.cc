@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
+
+#include <vector>
+
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -24,6 +27,92 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+class RecomputeSubgraphTest : public ::testing::Test {};
+
+TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a = ops::Const(s.WithOpName("a"), 1.f, {2, 3, 4});
+  Output b = ops::AddN(s.WithOpName("b"), {a});  // Recomputed
+  Output c = ops::AddN(s.WithOpName("c"), {b});
+  Output d = ops::AddN(s.WithOpName("d"), {c});
+  Output e = ops::AddN(s.WithOpName("e"), {d, b});
+  Output f = ops::AddN(s.WithOpName("f"), {e, a});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  EXPECT_EQ(6, item.graph.node_size());
+  NodeMap pre_transform_node_map(&item.graph);
+  std::vector<const NodeDef*> recomputed_source_nodes;
+  recomputed_source_nodes.push_back(pre_transform_node_map.GetNode(b.name()));
+  std::vector<NodeDef*> target_nodes;
+  target_nodes.push_back(pre_transform_node_map.GetNode(e.name()));
+  RecomputeSubgraph(recomputed_source_nodes, d.name(), target_nodes,
+                    &item.graph);
+  NodeMap post_transform_node_map(&item.graph);
+  EXPECT_EQ(7, item.graph.node_size());
+  NodeDef* transformed_e = post_transform_node_map.GetNode(e.name());
+  EXPECT_EQ(2, transformed_e->input_size());
+  EXPECT_EQ("d", transformed_e->input(0));
+  EXPECT_EQ("Recomputed/b", transformed_e->input(1));
+  NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed/b");
+  EXPECT_EQ(2, recomputed_b->input_size());
+  EXPECT_EQ("a", recomputed_b->input(0));
+  EXPECT_EQ("^d", recomputed_b->input(1).substr(0, 2));
+}
+
+TEST_F(RecomputeSubgraphTest, MultiNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a = ops::Const(s.WithOpName("Conv"), 1.f, {2, 3, 4});
+  Output b = ops::AddN(s.WithOpName("BN"), {a});    // Recomputed
+  Output c = ops::AddN(s.WithOpName("ReLU"), {b});  // Recomputed
+  Output d = ops::AddN(s.WithOpName("Conv1"), {c});
+
+  Output trigger = ops::Const(s.WithOpName("BN1Grad"), 0.f, {2, 3, 4});
+  Output e = ops::AddN(s.WithOpName("Conv1Grad"), {trigger, c});
+  Output f = ops::AddN(s.WithOpName("ReLUGrad"), {e, c});
+  Output g = ops::AddN(s.WithOpName("BNGrad"), {f, a});
+  Output h = ops::AddN(s.WithOpName("ConvGrad"), {g});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  EXPECT_EQ(9, item.graph.node_size());
+  NodeMap pre_transform_node_map(&item.graph);
+  std::vector<const NodeDef*> recomputed_source_nodes;
+  recomputed_source_nodes.push_back(pre_transform_node_map.GetNode(b.name()));
+  recomputed_source_nodes.push_back(pre_transform_node_map.GetNode(c.name()));
+  std::vector<NodeDef*> target_nodes;
+  target_nodes.push_back(pre_transform_node_map.GetNode(e.name()));
+  target_nodes.push_back(pre_transform_node_map.GetNode(f.name()));
+  target_nodes.push_back(pre_transform_node_map.GetNode(g.name()));
+  RecomputeSubgraph(recomputed_source_nodes, trigger.name(), target_nodes,
+                    &item.graph);
+  NodeMap post_transform_node_map(&item.graph);
+  EXPECT_EQ(11, item.graph.node_size());
+  NodeDef* transformed_e = post_transform_node_map.GetNode(e.name());
+  EXPECT_EQ(2, transformed_e->input_size());
+  EXPECT_EQ("BN1Grad", transformed_e->input(0));
+  EXPECT_EQ("Recomputed/ReLU", transformed_e->input(1));
+  NodeDef* transformed_f = post_transform_node_map.GetNode(f.name());
+  EXPECT_EQ(2, transformed_f->input_size());
+  EXPECT_EQ("Conv1Grad", transformed_f->input(0));
+  EXPECT_EQ("Recomputed/ReLU", transformed_f->input(1));
+  NodeDef* transformed_g = post_transform_node_map.GetNode(g.name());
+  EXPECT_EQ(2, transformed_g->input_size());
+  EXPECT_EQ("ReLUGrad", transformed_g->input(0));
+  EXPECT_EQ("Conv", transformed_g->input(1));
+
+  NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed/BN");
+  EXPECT_EQ(2, recomputed_b->input_size());
+  EXPECT_EQ("Conv", recomputed_b->input(0));
+  EXPECT_EQ("^BN1Grad", recomputed_b->input(1).substr(0, 8));
+  NodeDef* recomputed_c = post_transform_node_map.GetNode("Recomputed/ReLU");
+  EXPECT_EQ(2, recomputed_c->input_size());
+  EXPECT_EQ("Recomputed/BN", recomputed_c->input(0));
+  EXPECT_EQ("^BN1Grad", recomputed_c->input(1).substr(0, 8));
+}
 
 class MemoryOptimizerTest : public ::testing::Test {};
 

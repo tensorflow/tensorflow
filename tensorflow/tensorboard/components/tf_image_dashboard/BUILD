@@ -41,6 +41,7 @@ tensorboard_webcomponent_library(
     srcs = [
         "tf-image-dashboard.html",
         "tf-image-loader.html",
+        ":legacy_ts",
     ],
     destdir = "tf-image-dashboard",
     deps = [
@@ -53,4 +54,6 @@ tensorboard_webcomponent_library(
 tensorboard_ts_library(
     name = "legacy_ts",
     srcs = [],
+    deps_mgmt = "off",
+    runtime = "nodejs",
 )

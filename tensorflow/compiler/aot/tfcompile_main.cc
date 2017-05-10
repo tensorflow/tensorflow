@@ -95,12 +95,10 @@ Status Main(const MainFlags& flags) {
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(ReadProtoFile("graph", flags.graph, &graph_def));
   std::unique_ptr<Graph> graph;
-  FunctionLibraryDefinition flib(OpRegistry::Global(), graph_def.library());
-  TF_RETURN_IF_ERROR(InitGraph(graph_def, config, flags, &flib, &graph));
+  TF_RETURN_IF_ERROR(InitGraph(graph_def, config, flags, &graph));
 
   CompileResult compile_result;
-  TF_RETURN_IF_ERROR(
-      CompileGraph(std::move(graph), flags, &flib, &compile_result));
+  TF_RETURN_IF_ERROR(CompileGraph(std::move(graph), flags, &compile_result));
 
   // Write output files.
   Env* env = Env::Default();

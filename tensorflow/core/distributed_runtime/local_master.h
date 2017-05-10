@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_REGISTRY_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_REGISTRY_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_H_
 
 #include <memory>
 
@@ -38,7 +38,7 @@ class Master;
 // for cancellation.
 class LocalMaster : public MasterInterface {
  public:
-  ~LocalMaster(){};
+  ~LocalMaster() {}
 
   Status CreateSession(CallOptions* call_options,
                        const CreateSessionRequest* request,
@@ -78,7 +78,8 @@ class LocalMaster : public MasterInterface {
   // any LocalMaster objects that may wrap this master. There is no
   // corresponding deregister method, since clean server shutdown is
   // not currently implemented for any server type.
-  static void Register(const string& target, Master* master);
+  static void Register(const string& target, Master* master,
+                       int64 default_timeout_in_ms);
 
   // Returns a pointer to the local master associated with the given
   // `target`, or nullptr if none exists.
@@ -86,14 +87,15 @@ class LocalMaster : public MasterInterface {
 
  private:
   Master* master_impl_;  // Not owned.
+  const int64 default_timeout_in_ms_;
 
   // See `LocalMaster::Lookup` for the factory function that creates
   // objects of this type.
-  LocalMaster(Master* master_impl);
+  LocalMaster(Master* master_impl, const int64 default_timeout_in_ms);
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalMaster);
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_REGISTRY_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_H_

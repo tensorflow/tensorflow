@@ -124,16 +124,19 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.stubs.CleanUp()
 
   def testEmptyLoader(self):
+    """Tests empty EventMultiplexer creation."""
     x = event_multiplexer.EventMultiplexer()
     self.assertEqual(x.Runs(), {})
 
   def testRunNamesRespected(self):
+    """Tests two EventAccumulators inserted/accessed in EventMultiplexer."""
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
     self.assertItemsEqual(sorted(x.Runs().keys()), ['run1', 'run2'])
     self.assertEqual(x._GetAccumulator('run1')._path, 'path1')
     self.assertEqual(x._GetAccumulator('run2')._path, 'path2')
 
   def testReload(self):
+    """EventAccumulators should Reload after EventMultiplexer call it."""
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
     self.assertFalse(x._GetAccumulator('run1').reload_called)
     self.assertFalse(x._GetAccumulator('run2').reload_called)
@@ -142,6 +145,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.assertTrue(x._GetAccumulator('run2').reload_called)
 
   def testScalars(self):
+    """Tests Scalars function returns suitable values."""
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
 
     run1_actual = x.Scalars('run1', 'sv1')
@@ -150,6 +154,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.assertEqual(run1_expected, run1_actual)
 
   def testHealthPills(self):
+    """Tests HealthPills() returns events associated with run1/Add."""
     self.stubs.Set(event_accumulator, 'EventAccumulator',
                    functools.partial(
                        _GetFakeAccumulator,
@@ -172,11 +177,13 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.assertItemsEqual(['Add'], x.GetOpsWithHealthPills('run1'))
 
   def testExceptions(self):
+    """KeyError should be raised when accessing non-existing keys."""
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
     with self.assertRaises(KeyError):
       x.Scalars('sv1', 'xxx')
 
   def testInitialization(self):
+    """Tests EventMultiplexer is created properly with its params."""
     x = event_multiplexer.EventMultiplexer()
     self.assertEqual(x.Runs(), {})
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
@@ -185,6 +192,14 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.assertEqual(x._GetAccumulator('run2')._path, 'path2')
 
   def testAddRunsFromDirectory(self):
+    """Tests AddRunsFromDirectory function.
+
+    Tests the following scenarios:
+    - When the directory does not exist.
+    - When the directory is empty.
+    - When the directory has empty subdirectory.
+    - Contains proper EventAccumulators after adding events.
+    """
     x = event_multiplexer.EventMultiplexer()
     tmpdir = self.get_temp_dir()
     join = os.path.join

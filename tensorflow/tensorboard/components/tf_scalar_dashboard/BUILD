@@ -67,9 +67,11 @@ tensorboard_webcomponent_library(
     ],
 )
 
+# This is needed: components/BUILD seeks a legacy_ts rule in this package.
 tensorboard_ts_library(
     name = "legacy_ts",
-    srcs = [
-    ],
+    srcs = [],
+    deps_mgmt = "off",
+    runtime = "nodejs",
     deps = ["//tensorflow/tensorboard/components:common_deps"],
 )

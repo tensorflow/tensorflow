@@ -41,7 +41,7 @@ from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 
 
-class BatchNormalization(base._Layer):  # pylint: disable=protected-access
+class BatchNormalization(base.Layer):
   """Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
   "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -143,33 +143,33 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
                        input_shape)
 
     if self.center:
-      self.beta = vs.get_variable('beta',
-                                  shape=(param_dim,),
-                                  initializer=self.beta_initializer,
-                                  regularizer=self.beta_regularizer,
-                                  trainable=True)
+      self.beta = self.add_variable(name='beta',
+                                    shape=(param_dim,),
+                                    initializer=self.beta_initializer,
+                                    regularizer=self.beta_regularizer,
+                                    trainable=True)
     else:
       self.beta = None
     if self.scale:
-      self.gamma = vs.get_variable('gamma',
-                                   shape=(param_dim,),
-                                   initializer=self.gamma_initializer,
-                                   regularizer=self.gamma_regularizer,
-                                   trainable=True)
+      self.gamma = self.add_variable(name='gamma',
+                                     shape=(param_dim,),
+                                     initializer=self.gamma_initializer,
+                                     regularizer=self.gamma_regularizer,
+                                     trainable=True)
     else:
       self.gamma = None
 
     # Disable variable partitioning when creating the moving mean and variance
-    partitioner = vs.get_variable_scope().partitioner
+    partitioner = self._scope.partitioner
     try:
-      vs.get_variable_scope().set_partitioner(None)
-      self.moving_mean = vs.get_variable(
-          'moving_mean',
+      self._scope.set_partitioner(None)
+      self.moving_mean = self.add_variable(
+          name='moving_mean',
           shape=(param_dim,),
           initializer=self.moving_mean_initializer,
           trainable=False)
-      self.moving_variance = vs.get_variable(
-          'moving_variance',
+      self.moving_variance = self.add_variable(
+          name='moving_variance',
           shape=(param_dim,),
           initializer=self.moving_variance_initializer,
           trainable=False)
@@ -182,10 +182,10 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
         def _renorm_variable(name, shape):
-          var = vs.get_variable(name,
-                                shape=shape,
-                                initializer=init_ops.zeros_initializer(),
-                                trainable=False)
+          var = self.add_variable(name=name,
+                                  shape=shape,
+                                  initializer=init_ops.zeros_initializer(),
+                                  trainable=False)
           return var
         with ops.device(None):
           with ops.device(lambda _: self.moving_mean.device):
@@ -200,7 +200,8 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
             self.renorm_stddev_weight = _renorm_variable(
                 'renorm_stddev_weight', ())
     finally:
-      vs.get_variable_scope().set_partitioner(partitioner)
+      self._scope.set_partitioner(partitioner)
+    self.built = True
 
   def _renorm_correction_and_moments(self, mean, variance, training):
     """Returns the correction and update values for renorm."""
@@ -238,10 +239,14 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       # For example, after a single update, the moving average would be
       # (1-decay) * value. and the weight will be 1-decay, with their ratio
       # giving value.
+      # Make sure the weight is not updated until before r and d computation.
+      value = array_ops.identity(value)
+      with ops.control_dependencies([value]):
+        weight_value = array_ops.constant(1., dtype=weight.dtype)
       new_var = moving_averages.assign_moving_average(
           var, value, decay, zero_debias=False)
       new_weight = moving_averages.assign_moving_average(
-          weight, 1., decay, zero_debias=False)
+          weight, weight_value, decay, zero_debias=False)
       return new_var / new_weight
 
     with ops.colocate_with(self.moving_mean):
@@ -278,6 +283,13 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
       # Some of the computations here are not necessary when training==False
       # but not a constant. However, this makes the code simpler.
       mean, variance = nn.moments(inputs, reduction_axes)
+      mean = _smart_select(training,
+                           lambda: mean,
+                           lambda: self.moving_mean)
+      variance = _smart_select(training,
+                               lambda: variance,
+                               lambda: self.moving_variance)
+
       if self.renorm:
         r, d, new_mean, new_variance = self._renorm_correction_and_moments(
             mean, variance, training)
@@ -302,25 +314,15 @@ class BatchNormalization(base._Layer):  # pylint: disable=protected-access
           self.moving_variance, new_variance, decay, zero_debias=False)
 
       if not self.updates:
-        # In the future this should be refactored into a self.add_update
-        # methods in order to allow for instance-based BN layer sharing
-        # across unrelated input streams (e.g. like in Keras).
-        self.updates.append(mean_update)
-        self.updates.append(variance_update)
-
-      mean = _smart_select(training,
-                           lambda: mean,
-                           lambda: self.moving_mean)
-      variance = _smart_select(training,
-                               lambda: variance,
-                               lambda: self.moving_variance)
+        self.add_update(mean_update)
+        self.add_update(variance_update)
 
     else:
       mean, variance = self.moving_mean, self.moving_variance
 
     def _broadcast(v):
       if needs_broadcasting and v is not None:
-        # In this case we must explictly broadcast all parameters.
+        # In this case we must explicitly broadcast all parameters.
         return array_ops.reshape(v, broadcast_shape)
       return v
 
@@ -360,6 +362,23 @@ def batch_normalization(inputs,
 
   Sergey Ioffe, Christian Szegedy
 
+  Note: the operations which update the `moving_mean` and `moving_variance`
+  variables will not be added as dependencies of your training operation and so
+  must be run separately. For example:
+  ```
+  extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+  sess.run([train_op, extra_update_ops], ...)
+  ```
+  Alternatively, add the operations as a dependency to your training operation
+  manually, and then just run your training operation as normal:
+  ```
+  extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+  with tf.control_dependencies(extra_update_ops):
+    train_op = optimizer.minimize(loss)
+  ...
+  sess.run([train_op], ...)
+  ```
+
   Arguments:
     inputs: Tensor input.
     axis: Integer, the axis that should be normalized (typically the features
@@ -381,7 +400,9 @@ def batch_normalization(inputs,
     training: Either a Python boolean, or a TensorFlow boolean scalar tensor
       (e.g. a placeholder). Whether to return the output in training mode
       (normalized with statistics of the current batch) or in inference mode
-      (normalized with moving statistics).
+      (normalized with moving statistics). **NOTE**: make sure to set this
+      parameter correctly, or else your training/inference will not work
+      properly.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     name: String, the name of the layer.

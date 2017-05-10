@@ -17,7 +17,6 @@ py_library(
     srcs = ["estimator_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":checkpoint_utils",
         ":estimator",
         ":export",
         ":inputs",
@@ -37,33 +36,6 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
-)
-
-py_library(
-    name = "checkpoint_utils",
-    srcs = ["checkpoint_utils.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
-    ],
-)
-
-py_test(
-    name = "checkpoint_utils_test",
-    size = "small",
-    srcs = ["checkpoint_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":checkpoint_utils",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-    ],
 )
 
 py_library(

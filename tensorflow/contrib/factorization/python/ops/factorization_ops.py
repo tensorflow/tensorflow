@@ -40,6 +40,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import resource_loader
 
@@ -190,7 +191,8 @@ class WALSModel(object):
                num_col_shards=1,
                row_weights=1,
                col_weights=1,
-               use_factors_weights_cache=True):
+               use_factors_weights_cache=True,
+               use_gramian_cache=True):
     """Creates model for WALS matrix factorization.
 
     Args:
@@ -224,6 +226,8 @@ class WALSModel(object):
       col_weights: See row_weights.
       use_factors_weights_cache: When True, the factors and weights will be
         cached on the workers before the updates start. Defaults to True.
+      use_gramian_cache: When True, the Gramians will be cached on the workers
+        before the updates start. Defaults to True.
     """
     self._input_rows = input_rows
     self._input_cols = input_cols
@@ -243,6 +247,7 @@ class WALSModel(object):
                                                   self._num_col_shards,
                                                   "col_weights")
     self._use_factors_weights_cache = use_factors_weights_cache
+    self._use_gramian_cache = use_gramian_cache
     self._row_factors = self._create_factors(self._input_rows,
                                              self._n_components,
                                              self._num_row_shards, row_init,
@@ -324,7 +329,7 @@ class WALSModel(object):
       var_name = "%s_shard_%d" % (name, i)
       var_init = make_initializer(i, size)
       sharded_matrix.append(
-          variables.Variable(
+          variable_scope.variable(
               var_init, dtype=dtypes.float32, name=var_name))
 
     return sharded_matrix
@@ -383,7 +388,7 @@ class WALSModel(object):
       var_name = "%s_shard_%d" % (name, i)
       var_init = make_wt_initializer(i, size)
       sharded_weight.append(
-          variables.Variable(
+          variable_scope.variable(
               var_init, dtype=dtypes.float32, name=var_name))
 
     return sharded_weight
@@ -400,7 +405,7 @@ class WALSModel(object):
     Returns:
       A gramian Tensor with shape of [n_components, n_components].
     """
-    return variables.Variable(
+    return variable_scope.variable(
         array_ops.zeros([n_components, n_components]),
         dtype=dtypes.float32,
         name=name)
@@ -408,7 +413,7 @@ class WALSModel(object):
   @staticmethod
   def _transient_var(name):
     """Helper function to create a Variable."""
-    return variables.Variable(
+    return variable_scope.variable(
         1.0,
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -495,10 +500,13 @@ class WALSModel(object):
     """Creates local cache of factors, weights and gramian for rows and columns.
 
     Note that currently the caching strategy is as follows:
-    When initiating a row(column) update, the column(row) gramian is computed
-    and cached while the row gramian is reset; optionally, column(row) factors
-    and weights are cached and row(column) factors and weights are reset when
-    use_factors_weights_cache is True.
+    When initiating a row (resp. column) update:
+      - The column (resp. row) gramian is computed.
+      - Optionally, if use_gramian_cache is True, the column (resp. row) Gramian
+        is cached, while the row (resp. column) gramian is reset.
+      - Optionally, if use_factors_weights_cache is True, the column (resp. row)
+        factors and weights are cached, while the row (resp. column) factors and
+        weights are reset.
     """
 
     (self._row_factors_cache, row_factors_cache_init,
@@ -515,18 +523,20 @@ class WALSModel(object):
         self._row_weights,
         "row_wt_cache",
         pass_through=not self._use_factors_weights_cache)
-
     (self._col_wt_cache, col_wt_cache_init, _) = self._cached_copy(
         self._col_weights,
         "col_wt_cache",
         pass_through=not self._use_factors_weights_cache)
-
     (self._row_gramian_cache, row_gramian_cache_init,
      row_gramian_cache_reset) = self._cached_copy(
-         self._row_gramian, "row_gramian_cache", pass_through=False)
+         self._row_gramian,
+         "row_gramian_cache",
+         pass_through=not self._use_gramian_cache)
     (self._col_gramian_cache, col_gramian_cache_init,
      col_gramian_cache_reset) = self._cached_copy(
-         self._col_gramian, "col_gramian_cache", pass_through=False)
+         self._col_gramian,
+         "col_gramian_cache",
+         pass_through=not self._use_gramian_cache)
 
     self._row_updates_init = control_flow_ops.group(col_factors_cache_init,
                                                     row_factors_cache_reset,

@@ -59,5 +59,7 @@ tensorboard_ts_library(
         "colorScale.ts",
         "palettes.ts",
     ],
+    deps_mgmt = "off",
+    runtime = "nodejs",
     deps = ["//tensorflow/tensorboard/components:common_deps"],
 )

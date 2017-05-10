@@ -156,7 +156,7 @@ def skipgrams(sequence,
           of word indices (integers). If using a `sampling_table`,
           word indices are expected to match the rank
           of the words in a reference dataset (e.g. 10 would encode
-          the 10-th most frequently occuring token).
+          the 10-th most frequently occurring token).
           Note that index 0 is expected to be a non-word and will be skipped.
       vocabulary_size: int. maximum possible word index + 1
       window_size: int. actually half-window.

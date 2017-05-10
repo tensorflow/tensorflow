@@ -74,8 +74,8 @@ class _Merge(Layer):
       else:
         if i != j:
           raise ValueError('Operands could not be broadcast '
-                           'together with shapes ' + str(shape1) + ' ' + str(
-                               shape2))
+                           'together with shapes ' + str(shape1) + ' ' +
+                           str(shape2))
         output_shape.append(i)
     return tuple(output_shape)
 
@@ -87,13 +87,14 @@ class _Merge(Layer):
       raise ValueError('A merge layer should be called '
                        'on a list of at least 2 inputs. '
                        'Got ' + str(len(input_shape)) + ' inputs.')
+    input_shape = [tensor_shape.TensorShape(s).as_list() for s in input_shape]
     batch_sizes = [s[0] for s in input_shape if s is not None]
     batch_sizes = set(batch_sizes)
     batch_sizes -= set([None])
     if len(batch_sizes) > 1:
       raise ValueError('Can not merge tensors with different '
-                       'batch sizes. Got tensors with shapes : ' + str(
-                           input_shape))
+                       'batch sizes. Got tensors with shapes : ' +
+                       str(input_shape))
     if input_shape[0] is None:
       output_shape = None
     else:
@@ -110,6 +111,7 @@ class _Merge(Layer):
       self._reshape_required = False
     else:
       self._reshape_required = True
+    self.built = True
 
   def call(self, inputs):
     if self._reshape_required:
@@ -301,6 +303,7 @@ class Concatenate(_Merge):
                        'inputs with matching shapes '
                        'except for the concat axis. '
                        'Got inputs shapes: %s' % (input_shape))
+    self.built = True
 
   def call(self, inputs):
     if not isinstance(inputs, list):
@@ -413,6 +416,7 @@ class Dot(_Merge):
       raise ValueError('Dimension incompatibility '
                        '%s != %s. ' % (shape1[axes[0]], shape2[axes[1]]) +
                        'Layer shapes: %s, %s' % (shape1, shape2))
+    self.built = True
 
   def call(self, inputs):
     x1 = inputs[0]

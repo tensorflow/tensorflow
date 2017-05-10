@@ -275,7 +275,6 @@ Status CreateXlaArgs(const Graph& graph,
 // Converts the TensorFlow graph into an XLA computation, by executing the
 // graph symbolically, with each op building up the XLA HLO.
 Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
-                         const FunctionLibraryDefinition* flib_def,
                          xla::Computation* computation, bool* has_context_arg) {
   // Create a device and context to convert the graph into an XLA computation.
   XlaOpRegistry::RegisterCompilationKernels();
@@ -295,7 +294,7 @@ Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
 
   std::unique_ptr<FunctionLibraryRuntime> flib_run(NewFunctionLibraryRuntime(
       compiler.device_mgr(), Env::Default(), compiler.device(),
-      graph->versions().producer(), flib_def, OptimizerOptions()));
+      graph->versions().producer(), &graph->flib_def(), OptimizerOptions()));
   XlaCompiler::CompilationResult result;
   TF_RETURN_IF_ERROR(compiler.CompileGraph("tfcompile", std::move(graph),
                                            flib_run.get(), xla_args, &result));
@@ -373,10 +372,10 @@ Status CompileXla(xla::LocalClient* client, const xla::Computation& computation,
 }  // namespace
 
 Status InitGraph(const GraphDef& graph_def, const Config& config,
-                 const MainFlags& flags, const FunctionLibraryDefinition* flib,
-                 std::unique_ptr<Graph>* graph) {
+                 const MainFlags& flags, std::unique_ptr<Graph>* graph) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
-  std::unique_ptr<Graph> g(new Graph(flib));
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), graph_def.library());
+  std::unique_ptr<Graph> g(new Graph(flib_def));
   GraphDef copy_def(graph_def);
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&copy_def, *g->op_registry(),
                                                0 /*node_offset*/));
@@ -388,7 +387,6 @@ Status InitGraph(const GraphDef& graph_def, const Config& config,
 }
 
 Status CompileGraph(std::unique_ptr<Graph> graph, const MainFlags& flags,
-                    const FunctionLibraryDefinition* flib,
                     CompileResult* compile_result) {
   // Converts the graph into an XLA computation, and compiles the
   // computation.
@@ -399,8 +397,7 @@ Status CompileGraph(std::unique_ptr<Graph> graph, const MainFlags& flags,
   xla::LocalClient* client =
       xla::ClientLibrary::GetOrCreateLocalClient(cpu_platform).ValueOrDie();
   xla::Computation computation;
-  TF_RETURN_IF_ERROR(ConvertGraphToXla(client, std::move(graph), flib,
-                                       &computation,
+  TF_RETURN_IF_ERROR(ConvertGraphToXla(client, std::move(graph), &computation,
                                        &compile_result->has_context_arg));
   if (!flags.debug_dir.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::SessionModule> module,

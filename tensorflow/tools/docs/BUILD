@@ -99,6 +99,20 @@ py_binary(
     ],
 )
 
+py_test(
+    name = "build_docs_test",
+    size = "small",
+    srcs = ["build_docs_test.py"],
+    data = ["//tensorflow:docs_src"],
+    srcs_version = "PY2AND3",
+    tags = ["manual"],
+    deps = [
+        ":generate_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/debug:debug_py",
+    ],
+)
+
 py_binary(
     name = "generate_1_0",
     srcs = ["generate_1_0.py"],

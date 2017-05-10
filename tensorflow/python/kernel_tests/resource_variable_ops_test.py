@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -150,6 +151,14 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       variables.global_variables_initializer().run()
       v.assign(2.0).eval()
       self.assertEqual(2.0, v.value().eval())
+
+  def testToFromProto(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+
+      w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
+      self.assertEquals(2, math_ops.add(w, 1).eval())
 
   def testAssignAddMethod(self):
     with self.test_session():

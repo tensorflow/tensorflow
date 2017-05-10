@@ -27,13 +27,18 @@ class MetaGraphDef;
 namespace grappler {
 
 struct ItemConfig {
+  ItemConfig()
+      : ignore_user_placement(true),
+        ignore_colocation(true),
+        placeholder_unknown_output_shape_dim(-1) {}
+
   // If true, ignore all user specified node placement.
-  bool ignore_user_placement = true;
+  bool ignore_user_placement;
   // If true, ignore all user specified colocation attributes.
-  bool ignore_colocation = true;
+  bool ignore_colocation;
   // Dimension to use if a placeholder node has an _output_shapes attribute with
   // a dimension of -1.
-  int placeholder_unknown_output_shape_dim = -1;
+  int placeholder_unknown_output_shape_dim;
 };
 
 // Factory method for creating a GrapplerItem from a MetaGraphDef.

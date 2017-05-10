@@ -32,10 +32,12 @@ namespace grappler {
 // Returns a vector of InputProperties for 'node'. The vector will contain one
 // entry for each input of 'node'.
 // For each node in the graph, the 'name_to_cost' map stores a pointer to the
-// corresponding cost graph node indexed by node name.
+// corresponding cost graph node indexed by node name. The 'name_to_node' maps a
+// node name to its node definition.
 std::vector<OpInfo::TensorProperties> FindInputFeatures(
     const NodeDef& node,
-    const std::unordered_map<string, const CostGraphDef::Node*>& name_to_cost);
+    const std::unordered_map<string, const CostGraphDef::Node*>& name_to_cost,
+    const std::unordered_map<string, const NodeDef*>& name_to_node);
 
 // Returns the DeviceProperties of the device on which 'node' runs.
 OpInfo::DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node);
