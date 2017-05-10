@@ -24,6 +24,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.util.List;
+
 /** Unit tests for {@link org.tensorflow.OperationBuilder}. */
 @RunWith(JUnit4.class)
 public class OperationBuilderTest {
@@ -146,6 +148,36 @@ public class OperationBuilderTest {
       assertEquals(-1, n.shape().size(0));
       assertEquals(784, n.shape().size(1));
       assertEquals(DataType.FLOAT, n.dataType());
+    }
+  }
+
+  @Test
+  public void addControlInput() {
+    assertEquals(0, lessEqualControl(2, 3).size());
+    try {
+      lessEqualControl(3, 2);
+      fail("Did not run control operation.");
+    } catch (IllegalArgumentException iae) {
+      // expected
+    }
+  }
+
+  private static List<Tensor> lessEqualControl(int v1, int v2) {
+    try (Graph g = new Graph()) {
+      Output x = TestUtil.constant(g, "x", v1);
+      Output y = TestUtil.constant(g, "y", v2);
+      Output lessEqual = g.opBuilder("LessEqual", "lessEqual")
+          .addInput(x).addInput(y).build().output(0);
+      Operation precondition = g.opBuilder("Assert", "assert")
+          .addInput(lessEqual)
+          .addInputList(new Output[] {x, y})
+          .build();
+      Operation noop = g.opBuilder("NoOp", "noop")
+          .addControlInput(precondition)
+          .build();
+      try (Session s = new Session(g)) {
+        return s.runner().addTarget(noop).run();
+      }
     }
   }
 

@@ -29,6 +29,15 @@ TF_OperationDescription* requireHandle(JNIEnv* env, jlong handle) {
   return reinterpret_cast<TF_OperationDescription*>(handle);
 }
 
+TF_Operation* requireOperation(JNIEnv* env, jlong handle) {
+  if (handle == 0) {
+    throwException(env, kIllegalStateException,
+                   "Operation has not been built");
+    return nullptr;
+  }
+  return reinterpret_cast<TF_Operation*>(handle);
+}
+
 bool resolveOutput(JNIEnv* env, jlong op_handle, jint index, TF_Output* out) {
   if (op_handle == 0) {
     throwException(env, kIllegalStateException,
@@ -113,6 +122,15 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addInputList(
   env->ReleaseLongArrayElements(op_handles, oph, JNI_ABORT);
   if (!ok) return;
   TF_AddInputList(d, o.get(), n);
+}
+
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addControlInput(
+    JNIEnv* env, jclass clazz, jlong handle, jlong op_handle) {
+  TF_Operation* control = requireOperation(env, op_handle);
+  if (control == nullptr) return;
+  TF_OperationDescription* d = requireHandle(env, handle);
+  if (d == nullptr) return;
+  TF_AddControlInput(d, control);
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setDevice(
