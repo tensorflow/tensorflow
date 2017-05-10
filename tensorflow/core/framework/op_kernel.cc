@@ -90,9 +90,9 @@ OpKernel::OpKernel(OpKernelConstruction* context)
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()) {
   OP_REQUIRES_OK(context,
-                 NameRangesForNode(def_, context->op_def(), &input_name_map_,
+                 NameRangesForNode(def_, *context->op_def_, &input_name_map_,
                                    &output_name_map_));
-  OP_REQUIRES_OK(context, CheckOpDeprecation(context->op_def(),
+  OP_REQUIRES_OK(context, CheckOpDeprecation(*context->op_def_,
                                              context->graph_def_version()));
 
   // Kernels executing on GPU tie very few resources on the CPU where the
