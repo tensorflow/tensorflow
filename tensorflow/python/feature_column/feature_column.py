@@ -112,6 +112,9 @@ Example of building model using FeatureColumns, this can be used in a
       columns_to_tensors=columns_to_tensor,
       feature_columns=deep_feature_columns)
   second_layer = fully_connected(first_layer, ...)
+
+NOTE: Functions prefixed with "_" indicate experimental or private parts of
+the API subject to change, and should not be relied upon!
 """
 
 from __future__ import absolute_import
@@ -228,14 +231,13 @@ def make_linear_model(features,
                       trainable=True):
   """Returns a linear prediction `Tensor` based on given `feature_columns`.
 
-  This function generates a weighted sum for each unitss`. Weighted sum
-  refers to logits in classification problems. It refers to the prediction
-  itself for linear regression problems.
+  This function generates a weighted sum based on output dimension `units`.
+  Weighted sum refers to logits in classification problems. It refers to the
+  prediction itself for linear regression problems.
 
-  Main difference of `make_linear_model` and `make_input_layer` is handling of
-  categorical columns. `make_linear_model` treats them as `indicator_column`s
-  while `make_input_layer` explicitly requires wrapping each of them with an
-  `embedding_column` or an `indicator_column`.
+  Note on supported columns: `make_linear_model` treats categorical columns as
+  `indicator_column`s while `make_input_layer` explicitly requires wrapping each
+  of them with an `embedding_column` or an `indicator_column`.
 
   Example:
 
@@ -254,8 +256,7 @@ def make_linear_model(features,
       corresponding `FeatureColumn`.
     feature_columns: An iterable containing all the FeatureColumns. All items
       should be instances of classes derived from FeatureColumn.
-    units: units: An integer, dimensionality of the output space. Default
-      value is 1.
+    units: An integer, dimensionality of the output space. Default value is 1.
     sparse_combiner: A string specifying how to reduce if a sparse column is
       multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
       the default. "sqrtn" often achieves good accuracy, in particular with
@@ -850,6 +851,32 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
       key=key, num_buckets=num_buckets, default_value=default_value)
 
 
+def indicator_column(categorical_column):
+  """Represents multi-hot representation of given categorical column.
+
+  Used to wrap any `categorical_column_*`.
+
+  ```python
+  name = indicator_column(categorical_column_with_vocabulary_list('name',
+      ['bob', 'george', 'wanda'])
+  all_feature_columns = [name, ...]
+  dense_tensor = make_input_layer(features, all_feature_columns)
+
+  dense_tensor == [[1, 0, 0]]  # If "name" bytes_list is ["bob"]
+  dense_tensor == [[1, 0, 1]]  # If "name" bytes_list is ["bob", "wanda"]
+  dense_tensor == [[2, 0, 0]]  # If "name" bytes_list is ["bob", "bob"]
+  ```
+
+  Args:
+    categorical_column: A `_CategoricalColumn` which is created by
+      `categorical_column_with_*` or crossed_column functions.
+
+  Returns:
+    An `_IndicatorColumn`.
+  """
+  return _IndicatorColumn(categorical_column)
+
+
 class _FeatureColumn(object):
   """Represents a feature column abstraction.
 
@@ -874,14 +901,14 @@ class _FeatureColumn(object):
 
   @abc.abstractmethod
   def _transform_feature(self, inputs):
-    """Returns transformed `Tensor`, uses `inputs` to access input tensors.
+    """Returns intermediate representation (usually a `Tensor`).
 
-    It uses `inputs` to get either raw feature or transformation of other
-    FeatureColumns.
+    Uses `inputs` to create an intermediate representation (usually a `Tensor`)
+    that other feature columns can use.
 
-    Example input access:
+    Example usage of `inputs`:
     Let's say a Feature column depends on raw feature ('raw') and another
-    `_FeatureColumn` (input_fc). To access corresponding Tensors, inputs will
+    `_FeatureColumn` (input_fc). To access corresponding `Tensor`s, inputs will
     be used as follows:
 
     ```python
@@ -933,7 +960,7 @@ class _DenseColumn(_FeatureColumn):
 
   @abc.abstractproperty
   def _variable_shape(self):
-    """Returns a `TensorShape` of variable compatible with _get_dense_tensor."""
+    """Returns a `TensorShape` representing the shape of the dense `Tensor`."""
     pass
 
   @abc.abstractmethod
@@ -979,7 +1006,7 @@ def _create_dense_column_weighted_sum(
 
 
 class _CategoricalColumn(_FeatureColumn):
-  """Represents a categorical feautre.
+  """Represents a categorical feature.
 
   WARNING: Do not subclass this layer unless you know what you are doing:
   the API is subject to future changes.
@@ -1249,8 +1276,24 @@ class _NumericColumn(_DenseColumn,
     return tensor_shape.TensorShape(self.shape)
 
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    """Returns dense `Tensor` representing numeric feature.
+
+    Args:
+      inputs: A `_LazyBuilder` object to access inputs.
+      weight_collections: Unused `weight_collections` since no variables are
+        created in this function.
+      trainable: Unused `trainable` bool since no variables are created in
+        this function.
+
+    Returns:
+      Dense `Tensor` created within `_transform_feature`.
+    """
+    # Do nothing with weight_collections and trainable since no variables are
+    # created in this function.
     del weight_collections
     del trainable
+    # Feature has been already transformed. Return the intermediate
+    # representation created by _transform_feature.
     return inputs.get(self)
 
 
@@ -1667,8 +1710,8 @@ def _safe_embedding_lookup_sparse(embedding_weights,
   along the last dimension.
 
   Args:
-    embedding_weights:  A list of `P` float tensors or values representing
-        partitioned embedding tensors.  Alternatively, a `PartitionedVariable`,
+    embedding_weights:  A list of `P` float `Tensor`s or values representing
+        partitioned embedding `Tensor`s.  Alternatively, a `PartitionedVariable`
         created by partitioning along dimension 0.  The total unpartitioned
         shape should be `[e_0, e_1, ..., e_m]`, where `e_0` represents the
         vocab size and `e_1, ..., e_m` are the embedding dimensions.
@@ -1689,7 +1732,7 @@ def _safe_embedding_lookup_sparse(embedding_weights,
 
 
   Returns:
-    Dense tensor of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
+    Dense `Tensor` of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
 
   Raises:
     ValueError: if `embedding_weights` is empty.
@@ -1788,3 +1831,83 @@ def _prune_invalid_ids(sparse_ids, sparse_weights):
   if sparse_weights is not None:
     sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_id_valid)
   return sparse_ids, sparse_weights
+
+
+class _IndicatorColumn(_DenseColumn,
+                       collections.namedtuple('_IndicatorColumn',
+                                              ['categorical_column'])):
+  """Represents a one-hot column for use in deep networks.
+
+  Args:
+    categorical_column: A `_CategoricalColumn` which is created by
+      `categorical_column_with_*` function.
+  """
+
+  @property
+  def name(self):
+    return '{}_indicator'.format(self.categorical_column.name)
+
+  def _transform_feature(self, inputs):
+    """Returns dense `Tensor` representing feature.
+
+    Args:
+      inputs: A `_LazyBuilder` object to access inputs.
+
+    Returns:
+      Transformed feature `Tensor`.
+    """
+    id_weight_pair = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
+    id_tensor = id_weight_pair.id_tensor
+    weight_tensor = id_weight_pair.weight_tensor
+
+    # If the underlying column is weighted, return the input as a dense tensor.
+    if weight_tensor is not None:
+      weighted_column = sparse_ops.sparse_merge(
+          sp_ids=id_tensor,
+          sp_values=weight_tensor,
+          vocab_size=self._variable_shape[-1])
+      return sparse_ops.sparse_tensor_to_dense(weighted_column)
+
+    dense_id_tensor = sparse_ops.sparse_tensor_to_dense(
+        id_tensor, default_value=-1)
+
+    # One hot must be float for tf.concat reasons since all other inputs to
+    # input_layer are float32.
+    one_hot_id_tensor = array_ops.one_hot(
+        dense_id_tensor,
+        depth=self._variable_shape[-1],
+        on_value=1.0,
+        off_value=0.0)
+
+    # Reduce to get a multi-hot per example.
+    return math_ops.reduce_sum(one_hot_id_tensor, axis=[1])
+
+  @property
+  def _parse_example_config(self):
+    return self.categorical_column._parse_example_config  # pylint: disable=protected-access
+
+  @property
+  def _variable_shape(self):
+    """Returns a `TensorShape` representing the shape of the dense `Tensor`."""
+    return tensor_shape.TensorShape([1, self.categorical_column._num_buckets])  # pylint: disable=protected-access
+
+  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    """Returns dense `Tensor` representing feature.
+
+    Args:
+      inputs: A `_LazyBuilder` object to access inputs.
+      weight_collections: Unused `weight_collections` since no variables are
+        created in this function.
+      trainable: Unused `trainable` bool since no variables are created in
+        this function.
+
+    Returns:
+      Dense `Tensor` created within `_transform_feature`.
+    """
+    # Do nothing with weight_collections and trainable since no variables are
+    # created in this function.
+    del weight_collections
+    del trainable
+    # Feature has been already transformed. Return the intermediate
+    # representation created by _transform_feature.
+    return inputs.get(self)

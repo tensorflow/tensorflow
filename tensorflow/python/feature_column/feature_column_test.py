@@ -1189,6 +1189,17 @@ class MakeInputLayerTest(test.TestCase):
         self.assertAllClose([[1., 3.]], net1.eval())
         self.assertAllClose([[1., 3.]], net2.eval())
 
+  def test_fails_for_categorical_column(self):
+    animal = fc.categorical_column_with_identity('animal', num_buckets=4)
+    with ops.Graph().as_default():
+      features = {
+          'animal':
+              sparse_tensor.SparseTensor(
+                  indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
+      }
+      with self.assertRaisesRegexp(Exception, 'must be a _DenseColumn'):
+        fc.make_input_layer(features, [animal])
+
 
 class MakeParseExampleSpecTest(test.TestCase):
 
@@ -2106,6 +2117,108 @@ class TransformFeaturesTest(test.TestCase):
       fc._transform_features({}, [column2, column1])
       self.assertEqual(0, column1.call_order)
       self.assertEqual(1, column2.call_order)
+
+
+class IndicatorColumnTest(test.TestCase):
+
+  def test_indicator_column(self):
+    a = fc.categorical_column_with_hash_bucket('a', 4)
+    indicator_a = fc.indicator_column(a)
+    self.assertEqual(indicator_a.categorical_column.name, 'a')
+    self.assertEqual(indicator_a._variable_shape, [1, 4])
+
+    b = fc.categorical_column_with_hash_bucket('b', hash_bucket_size=100)
+    indicator_b = fc.indicator_column(b)
+    self.assertEqual(indicator_b.categorical_column.name, 'b')
+    self.assertEqual(indicator_b._variable_shape, [1, 100])
+
+  def test_1D_shape_fails(self):
+    with self.assertRaisesRegexp(ValueError, 'must have rank 2'):
+      fc._LazyBuilder({
+          'animal':
+              sparse_tensor.SparseTensor(
+                  indices=[0], values=['fox'], dense_shape=[1])
+      })
+
+  def test_2D_shape_succeeds(self):
+    # TODO(ispir/cassandrax): Swith to categorical_column_with_keys when ready.
+    animal = fc.indicator_column(
+        fc.categorical_column_with_hash_bucket('animal', 4))
+    builder = fc._LazyBuilder({
+        'animal':
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0], [1, 0]],
+                values=['fox', 'fox'],
+                dense_shape=[2, 1])
+    })
+    output = builder.get(animal)
+    with self.test_session():
+      self.assertAllEqual([[0., 0., 1., 0.], [0., 0., 1., 0.]], output.eval())
+
+  def test_multi_hot(self):
+    animal = fc.indicator_column(
+        fc.categorical_column_with_identity('animal', num_buckets=4))
+
+    builder = fc._LazyBuilder({
+        'animal':
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0], [0, 1]], values=[1, 1], dense_shape=[1, 2])
+    })
+    output = builder.get(animal)
+    with self.test_session():
+      self.assertAllEqual([[0., 2., 0., 0.]], output.eval())
+
+  def test_multi_hot2(self):
+    animal = fc.indicator_column(
+        fc.categorical_column_with_identity('animal', num_buckets=4))
+    builder = fc._LazyBuilder({
+        'animal':
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
+    })
+    output = builder.get(animal)
+    with self.test_session():
+      self.assertAllEqual([[0., 1., 1., 0.]], output.eval())
+
+  def test_indicator_column_deep_copy(self):
+    a = fc.categorical_column_with_hash_bucket('a', 4)
+    column = fc.indicator_column(a)
+    column_copy = copy.deepcopy(column)
+    self.assertEqual(column_copy.categorical_column.name, 'a')
+    self.assertEqual(column.name, 'a_indicator')
+    self.assertEqual(column._variable_shape, [1, 4])
+
+  def test_make_linear_model(self):
+    animal = fc.indicator_column(
+        fc.categorical_column_with_identity('animal', num_buckets=4))
+    with ops.Graph().as_default():
+      features = {
+          'animal':
+              sparse_tensor.SparseTensor(
+                  indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
+      }
+
+      predictions = fc.make_linear_model(features, [animal])
+      weight_var = get_linear_model_column_var(animal)
+      with _initialized_session():
+        # All should be zero-initialized.
+        self.assertAllClose([[0.], [0.], [0.], [0.]], weight_var.eval())
+        self.assertAllClose([[0.]], predictions.eval())
+        weight_var.assign([[1.], [2.], [3.], [4.]]).eval()
+        self.assertAllClose([[2. + 3.]], predictions.eval())
+
+  def test_make_input_layer(self):
+    animal = fc.indicator_column(
+        fc.categorical_column_with_identity('animal', num_buckets=4))
+    with ops.Graph().as_default():
+      features = {
+          'animal':
+              sparse_tensor.SparseTensor(
+                  indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
+      }
+      net = fc.make_input_layer(features, [animal])
+      with _initialized_session():
+        self.assertAllClose([[0., 1., 1., 0.]], net.eval())
 
 
 if __name__ == '__main__':
