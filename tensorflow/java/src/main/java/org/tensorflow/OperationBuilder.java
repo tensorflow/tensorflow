@@ -74,15 +74,17 @@ public final class OperationBuilder {
   }
 
   /**
-   * A control input is an Operation that must be executed or computed
-   * before running the operation currently being built.
+   * Ensure that the operation does not execute before the control operation does.
    *
-   *<p>For example, an Assert operation may be added as a control
+   * <p>A control input is an Operation that must be executed before
+   * running the operation currently being built.
+   *
+   * <p>For example, an Assert operation may be added as a control
    * input for this operation. The Assert now behaves as a
    * pre-condition that will always verify itself before running the
    * operation.
    *
-   * @param control operation that must be computed before running this
+   * @param control operation that must be executed before running this
    *     operation.
    * @return the OperationBuilder instance for chaining.
    */

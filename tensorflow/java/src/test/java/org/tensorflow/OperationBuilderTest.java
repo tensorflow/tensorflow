@@ -24,8 +24,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-import java.util.List;
-
 /** Unit tests for {@link org.tensorflow.OperationBuilder}. */
 @RunWith(JUnit4.class)
 public class OperationBuilderTest {
@@ -153,30 +151,28 @@ public class OperationBuilderTest {
 
   @Test
   public void addControlInput() {
-    assertEquals(0, lessEqualControl(2, 3).size());
-    try {
-      lessEqualControl(3, 2);
-      fail("Did not run control operation.");
-    } catch (IllegalArgumentException iae) {
-      // expected
-    }
-  }
-
-  private static List<Tensor> lessEqualControl(int v1, int v2) {
-    try (Graph g = new Graph()) {
-      Output x = TestUtil.constant(g, "x", v1);
-      Output y = TestUtil.constant(g, "y", v2);
-      Output lessEqual = g.opBuilder("LessEqual", "lessEqual")
-          .addInput(x).addInput(y).build().output(0);
-      Operation precondition = g.opBuilder("Assert", "assert")
-          .addInput(lessEqual)
-          .addInputList(new Output[] {x, y})
+    try (Graph g = new Graph();
+         Session s = new Session(g);
+         Tensor yes = Tensor.create(true);
+         Tensor no = Tensor.create(false)) {
+      Output placeholder = TestUtil.placeholder(g, "boolean", DataType.BOOL);
+      Operation check = g.opBuilder("Assert", "assert")
+          .addInput(placeholder)
+          .addInputList(new Output[]{placeholder})
           .build();
       Operation noop = g.opBuilder("NoOp", "noop")
-          .addControlInput(precondition)
+          .addControlInput(check)
           .build();
-      try (Session s = new Session(g)) {
-        return s.runner().addTarget(noop).run();
+
+      // No problems when the Assert check succeeds
+      s.runner().feed(placeholder, yes).addTarget(noop).run();
+
+      // Exception thrown by the execution of the Assert node
+      try {
+        s.runner().feed(placeholder, no).addTarget(noop).run();
+        fail("Did not run control operation.");
+      } catch (IllegalArgumentException e) {
+        // expected
       }
     }
   }

@@ -29,15 +29,6 @@ TF_OperationDescription* requireHandle(JNIEnv* env, jlong handle) {
   return reinterpret_cast<TF_OperationDescription*>(handle);
 }
 
-TF_Operation* requireOperation(JNIEnv* env, jlong handle) {
-  if (handle == 0) {
-    throwException(env, kIllegalStateException,
-                   "Operation has not been built");
-    return nullptr;
-  }
-  return reinterpret_cast<TF_Operation*>(handle);
-}
-
 bool resolveOutput(JNIEnv* env, jlong op_handle, jint index, TF_Output* out) {
   if (op_handle == 0) {
     throwException(env, kIllegalStateException,
@@ -126,8 +117,13 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addInputList(
 
 JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addControlInput(
     JNIEnv* env, jclass clazz, jlong handle, jlong op_handle) {
-  TF_Operation* control = requireOperation(env, op_handle);
-  if (control == nullptr) return;
+  if (op_handle == 0) {
+    throwException(env, kIllegalStateException,
+                   "control input is not valid, "
+                   "perhaps the Graph containing it has been closed()?");
+    return;
+  }
+  TF_Operation* control = reinterpret_cast<TF_Operation*>(op_handle);
   TF_OperationDescription* d = requireHandle(env, handle);
   if (d == nullptr) return;
   TF_AddControlInput(d, control);
