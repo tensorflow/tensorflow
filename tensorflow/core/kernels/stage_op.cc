@@ -66,7 +66,7 @@ class Buffer : public ResourceBase {
 
  public:
   // public methods
-  explicit Buffer(int capacity) : capacity_(capacity_) {}
+  explicit Buffer(int capacity) : capacity_(capacity) {}
 
   // the Buffer takes ownership of the Tuple
   void Put(Tuple* tuple) {
@@ -91,7 +91,7 @@ class Buffer : public ResourceBase {
   void Get(Tuple* tuple) {  // TODO(zhifengc): Support cancellation.
     mutex_lock l(mu_);
 
-    // Wait for data if the buffer is emptys
+    // Wait for data if the buffer is empty
     non_empty_cond_var_.wait(l, [this]() {
       return !buf_.empty();
     });
