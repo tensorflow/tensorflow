@@ -30,6 +30,7 @@ from tensorflow.examples.tutorials.mnist import mnist
 
 # Basic model parameters as external flags.
 flags = tf.app.flags
+#后面程序使用FLAGS
 FLAGS = flags.FLAGS
 flags.DEFINE_float('learning_rate', 0.01, 'Initial learning rate.')
 flags.DEFINE_integer('max_steps', 2000, 'Number of steps to run trainer.')
@@ -108,14 +109,17 @@ def do_eval(sess,
       input_data.read_data_sets().
   """
   # And run one epoch of eval.
-  true_count = 0  # Counts the number of correct predictions.
-  steps_per_epoch = data_set.num_examples // FLAGS.batch_size
-  num_examples = steps_per_epoch * FLAGS.batch_size
-  for step in xrange(steps_per_epoch):
+  true_count = 0  # 记录正确数量
+  steps_per_epoch = data_set.num_examples // FLAGS.batch_size #计算总共有多少批次，//表示除法，且取整的除法
+  num_examples = steps_per_epoch * FLAGS.batch_size #总数量 即批次量*每批大小
+  #对每一批次内进行计算
+  for step in xrange(steps_per_epoch): 
     feed_dict = fill_feed_dict(data_set,
                                images_placeholder,
                                labels_placeholder)
+    #计算批次内正确量
     true_count += sess.run(eval_correct, feed_dict=feed_dict)
+  #得到整体的准确度
   precision = true_count / num_examples
   print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
         (num_examples, true_count, precision))
