@@ -1692,7 +1692,14 @@ class StagingArea(BaseStagingArea):
                         capacity=self._capacity)
 
   def clear(self, name=None):
-    """Empties the staging area."""
+    """Clears the staging area.
+
+    Args:
+        name: A name for the operation (optional)
+
+    Returns:
+        The created op
+    """
     if name is None:
       name = "%s_clear" % self._name
 
