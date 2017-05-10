@@ -298,35 +298,6 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
     self._model_dir = _get_model_dir(model_dir)
 
-  def replace(self, **kwargs):
-    """Returns a new instance of `RunConfig` replacing specified properties.
-
-    Only the properties in the following list are allowed to be replaced:
-      - `model_dir`,
-      - `tf_random_seed`,
-      - `save_summary_steps`,
-      - `save_checkpoints_steps`,
-      - `save_checkpoints_secs`,
-      - `session_config`,
-      - `keep_checkpoint_max`,
-      - `keep_checkpoint_every_n_hours`,
-
-    Args:
-      **kwargs: keyword named properties with new values.
-
-    Raises:
-      ValueError: If any property name in `kwargs` does not exist or is not
-        allowed to be replaced.
-
-    Returns:
-      a new instance of `RunConfig`.
-    """
-    # In addition to the _DEFAULT_UID_WHITE_LIST, also allow model_dir to be
-    # replaced, as most execution frameworks change it.
-    return super(RunConfig, self)._replace(
-        allowed_properties_list=['model_dir'] + _DEFAULT_UID_WHITE_LIST,
-        **kwargs)
-
   @experimental
   def uid(self, whitelist=None):
     """Generates a 'Unique Identifier' based on all internal fields.
