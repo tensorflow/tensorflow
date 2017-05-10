@@ -119,7 +119,7 @@ py_library(
     name = "pprof_profiler",
     srcs = ["pprof_profiler.py"],
     srcs_version = "PY2AND3",
-    deps = ["@pprof_profile_proto//:pprof_proto_py"],
+    deps = ["@com_google_pprof//:pprof_proto_py"],
 )
 
 py_test(
@@ -134,7 +134,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
-        "@pprof_profile_proto//:pprof_proto_py",
+        "@com_google_pprof//:pprof_proto_py",
     ],
 )
 

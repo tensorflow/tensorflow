@@ -47,7 +47,7 @@ import string
 import sys
 import time
 
-from pprof import profile_pb2
+from proto import profile_pb2
 
 
 if sys.version_info < (3,):
