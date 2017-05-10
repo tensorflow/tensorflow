@@ -33,9 +33,7 @@ class Buffer : public ResourceBase {
     typedef std::vector<Tensor> Tuple;
 
  public:
-  explicit Buffer(int capacity) {
-    capacity_ = capacity;
-  }
+  explicit Buffer(int capacity) : capacity_(capacity_) {}
 
   bool HasBoundedCapacity() {
     return capacity_ > 0;

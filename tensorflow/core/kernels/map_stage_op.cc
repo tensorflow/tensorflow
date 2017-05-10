@@ -57,8 +57,7 @@ private:
 
 public:
   // public methods
-  explicit StagingMap(int capacity)
-    { capacity_ = capacity; }
+  explicit StagingMap(int capacity) : capacity_(capacity) {}
 
   bool has_bounded_capacity()
     { return capacity_ > 0; }
