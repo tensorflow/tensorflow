@@ -366,6 +366,7 @@ filegroup(
         "//tensorflow/tensorboard/components/vz_sorting:all_files",
         "//tensorflow/tensorboard/components/vz_sorting/test:all_files",
         "//tensorflow/tensorboard/components/vz_sorting_d3v4:all_files",
+        "//tensorflow/tensorboard/java/org/tensorflow/tensorboard/vulcanize:all_files",
         "//tensorflow/tensorboard/lib:all_files",
         "//tensorflow/tensorboard/plugins:all_files",
         "//tensorflow/tensorboard/plugins/projector:all_files",
