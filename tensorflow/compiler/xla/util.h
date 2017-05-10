@@ -39,6 +39,13 @@ limitations under the License.
 
 namespace xla {
 
+// Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
+// the bounds and indices. And for the rare cases of ranks greater than 8,
+// the InlinedVector will just behave like an std::vector<> and allocate the
+// memory to store its values.
+static constexpr int kInlineRank = 8;
+using DimensionVector = tensorflow::gtl::InlinedVector<int64, kInlineRank>;
+
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
 // spits out the human-readable duration form.

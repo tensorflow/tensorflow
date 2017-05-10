@@ -36,6 +36,29 @@ limitations under the License.
 
 namespace xla {
 
+LiteralUtil::StrideConfig::StrideConfig(
+    const Shape& source_shape, const Shape& dest_shape,
+    tensorflow::gtl::ArraySlice<int64> dimensions)
+    : dimensions(dimensions),
+      base(dimensions.size(), 0),
+      step(dimensions.size(), 1) {
+  if (!dimensions.empty()) {
+    // Selects the shape with the highest minor dimension as the one upon
+    // where to run the tight stride loop.
+    if (source_shape.layout().minor_to_major()[0] >=
+        dest_shape.layout().minor_to_major()[0]) {
+      minor_dimension = source_shape.layout().minor_to_major()[0];
+      dest_stride = IndexUtil::GetDimensionStride(dest_shape, minor_dimension);
+    } else {
+      minor_dimension = dest_shape.layout().minor_to_major()[0];
+      source_stride =
+          IndexUtil::GetDimensionStride(source_shape, minor_dimension);
+    }
+    minor_loop_size = dimensions[minor_dimension];
+    step[minor_dimension] = minor_loop_size;
+  }
+}
+
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateFromShape(
     const Shape& shape) {
   auto literal = MakeUnique<Literal>();
@@ -78,34 +101,30 @@ template <typename T>
     // the index enumaration functor, do a strided copy advancing source index
     // by one (walking through the minor dimension), and destination index by
     // proper stride size at the matching dimension.
-    std::vector<int64> src_indexes(src_base.size(), 0);
-    std::vector<int64> dest_indexes(dest_base.size(), 0);
-    std::vector<int64> base(src_base.size(), 0);
-    std::vector<int64> incr(src_base.size(), 1);
-    int64 sdim = src_shape.layout().minor_to_major()[0];
-    int64 dest_stride = IndexUtil::GetDimensionStride(dest_shape, sdim);
+    DimensionVector src_indexes(src_base.size(), 0);
+    DimensionVector dest_indexes(dest_base.size(), 0);
+    StrideConfig stride_config(src_shape, dest_shape, copy_size);
 
-    incr[sdim] = copy_size[sdim];
     auto copy_proc = [&](const std::vector<int64>& indexes) {
       // Map from multi-dimensional index, to source index.
-      std::copy(indexes.begin(), indexes.end(), src_indexes.begin());
-      std::transform(src_indexes.begin(), src_indexes.end(), src_base.begin(),
+      std::transform(indexes.begin(), indexes.end(), src_base.begin(),
                      src_indexes.begin(), std::plus<int64>());
       // Map from multi-dimensional index, to destination index.
-      std::copy(indexes.begin(), indexes.end(), dest_indexes.begin());
-      std::transform(dest_indexes.begin(), dest_indexes.end(),
-                     dest_base.begin(), dest_indexes.begin(),
-                     std::plus<int64>());
+      std::transform(indexes.begin(), indexes.end(), dest_base.begin(),
+                     dest_indexes.begin(), std::plus<int64>());
 
       int64 src_index = LinearIndex(src_literal, src_indexes);
       int64 dest_index = LinearIndex(*dest_literal, dest_indexes);
 
-      StridedCopy(dest_data, dest_index, dest_stride, src_data, src_index, 1,
-                  copy_size[sdim]);
+      StridedCopy(dest_data, dest_index, stride_config.dest_stride, src_data,
+                  src_index, stride_config.source_stride,
+                  stride_config.minor_loop_size);
       return true;
     };
 
-    ShapeUtil::ForEachIndex(src_shape, base, copy_size, incr, copy_proc);
+    ShapeUtil::ForEachIndex(src_shape, stride_config.base,
+                            stride_config.dimensions, stride_config.step,
+                            copy_proc);
   }
   return Status::OK();
 }
@@ -313,9 +332,9 @@ template <typename T>
   *result->mutable_shape()->mutable_layout() = layout;
 
   const Shape& shape = original.shape();
-  std::vector<int64> base(ShapeUtil::Rank(shape), 0);
-  std::vector<int64> copy_size(shape.dimensions().begin(),
-                               shape.dimensions().end());
+  DimensionVector base(ShapeUtil::Rank(shape), 0);
+  DimensionVector copy_size(shape.dimensions().begin(),
+                            shape.dimensions().end());
 
   TF_CHECK_OK(Copy(original, base, result.get(), base, copy_size));
   return result;
@@ -396,7 +415,7 @@ template <typename T>
   CHECK(!ShapeUtil::IsTuple(literal.shape()))
       << "tuple is not supported for reshape";
 
-  std::vector<int64> result_dimensions;
+  DimensionVector result_dimensions;
   for (int64 dnum = 0; dnum < ShapeUtil::Rank(literal.shape()); ++dnum) {
     CHECK_GE(start_indices[dnum], 0);
     CHECK_LE(limit_indices[dnum], literal.shape().dimensions(dnum));
@@ -412,7 +431,7 @@ template <typename T>
   *result_literal->mutable_shape() = result_shape;
   Reserve(ShapeUtil::ElementsIn(result_shape), result_literal.get());
 
-  std::vector<int64> new_indices(ShapeUtil::Rank(result_shape));
+  DimensionVector new_indices(ShapeUtil::Rank(result_shape));
   switch (result_shape.element_type()) {
     case F32:
       LiteralUtil::EachCell<float>(
@@ -649,8 +668,11 @@ template <typename T>
     case PRED:
       Resize<bool>(num_elements, false, literal);
       break;
+    case S8:
+      Resize<int8>(num_elements, 0, literal);
+      break;
     case U8:
-      Resize<uint8>(num_elements, false, literal);
+      Resize<uint8>(num_elements, 0, literal);
       break;
     case S32:
       Resize<int32>(num_elements, 0, literal);
@@ -812,6 +834,26 @@ LiteralUtil::GetMutableArraySlice(Literal* literal) {
 }
 
 template <>
+/* static */ tensorflow::gtl::MutableArraySlice<int8>
+LiteralUtil::GetMutableArraySlice(Literal* literal) {
+  // C++11 standard, basic_string 21.4.1.5, values should be stored
+  // contiguously. From C++17 a mutable data() member will be provided.
+  auto values = literal->mutable_u8s();
+  return tensorflow::gtl::MutableArraySlice<int8>(
+      reinterpret_cast<int8*>(&(*values)[0]), values->size());
+}
+
+template <>
+/* static */ tensorflow::gtl::MutableArraySlice<uint8>
+LiteralUtil::GetMutableArraySlice(Literal* literal) {
+  // C++11 standard, basic_string 21.4.1.5, values should be stored
+  // contiguously. From C++17 a mutable data() member will be provided.
+  auto values = literal->mutable_u8s();
+  return tensorflow::gtl::MutableArraySlice<uint8>(
+      reinterpret_cast<uint8*>(&(*values)[0]), values->size());
+}
+
+template <>
 /* static */ tensorflow::gtl::MutableArraySlice<int32>
 LiteralUtil::GetMutableArraySlice(Literal* literal) {
   auto values = literal->mutable_s32s();
@@ -877,42 +919,60 @@ LiteralUtil::GetMutableArraySlice(Literal* literal) {
 template <>
 /* static */ tensorflow::gtl::ArraySlice<bool> LiteralUtil::GetArraySlice<bool>(
     const Literal& literal) {
-  CHECK(literal.shape().element_type() == PRED);
+  CHECK_EQ(literal.shape().element_type(), PRED);
   return literal.preds();
+}
+
+template <>
+/* static */ tensorflow::gtl::ArraySlice<uint8>
+LiteralUtil::GetArraySlice<uint8>(const Literal& literal) {
+  CHECK_EQ(literal.shape().element_type(), U8);
+  return tensorflow::gtl::ArraySlice<uint8>(
+      reinterpret_cast<const uint8*>(literal.u8s().data()),
+      literal.u8s().size());
+}
+
+template <>
+/* static */ tensorflow::gtl::ArraySlice<int8> LiteralUtil::GetArraySlice<int8>(
+    const Literal& literal) {
+  CHECK_EQ(literal.shape().element_type(), S8);
+  return tensorflow::gtl::ArraySlice<int8>(
+      reinterpret_cast<const int8*>(literal.u8s().data()),
+      literal.u8s().size());
 }
 
 template <>
 /* static */ tensorflow::gtl::ArraySlice<uint32>
 LiteralUtil::GetArraySlice<uint32>(const Literal& literal) {
-  CHECK(literal.shape().element_type() == U32);
+  CHECK_EQ(literal.shape().element_type(), U32);
   return literal.u32s();
 }
 
 template <>
 /* static */ tensorflow::gtl::ArraySlice<uint64>
 LiteralUtil::GetArraySlice<uint64>(const Literal& literal) {
-  CHECK(literal.shape().element_type() == U64);
+  CHECK_EQ(literal.shape().element_type(), U64);
   return AsUInt64Slice(literal.u64s());
 }
 
 template <>
 /* static */ tensorflow::gtl::ArraySlice<int32>
 LiteralUtil::GetArraySlice<int32>(const Literal& literal) {
-  CHECK(literal.shape().element_type() == S32);
+  CHECK_EQ(literal.shape().element_type(), S32);
   return literal.s32s();
 }
 
 template <>
 /* static */ tensorflow::gtl::ArraySlice<int64>
 LiteralUtil::GetArraySlice<int64>(const Literal& literal) {
-  CHECK(literal.shape().element_type() == S64);
+  CHECK_EQ(literal.shape().element_type(), S64);
   return AsInt64Slice(literal.s64s());
 }
 
 template <>
 /* static */ tensorflow::gtl::ArraySlice<double>
 LiteralUtil::GetArraySlice<double>(const Literal& literal) {
-  CHECK(literal.shape().element_type() == F64);
+  CHECK_EQ(literal.shape().element_type(), F64);
   return literal.f64s();
 }
 
@@ -1010,6 +1070,13 @@ template <>
                                             Literal* literal) {
   CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
   literal->mutable_preds()->Resize(num_elements, value);
+}
+
+template <>
+/* static */ void LiteralUtil::Resize<int8>(int64 num_elements, int8 value,
+                                            Literal* literal) {
+  CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
+  literal->mutable_u8s()->resize(num_elements, value);
 }
 
 template <>

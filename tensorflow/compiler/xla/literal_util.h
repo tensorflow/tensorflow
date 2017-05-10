@@ -437,6 +437,29 @@ class LiteralUtil {
                           tensorflow::gtl::ArraySlice<int64> dest_base,
                           tensorflow::gtl::ArraySlice<int64> copy_size);
 
+  // Utility structure which is used to create the optimal configuration for
+  // a ShapeUtil::ForEachIndex() scan across two literals.
+  struct StrideConfig {
+    StrideConfig(const Shape& source_shape, const Shape& dest_shape,
+                 tensorflow::gtl::ArraySlice<int64> dimensions);
+
+    // The dimensions of the stride operation. Essentially every dimension
+    // will be iterated from base[i] to base[i]+dimensions[i], in step[i]
+    // steps.
+    tensorflow::gtl::ArraySlice<int64> dimensions;
+    DimensionVector base;
+    DimensionVector step;
+    int64 minor_dimension = 0;
+    // The size of the strides for source and destination. One of the two
+    // (the one looping through its most minor dimension) will be 1, while
+    // the other will be the stride size at the dimension matching the other
+    // shape most minor dimension being scanned.
+    int64 dest_stride = 1;
+    int64 source_stride = 1;
+    // The size of the inner loop on the most minor dimension.
+    int64 minor_loop_size = 1;
+  };
+
   TF_DISALLOW_COPY_AND_ASSIGN(LiteralUtil);
 };
 
@@ -445,6 +468,14 @@ class LiteralUtil {
 // type.
 template <>
 /* static */ tensorflow::gtl::ArraySlice<bool> LiteralUtil::GetArraySlice<bool>(
+    const Literal& literal);
+
+template <>
+/* static */ tensorflow::gtl::ArraySlice<uint8>
+LiteralUtil::GetArraySlice<uint8>(const Literal& literal);
+
+template <>
+/* static */ tensorflow::gtl::ArraySlice<int8> LiteralUtil::GetArraySlice<int8>(
     const Literal& literal);
 
 template <>
@@ -476,6 +507,14 @@ LiteralUtil::GetArraySlice<double>(const Literal& literal);
 
 template <>
 /* static */ tensorflow::gtl::MutableArraySlice<bool>
+LiteralUtil::GetMutableArraySlice(Literal* literal);
+
+template <>
+/* static */ tensorflow::gtl::MutableArraySlice<int8>
+LiteralUtil::GetMutableArraySlice(Literal* literal);
+
+template <>
+/* static */ tensorflow::gtl::MutableArraySlice<uint8>
 LiteralUtil::GetMutableArraySlice(Literal* literal);
 
 template <>
@@ -1023,25 +1062,22 @@ template <typename NativeT>
   tensorflow::gtl::MutableArraySlice<NativeT> data =
       GetMutableArraySlice<NativeT>(literal);
   if (rank > 0) {
-    std::vector<int64> base(rank, 0);
-    std::vector<int64> step(rank, 1);
-    std::vector<int64> minor_scan_indexes(rank, 0);
-    int64 minor_dimension = shape.layout().minor_to_major()[0];
+    StrideConfig stride_config(shape, shape, AsInt64Slice(shape.dimensions()));
+    DimensionVector minor_scan_indexes(rank, 0);
     int64 minor_dimension_size =
-        ShapeUtil::GetDimension(shape, minor_dimension);
+        ShapeUtil::GetDimension(shape, stride_config.minor_dimension);
 
-    step[minor_dimension] = minor_dimension_size;
     auto init_function = [&](const std::vector<int64>& indexes) {
       int64 index = LinearIndex(*literal, indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
       for (int64 i = 0; i < minor_dimension_size; ++i) {
-        minor_scan_indexes[minor_dimension] = i;
+        minor_scan_indexes[stride_config.minor_dimension] = i;
         data.at(index + i) = generator(minor_scan_indexes);
       }
       return true;
     };
-    ShapeUtil::ForEachIndex(shape, base, AsInt64Slice(shape.dimensions()), step,
-                            init_function);
+    ShapeUtil::ForEachIndex(shape, stride_config.base, stride_config.dimensions,
+                            stride_config.step, init_function);
   } else {
     data.at(0) = generator({});
   }
@@ -1060,24 +1096,32 @@ template <typename NativeT>
 template <typename NativeSrcT, typename NativeDestT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::Convert(
     const Literal& literal) {
+  const Shape& shape = literal.shape();
   auto result_literal = MakeUnique<Literal>();
-  Shape result_shape = literal.shape();
-  result_shape.set_element_type(
+  Shape* result_shape = result_literal->mutable_shape();
+  *result_shape = shape;
+  result_shape->set_element_type(
       primitive_util::NativeToPrimitiveType<NativeDestT>());
-  *result_literal->mutable_shape() = result_shape;
-  LiteralUtil::Reserve(ShapeUtil::ElementsIn(result_shape),
+  LiteralUtil::Reserve(ShapeUtil::ElementsIn(*result_shape),
                        result_literal.get());
-  LiteralUtil::EachCell<NativeSrcT>(
-      literal,
-      [&](tensorflow::gtl::ArraySlice<int64> indices, NativeSrcT value) {
-        LiteralUtil::Set<NativeDestT>(result_literal.get(), indices,
-                                      static_cast<NativeDestT>(value));
-      });
+  tensorflow::gtl::ArraySlice<NativeSrcT> src_data =
+      GetArraySlice<NativeSrcT>(literal);
+  tensorflow::gtl::MutableArraySlice<NativeDestT> dest_data =
+      GetMutableArraySlice<NativeDestT>(result_literal.get());
+  int64 num_elements = ShapeUtil::ElementsIn(shape);
+
+  for (int64 i = 0; i < num_elements; ++i) {
+    dest_data[i] = static_cast<NativeDestT>(src_data[i]);
+  }
   return result_literal;
 }
 
 template <>
 /* static */ void LiteralUtil::Resize<bool>(int64 num_elements, bool value,
+                                            Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<int8>(int64 num_elements, int8 value,
                                             Literal* literal);
 
 template <>
@@ -1127,10 +1171,7 @@ LiteralUtil::CreateFullWithMonotonicDim0MajorLayout(
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::Replicate(
     const Literal& input, int64 times) {
-  // Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
-  // the bounds and indices.
-  static constexpr int kInlineRank = 8;
-  tensorflow::gtl::InlinedVector<int64, kInlineRank> bounds = {times};
+  DimensionVector bounds = {times};
   bounds.reserve(input.shape().dimensions_size() + 1);
   for (int64 bound : input.shape().dimensions()) {
     bounds.push_back(bound);
@@ -1144,8 +1185,7 @@ template <typename NativeT>
   }
   Reserve(elements, literal.get());
 
-  tensorflow::gtl::InlinedVector<int64, kInlineRank> output_indices(
-      bounds.size(), 0);
+  DimensionVector output_indices(bounds.size(), 0);
   tensorflow::gtl::ArraySlice<int64> input_indices = output_indices;
   input_indices.remove_prefix(1);
 
