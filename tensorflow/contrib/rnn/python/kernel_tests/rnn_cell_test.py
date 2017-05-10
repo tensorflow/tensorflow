@@ -1034,6 +1034,73 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         self.assertAllClose(res[1].c, expected_c, 1e-5)
         self.assertAllClose(res[1].h, expected_h, 1e-5)
 
+
+  def testBasicLSTMCellWithoutNorm(self):
+    """Tests that BasicLSTMCell with layer_norm=False."""
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        c0 = array_ops.zeros([1, 2])
+        h0 = array_ops.zeros([1, 2])
+        state0 = core_rnn_cell_impl.LSTMStateTuple(c0, h0)
+        c1 = array_ops.zeros([1, 2])
+        h1 = array_ops.zeros([1, 2])
+        state1 = core_rnn_cell_impl.LSTMStateTuple(c1, h1)
+        state = (state0, state1)
+        single_cell = lambda: rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)
+        cell = core_rnn_cell_impl.MultiRNNCell([single_cell() for _ in range(2)])
+        g, out_m = cell(x, state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, out_m], {
+          x.name: np.array([[1., 1.]]),
+          c0.name: 0.1 * np.asarray([[0, 1]]),
+          h0.name: 0.1 * np.asarray([[2, 3]]),
+          c1.name: 0.1 * np.asarray([[4, 5]]),
+          h1.name: 0.1 * np.asarray([[6, 7]]),
+        })
+
+        expected_h = np.array([[ 0.70230919, 0.72581059]])
+        expected_state0_c = np.array([[ 0.8020075,  0.89599884]])
+        expected_state0_h = np.array([[ 0.56668288,  0.60858738]])
+        expected_state1_c = np.array([[ 1.17500675,  1.26892781]])
+        expected_state1_h = np.array([[ 0.70230919,  0.72581059]])
+
+        actual_h = res[0]
+        actual_state0_c = res[1][0].c
+        actual_state0_h = res[1][0].h
+        actual_state1_c = res[1][1].c
+        actual_state1_h = res[1][1].h
+
+        self.assertAllClose(actual_h, expected_h, 1e-5)
+        self.assertAllClose(expected_state0_c, actual_state0_c, 1e-5)
+        self.assertAllClose(expected_state0_h, actual_state0_h, 1e-5)
+        self.assertAllClose(expected_state1_c, actual_state1_c, 1e-5)
+        self.assertAllClose(expected_state1_h, actual_state1_h, 1e-5)
+
+      with variable_scope.variable_scope(
+          "other", initializer=init_ops.constant_initializer(0.5)) as vs:
+        x = array_ops.zeros(
+          [1, 3])  # Test BasicLSTMCell with input_size != num_units.
+        c = array_ops.zeros([1, 2])
+        h = array_ops.zeros([1, 2])
+        state = core_rnn_cell_impl.LSTMStateTuple(c, h)
+        cell = rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)
+        g, out_m = cell(x, state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, out_m], {
+          x.name: np.array([[1., 1., 1.]]),
+          c.name: 0.1 * np.asarray([[0, 1]]),
+          h.name: 0.1 * np.asarray([[2, 3]]),
+        })
+
+        expected_h = np.array([[ 0.64121795, 0.68166804]])
+        expected_c = np.array([[ 0.88477188, 0.98103917]])
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_h, 1e-5)
+        self.assertAllClose(res[1].c, expected_c, 1e-5)
+        self.assertAllClose(res[1].h, expected_h, 1e-5)
+
   def testBasicLSTMCellWithStateTuple(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope(
