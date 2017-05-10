@@ -2822,5 +2822,263 @@ class EmbeddingColumnTest(test.TestCase):
       self.assertAllEqual(expected_lookups, input_layer.eval())
 
 
+class WeightedCategoricalColumnTest(test.TestCase):
+
+  def test_defaults(self):
+    column = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    self.assertEqual('ids_weighted_by_values', column.name)
+    self.assertEqual(3, column._num_buckets)
+    self.assertEqual({
+        'ids': parsing_ops.VarLenFeature(dtypes.int64),
+        'values': parsing_ops.VarLenFeature(dtypes.float32)
+    }, column._parse_example_config)
+
+  def test_deep_copy(self):
+    """Tests deepcopy of categorical_column_with_hash_bucket."""
+    original = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    for column in (original, copy.deepcopy(original)):
+      self.assertEqual('ids_weighted_by_values', column.name)
+      self.assertEqual(3, column._num_buckets)
+      self.assertEqual({
+          'ids': parsing_ops.VarLenFeature(dtypes.int64),
+          'values': parsing_ops.VarLenFeature(dtypes.float32)
+      }, column._parse_example_config)
+
+  def test_invalid_dtype_none(self):
+    with self.assertRaisesRegexp(ValueError, 'is not convertible to float'):
+      fc.weighted_categorical_column(
+          categorical_column=fc.categorical_column_with_identity(
+              key='ids', num_buckets=3),
+          weight_column_name='values',
+          dtype=None)
+
+  def test_invalid_dtype_string(self):
+    with self.assertRaisesRegexp(ValueError, 'is not convertible to float'):
+      fc.weighted_categorical_column(
+          categorical_column=fc.categorical_column_with_identity(
+              key='ids', num_buckets=3),
+          weight_column_name='values',
+          dtype=dtypes.string)
+
+  def test_invalid_input_dtype(self):
+    column = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    strings = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('omar', 'stringer', 'marlo'),
+        dense_shape=(2, 2))
+    with self.assertRaisesRegexp(ValueError, 'Bad dtype'):
+      fc._transform_features({'ids': strings, 'values': strings}, (column,))
+
+  def test_column_name_collision(self):
+    with self.assertRaisesRegexp(ValueError, r'Parse config.*already exists'):
+      fc.weighted_categorical_column(
+          categorical_column=fc.categorical_column_with_identity(
+              key='aaa', num_buckets=3),
+          weight_column_name='aaa')._parse_example_config()
+
+  def test_missing_weights(self):
+    column = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('omar', 'stringer', 'marlo'),
+        dense_shape=(2, 2))
+    with self.assertRaisesRegexp(
+        ValueError, 'values is not in features dictionary'):
+      fc._transform_features({'ids': inputs}, (column,))
+
+  def test_get_sparse_tensors(self):
+    column = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(0, 1, 0),
+        dense_shape=(2, 2))
+    weights = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(0.5, 1.0, 0.1),
+        dense_shape=(2, 2))
+    id_tensor, weight_tensor = fc._transform_features({
+        'ids': inputs,
+        'values': weights,
+    }, (column,))[column]
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array(inputs.values, dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_tensor.eval())
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=weights.indices,
+              values=np.array(weights.values, dtype=np.float32),
+              dense_shape=weights.dense_shape),
+          weight_tensor.eval())
+
+  def test_get_sparse_tensors_dense_input(self):
+    column = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    weights = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(0.5, 1.0, 0.1),
+        dense_shape=(2, 2))
+    id_tensor, weight_tensor = fc._transform_features({
+        'ids': ((0, -1), (1, 0)),
+        'values': weights,
+    }, (column,))[column]
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=np.array((0, 1, 0), dtype=np.int64),
+              dense_shape=(2, 2)),
+          id_tensor.eval())
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=weights.indices,
+              values=np.array(weights.values, dtype=np.float32),
+              dense_shape=weights.dense_shape),
+          weight_tensor.eval())
+
+  def test_get_sparse_tensors_dense_weights(self):
+    column = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(2, 1, 0),
+        dense_shape=(2, 2))
+    id_tensor, weight_tensor = fc._transform_features({
+        'ids': inputs,
+        'values': ((.5, 0.), (1., .1)),
+    }, (column,))[column]
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array(inputs.values, dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_tensor.eval())
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=np.array((.5, 1., .1), dtype=np.float32),
+              dense_shape=(2, 2)),
+          weight_tensor.eval())
+
+  def test_make_linear_model(self):
+    column = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    with ops.Graph().as_default():
+      predictions = fc.make_linear_model({
+          'ids': sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=(0, 2, 1),
+              dense_shape=(2, 2)),
+          'values': sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=(.5, 1., .1),
+              dense_shape=(2, 2))
+      }, (column,))
+      bias = get_linear_model_bias()
+      weight_var = get_linear_model_column_var(column)
+      with _initialized_session():
+        self.assertAllClose((0.,), bias.eval())
+        self.assertAllClose(((0.,), (0.,), (0.,)), weight_var.eval())
+        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        weight_var.assign(((1.,), (2.,), (3.,))).eval()
+        # weight_var[0] * weights[0, 0] = 1 * .5 = .5
+        # weight_var[2] * weights[1, 0] + weight_var[1] * weights[1, 1]
+        # = 3*1 + 2*.1 = 3+.2 = 3.2
+        self.assertAllClose(((.5,), (3.2,)), predictions.eval())
+
+  def test_make_linear_model_mismatched_shape(self):
+    column = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(
+          ValueError, r'Dimensions.*are not compatible'):
+        fc.make_linear_model({
+            'ids': sparse_tensor.SparseTensorValue(
+                indices=((0, 0), (1, 0), (1, 1)),
+                values=(0, 2, 1),
+                dense_shape=(2, 2)),
+            'values': sparse_tensor.SparseTensorValue(
+                indices=((0, 0), (0, 1), (1, 0), (1, 1)),
+                values=(.5, 11., 1., .1),
+                dense_shape=(2, 2))
+        }, (column,))
+
+  def test_make_linear_model_mismatched_dense_values(self):
+    column = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    with ops.Graph().as_default():
+      predictions = fc.make_linear_model({
+          'ids': sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=(0, 2, 1),
+              dense_shape=(2, 2)),
+          'values': ((.5,), (1.,))
+      }, (column,))
+      with _initialized_session():
+        with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
+          predictions.eval()
+
+  def test_make_linear_model_mismatched_dense_shape(self):
+    column = fc.weighted_categorical_column(
+        categorical_column=fc.categorical_column_with_identity(
+            key='ids', num_buckets=3),
+        weight_column_name='values')
+    with ops.Graph().as_default():
+      predictions = fc.make_linear_model({
+          'ids': sparse_tensor.SparseTensorValue(
+              indices=((0, 0), (1, 0), (1, 1)),
+              values=(0, 2, 1),
+              dense_shape=(2, 2)),
+          'values': ((.5,), (1.,), (.1,))
+      }, (column,))
+      bias = get_linear_model_bias()
+      weight_var = get_linear_model_column_var(column)
+      with _initialized_session():
+        self.assertAllClose((0.,), bias.eval())
+        self.assertAllClose(((0.,), (0.,), (0.,)), weight_var.eval())
+        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        weight_var.assign(((1.,), (2.,), (3.,))).eval()
+        # weight_var[0] * weights[0, 0] = 1 * .5 = .5
+        # weight_var[2] * weights[1, 0] + weight_var[1] * weights[1, 1]
+        # = 3*1 + 2*.1 = 3+.2 = 3.2
+        self.assertAllClose(((.5,), (3.2,)), predictions.eval())
+
+  # TODO(ptucker): Add test with embedding of weighted categorical.
+
 if __name__ == '__main__':
   test.main()

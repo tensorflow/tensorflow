@@ -292,19 +292,19 @@ def make_linear_model(features,
     weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
   with variable_scope.variable_scope(
       None, default_name='make_linear_model', values=features.values()):
-    weigthed_sums = []
+    weighted_sums = []
     builder = _LazyBuilder(features)
     for column in sorted(feature_columns, key=lambda x: x.name):
       with variable_scope.variable_scope(None, default_name=column.name):
         if isinstance(column, _CategoricalColumn):
-          weigthed_sums.append(_create_categorical_column_weighted_sum(
+          weighted_sums.append(_create_categorical_column_weighted_sum(
               column, builder, units, sparse_combiner, weight_collections,
               trainable))
         else:
-          weigthed_sums.append(_create_dense_column_weighted_sum(
+          weighted_sums.append(_create_dense_column_weighted_sum(
               column, builder, units, weight_collections, trainable))
     predictions_no_bias = math_ops.add_n(
-        weigthed_sums, name='weighted_sum_no_bias')
+        weighted_sums, name='weighted_sum_no_bias')
     bias = variable_scope.get_variable(
         'bias_weights',
         shape=[units],
@@ -963,6 +963,77 @@ def indicator_column(categorical_column):
     An `_IndicatorColumn`.
   """
   return _IndicatorColumn(categorical_column)
+
+
+def weighted_categorical_column(
+    categorical_column, weight_column_name, dtype=dtypes.float32):
+  """Applies weight values to a `_CategoricalColumn`.
+
+  Use this when each of your sparse inputs has both an ID and a value. For
+  example, if you're representing text documents as a collection of word
+  frequencies, you can provide 2 parallel sparse input features ('terms' and
+  'frequencies' below).
+
+  Example:
+
+  Input `tf.Example` objects:
+  [
+    features {
+      feature {
+        key: "frequencies"
+        value {float_list {value: 0.3 value: 0.1}}
+      }
+      feature {
+        key: "terms"
+        value {bytes_list {value: "very" value: "model"}}
+      }
+    },
+    features {
+      feature {
+        key: "frequencies"
+        value {float_list {value: 0.4 value: 0.1 value: 0.2}}
+      }
+      feature {
+        key: "terms"
+        value {bytes_list {value: "when" value: "course" value: "human"}}
+      }
+    }
+  ]
+
+  ```python
+  categorical_column = categorical_column_with_hash_bucket(
+      column_name='terms', hash_bucket_size=1000)
+  weighted_column = weighted_categorical_column(
+      categorical_column=categorical_column, weight_column_name='frequencies')
+  columns = [weighted_column, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  linear_prediction, _, _ = make_linear_model(features, columns)
+  ```
+
+  This assumes the input dictionary contains a `SparseTensor` for key
+  'terms', and a `SparseTensor` for key 'frequencies'. These 2 tensors must have
+  the same indices and dense shape.
+
+  Args:
+    categorical_column: A `_CategoricalColumn` created by
+      `categorical_column_with_*` functions.
+    weight_column_name: String key for weigth values.
+    dtype: Type of weights, such as `tf.float32`. Only float and integer weights
+      are supported.
+
+  Returns:
+    A `_CategoricalColumn` composed of two sparse features: one represents id,
+    the other represents weight (value) of the id feature in that example.
+
+  Raises:
+    ValueError: if `dtype` is not convertible to float.
+  """
+  if (dtype is None) or not (dtype.is_integer or dtype.is_floating):
+    raise ValueError('dtype {} is not convertible to float.'.format(dtype))
+  return _WeightedCategoricalColumn(
+      categorical_column=categorical_column,
+      weight_column_name=weight_column_name,
+      dtype=dtype)
 
 
 class _FeatureColumn(object):
@@ -1842,6 +1913,60 @@ class _IdentityCategoricalColumn(
   def _get_sparse_tensors(
       self, inputs, weight_collections=None, trainable=None):
     return _CategoricalColumn.IdWeightPair(inputs.get(self), None)
+
+
+class _WeightedCategoricalColumn(
+    _CategoricalColumn,
+    collections.namedtuple('_WeightedCategoricalColumn', (
+        'categorical_column', 'weight_column_name', 'dtype'
+    ))):
+  """See `weighted_categorical_column`."""
+
+  @property
+  def name(self):
+    return '{}_weighted_by_{}'.format(
+        self.categorical_column.name, self.weight_column_name)
+
+  @property
+  def _parse_example_config(self):
+    # pylint: disable=protected-access
+    config = self.categorical_column._parse_example_config
+    # pylint: enable=protected-access
+    if self.weight_column_name in config:
+      raise ValueError('Parse config {} already exists for {}.'.format(
+          config[self.weight_column_name], self.weight_column_name))
+    config[self.weight_column_name] = parsing_ops.VarLenFeature(self.dtype)
+    return config
+
+  @property
+  def _num_buckets(self):
+    # pylint: disable=protected-access
+    return self.categorical_column._num_buckets
+    # pylint: enable=protected-access
+
+  def _transform_feature(self, inputs):
+    weight_tensor = inputs.get(self.weight_column_name)
+    if weight_tensor is None:
+      raise ValueError('Missing weights {}.'.format(
+          self.weight_column_name))
+    weight_tensor = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(
+        weight_tensor)
+    if self.dtype != weight_tensor.dtype.base_dtype:
+      raise ValueError('Bad dtype, expected {}, but got {}.'.format(
+          self.dtype, weight_tensor.dtype))
+    if not isinstance(weight_tensor, sparse_tensor_lib.SparseTensor):
+      # The weight tensor can be a regular Tensor. In this case, sparsify it.
+      weight_tensor = _to_sparse_input(weight_tensor, ignore_value=0.0)
+    if not weight_tensor.dtype.is_floating:
+      weight_tensor = math_ops.to_float(weight_tensor)
+    return (inputs.get(self.categorical_column), weight_tensor)
+
+  def _get_sparse_tensors(
+      self, inputs, weight_collections=None, trainable=None):
+    del weight_collections
+    del trainable
+    tensors = inputs.get(self)
+    return _CategoricalColumn.IdWeightPair(tensors[0], tensors[1])
 
 
 # TODO(zakaria): Move this to embedding_ops and make it public.
