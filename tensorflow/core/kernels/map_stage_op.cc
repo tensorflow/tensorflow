@@ -55,15 +55,37 @@ private:
   condition_variable full_;
   map_type map_ GUARDED_BY(mu_);
 
-public:
-  // public methods
-  explicit StagingMap(int capacity) : capacity_(capacity) {}
+private:
+  // private methods
+
+  // If map is configured for bounded capacity, notify
+  // waiting inserters that space is now available
+  void notify_inserters_if_bounded(mutex_lock & l)
+  {
+    if(has_bounded_capacity())
+    {
+      l.unlock();
+      full_.notify_one();
+    }
+  }
+
+  // Notify any removers waiting to extract values
+  // that data is now available
+  void notify_removers(mutex_lock & l)
+  {
+      l.unlock();
+      not_empty_.notify_one();
+  }
 
   bool has_bounded_capacity()
     { return capacity_ > 0; }
 
   bool full()
     { return map_.size() >= capacity_; }
+
+public:
+  // public methods
+  explicit StagingMap(int capacity) : capacity_(capacity) {}
 
   void put(key_type* key, Tuple* tuple)
   {
@@ -157,28 +179,6 @@ public:
   string DebugString()
   {
     return "StagingMap";
-  }
-
-private:
-  // private methods
-
-  // If map is configured for bounded capacity, notify
-  // waiting inserters that space is now available
-  void notify_inserters_if_bounded(mutex_lock & l)
-  {
-    if(has_bounded_capacity())
-    {
-      l.unlock();
-      full_.notify_one();
-    }
-  }
-
-  // Notify any removers waiting to extract values
-  // that data is now available
-  void notify_removers(mutex_lock & l)
-  {
-      l.unlock();
-      not_empty_.notify_one();
   }
 };
 

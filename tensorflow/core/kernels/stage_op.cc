@@ -30,10 +30,31 @@ namespace {
 
 class Buffer : public ResourceBase {
  public:
-    typedef std::vector<Tensor> Tuple;
+  // public types
+  typedef std::vector<Tensor> Tuple;
 
- public:
-  explicit Buffer(int capacity) : capacity_(capacity_) {}
+ private:
+  // private variables
+  int capacity_;
+  mutex mu_;
+  condition_variable non_empty_cond_var_;
+  condition_variable full_cond_var_;
+  std::deque<Tuple> buf_ GUARDED_BY(mu_);
+
+
+ private:
+  // private methods
+
+  // If the buffer is configured for bounded capacity, notify
+  // waiting inserters that space is now available
+  void notify_inserters_if_bounded(mutex_lock & l)
+  {
+    if(HasBoundedCapacity())
+    {
+      l.unlock();
+      full_cond_var_.notify_one();
+    }
+  }
 
   bool HasBoundedCapacity() {
     return capacity_ > 0;
@@ -42,6 +63,10 @@ class Buffer : public ResourceBase {
   bool IsFull() {
     return buf_.size() >= capacity_;
   }
+
+ public:
+  // public methods
+  explicit Buffer(int capacity) : capacity_(capacity_) {}
 
   // the Buffer takes ownership of the Tuple
   void Put(Tuple* tuple) {
@@ -111,25 +136,6 @@ class Buffer : public ResourceBase {
     return strings::StrCat("Staging size: ", buf_.size());
   }
 
- private:
-  // If the buffer is configured for bounded capacity, notify
-  // waiting inserters that space is now available
-  void notify_inserters_if_bounded(mutex_lock & l)
-  {
-    if(HasBoundedCapacity())
-    {
-      l.unlock();
-      full_cond_var_.notify_one();
-    }
-  }
-
-
- private:
-  int capacity_;
-  mutex mu_;
-  condition_variable non_empty_cond_var_;
-  condition_variable full_cond_var_;
-  std::deque<Tuple> buf_ GUARDED_BY(mu_);
 };
 
 Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {
