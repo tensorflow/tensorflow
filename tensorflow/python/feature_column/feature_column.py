@@ -607,6 +607,18 @@ def bucketized_column(source_column, boundaries):
   dense_tensor = make_input_layer(features, columns)
   ```
 
+  `bucketized_column` can also be crossed with another categorical column using
+  `crossed_column`:
+  ```python
+  price = numeric_column('price')
+  # bucketized_column converts numerical feature to a categorical one.
+  bucketized_price = bucketized_column(price, boundaries=[...])
+  # 'keywords' is a string feature.
+  price_x_keywords = crossed_column([bucketized_price, 'keywords'], 50K)
+  all_feature_columns = [price_x_keywords, ...]
+  linear_prediction = make_linear_model(features, all_feature_columns)
+  ```
+
   Args:
     source_column: A one-dimensional dense column which is generated with
       `numeric_column`.
@@ -1034,6 +1046,107 @@ def weighted_categorical_column(
       categorical_column=categorical_column,
       weight_column_name=weight_column_name,
       dtype=dtype)
+
+
+def crossed_column(keys, hash_bucket_size, hash_key=None):
+  """Returns a column for performing crosses of categorical features.
+
+  Crossed features will be hashed according to `hash_bucket_size`. Conceptually,
+  the transformation can be thought of as:
+    Hash(cartesian product of features) % `hash_bucket_size`
+
+  For example, if the input features are:
+  * SparseTensor referred by first key: shape = [2, 2]
+      [0, 0]: "a"
+      [1, 0]: "b"
+      [1, 1]: "c"
+
+  * SparseTensor referred by second key: shape = [2, 1]
+      [0, 0]: "d"
+      [1, 0]: "e"
+
+  then crossed feature will look like:
+      shape = [2, 2]
+      [0, 0]: Hash64("d", Hash64("a")) % hash_bucket_size
+      [1, 0]: Hash64("e", Hash64("b")) % hash_bucket_size
+      [1, 1]: Hash64("e", Hash64("c")) % hash_bucket_size
+
+  Here is an example to create a linear model with crosses of string features:
+  ```python
+  keywords_x_doc_terms = crossed_column(['keywords', 'doc_terms'], 50K)
+  all_feature_columns = [keywords_x_doc_terms, ...]
+  linear_prediction = make_linear_model(features, all_feature_columns)
+  ```
+
+  You could also use vocabulary lookup before crossing:
+  ```python
+  keywords = categorical_column_with_vocabulary_file(
+      'keywords', '/path/to/vocabulary/file', vocabulary_size=1K)
+  keywords_x_doc_terms = crossed_column([keywords, 'doc_terms'], 50K)
+  all_feature_columns = [keywords_x_doc_terms, ...]
+  linear_prediction = make_linear_model(features, all_feature_columns)
+  ```
+
+  If an input feature is of numeric type, you can use
+  `categorical_column_with_identity`, or `bucketized_column`, as in the example:
+  ```python
+  # vertical_id is an integer categorical feature.
+  vertical_id = categorical_column_with_identity('vertical_id', 10K)
+  price = numeric_column('price')
+  # bucketized_column converts numerical feature to a categorical one.
+  bucketized_price = bucketized_column(price, boundaries=[...])
+  vertical_id_x_price = crossed_column([vertical_id, bucketized_price], 50K)
+  all_feature_columns = [vertical_id_x_price, ...]
+  linear_prediction = make_linear_model(features, all_feature_columns)
+  ```
+
+  To use crossed column in DNN model, you need to add it in an embedding column
+  as in this example:
+  ```python
+  vertical_id_x_price = crossed_column([vertical_id, bucketized_price], 50K)
+  vertical_id_x_price_embedded = embedding_column(vertical_id_x_price, 10)
+  dense_tensor = make_input_layer(features, [vertical_id_x_price_embedded, ...])
+  ```
+
+  Args:
+    keys: An iterable identifying the features to be crossed. Each element can
+      be either:
+      * string: Will use the corresponding feature which must be of string type.
+      * `_CategoricalColumn`: Will use the transformed tensor produced by this
+        column. Does not support hashed categorical column.
+    hash_bucket_size: An int > 1. The number of buckets.
+    hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+      function to combine the crosses fingerprints on SparseCrossOp (optional).
+
+  Returns:
+    A `_CrossedColumn`.
+
+  Raises:
+    ValueError: If `len(keys) < 2`.
+    ValueError: If any of the keys is neither a string nor `_CategoricalColumn`.
+    ValueError: If any of the keys is `_HashedCategoricalColumn`.
+    ValueError: If `hash_bucket_size < 1`.
+  """
+  if not hash_bucket_size or hash_bucket_size < 1:
+    raise ValueError('hash_bucket_size must be > 1. '
+                     'hash_bucket_size: {}'.format(hash_bucket_size))
+  if not keys or len(keys) < 2:
+    raise ValueError(
+        'keys must be a list with length > 1. Given: {}'.format(keys))
+  for key in keys:
+    if (not isinstance(key, six.string_types) and
+        not isinstance(key, _CategoricalColumn)):
+      raise ValueError(
+          'Unsupported key type. All keys must be either string, or '
+          'categorical column except _HashedCategoricalColumn. '
+          'Given: {}'.format(key))
+    if isinstance(key, _HashedCategoricalColumn):
+      raise ValueError(
+          '_HashedCategoricalColumn is not supported. Instead, use the feature '
+          'name as a string. Given: {}'.format(key))
+  return _CrossedColumn(
+      keys=tuple(keys), hash_bucket_size=hash_bucket_size,
+      hash_key=hash_key)
 
 
 class _FeatureColumn(object):
@@ -1967,6 +2080,80 @@ class _WeightedCategoricalColumn(
     del trainable
     tensors = inputs.get(self)
     return _CategoricalColumn.IdWeightPair(tensors[0], tensors[1])
+
+
+class _CrossedColumn(
+    _CategoricalColumn,
+    collections.namedtuple('_CrossedColumn',
+                           ['keys', 'hash_bucket_size', 'hash_key'])):
+  """See `crossed_column`."""
+
+  @property
+  def name(self):
+    feature_names = []
+    for key in _collect_leaf_level_keys(self):
+      if isinstance(key, _FeatureColumn):
+        feature_names.append(key.name)
+      else:  # key must be a string
+        feature_names.append(key)
+    return '_X_'.join(sorted(feature_names))
+
+  @property
+  def _parse_example_config(self):
+    config = {}
+    for key in self.keys:
+      if isinstance(key, _FeatureColumn):
+        config.update(key._parse_example_config)  # pylint: disable=protected-access
+      else:  # key must be a string
+        config.update({key: parsing_ops.VarLenFeature(dtypes.string)})
+    return config
+
+  def _transform_feature(self, inputs):
+    feature_tensors = []
+    for key in _collect_leaf_level_keys(self):
+      if isinstance(key, six.string_types):
+        feature_tensors.append(inputs.get(key))
+      elif isinstance(key, _CategoricalColumn):
+        ids_and_weights = key._get_sparse_tensors(inputs)  # pylint: disable=protected-access
+        if ids_and_weights.weight_tensor is not None:
+          raise ValueError(
+              'crossed_column does not support weight_tensor, but the given '
+              'column populates weight_tensor. '
+              'Given column: {}'.format(key.name))
+        feature_tensors.append(ids_and_weights.id_tensor)
+      else:
+        raise ValueError('Unsupported column type. Given: {}'.format(key))
+    return sparse_ops._sparse_cross_hashed(  # pylint: disable=protected-access
+        inputs=feature_tensors,
+        num_buckets=self.hash_bucket_size,
+        hash_key=self.hash_key)
+
+  @property
+  def _num_buckets(self):
+    """Returns number of buckets in this sparse feature."""
+    return self.hash_bucket_size
+
+  def _get_sparse_tensors(self, inputs, weight_collections=None,
+                          trainable=None):
+    return _CategoricalColumn.IdWeightPair(inputs.get(self), None)
+
+
+def _collect_leaf_level_keys(cross):
+  """Collects base keys by expanding all nested crosses.
+
+  Args:
+    cross: A `_CrossedColumn`.
+
+  Returns:
+    A list of strings or `_CategoricalColumn` instances.
+  """
+  leaf_level_keys = []
+  for k in cross.keys:
+    if isinstance(k, _CrossedColumn):
+      leaf_level_keys.extend(_collect_leaf_level_keys(k))
+    else:
+      leaf_level_keys.append(k)
+  return leaf_level_keys
 
 
 # TODO(zakaria): Move this to embedding_ops and make it public.
