@@ -590,7 +590,7 @@ string Print(const GraphDef& gdef) {
   for (size_t i = 0; i < ret.size(); ++i) {
     const NodeDef* n = ret[i];
     if (i > 0) strings::StrAppend(&out, ", ");
-    CHECK_EQ(2, n->attr_size());
+    CHECK_LE(2, n->attr_size());
     CHECK_EQ(1, n->input_size());
     strings::StrAppend(&out, n->input(0), ":", get_type(*n));
   }

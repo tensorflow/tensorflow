@@ -1463,6 +1463,14 @@ class ControlFlowContext(object):
     return internal_control_inputs
   # pylint: enable=protected-access
 
+  def AddInnerOp(self, op):
+    """Notifies a scope about an operator added to an inner scope."""
+    pass
+
+  def GetControlPivot(self):
+    """Returns the pivot node for this context, or None."""
+    return None
+
 
 class CondContext(ControlFlowContext):
   """The context for the conditional construct."""
@@ -2097,6 +2105,8 @@ class WhileContext(ControlFlowContext):
         enter = _Enter(result, self._name, is_constant=True,
                        parallel_iterations=self._parallel_iterations)
         enter.graph.prevent_feeding(enter)
+        if self._outer_context:
+          self._outer_context.AddInnerOp(enter.op)
       # Fix the control inputs and control flow context of these enter ops.
       self._FixControlInputsAndContext([enter])
 
@@ -2165,6 +2175,9 @@ class WhileContext(ControlFlowContext):
       op.graph.prevent_fetching(op)
       for x in op.outputs:
         op.graph.prevent_feeding(x)
+
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
 
   def _MaybeAddControlDependency(self, op):
     """Add a control input to the op if it only depends on loop invariants."""
@@ -2479,13 +2492,23 @@ class WhileContext(ControlFlowContext):
                     for x in real_vars]
       for x in enter_vars:
         x.graph.prevent_feeding(x)
+        if self._outer_context:
+          self._outer_context.AddInnerOp(x.op)
 
-    if self._outer_context:
-      control_pivot = self._outer_context.GetControlPivot().op
+    # Finds the closest enclosing non-None control pivot.
+    outer_context = self._outer_context
+    control_pivot = None
+    while outer_context is not None and control_pivot is None:
+      control_pivot = outer_context.GetControlPivot()
+      # pylint: disable=protected-access
+      outer_context = outer_context._outer_context
+      # pylint: enable=protected-access
+
+    if control_pivot is not None:
       for var in enter_vars:
         if _IsLoopConstantEnter(var.op.inputs[0].op):
           # pylint: disable=protected-access
-          var.op._add_control_input(control_pivot)
+          var.op._add_control_input(control_pivot.op)
           # pylint: enable=protected-access
     _SetShapeInvariants(real_vars, enter_vars, shape_invariants)
 
