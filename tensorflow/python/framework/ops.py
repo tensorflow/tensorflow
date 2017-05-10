@@ -1666,12 +1666,18 @@ class Operation(object):
     if x.HasField("list"):
       for f in fields:
         if getattr(x.list, f):
-          return list(getattr(x.list, f))
+          if f == "type":
+            return [dtypes.as_dtype(x) for x in list(getattr(x.list, f))]
+          else:
+            return list(getattr(x.list, f))
       return []
     else:
       for f in fields:
         if x.HasField(f):
-          return getattr(x, f)
+          if f == "type":
+            return dtypes.as_dtype(getattr(x, f))
+          else:
+            return getattr(x, f)
       assert False, "Unsupported field type in " + str(x)
 
   def run(self, feed_dict=None, session=None):
