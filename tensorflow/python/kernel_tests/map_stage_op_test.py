@@ -225,8 +225,10 @@ class MapStageTest(test.TestCase):
       keys = list(six.moves.range(n))
 
       # Shuffle them for random insert
-      shuffle_keys = [i for i in keys]
+      shuffle_keys = list(reversed(keys))
       random.shuffle(shuffle_keys)
+
+      self.assertTrue(shuffle_keys != keys)
 
       for i in keys:
         sess.run(stage, feed_dict={pi: i, x: i})
