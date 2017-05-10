@@ -1622,6 +1622,11 @@ class CondContext(ControlFlowContext):
           # pylint: enable=protected-access
       for x in op.outputs:
         self._values.add(x.name)
+      # pylint: disable=protected-access
+      if op.graph._is_function(op.type) or op.type == "SymbolicGradient":
+        op._add_control_input(self._pivot.op)
+      # pylint: enable=protected-access
+
     if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
 
@@ -2147,8 +2152,13 @@ class WhileContext(ControlFlowContext):
   def _MaybeAddControlDependency(self, op):
     """Add a control input to the op if it only depends on loop invariants."""
     def _IsOpFree(op):
+      """Determines if `op` needs a control dependency."""
       if op.control_inputs:
         return False
+      # pylint: disable=protected-access
+      if op.graph._is_function(op.type) or op.type == "SymbolicGradient":
+        return True
+      # pylint: enable=protected-access
       for x in op.inputs:
         if not _IsLoopConstantEnter(x.op):
           return False

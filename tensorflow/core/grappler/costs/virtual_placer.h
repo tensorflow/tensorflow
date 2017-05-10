@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_PLACER_H_
 
 #include <unordered_map>
-#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
 class NodeDef;
@@ -31,12 +31,12 @@ class VirtualPlacer {
  public:
   VirtualPlacer(Cluster* cluster);
 
-  const OpInfo::DeviceProperties& get_device(const NodeDef& node) const;
+  const DeviceProperties& get_device(const NodeDef& node) const;
 
  private:
-  std::unordered_map<string, OpInfo::DeviceProperties> devices_;
+  std::unordered_map<string, DeviceProperties> devices_;
   bool has_gpu_;
-  OpInfo::DeviceProperties unknown_device_;
+  DeviceProperties unknown_device_;
 };
 
 }  // namespace grappler

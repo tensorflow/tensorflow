@@ -177,6 +177,9 @@ Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 string Reindent(tensorflow::StringPiece original,
                 tensorflow::StringPiece indentation);
 
+// Checks whether permutation is a permutation of the [0, rank) integer range.
+bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
+
 // Applies `permutation` on `input` and returns the permuted array.
 // For each i, output[permutation[i]] = input[i].
 //
@@ -187,12 +190,11 @@ template <template <typename...> class C, typename T>
 std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
                        C<T> input_) {
   tensorflow::gtl::ArraySlice<T> input(input_);
-  CHECK_EQ(permutation.size(), input.size());
+  CHECK(IsPermutation(permutation, input.size()));
   std::vector<T> output(input.size());
   for (size_t i = 0; i < permutation.size(); ++i) {
     output[permutation[i]] = input[i];
   }
-  DCHECK(std::is_permutation(input.begin(), input.end(), output.begin()));
   return output;
 }
 

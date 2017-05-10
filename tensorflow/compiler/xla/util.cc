@@ -153,16 +153,26 @@ string Reindent(tensorflow::StringPiece original,
       });
 }
 
+bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank) {
+  if (rank != permutation.size()) {
+    return false;
+  }
+  std::vector<int64> output(permutation.size(), -1);
+  for (auto index : permutation) {
+    CHECK_GE(index, 0);
+    CHECK_LT(index, rank);
+    output[index] = 0;
+  }
+  return std::find(output.begin(), output.end(), -1) == output.end();
+}
+
 std::vector<int64> InversePermutation(
     tensorflow::gtl::ArraySlice<int64> input_permutation) {
+  DCHECK(IsPermutation(input_permutation, input_permutation.size()));
   std::vector<int64> output_permutation(input_permutation.size(), -1);
   for (size_t i = 0; i < input_permutation.size(); ++i) {
     output_permutation[input_permutation[i]] = i;
   }
-  DCHECK_EQ(
-      0, std::count(output_permutation.begin(), output_permutation.end(), -1));
-  DCHECK(std::is_permutation(input_permutation.begin(), input_permutation.end(),
-                             output_permutation.begin()));
   return output_permutation;
 }
 
