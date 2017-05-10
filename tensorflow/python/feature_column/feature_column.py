@@ -123,6 +123,7 @@ from __future__ import print_function
 
 import abc
 import collections
+import math
 
 import numpy as np
 import six
@@ -144,6 +145,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
 
 
@@ -304,7 +306,7 @@ def make_linear_model(features,
     predictions_no_bias = math_ops.add_n(
         weigthed_sums, name='weighted_sum_no_bias')
     bias = variable_scope.get_variable(
-        'bias_weight',
+        'bias_weights',
         shape=[units],
         initializer=init_ops.zeros_initializer(),
         trainable=trainable,
@@ -414,6 +416,88 @@ def make_parse_example_spec(feature_columns):
             '{}. Given {} and {}'.format(key, value, result[key]))
     result.update(config)
   return result
+
+
+def embedding_column(
+    categorical_column, dimension, combiner='mean', initializer=None,
+    ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None,
+    trainable=True):
+  """`_DenseColumn` that converts from sparse, categorical input.
+
+  Use this when your inputs are sparse, but you want to convert them to a dense
+  representation (e.g., to feed to a DNN).
+
+  Inputs must be `SparseTensor` by way of the provided
+  `categorical_column._get_sparse_tensors`.
+
+  Any of the `categorical_column_*` columns can be provided as input. Here is an
+  example embedding of an identity column for a DNN model:
+
+  ```python
+  video_id = categorical_column_with_identity(
+      key='video_id', num_buckets=1000000, default_value=0)
+  columns = [embedding_column(video_id, 9),...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
+  ```
+
+  Args:
+    categorical_column: A `_CategoricalColumn` created by a
+      `categorical_column_with_*` function. This column produces the sparse IDs
+      that are inputs to the embedding lookup.
+    dimension: An integer specifying dimension of the embedding, must be > 0.
+    combiner: A string specifying how to reduce if there are multiple entries
+      in a single row. Currently 'mean', 'sqrtn' and 'sum' are supported, with
+      'mean' the default. 'sqrtn' often achieves good accuracy, in particular
+      with bag-of-words columns. Each of this can be thought as example level
+      normalizations on the column. For more information, see
+      `tf.embedding_lookup_sparse`.
+    initializer: A variable initializer function to be used in embedding
+      variable initialization. If not specified, defaults to
+      `tf.truncated_normal_initializer` with mean `0.0` and standard deviation
+      `1/sqrt(categorical_column._num_buckets)`.
+    ckpt_to_load_from: String representing checkpoint name/pattern fromwhich to
+      restore column weights. Required if `tensor_name_in_ckpt` is not `None`.
+    tensor_name_in_ckpt: Name of the `Tensor` in `ckpt_to_load_from` from
+      which to restore the column weights. Required if `ckpt_to_load_from` is
+      not `None`.
+    max_norm: If not `None`, embedding values are l2-normalized to this value.
+    trainable: Whether or not the embedding is trainable. Default is True.
+
+  Returns:
+    `_DenseColumn` that converts from sparse input.
+
+  Raises:
+    ValueError: if `dimension` not > 0.
+    ValueError: if exactly one of `ckpt_to_load_from` and `tensor_name_in_ckpt`
+      is specified.
+    ValueError: if `initializer` is specified and is not callable.
+  """
+  if (dimension is None) or (dimension < 1):
+    raise ValueError('Invalid dimension {}.'.format(dimension))
+  if (ckpt_to_load_from is None) != (tensor_name_in_ckpt is None):
+    raise ValueError('Must specify both `ckpt_to_load_from` and '
+                     '`tensor_name_in_ckpt` or none of them.')
+
+  if (initializer is not None) and (not callable(initializer)):
+    raise ValueError('initializer must be callable if specified. '
+                     'Embedding of column_name: {}'.format(
+                         categorical_column.name))
+  if initializer is None:
+    # pylint: disable=protected-access
+    initializer = init_ops.truncated_normal_initializer(
+        mean=0.0, stddev=1 / math.sqrt(dimension))
+    # pylint: enable=protected-access
+
+  return _EmbeddingColumn(
+      categorical_column=categorical_column,
+      dimension=dimension,
+      combiner=combiner,
+      initializer=initializer,
+      ckpt_to_load_from=ckpt_to_load_from,
+      tensor_name_in_ckpt=tensor_name_in_ckpt,
+      max_norm=max_norm,
+      trainable=trainable)
 
 
 def numeric_column(key,
@@ -568,7 +652,7 @@ def categorical_column_with_hash_bucket(key,
   want to distribute your inputs into a finite number of buckets by hashing.
   output_id = Hash(input_feature_string) % bucket_size
 
-  `features[key]` are either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
   values can be represented by `-1` for int and `''` for string. Note that these
   values are independent of the `default_value` argument.
 
@@ -625,7 +709,7 @@ def categorical_column_with_vocabulary_file(
   `num_oov_buckets` and `default_value` to specify how to include
   out-of-vocabulary values.
 
-  `features[key]` are either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
   values can be represented by `-1` for int and `''` for string. Note that these
   values are independent of the `default_value` argument.
 
@@ -693,7 +777,6 @@ def categorical_column_with_vocabulary_file(
   if not vocabulary_file:
     raise ValueError('Missing vocabulary_file in {}.'.format(key))
   # `vocabulary_size` isn't required for lookup, but it is for `_num_buckets`.
-  # TODO(ptucker): Should we fail for vocabulary_size==1?
   if (vocabulary_size is None) or (vocabulary_size < 1):
     raise ValueError('Invalid vocabulary_size in {}.'.format(key))
   if num_oov_buckets:
@@ -719,14 +802,14 @@ def categorical_column_with_vocabulary_list(
   """A `_CategoricalColumn` with in-memory vocabulary.
 
   Logic for feature f is:
-  id = f in vocabulary_list ? vocabulary_list.index(f) : default_value
+  id = f in vocabulary_list ? vocabulary_list.index_of(f) : default_value
 
   Use this when your inputs are in string or integer format, and you have an
   in-memory vocabulary mapping each value to an integer ID. By default,
   out-of-vocabulary values are ignored. Use `default_value` to specify how to
   include out-of-vocabulary values.
 
-  `features[key]` are either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
   values can be represented by `-1` for int and `''` for string. Note that these
   values are independent of the `default_value` argument.
 
@@ -795,11 +878,16 @@ def categorical_column_with_vocabulary_list(
 def categorical_column_with_identity(key, num_buckets, default_value=None):
   """A `_CategoricalColumn` that returns identity values.
 
-  Use this when your inputs are integers in the range `[0, num_buckets)`. Values
-  outside this range will result in `default_value` if specified, otherwise it
-  will fail.
+  Use this when your inputs are integers in the range `[0, num_buckets)`, and
+  you want to use the input value itself as the categorical ID. Values outside
+  this range will result in `default_value` if specified, otherwise it will
+  fail.
 
-  `features[key]` are either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  Typically, this is used for contiguous ranges of integer indexes, but
+  it doesn't have to be. This might be inefficient, however, if many of IDs
+  are unused. Consider `categorical_column_with_hash_bucket` in that case.
+
+  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
   values can be represented by `-1` for int and `''` for string. Note that these
   values are independent of the `default_value` argument.
 
@@ -960,15 +1048,15 @@ class _DenseColumn(_FeatureColumn):
 
   @abc.abstractproperty
   def _variable_shape(self):
-    """Returns a `TensorShape` representing the shape of the dense `Tensor`."""
+    """`TensorShape` of `_get_dense_tensor`, without batch dimension."""
     pass
 
   @abc.abstractmethod
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
     """Returns a `Tensor`.
 
-    The output of this function will be used by model-buildier-functions. For
-    example the pseudo code of `make_input_layer` will be like that:
+    The output of this function will be used by model-builder-functions. For
+    example the pseudo code of `make_input_layer` will be like:
 
     ```python
     def make_input_layer(features, feature_columns, ...):
@@ -982,6 +1070,9 @@ class _DenseColumn(_FeatureColumn):
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see ${tf.Variable}).
+
+    Returns:
+      `Tensor` of shape [batch_size] + `_variable_shape`.
     """
     pass
 
@@ -997,7 +1088,7 @@ def _create_dense_column_weighted_sum(
   batch_size = array_ops.shape(tensor)[0]
   tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
   weight = variable_scope.get_variable(
-      name='weight',
+      name='weights',
       shape=[num_elements, units],
       initializer=init_ops.zeros_initializer(),
       trainable=trainable,
@@ -1060,7 +1151,7 @@ def _create_categorical_column_weighted_sum(
       trainable=trainable)
   weight = variable_scope.get_variable(
       name='weight',
-      shape=[column._num_buckets, units],  # pylint: disable=protected-access
+      shape=(column._num_buckets, units),  # pylint: disable=protected-access
       initializer=init_ops.zeros_initializer(),
       trainable=trainable,
       collections=weight_collections)
@@ -1363,6 +1454,74 @@ class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
         values=bucket_indices,
         dense_shape=dense_shape)
     return _CategoricalColumn.IdWeightPair(sparse_tensor, None)
+
+
+class _EmbeddingColumn(
+    _DenseColumn,
+    collections.namedtuple('_EmbeddingColumn', (
+        'categorical_column', 'dimension', 'combiner', 'initializer',
+        'ckpt_to_load_from', 'tensor_name_in_ckpt', 'max_norm', 'trainable'
+    ))):
+  """See `_embedding_column`."""
+
+  @property
+  def name(self):
+    if not hasattr(self, '_name'):
+      self._name = '{}_embedding'.format(self.categorical_column.name)
+    return self._name
+
+  @property
+  def _parse_example_config(self):
+    # pylint: disable=protected-access
+    return self.categorical_column._parse_example_config
+    # pylint: enable=protected-access
+
+  def _transform_feature(self, inputs):
+    return inputs.get(self.categorical_column)
+
+  @property
+  def _variable_shape(self):
+    if not hasattr(self, '_shape'):
+      self._shape = tensor_shape.vector(self.dimension)
+    return self._shape
+
+  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    # Get sparse IDs and weights.
+    # pylint: disable=protected-access
+    sparse_tensors = self.categorical_column._get_sparse_tensors(
+        inputs, weight_collections=weight_collections, trainable=trainable)
+    # pylint: enable=protected-access
+    sparse_ids = sparse_tensors.id_tensor
+    sparse_weights = sparse_tensors.weight_tensor
+
+    # Create embedding weight, and restore from checkpoint if necessary.
+    embedding_weights = variable_scope.get_variable(
+        name='embedding_weights',
+        # pylint: disable=protected-access
+        shape=(self.categorical_column._num_buckets, self.dimension),
+        # pylint: enable=protected-access
+        dtype=dtypes.float32,
+        initializer=self.initializer,
+        trainable=self.trainable and trainable,
+        collections=weight_collections)
+    if self.ckpt_to_load_from is not None:
+      to_restore = embedding_weights
+      if isinstance(to_restore, variables.PartitionedVariable):
+        # pylint: disable=protected-access
+        to_restore = to_restore._get_variable_list()
+        # pylint: enable=protected-access
+      checkpoint_utils.init_from_checkpoint(self.ckpt_to_load_from, {
+          self.tensor_name_in_ckpt: to_restore
+      })
+
+    # Return embedding lookup result.
+    return _safe_embedding_lookup_sparse(
+        embedding_weights=embedding_weights,
+        sparse_ids=sparse_ids,
+        sparse_weights=sparse_weights,
+        combiner=self.combiner,
+        name='%s_weights' % self.name,
+        max_norm=self.max_norm)
 
 
 def _create_tuple(shape, value):
@@ -1689,7 +1848,7 @@ class _IdentityCategoricalColumn(
 def _safe_embedding_lookup_sparse(embedding_weights,
                                   sparse_ids,
                                   sparse_weights=None,
-                                  combiner=None,
+                                  combiner='mean',
                                   default_id=None,
                                   name=None,
                                   partition_strategy='div',
@@ -1727,7 +1886,7 @@ def _safe_embedding_lookup_sparse(embedding_weights,
     name: A name for this operation (optional).
     partition_strategy: A string specifying the partitioning strategy.
         Currently `"div"` and `"mod"` are supported. Default is `"div"`.
-    max_norm: If not None, all embeddings are l2-normalized to max_norm before
+    max_norm: If not `None`, all embeddings are l2-normalized to max_norm before
         combining.
 
 
@@ -1737,10 +1896,6 @@ def _safe_embedding_lookup_sparse(embedding_weights,
   Raises:
     ValueError: if `embedding_weights` is empty.
   """
-  if combiner is None:
-    logging.warn('The default value of combiner will change from \"mean\" '
-                 'to \"sqrtn\" after 2016/11/01.')
-    combiner = 'mean'
   if embedding_weights is None:
     raise ValueError('Missing embedding_weights %s.' % embedding_weights)
   if isinstance(embedding_weights, variables.PartitionedVariable):
@@ -1751,8 +1906,6 @@ def _safe_embedding_lookup_sparse(embedding_weights,
     raise ValueError('Missing embedding_weights %s.' % embedding_weights)
 
   dtype = sparse_weights.dtype if sparse_weights is not None else None
-  if isinstance(embedding_weights, variables.PartitionedVariable):
-    embedding_weights = list(embedding_weights)
   embedding_weights = [
       ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
   ]
