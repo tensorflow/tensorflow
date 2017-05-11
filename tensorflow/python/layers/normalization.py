@@ -365,12 +365,14 @@ def batch_normalization(inputs,
   Note: the operations which update the `moving_mean` and `moving_variance`
   variables will not be added as dependencies of your training operation and so
   must be run separately. For example:
+
   ```
   extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   sess.run([train_op, extra_update_ops], ...)
   ```
   Alternatively, add the operations as a dependency to your training operation
   manually, and then just run your training operation as normal:
+
   ```
   extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   with tf.control_dependencies(extra_update_ops):
