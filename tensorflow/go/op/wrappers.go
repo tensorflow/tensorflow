@@ -18481,6 +18481,8 @@ func Requantize(scope *Scope, input tf.Output, input_min tf.Output, input_max tf
 
 // Returns the index with the smallest value across dimensions of a tensor.
 //
+// Note that in case of ties the identity of the return value is not guaranteed.
+//
 // Arguments:
 //
 //	dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
@@ -19492,6 +19494,8 @@ func IsFinite(scope *Scope, x tf.Output) (y tf.Output) {
 }
 
 // Returns the index with the largest value across dimensions of a tensor.
+//
+// Note that in case of ties the identity of the return value is not guaranteed.
 //
 // Arguments:
 //
