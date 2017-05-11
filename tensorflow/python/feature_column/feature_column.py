@@ -149,10 +149,10 @@ from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
 
 
-def make_input_layer(features,
-                     feature_columns,
-                     weight_collections=None,
-                     trainable=True):
+def input_layer(features,
+                feature_columns,
+                weight_collections=None,
+                trainable=True):
   """Returns a dense `Tensor` as input layer based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
@@ -166,7 +166,7 @@ def make_input_layer(features,
   keywords_embedded = embedding_column(
       categorical_column_with_hash_bucket("keywords", 10K), dimensions=16)
   all_feature_columns = [price, keywords_embedded, ...]
-  dense_tensor = make_input_layer(features, all_feature_columns)
+  dense_tensor = input_layer(features, all_feature_columns)
   for units in [128, 64, 32]:
     dense_tensor = tf.layers.dense(dense_tensor, units, tf.nn.relu)
   prediction = tf.layers.dense(dense_tensor, 1)
@@ -209,7 +209,7 @@ def make_input_layer(features,
   if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
     weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
   with variable_scope.variable_scope(
-      None, default_name='make_input_layer', values=features.values()):
+      None, default_name='input_layer', values=features.values()):
     builder = _LazyBuilder(features)
     output_tensors = []
     ordered_columns = []
@@ -228,20 +228,20 @@ def make_input_layer(features,
     return array_ops.concat(output_tensors, 1)
 
 
-def make_linear_model(features,
-                      feature_columns,
-                      units=1,
-                      sparse_combiner='sum',
-                      weight_collections=None,
-                      trainable=True):
+def linear_model(features,
+                 feature_columns,
+                 units=1,
+                 sparse_combiner='sum',
+                 weight_collections=None,
+                 trainable=True):
   """Returns a linear prediction `Tensor` based on given `feature_columns`.
 
   This function generates a weighted sum based on output dimension `units`.
   Weighted sum refers to logits in classification problems. It refers to the
   prediction itself for linear regression problems.
 
-  Note on supported columns: `make_linear_model` treats categorical columns as
-  `indicator_column`s while `make_input_layer` explicitly requires wrapping each
+  Note on supported columns: `linear_model` treats categorical columns as
+  `indicator_column`s while `input_layer` explicitly requires wrapping each
   of them with an `embedding_column` or an `indicator_column`.
 
   Example:
@@ -251,7 +251,7 @@ def make_linear_model(features,
   price_buckets = bucketized_column(price, boundaries=[0., 10., 100., 1000.])
   keywords = categorical_column_with_hash_bucket("keywords", 10K)
   all_feature_columns = [price_buckets, keywords, ...]
-  prediction = make_linear_model(features, all_feature_columns)
+  prediction = linear_model(features, all_feature_columns)
   ```
 
   Args:
@@ -294,7 +294,7 @@ def make_linear_model(features,
   if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
     weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
   with variable_scope.variable_scope(
-      None, default_name='make_linear_model', values=features.values()):
+      None, default_name='linear_model', values=features.values()):
     weighted_sums = []
     ordered_columns = []
     builder = _LazyBuilder(features)
@@ -327,7 +327,7 @@ def _transform_features(features, feature_columns):
   """Returns transformed features based on features columns passed in.
 
   Please note that most probably you would not need to use this function. Please
-  check `make_input_layer` and `make_linear_model` to see whether they will
+  check `input_layer` and `linear_model` to see whether they will
   satisfy your use case or not.
 
   Example:
@@ -444,7 +444,7 @@ def embedding_column(
       key='video_id', num_buckets=1000000, default_value=0)
   columns = [embedding_column(video_id, 9),...]
   features = tf.parse_example(..., features=parse_example_spec(columns))
-  dense_tensor = make_input_layer(features, columns)
+  dense_tensor = input_layer(features, columns)
   ```
 
   Args:
@@ -517,13 +517,13 @@ def numeric_column(key,
   price = numeric_column('price')
   columns = [price, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = make_input_layer(features, columns)
+  dense_tensor = input_layer(features, columns)
 
   # or
   bucketized_price = bucketized_column(price, boundaries=[...])
   columns = [bucketized_price, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = make_linear_model(features, columns)
+  linear_prediction = linear_model(features, columns)
   ```
 
   Args:
@@ -603,12 +603,12 @@ def bucketized_column(source_column, boundaries):
   bucketized_price = bucketized_column(price, boundaries=[...])
   columns = [bucketized_price, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = make_linear_model(features, columns)
+  linear_prediction = linear_model(features, columns)
 
   # or
   columns = [bucketized_price, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = make_input_layer(features, columns)
+  dense_tensor = input_layer(features, columns)
   ```
 
   `bucketized_column` can also be crossed with another categorical column using
@@ -620,7 +620,7 @@ def bucketized_column(source_column, boundaries):
   # 'keywords' is a string feature.
   price_x_keywords = crossed_column([bucketized_price, 'keywords'], 50K)
   all_feature_columns = [price_x_keywords, ...]
-  linear_prediction = make_linear_model(features, all_feature_columns)
+  linear_prediction = linear_model(features, all_feature_columns)
   ```
 
   Args:
@@ -678,13 +678,13 @@ def categorical_column_with_hash_bucket(key,
   keywords = categorical_column_with_hash_bucket("keywords", 10K)
   columns = [keywords, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = make_linear_model(features, columns)
+  linear_prediction = linear_model(features, columns)
 
   # or
   keywords_embedded = embedding_column(keywords, 16)
   columns = [keywords_embedded, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = make_input_layer(features, columns)
+  dense_tensor = input_layer(features, columns)
   ```
 
   Args:
@@ -740,7 +740,7 @@ def categorical_column_with_vocabulary_file(
       num_oov_buckets=5)
   columns = [states, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction = make_linear_model(features, columns)
+  linear_prediction = linear_model(features, columns)
   ```
 
   Example with `default_value`:
@@ -754,13 +754,13 @@ def categorical_column_with_vocabulary_file(
       default_value=0)
   columns = [states, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction, _, _ = make_linear_model(features, columns)
+  linear_prediction, _, _ = linear_model(features, columns)
 
   And to make an embedding with either:
   ```python
   columns = [embedding_column(states, 3),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = make_input_layer(features, columns)
+  dense_tensor = input_layer(features, columns)
   ```
 
   Args:
@@ -839,14 +839,14 @@ def categorical_column_with_vocabulary_list(
       key='colors', vocabulary_list=('X', 'R', 'G', 'B', 'Y'), default_value=0)
   columns = [colors, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction, _, _ = make_linear_model(features, columns)
+  linear_prediction, _, _ = linear_model(features, columns)
   ```
 
   Embedding for a DNN model:
   ```python
   columns = [embedding_column(colors, 3),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = make_input_layer(features, columns)
+  dense_tensor = input_layer(features, columns)
   ```
 
   Args:
@@ -917,14 +917,14 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
       key='video_id', num_buckets=1000000, default_value=0)
   columns = [video_id, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  linear_prediction, _, _ = make_linear_model(features, columns)
+  linear_prediction, _, _ = linear_model(features, columns)
   ```
 
   Embedding for a DNN model:
   ```python
   columns = [embedding_column(video_id, 9),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = make_input_layer(features, columns)
+  dense_tensor = input_layer(features, columns)
   ```
 
   Args:
@@ -964,7 +964,7 @@ def indicator_column(categorical_column):
   name = indicator_column(categorical_column_with_vocabulary_list('name',
       ['bob', 'george', 'wanda'])
   all_feature_columns = [name, ...]
-  dense_tensor = make_input_layer(features, all_feature_columns)
+  dense_tensor = input_layer(features, all_feature_columns)
 
   dense_tensor == [[1, 0, 0]]  # If "name" bytes_list is ["bob"]
   dense_tensor == [[1, 0, 1]]  # If "name" bytes_list is ["bob", "wanda"]
@@ -982,7 +982,7 @@ def indicator_column(categorical_column):
 
 
 def weighted_categorical_column(
-    categorical_column, weight_column_name, dtype=dtypes.float32):
+    categorical_column, weight_feature_key, dtype=dtypes.float32):
   """Applies weight values to a `_CategoricalColumn`.
 
   Use this when each of your sparse inputs has both an ID and a value. For
@@ -996,22 +996,22 @@ def weighted_categorical_column(
   [
     features {
       feature {
-        key: "frequencies"
-        value {float_list {value: 0.3 value: 0.1}}
-      }
-      feature {
         key: "terms"
         value {bytes_list {value: "very" value: "model"}}
+      }
+      feature {
+        key: "frequencies"
+        value {float_list {value: 0.3 value: 0.1}}
       }
     },
     features {
       feature {
-        key: "frequencies"
-        value {float_list {value: 0.4 value: 0.1 value: 0.2}}
-      }
-      feature {
         key: "terms"
         value {bytes_list {value: "when" value: "course" value: "human"}}
+      }
+      feature {
+        key: "frequencies"
+        value {float_list {value: 0.4 value: 0.1 value: 0.2}}
       }
     }
   ]
@@ -1020,10 +1020,10 @@ def weighted_categorical_column(
   categorical_column = categorical_column_with_hash_bucket(
       column_name='terms', hash_bucket_size=1000)
   weighted_column = weighted_categorical_column(
-      categorical_column=categorical_column, weight_column_name='frequencies')
+      categorical_column=categorical_column, weight_feature_key='frequencies')
   columns = [weighted_column, ...]
   features = tf.parse_example(..., features=parse_example_spec(columns))
-  linear_prediction, _, _ = make_linear_model(features, columns)
+  linear_prediction, _, _ = linear_model(features, columns)
   ```
 
   This assumes the input dictionary contains a `SparseTensor` for key
@@ -1033,7 +1033,7 @@ def weighted_categorical_column(
   Args:
     categorical_column: A `_CategoricalColumn` created by
       `categorical_column_with_*` functions.
-    weight_column_name: String key for weigth values.
+    weight_feature_key: String key for weight values.
     dtype: Type of weights, such as `tf.float32`. Only float and integer weights
       are supported.
 
@@ -1048,7 +1048,7 @@ def weighted_categorical_column(
     raise ValueError('dtype {} is not convertible to float.'.format(dtype))
   return _WeightedCategoricalColumn(
       categorical_column=categorical_column,
-      weight_column_name=weight_column_name,
+      weight_feature_key=weight_feature_key,
       dtype=dtype)
 
 
@@ -1079,7 +1079,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
   ```python
   keywords_x_doc_terms = crossed_column(['keywords', 'doc_terms'], 50K)
   all_feature_columns = [keywords_x_doc_terms, ...]
-  linear_prediction = make_linear_model(features, all_feature_columns)
+  linear_prediction = linear_model(features, all_feature_columns)
   ```
 
   You could also use vocabulary lookup before crossing:
@@ -1088,7 +1088,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
       'keywords', '/path/to/vocabulary/file', vocabulary_size=1K)
   keywords_x_doc_terms = crossed_column([keywords, 'doc_terms'], 50K)
   all_feature_columns = [keywords_x_doc_terms, ...]
-  linear_prediction = make_linear_model(features, all_feature_columns)
+  linear_prediction = linear_model(features, all_feature_columns)
   ```
 
   If an input feature is of numeric type, you can use
@@ -1101,7 +1101,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
   bucketized_price = bucketized_column(price, boundaries=[...])
   vertical_id_x_price = crossed_column([vertical_id, bucketized_price], 50K)
   all_feature_columns = [vertical_id_x_price, ...]
-  linear_prediction = make_linear_model(features, all_feature_columns)
+  linear_prediction = linear_model(features, all_feature_columns)
   ```
 
   To use crossed column in DNN model, you need to add it in an embedding column
@@ -1109,7 +1109,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
   ```python
   vertical_id_x_price = crossed_column([vertical_id, bucketized_price], 50K)
   vertical_id_x_price_embedded = embedding_column(vertical_id_x_price, 10)
-  dense_tensor = make_input_layer(features, [vertical_id_x_price_embedded, ...])
+  dense_tensor = input_layer(features, [vertical_id_x_price_embedded, ...])
   ```
 
   Args:
@@ -1244,10 +1244,10 @@ class _DenseColumn(_FeatureColumn):
     """Returns a `Tensor`.
 
     The output of this function will be used by model-builder-functions. For
-    example the pseudo code of `make_input_layer` will be like:
+    example the pseudo code of `input_layer` will be like:
 
     ```python
-    def make_input_layer(features, feature_columns, ...):
+    def input_layer(features, feature_columns, ...):
       outputs = [fc._get_dense_tensor(...) for fc in feature_columns]
       return tf.concat(outputs)
     ```
@@ -1267,7 +1267,7 @@ class _DenseColumn(_FeatureColumn):
 
 def _create_dense_column_weighted_sum(
     column, builder, units, weight_collections, trainable):
-  """Create a weighted sum of a dense column for make_linear_model."""
+  """Create a weighted sum of a dense column for linear_model."""
   tensor = column._get_dense_tensor(  # pylint: disable=protected-access
       builder,
       weight_collections=weight_collections,
@@ -1332,7 +1332,7 @@ class _CategoricalColumn(_FeatureColumn):
 
 def _create_categorical_column_weighted_sum(
     column, builder, units, sparse_combiner, weight_collections, trainable):
-  """Create a weighted sum of a categorical column for make_linear_model."""
+  """Create a weighted sum of a categorical column for linear_model."""
   sparse_tensors = column._get_sparse_tensors(  # pylint: disable=protected-access
       builder,
       weight_collections=weight_collections,
@@ -1371,7 +1371,7 @@ class _LazyBuilder(object):
     bucketized_age = fc.bucketized_column(fc.numeric_column("age"), ...)
     keywords = fc.categorical_column_with_hash_buckets("keywords", ...)
     age_X_keywords = fc.crossed_column([bucketized_age, keywords])
-    ... = make_linear_model(features,
+    ... = linear_model(features,
                             [bucketized_age, keywords, age_X_keywords]
   ```
 
@@ -2028,22 +2028,22 @@ class _IdentityCategoricalColumn(
 class _WeightedCategoricalColumn(
     _CategoricalColumn,
     collections.namedtuple('_WeightedCategoricalColumn', (
-        'categorical_column', 'weight_column_name', 'dtype'
+        'categorical_column', 'weight_feature_key', 'dtype'
     ))):
   """See `weighted_categorical_column`."""
 
   @property
   def name(self):
     return '{}_weighted_by_{}'.format(
-        self.categorical_column.name, self.weight_column_name)
+        self.categorical_column.name, self.weight_feature_key)
 
   @property
   def _parse_example_spec(self):
     config = self.categorical_column._parse_example_spec  # pylint: disable=protected-access
-    if self.weight_column_name in config:
+    if self.weight_feature_key in config:
       raise ValueError('Parse config {} already exists for {}.'.format(
-          config[self.weight_column_name], self.weight_column_name))
-    config[self.weight_column_name] = parsing_ops.VarLenFeature(self.dtype)
+          config[self.weight_feature_key], self.weight_feature_key))
+    config[self.weight_feature_key] = parsing_ops.VarLenFeature(self.dtype)
     return config
 
   @property
@@ -2051,10 +2051,9 @@ class _WeightedCategoricalColumn(
     return self.categorical_column._num_buckets  # pylint: disable=protected-access
 
   def _transform_feature(self, inputs):
-    weight_tensor = inputs.get(self.weight_column_name)
+    weight_tensor = inputs.get(self.weight_feature_key)
     if weight_tensor is None:
-      raise ValueError('Missing weights {}.'.format(
-          self.weight_column_name))
+      raise ValueError('Missing weights {}.'.format(self.weight_feature_key))
     weight_tensor = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(
         weight_tensor)
     if self.dtype != weight_tensor.dtype.base_dtype:
