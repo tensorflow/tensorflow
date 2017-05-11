@@ -47,16 +47,18 @@ class DecodeBmpOp : public OpKernel {
     const StringPiece input = contents.scalar<string>()();
 
     const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
-    const int header_size = *(reinterpret_cast<const int*>(img_bytes + 10));
-    const int width = *(reinterpret_cast<const int*>(img_bytes + 18));
-    const int height = *(reinterpret_cast<const int*>(img_bytes + 22));
-    const int bpp = *(reinterpret_cast<const int*>(img_bytes + 28));
+    const int32 header_size = *(reinterpret_cast<const int32*>(img_bytes + 10));
+    const int32 width = *(reinterpret_cast<const int32*>(img_bytes + 18));
+    const int32 height = *(reinterpret_cast<const int32*>(img_bytes + 22));
+    const int32 bpp = *(reinterpret_cast<const int32*>(img_bytes + 28));
 
-    if (channels_)
+    if (channels_) {
       OP_REQUIRES(
           context, (channels_ == bpp / 8),
-          errors::InvalidArgument("channels != what reads from the file: ",
-                                  channels_, ", ", bpp / 8));
+          errors::InvalidArgument("channels attribute ", channels_,
+                                  " does not match bits per pixel from file ",
+                                  bpp / 8));
+    }
 
     // if height is negative, data layout is top down
     // otherwise, it's bottom up
@@ -64,9 +66,8 @@ class DecodeBmpOp : public OpKernel {
 
     // Decode image, allocating tensor once the image size is known
     Tensor* output = nullptr;
-    const ::tensorflow::Status status = context->allocate_output(
-        0, TensorShape({abs(height), width, 3}), &output);
-    OP_REQUIRES_OK(context, status);
+    OP_REQUIRES_OK(context, context->allocate_output(
+        0, TensorShape({abs(height), width, 3}), &output));
 
     const uint8* bmp_pixels = &img_bytes[header_size];
 
