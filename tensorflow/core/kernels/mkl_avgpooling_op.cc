@@ -343,10 +343,11 @@ class MklAvgPoolingGradOp : public OpKernel {
       if (!outbackprop_in_mkl_format) {
         // For avgpooling, tensor_in_shape should have 1 dimension, and 4
         // elements.
-        OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
-                                 tensor_in_shape.NumElements() == 4,
-                    errors::InvalidArgument("original input shape must be "
-                                            "1-dimensional and 4 elements"));
+        OP_REQUIRES(
+            context,
+            tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
+            errors::InvalidArgument("original input shape must be "
+                                    "1-dimensional and 4 elements"));
 
         // For avgpooling, out_backprop should have 4 dimensions.
         OP_REQUIRES(context, out_backprop.dims() == 4,

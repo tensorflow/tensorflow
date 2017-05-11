@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #ifdef INTEL_MKL
-#include <vector>
 #include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
+#include <vector>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 

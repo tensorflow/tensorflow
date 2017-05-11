@@ -16,17 +16,17 @@ limitations under the License.
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#include "tensorflow/core/platform/default/logging.h"
-#include "tensorflow/core/util/mkl_util.h"
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
+#include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -216,7 +216,6 @@ class MklReluGradOp : public OpKernel {
       }
 
       relu_res[dnnResourceDiffDst] = user_g;
-
     }
 
     void MklCreateInputLayouts(OpKernelContext* context) {

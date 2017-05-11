@@ -709,7 +709,7 @@ class MklLRNGradOp : public OpKernel {
       Shard(worker_threads.num_threads, worker_threads.workers, nodes * batch,
             depth * depth, shard);
     }
-		
+
     // release mkl resources
     void Mklcleanup() {
       bool ingrad_in_mkl_format = ingrad_shape.IsMklTensor();
@@ -736,12 +736,12 @@ class MklLRNGradOp : public OpKernel {
 };
 
 #define REGISTER_MKL_LRN_CPU(T)                                     \
-  REGISTER_KERNEL_BUILDER(Name("_MklLRN")                            \
+  REGISTER_KERNEL_BUILDER(Name("_MklLRN")                           \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklLRNOp<T>);                             \
-  REGISTER_KERNEL_BUILDER(Name("_MklLRNGrad")                        \
+  REGISTER_KERNEL_BUILDER(Name("_MklLRNGrad")                       \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \

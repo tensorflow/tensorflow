@@ -382,18 +382,19 @@ class MklMaxPoolingGradOp : public OpKernel {
       if (workspace_enabled == false) {
         if (convert_input != nullptr) {
           if (input_in_mkl_format == false) {
-            CHECK_EQ(
-                dnnConversionExecute_F32(
-                    convert_input, const_cast<void*>(static_cast<const void*>(
-                                       tensor_in.flat<T>().data())),
-                    input_buf),
-                E_SUCCESS);
+            CHECK_EQ(dnnConversionExecute_F32(
+                         convert_input,
+                         const_cast<void*>(static_cast<const void*>(
+                             tensor_in.flat<T>().data())),
+                         input_buf),
+                     E_SUCCESS);
             CHECK_EQ(dnnDelete_F32(convert_input), E_SUCCESS);
             convert_input = nullptr;
           } else {
             input_shape.GetConvertedFlatData(
-                lt_input_prim, const_cast<void*>(static_cast<const void*>(
-                                   tensor_in.flat<T>().data())),
+                lt_input_prim,
+                const_cast<void*>(
+                    static_cast<const void*>(tensor_in.flat<T>().data())),
                 input_buf);
           }
           pooling_resfwd[dnnResourceSrc] = input_buf;
@@ -438,8 +439,9 @@ class MklMaxPoolingGradOp : public OpKernel {
           CHECK_EQ(dnnDelete_F32(convert_outbackprop), E_SUCCESS);
         } else {
           output_backprop_shape.GetConvertedFlatData(
-              lt_outbackprop_prim, const_cast<void*>(static_cast<const void*>(
-                                       out_backprop.flat<T>().data())),
+              lt_outbackprop_prim,
+              const_cast<void*>(
+                  static_cast<const void*>(out_backprop.flat<T>().data())),
               outbackprop_buf);
         }
         pooling_res[dnnResourceDiffDst] = outbackprop_buf;

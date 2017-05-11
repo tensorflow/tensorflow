@@ -203,12 +203,13 @@ TEST(Tensor_QInt32, Simple) {
 }
 
 class TensorReshapeTest : public ::testing::Test {
-protected:
+ protected:
   Tensor t;
   Tensor zero_t;
 
-  TensorReshapeTest() : t(DT_FLOAT, TensorShape({2, 3, 4, 5})),
-      zero_t(DT_FLOAT, TensorShape({3, 0, 2, 0, 5})) {}
+  TensorReshapeTest()
+      : t(DT_FLOAT, TensorShape({2, 3, 4, 5})),
+        zero_t(DT_FLOAT, TensorShape({3, 0, 2, 0, 5})) {}
 
   virtual void SetUp() {
     EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 3, 4, 5})));
@@ -224,7 +225,6 @@ protected:
     tensor(0, 0, 0, 0) = 0.01f;
     tensor(1, 2, 3, 4) = 0.02f;
   }
-
 };
 
 TEST_F(TensorReshapeTest, Reshape) {
