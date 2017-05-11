@@ -15,6 +15,7 @@ web_library(
         "tf-node-list-item.html",
     ],
     path = "/tf-graph-info",
+    suppress = ["strictDependencies"],
     deps = [
         "//tensorflow/tensorboard/components/tf_dashboard_common",
         "//tensorflow/tensorboard/components/tf_graph_common",
