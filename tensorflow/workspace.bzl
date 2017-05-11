@@ -762,6 +762,22 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       },
   )
 
+  # TODO: Delete previous rule and rename this one org_palantir_plottable
+  filegroup_external(
+      name = "com_palantir_plottable_v3",
+      # no @license header
+      licenses = ["notice"],  # MIT
+      sha256_urls_extract = {
+          # Plottable doesn't have a release tarball on GitHub. Using the
+          # sources directly from git also requires running Node tooling
+          # beforehand to generate files. NPM is the only place to get it.
+          "e3159beb279391c47433789f22b32bac88488cfcad6c0b6ec8605ce6b0081b0d": [
+              "http://bazel-mirror.storage.googleapis.com/registry.npmjs.org/plottable/-/plottable-3.1.0.tgz",
+              "https://registry.npmjs.org/plottable/-/plottable-3.1.0.tgz",
+          ],
+      },
+  )
+
   filegroup_external(
       name = "io_github_cpettitt_dagre",
       # no @license header

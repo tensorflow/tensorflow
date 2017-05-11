@@ -37,27 +37,3 @@ webfiles(
         "@org_polymer_webcomponentsjs",
     ],
 )
-
-################################################################################
-# MARKED FOR DELETION
-
-tensorboard_webcomponent_library(
-    name = "legacy",
-    srcs = [
-        "vz-histogram-timeseries.html",
-        ":legacy_ts",
-    ],
-    visibility = ["//visibility:public"],
-    destdir = "vz-histogram-timeseries",
-    deps = [
-        "//tensorflow/tensorboard/components:tf_imports",
-        "//third_party/javascript/polymer/v1/polymer:lib",
-    ],
-)
-
-# This is needed: components/BUILD seeks a legacy_ts rule in this package.
-tensorboard_ts_library(
-    name = "legacy_ts",
-    deps_mgmt = "off",
-    runtime = "nodejs",
-)
