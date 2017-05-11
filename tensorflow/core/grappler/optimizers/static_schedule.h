@@ -13,33 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_PLACER_H_
-#define TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_PLACER_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_STATIC_SCHEDULE_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_STATIC_SCHEDULE_H_
 
 #include <unordered_map>
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/device_properties.pb.h"
+
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/costs/cost_estimator.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 
 namespace tensorflow {
-class NodeDef;
-
 namespace grappler {
-class Cluster;
 
-// The virtual placer emulates the behavior of the TF placer.
-class VirtualPlacer {
- public:
-  VirtualPlacer(const Cluster* cluster);
-
-  const DeviceProperties& get_device(const NodeDef& node) const;
-
- private:
-  std::unordered_map<string, DeviceProperties> devices_;
-  bool has_gpu_;
-  DeviceProperties unknown_device_;
-};
+// Compute the earliest time as which the execution of each node in the graph
+// can complete.
+Status EstimateEarliestExecutionTimes(
+    const GrapplerItem& item, const Cluster* cluster,
+    std::unordered_map<const NodeDef*, Costs::NanoSeconds>* execution_times);
 
 }  // namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_PLACER_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_STATIC_SCHEDULE_H_
