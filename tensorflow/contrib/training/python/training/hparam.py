@@ -164,7 +164,7 @@ class HParams(object):
   import argparse
   parser = argparse.ArgumentParser(description='Train my model.')
   parser.add_argument('--hparams', type=str,
-                      help='Comma seperated list of "name=value" pairs.')
+                      help='Comma separated list of "name=value" pairs.')
   args = parser.parse_args()
   ...
   def my_program():

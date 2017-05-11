@@ -8,6 +8,19 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "web_library_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
 
 
+def _is_windows(repository_ctx):
+  """Returns true if the host operating system is windows."""
+  return repository_ctx.os.name.lower().find("windows") != -1
+
+
+def _get_env_var(repository_ctx, name):
+  """Find an environment variable."""
+  if name in repository_ctx.os.environ:
+    return repository_ctx.os.environ[name]
+  else:
+    return None
+
+
 # Parse the bazel version string from `native.bazel_version`.
 def _parse_bazel_version(bazel_version):
   # Remove commit from version.
@@ -74,7 +87,7 @@ temp_workaround_http_archive = repository_rule(
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
 def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
-  result = repo_ctx.execute(cmd_and_args)
+  result = repo_ctx.execute(cmd_and_args, timeout=10)
   if result.return_code != 0:
     fail(("Non-zero return code({1}) when executing '{0}':\n" + "Stdout: {2}\n"
           + "Stderr: {3}").format(" ".join(cmd_and_args), result.return_code,
@@ -84,9 +97,15 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
 # Apply a patch_file to the repository root directory
 # Runs 'patch -p1'
 def _apply_patch(repo_ctx, patch_file):
-  _execute_and_check_ret_code(repo_ctx, [
+  cmd = [
       "patch", "-p1", "-d", repo_ctx.path("."), "-i", repo_ctx.path(patch_file)
-  ])
+  ]
+  if _is_windows(repo_ctx):
+    bazel_sh = _get_env_var(repo_ctx, "BAZEL_SH")
+    if not bazel_sh:
+      fail("BAZEL_SH environment variable is not set")
+    cmd = [bazel_sh, "-c", " ".join(cmd)]
+  _execute_and_check_ret_code(repo_ctx, cmd)
 
 
 # Download the repository and apply a patch to its root

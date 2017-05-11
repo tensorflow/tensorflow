@@ -176,6 +176,7 @@ cc_library(
         ".",
         "include",
     ],
+    linkopts = ["-lpthread"],
     deps = [
     ],
 )
@@ -1782,6 +1783,7 @@ cc_library(
         ".",
         "include",
     ],
+    linkopts = ["-lpthread"],
     deps = [
         ":gpr",
         ":grpc_unsecure",

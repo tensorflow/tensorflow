@@ -489,7 +489,7 @@ def show(args):
   else:
     # If no tag is specified, display all tag_set, if no signaure_def key is
     # specified, display all SignatureDef keys, else show input output tensor
-    # infomation corresponding to the given SignatureDef key
+    # information corresponding to the given SignatureDef key
     if args.tag_set is None:
       _show_tag_sets(args.dir)
     else:
@@ -562,7 +562,7 @@ def create_parser():
   parser_show.add_argument(
       '--all',
       action='store_true',
-      help='if set, will output all infomation in given SavedModel')
+      help='if set, will output all information in given SavedModel')
   parser_show.add_argument(
       '--tag_set',
       type=str,

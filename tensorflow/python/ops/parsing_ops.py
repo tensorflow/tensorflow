@@ -58,7 +58,7 @@ class SparseFeature(
         ["index_key", "value_key", "dtype", "size", "already_sorted"])):
   """Configuration for parsing a sparse input feature from an `Example`.
 
-  Note, preferrably use `VarLenFeature` (possibly in combination with a
+  Note, preferably use `VarLenFeature` (possibly in combination with a
   `SequenceExample`) in order to parse out `SparseTensor`s instead of
   `SparseFeature` due to its simplicity.
 

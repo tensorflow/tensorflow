@@ -741,6 +741,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_concat_op",
         "//tensorflow/core/kernels:mkl_conv_op",
         "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels:mkl_identity_op",
         "//tensorflow/core/kernels:mkl_lrn_op",
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
@@ -1287,7 +1288,10 @@ cc_library(
     ] + tf_additional_verbs_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
-        "//conditions:default": ["-ldl"],
+        "//conditions:default": [
+            "-ldl",
+            "-lpthread",
+        ],
     }),
     deps = tf_additional_lib_deps() + [
         ":lib_hash_crc32c_accelerate_internal",
@@ -2127,6 +2131,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_concat_op",
         "//tensorflow/core/kernels:mkl_conv_op",
         "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels:mkl_identity_op",
         "//tensorflow/core/kernels:mkl_lrn_op",
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",

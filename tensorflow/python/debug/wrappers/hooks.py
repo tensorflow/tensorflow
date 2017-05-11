@@ -66,7 +66,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
     """Add a tensor filter.
 
     See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
-    Override default behavior to accomodate the possibility of this method being
+    Override default behavior to accommodate the possibility of this method being
     called prior to the initialization of the underlying
     `LocalCLIDebugWrapperSession` object.
 

@@ -58,21 +58,53 @@ def _is_windows(repository_ctx):
   return False
 
 
+def _execute(repository_ctx, cmdline, error_msg=None, error_details=None,
+             empty_stdout_fine=False):
+  """Executes an arbitrary shell command.
+
+  Args:
+    repository_ctx: the repository_ctx object
+    cmdline: list of strings, the command to execute
+    error_msg: string, a summary of the error if the command fails
+    error_details: string, details about the error or steps to fix it
+    empty_stdout_fine: bool, if True, an empty stdout result is fine, otherwise
+      it's an error
+  Return:
+    the result of repository_ctx.execute(cmdline)
+  """
+  result = repository_ctx.execute(cmdline)
+  if result.stderr or not (empty_stdout_fine or result.stdout):
+    _python_configure_fail(
+        "\n".join([
+            error_msg.strip() if error_msg else "Repository command failed",
+            result.stderr.strip(),
+            error_details if error_details else ""]))
+  return result
+
+
 def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name):
   """returns a genrule to symlink all files in a directory."""
   # Get the list of files under this directory
   find_result = None
   if _is_windows(repository_ctx):
-    find_result = repository_ctx.execute([
-        "dir", src_dir, "/b", "/s", "/a-d",
-    ])
+    find_result = _execute(
+        repository_ctx,
+        ["cmd.exe", "/c", "dir", src_dir.replace("/", "\\"), "/b", "/s",
+         "/a-d"],
+        empty_stdout_fine=True)
+    # src_files will be used to compute BUILD rules, where path must use
+    # forward slashes.
+    src_files = find_result.stdout.replace("\\", "/").splitlines()
+    # Create a list with the src_dir stripped to use for outputs.
+    fwdslashes_src_dir = src_dir.replace("\\", "/")
+    dest_files = [e.replace(fwdslashes_src_dir, "") for e in src_files]
   else:
-    find_result = repository_ctx.execute([
-        "find", src_dir, "-follow", "-type", "f",
-    ])
-  # Create a list with the src_dir stripped to use for outputs.
-  dest_files = find_result.stdout.replace(src_dir, '').splitlines()
-  src_files = find_result.stdout.splitlines()
+    find_result = _execute(
+        repository_ctx, ["find", src_dir, "-follow", "-type", "f"],
+        empty_stdout_fine=True)
+    # Create a list with the src_dir stripped to use for outputs.
+    dest_files = find_result.stdout.replace(src_dir, '').splitlines()
+    src_files = find_result.stdout.splitlines()
   command = []
   command_windows = []
   outs = []
@@ -136,26 +168,27 @@ def _check_python_bin(repository_ctx, python_bin):
 
 def _get_python_include(repository_ctx, python_bin):
   """Gets the python include path."""
-  result = repository_ctx.execute([python_bin, "-c",
-                                   'from __future__ import print_function;' +
-                                   'from distutils import sysconfig;' +
-                                   'print(sysconfig.get_python_inc())'])
-  if result == "":
-    _python_configure_fail(
-        "Problem getting python include path.  Is distutils installed?")
+  result = _execute(repository_ctx,
+                    [python_bin, "-c",
+                     'from __future__ import print_function;' +
+                     'from distutils import sysconfig;' +
+                     'print(sysconfig.get_python_inc())'],
+                    error_msg="Problem getting python include path.",
+                    error_details=("Is the Python binary path set up right? " +
+                                   "(See ./configure or BAZEL_BIN_PATH.) " +
+                                   "Is distutils installed?"))
   return result.stdout.splitlines()[0]
 
 
 def _get_numpy_include(repository_ctx, python_bin):
   """Gets the numpy include path."""
-  result = repository_ctx.execute([python_bin, "-c",
-                                   'from __future__ import print_function;' +
-                                   'import numpy;' +
-                                   ' print(numpy.get_include());'])
-  if result == "":
-    _python_configure_fail(
-        "Problem getting numpy include path.  Is numpy installed?")
-  return result.stdout.splitlines()[0]
+  return _execute(repository_ctx,
+                  [python_bin, "-c",
+                   'from __future__ import print_function;' +
+                   'import numpy;' +
+                   ' print(numpy.get_include());'],
+                  error_msg="Problem getting numpy include path.",
+                  error_details="Is numpy installed?").stdout.splitlines()[0]
 
 
 def _create_local_python_repository(repository_ctx):

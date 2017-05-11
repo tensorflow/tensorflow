@@ -79,7 +79,7 @@ class TensorForestLossHook(session_run_hook.SessionRunHook):
     current_loss = run_values.results['current_loss']
     current_step = run_values.results['global_step']
     self.steps += 1
-    # Gaurd against the global step going backwards, which might happen
+    # Guard against the global step going backwards, which might happen
     # if we recover from something.
     if self.last_step == -1 or self.last_step > current_step:
       logging.info('TensorForestLossHook resetting last_step.')

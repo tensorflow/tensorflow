@@ -308,11 +308,11 @@ int main(int argc, char* argv[]) {
   }
 
   // This is for automated testing to make sure we get the expected result with
-  // the default settings. We know that label 866 (military uniform) should be
+  // the default settings. We know that label 653 (military uniform) should be
   // the top label for the Admiral Hopper image.
   if (self_test) {
     bool expected_matches;
-    Status check_status = CheckTopLabel(outputs, 866, &expected_matches);
+    Status check_status = CheckTopLabel(outputs, 653, &expected_matches);
     if (!check_status.ok()) {
       LOG(ERROR) << "Running check failed: " << check_status;
       return -1;

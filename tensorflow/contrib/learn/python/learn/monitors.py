@@ -474,7 +474,7 @@ class LoggingTrainable(EveryN):
 
   def every_n_step_begin(self, step):
     super(LoggingTrainable, self).every_n_step_begin(step)
-    # Get a list of trainable variables at the begining of every N steps.
+    # Get a list of trainable variables at the beginning of every N steps.
     # We cannot get this in __init__ because train_op has not been generated.
     trainables = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES,
                                     scope=self._scope)

@@ -35,11 +35,9 @@ def ctc_loss(labels, inputs, sequence_length,
 
   This op implements the CTC loss as presented in the article:
 
-  A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
+  [A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
   Connectionist Temporal Classification: Labelling Unsegmented Sequence Data
-  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA, pp. 369-376.
-
-  http://www.cs.toronto.edu/~graves/icml_2006.pdf
+  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA, pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
 
   Input requirements:
 

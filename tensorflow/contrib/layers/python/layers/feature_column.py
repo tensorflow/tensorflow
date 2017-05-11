@@ -451,7 +451,7 @@ class _SparseColumn(
     return input_tensor
 
   def is_compatible(self, other_column):
-    """Check compatability of two sparse columns."""
+    """Check compatibility of two sparse columns."""
     if self.lookup_config and other_column.lookup_config:
       return self.lookup_config == other_column.lookup_config
     compatible = (self.length == other_column.length and
@@ -2129,7 +2129,7 @@ class _CrossedColumn(
         "columns", "hash_bucket_size", "hash_key", "combiner",
         "ckpt_to_load_from", "tensor_name_in_ckpt"
     ])):
-  """Represents a cross transformation also known as conjuction or combination.
+  """Represents a cross transformation also known as conjunction or combination.
 
   Instances of this class are immutable. It crosses given `columns`. Crossed
   column output will be hashed to hash_bucket_size.

@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.summary import summary
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
