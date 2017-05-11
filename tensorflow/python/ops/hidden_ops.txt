@@ -330,6 +330,7 @@ SerializeSparse
 SparseAdd
 SparseAddGrad
 SparseConcat
+SparseCross
 SparseSplit
 SparseSelectLastK
 SparseReorder

@@ -50,20 +50,23 @@ void StatSummarizer::Validate(const Detail* detail,
       }
       const auto& stored = detail->outputs[slot];
       const auto& current = output.tensor_description();
-      bool do_shapes_match = true;
-      if (stored.shape().dim_size() != current.shape().dim_size()) {
-        do_shapes_match = false;
-      } else {
+
+      bool do_tensors_match =
+          (stored.dtype() == current.dtype()) &&
+          (stored.shape().dim_size() == current.shape().dim_size());
+
+      if (do_tensors_match) {
         for (int i = 0; i < stored.shape().dim_size(); ++i) {
           if (stored.shape().dim(i).size() != current.shape().dim(i).size()) {
-            do_shapes_match = false;
+            do_tensors_match = false;
+            break;
           }
         }
+      }
 
-        if ((stored.dtype() != current.dtype()) || !do_shapes_match) {
-          LOG(WARNING) << "Output tensor changed between runs for '"
-                       << ns.node_name();
-        }
+      if (!do_tensors_match) {
+        LOG(WARNING) << "Output tensor changed between runs for '"
+                     << ns.node_name();
       }
     }
   }

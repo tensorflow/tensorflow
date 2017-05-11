@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/graph/optimizer_cse.h"
 
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/graph/algorithm.h"
@@ -52,7 +53,7 @@ class OptimizerCSE {
  public:
   explicit OptimizerCSE(Graph* g) : g_(g) {}
 
-  bool Optimize(std::function<bool(const Node*)> consider_fn);
+  bool Optimize(const std::function<bool(const Node*)>& consider_fn);
 
  private:
   struct Scratch;
@@ -180,7 +181,8 @@ bool OptimizerCSE::Equivalent(const Node* a, const Node* b, Scratch* scratch) {
   return true;
 }
 
-bool OptimizerCSE::Optimize(std::function<bool(const Node*)> consider_fn) {
+bool OptimizerCSE::Optimize(
+    const std::function<bool(const Node*)>& consider_fn) {
   // This very simple implementation works if the whole graph is one
   // giant basic block (because we just traverse nodes in a
   // topological order). This simple implementation works well
@@ -232,7 +234,8 @@ bool OptimizerCSE::Optimize(std::function<bool(const Node*)> consider_fn) {
   return changed;
 }
 
-bool OptimizeCSE(Graph* g, std::function<bool(const Node*)> consider_fn) {
+bool OptimizeCSE(Graph* g,
+                 const std::function<bool(const Node*)>& consider_fn) {
   OptimizerCSE opt(g);
   return opt.Optimize(consider_fn);
 }

@@ -94,7 +94,7 @@ string StripQuote(const string& s) {
   return s.substr(start, end - start + 1);
 }
 
-tensorflow::Status ReturnError(const std::vector<string> pieces, int idx) {
+tensorflow::Status ReturnError(const std::vector<string>& pieces, int idx) {
   string val;
   if (pieces.size() > idx + 1) {
     val = pieces[idx + 1];

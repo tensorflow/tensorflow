@@ -1,31 +1,48 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
+load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
 
 licenses(["notice"])  # Apache 2.0
 
-# TODO(dandelion): Add test runner.
-
-tensorboard_ts_library(
-    name = "ts",
-    srcs = ["storage.ts"],
+web_library(
+    name = "tf_storage_d3v4",
+    srcs = [
+        "bundle.js",
+        "tf-storage.html",
+    ],
+    path = "/tf-storage",
     deps = [
-        "//tensorflow/tensorboard/components/tf_globals_d3v4:ts",
-        "//third_party/javascript/lodash:lodash-module",
-        "//third_party/javascript/typings/lodash",
+        "//tensorflow/tensorboard/components/tf_globals_d3v4",
+        "//tensorflow/tensorboard/components/tf_imports_d3v4:lodash",
     ],
 )
 
-tensorboard_ts_library(
-    name = "tests",
-    srcs = ["storageTests.ts"],
-    deps = [
-        ":ts",
-        "//tensorflow/tensorboard/components/tf_globals_d3v4:ts",
-        "//third_party/javascript/typings/chai",
-        "//third_party/javascript/typings/mocha",
-        "//third_party/javascript/typings/sinon",
+tensorboard_typescript_genrule(
+    name = "ts",
+    srcs = ["bundle.ts"],
+    typings = [
+        "@org_definitelytyped//:lodash.d.ts",
+        "@org_definitelytyped//:polymer.d.ts",
+        "@org_definitelytyped//:webcomponents.js.d.ts",
+        "//tensorflow/tensorboard/components/tf_globals_d3v4:bundle.d.ts",
+        "//tensorflow/tensorboard/components/tf_imports_d3v4:d3.d.ts",
     ],
+)
+
+tensorboard_typescript_bundle(
+    name = "bundle",
+    out = "bundle.ts",
+    namespace_srcs = {"TF.URIStorage": [
+        "storage.ts",
+    ]},
+    namespace_symbol_aliases = {"TF.URIStorage": {
+        "TABS": "TF.Globals.TABS",
+        "USE_HASH": "TF.Globals.USE_HASH",
+        "getFakeHash": "TF.Globals.getFakeHash",
+        "setFakeHash": "TF.Globals.setFakeHash",
+    }},
 )
 
 filegroup(

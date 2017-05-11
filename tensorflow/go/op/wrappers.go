@@ -1255,65 +1255,6 @@ func SpaceToBatchND(scope *Scope, input tf.Output, block_shape tf.Output, paddin
 	return op.Output(0)
 }
 
-// ListDiffAttr is an optional argument to ListDiff.
-type ListDiffAttr func(optionalAttr)
-
-// ListDiffOutIdx sets the optional out_idx attribute to value.
-// If not specified, defaults to DT_INT32
-func ListDiffOutIdx(value tf.DataType) ListDiffAttr {
-	return func(m optionalAttr) {
-		m["out_idx"] = value
-	}
-}
-
-// Computes the difference between two lists of numbers or strings.
-//
-// Given a list `x` and a list `y`, this operation returns a list `out` that
-// represents all values that are in `x` but not in `y`. The returned list `out`
-// is sorted in the same order that the numbers appear in `x` (duplicates are
-// preserved). This operation also returns a list `idx` that represents the
-// position of each `out` element in `x`. In other words:
-//
-// `out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]`
-//
-// For example, given this input:
-//
-// ```
-// x = [1, 2, 3, 4, 5, 6]
-// y = [1, 3, 5]
-// ```
-//
-// This operation would return:
-//
-// ```
-// out ==> [2, 4, 6]
-// idx ==> [1, 3, 5]
-// ```
-//
-// Arguments:
-//	x: 1-D. Values to keep.
-//	y: 1-D. Values to remove.
-//
-// Returns 1-D. Values present in `x` but not in `y`.1-D. Positions of `x` values preserved in `out`.
-func ListDiff(scope *Scope, x tf.Output, y tf.Output, optional ...ListDiffAttr) (out tf.Output, idx tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ListDiff",
-		Input: []tf.Input{
-			x, y,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
 // SqueezeAttr is an optional argument to Squeeze.
 type SqueezeAttr func(optionalAttr)
 
@@ -2390,14 +2331,14 @@ func Split(scope *Scope, split_dim tf.Output, value tf.Output, num_split int64) 
 // concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
 // ```
 //
+// This is typically used by gradient computations for a concat operation.
+//
 // Arguments:
 //	concat_dim: The dimension along which to concatenate.
 //	shape: The `N` int32 vectors representing shape of tensors being concatenated.
 //
 // Returns The `N` int32 vectors representing the starting offset
-//         of input tensors within the concatenated output.
-//
-// This is typically used by gradient computations for a concat operation.
+// of input tensors within the concatenated output.
 func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset []tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -3005,7 +2946,10 @@ func AbortExitWithoutError(value bool) AbortAttr {
 	}
 }
 
-// Raise a exception to abort the process when called. If exit_without_error is true, the process will exit normally, otherwise it will exit with a SIGABORT signal.
+// Raise a exception to abort the process when called.
+//
+// If exit_without_error is true, the process will exit normally,
+// otherwise it will exit with a SIGABORT signal.
 //
 // Returns nothing but an exception.
 //
@@ -3495,10 +3439,10 @@ func StageSharedName(value string) StageAttr {
 	}
 }
 
-// Stage values similar to a lightweight Enqueue.  The basic functionality of this
+// Stage values similar to a lightweight Enqueue.
 //
-// Op is similar to a queue with many fewer capabilities and options.  This Op is
-// optimized for performance.
+// The basic functionality of this Op is similar to a queue with many
+// fewer capabilities and options.  This Op is optimized for performance.
 //
 // Arguments:
 //	values: a list of tensors
@@ -3683,9 +3627,10 @@ func ResourceGather(scope *Scope, resource tf.Output, indices tf.Output, dtype t
 	return op.Output(0)
 }
 
-// Delete the TensorArray from its resource container.  This enables
+// Delete the TensorArray from its resource container.
 //
-// the user to close and release the resource in the middle of a step/run.
+// This enables the user to close and release the resource in the middle
+// of a step/run.
 //
 // Arguments:
 //	handle: The handle to a TensorArray (output of TensorArray or TensorArrayGrad).
@@ -4207,24 +4152,24 @@ func QueueDequeueUpToV2TimeoutMs(value int64) QueueDequeueUpToV2Attr {
 	}
 }
 
-// Dequeues n tuples of one or more tensors from the given queue.
+// Dequeues `n` tuples of one or more tensors from the given queue.
 //
 // This operation is not supported by all queues.  If a queue does not support
 // DequeueUpTo, then an Unimplemented error is returned.
 //
-// If the queue is closed and there are more than 0 but less than n elements
-// remaining, then instead of returning an OutOfRange error like
-// QueueDequeueMany, less than `n` elements are returned immediately.  If the queue
-// is closed and there are 0 elements left in the queue, then an OutOfRange
-// error is returned just like in QueueDequeueMany.  Otherwise the behavior
-// is identical to QueueDequeueMany:
+// If the queue is closed and there are more than 0 but less than `n`
+// elements remaining, then instead of returning an OutOfRange error like
+// QueueDequeueMany, less than `n` elements are returned immediately.  If
+// the queue is closed and there are 0 elements left in the queue, then
+// an OutOfRange error is returned just like in QueueDequeueMany.
+// Otherwise the behavior is identical to QueueDequeueMany:
 //
 // This operation concatenates queue-element component tensors along the
 // 0th dimension to make a single component tensor.  All of the components
 // in the dequeued tuple will have size n in the 0th dimension.
 //
-// This operation has k outputs, where k is the number of components in
-// the tuples stored in the given queue, and output i is the ith
+// This operation has `k` outputs, where `k` is the number of components in
+// the tuples stored in the given queue, and output `i` is the ith
 // component of the dequeued tuple.
 //
 // Arguments:
@@ -4292,20 +4237,20 @@ func QueueDequeueManyV2TimeoutMs(value int64) QueueDequeueManyV2Attr {
 	}
 }
 
-// Dequeues n tuples of one or more tensors from the given queue.
+// Dequeues `n` tuples of one or more tensors from the given queue.
 //
-// If the queue is closed and there are fewer than n elements, then an
+// If the queue is closed and there are fewer than `n` elements, then an
 // OutOfRange error is returned.
 //
 // This operation concatenates queue-element component tensors along the
 // 0th dimension to make a single component tensor.  All of the components
-// in the dequeued tuple will have size n in the 0th dimension.
+// in the dequeued tuple will have size `n` in the 0th dimension.
 //
-// This operation has k outputs, where k is the number of components in
-// the tuples stored in the given queue, and output i is the ith
+// This operation has `k` outputs, where `k` is the number of components in
+// the tuples stored in the given queue, and output `i` is the ith
 // component of the dequeued tuple.
 //
-// N.B. If the queue is empty, this operation will block until n elements
+// N.B. If the queue is empty, this operation will block until `n` elements
 // have been dequeued (or 'timeout_ms' elapses, if specified).
 //
 // Arguments:
@@ -4407,10 +4352,10 @@ func UnstageSharedName(value string) UnstageAttr {
 	}
 }
 
-// Op is similar to a lightweight Dequeue.  The basic funtionality is similar to
+// Op is similar to a lightweight Dequeue.
 //
-// dequeue with many fewer capabilities and options.  This Op is optimized for
-// performance.
+// The basic funtionality is similar to dequeue with many fewer
+// capabilities and options.  This Op is optimized for performance.
 func Unstage(scope *Scope, dtypes []tf.DataType, optional ...UnstageAttr) (values []tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -9642,6 +9587,264 @@ func SparseTensorDenseAdd(scope *Scope, a_indices tf.Output, a_values tf.Output,
 	return op.Output(0)
 }
 
+// ListDiffAttr is an optional argument to ListDiff.
+type ListDiffAttr func(optionalAttr)
+
+// ListDiffOutIdx sets the optional out_idx attribute to value.
+// If not specified, defaults to DT_INT32
+func ListDiffOutIdx(value tf.DataType) ListDiffAttr {
+	return func(m optionalAttr) {
+		m["out_idx"] = value
+	}
+}
+
+// Computes the difference between two lists of numbers or strings.
+//
+// Given a list `x` and a list `y`, this operation returns a list `out` that
+// represents all values that are in `x` but not in `y`. The returned list `out`
+// is sorted in the same order that the numbers appear in `x` (duplicates are
+// preserved). This operation also returns a list `idx` that represents the
+// position of each `out` element in `x`. In other words:
+//
+// `out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]`
+//
+// For example, given this input:
+//
+// ```
+// x = [1, 2, 3, 4, 5, 6]
+// y = [1, 3, 5]
+// ```
+//
+// This operation would return:
+//
+// ```
+// out ==> [2, 4, 6]
+// idx ==> [1, 3, 5]
+// ```
+//
+// Arguments:
+//	x: 1-D. Values to keep.
+//	y: 1-D. Values to remove.
+//
+// Returns 1-D. Values present in `x` but not in `y`.1-D. Positions of `x` values preserved in `out`.
+func ListDiff(scope *Scope, x tf.Output, y tf.Output, optional ...ListDiffAttr) (out tf.Output, idx tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ListDiff",
+		Input: []tf.Input{
+			x, y,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// Generates sparse cross from a list of sparse and dense tensors.
+//
+// The op takes two lists, one of 2D `SparseTensor` and one of 2D `Tensor`, each
+// representing features of one feature column. It outputs a 2D `SparseTensor` with
+// the batchwise crosses of these features.
+//
+// For example, if the inputs are
+//
+//     inputs[0]: SparseTensor with shape = [2, 2]
+//     [0, 0]: "a"
+//     [1, 0]: "b"
+//     [1, 1]: "c"
+//
+//     inputs[1]: SparseTensor with shape = [2, 1]
+//     [0, 0]: "d"
+//     [1, 0]: "e"
+//
+//     inputs[2]: Tensor [["f"], ["g"]]
+//
+// then the output will be
+//
+//     shape = [2, 2]
+//     [0, 0]: "a_X_d_X_f"
+//     [1, 0]: "b_X_e_X_g"
+//     [1, 1]: "c_X_e_X_g"
+//
+// if hashed_output=true then the output will be
+//
+//     shape = [2, 2]
+//     [0, 0]: FingerprintCat64(
+//                 Fingerprint64("f"), FingerprintCat64(
+//                     Fingerprint64("d"), Fingerprint64("a")))
+//     [1, 0]: FingerprintCat64(
+//                 Fingerprint64("g"), FingerprintCat64(
+//                     Fingerprint64("e"), Fingerprint64("b")))
+//     [1, 1]: FingerprintCat64(
+//                 Fingerprint64("g"), FingerprintCat64(
+//                     Fingerprint64("e"), Fingerprint64("c")))
+//
+// Arguments:
+//	indices: 2-D.  Indices of each input `SparseTensor`.
+//	values: 1-D.   values of each `SparseTensor`.
+//	shapes: 1-D.   Shapes of each `SparseTensor`.
+//	dense_inputs: 2-D.    Columns represented by dense `Tensor`.
+//	hashed_output: If true, returns the hash of the cross instead of the string.
+// This will allow us avoiding string manipulations.
+//	num_buckets: It is used if hashed_output is true.
+// output = hashed_value%num_buckets if num_buckets > 0 else hashed_value.
+//	hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+// function to combine the crosses fingerprints.
+//
+//
+//
+// Returns 2-D.  Indices of the concatenated `SparseTensor`.1-D.  Non-empty values of the concatenated or hashed
+// `SparseTensor`.1-D.  Shape of the concatenated `SparseTensor`.
+func SparseCross(scope *Scope, indices []tf.Output, values []tf.Output, shapes []tf.Output, dense_inputs []tf.Output, hashed_output bool, num_buckets int64, hash_key int64, out_type tf.DataType, internal_type tf.DataType) (output_indices tf.Output, output_values tf.Output, output_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"hashed_output": hashed_output, "num_buckets": num_buckets, "hash_key": hash_key, "out_type": out_type, "internal_type": internal_type}
+	opspec := tf.OpSpec{
+		Type: "SparseCross",
+		Input: []tf.Input{
+			tf.OutputList(indices), tf.OutputList(values), tf.OutputList(shapes), tf.OutputList(dense_inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// FractionalMaxPoolAttr is an optional argument to FractionalMaxPool.
+type FractionalMaxPoolAttr func(optionalAttr)
+
+// FractionalMaxPoolPseudoRandom sets the optional pseudo_random attribute to value.
+//
+// value: When set to True, generates the pooling sequence in a
+// pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
+// Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
+// difference between pseudorandom and random.
+// If not specified, defaults to false
+func FractionalMaxPoolPseudoRandom(value bool) FractionalMaxPoolAttr {
+	return func(m optionalAttr) {
+		m["pseudo_random"] = value
+	}
+}
+
+// FractionalMaxPoolOverlapping sets the optional overlapping attribute to value.
+//
+// value: When set to True, it means when pooling, the values at the boundary
+// of adjacent pooling cells are used by both cells. For example:
+//
+// `index  0  1  2  3  4`
+//
+// `value  20 5  16 3  7`
+//
+// If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+// The result would be [20, 16] for fractional max pooling.
+// If not specified, defaults to false
+func FractionalMaxPoolOverlapping(value bool) FractionalMaxPoolAttr {
+	return func(m optionalAttr) {
+		m["overlapping"] = value
+	}
+}
+
+// FractionalMaxPoolDeterministic sets the optional deterministic attribute to value.
+//
+// value: When set to True, a fixed pooling region will be used when
+// iterating over a FractionalMaxPool node in the computation graph. Mainly used
+// in unit test to make FractionalMaxPool deterministic.
+// If not specified, defaults to false
+func FractionalMaxPoolDeterministic(value bool) FractionalMaxPoolAttr {
+	return func(m optionalAttr) {
+		m["deterministic"] = value
+	}
+}
+
+// FractionalMaxPoolSeed sets the optional seed attribute to value.
+//
+// value: If either seed or seed2 are set to be non-zero, the random number
+// generator is seeded by the given seed.  Otherwise, it is seeded by a
+// random seed.
+// If not specified, defaults to 0
+func FractionalMaxPoolSeed(value int64) FractionalMaxPoolAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// FractionalMaxPoolSeed2 sets the optional seed2 attribute to value.
+//
+// value: An second seed to avoid seed collision.
+// If not specified, defaults to 0
+func FractionalMaxPoolSeed2(value int64) FractionalMaxPoolAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// Performs fractional max pooling on the input.
+//
+// Fractional max pooling is slightly different than regular max pooling.  In
+// regular max pooling, you downsize an input set by taking the maximum value of
+// smaller N x N subsections of the set (often 2x2), and try to reduce the set by
+// a factor of N, where N is an integer.  Fractional max pooling, as you might
+// expect from the word "fractional", means that the overall reduction ratio N
+// does not have to be an integer.
+//
+// The sizes of the pooling regions are generated randomly but are fairly uniform.
+// For example, let's look at the height dimension, and the constraints on the
+// list of rows that will be pool boundaries.
+//
+// First we define the following:
+//
+// 1.  input_row_length : the number of rows from the input set
+// 2.  output_row_length : which will be smaller than the input
+// 3.  alpha = input_row_length / output_row_length : our reduction ratio
+// 4.  K = floor(alpha)
+// 5.  row_pooling_sequence : this is the result list of pool boundary rows
+//
+// Then, row_pooling_sequence should satisfy:
+//
+// 1.  a[0] = 0 : the first value of the sequence is 0
+// 2.  a[end] = input_row_length : the last value of the sequence is the size
+// 3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size
+// 4.  length(row_pooling_sequence) = output_row_length+1
+//
+// For more details on fractional max pooling, see this paper:
+// [Benjamin Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)
+//
+// Arguments:
+//	value: 4-D with shape `[batch, height, width, channels]`.
+//	pooling_ratio: Pooling ratio for each dimension of `value`, currently only
+// supports row and col dimension and should be >= 1.0. For example, a valid
+// pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
+// must be 1.0 because we don't allow pooling on batch and channels
+// dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
+// respectively.
+//
+// Returns output tensor after fractional max pooling.row pooling sequence, needed to calculate gradient.column pooling sequence, needed to calculate gradient.
+func FractionalMaxPool(scope *Scope, value tf.Output, pooling_ratio []float32, optional ...FractionalMaxPoolAttr) (output tf.Output, row_pooling_sequence tf.Output, col_pooling_sequence tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"pooling_ratio": pooling_ratio}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FractionalMaxPool",
+		Input: []tf.Input{
+			value,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // Concatenates a list of `SparseTensor` along the specified dimension.
 //
 // Concatenation is with respect to the dense versions of these sparse tensors.
@@ -11621,9 +11824,9 @@ func TensorArrayV3TensorArrayName(value string) TensorArrayV3Attr {
 	}
 }
 
-// An array of Tensors of given size, with data written via Write and read
+// An array of Tensors of given size.
 //
-// via Read or Pack.
+// Write data via Write and read via Read or Pack.
 //
 // Arguments:
 //	size: The size of the array.
@@ -13951,9 +14154,10 @@ func MutableDenseHashTableV2MaxLoadFactor(value float32) MutableDenseHashTableV2
 	}
 }
 
-// Creates an empty hash table that uses tensors as the backing store. It uses
+// Creates an empty hash table that uses tensors as the backing store.
 //
-// "open addressing" with quadratic reprobing to resolve collisions.
+// It uses "open addressing" with quadratic reprobing to resolve
+// collisions.
 //
 // This op creates a mutable hash table, specifying the type of its keys and
 // values. Each value must be a scalar. Data can be inserted into the table using
@@ -14390,45 +14594,6 @@ func AsString(scope *Scope, input tf.Output, optional ...AsStringAttr) (output t
 		Type: "AsString",
 		Input: []tf.Input{
 			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Says whether the targets are in the top `K` predictions.
-//
-// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-// prediction for the target class is among the top `k` predictions among
-// all predictions for example `i`. Note that the behavior of `InTopK` differs
-// from the `TopK` op in its handling of ties; if multiple classes have the
-// same prediction value and straddle the top-`k` boundary, all of those
-// classes are considered to be in the top `k`.
-//
-// More formally, let
-//
-//   \\(predictions_i\\) be the predictions for all classes for example `i`,
-//   \\(targets_i\\) be the target class for example `i`,
-//   \\(out_i\\) be the output for example `i`,
-//
-// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
-//
-// Arguments:
-//	predictions: A `batch_size` x `classes` tensor.
-//	targets: A `batch_size` vector of class ids.
-//	k: Number of top elements to look at for computing precision.
-//
-// Returns Computed Precision at `k` as a `bool Tensor`.
-func InTopK(scope *Scope, predictions tf.Output, targets tf.Output, k int64) (precision tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"k": k}
-	opspec := tf.OpSpec{
-		Type: "InTopK",
-		Input: []tf.Input{
-			predictions, targets,
 		},
 		Attrs: attrs,
 	}
@@ -16621,6 +16786,45 @@ func NotEqual(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Says whether the targets are in the top `K` predictions.
+//
+// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+// prediction for the target class is among the top `k` predictions among
+// all predictions for example `i`. Note that the behavior of `InTopK` differs
+// from the `TopK` op in its handling of ties; if multiple classes have the
+// same prediction value and straddle the top-`k` boundary, all of those
+// classes are considered to be in the top `k`.
+//
+// More formally, let
+//
+//   \\(predictions_i\\) be the predictions for all classes for example `i`,
+//   \\(targets_i\\) be the target class for example `i`,
+//   \\(out_i\\) be the output for example `i`,
+//
+// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+//
+// Arguments:
+//	predictions: A `batch_size` x `classes` tensor.
+//	targets: A `batch_size` vector of class ids.
+//	k: Number of top elements to look at for computing precision.
+//
+// Returns Computed Precision at `k` as a `bool Tensor`.
+func InTopK(scope *Scope, predictions tf.Output, targets tf.Output, k int64) (precision tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"k": k}
+	opspec := tf.OpSpec{
+		Type: "InTopK",
+		Input: []tf.Input{
+			predictions, targets,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns a batched diagonal tensor with a given batched diagonal values.
 //
 // Given a `diagonal`, this operation returns a tensor with the `diagonal` and
@@ -16839,134 +17043,6 @@ func TopKV2(scope *Scope, input tf.Output, k tf.Output, optional ...TopKV2Attr) 
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// FractionalMaxPoolAttr is an optional argument to FractionalMaxPool.
-type FractionalMaxPoolAttr func(optionalAttr)
-
-// FractionalMaxPoolPseudoRandom sets the optional pseudo_random attribute to value.
-//
-// value: When set to True, generates the pooling sequence in a
-// pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
-// Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for
-// difference between pseudorandom and random.
-// If not specified, defaults to false
-func FractionalMaxPoolPseudoRandom(value bool) FractionalMaxPoolAttr {
-	return func(m optionalAttr) {
-		m["pseudo_random"] = value
-	}
-}
-
-// FractionalMaxPoolOverlapping sets the optional overlapping attribute to value.
-//
-// value: When set to True, it means when pooling, the values at the boundary
-// of adjacent pooling cells are used by both cells. For example:
-//
-// `index  0  1  2  3  4`
-//
-// `value  20 5  16 3  7`
-//
-// If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
-// The result would be [20, 16] for fractional max pooling.
-// If not specified, defaults to false
-func FractionalMaxPoolOverlapping(value bool) FractionalMaxPoolAttr {
-	return func(m optionalAttr) {
-		m["overlapping"] = value
-	}
-}
-
-// FractionalMaxPoolDeterministic sets the optional deterministic attribute to value.
-//
-// value: When set to True, a fixed pooling region will be used when
-// iterating over a FractionalMaxPool node in the computation graph. Mainly used
-// in unit test to make FractionalMaxPool deterministic.
-// If not specified, defaults to false
-func FractionalMaxPoolDeterministic(value bool) FractionalMaxPoolAttr {
-	return func(m optionalAttr) {
-		m["deterministic"] = value
-	}
-}
-
-// FractionalMaxPoolSeed sets the optional seed attribute to value.
-//
-// value: If either seed or seed2 are set to be non-zero, the random number
-// generator is seeded by the given seed.  Otherwise, it is seeded by a
-// random seed.
-// If not specified, defaults to 0
-func FractionalMaxPoolSeed(value int64) FractionalMaxPoolAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// FractionalMaxPoolSeed2 sets the optional seed2 attribute to value.
-//
-// value: An second seed to avoid seed collision.
-// If not specified, defaults to 0
-func FractionalMaxPoolSeed2(value int64) FractionalMaxPoolAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// Performs fractional max pooling on the input.
-//
-// Fractional max pooling is slightly different than regular max pooling.  In
-// regular max pooling, you downsize an input set by taking the maximum value of
-// smaller N x N subsections of the set (often 2x2), and try to reduce the set by
-// a factor of N, where N is an integer.  Fractional max pooling, as you might
-// expect from the word "fractional", means that the overall reduction ratio N
-// does not have to be an integer.
-//
-// The sizes of the pooling regions are generated randomly but are fairly uniform.
-// For example, let's look at the height dimension, and the constraints on the
-// list of rows that will be pool boundaries.
-//
-// First we define the following:
-//
-// 1.  input_row_length : the number of rows from the input set
-// 2.  output_row_length : which will be smaller than the input
-// 3.  alpha = input_row_length / output_row_length : our reduction ratio
-// 4.  K = floor(alpha)
-// 5.  row_pooling_sequence : this is the result list of pool boundary rows
-//
-// Then, row_pooling_sequence should satisfy:
-//
-// 1.  a[0] = 0 : the first value of the sequence is 0
-// 2.  a[end] = input_row_length : the last value of the sequence is the size
-// 3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size
-// 4.  length(row_pooling_sequence) = output_row_length+1
-//
-// For more details on fractional max pooling, see this paper:
-// [Benjamin Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)
-//
-// Arguments:
-//	value: 4-D with shape `[batch, height, width, channels]`.
-//	pooling_ratio: Pooling ratio for each dimension of `value`, currently only
-// supports row and col dimension and should be >= 1.0. For example, a valid
-// pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
-// must be 1.0 because we don't allow pooling on batch and channels
-// dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
-// respectively.
-//
-// Returns output tensor after fractional max pooling.row pooling sequence, needed to calculate gradient.column pooling sequence, needed to calculate gradient.
-func FractionalMaxPool(scope *Scope, value tf.Output, pooling_ratio []float32, optional ...FractionalMaxPoolAttr) (output tf.Output, row_pooling_sequence tf.Output, col_pooling_sequence tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"pooling_ratio": pooling_ratio}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "FractionalMaxPool",
-		Input: []tf.Input{
-			value,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // RandomCropAttr is an optional argument to RandomCrop.
@@ -18014,6 +18090,26 @@ func Lgamma(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Returns x / y element-wise for real types.
+//
+// If `x` and `y` are reals, this will return the floating-point division.
+//
+// *NOTE*: `Div` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func RealDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RealDiv",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns element-wise largest integer not greater than x.
 func Floor(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
@@ -18384,6 +18480,8 @@ func Requantize(scope *Scope, input tf.Output, input_min tf.Output, input_max tf
 }
 
 // Returns the index with the smallest value across dimensions of a tensor.
+//
+// Note that in case of ties the identity of the return value is not guaranteed.
 //
 // Arguments:
 //
@@ -19396,6 +19494,8 @@ func IsFinite(scope *Scope, x tf.Output) (y tf.Output) {
 }
 
 // Returns the index with the largest value across dimensions of a tensor.
+//
+// Note that in case of ties the identity of the return value is not guaranteed.
 //
 // Arguments:
 //
@@ -21626,26 +21726,6 @@ func ReaderNumWorkUnitsCompletedV2(scope *Scope, reader_handle tf.Output) (units
 		Type: "ReaderNumWorkUnitsCompletedV2",
 		Input: []tf.Input{
 			reader_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns x / y element-wise for real types.
-//
-// If `x` and `y` are reals, this will return the floating-point division.
-//
-// *NOTE*: `Div` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func RealDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RealDiv",
-		Input: []tf.Input{
-			x, y,
 		},
 	}
 	op := scope.AddOperation(opspec)

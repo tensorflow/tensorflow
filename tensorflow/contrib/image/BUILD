@@ -20,6 +20,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 tf_custom_op_library(
     name = "python/ops/_image_ops.so",
     srcs = [
+        "kernels/bipartite_match_op.cc",
         "kernels/image_ops.cc",
         "kernels/image_ops.h",
         "ops/image_ops.cc",
@@ -33,6 +34,7 @@ tf_custom_op_library(
 tf_kernel_library(
     name = "image_ops_kernels",
     srcs = [
+        "kernels/bipartite_match_op.cc",
         "kernels/image_ops.cc",
         "kernels/image_ops.h",
     ],

@@ -33,7 +33,7 @@ namespace {
 // Adds a backtrace to the provided status iff the xla_status_add_backtrace flag
 // is set. This is useful for quickly tracing status errors observed coming out
 // of the service.
-Status MaybeAddBacktrace(Status prior) {
+Status MaybeAddBacktrace(const Status& prior) {
   DCHECK(!prior.ok());
   if (legacy_flags::GetUtilFlags()->xla_status_add_backtrace) {
     return Status{prior.code(),
@@ -204,6 +204,15 @@ PaddingConfig MakeNoPaddingConfig(int64 rank) {
     dimension->set_interior_padding(0);
   }
   return padding_config;
+}
+
+bool HasInteriorPadding(const PaddingConfig& config) {
+  for (const auto& dim : config.dimensions()) {
+    if (dim.interior_padding() != 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 string HumanReadableNumFlops(double flops, double nanoseconds) {

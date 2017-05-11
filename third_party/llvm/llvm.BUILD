@@ -1714,12 +1714,15 @@ cc_library(
         "include/llvm/Support/DataTypes.h",
         "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
     ],
+    linkopts = [
+        "-lpthread",
+        "-ldl",
+    ],
     deps = [
         ":config",
         ":demangle",
         "@zlib_archive//:zlib",
     ],
-    linkopts = ["-lpthread", "-ldl"],
 )
 
 cc_library(

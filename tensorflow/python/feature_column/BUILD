@@ -39,6 +39,7 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -48,6 +49,9 @@ py_library(
 filegroup(
     name = "vocabulary_testdata",
     srcs = [
+        "testdata/embedding.ckpt.data-00000-of-00001",
+        "testdata/embedding.ckpt.index",
+        "testdata/embedding.ckpt.meta",
         "testdata/warriors_vocabulary.txt",
         "testdata/wire_vocabulary.txt",
     ],

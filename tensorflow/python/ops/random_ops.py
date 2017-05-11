@@ -300,7 +300,8 @@ def random_crop(value, size, seed=None, name=None):
     shape = array_ops.shape(value)
     check = control_flow_ops.Assert(
         math_ops.reduce_all(shape >= size),
-        ["Need value.shape >= size, got ", shape, size])
+        ["Need value.shape >= size, got ", shape, size],
+        summarize=1000)
     shape = control_flow_ops.with_dependencies([check], shape)
     limit = shape - size + 1
     offset = random_uniform(

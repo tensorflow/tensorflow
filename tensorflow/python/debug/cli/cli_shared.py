@@ -44,6 +44,11 @@ COLOR_RED = "red"
 COLOR_WHITE = "white"
 COLOR_YELLOW = "yellow"
 
+TIME_UNIT_US = "us"
+TIME_UNIT_MS = "ms"
+TIME_UNIT_S = "s"
+TIME_UNITS = [TIME_UNIT_US, TIME_UNIT_MS, TIME_UNIT_S]
+
 
 def bytes_to_readable_str(num_bytes, include_b=False):
   """Generate a human-readable string representing number of bytes.
@@ -75,12 +80,32 @@ def bytes_to_readable_str(num_bytes, include_b=False):
   return result
 
 
-def time_to_readable_str(value):
-  if not value:
+def time_to_readable_str(value_us, force_time_unit=None):
+  """Convert time value to human-readable string.
+
+  Args:
+    value_us: time value in microseconds.
+    force_time_unit: force the output to use the specified time unit. Must be
+      in TIME_UNITS.
+
+  Returns:
+    Human-readable string representation of the time value.
+
+  Raises:
+    ValueError: if force_time_unit value is not in TIME_UNITS.
+  """
+  if not value_us:
     return "0"
-  suffixes = ["us", "ms", "s"]
-  order = min(len(suffixes) - 1, int(math.log(value, 10) / 3))
-  return "{:.3g}{}".format(value / math.pow(10.0, 3*order), suffixes[order])
+  if force_time_unit:
+    if force_time_unit not in TIME_UNITS:
+      raise ValueError("Invalid time unit: %s" % force_time_unit)
+    order = TIME_UNITS.index(force_time_unit)
+    time_unit = force_time_unit
+    return "{:.10g}{}".format(value_us / math.pow(10.0, 3*order), time_unit)
+  else:
+    order = min(len(TIME_UNITS) - 1, int(math.log(value_us, 10) / 3))
+    time_unit = TIME_UNITS[order]
+    return "{:.3g}{}".format(value_us / math.pow(10.0, 3*order), time_unit)
 
 
 def parse_ranges_highlight(ranges_string):

@@ -389,6 +389,22 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "vector_laplace_diag_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/vector_laplace_diag_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "vector_student_t_test",
     size = "medium",
     srcs = ["python/kernel_tests/vector_student_t_test.py"],

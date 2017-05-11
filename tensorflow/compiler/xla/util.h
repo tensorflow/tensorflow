@@ -39,6 +39,13 @@ limitations under the License.
 
 namespace xla {
 
+// Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
+// the bounds and indices. And for the rare cases of ranks greater than 8,
+// the InlinedVector will just behave like an std::vector<> and allocate the
+// memory to store its values.
+static constexpr int kInlineRank = 8;
+using DimensionVector = tensorflow::gtl::InlinedVector<int64, kInlineRank>;
+
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
 // spits out the human-readable duration form.
@@ -143,11 +150,11 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
 // source and destination. The source starting index is src_base, while the
 // destination one is dest_base.
 template <typename D, typename S>
-void StridedCopy(tensorflow::protobuf::RepeatedField<D>* dest, int64 dest_base,
+void StridedCopy(tensorflow::gtl::MutableArraySlice<D> dest, int64 dest_base,
                  int64 dest_stride, tensorflow::gtl::ArraySlice<S> src,
                  int64 src_base, int64 src_stride, int64 count) {
   for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
-    dest->Set(dest_base, static_cast<D>(src[src_base]));
+    dest[dest_base] = static_cast<D>(src[src_base]);
   }
 }
 
@@ -257,6 +264,10 @@ string VectorString(const std::initializer_list<T>& c) {
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);
+
+// Returns true if the padding configuration has at least one dimension with
+// non-zero interior padding.
+bool HasInteriorPadding(const PaddingConfig& config);
 
 // Imports the templated FloorOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.

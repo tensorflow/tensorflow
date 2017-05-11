@@ -43,13 +43,6 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
 // Returns the DeviceProperties of the device on which 'node' runs.
 DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node);
 
-// Returns the DeviceProperties of the CPU on which grappler is running.
-DeviceProperties GetLocalCPUInfo();
-
-// Returns the DeviceProperties for the specified GPU attached to the server on
-// which grappler is running.
-DeviceProperties GetLocalGPUInfo(int gpu_id);
-
 }  // end namespace grappler
 }  // end namespace tensorflow
 
