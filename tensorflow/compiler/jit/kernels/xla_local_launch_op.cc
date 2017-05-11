@@ -225,7 +225,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   std::unique_ptr<xla::ShapedBuffer> output;
   bool output_is_tuple;
-  if (!kernel->computation.IsNull()) {
+  if (!kernel->computation->IsNull()) {
     // Build xla::ShapedBuffers that point directly to the Tensor buffers.
     std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers;
     arg_buffers.reserve(kernel->xla_input_shapes.size() + 1);

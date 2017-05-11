@@ -57,6 +57,18 @@ Status CheckSignature(const DataTypeVector& types,
 
 }  // namespace
 
+bool XlaCompiler::Argument::operator==(
+    const XlaCompiler::Argument& other) const {
+  if (std::tie(kind, type, shape, name) !=
+      std::tie(other.kind, other.type, other.shape, other.name)) {
+    return false;
+  }
+  if (constant_value.shape() != other.constant_value.shape()) {
+    return false;
+  }
+  return constant_value.tensor_data() == other.constant_value.tensor_data();
+}
+
 XlaCompiler::XlaCompiler(XlaCompiler::Options options)
     : options_(std::move(options)),
       initialization_status_(Status::OK()),
@@ -85,12 +97,23 @@ int64 XlaCompiler::NextStepId() {
   return next_step_id_++;
 }
 
+uint64 XlaCompiler::SignatureHash::operator()(
+    const std::pair<string, std::vector<Argument>>& signature) const {
+  return std::hash<string>()(signature.first);
+}
+
 Status XlaCompiler::CompileFunction(
     const XlaCompiler::CompileOptions& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     XlaCompiler::CompilationResult* result) {
   const string function_id = Canonicalize(function.name(), function.attr());
   VLOG(1) << "XlaCompiler::CompileFunction " << function_id;
+
+  auto it = cache_.find({function_id, args});
+  if (it != cache_.end()) {
+    *result = it->second;
+    return Status::OK();
+  }
 
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(
@@ -129,6 +152,7 @@ Status XlaCompiler::CompileFunction(
       CompileGraph(options, function_id, std::move(graph), args, result));
   VLOG(1) << "====================================================";
 
+  cache_[{function_id, args}] = *result;
   return Status::OK();
 }
 
@@ -155,7 +179,7 @@ Status XlaCompiler::BuildExecutable(
   build_options.set_has_hybrid_result(
       options_.local_executable_has_hybrid_result);
 
-  auto compile_result = local_client->Compile(result.computation,
+  auto compile_result = local_client->Compile(*result.computation,
                                               argument_layouts, build_options);
   if (!compile_result.ok()) {
     return compile_result.status();
@@ -403,10 +427,12 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                   flib_runtime_.get(), NextStepId()));
 
   int num_nonconst_outputs;
+  result->computation = std::make_shared<xla::Computation>();
   TF_RETURN_IF_ERROR(BuildComputation(
       context->retvals(), context->variables(), context->has_side_effects(),
       options.return_updated_values_for_all_variables, &builder,
-      &result->computation, &num_nonconst_outputs, &result->variable_updates));
+      result->computation.get(), &num_nonconst_outputs,
+      &result->variable_updates));
 
   result->requires_runtime_context = context->has_context_parameter();
 
@@ -427,13 +453,13 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
     }
   }
 
-  if (result->computation.IsNull()) {
+  if (result->computation->IsNull()) {
     return Status::OK();
   }
 
   // Compute the output shapes, if there is a computation with non-constant
   // outputs.
-  auto computation_shape = client()->GetComputationShape(result->computation);
+  auto computation_shape = client()->GetComputationShape(*result->computation);
   if (!computation_shape.ok()) {
     return computation_shape.status();
   }

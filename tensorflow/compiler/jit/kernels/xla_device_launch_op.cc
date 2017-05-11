@@ -121,7 +121,7 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
   // Runs the computation, if any. There might not be a computation if all
   // outputs were compile-time constants.
   std::vector<std::unique_ptr<xla::GlobalData>> outputs;
-  if (!kernel->computation.IsNull()) {
+  if (!kernel->computation->IsNull()) {
     auto opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
 
     // Builds the inputs to the computation.
@@ -152,7 +152,7 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
     Env* env = Env::Default();
     auto start_time = env->NowMicros();
     VLOG(1) << "Executing XLA Computation...";
-    auto result = cache->client()->Execute(kernel->computation, arg_ptrs,
+    auto result = cache->client()->Execute(*kernel->computation, arg_ptrs,
                                            &execution_options, &profile);
     auto elapsed = env->NowMicros() - start_time;
     OP_REQUIRES(ctx, result.ok(), result.status());

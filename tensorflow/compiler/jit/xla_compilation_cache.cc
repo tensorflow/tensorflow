@@ -273,7 +273,7 @@ Status XlaCompilationCache::Compile(
   *compilation_result = &entry->compilation_result;
   if (entry->compilation_status.ok() && executable) {
     if (entry->executable == nullptr &&
-        !entry->compilation_result.computation.IsNull()) {
+        !entry->compilation_result.computation->IsNull()) {
       XlaCompiler compiler(options);
       entry->compilation_status = compiler.BuildExecutable(
           entry->compilation_result, &entry->executable);

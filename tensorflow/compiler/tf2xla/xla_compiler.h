@@ -113,6 +113,8 @@ class XlaCompiler {
 
     // The name of this argument, used for debugging.
     string name;
+
+    bool operator==(const Argument& other) const;
   };
 
   struct OutputDescription {
@@ -173,7 +175,7 @@ class XlaCompiler {
 
     // The XLA computation built from the tensorflow subgraph. May be null
     // if the output consists solely of compile-time constants.
-    xla::Computation computation;
+    std::shared_ptr<xla::Computation> computation;
   };
 
   struct Options {
@@ -289,6 +291,15 @@ class XlaCompiler {
   DeviceMgr device_mgr_;
 
   std::unique_ptr<FunctionLibraryRuntime> flib_runtime_;
+
+  struct SignatureHash {
+    uint64 operator()(
+        const std::pair<string, std::vector<Argument>>& signature) const;
+  };
+
+  std::unordered_map<std::pair<string, std::vector<Argument>>,
+                     CompilationResult, SignatureHash>
+      cache_;
 
   std::unordered_map<string, xla::ChannelHandle> channels_ GUARDED_BY(mu_);
 

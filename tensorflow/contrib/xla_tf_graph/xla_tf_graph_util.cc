@@ -228,7 +228,7 @@ ConvertTfGraphToXlaSessionModule(const std::vector<XlaCompiler::Argument>& args,
   TF_CHECK_OK(compiler->CompileGraph(XlaCompiler::CompileOptions(), GRAPH_NAME,
                                      std::move(graph), args, &result));
 
-  return result.computation.Snapshot();
+  return result.computation->Snapshot();
 }
 
 xla::StatusOr<std::unordered_map<int64, XlaNode>>

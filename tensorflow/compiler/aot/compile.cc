@@ -301,7 +301,7 @@ Status ConvertGraphToXla(xla::CompileOnlyClient* client,
                                            "tfcompile", std::move(graph),
                                            xla_args, &result));
   *has_context_arg = result.requires_runtime_context;
-  *computation = std::move(result.computation);
+  *computation = std::move(*result.computation);
 
   int num_const_results = 0;
   for (int i = 0; i < result.outputs.size(); ++i) {

@@ -79,7 +79,7 @@ static void DumpHloGraphForDebug(const std::vector<XlaCompiler::Argument>& args,
                                      std::move(graph), args, &result));
 
   // Convert to hlo
-  xla::Computation& computation = result.computation;
+  xla::Computation& computation = *result.computation;
 
   xla::Service* service(
       static_cast<xla::Service*>(xla::ClientLibrary::GetXlaService(

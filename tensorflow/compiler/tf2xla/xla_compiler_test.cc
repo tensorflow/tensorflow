@@ -131,7 +131,7 @@ TEST_F(XlaCompilerTest, EmptyReturnValues) {
                                      /*args=*/{}, &result));
 
   // No computation should be generated.
-  EXPECT_EQ(0, result.computation.handle().handle());
+  EXPECT_EQ(0, result.computation->handle().handle());
 }
 
 // Tests compilation and execution of a graph that adds two tensors.
@@ -173,7 +173,7 @@ TEST_F(XlaCompilerTest, Simple) {
 
   std::unique_ptr<xla::GlobalData> actual =
       client_
-          ->Execute(result.computation, {param0_data.get(), param1_data.get()})
+          ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
           .ConsumeValueOrDie();
   std::unique_ptr<xla::Literal> actual_literal =
       client_->Transfer(*actual).ConsumeValueOrDie();
@@ -230,7 +230,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
         client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
     std::unique_ptr<xla::GlobalData> actual =
-        client_->Execute(result.computation, {param0_data.get()})
+        client_->Execute(*result.computation, {param0_data.get()})
             .ConsumeValueOrDie();
     std::unique_ptr<xla::Literal> actual_literal =
         client_->Transfer(*actual).ConsumeValueOrDie();
@@ -265,7 +265,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
         client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
     std::unique_ptr<xla::GlobalData> actual =
-        client_->Execute(result.computation, {param0_data.get()})
+        client_->Execute(*result.computation, {param0_data.get()})
             .ConsumeValueOrDie();
     std::unique_ptr<xla::Literal> actual_literal =
         client_->Transfer(*actual).ConsumeValueOrDie();
