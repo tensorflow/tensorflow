@@ -45,7 +45,7 @@ TRAINABLE_VARS_PARAMS_STAT_OPTIONS = {
     'hide_name_regexes': [],
     'account_displayed_op_only': True,
     'select': ['params'],
-    'output': 'stdout',
+    'viz': False,
     'dump_to_file': ''
 }
 
@@ -65,7 +65,7 @@ FLOAT_OPS_OPTIONS = {
     'hide_name_regexes': [],
     'account_displayed_op_only': True,
     'select': ['float_ops'],
-    'output': 'stdout',
+    'viz': False,
     'dump_to_file': ''
 }
 
@@ -87,7 +87,7 @@ PRINT_PARAMS_ON_DEVICE = {
     'hide_name_regexes': [],
     'account_displayed_op_only': False,
     'select': ['device', 'params'],
-    'output': 'stdout',
+    'viz': False,
     'dump_to_file': ''
 }
 
@@ -107,7 +107,7 @@ PRINT_ALL_TIMING_MEMORY = {
     'hide_name_regexes': [],
     'account_displayed_op_only': True,
     'select': ['micros', 'bytes'],
-    'output': 'stdout',
+    'viz': False,
     'dump_to_file': ''
 }
 
@@ -178,7 +178,7 @@ def print_model_analysis(graph,
   opts.account_displayed_op_only = tfprof_options['account_displayed_op_only']
   for p in tfprof_options['select']:
     opts.select.append(p)
-  opts.output = tfprof_options['output']
+  opts.viz = tfprof_options['viz']
   opts.dump_to_file = tfprof_options['dump_to_file']
 
   run_meta_str = run_meta.SerializeToString() if run_meta else b''

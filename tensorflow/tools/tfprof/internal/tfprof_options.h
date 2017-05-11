@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -41,7 +40,8 @@ static const char* const kOptions[] = {
     "-hide_name_regexes",
     "-account_displayed_op_only",
     "-select",
-    "-output",
+    "-viz",
+    "-dump_to_file",
 };
 
 static const char* const kOrderBy[] = {
@@ -58,30 +58,11 @@ static const char* const kCmds[] = {
     "scope", "graph", "code", "set", "help",
 };
 
-static const char* const kOutput[] = {"timeline", "stdout", "file"};
-
-static const char* const kTimelineOpts[] = {
-    "outfile",
-};
-
-static const char* const kTimelineRequiredOpts[] = {"outfile"};
-
-static const char* const kFileOpts[] = {
-    "outfile",
-};
-
-static const char* const kFileRequiredOpts[] = {
-    "outfile",
-};
-
 struct Options {
  public:
-  static tensorflow::Status FromProtoStr(const string& opts_proto_str,
-                                         Options* opts);
+  static Options FromProtoStr(const string& opts_proto_str);
 
   virtual ~Options() {}
-  Options()
-      : Options(0, 0, 0, 0, 0, {}, "", {}, {}, {}, {}, {}, false, {}, "", {}) {}
   Options(int max_depth, tensorflow::int64 min_bytes,
           tensorflow::int64 min_micros, tensorflow::int64 min_params,
           tensorflow::int64 min_float_ops,
@@ -92,8 +73,7 @@ struct Options {
           const std::vector<string>& show_name_regexes,
           const std::vector<string>& hide_name_regexes,
           bool account_displayed_op_only, const std::vector<string>& select,
-          const string& output_type,
-          const std::map<string, string>& output_options)
+          bool viz, const string& dump_to_file = "")
       : max_depth(max_depth),
         min_bytes(min_bytes),
         min_micros(min_micros),
@@ -108,8 +88,8 @@ struct Options {
         hide_name_regexes(hide_name_regexes),
         account_displayed_op_only(account_displayed_op_only),
         select(select.begin(), select.end()),
-        output_type(output_type),
-        output_options(output_options) {}
+        viz(viz),
+        dump_to_file(dump_to_file) {}
 
   string ToString() const;
 
@@ -129,16 +109,9 @@ struct Options {
   bool account_displayed_op_only;
 
   std::set<string> select;
-
-  string output_type;
-  std::map<string, string> output_options;
+  bool viz;
+  string dump_to_file;
 };
-
-// Parse the -output option.
-// 'output_opt': User input string with format: output_type:key=value,key=value.
-// 'output_type' and 'output_options' are extracted from 'output_opt'.
-tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
-                               std::map<string, string>* output_options);
 
 }  // namespace tfprof
 }  // namespace tensorflow

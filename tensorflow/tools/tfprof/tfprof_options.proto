@@ -19,6 +19,6 @@ message OptionsProto {
   repeated string hide_name_regexes = 12;
   optional bool account_displayed_op_only = 13;
   repeated string select = 14;
-  optional string output = 15;
+  optional bool viz = 15;
   optional string dump_to_file = 16;
 }

@@ -51,7 +51,7 @@ TEST_OPTIONS = {
     'hide_name_regexes': [],
     'account_displayed_op_only': True,
     'select': ['params'],
-    'output': 'stdout',
+    'viz': False
 }
 
 # pylint: enable=bad-whitespace
@@ -92,7 +92,7 @@ class PrintModelAnalysisTest(test.TestCase):
     opts.account_displayed_op_only = TEST_OPTIONS['account_displayed_op_only']
     for p in TEST_OPTIONS['select']:
       opts.select.append(p)
-    opts.output = TEST_OPTIONS['output']
+    opts.viz = TEST_OPTIONS['viz']
 
     with session.Session() as sess, ops.device('/cpu:0'):
       _ = self._BuildSmallModel()
@@ -116,6 +116,7 @@ class PrintModelAnalysisTest(test.TestCase):
       total_exec_micros: 0
       total_requested_bytes: 0
       total_parameters: 0
+      device: "/device:CPU:0"
       float_ops: 0
       total_float_ops: 0
       }
@@ -127,6 +128,7 @@ class PrintModelAnalysisTest(test.TestCase):
       total_exec_micros: 0
       total_requested_bytes: 0
       total_parameters: 648
+      device: "/device:CPU:0"
       children {
       name: "DW/Assign"
       exec_micros: 0
@@ -134,6 +136,7 @@ class PrintModelAnalysisTest(test.TestCase):
       total_exec_micros: 0
       total_requested_bytes: 0
       total_parameters: 0
+      device: "/device:CPU:0"
       float_ops: 0
       total_float_ops: 0
       }
@@ -214,6 +217,7 @@ class PrintModelAnalysisTest(test.TestCase):
       total_exec_micros: 0
       total_requested_bytes: 0
       total_parameters: 0
+      device: "/device:CPU:0"
       float_ops: 0
       total_float_ops: 0
       }
@@ -227,6 +231,7 @@ class PrintModelAnalysisTest(test.TestCase):
       total_exec_micros: 0
       total_requested_bytes: 0
       total_parameters: 0
+      device: "/device:CPU:0"
       float_ops: 0
       total_float_ops: 0
       }

@@ -37,6 +37,22 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
+class ScopeNode : public ShowNode {
+ public:
+  explicit ScopeNode(const TFGraphNode* node) : ShowNode(node) {}
+  ~ScopeNode() override {}
+
+  void AggregateTotalStats(ScopeNode* node) {
+    ShowNode::AggregateTotalStats(node);
+  }
+
+  void AddSelfToTotalStats() { ShowNode::AddSelfToTotalStats(); }
+
+  void ResetTotalStats() { ShowNode::ResetTotalStats(); }
+
+  std::vector<ScopeNode*> children;
+};
+
 class TFScope : public TFShow {
  public:
   explicit TFScope(checkpoint::CheckpointReader* ckpt_reader)
@@ -48,8 +64,7 @@ class TFScope : public TFShow {
   void Build() override;
 
  private:
-  const ShowNode* ShowInternal(const Options& opts,
-                               Timeline* timeline) override;
+  const ShowNode* ShowInternal(const Options& opts) override;
 
   ScopeNode* CreateParentNode(const string& name);
 

@@ -62,7 +62,7 @@ def _fill_missing_graph_shape(graph, run_meta):
   return graph
 
 
-def _get_logged_ops(graph, run_meta=None, add_trace=True):
+def _get_logged_ops(graph, run_meta=None, add_trace=False):
   """Extract trainable model parameters and FLOPs for ops from a Graph.
 
   Args:
@@ -120,8 +120,9 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True):
   return logged_ops
 
 
-def _merge_default_with_oplog(graph, op_log=None, run_meta=None,
-                              add_trace=True):
+def _merge_default_with_oplog(graph, op_log=None,
+                              run_meta=None,
+                              add_trace=False):
   """Merge the tfprof default extra info with caller's op_log.
 
   Args:
@@ -153,7 +154,8 @@ def _merge_default_with_oplog(graph, op_log=None, run_meta=None,
   return tmp_op_log
 
 
-def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
+def write_op_log(graph, log_dir, op_log=None, run_meta=None,
+                 add_trace=False):
   """Log provided 'op_log', and add additional model information below.
 
     The API also assigns ops in tf.trainable_variables() an op type called

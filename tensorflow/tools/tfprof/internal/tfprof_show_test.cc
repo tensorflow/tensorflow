@@ -75,7 +75,7 @@ TEST_F(TFProfShowTest, DumpScopeMode) {
                {"VariableV2"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
-               "file", {{"outfile", dump_file}});
+               false, dump_file);
   tf_stats_->PrintGraph("scope", opts);
 
   string dump_str;

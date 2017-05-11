@@ -72,7 +72,7 @@ void TFScope::Build() {
   }
 }
 
-const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
+const ShowNode* TFScope::ShowInternal(const Options& opts) {
   // Search from roots recursively to find start node, if start_name_regexes
   // is specified.
   std::vector<ScopeNode*> roots = roots_;
@@ -86,9 +86,6 @@ const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
   Account({root}, opts);
 
   root = PrintScope({root}, opts, 1, 0)[0];
-  if (timeline) {
-    timeline->GenerateScopeTimeline(root);
-  }
   return root;
 }
 
@@ -142,13 +139,8 @@ std::vector<ScopeNode*> TFScope::PrintScope(const std::vector<ScopeNode*> roots,
       show_cnodes = SortNodes(show_cnodes, opts);
       string children_str;
       for (ScopeNode* sc : show_cnodes) {
-        if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
-          children_str += sc->formatted_str;
-          sc->formatted_str.clear();
-        }
+        children_str += sc->formatted_str;
         node->mutable_proto()->add_children()->MergeFrom(sc->proto());
-        sc->mutable_proto()->mutable_children()->Clear();
-        node->show_children.push_back(sc);
         if (opts.account_displayed_op_only) {
           node->AggregateTotalStats(sc);
         }

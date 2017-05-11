@@ -74,8 +74,8 @@ TEST_F(TFProfStatsTest, CustomOpType) {
   Options opts(3, 0, 0, 0, 0, {".*"}, "name",
                {kTrainableVarType},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
-               {"params", "bytes", "micros", "float_ops", "num_hidden_ops"}, "",
-               {});
+               {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
+               false);
   const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
 
   TFGraphNodeProto expected;
@@ -84,20 +84,20 @@ TEST_F(TFProfStatsTest, CustomOpType) {
       "0\ntotal_exec_micros: 5\ntotal_requested_bytes: 1480\ntotal_parameters: "
       "370\nchildren {\n  name: \"conv2d/bias\"\n  exec_micros: 1\n  "
       "requested_bytes: 20\n  parameters: 5\n  total_exec_micros: 1\n  "
-      "total_requested_bytes: 20\n  total_parameters: 5\n  devices: "
+      "total_requested_bytes: 20\n  total_parameters: 5\n  device: "
       "\"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: 0\n  "
       "total_float_ops: 0\n}\nchildren {\n  name: \"conv2d/kernel\"\n  "
       "exec_micros: 1\n  requested_bytes: 540\n  parameters: 135\n  "
       "total_exec_micros: 1\n  total_requested_bytes: 540\n  total_parameters: "
-      "135\n  devices: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
+      "135\n  device: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
       "0\n  total_float_ops: 0\n}\nchildren {\n  name: \"conv2d_1/bias\"\n  "
       "exec_micros: 1\n  requested_bytes: 20\n  parameters: 5\n  "
       "total_exec_micros: 1\n  total_requested_bytes: 20\n  total_parameters: "
-      "5\n  devices: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
+      "5\n  device: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
       "0\n  total_float_ops: 0\n}\nchildren {\n  name: \"conv2d_1/kernel\"\n  "
       "exec_micros: 2\n  requested_bytes: 900\n  parameters: 225\n  "
       "total_exec_micros: 2\n  total_requested_bytes: 900\n  total_parameters: "
-      "225\n  devices: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
+      "225\n  device: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
       "0\n  total_float_ops: 0\n}\nfloat_ops: 0\ntotal_float_ops: 0\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
@@ -107,7 +107,7 @@ TEST_F(TFProfStatsTest, CheckPointOpType) {
   Options opts(
       3, 0, 0, 0, 0, {".*"}, "name", {kCkptVarType},  // accout_type_regexes
       {".*"}, {""}, {".*"}, {""}, false,
-      {"params", "bytes", "micros", "float_ops", "num_hidden_ops"}, "", {});
+      {"params", "bytes", "micros", "float_ops", "num_hidden_ops"}, false);
   const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
 
   TFGraphNodeProto expected;
@@ -116,20 +116,20 @@ TEST_F(TFProfStatsTest, CheckPointOpType) {
       "0\ntotal_exec_micros: 5\ntotal_requested_bytes: 1480\ntotal_parameters: "
       "370\nchildren {\n  name: \"conv2d/bias\"\n  exec_micros: 1\n  "
       "requested_bytes: 20\n  parameters: 5\n  total_exec_micros: 1\n  "
-      "total_requested_bytes: 20\n  total_parameters: 5\n  devices: "
+      "total_requested_bytes: 20\n  total_parameters: 5\n  device: "
       "\"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: 0\n  "
       "total_float_ops: 0\n}\nchildren {\n  name: \"conv2d/kernel\"\n  "
       "exec_micros: 1\n  requested_bytes: 540\n  parameters: 135\n  "
       "total_exec_micros: 1\n  total_requested_bytes: 540\n  total_parameters: "
-      "135\n  devices: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
+      "135\n  device: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
       "0\n  total_float_ops: 0\n}\nchildren {\n  name: \"conv2d_1/bias\"\n  "
       "exec_micros: 1\n  requested_bytes: 20\n  parameters: 5\n  "
       "total_exec_micros: 1\n  total_requested_bytes: 20\n  total_parameters: "
-      "5\n  devices: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
+      "5\n  device: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
       "0\n  total_float_ops: 0\n}\nchildren {\n  name: \"conv2d_1/kernel\"\n  "
       "exec_micros: 2\n  requested_bytes: 900\n  parameters: 225\n  "
       "total_exec_micros: 2\n  total_requested_bytes: 900\n  total_parameters: "
-      "225\n  devices: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
+      "225\n  device: \"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: "
       "0\n  total_float_ops: 0\n}\nfloat_ops: 0\ntotal_float_ops: 0\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
@@ -139,8 +139,8 @@ TEST_F(TFProfStatsTest, TestGraph) {
   Options opts(100, 0, 10000, 0, 0, {".*"}, "name", {".*"},
                {"cost.*"},  // start_name_regexes
                {""}, {".*"}, {""}, false,
-               {"params", "bytes", "micros", "float_ops", "num_hidden_ops"}, "",
-               {});
+               {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
+               false);
   const TFGraphNodeProto& root = tf_stats_->PrintGraph("graph", opts);
 
   TFGraphNodeProto expected;
@@ -154,7 +154,7 @@ TEST_F(TFProfStatsTest, TestGraph) {
 
 TEST_F(TFProfStatsTest, TestFloatOps) {
   Options opts(10, 0, 0, 0, 1, {".*"}, "name", {".*"}, {".*"}, {""}, {".*"},
-               {""}, false, {"float_ops"}, "", {});
+               {""}, false, {"float_ops"}, false);
   const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
 
   TFGraphNodeProto expected;
@@ -163,19 +163,19 @@ TEST_F(TFProfStatsTest, TestFloatOps) {
       "0\ntotal_exec_micros: 96\ntotal_requested_bytes: "
       "8656\ntotal_parameters: 370\nchildren {\n  name: \"conv2d/BiasAdd\"\n  "
       "exec_micros: 12\n  requested_bytes: 1440\n  total_exec_micros: 12\n  "
-      "total_requested_bytes: 1440\n  total_parameters: 0\n  devices: "
+      "total_requested_bytes: 1440\n  total_parameters: 0\n  device: "
       "\"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: 360\n  "
       "total_float_ops: 360\n}\nchildren {\n  name: \"conv2d/convolution\"\n  "
       "exec_micros: 60\n  requested_bytes: 1440\n  total_exec_micros: 60\n  "
-      "total_requested_bytes: 1440\n  total_parameters: 0\n  devices: "
+      "total_requested_bytes: 1440\n  total_parameters: 0\n  device: "
       "\"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: 19440\n  "
       "total_float_ops: 19440\n}\nchildren {\n  name: \"conv2d_2/BiasAdd\"\n  "
       "exec_micros: 2\n  requested_bytes: 640\n  total_exec_micros: 2\n  "
-      "total_requested_bytes: 640\n  total_parameters: 0\n  devices: "
+      "total_requested_bytes: 640\n  total_parameters: 0\n  device: "
       "\"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: 160\n  "
       "total_float_ops: 160\n}\nchildren {\n  name: \"conv2d_2/convolution\"\n "
       " exec_micros: 13\n  requested_bytes: 640\n  total_exec_micros: 13\n  "
-      "total_requested_bytes: 640\n  total_parameters: 0\n  devices: "
+      "total_requested_bytes: 640\n  total_parameters: 0\n  device: "
       "\"/job:localhost/replica:0/task:0/cpu:0\"\n  float_ops: 14400\n  "
       "total_float_ops: 14400\n}\nfloat_ops: 0\ntotal_float_ops: 34360\n",
       &expected));
@@ -186,7 +186,7 @@ TEST_F(TFProfStatsTest, TestAccountShownNameOnly) {
   Options opts(100, 0, 0, 0, 0, {".*"}, "name", {".*"}, {".*"}, {""},
                {"unit_2_1.*DW"},  // show_name_regexes.
                {""}, true,        // account_displayed_op_only.
-               {"params"}, "", {});
+               {"params"}, false);
   const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
 
   TFGraphNodeProto expected;
@@ -202,7 +202,7 @@ TEST_F(TFProfStatsTest, TestShowTensorValue) {
   Options opts(10, 0, 0, 0, 0, {".*"}, "name", {".*"}, {".*"}, {""},
                {"unit_1_0.*gamma"}, {""}, false,
                {"tensor_value"},  // Show tensor value from checkpoint.
-               "", {});
+               false);
   const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
   TFGraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(

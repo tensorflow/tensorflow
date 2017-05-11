@@ -30,13 +30,28 @@ limitations under the License.
 #include "tensorflow/tools/tfprof/internal/tfprof_node.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_show_code.h"
-#include "tensorflow/tools/tfprof/internal/tfprof_timeline.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
 #include "tensorflow/tools/tfprof/tfprof_log.pb.h"
 #include "tensorflow/tools/tfprof/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
+
+class CodeNode : public ShowCodeNode {
+ public:
+  explicit CodeNode(const TFCodeNode* node) : ShowCodeNode(node) {}
+  ~CodeNode() override {}
+
+  void AggregateTotalStats(CodeNode* node) {
+    ShowCodeNode::AggregateTotalStats(node);
+  }
+
+  void AddSelfToTotalStats() { ShowCodeNode::AddSelfToTotalStats(); }
+
+  void ResetTotalStats() { ShowCodeNode::ResetTotalStats(); }
+
+  std::vector<CodeNode*> children;
+};
 
 class TFCode : public TFShowCode {
  public:
@@ -50,8 +65,7 @@ class TFCode : public TFShowCode {
  private:
   CodeNode* BuildCodeNodes(TFCodeNode* root);
 
-  const ShowCodeNode* ShowInternal(const Options& opts,
-                                   Timeline* timeline) override;
+  const ShowCodeNode* ShowInternal(const Options& opts) override;
 
   std::vector<CodeNode*> SearchRoot(std::vector<CodeNode*> roots,
                                     const std::vector<string>& regexes);

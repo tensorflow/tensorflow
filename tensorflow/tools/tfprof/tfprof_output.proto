@@ -31,8 +31,7 @@ message TFGraphNodeProto {
   // Number of inputs to the op.
   optional int64 inputs = 5;
   // Device the op is assigned to.
-  // Since an op can fire multiple kernel calls, there can be multiple devices.
-  repeated string devices = 10;
+  optional string device = 10;
 
   // The following are the aggregated stats from all accounted descendants and
   // the op itself. The actual descendants depend on the data structure used

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Parent class and utilities for tfprof_code.
+// Parent class and utilities for tfprof_graph and tfprof_scope.
 
 #ifndef THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_CODE_H_
 #define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_CODE_H_
@@ -28,15 +28,39 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_constants.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_node.h"
-#include "tensorflow/tools/tfprof/internal/tfprof_node_show.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_tensor.h"
-#include "tensorflow/tools/tfprof/internal/tfprof_timeline.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
 #include "tensorflow/tools/tfprof/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
+class ShowCodeNode {
+ public:
+  explicit ShowCodeNode(const TFCodeNode* node);
+  virtual ~ShowCodeNode() {}
+
+  const string& name() const { return node->name(); }
+  TFCodeNodeProto* mutable_proto();
+  const TFCodeNodeProto& proto() const;
+
+  string Format(const Options& opts);
+
+  string FormatMeta(const Options& opts);
+
+  const TFCodeNode* node;
+  bool account;
+  string formatted_str;
+
+ protected:
+  void AggregateTotalStats(ShowCodeNode* node);
+
+  void AddSelfToTotalStats();
+
+  void ResetTotalStats();
+
+  TFCodeNodeProto proto_;
+};
 
 class TFShowCode {
  public:
@@ -47,8 +71,7 @@ class TFShowCode {
   const TFCodeNodeProto& Show(const Options& opts);
 
  protected:
-  virtual const ShowCodeNode* ShowInternal(const Options& opts,
-                                           Timeline* timeline) = 0;
+  virtual const ShowCodeNode* ShowInternal(const Options& opts) = 0;
 
   bool LookUpCheckPoint(const string& name,
                         std::unique_ptr<TFProfTensor>* tensor);

@@ -19,8 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/tools/tfprof/internal/tfprof_timeline.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -94,16 +92,10 @@ void TFStats::ParseGraph() {
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     const NodeDef* node_def = it->second.node_def();
     for (string node_input : node_def->input()) {
-      int output_idx = 0;
       // input name format can be: "^node:src_output"
       auto prefix_pos = node_input.find(":");
       if (prefix_pos != node_input.npos) {
-        std::vector<string> input_parts = str_util::Split(node_input, ":");
-        CHECK(input_parts.size() == 2)
-            << "Unknown NodeDef.input format: " << node_input;
-        node_input = input_parts[0];
-        CHECK(strings::safe_strto32(input_parts[1], &output_idx))
-            << "Failed to parse integer: " << output_idx;
+        node_input.substr(0, prefix_pos);
       }
       if (node_input.substr(0, 1) == "^") {
         node_input = node_input.substr(1);
@@ -112,7 +104,7 @@ void TFStats::ParseGraph() {
       if (input_node == nodes_map_.end()) {
         continue;
       }
-      it->second.AddInput(&input_node->second, output_idx);
+      it->second.AddInput(&input_node->second);
     }
   }
 }
@@ -143,6 +135,21 @@ void TFStats::ParseRunMeta() {
         continue;
       }
       node->second.AddStepStat(dev_stat.device(), &node_stat);
+    }
+  }
+
+  if (!run_meta_->has_cost_graph()) {
+    fprintf(stderr,
+            "Missing CostGraphDef in RunMetadata.\nMaybe you forget to"
+            "set tf.ConfigProto(graph_options=tf.GraphOptions("
+            "build_cost_model=1)) to Session()\n");
+  } else {
+    for (const auto& node_pb : run_meta_->cost_graph().node()) {
+      auto node = nodes_map_.find(node_pb.name());
+      if (node == nodes_map_.end()) {
+        continue;
+      }
+      node->second.AddNodeStat(&node_pb);
     }
   }
 }

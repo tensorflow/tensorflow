@@ -251,13 +251,19 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       opts->select = requested_set;
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[14]) {
+      if ((pieces.size() > i + 1 && pieces[i + 1].find("-") == 0) ||
+          pieces.size() == i + 1) {
+        opts->viz = true;
+      } else if (!StringToBool(pieces[i + 1], &opts->viz)) {
+        return ReturnError(pieces, i);
+      } else {
+        ++i;
+      }
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[15]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
-
-      tensorflow::Status s =
-          ParseOutput(pieces[i + 1], &opts->output_type, &opts->output_options);
-      if (!s.ok()) return s;
+      opts->dump_to_file = StripQuote(pieces[i + 1]);
       ++i;
     } else {
       return ReturnError(pieces, i);
