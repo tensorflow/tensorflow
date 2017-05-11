@@ -18,15 +18,15 @@ This example shows how to take a Inception v3 architecture model trained on
 ImageNet images, and train a new top layer that can recognize other classes of
 images.
 
-The top layer receives as input a 2048-dimensional vector for each image. We
-train a softmax layer on top of this representation. Assuming the softmax layer
-contains N labels, this corresponds to learning N + 2048*N model parameters
-corresponding to the learned biases and weights.
 
-Here's an example, which assumes you have a folder containing class-named
-subfolders, each full of images for each label. The example folder flower_photos
-should have a structure like this:
+顶层作为输入层接收表示为2048维向量的图像。 我们
+在该表示之上训练一个softmax层。 假设softmax层
+包含N个标签，这对应于学习N + 2048 * N个模型参数
+这些参数对应于学习的偏差和权重，即训练y = Wx+b这样一个分类模型，W为权重，b为偏差
 
+
+
+图像文件按照类别存储在不同的文件夹下面，文件夹的名称包含类别信息。
 ~/flower_photos/daisy/photo1.jpg
 ~/flower_photos/daisy/photo2.jpg
 ...
@@ -151,7 +151,7 @@ MODEL_INPUT_DEPTH = 3
 JPEG_DATA_TENSOR_NAME = 'DecodeJpeg/contents:0'
 RESIZED_INPUT_TENSOR_NAME = 'ResizeBilinear:0'
 
-
+#构造数据集
 def create_image_lists(image_dir, testing_percentage, validation_percentage):
   """Builds a list of training images from the file system.
 
