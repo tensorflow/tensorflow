@@ -151,6 +151,14 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(sample_values.mean(axis=0), mu, atol=1e-2)
       self.assertAllClose(np.cov(sample_values, rowvar=0), sigma, atol=0.06)
 
+  def testSingularScaleRaises(self):
+    with self.test_session():
+      mu = None
+      chol = [[1., 0.], [0., 0.]]
+      mvn = ds.MultivariateNormalTriL(mu, chol, validate_args=True)
+      with self.assertRaisesOpError("Singular operator"):
+        mvn.sample().eval()
+
   def testSampleWithSampleShape(self):
     with self.test_session():
       mu = self._rng.rand(3, 5, 2)

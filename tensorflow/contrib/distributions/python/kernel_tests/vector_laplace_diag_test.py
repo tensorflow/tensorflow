@@ -92,6 +92,14 @@ class VectorLaplaceDiagTest(test.TestCase):
       self.assertAllClose(cov_mat, np.cov(samps.T),
                           atol=0.05, rtol=0.05)
 
+  def testSingularScaleRaises(self):
+    mu = [-1., 1]
+    diag = [1., 0]
+    with self.test_session():
+      dist = ds.VectorLaplaceDiag(mu, diag, validate_args=True)
+      with self.assertRaisesOpError("Singular"):
+        dist.sample().eval()
+
   def testSampleWithBroadcastScale(self):
     # mu corresponds to a 2-batch of 3-variate normals
     mu = np.zeros([2, 3])

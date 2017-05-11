@@ -214,11 +214,14 @@ class VectorLaplaceDiag(
     with ops.name_scope(name):
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier]):
+        # No need to validate_args while making diag_scale.  The returned
+        # LinearOperatorDiag has an assert_non_singular method that is called by
+        # the Bijector.
         scale = distribution_util.make_diag_scale(
             loc=loc,
             scale_diag=scale_diag,
             scale_identity_multiplier=scale_identity_multiplier,
-            validate_args=validate_args,
+            validate_args=False,
             assert_positive=False)
     super(VectorLaplaceDiag, self).__init__(
         loc=loc,

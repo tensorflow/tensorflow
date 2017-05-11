@@ -25,7 +25,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import util
 from tensorflow.python.ops.distributions.util import *  # pylint: disable=wildcard-import
 
@@ -45,13 +44,11 @@ def make_diag_scale(loc, scale_diag, scale_identity_multiplier,
           check_ops.assert_positive(
               x, message="diagonal part must be positive"),
       ], x)
-    # TODO(b/35157376): Use `assert_none_equal` once it exists.
     return control_flow_ops.with_dependencies([
-        check_ops.assert_greater(
-            math_ops.abs(x),
+        check_ops.assert_none_equal(
+            x,
             array_ops.zeros([], x.dtype),
-            message="diagonal part must be non-zero"),
-    ], x)
+            message="diagonal part must be non-zero")], x)
 
   with ops.name_scope(name, "make_diag_scale",
                       values=[loc, scale_diag, scale_identity_multiplier]):
