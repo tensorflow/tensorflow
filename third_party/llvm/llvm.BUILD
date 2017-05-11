@@ -1723,7 +1723,6 @@ cc_library(
         ":demangle",
         "@zlib_archive//:zlib",
     ],
-    linkopts = ["-lpthread", "-ldl"],
 )
 
 cc_library(
