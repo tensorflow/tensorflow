@@ -108,7 +108,7 @@ class Buffer : public ResourceBase {
     mutex_lock l(mu_);
 
     // Wait if the requested index is not available
-    non_empty_cond_var_.wait(l, [&, this]() {
+    non_empty_cond_var_.wait(l, [index, this]() {
       return index < this->buf_.size();
     });
 
