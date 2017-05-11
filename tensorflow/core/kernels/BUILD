@@ -2041,16 +2041,24 @@ tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
     hdrs = ["cuda_solvers.h"],
+    gpu_srcs = [
+        "cuda_solvers.h",
+        "cuda_solvers_gpu.cu.cc",
+    ],
     # @local_config_cuda//cuda:cusolver, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
     # and f2c helper functions in global namespace. Tell the compiler to
     # allow multiple definitions when linking this.
-    linkopts = ["-Wl,-zmuldefs"],
+    linkopts = select({
+        "//tensorflow:darwin": [],
+        "//conditions:default": ["-Wl,-z,muldefs"],
+    }),
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "@local_config_cuda//cuda:cublas",
         "@local_config_cuda//cuda:cusolver",
     ],
 )
@@ -2099,7 +2107,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_inverse_op",
     prefix = "matrix_inverse_op",
-    deps = LINALG_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+    ]) + LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -3163,6 +3173,7 @@ cc_library(
         ":sparse_add_grad_op",
         ":sparse_add_op",
         ":sparse_concat_op",
+        ":sparse_cross_op",
         ":sparse_dense_binary_op_shared",
         ":sparse_reduce_sum_op",
         ":sparse_reorder_op",
@@ -3204,6 +3215,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_concat_op",
     prefix = "sparse_concat_op",
+    deps = SPARSE_DEPS,
+)
+
+tf_kernel_library(
+    name = "sparse_cross_op",
+    prefix = "sparse_cross_op",
     deps = SPARSE_DEPS,
 )
 
@@ -4284,6 +4301,7 @@ filegroup(
             "string_to_hash_bucket_op.*",
             "sdca_ops.*",
             "sdca_internal.*",
+            "sparse_cross_op.*",
             "text_line_reader_op.*",
             "summary_image_op.*",
             "encode_png_op.*",
@@ -4803,6 +4821,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:remote_fused_graph_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

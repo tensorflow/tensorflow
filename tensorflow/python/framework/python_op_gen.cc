@@ -391,7 +391,8 @@ string AttrValueToPython(const string& type, const AttrValue& value) {
   }
 }
 
-static string GetPythonOp(const OpDef& op_def, bool is_hidden, string op_name) {
+static string GetPythonOp(const OpDef& op_def, bool is_hidden,
+                          const string& op_name) {
   string result;
   // Map from attr name to the first input arg it is inferred from.
   std::unordered_map<string, string> inferred_attrs;

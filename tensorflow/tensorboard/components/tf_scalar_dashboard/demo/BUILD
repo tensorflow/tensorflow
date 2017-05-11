@@ -1,11 +1,11 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 
 licenses(["notice"])  # Apache 2.0
 
 # bazel run //third_party/tensorflow/tensorboard/components/tf_scalar_dashboard/demo
-webfiles(
+web_library(
     name = "demo",
     srcs = ["index.html"],
     path = "/tf-scalar-dashboard/demo",

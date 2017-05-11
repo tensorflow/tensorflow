@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/graph/validate.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -267,7 +269,14 @@ Status SimpleGraphExecutionState::InitBaseGraph(
     }
 
     if (s.ok()) {
-      s = grappler::RunMetaOptimizer(item, rewrite_options, &optimized_graph);
+      std::unordered_map<string, DeviceProperties> device_map;
+      for (const auto& device : device_set_->devices()) {
+        device_map[device->name()] =
+            grappler::GetDeviceInfo(device->parsed_name());
+      }
+      grappler::VirtualCluster cluster(device_map);
+      s = grappler::RunMetaOptimizer(item, rewrite_options, &cluster,
+                                     &optimized_graph);
     }
     if (s.ok()) {
       graph_def = &optimized_graph;

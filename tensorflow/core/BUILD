@@ -1538,6 +1538,8 @@ tf_cuda_library(
                ":proto_text",
                ":protos_all_cc",
                "//tensorflow/core/grappler:grappler_item",
+               "//tensorflow/core/grappler/clusters:utils",
+               "//tensorflow/core/grappler/clusters:virtual_cluster",
                "//tensorflow/core/grappler/optimizers:meta_optimizer",
                "//third_party/eigen3",
                "//tensorflow/core/kernels:required",

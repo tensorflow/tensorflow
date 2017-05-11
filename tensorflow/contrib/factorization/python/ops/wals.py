@@ -70,6 +70,7 @@ class _SweepHook(session_run_hook.SessionRunHook):
         order. These are typically local initialization ops (such as cache
         initialization).
     """
+    # TODO(walidk): Provide a counter for the number of completed sweeps.
     self._num_rows = num_rows
     self._num_cols = num_cols
     self._row_prep_ops = row_prep_ops
@@ -367,10 +368,14 @@ class WALSMatrixFactorization(estimator.Estimator):
   The current implementation assumes that the training is run on a single
   machine, and will fail if config.num_worker_replicas is not equal to one.
   Training is done by calling self.fit(input_fn=input_fn), where input_fn
-  provides two queues: one for rows of the input matrix, and one for rows of the
-  transposed input matrix (i.e. columns of the original matrix). Note that
+  provides two tensors: one for rows of the input matrix, and one for rows of
+  the transposed input matrix (i.e. columns of the original matrix). Note that
   during a row sweep, only row batches are processed (ignoring column batches)
   and vice-versa.
+  Also note that every row (respectively every column) of the input matrix
+  must be processed at least once for the sweep to be considered complete. In
+  particular, training will not make progress if input_fn does not generate some
+  rows.
 
   For prediction, given a new set of input rows A' (e.g. new rows of the A
   matrix), we compute a corresponding set of row factors U', such that U' * V^T
@@ -473,10 +478,10 @@ class WALSMatrixFactorization(estimator.Estimator):
       ValueError: If config.num_worker_replicas is strictly greater than one.
         The current implementation only supports running on a single worker.
     """
-    # TODO(walidk): Support distributed training.
     # TODO(walidk): Support power-law based weight computation.
     # TODO(walidk): Add factor lookup by indices, with caching.
     # TODO(walidk): Support caching during prediction.
+    # TODO(walidk): Provide input pipelines that handle missing rows.
 
     params = {
         "num_rows": num_rows,

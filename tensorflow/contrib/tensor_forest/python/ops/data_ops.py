@@ -145,8 +145,7 @@ def ParseDataTensorOrDict(data):
           col_spec.size = shape[1].value
 
         dense_features_size += col_spec.size
-        x = array_ops.reshape(data[k], [-1, 1])
-        dense_features.append(CastToFloat(x))
+        dense_features.append(CastToFloat(data[k]))
 
     processed_dense_features = None
     processed_sparse_features = None

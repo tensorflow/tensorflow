@@ -54,7 +54,8 @@ static void CheckOpsSupport(const GraphDef& graph_def) {
   std::unordered_set<string> unsupported_ops;
   bool all_supported = true;
   for (const NodeDef& node : graph_def.node()) {
-    const int op_id = ops_definition.GetOpIdFor(node.op());
+    // TODO(satok): Set correct data type if it's given.
+    const int op_id = ops_definition.GetOpIdFor(node.op(), {});
     if (op_id == IGraphTransferOpsDefinitions::INVALID_OP_ID) {
       all_supported = false;
       LOG(ERROR) << "OP type: " << node.op() << " is not supported on hvx. "
