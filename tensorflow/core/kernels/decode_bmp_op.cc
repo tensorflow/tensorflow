@@ -58,8 +58,16 @@ class DecodeBmpOp : public OpKernel {
           errors::InvalidArgument("channels attribute ", channels_,
                                   " does not match bits per pixel from file ",
                                   bpp / 8));
-    } else
+    } else {
       channels_ =  bpp / 8;
+    }
+
+    // Current implementation only supports 3 or 4 channel
+    // bitmaps.
+    OP_REQUIRES(
+        context, (channels_ == 3 || channels == 4),
+        errors::InvalidArgument("Number of channels must be 3 or 4, was ",
+                                channels_));
 
     // if height is negative, data layout is top down
     // otherwise, it's bottom up
@@ -95,10 +103,11 @@ uint8* DecodeBmpOp::Decode(const uint8* input, uint8* const output,
     int dst_pos;
 
     for (int j = 0; j < width; j++) {
-      if (!top_down)
+      if (!top_down) {
         src_pos = ((height - 1 - i) * row_size) + j * channels;
-      else
+      } else {
         src_pos = i * row_size + j * channels;
+      }
 
       dst_pos = (i * width + j) * channels;
 
@@ -117,7 +126,7 @@ uint8* DecodeBmpOp::Decode(const uint8* input, uint8* const output,
           output[dst_pos + 3] = input[src_pos + 3];
           break;
         default:
-          // how come
+          LOG(FATAL) << "Unexpected number of channels: " << channels;
           break;
       }
     }
