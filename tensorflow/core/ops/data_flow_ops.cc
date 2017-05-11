@@ -1975,8 +1975,9 @@ REGISTER_OP("StagePeek")
     .SetShapeFn(shape_inference::UnknownShape)
     .SetIsStateful()
     .Doc(R"doc(
-Op is similar to a lightweight Dequeue.  The basic funtionality is similar to
-dequeue with many fewer capabilities and options.  This Op is optimized for
+Op peeks at the values at the specified index.  If the
+underlying container does not contain sufficient elements
+this op will block until it does.   This Op is optimized for
 performance.
     )doc");
 
@@ -1988,7 +1989,9 @@ REGISTER_OP("StageSize")
     .Attr("shared_name: string = ''")
     .SetShapeFn(shape_inference::ScalarShape)
     .SetIsStateful()
-    .Doc(R"doc(Staging Area Size)doc");
+    .Doc(R"doc(
+Op returns the number of elements in the underlying container.
+    )doc");
 
 REGISTER_OP("StageClear")
     .Attr("capacity: int = 0")
@@ -1996,7 +1999,9 @@ REGISTER_OP("StageClear")
     .Attr("shared_name: string = ''")
     .SetShapeFn(shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(Staging Area Clear)doc");
+    .Doc(R"doc(
+Op removes all elements in the underlying container.
+    )doc");
 
 REGISTER_OP("RecordInput")
     .Output("records: string")
