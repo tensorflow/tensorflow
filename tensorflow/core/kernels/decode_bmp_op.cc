@@ -33,8 +33,8 @@ class DecodeBmpOp : public OpKernel {
   explicit DecodeBmpOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
     OP_REQUIRES(
-        context, channels_ == 0 || channels_ == 3,
-        errors::InvalidArgument("channels must be 0 or 3, got ", channels_));
+        context, channels_ == 0 || channels_ == 3 || channels_ == 4,
+        errors::InvalidArgument("channels must be 0, 3 or 4, got ", channels_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -58,7 +58,8 @@ class DecodeBmpOp : public OpKernel {
           errors::InvalidArgument("channels attribute ", channels_,
                                   " does not match bits per pixel from file ",
                                   bpp / 8));
-    }
+    } else
+      channels_ =  bpp / 8;
 
     // if height is negative, data layout is top down
     // otherwise, it's bottom up
@@ -67,16 +68,16 @@ class DecodeBmpOp : public OpKernel {
     // Decode image, allocating tensor once the image size is known
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
-        0, TensorShape({abs(height), width, 3}), &output));
+        0, TensorShape({abs(height), width, channels_}), &output));
 
     const uint8* bmp_pixels = &img_bytes[header_size];
 
     Decode(bmp_pixels, output->flat<uint8>().data(), width, abs(height),
-           top_down);
+           channels_, top_down);
   }
 
   uint8* Decode(const uint8* input, uint8* const output, const int width,
-                const int height, bool top_down);
+                const int height, const int channles, bool top_down);
 
  private:
   int channels_;
@@ -84,9 +85,10 @@ class DecodeBmpOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("DecodeBmp").Device(DEVICE_CPU), DecodeBmpOp);
 
 uint8* DecodeBmpOp::Decode(const uint8* input, uint8* const output,
-                           const int width, const int height, bool top_down) {
+                           const int width, const int height, const int channels, bool top_down) {
   // there may be padding bytes when the width is not a multiple of 4 bytes
-  int row_size = (8 * width * 3 + 31) / 32 * 4;
+  // 8 * channels == bits per pixel
+  int row_size = (8 * channels * width + 31) / 32 * 4;
 
   for (int i = 0; i < height; i++) {
     int src_pos;
@@ -94,14 +96,30 @@ uint8* DecodeBmpOp::Decode(const uint8* input, uint8* const output,
 
     for (int j = 0; j < width; j++) {
       if (!top_down)
-        src_pos = ((height - 1 - i) * row_size) + j * 3;
+        src_pos = ((height - 1 - i) * row_size) + j * channels;
       else
-        src_pos = i * row_size + j * 3;
+        src_pos = i * row_size + j * channels;
 
-      dst_pos = (i * width + j) * 3;
-      output[dst_pos] = input[src_pos + 2];
-      output[dst_pos + 1] = input[src_pos + 1];
-      output[dst_pos + 2] = input[src_pos];
+      dst_pos = (i * width + j) * channels;
+
+      switch (channels) {
+        case 3:
+          // BGR -> RGB
+          output[dst_pos] = input[src_pos + 2];
+          output[dst_pos + 1] = input[src_pos + 1];
+          output[dst_pos + 2] = input[src_pos];
+          break;
+        case 4:
+          // BGRA -> RGBA
+          output[dst_pos] = input[src_pos + 2];
+          output[dst_pos + 1] = input[src_pos + 1];
+          output[dst_pos + 2] = input[src_pos];
+          output[dst_pos + 3] = input[src_pos + 3];
+          break;
+        default:
+          // how come
+          break;
+      }
     }
   }
 
