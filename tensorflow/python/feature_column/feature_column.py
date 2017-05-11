@@ -408,7 +408,7 @@ def make_parse_example_spec(feature_columns):
       raise ValueError(
           'All feature_columns must be _FeatureColumn instances. '
           'Given: {}'.format(column))
-    config = column._parse_example_config  # pylint: disable=protected-access
+    config = column._parse_example_spec  # pylint: disable=protected-access
     for key, value in six.iteritems(config):
       if key in result and value != result[key]:
         raise ValueError(
@@ -484,10 +484,8 @@ def embedding_column(
                      'Embedding of column_name: {}'.format(
                          categorical_column.name))
   if initializer is None:
-    # pylint: disable=protected-access
     initializer = init_ops.truncated_normal_initializer(
         mean=0.0, stddev=1 / math.sqrt(dimension))
-    # pylint: enable=protected-access
 
   return _EmbeddingColumn(
       categorical_column=categorical_column,
@@ -1197,7 +1195,7 @@ class _FeatureColumn(object):
     pass
 
   @abc.abstractproperty
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     """Returns a `tf.Example` parsing spec as dict.
 
     It is used for get_parsing_spec for `tf.parse_example`. Returned spec is a
@@ -1207,11 +1205,11 @@ class _FeatureColumn(object):
 
     Let's say a Feature column depends on raw feature ('raw') and another
     `_FeatureColumn` (input_fc). One possible implementation of
-    _parse_example_config is as follows:
+    _parse_example_spec is as follows:
 
     ```python
     spec = {'raw': tf.FixedLenFeature(...)}
-    spec.update(input_fc._parse_example_config)
+    spec.update(input_fc._parse_example_spec)
     return spec
     ```
     """
@@ -1428,9 +1426,7 @@ class _LazyBuilder(object):
 
     column = key
     logging.debug('Transforming feature_column %s.', column)
-    # pylint: disable=protected-access
-    transformed = column._transform_feature(self)
-    # pylint: enable=protected-access
+    transformed = column._transform_feature(self)  # pylint: disable=protected-access
     if transformed is None:
       raise ValueError('Column {} is not supported.'.format(column.name))
     self._feature_tensors[column] = transformed
@@ -1529,7 +1525,7 @@ class _NumericColumn(_DenseColumn,
     return self.key
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return {
         self.key:
             parsing_ops.FixedLenFeature(self.shape, self.dtype,
@@ -1582,8 +1578,8 @@ class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
     return '{}_bucketized'.format(self.source_column.name)
 
   @property
-  def _parse_example_config(self):
-    return self.source_column._parse_example_config  # pylint: disable=protected-access
+  def _parse_example_spec(self):
+    return self.source_column._parse_example_spec  # pylint: disable=protected-access
 
   def _transform_feature(self, inputs):
     source_tensor = inputs.get(self.source_column)
@@ -1655,10 +1651,8 @@ class _EmbeddingColumn(
     return self._name
 
   @property
-  def _parse_example_config(self):
-    # pylint: disable=protected-access
-    return self.categorical_column._parse_example_config
-    # pylint: enable=protected-access
+  def _parse_example_spec(self):
+    return self.categorical_column._parse_example_spec  # pylint: disable=protected-access
 
   def _transform_feature(self, inputs):
     return inputs.get(self.categorical_column)
@@ -1671,19 +1665,15 @@ class _EmbeddingColumn(
 
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
     # Get sparse IDs and weights.
-    # pylint: disable=protected-access
-    sparse_tensors = self.categorical_column._get_sparse_tensors(
+    sparse_tensors = self.categorical_column._get_sparse_tensors(  # pylint: disable=protected-access
         inputs, weight_collections=weight_collections, trainable=trainable)
-    # pylint: enable=protected-access
     sparse_ids = sparse_tensors.id_tensor
     sparse_weights = sparse_tensors.weight_tensor
 
     # Create embedding weight, and restore from checkpoint if necessary.
     embedding_weights = variable_scope.get_variable(
         name='embedding_weights',
-        # pylint: disable=protected-access
-        shape=(self.categorical_column._num_buckets, self.dimension),
-        # pylint: enable=protected-access
+        shape=(self.categorical_column._num_buckets, self.dimension),  # pylint: disable=protected-access
         dtype=dtypes.float32,
         initializer=self.initializer,
         trainable=self.trainable and trainable,
@@ -1691,9 +1681,7 @@ class _EmbeddingColumn(
     if self.ckpt_to_load_from is not None:
       to_restore = embedding_weights
       if isinstance(to_restore, variables.PartitionedVariable):
-        # pylint: disable=protected-access
-        to_restore = to_restore._get_variable_list()
-        # pylint: enable=protected-access
+        to_restore = to_restore._get_variable_list()  # pylint: disable=protected-access
       checkpoint_utils.init_from_checkpoint(self.ckpt_to_load_from, {
           self.tensor_name_in_ckpt: to_restore
       })
@@ -1824,7 +1812,7 @@ class _HashedCategoricalColumn(
     return self.key
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return {self.key: parsing_ops.VarLenFeature(self.dtype)}
 
   def _transform_feature(self, inputs):
@@ -1875,7 +1863,7 @@ class _VocabularyFileCategoricalColumn(
     return self.key
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return {self.key: parsing_ops.VarLenFeature(self.dtype)}
 
   def _transform_feature(self, inputs):
@@ -1927,7 +1915,7 @@ class _VocabularyListCategoricalColumn(
     return self.key
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return {self.key: parsing_ops.VarLenFeature(self.dtype)}
 
   def _transform_feature(self, inputs):
@@ -1978,7 +1966,7 @@ class _IdentityCategoricalColumn(
     return self.key
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return {self.key: parsing_ops.VarLenFeature(dtypes.int64)}
 
   def _transform_feature(self, inputs):
@@ -2041,10 +2029,8 @@ class _WeightedCategoricalColumn(
         self.categorical_column.name, self.weight_column_name)
 
   @property
-  def _parse_example_config(self):
-    # pylint: disable=protected-access
-    config = self.categorical_column._parse_example_config
-    # pylint: enable=protected-access
+  def _parse_example_spec(self):
+    config = self.categorical_column._parse_example_spec  # pylint: disable=protected-access
     if self.weight_column_name in config:
       raise ValueError('Parse config {} already exists for {}.'.format(
           config[self.weight_column_name], self.weight_column_name))
@@ -2053,9 +2039,7 @@ class _WeightedCategoricalColumn(
 
   @property
   def _num_buckets(self):
-    # pylint: disable=protected-access
-    return self.categorical_column._num_buckets
-    # pylint: enable=protected-access
+    return self.categorical_column._num_buckets  # pylint: disable=protected-access
 
   def _transform_feature(self, inputs):
     weight_tensor = inputs.get(self.weight_column_name)
@@ -2099,11 +2083,11 @@ class _CrossedColumn(
     return '_X_'.join(sorted(feature_names))
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     config = {}
     for key in self.keys:
       if isinstance(key, _FeatureColumn):
-        config.update(key._parse_example_config)  # pylint: disable=protected-access
+        config.update(key._parse_example_spec)  # pylint: disable=protected-access
       else:  # key must be a string
         config.update({key: parsing_ops.VarLenFeature(dtypes.string)})
     return config
@@ -2348,8 +2332,8 @@ class _IndicatorColumn(_DenseColumn,
     return math_ops.reduce_sum(one_hot_id_tensor, axis=[1])
 
   @property
-  def _parse_example_config(self):
-    return self.categorical_column._parse_example_config  # pylint: disable=protected-access
+  def _parse_example_spec(self):
+    return self.categorical_column._parse_example_spec  # pylint: disable=protected-access
 
   @property
   def _variable_shape(self):
