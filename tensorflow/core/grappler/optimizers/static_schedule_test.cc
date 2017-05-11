@@ -27,7 +27,23 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-class StaticScheduleTest : public ::testing::Test {};
+class StaticScheduleTest : public ::testing::Test {
+ public:
+  VirtualCluster CreateVirtualCluster() const {
+    // Invent a CPU so that predictions remain the same from machine to machine.
+    DeviceProperties cpu_device;
+    cpu_device.set_type("CPU");
+    cpu_device.set_frequency(1000);
+    cpu_device.set_num_cores(4);
+    cpu_device.set_bandwidth(32);
+    cpu_device.set_l1_cache_size(32 * 1024);
+    cpu_device.set_l2_cache_size(256 * 1024);
+    cpu_device.set_l3_cache_size(4 * 1024 * 1024);
+    std::unordered_map<string, DeviceProperties> devices;
+    devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
+    return VirtualCluster(devices);
+  }
+};
 
 TEST_F(StaticScheduleTest, BasicGraph) {
   // This trivial graph is so basic there's nothing to prune.
@@ -35,10 +51,7 @@ TEST_F(StaticScheduleTest, BasicGraph) {
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  DeviceProperties cpu_device;
-  std::unordered_map<string, DeviceProperties> devices;
-  devices["CPU"] = cpu_device;
-  VirtualCluster cluster(devices);
+  VirtualCluster cluster(CreateVirtualCluster());
 
   std::unordered_map<const NodeDef*, Costs::NanoSeconds> completion_times;
   Status status =
@@ -46,6 +59,24 @@ TEST_F(StaticScheduleTest, BasicGraph) {
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(item.graph.node_size(), completion_times.size());
+
+  for (auto time : completion_times) {
+    if (time.first->name() == "Const/Const") {
+      EXPECT_EQ(Costs::NanoSeconds(0), time.second);
+    } else if (time.first->name() == "x") {
+      EXPECT_EQ(Costs::NanoSeconds(250000), time.second);
+    } else if (time.first->name() == "AddN") {
+      EXPECT_EQ(Costs::NanoSeconds(1500000), time.second);
+    } else if (time.first->name() == "AddN_1") {
+      EXPECT_EQ(Costs::NanoSeconds(2750000), time.second);
+    } else if (time.first->name() == "AddN_2") {
+      EXPECT_EQ(Costs::NanoSeconds(4000000), time.second);
+    } else if (time.first->name() == "AddN_3") {
+      EXPECT_EQ(Costs::NanoSeconds(5250000), time.second);
+    } else if (time.first->name() == "y") {
+      EXPECT_EQ(Costs::NanoSeconds(6500000), time.second);
+    }
+  }
 }
 
 TEST_F(StaticScheduleTest, BasicGraphWithCtrlDependencies) {
@@ -66,10 +97,7 @@ TEST_F(StaticScheduleTest, BasicGraphWithCtrlDependencies) {
   EXPECT_EQ("e", item.graph.node(4).name());
   *item.graph.mutable_node(4)->add_input() = "^c";
 
-  DeviceProperties cpu_device;
-  std::unordered_map<string, DeviceProperties> devices;
-  devices["CPU"] = cpu_device;
-  VirtualCluster cluster(devices);
+  VirtualCluster cluster(CreateVirtualCluster());
 
   std::unordered_map<const NodeDef*, Costs::NanoSeconds> completion_times;
   Status status =
@@ -77,6 +105,20 @@ TEST_F(StaticScheduleTest, BasicGraphWithCtrlDependencies) {
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(item.graph.node_size(), completion_times.size());
+
+  for (auto time : completion_times) {
+    if (time.first->name() == "a") {
+      EXPECT_EQ(Costs::NanoSeconds(0), time.second);
+    } else if (time.first->name() == "b") {
+      EXPECT_EQ(Costs::NanoSeconds(12500000), time.second);
+    } else if (time.first->name() == "c") {
+      EXPECT_EQ(Costs::NanoSeconds(12500000), time.second);
+    } else if (time.first->name() == "d") {
+      EXPECT_EQ(Costs::NanoSeconds(12500000), time.second);
+    } else if (time.first->name() == "e") {
+      EXPECT_EQ(Costs::NanoSeconds(25000000), time.second);
+    }
+  }
 }
 
 }  // namespace

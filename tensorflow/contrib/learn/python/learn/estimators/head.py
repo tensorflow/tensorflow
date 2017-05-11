@@ -163,10 +163,10 @@ class Head(object):
           ModeFnOps.loss to compute and apply gradients.
       logits: logits `Tensor` to be used by the head.
       logits_input: `Tensor` from which to build logits, often needed when you
-        don't want to compute the logits. Typically this is the activation of the
-        last hidden layer in a DNN. Some heads (like the ones responsible for
-        candidate sampling) intrinsically avoid computing full logits and only
-        accepts logits_input.
+        don't want to compute the logits. Typically this is the activation of
+        the last hidden layer in a DNN. Some heads (like the ones responsible
+        for candidate sampling) intrinsically avoid computing full logits and
+        only accepts logits_input.
       scope: Optional scope for `variable_scope`.
 
     Returns:
@@ -1646,12 +1646,27 @@ class _MultiHead(Head):
 
 
 def _weight_tensor(features, weight_column_name):
-  """Returns weights as 1d `Tensor`."""
+  """Returns weights as `Tensor` of rank 0, or at least 2."""
   if not weight_column_name:
     return None
-  with ops.name_scope(None, "weight_tensor",
-                      tuple(six.itervalues(features))):
-    return math_ops.to_float(features[weight_column_name])
+  if weight_column_name not in features:
+    raise ValueError("Weights {} missing from features.".format(
+        weight_column_name))
+  with ops.name_scope(None, "weight_tensor", tuple(six.itervalues(features))):
+    weight_tensor = math_ops.to_float(features[weight_column_name])
+    shape = weight_tensor.get_shape()
+    rank = shape.ndims
+    # We don't bother with expanding dims of non-staticly shaped tensors or
+    # scalars, and >1d is already in a good format.
+    if rank == 1:
+      logging.warning(
+          "Weights {} has shape {}, expanding to make it 2d.",
+          weight_column_name, shape)
+      return (
+          sparse_ops.sparse_reshape(weight_tensor, (-1, 1))
+          if isinstance(weight_tensor, sparse_tensor.SparseTensor) else
+          array_ops.reshape(weight_tensor, (-1, 1)))
+    return weight_tensor
 
 
 # TODO(zakaria): This function is needed for backward compatibility and should

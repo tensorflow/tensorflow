@@ -3381,6 +3381,18 @@ func CTCLossCtcMergeRepeated(value bool) CTCLossAttr {
 	}
 }
 
+// CTCLossIgnoreLongerOutputsThanInputs sets the optional ignore_longer_outputs_than_inputs attribute to value.
+//
+// value: Scalar. If set to true, during CTC
+// calculation items have longer input sequences than output sequences
+// are ignored by returning zero-gradient for those items.
+// If not specified, defaults to false
+func CTCLossIgnoreLongerOutputsThanInputs(value bool) CTCLossAttr {
+	return func(m optionalAttr) {
+		m["ignore_longer_outputs_than_inputs"] = value
+	}
+}
+
 // Calculates the CTC Loss (log probability) for each batch entry.  Also calculates
 //
 // the gradient.  This class performs the softmax operation for you, so inputs

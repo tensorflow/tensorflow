@@ -98,10 +98,7 @@ tensorboard_typescript_bundle(
     ]},
     namespace_symbol_aliases = {"TF.Dashboard": {
         "compareTagNames": "VZ.Sorting.compareTagNames",
-        "getObjectInitializer": "TF.URIStorage.getObjectInitializer",
-        "getObjectObserver": "TF.URIStorage.getObjectObserver",
-        "getStringInitializer": "TF.URIStorage.getStringInitializer",
-        "getStringObserver": "TF.URIStorage.getStringObserver",
+        "storage": "TF.URIStorage",
     }},
 )
 

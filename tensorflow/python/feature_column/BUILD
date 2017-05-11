@@ -29,10 +29,10 @@ py_library(
     srcs = ["feature_column.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":lookup_ops",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
@@ -70,26 +70,5 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
-    ],
-)
-
-# TODO(ptucker,yleon): Move along with 3p/tf/contrib/lookup.
-# Test is still in 3p/tf/contrib/lookup.
-py_library(
-    name = "lookup_ops",
-    srcs = [
-        "lookup_ops.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:lookup_ops_gen",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:string_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:util",
     ],
 )

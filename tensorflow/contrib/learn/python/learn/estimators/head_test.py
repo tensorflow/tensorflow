@@ -225,20 +225,56 @@ class RegressionHeadTest(test.TestCase):
       _assert_summary_tags(self, ["loss"])
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
 
-  def testRegressionWithWeights(self):
+  def testRegressionWithScalarWeights(self):
     head = head_lib.regression_head(weight_column_name="label_weight")
     with ops.Graph().as_default(), session.Session():
-      weights = ((2.,), (5.,), (0.,))
+      weights = 2.
+      labels = ((0.,), (1.,), (1.,))
       model_fn_ops = head.create_model_fn_ops(
           features={"label_weight": weights},
-          labels=((0.,), (1.,), (1.,)),
+          labels=labels,
           mode=model_fn.ModeKeys.TRAIN,
           train_op_fn=head_lib.no_op_train_fn,
           logits=((1.,), (1.,), (3.,)))
       self._assert_output_alternatives(model_fn_ops)
       _assert_no_variables(self)
       _assert_summary_tags(self, ["loss"])
-      _assert_metrics(self, 2. / len(weights), {"loss": 2. / np.sum(weights)},
+      _assert_metrics(self, (weights * 5.) / len(labels), {
+          "loss": (weights * 5.) / (weights * len(labels))
+      }, model_fn_ops)
+
+  def testRegressionWith1DWeights(self):
+    head = head_lib.regression_head(weight_column_name="label_weight")
+    with ops.Graph().as_default(), session.Session():
+      weights = (2., 5., 0.)
+      labels = ((0.,), (1.,), (1.,))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weights},
+          labels=labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=((1.,), (1.,), (3.,)))
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      _assert_metrics(self, 2. / len(labels), {"loss": 2. / np.sum(weights)},
+                      model_fn_ops)
+
+  def testRegressionWith2DWeights(self):
+    head = head_lib.regression_head(weight_column_name="label_weight")
+    with ops.Graph().as_default(), session.Session():
+      weights = ((2.,), (5.,), (0.,))
+      labels = ((0.,), (1.,), (1.,))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weights},
+          labels=labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=((1.,), (1.,), (3.,)))
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      _assert_metrics(self, 2. / len(labels), {"loss": 2. / np.sum(weights)},
                       model_fn_ops)
 
   def testRegressionWithCenteredBias(self):
@@ -525,7 +561,7 @@ class MultiLabelHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
-  def testMultiLabelWithWeight(self):
+  def testMultiLabelWithScalarWeight(self):
     n_classes = 3
     head = head_lib.multi_label_head(
         n_classes=n_classes,
@@ -544,7 +580,23 @@ class MultiLabelHeadTest(test.TestCase):
       _assert_metrics(self, .089985214,
                       self._expected_eval_metrics(.89985214), model_fn_ops)
 
-  def testMultiLabelWithMultiDimensionalWeight(self):
+  def testMultiLabelWith1DWeight(self):
+    n_classes = 3
+    head = head_lib.multi_label_head(
+        n_classes=n_classes,
+        weight_column_name="label_weight",
+        metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      with self.assertRaisesRegexp(
+          ValueError, "weights can not be broadcast to values"):
+        head.create_model_fn_ops(
+            features={"label_weight": (.1, .1, .1)},
+            labels=self._labels,
+            mode=model_fn.ModeKeys.TRAIN,
+            train_op_fn=head_lib.no_op_train_fn,
+            logits=self._logits)
+
+  def testMultiLabelWith2DWeight(self):
     n_classes = 3
     head = head_lib.multi_label_head(
         n_classes=n_classes,
@@ -843,7 +895,42 @@ class BinaryClassificationHeadTest(test.TestCase):
       _assert_metrics(self, expected_loss,
                       self._expected_eval_metrics(expected_loss), model_fn_ops)
 
-  def testBinaryClassificationWithWeights(self):
+  def testBinaryClassificationWith1DWeights(self):
+    n_classes = 2
+    head = head_lib.multi_class_head(
+        n_classes=n_classes, weight_column_name="label_weight")
+    with ops.Graph().as_default(), session.Session():
+      weights = (1., 0.)
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weights},
+          labels=self._labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_total_loss = .31326166
+      _assert_metrics(
+          self,
+          expected_total_loss / len(weights),
+          {
+              "accuracy": 1. / 1,
+              "accuracy/baseline_label_mean": 1. / 1,
+              "accuracy/threshold_0.500000_mean": 1. / 1,
+              "auc": 0. / 1,
+              "labels/actual_label_mean": 1. / 1,
+              "labels/prediction_mean": .731059,  # softmax
+              # eval loss is weighted loss divided by sum of weights.
+              "loss": expected_total_loss,
+              "precision/positive_threshold_0.500000_mean": 1. / 1,
+              "recall/positive_threshold_0.500000_mean": 1. / 1,
+          },
+          model_fn_ops)
+
+  def testBinaryClassificationWith2DWeights(self):
     n_classes = 2
     head = head_lib.multi_class_head(
         n_classes=n_classes, weight_column_name="label_weight")
@@ -1143,6 +1230,30 @@ class MultiClassHeadTest(test.TestCase):
       # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       model_fn_ops = head.create_model_fn_ops(
           features={"label_weight": weight},
+          labels=self._labels,
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._logits)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_loss = 1.5514447
+      _assert_metrics(self, expected_loss * weight,
+                      self._expected_eval_metrics(expected_loss), model_fn_ops)
+
+  def testMultiClassWith1DWeight(self):
+    n_classes = 3
+    head = head_lib.multi_class_head(
+        n_classes=n_classes,
+        weight_column_name="label_weight",
+        metric_class_ids=range(n_classes))
+    with ops.Graph().as_default(), session.Session():
+      weight = .1
+      weights = (weight,)
+      # logloss: z:label, x:logit
+      # z * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
+      model_fn_ops = head.create_model_fn_ops(
+          features={"label_weight": weights},
           labels=self._labels,
           mode=model_fn.ModeKeys.TRAIN,
           train_op_fn=head_lib.no_op_train_fn,
@@ -1457,7 +1568,27 @@ class BinarySvmHeadTest(test.TestCase):
           "loss": expected_loss,
       }, model_fn_ops)
 
-  def testBinarySVMWithWeights(self):
+  def testBinarySVMWith1DWeights(self):
+    head = head_lib.binary_svm_head(weight_column_name="weights")
+    with ops.Graph().as_default(), session.Session():
+      weights = (7., 11.)
+      model_fn_ops = head.create_model_fn_ops(
+          # We have to add an extra dim here for weights broadcasting to work.
+          features={"weights": weights},
+          mode=model_fn.ModeKeys.TRAIN,
+          labels=self._labels,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=self._predictions)
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_no_variables(self)
+      _assert_summary_tags(self, ["loss"])
+      expected_weighted_losses = np.multiply(weights, self._expected_losses)
+      _assert_metrics(self, np.mean(expected_weighted_losses), {
+          "accuracy": 1.,
+          "loss": np.sum(expected_weighted_losses) / np.sum(weights),
+      }, model_fn_ops)
+
+  def testBinarySVMWith2DWeights(self):
     head = head_lib.binary_svm_head(weight_column_name="weights")
     with ops.Graph().as_default(), session.Session():
       weights = (7., 11.)
