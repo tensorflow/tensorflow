@@ -894,6 +894,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
               "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/a872802c0c84ba98ff207d5e673a1fa867c67fd6/polymer/polymer.d.ts",
               "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/a872802c0c84ba98ff207d5e673a1fa867c67fd6/polymer/polymer.d.ts",
           ],
+          "9453c3e6bae824e90758c3b38975c1ed77e6abd79bf513bcb08368fcdb14898e": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/f5407eba29c04fb8387c86df27512bd055b195d2/threejs/three.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/f5407eba29c04fb8387c86df27512bd055b195d2/threejs/three.d.ts",
+          ],
           "691756a6eb455f340c9e834de0d49fff269e7b8c1799c2454465dcd6a4435b80": [
               "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/46719185c564694c5583c4b7ad94dbb786ecad46/webcomponents.js/webcomponents.js.d.ts",
               "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/46719185c564694c5583c4b7ad94dbb786ecad46/webcomponents.js/webcomponents.js.d.ts",
@@ -1875,7 +1879,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "paper-dialog-common.css",
           "paper-dialog-shared-styles.html",
       ],
-      suppress = ["cssSyntax"],
       deps = [
           "@org_polymer",
           "@org_polymer_iron_flex_layout",
@@ -2491,6 +2494,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       strip_prefix = "package",
       path = "/accessibility-developer-tools",
+      suppress = ["strictDependencies"],
   )
 
   web_library_external(
@@ -2603,4 +2607,5 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://github.com/PolymerElements/test-fixture/archive/v2.0.1.tar.gz",
       ],
       path = "/test-fixture",
+      suppress = ["strictDependencies"],
   )

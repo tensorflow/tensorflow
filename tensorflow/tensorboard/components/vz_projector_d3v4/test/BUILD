@@ -31,7 +31,7 @@ tensorboard_typescript_genrule(
         "@org_definitelytyped//:chai.d.ts",
         "@org_definitelytyped//:mocha.d.ts",
         "@org_definitelytyped//:polymer.d.ts",
-        "//third_party/javascript/typings/threejs:three.d.ts",
+        "@org_definitelytyped//:three.d.ts",
         "@org_definitelytyped//:webcomponents.js.d.ts",
         "//tensorflow/tensorboard/components/tf_imports_d3v4:d3.d.ts",
         "//tensorflow/tensorboard/components/tf_imports_d3v4:plottable.d.ts",

@@ -59,7 +59,7 @@ tensorboard_typescript_genrule(
     typings = [
         "external.d.ts",
         "@org_definitelytyped//:polymer.d.ts",
-        "//third_party/javascript/typings/threejs:three.d.ts",
+        "@org_definitelytyped//:three.d.ts",
         "@org_definitelytyped//:webcomponents.js.d.ts",
         "//tensorflow/tensorboard/components/tf_imports_d3v4:d3.d.ts",
     ],
