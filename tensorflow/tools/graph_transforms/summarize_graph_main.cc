@@ -94,7 +94,6 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*> placeholders,
   std::cout << "bazel run tensorflow/tools/benchmark:benchmark_model --";
   std::cout << " --graph=" << graph_path;
   std::cout << " --show_flops";
-  std::cout << " --logtostderr";
   std::cout << " --input_layer=" << input_layer_value;
   std::cout << " --input_layer_type=" << input_layer_type_value;
   std::cout << " --input_layer_shape=" << input_layer_shape_value;
