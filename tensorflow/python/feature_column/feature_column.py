@@ -112,6 +112,9 @@ Example of building model using FeatureColumns, this can be used in a
       columns_to_tensors=columns_to_tensor,
       feature_columns=deep_feature_columns)
   second_layer = fully_connected(first_layer, ...)
+
+NOTE: Functions prefixed with "_" indicate experimental or private parts of
+the API subject to change, and should not be relied upon!
 """
 
 from __future__ import absolute_import
@@ -120,8 +123,10 @@ from __future__ import print_function
 
 import abc
 import collections
+import math
 
 import numpy as np
+import six
 
 from tensorflow.python.feature_column import lookup_ops
 from tensorflow.python.framework import dtypes
@@ -140,6 +145,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
 
 
@@ -227,14 +233,13 @@ def make_linear_model(features,
                       trainable=True):
   """Returns a linear prediction `Tensor` based on given `feature_columns`.
 
-  This function generates a weighted sum for each unitss`. Weighted sum
-  refers to logits in classification problems. It refers to the prediction
-  itself for linear regression problems.
+  This function generates a weighted sum based on output dimension `units`.
+  Weighted sum refers to logits in classification problems. It refers to the
+  prediction itself for linear regression problems.
 
-  Main difference of `make_linear_model` and `make_input_layer` is handling of
-  categorical columns. `make_linear_model` treats them as `indicator_column`s
-  while `make_input_layer` explicitly requires wrapping each of them with an
-  `embedding_column` or an `indicator_column`.
+  Note on supported columns: `make_linear_model` treats categorical columns as
+  `indicator_column`s while `make_input_layer` explicitly requires wrapping each
+  of them with an `embedding_column` or an `indicator_column`.
 
   Example:
 
@@ -253,8 +258,7 @@ def make_linear_model(features,
       corresponding `FeatureColumn`.
     feature_columns: An iterable containing all the FeatureColumns. All items
       should be instances of classes derived from FeatureColumn.
-    units: units: An integer, dimensionality of the output space. Default
-      value is 1.
+    units: An integer, dimensionality of the output space. Default value is 1.
     sparse_combiner: A string specifying how to reduce if a sparse column is
       multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
       the default. "sqrtn" often achieves good accuracy, in particular with
@@ -288,21 +292,21 @@ def make_linear_model(features,
     weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
   with variable_scope.variable_scope(
       None, default_name='make_linear_model', values=features.values()):
-    weigthed_sums = []
+    weighted_sums = []
     builder = _LazyBuilder(features)
     for column in sorted(feature_columns, key=lambda x: x.name):
       with variable_scope.variable_scope(None, default_name=column.name):
         if isinstance(column, _CategoricalColumn):
-          weigthed_sums.append(_create_categorical_column_weighted_sum(
+          weighted_sums.append(_create_categorical_column_weighted_sum(
               column, builder, units, sparse_combiner, weight_collections,
               trainable))
         else:
-          weigthed_sums.append(_create_dense_column_weighted_sum(
+          weighted_sums.append(_create_dense_column_weighted_sum(
               column, builder, units, weight_collections, trainable))
     predictions_no_bias = math_ops.add_n(
-        weigthed_sums, name='weighted_sum_no_bias')
+        weighted_sums, name='weighted_sum_no_bias')
     bias = variable_scope.get_variable(
-        'bias_weight',
+        'bias_weights',
         shape=[units],
         initializer=init_ops.zeros_initializer(),
         trainable=trainable,
@@ -311,6 +315,189 @@ def make_linear_model(features,
         predictions_no_bias, bias, name='weighted_sum')
 
     return predictions
+
+
+def _transform_features(features, feature_columns):
+  """Returns transformed features based on features columns passed in.
+
+  Please note that most probably you would not need to use this function. Please
+  check `make_input_layer` and `make_linear_model` to see whether they will
+  satisfy your use case or not.
+
+  Example:
+
+  ```python
+  # Define features and transformations
+  crosses_a_x_b = crossed_column(
+      columns=["sparse_feature_a", "sparse_feature_b"], hash_bucket_size=10000)
+  price_buckets = bucketized_column(
+      source_column=numeric_column("price"), boundaries=[...])
+
+  columns = [crosses_a_x_b, price_buckets]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  transformed = transform_features(features=features, feature_columns=columns)
+
+  assertCountEqual(columns, transformed.keys())
+  ```
+
+  Args:
+    features: A mapping from key to tensors. `FeatureColumn`s look up via these
+      keys. For example `numeric_column('price') will look at 'price' key in
+      this dict. Values can be a `SparseTensor` or a `Tensor` depends on
+      corresponding `FeatureColumn`.
+    feature_columns: An iterable containing all the `FeatureColumn`s.
+
+  Returns:
+    A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
+  """
+  _check_feature_columns(feature_columns)
+  outputs = {}
+  with ops.name_scope(
+      None, default_name='transform_features', values=features.values()):
+    builder = _LazyBuilder(features)
+    for column in sorted(feature_columns, key=lambda x: x.name):
+      with ops.name_scope(None, default_name=column.name):
+        outputs[column] = builder.get(column)
+  return outputs
+
+
+def make_parse_example_spec(feature_columns):
+  """Creates parsing spec dictionary from input feature_columns.
+
+  The returned dictionary can be used as arg 'features' in `tf.parse_example`.
+
+  Typical usage example:
+
+  ```python
+  # Define features and transformations
+  feature_a = categorical_column_with_vocabulary_file(...)
+  feature_b = numeric_column(...)
+  feature_c_bucketized = bucketized_column(numeric_column("feature_c"), ...)
+  feature_a_x_feature_c = crossed_column(
+    columns=[feature_a, feature_c_bucketized], ...)
+
+  feature_columns = set(
+    [feature_b, feature_c_bucketized, feature_a_x_feature_c])
+  features = tf.parse_example(
+      serialized=serialized_examples,
+      features=make_parse_example_spec(feature_columns))
+  ```
+
+  For the above example, make_parse_example_spec would return the dict:
+  {
+    "feature_a": parsing_ops.VarLenFeature(tf.string),
+    "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+    "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
+  }
+
+  Args:
+    feature_columns: An iterable containing all feature columns. All items
+      should be instances of classes derived from `_FeatureColumn`.
+
+  Returns:
+    A dict mapping each feature key to a `FixedLenFeature` or `VarLenFeature`
+    value.
+
+  Raises:
+    ValueError: If any of the given `feature_columns` is not a `_FeatureColumn`
+      instance.
+  """
+  result = {}
+  for column in feature_columns:
+    if not isinstance(column, _FeatureColumn):
+      raise ValueError(
+          'All feature_columns must be _FeatureColumn instances. '
+          'Given: {}'.format(column))
+    config = column._parse_example_config  # pylint: disable=protected-access
+    for key, value in six.iteritems(config):
+      if key in result and value != result[key]:
+        raise ValueError(
+            'feature_columns contain different parse_spec for key '
+            '{}. Given {} and {}'.format(key, value, result[key]))
+    result.update(config)
+  return result
+
+
+def embedding_column(
+    categorical_column, dimension, combiner='mean', initializer=None,
+    ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None,
+    trainable=True):
+  """`_DenseColumn` that converts from sparse, categorical input.
+
+  Use this when your inputs are sparse, but you want to convert them to a dense
+  representation (e.g., to feed to a DNN).
+
+  Inputs must be `SparseTensor` by way of the provided
+  `categorical_column._get_sparse_tensors`.
+
+  Any of the `categorical_column_*` columns can be provided as input. Here is an
+  example embedding of an identity column for a DNN model:
+
+  ```python
+  video_id = categorical_column_with_identity(
+      key='video_id', num_buckets=1000000, default_value=0)
+  columns = [embedding_column(video_id, 9),...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
+  ```
+
+  Args:
+    categorical_column: A `_CategoricalColumn` created by a
+      `categorical_column_with_*` function. This column produces the sparse IDs
+      that are inputs to the embedding lookup.
+    dimension: An integer specifying dimension of the embedding, must be > 0.
+    combiner: A string specifying how to reduce if there are multiple entries
+      in a single row. Currently 'mean', 'sqrtn' and 'sum' are supported, with
+      'mean' the default. 'sqrtn' often achieves good accuracy, in particular
+      with bag-of-words columns. Each of this can be thought as example level
+      normalizations on the column. For more information, see
+      `tf.embedding_lookup_sparse`.
+    initializer: A variable initializer function to be used in embedding
+      variable initialization. If not specified, defaults to
+      `tf.truncated_normal_initializer` with mean `0.0` and standard deviation
+      `1/sqrt(categorical_column._num_buckets)`.
+    ckpt_to_load_from: String representing checkpoint name/pattern fromwhich to
+      restore column weights. Required if `tensor_name_in_ckpt` is not `None`.
+    tensor_name_in_ckpt: Name of the `Tensor` in `ckpt_to_load_from` from
+      which to restore the column weights. Required if `ckpt_to_load_from` is
+      not `None`.
+    max_norm: If not `None`, embedding values are l2-normalized to this value.
+    trainable: Whether or not the embedding is trainable. Default is True.
+
+  Returns:
+    `_DenseColumn` that converts from sparse input.
+
+  Raises:
+    ValueError: if `dimension` not > 0.
+    ValueError: if exactly one of `ckpt_to_load_from` and `tensor_name_in_ckpt`
+      is specified.
+    ValueError: if `initializer` is specified and is not callable.
+  """
+  if (dimension is None) or (dimension < 1):
+    raise ValueError('Invalid dimension {}.'.format(dimension))
+  if (ckpt_to_load_from is None) != (tensor_name_in_ckpt is None):
+    raise ValueError('Must specify both `ckpt_to_load_from` and '
+                     '`tensor_name_in_ckpt` or none of them.')
+
+  if (initializer is not None) and (not callable(initializer)):
+    raise ValueError('initializer must be callable if specified. '
+                     'Embedding of column_name: {}'.format(
+                         categorical_column.name))
+  if initializer is None:
+    # pylint: disable=protected-access
+    initializer = init_ops.truncated_normal_initializer(
+        mean=0.0, stddev=1 / math.sqrt(dimension))
+    # pylint: enable=protected-access
+
+  return _EmbeddingColumn(
+      categorical_column=categorical_column,
+      dimension=dimension,
+      combiner=combiner,
+      initializer=initializer,
+      ckpt_to_load_from=ckpt_to_load_from,
+      tensor_name_in_ckpt=tensor_name_in_ckpt,
+      max_norm=max_norm,
+      trainable=trainable)
 
 
 def numeric_column(key,
@@ -324,14 +511,15 @@ def numeric_column(key,
 
   ```python
   price = numeric_column('price')
-  all_feature_columns = [price, ...]
-  dense_tensor = make_input_layer(features, all_feature_columns)
+  columns = [price, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
 
   # or
   bucketized_price = bucketized_column(price, boundaries=[...])
-  all_feature_columns = [bucketized_price, ...]
-  linear_prediction = make_linear_model(features, all_feature_columns)
-
+  columns = [bucketized_price, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction = make_linear_model(features, columns)
   ```
 
   Args:
@@ -409,12 +597,26 @@ def bucketized_column(source_column, boundaries):
   ```python
   price = numeric_column('price')
   bucketized_price = bucketized_column(price, boundaries=[...])
-  all_feature_columns = [bucketized_price, ...]
-  linear_prediction = make_linear_model(features, all_feature_columns)
+  columns = [bucketized_price, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction = make_linear_model(features, columns)
 
   # or
-  all_feature_columns = [bucketized_price, ...]
-  dense_tensor = make_input_layer(features, all_feature_columns)
+  columns = [bucketized_price, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
+  ```
+
+  `bucketized_column` can also be crossed with another categorical column using
+  `crossed_column`:
+  ```python
+  price = numeric_column('price')
+  # bucketized_column converts numerical feature to a categorical one.
+  bucketized_price = bucketized_column(price, boundaries=[...])
+  # 'keywords' is a string feature.
+  price_x_keywords = crossed_column([bucketized_price, 'keywords'], 50K)
+  all_feature_columns = [price_x_keywords, ...]
+  linear_prediction = make_linear_model(features, all_feature_columns)
   ```
 
   Args:
@@ -458,19 +660,27 @@ def categorical_column_with_hash_bucket(key,
                                         dtype=dtypes.string):
   """Represents sparse feature where ids are set by hashing.
 
-  Use this when your sparse features are in string or integer format where you
+  Use this when your sparse features are in string or integer format, and you
   want to distribute your inputs into a finite number of buckets by hashing.
   output_id = Hash(input_feature_string) % bucket_size
+
+  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  values can be represented by `-1` for int and `''` for string. Note that these
+  values are independent of the `default_value` argument.
 
   Example:
 
   ```python
   keywords = categorical_column_with_hash_bucket("keywords", 10K)
-  linear_prediction = make_linear_model(features, [keywords, ...])
+  columns = [keywords, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction = make_linear_model(features, columns)
 
   # or
   keywords_embedded = embedding_column(keywords, 16)
-  dense_tensor = make_input_layer(features, [keywords_embedded, ...])
+  columns = [keywords_embedded, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
   ```
 
   Args:
@@ -511,9 +721,9 @@ def categorical_column_with_vocabulary_file(
   `num_oov_buckets` and `default_value` to specify how to include
   out-of-vocabulary values.
 
-  Inputs can be either `Tensor` or `SparseTensor`. If `Tensor`, missing values
-  can be represented by `-1` for int and `''` for string. Note that these values
-  are independent of the `default_value` argument.
+  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  values can be represented by `-1` for int and `''` for string. Note that these
+  values are independent of the `default_value` argument.
 
   Example with `num_oov_buckets`:
   File '/us/states.txt' contains 50 lines, each with a 2-character U.S. state
@@ -524,7 +734,9 @@ def categorical_column_with_vocabulary_file(
   states = categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
       num_oov_buckets=5)
-  linear_prediction = make_linear_model(features, [states, ...])
+  columns = [states, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction = make_linear_model(features, columns)
   ```
 
   Example with `default_value`:
@@ -536,11 +748,15 @@ def categorical_column_with_vocabulary_file(
   states = categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=51,
       default_value=0)
-  linear_prediction, _, _ = make_linear_model(features, [states, ...])
+  columns = [states, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction, _, _ = make_linear_model(features, columns)
 
   And to make an embedding with either:
   ```python
-  dense_tensor = make_input_layer(features, [embedding_column(states, 3),...])
+  columns = [embedding_column(states, 3),...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
   ```
 
   Args:
@@ -573,7 +789,6 @@ def categorical_column_with_vocabulary_file(
   if not vocabulary_file:
     raise ValueError('Missing vocabulary_file in {}.'.format(key))
   # `vocabulary_size` isn't required for lookup, but it is for `_num_buckets`.
-  # TODO(ptucker): Should we fail for vocabulary_size==1?
   if (vocabulary_size is None) or (vocabulary_size < 1):
     raise ValueError('Invalid vocabulary_size in {}.'.format(key))
   if num_oov_buckets:
@@ -599,16 +814,16 @@ def categorical_column_with_vocabulary_list(
   """A `_CategoricalColumn` with in-memory vocabulary.
 
   Logic for feature f is:
-  id = f in vocabulary_list ? vocabulary_list.index(f) : default_value
+  id = f in vocabulary_list ? vocabulary_list.index_of(f) : default_value
 
   Use this when your inputs are in string or integer format, and you have an
   in-memory vocabulary mapping each value to an integer ID. By default,
   out-of-vocabulary values are ignored. Use `default_value` to specify how to
   include out-of-vocabulary values.
 
-  Inputs can be either `Tensor` or `SparseTensor`. If `Tensor`, missing values
-  can be represented by `-1` for int and `''` for string. Note that these values
-  are independent of the `default_value` argument.
+  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  values can be represented by `-1` for int and `''` for string. Note that these
+  values are independent of the `default_value` argument.
 
   In the following examples, each input in `vocabulary_list` is assigned an ID
   0-4 corresponding to its index (e.g., input 'B' produces output 2). All other
@@ -618,12 +833,16 @@ def categorical_column_with_vocabulary_list(
   ```python
   colors = categorical_column_with_vocabulary_list(
       key='colors', vocabulary_list=('X', 'R', 'G', 'B', 'Y'), default_value=0)
-  linear_prediction, _, _ = make_linear_model(features, [colors, ...])
+  columns = [colors, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction, _, _ = make_linear_model(features, columns)
   ```
 
   Embedding for a DNN model:
   ```python
-  dense_tensor = make_input_layer(features, [embedding_column(colors, 3),...])
+  columns = [embedding_column(colors, 3),...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
   ```
 
   Args:
@@ -671,11 +890,37 @@ def categorical_column_with_vocabulary_list(
 def categorical_column_with_identity(key, num_buckets, default_value=None):
   """A `_CategoricalColumn` that returns identity values.
 
-  Use this when your inputs are integers in the range `[0, num_buckets)`. Values
-  outside this range will result in `default_value` if specified, otherwise it
-  will fail.
+  Use this when your inputs are integers in the range `[0, num_buckets)`, and
+  you want to use the input value itself as the categorical ID. Values outside
+  this range will result in `default_value` if specified, otherwise it will
+  fail.
 
-  Inputs can be either `Tensor` or `SparseTensor`.
+  Typically, this is used for contiguous ranges of integer indexes, but
+  it doesn't have to be. This might be inefficient, however, if many of IDs
+  are unused. Consider `categorical_column_with_hash_bucket` in that case.
+
+  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
+  values can be represented by `-1` for int and `''` for string. Note that these
+  values are independent of the `default_value` argument.
+
+  In the following examples, each input in the range `[0, 1000000)` is assigned
+  the same value. All other inputs are assigned `default_value` 0. Note that a
+  literal 0 in inputs will result in the same default ID.
+
+  Linear model:
+  ```python
+  video_id = categorical_column_with_identity(
+      key='video_id', num_buckets=1000000, default_value=0)
+  columns = [video_id, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction, _, _ = make_linear_model(features, columns)
+  ```
+
+  Embedding for a DNN model:
+  ```python
+  columns = [embedding_column(video_id, 9),...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  dense_tensor = make_input_layer(features, columns)
   ```
 
   Args:
@@ -706,6 +951,204 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
       key=key, num_buckets=num_buckets, default_value=default_value)
 
 
+def indicator_column(categorical_column):
+  """Represents multi-hot representation of given categorical column.
+
+  Used to wrap any `categorical_column_*`.
+
+  ```python
+  name = indicator_column(categorical_column_with_vocabulary_list('name',
+      ['bob', 'george', 'wanda'])
+  all_feature_columns = [name, ...]
+  dense_tensor = make_input_layer(features, all_feature_columns)
+
+  dense_tensor == [[1, 0, 0]]  # If "name" bytes_list is ["bob"]
+  dense_tensor == [[1, 0, 1]]  # If "name" bytes_list is ["bob", "wanda"]
+  dense_tensor == [[2, 0, 0]]  # If "name" bytes_list is ["bob", "bob"]
+  ```
+
+  Args:
+    categorical_column: A `_CategoricalColumn` which is created by
+      `categorical_column_with_*` or crossed_column functions.
+
+  Returns:
+    An `_IndicatorColumn`.
+  """
+  return _IndicatorColumn(categorical_column)
+
+
+def weighted_categorical_column(
+    categorical_column, weight_column_name, dtype=dtypes.float32):
+  """Applies weight values to a `_CategoricalColumn`.
+
+  Use this when each of your sparse inputs has both an ID and a value. For
+  example, if you're representing text documents as a collection of word
+  frequencies, you can provide 2 parallel sparse input features ('terms' and
+  'frequencies' below).
+
+  Example:
+
+  Input `tf.Example` objects:
+  [
+    features {
+      feature {
+        key: "frequencies"
+        value {float_list {value: 0.3 value: 0.1}}
+      }
+      feature {
+        key: "terms"
+        value {bytes_list {value: "very" value: "model"}}
+      }
+    },
+    features {
+      feature {
+        key: "frequencies"
+        value {float_list {value: 0.4 value: 0.1 value: 0.2}}
+      }
+      feature {
+        key: "terms"
+        value {bytes_list {value: "when" value: "course" value: "human"}}
+      }
+    }
+  ]
+
+  ```python
+  categorical_column = categorical_column_with_hash_bucket(
+      column_name='terms', hash_bucket_size=1000)
+  weighted_column = weighted_categorical_column(
+      categorical_column=categorical_column, weight_column_name='frequencies')
+  columns = [weighted_column, ...]
+  features = tf.parse_example(..., features=parse_example_spec(columns))
+  linear_prediction, _, _ = make_linear_model(features, columns)
+  ```
+
+  This assumes the input dictionary contains a `SparseTensor` for key
+  'terms', and a `SparseTensor` for key 'frequencies'. These 2 tensors must have
+  the same indices and dense shape.
+
+  Args:
+    categorical_column: A `_CategoricalColumn` created by
+      `categorical_column_with_*` functions.
+    weight_column_name: String key for weigth values.
+    dtype: Type of weights, such as `tf.float32`. Only float and integer weights
+      are supported.
+
+  Returns:
+    A `_CategoricalColumn` composed of two sparse features: one represents id,
+    the other represents weight (value) of the id feature in that example.
+
+  Raises:
+    ValueError: if `dtype` is not convertible to float.
+  """
+  if (dtype is None) or not (dtype.is_integer or dtype.is_floating):
+    raise ValueError('dtype {} is not convertible to float.'.format(dtype))
+  return _WeightedCategoricalColumn(
+      categorical_column=categorical_column,
+      weight_column_name=weight_column_name,
+      dtype=dtype)
+
+
+def crossed_column(keys, hash_bucket_size, hash_key=None):
+  """Returns a column for performing crosses of categorical features.
+
+  Crossed features will be hashed according to `hash_bucket_size`. Conceptually,
+  the transformation can be thought of as:
+    Hash(cartesian product of features) % `hash_bucket_size`
+
+  For example, if the input features are:
+  * SparseTensor referred by first key: shape = [2, 2]
+      [0, 0]: "a"
+      [1, 0]: "b"
+      [1, 1]: "c"
+
+  * SparseTensor referred by second key: shape = [2, 1]
+      [0, 0]: "d"
+      [1, 0]: "e"
+
+  then crossed feature will look like:
+      shape = [2, 2]
+      [0, 0]: Hash64("d", Hash64("a")) % hash_bucket_size
+      [1, 0]: Hash64("e", Hash64("b")) % hash_bucket_size
+      [1, 1]: Hash64("e", Hash64("c")) % hash_bucket_size
+
+  Here is an example to create a linear model with crosses of string features:
+  ```python
+  keywords_x_doc_terms = crossed_column(['keywords', 'doc_terms'], 50K)
+  all_feature_columns = [keywords_x_doc_terms, ...]
+  linear_prediction = make_linear_model(features, all_feature_columns)
+  ```
+
+  You could also use vocabulary lookup before crossing:
+  ```python
+  keywords = categorical_column_with_vocabulary_file(
+      'keywords', '/path/to/vocabulary/file', vocabulary_size=1K)
+  keywords_x_doc_terms = crossed_column([keywords, 'doc_terms'], 50K)
+  all_feature_columns = [keywords_x_doc_terms, ...]
+  linear_prediction = make_linear_model(features, all_feature_columns)
+  ```
+
+  If an input feature is of numeric type, you can use
+  `categorical_column_with_identity`, or `bucketized_column`, as in the example:
+  ```python
+  # vertical_id is an integer categorical feature.
+  vertical_id = categorical_column_with_identity('vertical_id', 10K)
+  price = numeric_column('price')
+  # bucketized_column converts numerical feature to a categorical one.
+  bucketized_price = bucketized_column(price, boundaries=[...])
+  vertical_id_x_price = crossed_column([vertical_id, bucketized_price], 50K)
+  all_feature_columns = [vertical_id_x_price, ...]
+  linear_prediction = make_linear_model(features, all_feature_columns)
+  ```
+
+  To use crossed column in DNN model, you need to add it in an embedding column
+  as in this example:
+  ```python
+  vertical_id_x_price = crossed_column([vertical_id, bucketized_price], 50K)
+  vertical_id_x_price_embedded = embedding_column(vertical_id_x_price, 10)
+  dense_tensor = make_input_layer(features, [vertical_id_x_price_embedded, ...])
+  ```
+
+  Args:
+    keys: An iterable identifying the features to be crossed. Each element can
+      be either:
+      * string: Will use the corresponding feature which must be of string type.
+      * `_CategoricalColumn`: Will use the transformed tensor produced by this
+        column. Does not support hashed categorical column.
+    hash_bucket_size: An int > 1. The number of buckets.
+    hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+      function to combine the crosses fingerprints on SparseCrossOp (optional).
+
+  Returns:
+    A `_CrossedColumn`.
+
+  Raises:
+    ValueError: If `len(keys) < 2`.
+    ValueError: If any of the keys is neither a string nor `_CategoricalColumn`.
+    ValueError: If any of the keys is `_HashedCategoricalColumn`.
+    ValueError: If `hash_bucket_size < 1`.
+  """
+  if not hash_bucket_size or hash_bucket_size < 1:
+    raise ValueError('hash_bucket_size must be > 1. '
+                     'hash_bucket_size: {}'.format(hash_bucket_size))
+  if not keys or len(keys) < 2:
+    raise ValueError(
+        'keys must be a list with length > 1. Given: {}'.format(keys))
+  for key in keys:
+    if (not isinstance(key, six.string_types) and
+        not isinstance(key, _CategoricalColumn)):
+      raise ValueError(
+          'Unsupported key type. All keys must be either string, or '
+          'categorical column except _HashedCategoricalColumn. '
+          'Given: {}'.format(key))
+    if isinstance(key, _HashedCategoricalColumn):
+      raise ValueError(
+          '_HashedCategoricalColumn is not supported. Instead, use the feature '
+          'name as a string. Given: {}'.format(key))
+  return _CrossedColumn(
+      keys=tuple(keys), hash_bucket_size=hash_bucket_size,
+      hash_key=hash_key)
+
+
 class _FeatureColumn(object):
   """Represents a feature column abstraction.
 
@@ -730,14 +1173,14 @@ class _FeatureColumn(object):
 
   @abc.abstractmethod
   def _transform_feature(self, inputs):
-    """Returns transformed `Tensor`, uses `inputs` to access input tensors.
+    """Returns intermediate representation (usually a `Tensor`).
 
-    It uses `inputs` to get either raw feature or transformation of other
-    FeatureColumns.
+    Uses `inputs` to create an intermediate representation (usually a `Tensor`)
+    that other feature columns can use.
 
-    Example input access:
+    Example usage of `inputs`:
     Let's say a Feature column depends on raw feature ('raw') and another
-    `_FeatureColumn` (input_fc). To access corresponding Tensors, inputs will
+    `_FeatureColumn` (input_fc). To access corresponding `Tensor`s, inputs will
     be used as follows:
 
     ```python
@@ -789,15 +1232,15 @@ class _DenseColumn(_FeatureColumn):
 
   @abc.abstractproperty
   def _variable_shape(self):
-    """Returns a `TensorShape` of variable compatible with _get_dense_tensor."""
+    """`TensorShape` of `_get_dense_tensor`, without batch dimension."""
     pass
 
   @abc.abstractmethod
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
     """Returns a `Tensor`.
 
-    The output of this function will be used by model-buildier-functions. For
-    example the pseudo code of `make_input_layer` will be like that:
+    The output of this function will be used by model-builder-functions. For
+    example the pseudo code of `make_input_layer` will be like:
 
     ```python
     def make_input_layer(features, feature_columns, ...):
@@ -811,6 +1254,9 @@ class _DenseColumn(_FeatureColumn):
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see ${tf.Variable}).
+
+    Returns:
+      `Tensor` of shape [batch_size] + `_variable_shape`.
     """
     pass
 
@@ -826,7 +1272,7 @@ def _create_dense_column_weighted_sum(
   batch_size = array_ops.shape(tensor)[0]
   tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
   weight = variable_scope.get_variable(
-      name='weight',
+      name='weights',
       shape=[num_elements, units],
       initializer=init_ops.zeros_initializer(),
       trainable=trainable,
@@ -835,7 +1281,7 @@ def _create_dense_column_weighted_sum(
 
 
 class _CategoricalColumn(_FeatureColumn):
-  """Represents a categorical feautre.
+  """Represents a categorical feature.
 
   WARNING: Do not subclass this layer unless you know what you are doing:
   the API is subject to future changes.
@@ -889,7 +1335,7 @@ def _create_categorical_column_weighted_sum(
       trainable=trainable)
   weight = variable_scope.get_variable(
       name='weight',
-      shape=[column._num_buckets, units],  # pylint: disable=protected-access
+      shape=(column._num_buckets, units),  # pylint: disable=protected-access
       initializer=init_ops.zeros_initializer(),
       trainable=trainable,
       collections=weight_collections)
@@ -1057,7 +1503,8 @@ def _check_feature_columns(feature_columns):
     raise ValueError('Expected feature_columns to be iterable, found dict.')
   for column in feature_columns:
     if not isinstance(column, _FeatureColumn):
-      raise ValueError('Items of feature_columns must be a _FeatureColumn.')
+      raise ValueError('Items of feature_columns must be a _FeatureColumn.'
+                       'Given: {}.'.format(column))
   name_to_column = dict()
   for column in feature_columns:
     if column.name in name_to_column:
@@ -1104,8 +1551,24 @@ class _NumericColumn(_DenseColumn,
     return tensor_shape.TensorShape(self.shape)
 
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    """Returns dense `Tensor` representing numeric feature.
+
+    Args:
+      inputs: A `_LazyBuilder` object to access inputs.
+      weight_collections: Unused `weight_collections` since no variables are
+        created in this function.
+      trainable: Unused `trainable` bool since no variables are created in
+        this function.
+
+    Returns:
+      Dense `Tensor` created within `_transform_feature`.
+    """
+    # Do nothing with weight_collections and trainable since no variables are
+    # created in this function.
     del weight_collections
     del trainable
+    # Feature has been already transformed. Return the intermediate
+    # representation created by _transform_feature.
     return inputs.get(self)
 
 
@@ -1175,6 +1638,74 @@ class _BucketizedColumn(_DenseColumn, _CategoricalColumn,
         values=bucket_indices,
         dense_shape=dense_shape)
     return _CategoricalColumn.IdWeightPair(sparse_tensor, None)
+
+
+class _EmbeddingColumn(
+    _DenseColumn,
+    collections.namedtuple('_EmbeddingColumn', (
+        'categorical_column', 'dimension', 'combiner', 'initializer',
+        'ckpt_to_load_from', 'tensor_name_in_ckpt', 'max_norm', 'trainable'
+    ))):
+  """See `_embedding_column`."""
+
+  @property
+  def name(self):
+    if not hasattr(self, '_name'):
+      self._name = '{}_embedding'.format(self.categorical_column.name)
+    return self._name
+
+  @property
+  def _parse_example_config(self):
+    # pylint: disable=protected-access
+    return self.categorical_column._parse_example_config
+    # pylint: enable=protected-access
+
+  def _transform_feature(self, inputs):
+    return inputs.get(self.categorical_column)
+
+  @property
+  def _variable_shape(self):
+    if not hasattr(self, '_shape'):
+      self._shape = tensor_shape.vector(self.dimension)
+    return self._shape
+
+  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    # Get sparse IDs and weights.
+    # pylint: disable=protected-access
+    sparse_tensors = self.categorical_column._get_sparse_tensors(
+        inputs, weight_collections=weight_collections, trainable=trainable)
+    # pylint: enable=protected-access
+    sparse_ids = sparse_tensors.id_tensor
+    sparse_weights = sparse_tensors.weight_tensor
+
+    # Create embedding weight, and restore from checkpoint if necessary.
+    embedding_weights = variable_scope.get_variable(
+        name='embedding_weights',
+        # pylint: disable=protected-access
+        shape=(self.categorical_column._num_buckets, self.dimension),
+        # pylint: enable=protected-access
+        dtype=dtypes.float32,
+        initializer=self.initializer,
+        trainable=self.trainable and trainable,
+        collections=weight_collections)
+    if self.ckpt_to_load_from is not None:
+      to_restore = embedding_weights
+      if isinstance(to_restore, variables.PartitionedVariable):
+        # pylint: disable=protected-access
+        to_restore = to_restore._get_variable_list()
+        # pylint: enable=protected-access
+      checkpoint_utils.init_from_checkpoint(self.ckpt_to_load_from, {
+          self.tensor_name_in_ckpt: to_restore
+      })
+
+    # Return embedding lookup result.
+    return _safe_embedding_lookup_sparse(
+        embedding_weights=embedding_weights,
+        sparse_ids=sparse_ids,
+        sparse_weights=sparse_weights,
+        combiner=self.combiner,
+        name='%s_weights' % self.name,
+        max_norm=self.max_norm)
 
 
 def _create_tuple(shape, value):
@@ -1497,11 +2028,139 @@ class _IdentityCategoricalColumn(
     return _CategoricalColumn.IdWeightPair(inputs.get(self), None)
 
 
+class _WeightedCategoricalColumn(
+    _CategoricalColumn,
+    collections.namedtuple('_WeightedCategoricalColumn', (
+        'categorical_column', 'weight_column_name', 'dtype'
+    ))):
+  """See `weighted_categorical_column`."""
+
+  @property
+  def name(self):
+    return '{}_weighted_by_{}'.format(
+        self.categorical_column.name, self.weight_column_name)
+
+  @property
+  def _parse_example_config(self):
+    # pylint: disable=protected-access
+    config = self.categorical_column._parse_example_config
+    # pylint: enable=protected-access
+    if self.weight_column_name in config:
+      raise ValueError('Parse config {} already exists for {}.'.format(
+          config[self.weight_column_name], self.weight_column_name))
+    config[self.weight_column_name] = parsing_ops.VarLenFeature(self.dtype)
+    return config
+
+  @property
+  def _num_buckets(self):
+    # pylint: disable=protected-access
+    return self.categorical_column._num_buckets
+    # pylint: enable=protected-access
+
+  def _transform_feature(self, inputs):
+    weight_tensor = inputs.get(self.weight_column_name)
+    if weight_tensor is None:
+      raise ValueError('Missing weights {}.'.format(
+          self.weight_column_name))
+    weight_tensor = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(
+        weight_tensor)
+    if self.dtype != weight_tensor.dtype.base_dtype:
+      raise ValueError('Bad dtype, expected {}, but got {}.'.format(
+          self.dtype, weight_tensor.dtype))
+    if not isinstance(weight_tensor, sparse_tensor_lib.SparseTensor):
+      # The weight tensor can be a regular Tensor. In this case, sparsify it.
+      weight_tensor = _to_sparse_input(weight_tensor, ignore_value=0.0)
+    if not weight_tensor.dtype.is_floating:
+      weight_tensor = math_ops.to_float(weight_tensor)
+    return (inputs.get(self.categorical_column), weight_tensor)
+
+  def _get_sparse_tensors(
+      self, inputs, weight_collections=None, trainable=None):
+    del weight_collections
+    del trainable
+    tensors = inputs.get(self)
+    return _CategoricalColumn.IdWeightPair(tensors[0], tensors[1])
+
+
+class _CrossedColumn(
+    _CategoricalColumn,
+    collections.namedtuple('_CrossedColumn',
+                           ['keys', 'hash_bucket_size', 'hash_key'])):
+  """See `crossed_column`."""
+
+  @property
+  def name(self):
+    feature_names = []
+    for key in _collect_leaf_level_keys(self):
+      if isinstance(key, _FeatureColumn):
+        feature_names.append(key.name)
+      else:  # key must be a string
+        feature_names.append(key)
+    return '_X_'.join(sorted(feature_names))
+
+  @property
+  def _parse_example_config(self):
+    config = {}
+    for key in self.keys:
+      if isinstance(key, _FeatureColumn):
+        config.update(key._parse_example_config)  # pylint: disable=protected-access
+      else:  # key must be a string
+        config.update({key: parsing_ops.VarLenFeature(dtypes.string)})
+    return config
+
+  def _transform_feature(self, inputs):
+    feature_tensors = []
+    for key in _collect_leaf_level_keys(self):
+      if isinstance(key, six.string_types):
+        feature_tensors.append(inputs.get(key))
+      elif isinstance(key, _CategoricalColumn):
+        ids_and_weights = key._get_sparse_tensors(inputs)  # pylint: disable=protected-access
+        if ids_and_weights.weight_tensor is not None:
+          raise ValueError(
+              'crossed_column does not support weight_tensor, but the given '
+              'column populates weight_tensor. '
+              'Given column: {}'.format(key.name))
+        feature_tensors.append(ids_and_weights.id_tensor)
+      else:
+        raise ValueError('Unsupported column type. Given: {}'.format(key))
+    return sparse_ops._sparse_cross_hashed(  # pylint: disable=protected-access
+        inputs=feature_tensors,
+        num_buckets=self.hash_bucket_size,
+        hash_key=self.hash_key)
+
+  @property
+  def _num_buckets(self):
+    """Returns number of buckets in this sparse feature."""
+    return self.hash_bucket_size
+
+  def _get_sparse_tensors(self, inputs, weight_collections=None,
+                          trainable=None):
+    return _CategoricalColumn.IdWeightPair(inputs.get(self), None)
+
+
+def _collect_leaf_level_keys(cross):
+  """Collects base keys by expanding all nested crosses.
+
+  Args:
+    cross: A `_CrossedColumn`.
+
+  Returns:
+    A list of strings or `_CategoricalColumn` instances.
+  """
+  leaf_level_keys = []
+  for k in cross.keys:
+    if isinstance(k, _CrossedColumn):
+      leaf_level_keys.extend(_collect_leaf_level_keys(k))
+    else:
+      leaf_level_keys.append(k)
+  return leaf_level_keys
+
+
 # TODO(zakaria): Move this to embedding_ops and make it public.
 def _safe_embedding_lookup_sparse(embedding_weights,
                                   sparse_ids,
                                   sparse_weights=None,
-                                  combiner=None,
+                                  combiner='mean',
                                   default_id=None,
                                   name=None,
                                   partition_strategy='div',
@@ -1522,8 +2181,8 @@ def _safe_embedding_lookup_sparse(embedding_weights,
   along the last dimension.
 
   Args:
-    embedding_weights:  A list of `P` float tensors or values representing
-        partitioned embedding tensors.  Alternatively, a `PartitionedVariable`,
+    embedding_weights:  A list of `P` float `Tensor`s or values representing
+        partitioned embedding `Tensor`s.  Alternatively, a `PartitionedVariable`
         created by partitioning along dimension 0.  The total unpartitioned
         shape should be `[e_0, e_1, ..., e_m]`, where `e_0` represents the
         vocab size and `e_1, ..., e_m` are the embedding dimensions.
@@ -1539,20 +2198,16 @@ def _safe_embedding_lookup_sparse(embedding_weights,
     name: A name for this operation (optional).
     partition_strategy: A string specifying the partitioning strategy.
         Currently `"div"` and `"mod"` are supported. Default is `"div"`.
-    max_norm: If not None, all embeddings are l2-normalized to max_norm before
+    max_norm: If not `None`, all embeddings are l2-normalized to max_norm before
         combining.
 
 
   Returns:
-    Dense tensor of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
+    Dense `Tensor` of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
 
   Raises:
     ValueError: if `embedding_weights` is empty.
   """
-  if combiner is None:
-    logging.warn('The default value of combiner will change from \"mean\" '
-                 'to \"sqrtn\" after 2016/11/01.')
-    combiner = 'mean'
   if embedding_weights is None:
     raise ValueError('Missing embedding_weights %s.' % embedding_weights)
   if isinstance(embedding_weights, variables.PartitionedVariable):
@@ -1563,8 +2218,6 @@ def _safe_embedding_lookup_sparse(embedding_weights,
     raise ValueError('Missing embedding_weights %s.' % embedding_weights)
 
   dtype = sparse_weights.dtype if sparse_weights is not None else None
-  if isinstance(embedding_weights, variables.PartitionedVariable):
-    embedding_weights = list(embedding_weights)
   embedding_weights = [
       ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
   ]
@@ -1643,3 +2296,83 @@ def _prune_invalid_ids(sparse_ids, sparse_weights):
   if sparse_weights is not None:
     sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_id_valid)
   return sparse_ids, sparse_weights
+
+
+class _IndicatorColumn(_DenseColumn,
+                       collections.namedtuple('_IndicatorColumn',
+                                              ['categorical_column'])):
+  """Represents a one-hot column for use in deep networks.
+
+  Args:
+    categorical_column: A `_CategoricalColumn` which is created by
+      `categorical_column_with_*` function.
+  """
+
+  @property
+  def name(self):
+    return '{}_indicator'.format(self.categorical_column.name)
+
+  def _transform_feature(self, inputs):
+    """Returns dense `Tensor` representing feature.
+
+    Args:
+      inputs: A `_LazyBuilder` object to access inputs.
+
+    Returns:
+      Transformed feature `Tensor`.
+    """
+    id_weight_pair = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
+    id_tensor = id_weight_pair.id_tensor
+    weight_tensor = id_weight_pair.weight_tensor
+
+    # If the underlying column is weighted, return the input as a dense tensor.
+    if weight_tensor is not None:
+      weighted_column = sparse_ops.sparse_merge(
+          sp_ids=id_tensor,
+          sp_values=weight_tensor,
+          vocab_size=self._variable_shape[-1])
+      return sparse_ops.sparse_tensor_to_dense(weighted_column)
+
+    dense_id_tensor = sparse_ops.sparse_tensor_to_dense(
+        id_tensor, default_value=-1)
+
+    # One hot must be float for tf.concat reasons since all other inputs to
+    # input_layer are float32.
+    one_hot_id_tensor = array_ops.one_hot(
+        dense_id_tensor,
+        depth=self._variable_shape[-1],
+        on_value=1.0,
+        off_value=0.0)
+
+    # Reduce to get a multi-hot per example.
+    return math_ops.reduce_sum(one_hot_id_tensor, axis=[1])
+
+  @property
+  def _parse_example_config(self):
+    return self.categorical_column._parse_example_config  # pylint: disable=protected-access
+
+  @property
+  def _variable_shape(self):
+    """Returns a `TensorShape` representing the shape of the dense `Tensor`."""
+    return tensor_shape.TensorShape([1, self.categorical_column._num_buckets])  # pylint: disable=protected-access
+
+  def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
+    """Returns dense `Tensor` representing feature.
+
+    Args:
+      inputs: A `_LazyBuilder` object to access inputs.
+      weight_collections: Unused `weight_collections` since no variables are
+        created in this function.
+      trainable: Unused `trainable` bool since no variables are created in
+        this function.
+
+    Returns:
+      Dense `Tensor` created within `_transform_feature`.
+    """
+    # Do nothing with weight_collections and trainable since no variables are
+    # created in this function.
+    del weight_collections
+    del trainable
+    # Feature has been already transformed. Return the intermediate
+    # representation created by _transform_feature.
+    return inputs.get(self)

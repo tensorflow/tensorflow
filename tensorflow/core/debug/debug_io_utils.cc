@@ -233,7 +233,7 @@ Status DebugIO::PublishDebugTensor(const string& tensor_name,
         strings::StrCat("Failed to parse tensor name: \"", tensor_name, "\""));
   }
 
-  int num_failed_urls = 0;
+  int32 num_failed_urls = 0;
   std::vector<Status> fail_statuses;
   for (const string& url : debug_urls) {
     if (str_util::Lowercase(url).find(kFileURLScheme) == 0) {
@@ -497,18 +497,26 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
 
 #if defined(PLATFORM_GOOGLE)
 DebugGrpcChannel::DebugGrpcChannel(const string& server_stream_addr)
-    : url_(strings::StrCat(DebugIO::kGrpcURLScheme, server_stream_addr)),
-      ctx_(),
-      channel_(::grpc::CreateCustomChannel(server_stream_addr,
-                                           ::grpc::InsecureChannelCredentials(),
-                                           ::grpc::ChannelArguments())),
-      stub_(EventListener::NewStub(channel_)),
-      reader_writer_(stub_->SendEvents(&ctx_)),
-      mu_() {}
-// TODO(cais): Set GRPC_ARG_MAX_MESSAGE_LENGTH to max if necessary.
+    : server_stream_addr_(server_stream_addr),
+      url_(strings::StrCat(DebugIO::kGrpcURLScheme, server_stream_addr)) {}
 
-bool DebugGrpcChannel::is_channel_ready() {
-  return channel_->GetState(false) == GRPC_CHANNEL_READY;
+Status DebugGrpcChannel::Connect(const int64 timeout_micros) {
+  ::grpc::ChannelArguments args;
+  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  // Avoid problems where default reconnect backoff is too long (e.g., 20 s).
+  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  channel_ = ::grpc::CreateCustomChannel(
+      server_stream_addr_, ::grpc::InsecureChannelCredentials(), args);
+  if (!channel_->WaitForConnected(
+          gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
+                       gpr_time_from_micros(timeout_micros, GPR_TIMESPAN)))) {
+    return errors::FailedPrecondition(
+        "Failed to connect to gRPC channel at ", server_stream_addr_,
+        " within a timeout of ", timeout_micros / 1e6, " s.");
+  }
+  stub_ = EventListener::NewStub(channel_);
+  reader_writer_ = stub_->SendEvents(&ctx_);
+  return Status::OK();
 }
 
 bool DebugGrpcChannel::WriteEvent(const Event& event) {
@@ -551,7 +559,11 @@ Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
 // static
 mutex DebugGrpcIO::streams_mu;
 
-// Static
+// static
+int64 DebugGrpcIO::channel_connection_timeout_micros = 900 * 1000 * 1000;
+// TODO(cais): Make this configurable?
+
+// static
 std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
 DebugGrpcIO::GetStreamChannels() {
   static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
@@ -592,12 +604,8 @@ Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
         stream_channels = GetStreamChannels();
     if (stream_channels->find(grpc_stream_url) == stream_channels->end()) {
       debug_grpc_channel.reset(new DebugGrpcChannel(server_stream_addr));
-
-      if (!debug_grpc_channel->is_channel_ready()) {
-        return errors::FailedPrecondition(
-            strings::StrCat("Channel at the following gRPC stream URL is ",
-                            "not ready: ", grpc_stream_url));
-      }
+      TF_RETURN_IF_ERROR(
+          debug_grpc_channel->Connect(channel_connection_timeout_micros));
 
       (*stream_channels)[grpc_stream_url] = debug_grpc_channel;
       CreateEmptyEnabledSet(grpc_stream_url);
@@ -609,7 +617,7 @@ Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
   bool write_ok = debug_grpc_channel->WriteEvent(event_proto);
   if (!write_ok) {
     return errors::Cancelled(strings::StrCat("Write event to stream URL ",
-                                             grpc_stream_url, "failed."));
+                                             grpc_stream_url, " failed."));
   }
 
   return Status::OK();

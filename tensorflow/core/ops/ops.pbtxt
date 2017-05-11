@@ -15,8 +15,8 @@ op {
       b: false
     }
   }
-  summary: "Raise a exception to abort the process when called. If exit_without_error is true, the process will exit normally, otherwise it will exit with a SIGABORT signal."
-  description: "Returns nothing but an exception."
+  summary: "Raise a exception to abort the process when called."
+  description: "If exit_without_error is true, the process will exit normally,\notherwise it will exit with a SIGABORT signal.\n\nReturns nothing but an exception."
 }
 op {
   name: "Abs"
@@ -85,8 +85,8 @@ op {
       }
     }
   }
-  summary: "Applies a gradient to a given accumulator. Does not add if local_step is lesser"
-  description: "than the accumulator\'s global_step."
+  summary: "Applies a gradient to a given accumulator."
+  description: "Does not add if local_step is lesser than the accumulator\'s global_step."
 }
 op {
   name: "AccumulatorNumAccumulated"
@@ -116,8 +116,8 @@ op {
     description: "The new global_step value to set."
     type: DT_INT64
   }
-  summary: "Updates the accumulator with a new value for global_step. Logs warning if the"
-  description: "accumulator\'s value is already higher than new_global_step."
+  summary: "Updates the accumulator with a new value for global_step."
+  description: "Logs warning if the accumulator\'s value is already higher than\nnew_global_step."
 }
 op {
   name: "AccumulatorTakeGradient"
@@ -160,8 +160,8 @@ op {
       }
     }
   }
-  summary: "Extracts the average gradient in the given ConditionalAccumulator, provided"
-  description: "that sufficient (i.e., more than num_required) gradients have been accumulated.\nThe op blocks until sufficient gradients have been accumulated.\nIf the accumulator has already aggregated more than num_required gradients, it\nreturns the average of the accumulated gradients.\nAlso automatically increments the recorded global_step in the accumulator by 1,\nand resets the aggregate to 0."
+  summary: "Extracts the average gradient in the given ConditionalAccumulator."
+  description: "The op blocks until sufficient (i.e., more than num_required)\ngradients have been accumulated.  If the accumulator has already\naggregated more than num_required gradients, it returns the average of\nthe accumulated gradients.  Also automatically increments the recorded\nglobal_step in the accumulator by 1, and resets the aggregate to 0."
 }
 op {
   name: "Acos"
@@ -1552,6 +1552,7 @@ op {
     }
   }
   summary: "Returns the index with the largest value across dimensions of a tensor."
+  description: "Note that in case of ties the identity of the return value is not guaranteed."
 }
 op {
   name: "ArgMin"
@@ -1604,6 +1605,7 @@ op {
     }
   }
   summary: "Returns the index with the smallest value across dimensions of a tensor."
+  description: "Note that in case of ties the identity of the return value is not guaranteed."
 }
 op {
   name: "AsString"
@@ -4151,7 +4153,7 @@ op {
   }
   output_arg {
     name: "offset"
-    description: "The `N` int32 vectors representing the starting offset\n        of input tensors within the concatenated output.\n\nThis is typically used by gradient computations for a concat operation."
+    description: "The `N` int32 vectors representing the starting offset\nof input tensors within the concatenated output."
     type: DT_INT32
     number_attr: "N"
   }
@@ -4162,7 +4164,7 @@ op {
     minimum: 2
   }
   summary: "Computes offsets of concat inputs within its output."
-  description: "For example:\n\n```\n# \'x\' is [2, 2, 7]\n# \'y\' is [2, 3, 7]\n# \'z\' is [2, 5, 7]\nconcat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]\n```"
+  description: "For example:\n\n```\n# \'x\' is [2, 2, 7]\n# \'y\' is [2, 3, 7]\n# \'z\' is [2, 5, 7]\nconcat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]\n```\n\nThis is typically used by gradient computations for a concat operation."
 }
 op {
   name: "ConcatV2"
@@ -4257,10 +4259,10 @@ op {
     default_value {
       s: ""
     }
-    description: "If non-empty, this accumulator will be shared under the given name\nacross multiple sessions."
+    description: "If non-empty, this accumulator will be shared under the\ngiven name across multiple sessions."
   }
-  summary: "A conditional accumulator for aggregating gradients. The accumulator accepts"
-  description: "gradients marked with local_step greater or equal to the most recent global_step\nknown to the accumulator. The average can be extracted from the accumulator,\nprovided sufficient gradients have been accumulated. Extracting the average\nautomatically resets the aggregate to 0, and increments the global_step recorded\nby the accumulator."
+  summary: "A conditional accumulator for aggregating gradients."
+  description: "The accumulator accepts gradients marked with local_step greater or\nequal to the most recent global_step known to the accumulator. The\naverage can be extracted from the accumulator, provided sufficient\ngradients have been accumulated. Extracting the average automatically\nresets the aggregate to 0, and increments the global_step recorded by\nthe accumulator."
   is_stateful: true
 }
 op {
@@ -12155,8 +12157,8 @@ op {
     }
     description: "The maximum ratio between number of entries and number of\nbuckets before growing the table. Must be between 0 and 1."
   }
-  summary: "Creates an empty hash table that uses tensors as the backing store. It uses"
-  description: "\"open addressing\" with quadratic reprobing to resolve collisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
+  summary: "Creates an empty hash table that uses tensors as the backing store."
+  description: "It uses \"open addressing\" with quadratic reprobing to resolve\ncollisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
   is_stateful: true
 }
 op {
@@ -12229,8 +12231,8 @@ op {
     }
     description: "The maximum ratio between number of entries and number of\nbuckets before growing the table. Must be between 0 and 1."
   }
-  summary: "Creates an empty hash table that uses tensors as the backing store. It uses"
-  description: "\"open addressing\" with quadratic reprobing to resolve collisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
+  summary: "Creates an empty hash table that uses tensors as the backing store."
+  description: "It uses \"open addressing\" with quadratic reprobing to resolve\ncollisions.\n\nThis op creates a mutable hash table, specifying the type of its keys and\nvalues. Each value must be a scalar. Data can be inserted into the table using\nthe insert operations. It does not support the initialization operation."
   is_stateful: true
 }
 op {
@@ -15144,8 +15146,8 @@ op {
     }
     description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
   }
-  summary: "Dequeues n tuples of one or more tensors from the given queue."
-  description: "If the queue is closed and there are fewer than n elements, then an\nOutOfRange error is returned.\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until n elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
+  summary: "Dequeues `n` tuples of one or more tensors from the given queue."
+  description: "If the queue is closed and there are fewer than `n` elements, then an\nOutOfRange error is returned.\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size `n` in the 0th dimension.\n\nThis operation has `k` outputs, where `k` is the number of components in\nthe tuples stored in the given queue, and output `i` is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until `n` elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
 }
 op {
   name: "QueueDequeueManyV2"
@@ -15179,8 +15181,8 @@ op {
     }
     description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
   }
-  summary: "Dequeues n tuples of one or more tensors from the given queue."
-  description: "If the queue is closed and there are fewer than n elements, then an\nOutOfRange error is returned.\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until n elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
+  summary: "Dequeues `n` tuples of one or more tensors from the given queue."
+  description: "If the queue is closed and there are fewer than `n` elements, then an\nOutOfRange error is returned.\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size `n` in the 0th dimension.\n\nThis operation has `k` outputs, where `k` is the number of components in\nthe tuples stored in the given queue, and output `i` is the ith\ncomponent of the dequeued tuple.\n\nN.B. If the queue is empty, this operation will block until `n` elements\nhave been dequeued (or \'timeout_ms\' elapses, if specified)."
   is_stateful: true
 }
 op {
@@ -15216,8 +15218,8 @@ op {
     }
     description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
   }
-  summary: "Dequeues n tuples of one or more tensors from the given queue."
-  description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than n elements\nremaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, less than `n` elements are returned immediately.  If the queue\nis closed and there are 0 elements left in the queue, then an OutOfRange\nerror is returned just like in QueueDequeueMany.  Otherwise the behavior\nis identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple."
+  summary: "Dequeues `n` tuples of one or more tensors from the given queue."
+  description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than `n`\nelements remaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, less than `n` elements are returned immediately.  If\nthe queue is closed and there are 0 elements left in the queue, then\nan OutOfRange error is returned just like in QueueDequeueMany.\nOtherwise the behavior is identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size `n` in the 0th dimension.\n\nThis operation has k outputs, where `k` is the number of components in\nthe tuples stored in the given queue, and output `i` is the ith\ncomponent of the dequeued tuple."
 }
 op {
   name: "QueueDequeueUpToV2"
@@ -15251,8 +15253,8 @@ op {
     }
     description: "If the queue has fewer than n elements, this operation\nwill block for up to timeout_ms milliseconds.\nNote: This option is not supported yet."
   }
-  summary: "Dequeues n tuples of one or more tensors from the given queue."
-  description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than n elements\nremaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, less than `n` elements are returned immediately.  If the queue\nis closed and there are 0 elements left in the queue, then an OutOfRange\nerror is returned just like in QueueDequeueMany.  Otherwise the behavior\nis identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has k outputs, where k is the number of components in\nthe tuples stored in the given queue, and output i is the ith\ncomponent of the dequeued tuple."
+  summary: "Dequeues `n` tuples of one or more tensors from the given queue."
+  description: "This operation is not supported by all queues.  If a queue does not support\nDequeueUpTo, then an Unimplemented error is returned.\n\nIf the queue is closed and there are more than 0 but less than `n`\nelements remaining, then instead of returning an OutOfRange error like\nQueueDequeueMany, less than `n` elements are returned immediately.  If\nthe queue is closed and there are 0 elements left in the queue, then\nan OutOfRange error is returned just like in QueueDequeueMany.\nOtherwise the behavior is identical to QueueDequeueMany:\n\nThis operation concatenates queue-element component tensors along the\n0th dimension to make a single component tensor.  All of the components\nin the dequeued tuple will have size n in the 0th dimension.\n\nThis operation has `k` outputs, where `k` is the number of components in\nthe tuples stored in the given queue, and output `i` is the ith\ncomponent of the dequeued tuple."
   is_stateful: true
 }
 op {
@@ -21330,8 +21332,8 @@ op {
     type: "bool"
     description: "Boolean indicating whether gradient_shape is unknown, in which\ncase the input is ignored during validation."
   }
-  summary: "Applies a sparse gradient to a given accumulator. Does not add if local_step is"
-  description: "lesser than the accumulator\'s global_step."
+  summary: "Applies a sparse gradient to a given accumulator."
+  description: "Does not add if local_step is smaller than the accumulator\'s\nglobal_step."
 }
 op {
   name: "SparseAccumulatorTakeGradient"
@@ -21384,8 +21386,8 @@ op {
       }
     }
   }
-  summary: "Extracts the average sparse gradient in the given SparseConditionalAccumulator,"
-  description: "provided that sufficient (i.e., more than num_required) gradients have been\naccumulated. The op will blocks until sufficient gradients have been\naccumulated. If the accumulator has already aggregated more than num_required\ngradients, it will return its average of the accumulated gradients.\nAlso automatically increments the recorded global_step in the accumulator by 1,\nand resets the aggregate to 0."
+  summary: "Extracts the average sparse gradient in a SparseConditionalAccumulator."
+  description: "The op will blocks until sufficient (i.e., more than num_required)\ngradients have been accumulated. If the accumulator has already\naggregated more than num_required gradients, it will return its\naverage of the accumulated gradients.  Also automatically increments\nthe recorded global_step in the accumulator by 1, and resets the\naggregate to 0."
 }
 op {
   name: "SparseAdd"
@@ -22470,9 +22472,114 @@ op {
     }
     description: "If non-empty, this accumulator will be shared under the given name\nacross multiple sessions."
   }
-  summary: "A conditional accumulator for aggregating sparse gradients. The accumulator"
-  description: "accepts gradients marked with local_step greater or equal to the most recent\nglobal_step known to the accumulator. The average can be extracted from the\naccumulator, provided sufficient gradients have been accumulated. Extracting the\naverage automatically resets the aggregate to 0, and increments the global_step\nrecorded by the accumulator."
+  summary: "A conditional accumulator for aggregating sparse gradients."
+  description: "The accumulator accepts gradients marked with local_step greater or\nequal to the most recent global_step known to the accumulator. The\naverage can be extracted from the accumulator, provided sufficient\ngradients have been accumulated. Extracting the average automatically\nresets the aggregate to 0, and increments the global_step recorded by\nthe accumulator."
   is_stateful: true
+}
+op {
+  name: "SparseCross"
+  input_arg {
+    name: "indices"
+    description: "2-D.  Indices of each input `SparseTensor`."
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "values"
+    description: "1-D.   values of each `SparseTensor`."
+    type_list_attr: "sparse_types"
+  }
+  input_arg {
+    name: "shapes"
+    description: "1-D.   Shapes of each `SparseTensor`."
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "dense_inputs"
+    description: "2-D.    Columns represented by dense `Tensor`."
+    type_list_attr: "dense_types"
+  }
+  output_arg {
+    name: "output_indices"
+    description: "2-D.  Indices of the concatenated `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    description: "1-D.  Non-empty values of the concatenated or hashed\n`SparseTensor`."
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "output_shape"
+    description: "1-D.  Shape of the concatenated `SparseTensor`."
+    type: DT_INT64
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "hashed_output"
+    type: "bool"
+    description: "If true, returns the hash of the cross instead of the string.\nThis will allow us avoiding string manipulations."
+  }
+  attr {
+    name: "num_buckets"
+    type: "int"
+    description: "It is used if hashed_output is true.\noutput = hashed_value%num_buckets if num_buckets > 0 else hashed_value."
+    has_minimum: true
+  }
+  attr {
+    name: "hash_key"
+    type: "int"
+    description: "Specify the hash_key that will be used by the `FingerprintCat64`\nfunction to combine the crosses fingerprints."
+  }
+  attr {
+    name: "sparse_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "dense_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "internal_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  summary: "Generates sparse cross from a list of sparse and dense tensors."
+  description: "The op takes two lists, one of 2D `SparseTensor` and one of 2D `Tensor`, each\nrepresenting features of one feature column. It outputs a 2D `SparseTensor` with\nthe batchwise crosses of these features.\n\nFor example, if the inputs are\n\n    inputs[0]: SparseTensor with shape = [2, 2]\n    [0, 0]: \"a\"\n    [1, 0]: \"b\"\n    [1, 1]: \"c\"\n\n    inputs[1]: SparseTensor with shape = [2, 1]\n    [0, 0]: \"d\"\n    [1, 0]: \"e\"\n\n    inputs[2]: Tensor [[\"f\"], [\"g\"]]\n\nthen the output will be\n\n    shape = [2, 2]\n    [0, 0]: \"a_X_d_X_f\"\n    [1, 0]: \"b_X_e_X_g\"\n    [1, 1]: \"c_X_e_X_g\"\n\nif hashed_output=true then the output will be\n\n    shape = [2, 2]\n    [0, 0]: FingerprintCat64(\n                Fingerprint64(\"f\"), FingerprintCat64(\n                    Fingerprint64(\"d\"), Fingerprint64(\"a\")))\n    [1, 0]: FingerprintCat64(\n                Fingerprint64(\"g\"), FingerprintCat64(\n                    Fingerprint64(\"e\"), Fingerprint64(\"b\")))\n    [1, 1]: FingerprintCat64(\n                Fingerprint64(\"g\"), FingerprintCat64(\n                    Fingerprint64(\"e\"), Fingerprint64(\"c\")))"
 }
 op {
   name: "SparseDenseCwiseAdd"
@@ -24001,8 +24108,8 @@ op {
     }
     description: "It is necessary to match this name to the matching Unstage Op."
   }
-  summary: "Stage values similar to a lightweight Enqueue.  The basic functionality of this"
-  description: "Op is similar to a queue with many fewer capabilities and options.  This Op is\noptimized for performance."
+  summary: "Stage values similar to a lightweight Enqueue."
+  description: "The basic functionality of this Op is similar to a queue with many\nfewer capabilities and options.  This Op is optimized for performance."
   is_stateful: true
 }
 op {
@@ -25114,8 +25221,8 @@ op {
     description: "The handle to a TensorArray (output of TensorArray or TensorArrayGrad)."
     type: DT_RESOURCE
   }
-  summary: "Delete the TensorArray from its resource container.  This enables"
-  description: "the user to close and release the resource in the middle of a step/run."
+  summary: "Delete the TensorArray from its resource container."
+  description: "This enables the user to close and release the resource in the middle\nof a step/run."
   is_stateful: true
 }
 op {
@@ -25906,8 +26013,8 @@ op {
     }
     description: "Overrides the name used for the temporary tensor_array\nresource. Default value is the name of the \'TensorArray\' op (which\nis guaranteed unique)."
   }
-  summary: "An array of Tensors of given size, with data written via Write and read"
-  description: "via Read or Pack."
+  summary: "An array of Tensors of given size."
+  description: "Write data via Write and read via Read or Pack."
   is_stateful: true
 }
 op {
@@ -26813,8 +26920,8 @@ op {
       s: ""
     }
   }
-  summary: "Op is similar to a lightweight Dequeue.  The basic funtionality is similar to"
-  description: "dequeue with many fewer capabilities and options.  This Op is optimized for\nperformance."
+  summary: "Op is similar to a lightweight Dequeue."
+  description: "The basic funtionality is similar to dequeue with many fewer\ncapabilities and options.  This Op is optimized for performance."
   is_stateful: true
 }
 op {

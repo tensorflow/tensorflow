@@ -19,7 +19,9 @@ from __future__ import print_function
 from tensorflow.contrib import layers
 from tensorflow.contrib.linear_optimizer.python.ops import sdca_ops
 from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -137,9 +139,18 @@ class SDCAOptimizer(object):
         transformed_tensor = features[column]
         if isinstance(column, layers.feature_column._RealValuedColumn):  # pylint: disable=protected-access
           # A real-valued column corresponds to a dense feature in SDCA. A
-          # transformed tensor corresponding to a RealValuedColumn has rank 2
-          # (its shape is typically [batch_size, column.dimension]) and so it
-          # can be passed to SDCA as is.
+          # transformed tensor corresponding to a RealValuedColumn should have
+          # rank at most 2. In order to be passed to SDCA, its rank needs to be
+          # exactly 2 (i.e., its shape should be [batch_size, column.dim]).
+          check_rank_op = control_flow_ops.Assert(
+              math_ops.less_equal(array_ops.rank(transformed_tensor), 2),
+              ['transformed_tensor shouls have rank at most 2.'])
+          # Reshape to [batch_size, dense_column_dimension].
+          with ops.control_dependencies([check_rank_op]):
+            transformed_tensor = array_ops.reshape(transformed_tensor, [
+                array_ops.shape(transformed_tensor)[0], -1
+            ])
+
           dense_features.append(transformed_tensor)
           # For real valued columns, the variables list contains exactly one
           # element.

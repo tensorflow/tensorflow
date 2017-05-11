@@ -768,5 +768,23 @@ TEST_F(LiteralUtilTest, Populate) {
   }
 }
 
+TEST_F(LiteralUtilTest, ConvertR4) {
+  // clang-format off
+  auto original = LiteralUtil::CreateR4WithLayout<int8>({{
+     {{10, 11, 12, 13}, {14, 15, 16, 17}},
+     {{18, 19, 20, 21}, {22, 23, 24, 25}},
+     {{26, 27, 28, 29}, {30, 31, 32, 33}},
+  }}, layout_r4_dim0major_);
+  auto expected = LiteralUtil::CreateR4WithLayout<uint32>({{
+     {{10, 11, 12, 13}, {14, 15, 16, 17}},
+     {{18, 19, 20, 21}, {22, 23, 24, 25}},
+     {{26, 27, 28, 29}, {30, 31, 32, 33}},
+  }}, layout_r4_dim0major_);
+  // clang-format on
+  auto converted = LiteralUtil::Convert<int8, uint32>(*original);
+
+  EXPECT_TRUE(LiteralUtil::Equal(*expected, *converted));
+}
+
 }  // namespace
 }  // namespace xla

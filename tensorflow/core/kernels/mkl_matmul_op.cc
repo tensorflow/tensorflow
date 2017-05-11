@@ -25,11 +25,11 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
+#include "third_party/mkl/include/mkl_cblas.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
-#include "third_party/mkl/include/mkl_cblas.h"
 
 namespace tensorflow {
 
@@ -56,11 +56,11 @@ class MklMatMulOp : public OpKernel {
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;
 
-    OP_REQUIRES(ctx,
-                a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
-                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
-                                        a.shape().DebugString(), ", In[1]: ",
-                                        b.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
+        errors::InvalidArgument(
+            "Matrix size-incompatible: In[0]: ", a.shape().DebugString(),
+            ", In[1]: ", b.shape().DebugString()));
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
     TensorShape out_shape(

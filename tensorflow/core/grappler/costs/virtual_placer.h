@@ -29,7 +29,7 @@ class Cluster;
 // The virtual placer emulates the behavior of the TF placer.
 class VirtualPlacer {
  public:
-  VirtualPlacer(Cluster* cluster);
+  VirtualPlacer(const Cluster* cluster);
 
   const DeviceProperties& get_device(const NodeDef& node) const;
 

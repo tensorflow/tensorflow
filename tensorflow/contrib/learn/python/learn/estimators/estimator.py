@@ -372,7 +372,6 @@ class BaseEstimator(
       logging.info('Using default config.')
     else:
       self._config = config
-    logging.info('Using config: %s', str(vars(self._config)))
 
     if self._config.session_config is None:
       self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
@@ -397,6 +396,7 @@ class BaseEstimator(
                       self._model_dir)
     if self._config.model_dir is None:
       self._config = self._config.replace(model_dir=self._model_dir)
+    logging.info('Using config: %s', str(vars(self._config)))
 
     # Set device function depending if there are replicas or not.
     self._device_fn = _get_replica_device_setter(self._config)

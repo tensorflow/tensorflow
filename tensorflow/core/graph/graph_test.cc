@@ -51,8 +51,8 @@ class GraphTest : public ::testing::Test {
   GraphTest() : graph_(OpRegistry::Global()) {}
   ~GraphTest() override {}
 
-  static void VerifyNodes(Node* node, std::vector<Node*> expected_in,
-                          std::vector<Node*> expected_out) {
+  static void VerifyNodes(Node* node, const std::vector<Node*>& expected_in,
+                          const std::vector<Node*>& expected_out) {
     std::vector<Node*> in;
     for (const Edge* e : node->in_edges()) {
       in.push_back(e->src());

@@ -32,7 +32,7 @@ class InverseOpTest(test.TestCase):
     for np_type in [np.float32, np.float64]:
       for adjoint in False, True:
         y = x.astype(np_type)
-        with self.test_session():
+        with self.test_session(use_gpu=True):
           # Verify that x^{-1} * x == Identity matrix.
           inv = linalg_ops.matrix_inverse(y, adjoint=adjoint)
           tf_ans = math_ops.matmul(inv, y, adjoint_b=adjoint)
@@ -86,8 +86,8 @@ class InverseOpTest(test.TestCase):
     with self.test_session():
       with self.assertRaisesOpError("Input is not invertible."):
         # All rows of the matrix below add to zero.
-        tensor3 = constant_op.constant(
-            [[1., 0., -1.], [-1., 1., 0.], [0., -1., 1.]])
+        tensor3 = constant_op.constant([[1., 0., -1.], [-1., 1., 0.],
+                                        [0., -1., 1.]])
         linalg_ops.matrix_inverse(tensor3).eval()
 
   def testEmpty(self):

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -227,7 +228,7 @@ class OpKernelConstruction {
                        const DataTypeSlice& output_types,
                        const MemoryTypeSlice& output_memory_types,
                        int graph_def_version, Status* status)
-      : device_type_(device_type),
+      : device_type_(std::move(device_type)),
         device_(device),
         allocator_(allocator),
         def_(node_def),
@@ -276,9 +277,6 @@ class OpKernelConstruction {
 
   // User-supplied configuration of this operation.
   const NodeDef& def() const { return *def_; }
-
-  // Op registered for this op type.
-  const OpDef& op_def() const { return *op_def_; }
 
   // For inspecting the inputs to this operation.
   int num_inputs() const { return input_types_.size(); }
@@ -352,6 +350,10 @@ class OpKernelConstruction {
   MemoryTypeSlice output_memory_types_;
   const int graph_def_version_;
   Status* status_;
+
+  // Allow op_def_ across from OpKernel, but not from subclasses.
+  // TODO(irving): Remove protos from this header entirely.
+  friend class OpKernel;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelConstruction);
 };
@@ -1253,7 +1255,7 @@ void* GlobalKernelRegistry();
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and
 // <kernel_class_name> may be null.
-Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
+Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name);
 
 // Writes a list of all registered kernels to LOG(INFO), to help users debug

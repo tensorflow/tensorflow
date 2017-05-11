@@ -63,7 +63,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   ReffedClientGraph(const string& handle, const BuildGraphOptions& bopts,
                     std::unique_ptr<SimpleClientGraph> cg,
                     const SessionOptions& session_opts,
-                    StatsPublisherFactory stats_publisher_factory,
+                    const StatsPublisherFactory& stats_publisher_factory,
                     SimpleGraphExecutionState* execution_state, bool is_partial,
                     WorkerCacheInterface* worker_cache)
       : session_handle_(handle),

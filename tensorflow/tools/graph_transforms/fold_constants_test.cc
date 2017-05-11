@@ -72,9 +72,9 @@ class ConstantFoldingTest : public ::testing::Test {
                         {"output_expect_remains"});
   }
 
-  void TestConstantFolding(const GraphDef graph_def,
+  void TestConstantFolding(const GraphDef& graph_def,
                            std::vector<std::pair<string, Tensor> > inputs,
-                           std::vector<string> outputs) {
+                           const std::vector<string>& outputs) {
     std::unique_ptr<tensorflow::Session> unfolded_session(
         tensorflow::NewSession(tensorflow::SessionOptions()));
     TF_ASSERT_OK(unfolded_session->Create(graph_def));

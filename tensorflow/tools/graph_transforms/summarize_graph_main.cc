@@ -50,8 +50,8 @@ void PrintNodeInfo(const NodeDef* node) {
   std::cout << ", shape=" << shape.DebugString() << ") ";
 }
 
-void PrintBenchmarkUsage(const std::vector<const NodeDef*> placeholders,
-                         const std::vector<const NodeDef*> variables,
+void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
+                         const std::vector<const NodeDef*>& variables,
                          const std::vector<const NodeDef*> outputs,
                          const string& graph_path) {
   std::vector<const NodeDef*> all_inputs(placeholders);

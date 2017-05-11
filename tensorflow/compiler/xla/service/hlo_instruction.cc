@@ -1083,7 +1083,7 @@ bool HloInstruction::Identical(
   // general, there is no need to check shape because shape is inferred from the
   // shape of the operands.
   if (opcode() != other.opcode() ||
-      !ContainersEqual(operands(), other.operands(), eq_operands)) {
+      !ContainersEqual(operands(), other.operands(), std::move(eq_operands))) {
     return false;
   }
 
