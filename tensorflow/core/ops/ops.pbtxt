@@ -1552,6 +1552,7 @@ op {
     }
   }
   summary: "Returns the index with the largest value across dimensions of a tensor."
+  description: "Note that in case of ties the identity of the return value is not guaranteed."
 }
 op {
   name: "ArgMin"
@@ -1604,6 +1605,7 @@ op {
     }
   }
   summary: "Returns the index with the smallest value across dimensions of a tensor."
+  description: "Note that in case of ties the identity of the return value is not guaranteed."
 }
 op {
   name: "AsString"
