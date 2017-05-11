@@ -1,6 +1,6 @@
 # tfprof: A Profiling Tool for TensorFlow Models
 
-Author: Xin Pan (xpan@google.com, github: panyx0718)
+Author: Xin Pan (xpan@google.com, github: panyx0718), Jon Shlens, Yao Zhang
 
 Consultants: Jon Shlens, Pete Warden
 
@@ -8,15 +8,22 @@ Consultants: Jon Shlens, Pete Warden
 ###Major Features
 
 1.  Measure model parameters, float operations, tensor shapes.
-2.  Measure op execution times, requested memory size and device placement.
+2.  Profile op execution times, requested memory size and device placement.
 3.  Inspect checkpoint tensors' shapes and their values.
-4.  3 ways to view and explore TensorFlow model profiles
+4.  Selectively group, filter, account and order ops.
 
-    *  Organize by Python code call stack.
-    *  Organize by TensorFlow operation name scope hierarchies.
-    *  Organize by TensorFlow operation inputs/outputs graph.
+####tfprof supports 3 views to organize TensorFlow model profiles
 
-5.  Selectively grouping/filtering/accounting/ordering ops.
+    *  code view: Stats are associated your Python codes and organized as call stacks.
+    *  scope view: Stats are organized as name scope hierarchies.
+    *  graph view: Stats are organized as Tensorflow Op graph.
+
+####For each view, there are 3 ways to display outputs:
+
+    *  stdout: Results are written to stdout.
+    *  timeline: Visualized in chrome browser as time series.
+    *  file: Results are dumped to file.
+
 
 [Python API Tutorials](#python-api-tutorials): It can be called directly from
 Python codes. Results are either printed
@@ -83,13 +90,11 @@ compute the memory and timing statistics.
 #
 # Note: When run on GPU, a kernel is first scheduled (enqueued) and then
 #       executed asynchronously. tfprof only tracks the execution time.
-#       Which is from proto CostGraphDef::Node::compute_cost.
 #       In addition, a substantial of time might be spent between Python and
 #       TensorFlow runtime, which is also not tracked by tfprof.
 #
-config = tf.ConfigProto(graph_options=tf.GraphOptions(build_cost_model=1))
 run_metadata = tf.RunMetadata()
-with tf.Session(config=config) as sess:
+with tf.Session() as sess:
   _ = sess.run(train_op,
                options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
                run_metadata=run_metadata)
@@ -120,6 +125,18 @@ tf.contrib.tfprof.model_analyzer.print_model_analysis(
 ```
 
 Users can change ```tfprof_options``` to fully leverage tfprof's power.
+
+```
+For example set opts['output'] = 'timeline:outfile=<filename>' to
+generate a timeline json file. Open a Chrome Browser, open URL
+chrome://tracing, and load the json file. Below are 2 examples of graph
+view and scope view. See code view example in later examples.
+```
+
+<left>
+![CodeTimeline](g3doc/graph_timeline.png)
+![CodeTimeline](g3doc/scope_timeline.png)
+</left>
 
 
 ## CLI Tutorials
@@ -197,8 +214,14 @@ tfprof>
 # supported select fileds. Availability depends on --[run_meta|checkpoint|op_log]_path.
 # [bytes|micros|params|float_ops|num_hidden_ops|tensor_value|device|op_types]
 -select                     params
--viz                        false
--dump_to_file
+# format: output_type:key=value,key=value...
+# output_types: stdout (default), timeline, file.
+# key=value pairs:
+#   1. timeline: outfile=<filename>
+#   2. file: outfile=<filename>
+#   3. stdout: None.
+# E.g. timeline:outfile=/tmp/timeline.json
+-output
 ```
 
 3) I want to see which line of my python codes costs most time!
@@ -221,6 +244,12 @@ _TFProfRoot (0us/22.44ms)
           model_analyzer_testlib.py:60:BuildFullModel:target = array_op... (0us/0us)
         model_analyzer_test.py:134:testComplexCodeView:sess.run(variable... (0us/0us)
 ```
+
+Set ```-output timeline:outfile=<filename>``` to generate timeline instead of stdout.
+<left>
+![CodeTimeline](g3doc/code_timeline.png)
+</left>
+
 
 4) I want to see the `BatchNorm`'s gamma value in checkpoint.
 
@@ -423,10 +452,10 @@ the tool adds all `Variables` inside `tf.trainable_variables()` to
 12) Run tfprof in one-shot mode and dump result to file.
 
 ```shell
-# Printed to stdout if --dump_to_file is not set.
+# By default output to stdout. Use -output option to change output types.
 tfprof scope --graph_path=graph.pbtxt  \
              --max_depth=3 \
-             --dump_to_file="/tmp/dump"
+             --output="file:outfile=/tmp/dump"
 Reading Files...
 Parsing GraphDef...
 Preparing Views...
@@ -538,4 +567,9 @@ as long as they match the `-account_xxx` options.
 
 `-select`: Comma-separated list of metrics to show: [bytes|micros|params|float_ops|num_hidden_ops|tensor_value|device|op_types].
 
-`-dump_to_file`: Dump the output to a file, instead of terminal.
+`-output`: Output results as stdout, file or timeline.
+The format is ```output_type:key=value,key=value```.
+For example: ```timeline:outfile=<filename>```.
+timeline: key=outfile, value=<filename>.
+stdout: none.
+file: key=outfile, value=<filename>.

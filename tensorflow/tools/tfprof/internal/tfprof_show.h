@@ -28,40 +28,15 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_constants.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_node.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_node_show.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_tensor.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_timeline.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
 #include "tensorflow/tools/tfprof/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
-class ShowNode {
- public:
-  explicit ShowNode(const TFGraphNode* node);
-  virtual ~ShowNode() {}
-
-  const string& name() const { return node->name(); }
-  TFGraphNodeProto* mutable_proto();
-  const TFGraphNodeProto& proto() const;
-
-  string Format(const Options& opts);
-
-  string FormatMeta(const Options& opts);
-
-  const TFGraphNode* node;
-  bool account;
-  string formatted_str;
-
- protected:
-  void AggregateTotalStats(ShowNode* node);
-
-  void AddSelfToTotalStats();
-
-  void ResetTotalStats();
-
-  TFGraphNodeProto proto_;
-};
-
 class TFShow {
  public:
   explicit TFShow(checkpoint::CheckpointReader* ckpt_reader)
@@ -72,7 +47,8 @@ class TFShow {
   const TFGraphNodeProto& Show(const Options& opts);
 
  protected:
-  virtual const ShowNode* ShowInternal(const Options& opts) = 0;
+  virtual const ShowNode* ShowInternal(const Options& opts,
+                                       Timeline* timeline) = 0;
 
   bool LookUpCheckPoint(const string& name,
                         std::unique_ptr<TFProfTensor>* tensor);
