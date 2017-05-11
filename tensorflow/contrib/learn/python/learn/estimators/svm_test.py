@@ -59,9 +59,9 @@ class SVMTest(test.TestCase):
     def input_fn():
       return {
           'example_id': constant_op.constant(['1', '2', '3']),
-          'feature1': constant_op.constant([[0.5], [1.0], [1.0]]),
-          'feature2': constant_op.constant([[1.0], [-1.0], [0.5]]),
-      }, constant_op.constant([[1], [0], [1]])
+          'feature1': constant_op.constant([0.5, 1.0, 1.0]),
+          'feature2': constant_op.constant([1.0, -1.0, 0.5]),
+      }, constant_op.constant([1, 0, 1])
 
     feature1 = feature_column.real_valued_column('feature1')
     feature2 = feature_column.real_valued_column('feature2')
@@ -142,7 +142,7 @@ class SVMTest(test.TestCase):
     def input_fn():
       return {
           'example_id': constant_op.constant(['1', '2', '3']),
-          'feature1': constant_op.constant([[0.5], [1.0], [1.0]]),
+          'feature1': constant_op.constant([0.5, 1.0, 1.0]),
           'feature2': constant_op.constant([[1.0], [-1.0], [0.5]]),
       }, constant_op.constant([[1], [0], [1]])
 
@@ -223,7 +223,7 @@ class SVMTest(test.TestCase):
           'example_id':
               constant_op.constant(['1', '2', '3']),
           'price':
-              constant_op.constant([[0.6], [0.8], [0.3]]),
+              constant_op.constant([0.6, 0.8, 0.3]),
           'sq_footage':
               constant_op.constant([[900.0], [700.0], [600.0]]),
           'country':

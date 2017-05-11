@@ -660,20 +660,20 @@ REGISTER_OP("QueueDequeueMany")
     .Attr("timeout_ms: int = -1")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
-Dequeues n tuples of one or more tensors from the given queue.
+Dequeues `n` tuples of one or more tensors from the given queue.
 
-If the queue is closed and there are fewer than n elements, then an
+If the queue is closed and there are fewer than `n` elements, then an
 OutOfRange error is returned.
 
 This operation concatenates queue-element component tensors along the
 0th dimension to make a single component tensor.  All of the components
-in the dequeued tuple will have size n in the 0th dimension.
+in the dequeued tuple will have size `n` in the 0th dimension.
 
-This operation has k outputs, where k is the number of components in
-the tuples stored in the given queue, and output i is the ith
+This operation has `k` outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
 component of the dequeued tuple.
 
-N.B. If the queue is empty, this operation will block until n elements
+N.B. If the queue is empty, this operation will block until `n` elements
 have been dequeued (or 'timeout_ms' elapses, if specified).
 
 handle: The handle to a queue.
@@ -693,20 +693,20 @@ REGISTER_OP("QueueDequeueManyV2")
     .Attr("timeout_ms: int = -1")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
-Dequeues n tuples of one or more tensors from the given queue.
+Dequeues `n` tuples of one or more tensors from the given queue.
 
-If the queue is closed and there are fewer than n elements, then an
+If the queue is closed and there are fewer than `n` elements, then an
 OutOfRange error is returned.
 
 This operation concatenates queue-element component tensors along the
 0th dimension to make a single component tensor.  All of the components
-in the dequeued tuple will have size n in the 0th dimension.
+in the dequeued tuple will have size `n` in the 0th dimension.
 
-This operation has k outputs, where k is the number of components in
-the tuples stored in the given queue, and output i is the ith
+This operation has `k` outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
 component of the dequeued tuple.
 
-N.B. If the queue is empty, this operation will block until n elements
+N.B. If the queue is empty, this operation will block until `n` elements
 have been dequeued (or 'timeout_ms' elapses, if specified).
 
 handle: The handle to a queue.
@@ -726,24 +726,24 @@ REGISTER_OP("QueueDequeueUpTo")
     .Attr("timeout_ms: int = -1")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
-Dequeues n tuples of one or more tensors from the given queue.
+Dequeues `n` tuples of one or more tensors from the given queue.
 
 This operation is not supported by all queues.  If a queue does not support
 DequeueUpTo, then an Unimplemented error is returned.
 
-If the queue is closed and there are more than 0 but less than n elements
-remaining, then instead of returning an OutOfRange error like
-QueueDequeueMany, less than `n` elements are returned immediately.  If the queue
-is closed and there are 0 elements left in the queue, then an OutOfRange
-error is returned just like in QueueDequeueMany.  Otherwise the behavior
-is identical to QueueDequeueMany:
+If the queue is closed and there are more than 0 but less than `n`
+elements remaining, then instead of returning an OutOfRange error like
+QueueDequeueMany, less than `n` elements are returned immediately.  If
+the queue is closed and there are 0 elements left in the queue, then
+an OutOfRange error is returned just like in QueueDequeueMany.
+Otherwise the behavior is identical to QueueDequeueMany:
 
 This operation concatenates queue-element component tensors along the
 0th dimension to make a single component tensor.  All of the components
-in the dequeued tuple will have size n in the 0th dimension.
+in the dequeued tuple will have size `n` in the 0th dimension.
 
-This operation has k outputs, where k is the number of components in
-the tuples stored in the given queue, and output i is the ith
+This operation has k outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
 component of the dequeued tuple.
 
 handle: The handle to a queue.
@@ -763,24 +763,24 @@ REGISTER_OP("QueueDequeueUpToV2")
     .Attr("timeout_ms: int = -1")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
-Dequeues n tuples of one or more tensors from the given queue.
+Dequeues `n` tuples of one or more tensors from the given queue.
 
 This operation is not supported by all queues.  If a queue does not support
 DequeueUpTo, then an Unimplemented error is returned.
 
-If the queue is closed and there are more than 0 but less than n elements
-remaining, then instead of returning an OutOfRange error like
-QueueDequeueMany, less than `n` elements are returned immediately.  If the queue
-is closed and there are 0 elements left in the queue, then an OutOfRange
-error is returned just like in QueueDequeueMany.  Otherwise the behavior
-is identical to QueueDequeueMany:
+If the queue is closed and there are more than 0 but less than `n`
+elements remaining, then instead of returning an OutOfRange error like
+QueueDequeueMany, less than `n` elements are returned immediately.  If
+the queue is closed and there are 0 elements left in the queue, then
+an OutOfRange error is returned just like in QueueDequeueMany.
+Otherwise the behavior is identical to QueueDequeueMany:
 
 This operation concatenates queue-element component tensors along the
 0th dimension to make a single component tensor.  All of the components
 in the dequeued tuple will have size n in the 0th dimension.
 
-This operation has k outputs, where k is the number of components in
-the tuples stored in the given queue, and output i is the ith
+This operation has `k` outputs, where `k` is the number of components in
+the tuples stored in the given queue, and output `i` is the ith
 component of the dequeued tuple.
 
 handle: The handle to a queue.
@@ -872,8 +872,10 @@ REGISTER_OP("AccumulatorSetGlobalStep")
       return Status::OK();
     })
     .Doc(R"doc(
-Updates the accumulator with a new value for global_step. Logs warning if the
-accumulator's value is already higher than new_global_step.
+Updates the accumulator with a new value for global_step.
+
+Logs warning if the accumulator's value is already higher than
+new_global_step.
 
 handle: The handle to an accumulator.
 new_global_step: The new global_step value to set.
@@ -891,20 +893,22 @@ REGISTER_OP("ConditionalAccumulator")
       return Status::OK();
     })
     .Doc(R"doc(
-A conditional accumulator for aggregating gradients. The accumulator accepts
-gradients marked with local_step greater or equal to the most recent global_step
-known to the accumulator. The average can be extracted from the accumulator,
-provided sufficient gradients have been accumulated. Extracting the average
-automatically resets the aggregate to 0, and increments the global_step recorded
-by the accumulator.
+A conditional accumulator for aggregating gradients.
+
+The accumulator accepts gradients marked with local_step greater or
+equal to the most recent global_step known to the accumulator. The
+average can be extracted from the accumulator, provided sufficient
+gradients have been accumulated. Extracting the average automatically
+resets the aggregate to 0, and increments the global_step recorded by
+the accumulator.
 
 handle: The handle to the accumulator.
 dtype: The type of the value being accumulated.
 shape: The shape of the values, can be [], in which case shape is unknown.
 container: If non-empty, this accumulator is placed in the given container.
   Otherwise, a default container is used.
-shared_name: If non-empty, this accumulator will be shared under the given name
-  across multiple sessions.
+shared_name: If non-empty, this accumulator will be shared under the
+  given name across multiple sessions.
 )doc");
 
 REGISTER_OP("AccumulatorApplyGradient")
@@ -918,8 +922,9 @@ REGISTER_OP("AccumulatorApplyGradient")
       return Status::OK();
     })
     .Doc(R"doc(
-Applies a gradient to a given accumulator. Does not add if local_step is lesser
-than the accumulator's global_step.
+Applies a gradient to a given accumulator.
+
+Does not add if local_step is lesser than the accumulator's global_step.
 
 handle: The handle to a accumulator.
 local_step: The local_step value at which the gradient was computed.
@@ -942,13 +947,13 @@ REGISTER_OP("AccumulatorTakeGradient")
     })
     .Attr("dtype: numbertype")
     .Doc(R"doc(
-Extracts the average gradient in the given ConditionalAccumulator, provided
-that sufficient (i.e., more than num_required) gradients have been accumulated.
-The op blocks until sufficient gradients have been accumulated.
-If the accumulator has already aggregated more than num_required gradients, it
-returns the average of the accumulated gradients.
-Also automatically increments the recorded global_step in the accumulator by 1,
-and resets the aggregate to 0.
+Extracts the average gradient in the given ConditionalAccumulator.
+
+The op blocks until sufficient (i.e., more than num_required)
+gradients have been accumulated.  If the accumulator has already
+aggregated more than num_required gradients, it returns the average of
+the accumulated gradients.  Also automatically increments the recorded
+global_step in the accumulator by 1, and resets the aggregate to 0.
 
 handle: The handle to an accumulator.
 num_required: Number of gradients required before we return an aggregate.
@@ -969,12 +974,14 @@ REGISTER_OP("SparseConditionalAccumulator")
       return Status::OK();
     })
     .Doc(R"doc(
-A conditional accumulator for aggregating sparse gradients. The accumulator
-accepts gradients marked with local_step greater or equal to the most recent
-global_step known to the accumulator. The average can be extracted from the
-accumulator, provided sufficient gradients have been accumulated. Extracting the
-average automatically resets the aggregate to 0, and increments the global_step
-recorded by the accumulator.
+A conditional accumulator for aggregating sparse gradients.
+
+The accumulator accepts gradients marked with local_step greater or
+equal to the most recent global_step known to the accumulator. The
+average can be extracted from the accumulator, provided sufficient
+gradients have been accumulated. Extracting the average automatically
+resets the aggregate to 0, and increments the global_step recorded by
+the accumulator.
 
 handle: The handle to the accumulator.
 dtype: The type of the value being accumulated.
@@ -999,8 +1006,10 @@ REGISTER_OP("SparseAccumulatorApplyGradient")
       return Status::OK();
     })
     .Doc(R"doc(
-Applies a sparse gradient to a given accumulator. Does not add if local_step is
-lesser than the accumulator's global_step.
+Applies a sparse gradient to a given accumulator.
+
+Does not add if local_step is smaller than the accumulator's
+global_step.
 
 handle: The handle to a accumulator.
 local_step: The local_step value at which the sparse gradient was computed.
@@ -1032,13 +1041,14 @@ REGISTER_OP("SparseAccumulatorTakeGradient")
       return shape_inference::UnknownShape(c);
     })
     .Doc(R"doc(
-Extracts the average sparse gradient in the given SparseConditionalAccumulator,
-provided that sufficient (i.e., more than num_required) gradients have been
-accumulated. The op will blocks until sufficient gradients have been
-accumulated. If the accumulator has already aggregated more than num_required
-gradients, it will return its average of the accumulated gradients.
-Also automatically increments the recorded global_step in the accumulator by 1,
-and resets the aggregate to 0.
+Extracts the average sparse gradient in a SparseConditionalAccumulator.
+
+The op will blocks until sufficient (i.e., more than num_required)
+gradients have been accumulated. If the accumulator has already
+aggregated more than num_required gradients, it will return its
+average of the accumulated gradients.  Also automatically increments
+the recorded global_step in the accumulator by 1, and resets the
+aggregate to 0.
 
 handle: The handle to a SparseConditionalAccumulator.
 num_required: Number of gradients required before we return an aggregate.
@@ -1127,8 +1137,9 @@ REGISTER_OP("TensorArrayV3")
       return Status::OK();
     })
     .Doc(R"doc(
-An array of Tensors of given size, with data written via Write and read
-via Read or Pack.
+An array of Tensors of given size.
+
+Write data via Write and read via Read or Pack.
 
 handle: The handle to the TensorArray.
 flow: A scalar used to control gradient flow.
@@ -1444,8 +1455,10 @@ REGISTER_OP("TensorArrayCloseV3")
       return Status::OK();
     })
     .Doc(R"doc(
-Delete the TensorArray from its resource container.  This enables
-the user to close and release the resource in the middle of a step/run.
+Delete the TensorArray from its resource container.
+
+This enables the user to close and release the resource in the middle
+of a step/run.
 
 handle: The handle to a TensorArray (output of TensorArray or TensorArrayGrad).
 )doc");
@@ -1940,15 +1953,16 @@ REGISTER_OP("Stage")
     .SetShapeFn(shape_inference::UnknownShape)
     .SetIsStateful()
     .Doc(R"doc(
-Stage values similar to a lightweight Enqueue.  The basic functionality of this
-Op is similar to a queue with many fewer capabilities and options.  This Op is
-optimized for performance.
+Stage values similar to a lightweight Enqueue.
+
+The basic functionality of this Op is similar to a queue with many
+fewer capabilities and options.  This Op is optimized for performance.
 
 values: a list of tensors
 container: If non-empty, this queue is placed in the given container. Otherwise,
   a default container is used.
 shared_name: It is necessary to match this name to the matching Unstage Op.
-    )doc");
+)doc");
 
 REGISTER_OP("Unstage")
     .Output("values: dtypes")
@@ -1958,10 +1972,11 @@ REGISTER_OP("Unstage")
     .SetShapeFn(shape_inference::UnknownShape)
     .SetIsStateful()
     .Doc(R"doc(
-Op is similar to a lightweight Dequeue.  The basic funtionality is similar to
-dequeue with many fewer capabilities and options.  This Op is optimized for
-performance.
-    )doc");
+Op is similar to a lightweight Dequeue.
+
+The basic funtionality is similar to dequeue with many fewer
+capabilities and options.  This Op is optimized for performance.
+)doc");
 
 REGISTER_OP("RecordInput")
     .Output("records: string")

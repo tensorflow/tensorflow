@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/function.pb_text.h"
@@ -589,7 +590,7 @@ string Print(const GraphDef& gdef) {
   for (size_t i = 0; i < ret.size(); ++i) {
     const NodeDef* n = ret[i];
     if (i > 0) strings::StrAppend(&out, ", ");
-    CHECK_EQ(2, n->attr_size());
+    CHECK_LE(2, n->attr_size());
     CHECK_EQ(1, n->input_size());
     strings::StrAppend(&out, n->input(0), ":", get_type(*n));
   }
@@ -601,7 +602,8 @@ string Print(const GraphDef& gdef) {
   return out;
 }
 
-Status AddDefaultAttrs(const string& op, GetFunctionSignature get_function,
+Status AddDefaultAttrs(const string& op,
+                       const GetFunctionSignature& get_function,
                        InstantiateAttrValueMap* attrs) {
   const OpDef* op_def = nullptr;
   TF_RETURN_IF_ERROR(get_function(op, &op_def));
@@ -987,7 +989,7 @@ Status InstantiateFunction(const FunctionDef& fdef,
   for (const auto& aval : attr_values) {
     m.insert({aval.first, aval.second.proto});
   }
-  return InstantiateFunction(fdef, m, get_function, result);
+  return InstantiateFunction(fdef, m, std::move(get_function), result);
 }
 
 string Canonicalize(const string& funcname, InstantiateAttrValueSlice attrs) {

@@ -20,7 +20,6 @@ limitations under the License.
 #include <map>
 #include <string>
 
-#include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/util/padding.h"

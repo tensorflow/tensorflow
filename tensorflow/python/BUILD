@@ -2673,6 +2673,7 @@ py_library(
         ":errors",
         ":pywrap_tensorflow",
         ":util",
+        "@six_archive//:six",
     ],
 )
 

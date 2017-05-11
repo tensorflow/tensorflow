@@ -56,6 +56,8 @@ class HloInstruction {
     kLoop,                // Fused into a loop.
     kInput,               // Op's input is fused into the op itself.
     kOutput,              // Op's output is fused into the op itself.
+                          // REQUIRES: At least one operand buffer must be able
+                          // to alias the output buffer.
     kTransposeDot,        // Fused into a dot with transposed operands.
     kConvBackwardFilter,  // Fused into a backward filter convolution.
     kConvBackwardInput,   // Fused into a backward input convolution.

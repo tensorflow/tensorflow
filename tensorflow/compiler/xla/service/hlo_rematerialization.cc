@@ -1156,9 +1156,7 @@ StatusOr<bool> HloRematerialization::Run(
   VLOG(1) << "HloRematerialization() with memory limit of "
           << HumanReadableNumBytes(memory_limit_bytes);
 
-  TF_ASSIGN_OR_RETURN(points_to_analysis_,
-                      TuplePointsToAnalysis::Run(
-                          module, /*include_loop_fusion_instructions=*/true));
+  TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module));
 
   // Adjust memory limit to account for the output of the entry
   // computation. This is necessary because the per-computation accounting in

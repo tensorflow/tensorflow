@@ -77,6 +77,12 @@ class SplitOpTest(test.TestCase):
     self.assertEqual(result[1].shape[1], 2)
     self.assertEqual(result[2].shape[1], 2)
 
+    model_input2 = array_ops.placeholder(dtypes.float32, shape=[None, 2])
+    result = array_ops.split(model_input2, [2, 2], axis=0)[0]
+
+    with self.test_session(use_gpu=False) as sess:
+      sess.run(result, feed_dict={model_input2: np.ones([4, 2])})
+
   def testExplicitNum(self):
     size_splits = array_ops.placeholder(dtype=dtypes.int32, shape=[None])
 

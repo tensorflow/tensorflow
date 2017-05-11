@@ -972,7 +972,7 @@ def index_table_from_tensor(mapping,
   Sample Usages:
 
   ```python
-  mapping_strings = t.constant(["emerson", "lake", "palmer")
+  mapping_strings = t.constant(["emerson", "lake", "palmer"])
   table = tf.contrib.lookup.index_table_from_tensor(
       mapping=mapping_strings, num_oov_buckets=1, default_value=-1)
   features = tf.constant(["emerson", "lake", "and", "palmer"])
@@ -1064,7 +1064,7 @@ def string_to_index(tensor, mapping, default_value=-1, name=None):
   For example:
 
   ```python
-  mapping_strings = tf.constant(["emerson", "lake", "palmer")
+  mapping_strings = tf.constant(["emerson", "lake", "palmer"])
   feats = tf.constant(["emerson", "lake", "and", "palmer"])
   ids = tf.contrib.lookup.string_to_index(
       feats, mapping=mapping_strings, default_value=-1)

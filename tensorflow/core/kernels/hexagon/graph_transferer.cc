@@ -309,8 +309,9 @@ Status GraphTransferer::RegisterNode(
     RegisterNodeWithPaddingAndStrides(ops_definitions, shape_refiner, node);
   } else if (IsNodeFlattenReshape(node, shape_refiner)) {
     RegisterFlattenNode(ops_definitions, shape_refiner, node);
-  } else if (ops_definitions.GetOpIdFor(node.type_string()) !=
+  } else if (ops_definitions.GetOpIdFor(node.type_string(), {}) !=
              IGraphTransferOpsDefinitions::INVALID_OP_ID) {
+    // TODO(satok): Set correct data type if it's given.
     RegisterGenericNode(ops_definitions, shape_refiner, node);
   } else {
     return errors::InvalidArgument(node.type_string() +
@@ -458,7 +459,8 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
     const int ksize_id = RegisterConstantShape(kernel_sizes);
     extra_inputs.insert(extra_inputs.begin(), ksize_id);
   }
-  const int op_type_id = ops_definitions.GetOpIdFor(node.type_string());
+  // TODO(satok): Set correct data type if it's given.
+  const int op_type_id = ops_definitions.GetOpIdFor(node.type_string(), {});
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount())
       << "Op " << node.type_string() << " not found in map(id = " << op_type_id
       << ")";
@@ -477,7 +479,8 @@ void GraphTransferer::RegisterInputNode(
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
   const string op_type = node.type_string();
-  const int op_type_id = ops_definitions.GetOpIdFor(op_type);
+  // TODO(satok): Set correct data type if it's given.
+  const int op_type_id = ops_definitions.GetOpIdFor(op_type, {});
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount())
       << "Op" << node.name() << ", " << op_type << " is not supported,"
       << op_type_id;
@@ -494,7 +497,8 @@ void GraphTransferer::RegisterFlattenNode(
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
   const string op_type = IGraphTransferOpsDefinitions::FLATTEN_OP_NAME;
-  const int op_type_id = ops_definitions.GetOpIdFor(op_type);
+  // TODO(satok): Set correct data type if it's given.
+  const int op_type_id = ops_definitions.GetOpIdFor(op_type, {});
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
 
   AppendNodeParamsWithIoParams(
@@ -509,7 +513,8 @@ void GraphTransferer::RegisterGenericNode(
   VLOG(1) << "Register generic node: " << node.name();
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
-  const int op_type_id = ops_definitions.GetOpIdFor(node.type_string());
+  // TODO(satok): Set correct data type if it's given.
+  const int op_type_id = ops_definitions.GetOpIdFor(node.type_string(), {});
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
 
   AppendNodeParamsWithIoParams(

@@ -157,6 +157,8 @@ class Estimator(object):
       self._model_dir = tempfile.mkdtemp()
       logging.warning('Using temporary folder as model directory: %s',
                       self._model_dir)
+    if self._config.model_dir is None:
+      self._config = self._config.replace(model_dir=self._model_dir)
     logging.info('Using config: %s', str(vars(self._config)))
 
     if self._config.session_config is None:
