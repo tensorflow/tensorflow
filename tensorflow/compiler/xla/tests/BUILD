@@ -891,6 +891,7 @@ xla_test(
     name = "copy_test",
     srcs = ["copy_test.cc"],
     deps = [
+        ":client_library_test_base",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
