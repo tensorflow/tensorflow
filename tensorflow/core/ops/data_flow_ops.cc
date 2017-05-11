@@ -1946,6 +1946,9 @@ Op is similar to a queue with many fewer capabilities and options.  This Op is
 optimized for performance.
 
 values: a list of tensors
+dtypes A list of data types that inserted values should adhere to.
+capacity: If > 0, inserts on the container will block when the
+  capacity is reached.
 container: If non-empty, this queue is placed in the given container. Otherwise,
   a default container is used.
 shared_name: It is necessary to match this name to the matching Unstage Op.
@@ -2013,7 +2016,18 @@ REGISTER_OP("MapStage")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
     .SetIsStateful()
-    .Doc(R"doc(MapStage)doc");
+    .Doc(R"doc(
+Stage (key, values) in the underlying container which behaves like a hashtable.
+
+key: int64
+values: a list of tensors
+dtypes A list of data types that inserted values should adhere to.
+capacity: If > 0, inserts on the container will block when the
+  capacity is reached.
+container: If non-empty, this queue is placed in the given container. Otherwise,
+  a default container is used.
+shared_name: It is necessary to match this name to the matching Unstage Op.
+)doc");
 
 REGISTER_OP("MapPeek")
     .Input("key: int64")
@@ -2024,7 +2038,11 @@ REGISTER_OP("MapPeek")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(MapPeek)doc");
+    .Doc(R"doc(
+Op peeks at the values at the specified key.  If the
+underlying container does not contain this key
+this op will block until it does.
+    )doc");
 
 REGISTER_OP("MapUnstage")
     .Input("key: int64")
@@ -2035,7 +2053,11 @@ REGISTER_OP("MapUnstage")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(MapUnstage)doc");
+    .Doc(R"doc(
+Op removes and returns the values associated with the key
+from the underlying container.   If the underlying container
+does not contain this key, the op will block until it does.
+    )doc");
 
 REGISTER_OP("MapUnstageNoKey")
     .Output("key: int64")
@@ -2046,7 +2068,11 @@ REGISTER_OP("MapUnstageNoKey")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(MapUnstageNoKey)doc");
+    .Doc(R"doc(
+Op removes and returns a random (key, value)
+from the underlying container.   If the underlying container
+does not contain elements, the op will block until it does.
+      )doc");
 
 REGISTER_OP("MapSize")
     .Output("size: int32")
@@ -2055,7 +2081,9 @@ REGISTER_OP("MapSize")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape)
     .SetIsStateful()
-    .Doc(R"doc(MapSize)doc");
+    .Doc(R"doc(
+Op returns the number of elements in the underlying container.
+    )doc");
 
 REGISTER_OP("MapClear")
     .Attr("capacity: int = 0")
@@ -2063,7 +2091,9 @@ REGISTER_OP("MapClear")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
     .SetIsStateful()
-    .Doc(R"doc(MapClear)doc");
+    .Doc(R"doc(
+Op removes all elements in the underlying container.
+    )doc");
 
 
 // OrderedMap
@@ -2076,7 +2106,19 @@ REGISTER_OP("OrderedMapStage")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
     .SetIsStateful()
-    .Doc(R"doc(OrderedMapStage)doc");
+    .Doc(R"doc(
+Stage (key, values) in the underlying container which behaves like a ordered
+associative container.   Elements are ordered by key.
+
+key: int64
+values: a list of tensors
+dtypes A list of data types that inserted values should adhere to.
+capacity: If > 0, inserts on the container will block when the
+  capacity is reached.
+container: If non-empty, this queue is placed in the given container. Otherwise,
+  a default container is used.
+shared_name: It is necessary to match this name to the matching Unstage Op.
+)doc");
 
 REGISTER_OP("OrderedMapPeek")
     .Input("key: int64")
@@ -2087,7 +2129,12 @@ REGISTER_OP("OrderedMapPeek")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(OrderedMapPeek)doc");
+    .Doc(R"doc(
+Op peeks at the values at the specified key.  If the
+underlying container does not contain this key
+this op will block until it does.   This Op is optimized for
+performance.
+    )doc");
 
 REGISTER_OP("OrderedMapUnstage")
     .Input("key: int64")
@@ -2098,7 +2145,11 @@ REGISTER_OP("OrderedMapUnstage")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(OrderedMapUnstage)doc");
+    .Doc(R"doc(
+Op removes and returns the values associated with the key
+from the underlying container.   If the underlying container
+does not contain this key, the op will block until it does.
+    )doc");
 
 REGISTER_OP("OrderedMapUnstageNoKey")
     .Output("key: int64")
@@ -2109,7 +2160,11 @@ REGISTER_OP("OrderedMapUnstageNoKey")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .SetIsStateful()
-    .Doc(R"doc(OrderedMapUnstageNoKey)doc");
+    .Doc(R"doc(
+Op removes and returns the (key, value) element with the smallest
+key from the underlying container.   If the underlying container
+does not contain elements, the op will block until it does.
+      )doc");
 
 REGISTER_OP("OrderedMapSize")
     .Output("size: int32")
@@ -2118,7 +2173,9 @@ REGISTER_OP("OrderedMapSize")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape)
     .SetIsStateful()
-    .Doc(R"doc(OrderedMapSize)doc");
+    .Doc(R"doc(
+Op returns the number of elements in the underlying container.
+    )doc");
 
 REGISTER_OP("OrderedMapClear")
     .Attr("capacity: int = 0")
@@ -2126,7 +2183,9 @@ REGISTER_OP("OrderedMapClear")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
     .SetIsStateful()
-    .Doc(R"doc(OrderedMapClear)doc");
+    .Doc(R"doc(
+Op removes all elements in the underlying container.
+    )doc");
 
 REGISTER_OP("RecordInput")
     .Output("records: string")
