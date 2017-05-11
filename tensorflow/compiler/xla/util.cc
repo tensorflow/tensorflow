@@ -206,6 +206,15 @@ PaddingConfig MakeNoPaddingConfig(int64 rank) {
   return padding_config;
 }
 
+bool HasInteriorPadding(const PaddingConfig& config) {
+  for (const auto& dim : config.dimensions()) {
+    if (dim.interior_padding() != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 string HumanReadableNumFlops(double flops, double nanoseconds) {
   if (nanoseconds == 0) {
     return "NaN FLOP/s";

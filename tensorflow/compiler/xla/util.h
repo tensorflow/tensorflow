@@ -265,6 +265,10 @@ string VectorString(const std::initializer_list<T>& c) {
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);
 
+// Returns true if the padding configuration has at least one dimension with
+// non-zero interior padding.
+bool HasInteriorPadding(const PaddingConfig& config);
+
 // Imports the templated FloorOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.
 template <typename T>

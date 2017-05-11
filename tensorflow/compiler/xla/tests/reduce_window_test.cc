@@ -182,6 +182,7 @@ TEST_F(ReduceWindowTest, DISABLED_AmongMajor2DimsMediumSizeLargePadding) {
 
   ComputeAndCompareR4<float>(&builder_, *result, {}, ErrorSpec(1e-3, 1e-3));
 }
+
 // TODO(b/31809540): Implement minor dim reduction to reduce num of reshapes.
 TEST_F(ReduceWindowTest, ReduceR4AmongXYMinorSmall) {
   Array4D<float> input_array(2, 2, 4, 16);
@@ -364,6 +365,16 @@ TEST_F(ReduceWindowTest, Add2x2In2x2Disjoint) {
   ReduceWindowAdd(input, {2, 2}, {2, 2}, Padding::kValid);
   Array2D<float> expected({
       {2.6f, 0.7f}, {4.6f, 4.5f},
+  });
+  ComputeAndCompareR2<float>(&builder_, expected, {}, ErrorSpec(0.0001));
+}
+
+TEST_F(ReduceWindowTest, Add1x2In2x2Same) {
+  Array2D<float> input_array({{1.0f, 2.0f}, {3.0f, 4.0f}});
+  auto input = builder_.ConstantR2FromArray2D<float>(input_array);
+  ReduceWindowAdd(input, {1, 2}, {1, 1}, Padding::kSame);
+  Array2D<float> expected({
+      {3.0f, 2.0f}, {7.0f, 4.0f},
   });
   ComputeAndCompareR2<float>(&builder_, expected, {}, ErrorSpec(0.0001));
 }
