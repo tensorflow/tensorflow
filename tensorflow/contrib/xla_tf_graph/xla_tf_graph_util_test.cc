@@ -67,20 +67,16 @@ static void DumpHloGraphForDebug(const std::vector<XlaCompiler::Argument>& args,
 
   // Compiles the graph.
   XlaCompiler::Options options;
-  options.device_type = DeviceType("XLA_CPU_JIT");
+  DeviceType device_type("XLA_CPU_JIT");
+  options.device_type = &device_type;
   options.client = client;
+  options.flib_def = flib_def.get();
   compiler.reset(new XlaCompiler(options));
-
-  flr.reset(NewFunctionLibraryRuntime(compiler->device_mgr(), /*env=*/nullptr,
-                                      compiler->device(), TF_GRAPH_DEF_VERSION,
-                                      flib_def.get(), OptimizerOptions(),
-                                      /*custom_kernel_creator=*/nullptr));
 
   // Compile graph
   XlaCompiler::CompilationResult result;
   TF_CHECK_OK(compiler->CompileGraph(XlaCompiler::CompileOptions(), "dump",
-                                     std::move(graph), flr.get(), args,
-                                     &result));
+                                     std::move(graph), args, &result));
 
   // Convert to hlo
   xla::Computation& computation = result.computation;

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
@@ -176,10 +177,17 @@ class XlaCompiler {
   };
 
   struct Options {
-    // Name of the compilation device to use.
-    DeviceType device_type = DeviceType("");
+    // Name of the compilation device to use. Needs to be live only during
+    // XlaCompiler's constructor.
+    const DeviceType* device_type = nullptr;
 
     xla::Client* client = nullptr;
+
+    // Function library in which to find function definitions. Must be non-null.
+    const FunctionLibraryDefinition* flib_def = nullptr;
+
+    // The graph def version to be compiled.
+    int graph_def_version = TF_GRAPH_DEF_VERSION;
 
     // If 'allow_cpu_custom_calls' is true, kernels may make use of CustomCall()
     // for CPU; additionally, an optional XlaLocalRuntimeContext* may be passed
@@ -234,7 +242,6 @@ class XlaCompiler {
   // not included in the XLA computation's outputs. The XLA computation is
   // null if there are no data-dependent outputs and no side effects.
   Status CompileFunction(const CompileOptions& options,
-                         FunctionLibraryRuntime* flr,
                          const NameAttrList& fn_name_attrs,
                          const std::vector<Argument>& args,
                          CompilationResult* result);
@@ -243,7 +250,7 @@ class XlaCompiler {
   // Similar to CompileFunction, but takes a Graph as input rather than a
   // function.
   Status CompileGraph(const CompileOptions& options, string const& name,
-                      std::unique_ptr<Graph> graph, FunctionLibraryRuntime* flr,
+                      std::unique_ptr<Graph> graph,
                       const std::vector<Argument>& args,
                       CompilationResult* result);
 
@@ -256,6 +263,7 @@ class XlaCompiler {
   xla::Client* client() const { return options_.client; }
   XlaCompilationDevice* device() const { return device_; }
   const DeviceMgr* device_mgr() const { return &device_mgr_; }
+  FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_.get(); }
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.
@@ -279,6 +287,8 @@ class XlaCompiler {
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   DeviceMgr device_mgr_;
+
+  std::unique_ptr<FunctionLibraryRuntime> flib_runtime_;
 
   std::unordered_map<string, xla::ChannelHandle> channels_ GUARDED_BY(mu_);
 

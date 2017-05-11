@@ -61,12 +61,21 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
     : options_(std::move(options)),
       initialization_status_(Status::OK()),
       next_step_id_(1),
-      device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
+      device_(
+          new XlaCompilationDevice(SessionOptions(), *options_.device_type)),
       device_mgr_({device_}) {
+  // We no longer need the device_type.
+  options_.device_type = nullptr;
+
   if (options_.populate_resource_manager) {
     initialization_status_ =
         (*options_.populate_resource_manager)(device_->resource_manager());
   }
+
+  flib_runtime_.reset(NewFunctionLibraryRuntime(
+      &device_mgr_, Env::Default(), device_, options.graph_def_version,
+      options.flib_def, OptimizerOptions(),
+      nullptr /* custom_kernel_creator */));
 }
 
 XlaCompiler::~XlaCompiler() = default;
@@ -77,8 +86,7 @@ int64 XlaCompiler::NextStepId() {
 }
 
 Status XlaCompiler::CompileFunction(
-    const XlaCompiler::CompileOptions& options, FunctionLibraryRuntime* flr,
-    const NameAttrList& function,
+    const XlaCompiler::CompileOptions& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     XlaCompiler::CompilationResult* result) {
   const string function_id = Canonicalize(function.name(), function.attr());
@@ -86,14 +94,14 @@ Status XlaCompiler::CompileFunction(
 
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(
-      flr->Instantiate(function.name(), function.attr(), &handle));
+      flib_runtime_->Instantiate(function.name(), function.attr(), &handle));
 
-  const FunctionBody* fbody = flr->GetFunctionBody(handle);
+  const FunctionBody* fbody = flib_runtime_->GetFunctionBody(handle);
   CHECK(fbody);
 
   TF_RETURN_IF_ERROR(CheckSignature(fbody->arg_types, args));
 
-  std::unique_ptr<Graph> graph(new Graph(flr->GetFunctionLibraryDefinition()));
+  std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
   CopyGraph(*fbody->graph, graph.get());
 
   if (VLOG_IS_ON(1)) {
@@ -107,7 +115,8 @@ Status XlaCompiler::CompileFunction(
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(flr, flr->env(), /*device=*/nullptr, &graph);
+  optimizer.Optimize(flib_runtime_.get(), flib_runtime_->env(),
+                     /*device=*/nullptr, &graph);
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile(
@@ -117,7 +126,7 @@ Status XlaCompiler::CompileFunction(
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
-      CompileGraph(options, function_id, std::move(graph), flr, args, result));
+      CompileGraph(options, function_id, std::move(graph), args, result));
   VLOG(1) << "====================================================";
 
   return Status::OK();
@@ -369,7 +378,6 @@ Status BuildComputation(
 Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  string const& name,
                                  std::unique_ptr<Graph> graph,
-                                 FunctionLibraryRuntime* flib,
                                  const std::vector<XlaCompiler::Argument>& args,
                                  CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate ComputationBuilder.";
@@ -391,8 +399,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                     &result->xla_input_shapes));
   context->set_args(std::move(context_args));
 
-  TF_RETURN_IF_ERROR(
-      ExecuteGraph(context, std::move(graph), device_, flib, NextStepId()));
+  TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,
+                                  flib_runtime_.get(), NextStepId()));
 
   int num_nonconst_outputs;
   TF_RETURN_IF_ERROR(BuildComputation(

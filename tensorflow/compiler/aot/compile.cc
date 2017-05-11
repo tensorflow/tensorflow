@@ -289,17 +289,17 @@ Status ConvertGraphToXla(xla::CompileOnlyClient* client,
   // Compile the graph into an XLA computation.
   XlaCompiler::Options compiler_options;
   compiler_options.client = client;
-  compiler_options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
+  DeviceType device_type(DEVICE_CPU_XLA_JIT);
+  compiler_options.device_type = &device_type;
+  compiler_options.flib_def = &graph->flib_def();
+  compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;
   XlaCompiler compiler(compiler_options);
 
-  std::unique_ptr<FunctionLibraryRuntime> flib_run(NewFunctionLibraryRuntime(
-      compiler.device_mgr(), Env::Default(), compiler.device(),
-      graph->versions().producer(), &graph->flib_def(), OptimizerOptions()));
   XlaCompiler::CompilationResult result;
   TF_RETURN_IF_ERROR(compiler.CompileGraph(XlaCompiler::CompileOptions(),
                                            "tfcompile", std::move(graph),
-                                           flib_run.get(), xla_args, &result));
+                                           xla_args, &result));
   *has_context_arg = result.requires_runtime_context;
   *computation = std::move(result.computation);
 
