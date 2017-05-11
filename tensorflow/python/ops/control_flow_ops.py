@@ -50,6 +50,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -2985,6 +2987,11 @@ def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
   a callable, they are implicitly unpacked to single values. This
   behavior is disabled by passing `strict=True`.
 
+  If an unordered dictionary is used for `pred_fn_pairs`, the order of the
+  conditional tests is not guaranteed. However, the order is guaranteed to be
+  deterministic, so that variables created in conditional branches are created
+  in fixed order across runs.
+
   Example 1:
     Pseudocode:
     ```
@@ -3040,11 +3047,14 @@ def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
           or isinstance(pfp, dict)):
     raise TypeError("fns must be a list, tuple, or dict")
   if isinstance(pfp, dict):
-    pfp = pfp.items()
-    if not exclusive:
-      logging.warn("%s: Provided dictionary of predicate/fn pairs, but "
-                   "exclusive=False.  Order of conditional tests is "
-                   "not guaranteed.", name)
+    if isinstance(pfp, collections.OrderedDict):
+      pfp = pfp.items()
+    else:
+      pfp = sorted(pfp.items(), key=lambda item: item[0].name)
+      if not exclusive:
+        logging.warn("%s: An unordered dictionary of predicate/fn pairs was "
+                     "provided, but exclusive=False. The order of conditional "
+                     "tests is deterministic but not guaranteed.", name)
   for tup in pfp:
     if not isinstance(tup, _basetuple) or len(tup) != 2:
       raise TypeError("Each entry in pred_fn_pairs must be a 2-tuple")
