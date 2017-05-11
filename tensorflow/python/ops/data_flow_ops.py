@@ -1538,8 +1538,9 @@ class StagingArea(BaseStagingArea):
   Each `StagingArea` element is a tuple of one or more tensors, where each
   tuple component has a static dtype, and may have a static shape.
 
-  The capacity of a `StagingArea` is unbounded and supports multiple
-  concurrent producers and consumers; and provides exactly-once delivery.
+  The capacity of a `StagingArea` may be bounded or unbounded.
+  It supports multiple concurrent producers and consumers; and
+  provides exactly-once delivery.
 
   Each element of a `StagingArea` is a fixed-length tuple of tensors whose
   dtypes are described by `dtypes`, and whose shapes are optionally described
@@ -1589,6 +1590,9 @@ class StagingArea(BaseStagingArea):
 
   def put(self, values, name=None):
     """Create an op that places a value into the staging area.
+
+    This operation will block if the `StagingArea` has reached
+    its capacity.
 
     Args:
       values: Tensor (or a tuple of Tensors) to place into the staging area.
@@ -1655,8 +1659,8 @@ class StagingArea(BaseStagingArea):
     the specified index, it will block until enough elements
     are inserted to complete the operation.
 
-    The placement of the returned tensor will be determined by the current
-    device scope when this function is called.
+    The placement of the returned tensor will be determined by
+    the current device scope when this function is called.
 
     Args:
       index: The index of the tensor within the staging area
@@ -1709,16 +1713,74 @@ class StagingArea(BaseStagingArea):
 
 class MapStagingArea(BaseStagingArea):
     """
-    Class for staging inputs. Similar to `StagingArea` but behaves
-    like a hashtable with support for puts, gets, pops, popitems,
-    size and clear.
+    A `MapStagingArea` is a TensorFlow data structure that stores tensors across
+    multiple steps, and exposes operations that can put and get tensors.
 
-    Keys are int64 and the associated data is a Tensor or list of Tensors
+    Each `MapStagingArea` element is a (key, value) pair.
+    Only int64 keys are supported, other types should be
+    hashed to produce a key.
+    Values are a tuple of one or more tensors.
+    Each tuple component has a static dtype,
+    and may have a static shape.
+
+    The capacity of a `MapStagingArea` may be bounded or unbounded.
+    It supports multiple concurrent producers and consumers; and
+    provides exactly-once delivery.
+
+    Each value tuple of a `MapStagingArea` is a fixed-length tuple of tensors whose
+    dtypes are described by `dtypes`, and whose shapes are optionally described
+    by the `shapes` argument.
+
+    If the `shapes` argument is specified, each component of a staging area
+    element must have the respective fixed shape. If it is
+    unspecified, different elements may have different shapes,
+
+    It behaves like an associative container with support for:
+
+     - put(key, values)
+     - peek(key)         like dict.get(key)
+     - get(key)          like dict.pop(key)
+     - get(key=None)     like dict.popitem()
+     - size()
+     - clear()
+
+    If ordered a tree structure ordered by key will be used and
+    get(key=None) will remove (key, value) pairs in increasing key order.
+    Otherwise a hashtable
+
+    It can be configured with a capacity in which case
+    put(key, values) will block until space becomes available.
+
+    All get() and peek() commands block if the requested
+    (key, value) pair is not present in the staging area.
     """
 
     def __init__(self, dtypes, capacity=0, ordered=False,
                         shapes=None, names=None,
                         shared_name=None):
+        """
+        Args:
+          dtypes:  A list of types.  The length of dtypes must equal the number
+            of tensors in each element.
+          capacity: (Optional.) Maximum number of elements.
+            An integer. If zero, the Staging Area is unbounded
+          ordered: (Optional.) If True the underlying data structure
+            is a tree ordered on key. Otherwise assume a hashtable.
+          shapes: (Optional.) Constraints on the shapes of tensors in an element.
+            A list of shape tuples or None. This list is the same length
+            as dtypes.  If the shape of any tensors in the element are constrained,
+            all must be; shapes can be None if the shapes should not be constrained.
+          names: (Optional.) If provided, the `get()` and
+            `put()` methods will use dictionaries with these names as keys.
+            Must be None or a list or tuple of the same length as `dtypes`.
+          shared_name: (Optional.) A name to be used for the shared object. By
+            passing the same name to two different python objects they will share
+            the underlying staging area. Must be a string.
+
+        Raises:
+          ValueError: If one of the arguments is invalid.
+
+        """
 
         super(MapStagingArea, self).__init__(dtypes, shapes,
                                           names, shared_name,
@@ -1746,6 +1808,9 @@ class MapStagingArea(BaseStagingArea):
         """
         Create an op that stores the (key, data) pair in the staging area
 
+        This operation will block if the capacity of this
+        container is reached.
+
         Args:
             key: Key associated with the data
             vals: Tensor (or a tuple of Tensors) to place
@@ -1772,7 +1837,7 @@ class MapStagingArea(BaseStagingArea):
 
     def peek(self, key, name=None):
         """
-        Peeks at staging area data associated with the key .
+        Peeks at staging area data associated with the key.
 
         If the key is not in the staging area, it will block
         until the associated (key, value) is inserted.
