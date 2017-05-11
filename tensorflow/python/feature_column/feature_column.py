@@ -128,7 +128,6 @@ import math
 import numpy as np
 import six
 
-from tensorflow.python.feature_column import lookup_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -137,6 +136,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
@@ -1950,7 +1950,7 @@ class _VocabularyListCategoricalColumn(
       input_tensor = math_ops.to_int64(input_tensor)
 
     return lookup_ops.index_table_from_tensor(
-        mapping=tuple(self.vocabulary_list),
+        vocabulary_list=tuple(self.vocabulary_list),
         default_value=self.default_value,
         dtype=key_dtype,
         name='{}_lookup'.format(self.key)).lookup(input_tensor)
