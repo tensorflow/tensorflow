@@ -107,18 +107,14 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
         AddOutputTensorShapeTypeByTensorShapeMap(tensor_shape_map, &node_def));
   }
   CHECK(status.ok());
-  const DataType input_data_type =
-      inputs.empty() ? DT_FLOAT : inputs.at(0).second.dtype();
 
   Scope root = Scope::NewRootScope();
   std::vector<Output> output_list;
+  DataTypeVector input_types;
   for (const std::pair<string, Tensor>& input_node_info : inputs) {
     const Scope& scope = root.WithOpName(input_node_info.first);
     Node* ret;
     const auto unique_name = scope.GetUniqueNameForOp("PlaceholderV2");
-    const DataType dt = input_node_info.second.dtype();
-    // DataType of input arguments should be same.
-    CHECK_EQ(input_data_type, dt);
     auto builder = NodeBuilder(unique_name, "PlaceholderV2")
                        .Attr("dtype", input_node_info.second.dtype())
                        .Attr("shape", input_node_info.second.shape());
@@ -126,25 +122,21 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
     scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
     CHECK(scope.ok());
     output_list.emplace_back(Output(ret, 0));
+    input_types.push_back(input_node_info.second.dtype());
   }
 
   const RemoteFusedGraphExecuteInfo execute_info =
       BuildRemoteFusedGraphExecuteInfo(*original_def, inputs, outputs,
                                        tensor_shape_map);
 
-  const std::pair<DataType, TensorShape>* tensor_shape_type =
-      RemoteFusedGraphExecuteUtils::GetTensorShapeType(tensor_shape_map,
-                                                       outputs.at(0));
-  CHECK_NE(tensor_shape_type, nullptr);
-  const DataType output_data_type = tensor_shape_type->first;
+  DataTypeVector output_types;
   // Sanity-check to confirm all output data types are same.
   for (const string& output_node_name : outputs) {
     const std::pair<DataType, TensorShape>* tst =
         RemoteFusedGraphExecuteUtils::GetTensorShapeType(tensor_shape_map,
                                                          output_node_name);
     CHECK_NE(tst, nullptr);
-    const DataType dt = tensor_shape_type->first;
-    CHECK_EQ(output_data_type, dt);
+    output_types.push_back(tst->first);
   }
 
   const Scope& scope = root.WithOpName(remote_graph_execute_name);
@@ -152,18 +144,17 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   auto node_out_list = ops::AsNodeOutList(scope, InputList(output_list));
   Node* node;
   const auto unique_name = scope.GetUniqueNameForOp("RemoteFusedGraphExecute");
+
   auto builder = NodeBuilder(unique_name, "RemoteFusedGraphExecute")
                      .Input(node_out_list)
-                     .Attr("M", static_cast<int64>(output_list.size()))
-                     .Attr("N", static_cast<int64>(outputs.size()))
-                     .Attr("T", input_data_type)
-                     .Attr("U", output_data_type)
-                     .Attr("serialized_graph_transfer_info",
+                     .Attr("Tinputs", input_types)
+                     .Attr("Toutputs", output_types)
+                     .Attr("serialized_remote_fused_graph_execute_info",
                            StringPiece(execute_info.SerializeAsString()));
   CHECK(scope.ok());
   scope.UpdateBuilder(&builder);
   scope.UpdateStatus(builder.Finalize(scope.graph(), &node));
-  CHECK(scope.ok());
+  CHECK(scope.ok()) << scope.status();
 
   GraphDef fusedGraphDef;
   TF_CHECK_OK(root.ToGraphDef(&fusedGraphDef));

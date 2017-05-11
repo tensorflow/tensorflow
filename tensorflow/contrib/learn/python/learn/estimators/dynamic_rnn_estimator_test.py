@@ -38,8 +38,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -157,7 +157,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
         self.context_feature_columns)
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.tables_initializer())
+      sess.run(lookup_ops.tables_initializer())
       sequence_input_val = sess.run(sequence_input)
     expected_shape = np.array([
         3,  # expected batch size
@@ -178,7 +178,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     # Obtain values of activations and final state.
     with session.Session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.tables_initializer())
+      sess.run(lookup_ops.tables_initializer())
       activations, final_state = sess.run([activations_t, final_state_t])
 
     expected_activations_shape = np.array([3, 2, self.NUM_LABEL_COLUMNS])
@@ -409,56 +409,6 @@ class DynamicRnnEstimatorTest(test.TestCase):
     for i, state_size in enumerate([4, 4, 8, 8, 7, 7]):
       state_piece = prediction_dict[dynamic_rnn_estimator._get_state_name(i)]
       self.assertListEqual(list(state_piece.shape), [batch_size, state_size])
-
-  def testLegacyConstructor(self):
-    """Exercise legacy constructor function."""
-    num_units = 16
-    num_layers = 6
-    output_keep_prob = 0.9
-    input_keep_prob = 0.7
-    batch_size = 11
-    learning_rate = 0.1
-    train_sequence_length = 21
-    train_steps = 121
-
-    def get_input_fn(batch_size, sequence_length, state_dict, starting_step=0):
-
-      def input_fn():
-        sequence = constant_op.constant(
-            [[(starting_step + i + j) % 2 for j in range(sequence_length + 1)]
-             for i in range(batch_size)],
-            dtype=dtypes.int32)
-        labels = array_ops.slice(sequence, [0, 0],
-                                 [batch_size, sequence_length])
-        inputs = array_ops.expand_dims(
-            math_ops.to_float(
-                array_ops.slice(sequence, [0, 1], [batch_size, sequence_length
-                                                  ])), 2)
-        input_dict = state_dict
-        input_dict['inputs'] = inputs
-        return input_dict, labels
-
-      return input_fn
-
-    seq_columns = [feature_column.real_valued_column('inputs', dimension=1)]
-    config = run_config.RunConfig(tf_random_seed=21212)
-
-    model_dir = tempfile.mkdtemp()
-    sequence_estimator = dynamic_rnn_estimator.multi_value_rnn_classifier(
-        num_classes=2,
-        num_units=num_units,
-        num_rnn_layers=num_layers,
-        input_keep_probability=input_keep_prob,
-        output_keep_probability=output_keep_prob,
-        sequence_feature_columns=seq_columns,
-        learning_rate=learning_rate,
-        config=config,
-        model_dir=model_dir)
-
-    train_input_fn = get_input_fn(
-        batch_size, train_sequence_length, state_dict={})
-
-    sequence_estimator.fit(input_fn=train_input_fn, steps=train_steps)
 
   def testMultipleRuns(self):
     """Tests resuming training by feeding state."""

@@ -190,9 +190,14 @@ contains vz-line-charts embedded inside tf-panes-helper's.
   </template>
 
   <script>
-    Polymer({
+    TF.Dashboard.TfScalarDashboard = Polymer({
       is: "tf-scalar-dashboard",
+      factoryImpl: function(backend, router) {
+        this.backend = backend;
+        this.router = router;
+      },
       behaviors: [
+        TF.Dashboard.DashboardBehavior("scalars"),
         TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
         TF.Backend.Behavior,
       ],

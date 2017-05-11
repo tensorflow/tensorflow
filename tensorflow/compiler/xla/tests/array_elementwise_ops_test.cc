@@ -29,13 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/casts.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -1667,9 +1667,9 @@ TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
   auto concatenated = builder.Add(x, x);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(computation_status.status().ToString(),
-               testing::ContainsRegex(
-                   "Expected non-opaque argument for lhs of binary operation"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              ::testing::ContainsRegex(
+                  "Expected non-opaque argument for lhs of binary operation"));
 }
 
 // Regression test for b/31927799. "slice - y" is fused and requires implicit

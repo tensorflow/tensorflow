@@ -52,7 +52,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   operator.shape
   ==> [2, 2]
 
-  operator.log_determinant()
+  operator.log_abs_determinant()
   ==> scalar Tensor
 
   x = ... Shape [2, 4] Tensor
@@ -97,7 +97,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   #### Matrix property hints
 
   This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-  for `X = non_singular, self_adjoint, positive_definite`.
+  for `X = non_singular, self_adjoint, positive_definite, square`.
   These have the following meaning
   * If `is_X == True`, callers should expect the operator to have the
     property `X`.  This is a promise that should be fulfilled, but is *not* a
@@ -113,6 +113,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
+               is_square=None,
                name="LinearOperatorDiag"):
     r"""Initialize a `LinearOperatorDiag`.
 
@@ -129,6 +130,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
         self-adjoint to be positive-definite.  See:
         https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
+      is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
     Raises:
@@ -147,12 +149,17 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
         else:
           is_self_adjoint = True
 
+      if is_square is False:
+        raise ValueError("Only square diagonal operators currently supported.")
+      is_square = True
+
       super(LinearOperatorDiag, self).__init__(
           dtype=self._diag.dtype,
           graph_parents=[self._diag],
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
+          is_square=is_square,
           name=name)
 
   def _check_diag(self, diag):
@@ -206,8 +213,9 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
             "This diagonal operator contained non-zero imaginary values.  "
             " Thus it was not self-adjoint."))
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag
+    x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     diag_mat = array_ops.expand_dims(diag_term, -1)
     return diag_mat * x
 
@@ -218,8 +226,9 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     return math_ops.reduce_sum(
         math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
     inv_diag_mat = array_ops.expand_dims(1. / diag_term, -1)
     return rhs * inv_diag_mat
 

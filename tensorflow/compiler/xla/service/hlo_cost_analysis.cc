@@ -368,11 +368,9 @@ Status HloCostAnalysis::HandleFusion(HloInstruction* fusion) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleCall(
-    HloInstruction* call, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* computation) {
+Status HloCostAnalysis::HandleCall(HloInstruction* call) {
   HloCostAnalysis computation_visitor(shape_size_);
-  TF_RETURN_IF_ERROR(computation->Accept(&computation_visitor));
+  TF_RETURN_IF_ERROR(call->to_apply()->Accept(&computation_visitor));
 
   current_flop_count_ = computation_visitor.flop_count();
   current_transcendental_count_ = computation_visitor.transcendental_count();
@@ -396,18 +394,15 @@ Status HloCostAnalysis::HandleSort(HloInstruction* sort,
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleWhile(HloInstruction* xla_while,
-                                    HloInstruction* init,
-                                    HloComputation* condition,
-                                    HloComputation* body) {
+Status HloCostAnalysis::HandleWhile(HloInstruction* xla_while) {
   // Since the number of iterations of the while node is not statically
   // determined, we cannot precisely compute the cost of a while node. For now
   // compute the cost of a single iteration.
   // TODO(b/26346211): Improve the cost analysis for while node.
   HloCostAnalysis body_visitor(shape_size_);
-  TF_RETURN_IF_ERROR(body->Accept(&body_visitor));
+  TF_RETURN_IF_ERROR(xla_while->while_body()->Accept(&body_visitor));
   HloCostAnalysis condition_visitor(shape_size_);
-  TF_RETURN_IF_ERROR(condition->Accept(&condition_visitor));
+  TF_RETURN_IF_ERROR(xla_while->while_condition()->Accept(&condition_visitor));
 
   current_flop_count_ =
       body_visitor.flop_count() + condition_visitor.flop_count();

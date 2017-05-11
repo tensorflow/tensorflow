@@ -60,6 +60,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
@@ -97,6 +98,7 @@ cc_library(
     name = "simple_orc_jit",
     srcs = ["simple_orc_jit.cc"],
     hdrs = ["simple_orc_jit.h"],
+    linkopts = ["-ldl"],
     deps = [
         ":compiler_functor",
         ":cpu_runtime",

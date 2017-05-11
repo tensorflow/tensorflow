@@ -196,7 +196,7 @@ class ControlFlowTest(test.TestCase):
 
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
-          lambda e: "The tensor returned for" in str(e)):
+          lambda e: "Retval[0] does not have value" in str(e)):
         dead_branch.eval()
 
   def testSwitchMergeLess(self):

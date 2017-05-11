@@ -390,6 +390,20 @@ class TextPluginTest(test.TestCase):
       </table>""")
     self.assertEqual(convert(d3), d3_expected)
 
+  def testPluginIsActive(self):
+    plugin = text_plugin.TextPlugin()
+    multiplexer = event_multiplexer.EventMultiplexer()
+    plugin.get_plugin_apps(event_multiplexer.EventMultiplexer(), None)
+
+    # The plugin is inactive because text summaries are not available.
+    self.assertFalse(plugin.is_active())
+
+    multiplexer.AddRunsFromDirectory(self.logdir)
+    multiplexer.Reload()
+
+    # The plugin is active because text summaries are available.
+    self.assertTrue(self.plugin.is_active())
+
 
 if __name__ == '__main__':
   test.main()

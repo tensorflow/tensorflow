@@ -70,6 +70,7 @@ string HloExecutionProfile::ToString(
   string result;
   const int64 total_cycles = total_cycles_executed(computation);
   double clock_rate_ghz = device_description.clock_rate_ghz();
+  CHECK_GE(clock_rate_ghz, 1e-9);
 
   const auto cycles_to_microseconds = [&](double cycles) {
     return cycles / clock_rate_ghz / 1000.0;
@@ -80,14 +81,19 @@ string HloExecutionProfile::ToString(
     double nsecs = cycles / clock_rate_ghz;
     string bytes_per_sec;
     string bytes_per_cycle;
-    if (bytes_accessed >= 0) {
+    if (cycles <= 0 || bytes_accessed < 0) {
+      bytes_per_sec = "<unknown>";
+      bytes_per_cycle = "<unknown>";
+    } else {
       bytes_per_sec = tensorflow::strings::HumanReadableNumBytes(
           bytes_accessed / (nsecs / 1e9));
       bytes_per_cycle =
           tensorflow::strings::HumanReadableNumBytes(bytes_accessed / cycles);
-    } else {
-      bytes_per_sec = "<unknown>";
-      bytes_per_cycle = "<unknown>";
+    }
+
+    double cycles_percent = 0;
+    if (total_cycles > 0) {
+      cycles_percent = cycles / static_cast<double>(total_cycles) * 100;
     }
 
     tensorflow::strings::StrAppend(
@@ -97,8 +103,7 @@ string HloExecutionProfile::ToString(
             ":: "
             "%12s/cycle :: "
             "%s",
-            cycles, cycles / static_cast<double>(total_cycles) * 100,
-            cycles_to_microseconds(cycles),
+            cycles, cycles_percent, cycles_to_microseconds(cycles),
             flops <= 0 ? "<none>" : HumanReadableNumFlops(flops, nsecs).c_str(),
             bytes_per_sec.c_str(), bytes_per_cycle.c_str(), name.c_str()));
   };
@@ -114,26 +119,30 @@ string HloExecutionProfile::ToString(
   for (const auto& item : items) {
     const HloInstruction* hlo = item.first;
     tensorflow::strings::StrAppend(&result, "\n\t");
-    int64 flops = hlo == nullptr ? -1 : cost_analysis.flop_count(*hlo);
-    int64 bytes_accessed =
-        hlo == nullptr ? -1 : cost_analysis.bytes_accessed(*hlo);
-    string display = hlo == nullptr ? "<none>" : hlo->ToString();
+    const int64 flops = (hlo == nullptr) ? -1 : cost_analysis.flop_count(*hlo);
+    const int64 bytes_accessed =
+        (hlo == nullptr) ? -1 : cost_analysis.bytes_accessed(*hlo);
+    const string display = (hlo == nullptr) ? "<none>" : hlo->ToString();
     append_item(item.second, flops, bytes_accessed, display);
   }
 
-  MetricTableReport table;
-  table.SetMetricName("microseconds");
-  table.SetEntryName("ops");
-  table.SetShowCategoryTable();
-  for (const auto& item : items) {
-    MetricTableReport::Entry entry;
-    entry.text = item.first->ToString();
-    entry.short_text = item.first->ToString(/*compact_operands=*/true);
-    entry.category_text = item.first->ToCategory();
-    entry.metric = cycles_to_microseconds(item.second);
-    table.AddEntry(std::move(entry));
+  if (total_cycles <= 0) {
+    result += "****** 0 total cycles ******\n";
+  } else {
+    MetricTableReport table;
+    table.SetMetricName("microseconds");
+    table.SetEntryName("ops");
+    table.SetShowCategoryTable();
+    for (const auto& item : items) {
+      MetricTableReport::Entry entry;
+      entry.text = item.first->ToString();
+      entry.short_text = item.first->ToString(/*compact_operands=*/true);
+      entry.category_text = item.first->ToCategory();
+      entry.metric = cycles_to_microseconds(item.second);
+      table.AddEntry(std::move(entry));
+    }
+    result += table.MakeReport(cycles_to_microseconds(total_cycles));
   }
-  result += table.MakeReport(cycles_to_microseconds(total_cycles));
 
   return result;
 }

@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-var gulp = require('gulp');
-var server = require('gulp-server-livereload');
-var minimist = require('minimist');
-var util = require('./gulp_tasks/util');
+const gulp = require('gulp');
+const server = require('gulp-server-livereload');
+const minimist = require('minimist');
+const util = require('./gulp_tasks/util');
 
-var options = minimist(process.argv.slice(2), {
+const options = minimist(process.argv.slice(2), {
   default: {
-    p: 8000,  // port for gulp server
-    h: '0.0.0.0', // host to serve on
+    p: 8000,       // port for gulp server
+    h: '0.0.0.0',  // host to serve on
   }
 });
 
@@ -43,8 +43,8 @@ gulp.task('watch', [], function() {
       {ignoreInitial: true}, ['compile']);
 });
 
-var httpPrefix = 'http://' + options.h + ':' + options.p + '/components';
-var proxies = util.tbComponents.map(function(component) {
+const httpPrefix = 'http://' + options.h + ':' + options.p + '/components';
+const proxies = util.tbComponents.map(function(component) {
   return {
     source: '/components' + component.replace(/_/g, '-'),
     target: httpPrefix + component
@@ -84,7 +84,7 @@ gulp.task(
 gulp.task('default', ['watch', 'server']);
 
 // Clean all compiled JS files.
-var cleanCompiledTypeScript = require('gulp-clean-compiled-typescript');
+const cleanCompiledTypeScript = require('gulp-clean-compiled-typescript');
 gulp.task('clean', function () {
   return gulp.src(['./components/**/*.ts', '!./components/**/deps.d.ts'])
       .pipe(cleanCompiledTypeScript());

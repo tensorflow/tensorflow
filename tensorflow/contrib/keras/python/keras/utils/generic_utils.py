@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import marshal
 import sys
 import time
@@ -26,6 +25,8 @@ import types as python_types
 import numpy as np
 import six
 
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 _GLOBAL_CUSTOM_OBJECTS = {}
 
@@ -116,6 +117,7 @@ def get_custom_objects():
 
 
 def serialize_keras_object(instance):
+  _, instance = tf_decorator.unwrap(instance)
   if instance is None:
     return None
   if hasattr(instance, 'get_config'):
@@ -149,14 +151,14 @@ def deserialize_keras_object(identifier,
       if cls is None:
         raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
     if hasattr(cls, 'from_config'):
-      arg_spec = inspect.getargspec(cls.from_config)
+      arg_spec = tf_inspect.getargspec(cls.from_config)
       if 'custom_objects' in arg_spec.args:
         custom_objects = custom_objects or {}
         return cls.from_config(
             config['config'],
             custom_objects=dict(
-                list(_GLOBAL_CUSTOM_OBJECTS.items()) + list(
-                    custom_objects.items())))
+                list(_GLOBAL_CUSTOM_OBJECTS.items()) +
+                list(custom_objects.items())))
       return cls.from_config(config['config'])
     else:
       # Then `cls` may be a function returning a class.

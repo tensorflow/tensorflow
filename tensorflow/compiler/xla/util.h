@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -120,6 +121,14 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2) {
           std::equal(std::begin(c1), std::end(c1), std::begin(c2)));
 }
 
+template <typename Container1T,
+          typename ElementType = typename Container1T::value_type>
+bool ContainersEqual(const Container1T& c1,
+                     std::initializer_list<ElementType> il) {
+  tensorflow::gtl::ArraySlice<ElementType> c2{il};
+  return ContainersEqual(c1, c2);
+}
+
 // Compares two containers for equality. Returns true iff the two containers
 // have the same size and all their elements compare equal using the predicate
 // p. Like std::equal, but forces size equality.
@@ -128,6 +137,18 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
                      PredicateT p) {
   return ((c1.size() == c2.size()) &&
           std::equal(std::begin(c1), std::end(c1), std::begin(c2), p));
+}
+
+// Performs a copy of count values from src to dest, using different strides for
+// source and destination. The source starting index is src_base, while the
+// destination one is dest_base.
+template <typename D, typename S>
+void StridedCopy(tensorflow::protobuf::RepeatedField<D>* dest, int64 dest_base,
+                 int64 dest_stride, tensorflow::gtl::ArraySlice<S> src,
+                 int64 src_base, int64 src_stride, int64 count) {
+  for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
+    dest->Set(dest_base, static_cast<D>(src[src_base]));
+  }
 }
 
 // Adds some context information to the error message in a
@@ -156,6 +177,9 @@ Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 string Reindent(tensorflow::StringPiece original,
                 tensorflow::StringPiece indentation);
 
+// Checks whether permutation is a permutation of the [0, rank) integer range.
+bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
+
 // Applies `permutation` on `input` and returns the permuted array.
 // For each i, output[permutation[i]] = input[i].
 //
@@ -166,12 +190,11 @@ template <template <typename...> class C, typename T>
 std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
                        C<T> input_) {
   tensorflow::gtl::ArraySlice<T> input(input_);
-  CHECK_EQ(permutation.size(), input.size());
+  CHECK(IsPermutation(permutation, input.size()));
   std::vector<T> output(input.size());
   for (size_t i = 0; i < permutation.size(); ++i) {
     output[permutation[i]] = input[i];
   }
-  DCHECK(std::is_permutation(input.begin(), input.end(), output.begin()));
   return output;
 }
 
@@ -190,6 +213,46 @@ template <typename Container>
 int64 PositionInContainer(const Container& container, int64 value) {
   return std::distance(container.begin(),
                        std::find(container.begin(), container.end(), value));
+}
+
+// Formats the container as a comma-separated string. StrAppend must support
+// appending the elements of the container. Prefix is prepended and suffix is
+// appended to the returned string.
+template <typename Container>
+string CommaSeparatedString(const Container& c, const char* prefix = "",
+                            const char* suffix = "") {
+  // Not using Join() since the implementation here is simple anyway and this
+  // avoids copying the string to append prefix.
+  string comma_separated = prefix;
+  const char* separator = "";
+  for (const auto& entry : c) {
+    tensorflow::strings::StrAppend(&comma_separated, separator, entry);
+    separator = ", ";
+  }
+  comma_separated += suffix;
+  return comma_separated;
+}
+
+// Overload needed to allow the container to be an initializer list. The default
+// type for T makes an empty initializer list work as well.
+template <typename T = int>
+string CommaSeparatedString(const std::initializer_list<T>& c,
+                            const char* prefix = "", const char* suffix = "") {
+  return CommaSeparatedString<std::initializer_list<T>>(c, prefix, suffix);
+}
+
+// Formats the container in the mathematical notation for a vector, e.g. (1, 3,
+// 7). StrAppend must support appending the elements of c.
+template <typename Container>
+string VectorString(const Container& c) {
+  return CommaSeparatedString(c, "(", ")");
+}
+
+// Overload needed to allow the container to be an initializer list. The default
+// type for T makes an empty initializer list work as well.
+template <typename T = int>
+string VectorString(const std::initializer_list<T>& c) {
+  return VectorString<std::initializer_list<T>>(c);
 }
 
 // Returns a PaddingConfig object that represents no padding for the given rank.

@@ -319,7 +319,7 @@ class StreamExecutorInterface {
   // Creates a new DnnSupport object, ownership is transferred to the caller.
   // If SupportsDnn() is false, this will always return null.
   //
-  // If SupportsDnn() is true, this may return null, for example, if the RNG
+  // If SupportsDnn() is true, this may return null, for example, if the DNN
   // initialization fails.
   virtual dnn::DnnSupport *CreateDnn() { return nullptr; }
 

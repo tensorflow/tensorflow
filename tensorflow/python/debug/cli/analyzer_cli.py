@@ -345,6 +345,25 @@ class DebugAnalyzer(object):
         help="Print source beginning at line number (1-based.)")
     self._arg_parsers["print_source"] = ap
 
+    # Parser for list_source.
+    ap = argparse.ArgumentParser(
+        description="List source files responsible for constructing nodes and "
+        "tensors present in the run().",
+        usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "-p",
+        "--path_filter",
+        type=str,
+        default="",
+        help="Regular expression filter for file path.")
+    ap.add_argument(
+        "-n",
+        "--node_name_filter",
+        type=str,
+        default="",
+        help="Regular expression filter for node name.")
+    self._arg_parsers["list_source"] = ap
+
     # TODO(cais): Implement list_nodes.
 
   def add_tensor_filter(self, filter_name, filter_callable):
@@ -979,6 +998,15 @@ class DebugAnalyzer(object):
 
     return output
 
+  def _reconstruct_print_source_command(self,
+                                        parsed,
+                                        line_begin_decrease=0,
+                                        max_elements_per_line_increase=0):
+    return "ps %s %s -b %d -m %d" % (
+        parsed.source_file_path, "-t" if parsed.tensors else "",
+        max(parsed.line_begin - line_begin_decrease, 1),
+        parsed.max_elements_per_line + max_elements_per_line_increase)
+
   def print_source(self, args, screen_info=None):
     """Print the content of a source file."""
     del screen_info  # Unused.
@@ -1000,12 +1028,20 @@ class DebugAnalyzer(object):
 
     labeled_source_lines = []
     if parsed.line_begin > 1:
-      labeled_source_lines.append(
-          RL("(... Omitted %d source lines ...)" % (parsed.line_begin - 1),
-             "bold"))
+      omitted_info_line = RL(
+          "(... Omitted %d source lines ...) " % (parsed.line_begin - 1),
+          "bold")
+      omitted_info_line += RL(
+          "+5",
+          debugger_cli_common.MenuItem(
+              None,
+              self._reconstruct_print_source_command(
+                  parsed, line_begin_decrease=5)))
+      labeled_source_lines.append(omitted_info_line)
 
     for i, line in enumerate(source_lines[parsed.line_begin - 1:]):
-      annotated_line = RL("L%d" % (i + parsed.line_begin), "yellow")
+      annotated_line = RL("L%d" % (i + parsed.line_begin),
+                          cli_shared.COLOR_YELLOW)
       annotated_line += " " * (line_num_width - len(annotated_line))
       annotated_line += line
       labeled_source_lines.append(annotated_line)
@@ -1014,11 +1050,17 @@ class DebugAnalyzer(object):
         sorted_elements = sorted(source_annotation[i + parsed.line_begin])
         for k, element in enumerate(sorted_elements):
           if k >= parsed.max_elements_per_line:
-            labeled_source_lines.append(
-                "    (... Omitted %d of %d %s ...)" % (
-                    len(sorted_elements) - parsed.max_elements_per_line,
-                    len(sorted_elements),
-                    "tensor(s)" if parsed.tensors else "op(s)"))
+            omitted_info_line = RL("    (... Omitted %d of %d %s ...) " % (
+                len(sorted_elements) - parsed.max_elements_per_line,
+                len(sorted_elements),
+                "tensor(s)" if parsed.tensors else "op(s)"))
+            omitted_info_line += RL(
+                "+5",
+                debugger_cli_common.MenuItem(
+                    None,
+                    self._reconstruct_print_source_command(
+                        parsed, max_elements_per_line_increase=5)))
+            labeled_source_lines.append(omitted_info_line)
             break
 
           label = RL(" " * 4)
@@ -1026,13 +1068,116 @@ class DebugAnalyzer(object):
               debug_data.get_node_name(element)):
             attribute = debugger_cli_common.MenuItem("", "pt %s" % element)
           else:
-            attribute = "blue"
+            attribute = cli_shared.COLOR_BLUE
 
           label += RL(element, attribute)
           labeled_source_lines.append(label)
 
     output = debugger_cli_common.rich_text_lines_from_rich_line_list(
         labeled_source_lines)
+    _add_main_menu(output, node_name=None)
+    return output
+
+  def _make_source_table(self, source_list, is_tf_py_library):
+    """Make a table summarizing the source files that create nodes and tensors.
+
+    Args:
+      source_list: List of source files and related information as a list of
+        tuples (file_path, is_tf_library, num_nodes, num_tensors, num_dumps,
+        first_line).
+      is_tf_py_library: (`bool`) whether this table is for files that belong
+        to the TensorFlow Python library.
+
+    Returns:
+      The table as a `debugger_cli_common.RichTextLines` object.
+    """
+    path_head = "Source file path"
+    num_nodes_head = "#(nodes)"
+    num_tensors_head = "#(tensors)"
+    num_dumps_head = "#(tensor dumps)"
+
+    if is_tf_py_library:
+      # Use color to mark files that are guessed to belong to TensorFlow Python
+      # library.
+      color = cli_shared.COLOR_GRAY
+      lines = [RL("TensorFlow Python library file(s):", color)]
+    else:
+      color = cli_shared.COLOR_WHITE
+      lines = [RL("File(s) outside TensorFlow Python library:", color)]
+
+    if not source_list:
+      lines.append(RL("[No files.]"))
+      lines.append(RL())
+      return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
+
+    path_column_width = max(
+        max([len(item[0]) for item in source_list]), len(path_head)) + 1
+    num_nodes_column_width = max(
+        max([len(str(item[2])) for item in source_list]),
+        len(num_nodes_head)) + 1
+    num_tensors_column_width = max(
+        max([len(str(item[3])) for item in source_list]),
+        len(num_tensors_head)) + 1
+
+    head = RL(path_head + " " * (path_column_width - len(path_head)), color)
+    head += RL(num_nodes_head + " " * (
+        num_nodes_column_width - len(num_nodes_head)), color)
+    head += RL(num_tensors_head + " " * (
+        num_tensors_column_width - len(num_tensors_head)), color)
+    head += RL(num_dumps_head, color)
+
+    lines.append(head)
+
+    for (file_path, _, num_nodes, num_tensors, num_dumps,
+         first_line_num) in source_list:
+      path_attributes = [color]
+      if source_utils.is_extension_uncompiled_python_source(file_path):
+        path_attributes.append(
+            debugger_cli_common.MenuItem(None, "ps %s -b %d" %
+                                         (file_path, first_line_num)))
+
+      line = RL(file_path, path_attributes)
+      line += " " * (path_column_width - len(line))
+      line += RL(
+          str(num_nodes) + " " * (num_nodes_column_width - len(str(num_nodes))),
+          color)
+      line += RL(
+          str(num_tensors) + " " *
+          (num_tensors_column_width - len(str(num_tensors))), color)
+      line += RL(str(num_dumps), color)
+      lines.append(line)
+    lines.append(RL())
+
+    return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
+
+  def list_source(self, args, screen_info=None):
+    """List Python source files that constructed nodes and tensors."""
+    del screen_info  # Unused.
+
+    parsed = self._arg_parsers["list_source"].parse_args(args)
+    source_list = source_utils.list_source_files_against_dump(
+        self._debug_dump,
+        path_regex_whitelist=parsed.path_filter,
+        node_name_regex_whitelist=parsed.node_name_filter)
+
+    top_lines = [
+        RL("List of source files that created nodes in this run", "bold")]
+    if parsed.path_filter:
+      top_lines.append(
+          RL("File path regex filter: \"%s\"" % parsed.path_filter))
+    if parsed.node_name_filter:
+      top_lines.append(
+          RL("Node name regex filter: \"%s\"" % parsed.node_name_filter))
+    top_lines.append(RL())
+    output = debugger_cli_common.rich_text_lines_from_rich_line_list(top_lines)
+    if not source_list:
+      output.append("[No source file information.]")
+      return output
+
+    output.extend(self._make_source_table(
+        [item for item in source_list if not item[1]], False))
+    output.extend(self._make_source_table(
+        [item for item in source_list if item[1]], True))
     _add_main_menu(output, node_name=None)
     return output
 
@@ -1395,6 +1540,11 @@ def create_analyzer_ui(debug_dump,
       analyzer.print_source,
       analyzer.get_help("print_source"),
       prefix_aliases=["ps"])
+  cli.register_command_handler(
+      "list_source",
+      analyzer.list_source,
+      analyzer.get_help("list_source"),
+      prefix_aliases=["ls"])
 
   dumped_tensor_names = []
   for datum in debug_dump.dumped_tensor_data:

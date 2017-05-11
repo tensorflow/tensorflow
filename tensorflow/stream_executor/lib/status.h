@@ -29,8 +29,7 @@ namespace port {
 
 using Status = tensorflow::Status;
 
-#define SE_CHECK_OK(val) \
-  CHECK_EQ(::perftools::gputools::port::Status::OK(), (val))
+#define SE_CHECK_OK(val) TF_CHECK_OK(val)
 #define SE_ASSERT_OK(val) \
   ASSERT_EQ(::perftools::gputools::port::Status::OK(), (val))
 

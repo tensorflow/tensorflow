@@ -15,11 +15,14 @@
 
 """## Functions for working with arbitrarily nested sequences of elements.
 
-This module is used to perform any operations on nested structures, which can be
-specified as sequences that contain non-sequence elements or other sequences.
-The utilities here assume (and do not check) that the nested structures form a
-'tree', i.e. no references in the structure of the input of these functions
-should be recursive.
+This module is used to perform any operations on nested structures. A nested
+structure is a Python sequence that contains non-sequence elements or other
+sequences. The utilities here assume (and do not check) that the nested
+structures form a 'tree', i.e. no references in the structure of the input of
+these functions should be recursive.
+
+Example structures: `((3, 4), 5, (6, 7, (9, 10), 8))`, `(np.array(0),
+  (np.array([3, 4]), tf.constant([3, 4])))`
 
 @@assert_same_structure
 @@is_sequence

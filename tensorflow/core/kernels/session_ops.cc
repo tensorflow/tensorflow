@@ -41,7 +41,7 @@ class GetSessionHandleOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override {
-    Tensor val = ctx->input(0);
+    const Tensor& val = ctx->input(0);
     int64 id = ctx->session_state()->GetNewId();
     TensorStore::TensorAndKey tk{val, id, def().device()};
     OP_REQUIRES_OK(ctx, ctx->tensor_store()->AddTensor(def().name(), tk));

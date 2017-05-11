@@ -187,7 +187,8 @@ RemoteFusedGraphExecuteUtils::GetExecutorBuildRegistry() {
     const std::vector<std::pair<string, Tensor>>& input_tensor_vector,
     const string& node_name) {
   for (const std::pair<string, Tensor>& pair : input_tensor_vector) {
-    if (node_name == pair.first) {
+    const TensorId tid = ParseTensorName(pair.first);
+    if (node_name == tid.first.ToString()) {
       return true;
     }
   }

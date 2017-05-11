@@ -248,6 +248,15 @@ class LayoutAssignment : public HloPassInterface {
     return Status::OK();
   }
 
+  // This method can be overriden to mark instructions as requiring the operands
+  // to have the same layout as the result, for performance or correctness. This
+  // will propagate constraints through the instruction from the result into the
+  // operands.
+  virtual bool InstructionRequiresInputLayoutEqualToOutputLayout(
+      const HloInstruction* instruction) {
+    return false;
+  }
+
   // Construct contraints and assign layouts to all instructions in the
   // computation satisfying the given ComputationLayout. Layouts constraints are
   // added, then propagated until all LogicalBuffers in the computation are

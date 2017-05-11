@@ -183,6 +183,7 @@ handle these situations gracefully.
       // if undefined, default value (enable for first k runs, disable after).
         type: Object,
         value: TF.URIStorage.getObjectInitializer('runSelectionState', {}),
+        observer: "_storeRunToIsCheckedMapping",
       },
       // (Allows state to persist across regex filtering)
       outSelected: {
@@ -231,24 +232,7 @@ handle these situations gracefully.
     },
     observers: [
       "_setIsolatorIcon(runSelectionState, names)",
-      "_storeRunToIsCheckedMappingWithDefault(runSelectionState, namesMatchingRegex)",
     ],
-    _storeRunToIsCheckedMappingWithDefault() {
-      var runSelectionStateIsDefault = Object.keys(this.runSelectionState).length == 0;
-      if (runSelectionStateIsDefault || this.namesMatchingRegex == null) {
-        return;
-      }
-      var _this = this;
-      var allToggledOn = this.namesMatchingRegex
-              .every(function(n) {return _this.runSelectionState[n]});
-      var allToggledOff = this.namesMatchingRegex
-              .every(function(n) {return !_this.runSelectionState[n]});
-      var defaultOff = this.namesMatchingRegex.length > this.maxRunsToEnableByDefault;
-      if (defaultOff && allToggledOff || !defaultOff && allToggledOn) {
-        this.runSelectionState = {};
-      }
-      this._storeRunToIsCheckedMapping(this.runSelectionState);
-    },
     _storeRunToIsCheckedMapping: TF.URIStorage.getObjectObserver('runSelectionState', {}),
     _makeRegex: function(regex) {
       try {

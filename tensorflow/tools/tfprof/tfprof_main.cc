@@ -160,12 +160,13 @@ int main(int argc, char** argv) {
         "Profiling everything!\n");
     return 0;
   } else if (argc > 1) {
-    if (tensorflow::string(argv[1]) == tensorflow::tfprof::kCmds[3]) {
+    if (tensorflow::string(argv[1]) == tensorflow::tfprof::kCmds[4]) {
       tensorflow::tfprof::PrintHelp();
       return 0;
     }
     if (tensorflow::string(argv[1]) == tensorflow::tfprof::kCmds[0] ||
-        tensorflow::string(argv[1]) == tensorflow::tfprof::kCmds[1]) {
+        tensorflow::string(argv[1]) == tensorflow::tfprof::kCmds[1] ||
+        tensorflow::string(argv[1]) == tensorflow::tfprof::kCmds[2]) {
       cmd = argv[1];
     }
   }
@@ -214,7 +215,10 @@ int main(int argc, char** argv) {
       hide_name_regexes, FLAGS_account_displayed_op_only, select, FLAGS_viz,
       FLAGS_dump_to_file);
 
-  if (!cmd.empty()) {
+  if (cmd == tensorflow::tfprof::kCmds[2]) {
+    tf_stat.PrintCode(opts);
+    return 0;
+  } else if (!cmd.empty()) {
     tf_stat.PrintGraph(cmd, opts);
     return 0;
   }
@@ -240,10 +244,12 @@ int main(int argc, char** argv) {
       fprintf(stderr, "E: %s\n", s.ToString().c_str());
       continue;
     }
-    if (cmd == tensorflow::tfprof::kCmds[2]) {
+    if (cmd == tensorflow::tfprof::kCmds[3]) {
       opts = new_opts;
-    } else if (cmd == tensorflow::tfprof::kCmds[3]) {
+    } else if (cmd == tensorflow::tfprof::kCmds[4]) {
       tensorflow::tfprof::PrintHelp();
+    } else if (cmd == tensorflow::tfprof::kCmds[2]) {
+      tf_stat.PrintCode(new_opts);
     } else {
       tf_stat.PrintGraph(cmd, new_opts);
     }

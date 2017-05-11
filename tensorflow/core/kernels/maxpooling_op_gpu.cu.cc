@@ -70,7 +70,7 @@ __global__ void MaxPoolForwardNCHW(const int nthreads, const dtype* bottom_data,
     int wend = min(wstart + kernel_w, width);
     hstart = max(hstart, 0);
     wstart = max(wstart, 0);
-    dtype maxval = -FLT_MAX;
+    dtype maxval = Eigen::NumTraits<dtype>::lowest();
     int maxidx = -1;
     const dtype* bottom_data_n = bottom_data + n * channels * height * width;
     for (int h = hstart; h < hend; ++h) {
@@ -312,9 +312,6 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
 //     bottom_offset: the pre-computed per-image offset of the maxpool output.
 //         This is equal to Hout*Wout*C.
 //     bottom_diff: the gradient of the gradient w.r.t. output.
-// This function relies on CudaAtomicAdd to avoid race conditions. Also, before
-// the kernel is run, you will need to make sure that bottom_diff is filled with
-// zero first.
 template <typename dtype>
 __global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
                                     const int64* mask, const int top_offset,
@@ -357,12 +354,12 @@ bool MaxPoolBackwardNoMask<T>::operator()(
     const int stride_w, const int pad_t, const int pad_l, const T* top_diff,
     T* bottom_diff, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
-  const int bottom_size = batch * channels * height * width;
-  const int top_size = batch * channels * pooled_height * pooled_width;
 
+  const int bottom_size = batch * channels * height * width;
   SetZero<<<(bottom_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
             kThreadsPerBlock, 0, d.stream()>>>(bottom_size, bottom_diff);
 
+  const int top_size = batch * channels * pooled_height * pooled_width;
   MaxPoolBackwardNoMaskNHWC<<<(top_size + kThreadsPerBlock - 1) /
                                   kThreadsPerBlock,
                               kThreadsPerBlock, 0, d.stream()>>>(

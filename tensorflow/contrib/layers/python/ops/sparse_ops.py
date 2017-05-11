@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import compat
 
 
 def _multiplier_helper(shape):
@@ -81,3 +82,43 @@ def dense_to_sparse_tensor(dense_tensor, ignore_value=None):
       flat_indices = math_ops.add(flat_indices, offsets)
     values = array_ops.gather(flat_tensor, flat_indices)
     return sparse_tensor.SparseTensor(indices, values, dense_shape)
+
+
+def sparse_row_envelope(sparse_input, row_axis=0, col_axis=1, name=None):
+  """Returns the length of each 'row' in a `SparseTensor`.
+
+  For example, if `sparse_input` has indices `[[0,0], [2, 0], [2, 1], [2, 2]]`
+  and shape `[3, 3]`, this function will return `[1, 0, 3]`.
+
+  Args:
+    sparse_input: a `SparseTensor` of rank at least 2.
+    row_axis: An integer. The axis for the row of the envelope matrix. Default
+      is 0.
+    col_axis: An integer. The axis for the col of the envelope matrix. Default
+      is 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    A one-dimensional `Tensor` whose entries correspond to the length of each
+    row of `SparseTensor`.
+
+  Raises:
+    ValueError: If row_axis and col_axis are the same axis or they are not
+      integers.
+  """
+  if not (isinstance(row_axis, compat.integral_types) and
+          isinstance(col_axis, compat.integral_types)):
+    raise ValueError("`row_axis` and `col_axis` must be integers.")
+
+  if row_axis == col_axis:
+    raise ValueError("Row and column can not be the same axis.")
+
+  with ops.name_scope(name, "sparse_row_envelope", [sparse_input]):
+    indices = sparse_input.indices
+    row_indices = indices[:, row_axis]
+    col_indices = indices[:, col_axis]
+    num_rows = math_ops.cast(sparse_input.dense_shape[row_axis], dtypes.int32)
+    row_envelope = math_ops.unsorted_segment_max(
+        col_indices + 1, row_indices, num_rows, name=name)
+    zeros = array_ops.zeros_like(row_envelope)
+    return array_ops.where(row_envelope > zeros, row_envelope, zeros)

@@ -100,11 +100,14 @@ extern const int kTensorBundleVersion;
 extern const char* const kHeaderEntryKey;
 
 // Builds a string-string table of tensor names to BundleEntryProto (metadata).
+//
+// On construction, attempts to create a directory given by the dirname of
+// "prefix", so "status()" must be checked before calling any member functions.
+//
 // All threads accessing the same BundleWriter must synchronize.
 class BundleWriter {
  public:
   BundleWriter(Env* env, StringPiece prefix);
-  ~BundleWriter();
 
   // Adds the tensor "val" under key "key".
   // Across calls "key" must be unique but can be added in any order.

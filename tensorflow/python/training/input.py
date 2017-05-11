@@ -40,7 +40,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 
@@ -63,9 +63,10 @@ def match_filenames_once(pattern, name=None):
     A variable that is initialized to the list of files matching the pattern(s).
   """
   with ops.name_scope(name, "matching_filenames", [pattern]) as name:
-    return variables.Variable(io_ops.matching_files(pattern), trainable=False,
-                              name=name, validate_shape=False,
-                              collections=[ops.GraphKeys.LOCAL_VARIABLES])
+    return vs.variable(
+        name=name, initial_value=io_ops.matching_files(pattern),
+        trainable=False, validate_shape=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES])
 
 
 def limit_epochs(tensor, num_epochs=None, name=None):
@@ -92,7 +93,7 @@ def limit_epochs(tensor, num_epochs=None, name=None):
     raise ValueError("num_epochs must be > 0 not %d." % num_epochs)
   with ops.name_scope(name, "limit_epochs", [tensor]) as name:
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
-    epochs = variables.Variable(
+    epochs = vs.variable(
         zero64, name="epochs", trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES])
     counter = epochs.count_up_to(num_epochs)
@@ -196,7 +197,10 @@ def string_input_producer(string_tensor,
     seed: An integer (optional). Seed used if shuffle == True.
     capacity: An integer. Sets the queue capacity.
     shared_name: (optional). If set, this queue will be shared under the given
-      name across multiple sessions.
+      name across multiple sessions. All sessions open to the device which has
+      this queue will be able to access it via the shared_name. Using this in
+      a distributed setting means each name will only be seen by one of the
+      sessions which has access to this operation.
     name: A name for the operations (optional).
     cancel_op: Cancel op for the queue (optional).
 
@@ -875,13 +879,11 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
   `get_shape` method will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
-  Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variables_initializer()` to initialize local variables.
-
   Args:
     tensors: The list or dictionary of tensors to enqueue.
     batch_size: The new batch size pulled from the queue.
-    num_threads: The number of threads enqueuing `tensors`.
+    num_threads: The number of threads enqueuing `tensors`.  The batching will
+      be nondeterministic if `num_threads > 1`.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensors` is a single example.
     shapes: (Optional) The shapes for each example.  Defaults to the
@@ -933,7 +935,8 @@ def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
       corresponding value in `keep_input` is `True`. This tensor essentially
       acts as a filtering mechanism.
     batch_size: The new batch size pulled from the queue.
-    num_threads: The number of threads enqueuing `tensors`.
+    num_threads: The number of threads enqueuing `tensors`.  The batching will
+      be nondeterministic if `num_threads > 1`.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensors` is a single example.
     shapes: (Optional) The shapes for each example.  Defaults to the
@@ -976,6 +979,9 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
   The `tensors_list` argument is a list of tuples of tensors, or a list of
   dictionaries of tensors.  Each element in the list is treated similarly
   to the `tensors` argument of `tf.train.batch()`.
+
+  WARNING: This function is nondeterministic, since it starts a separate thread
+  for each tensor.
 
   Enqueues a different list of tensors in different threads.
   Implemented using a queue -- a `QueueRunner` for the queue
@@ -1171,9 +1177,6 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   In addition, all output tensors' static shapes, as accessed via the
   `get_shape` method will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
-
-  Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variables_initializer()` to initialize local variables.
 
   Args:
     tensors: The list or dictionary of tensors to enqueue.

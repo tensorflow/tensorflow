@@ -61,7 +61,9 @@ fi
 MAJOR=$(echo "${NEW_VER}" | cut -d \. -f 1)
 MINOR=$(echo "${NEW_VER}" | cut -d \. -f 2)
 PATCH=$(echo "${NEW_VER}" | cut -d \. -f 3)
+PATCH_NUM=$(echo "$PATCH" | cut -d \- -f 1)
 PIP_PATCH="${PATCH//-}"
+SUFFIX=$(echo $NEW_VER | sed "s/${MAJOR}.${MINOR}.${PATCH%-*}//g")
 
 # Update tensorflow/core/public/version.h
 VERSION_H="${TF_SRC_DIR}/core/public/version.h"
@@ -71,14 +73,17 @@ OLD_MAJOR=$(cat ${VERSION_H} | grep -E "^#define TF_MAJOR_VERSION [0-9]+" | \
 cut -d ' ' -f 3)
 OLD_MINOR=$(cat ${VERSION_H} | grep -E "^#define TF_MINOR_VERSION [0-9]+" | \
 cut -d ' ' -f 3)
-OLD_PATCH=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [[:alnum:]-]+" | \
+OLD_PATCH_NUM=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [[:alnum:]-]+" | \
 cut -d ' ' -f 3)
+OLD_EXTENSION=$(cat ${VERSION_H} | grep -E "^#define TF_VERSION_SUFFIX \"[[:alnum:]-]+\"" | \
+cut -d ' ' -f 3)
+OLD_PATCH="$OLD_PATCH_NUM${OLD_EXTENSION//\"}"
 OLD_PIP_PATCH="${OLD_PATCH//-}"
 
 sed -i -e "s/^#define TF_MAJOR_VERSION ${OLD_MAJOR}/#define TF_MAJOR_VERSION ${MAJOR}/g" ${VERSION_H}
 sed -i -e "s/^#define TF_MINOR_VERSION ${OLD_MINOR}/#define TF_MINOR_VERSION ${MINOR}/g" ${VERSION_H}
-sed -i -e "s/^#define TF_PATCH_VERSION ${OLD_PATCH}/#define TF_PATCH_VERSION ${PATCH}/g" "${VERSION_H}"
-
+sed -i -e "s/^#define TF_PATCH_VERSION ${OLD_PATCH}/#define TF_PATCH_VERSION ${PATCH_NUM}/g" "${VERSION_H}"
+sed -i -e "s/^#define TF_VERSION_SUFFIX \".*\"/#define TF_VERSION_SUFFIX \"${SUFFIX}\"/g" "${VERSION_H}"
 
 # Update setup.py
 SETUP_PY="${TF_SRC_DIR}/tools/pip_package/setup.py"

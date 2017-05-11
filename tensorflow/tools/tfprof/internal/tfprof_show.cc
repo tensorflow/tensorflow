@@ -25,13 +25,13 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-ShowNode::ShowNode(TFNode* node) : node(node), account(true) {
+ShowNode::ShowNode(const TFGraphNode* node) : node(node), account(true) {
   mutable_proto()->set_name(name());
   if (!node->device().empty()) {
     mutable_proto()->set_device(node->device());
   }
   mutable_proto()->set_exec_micros(node->kernel_compute_micros());
-  mutable_proto()->set_requested_bytes(node->requested_byptes());
+  mutable_proto()->set_requested_bytes(node->requested_bytes());
   mutable_proto()->set_float_ops(node->float_ops());
 
   if (!node->shape().empty()) {
@@ -119,12 +119,12 @@ string ShowNode::FormatMeta(const Options& opts) {
   return str_util::Join(info, ", ");
 }
 
-TFProfNode* ShowNode::mutable_proto() { return &proto_; }
+TFGraphNodeProto* ShowNode::mutable_proto() { return &proto_; }
 
-const TFProfNode& ShowNode::proto() const { return proto_; }
+const TFGraphNodeProto& ShowNode::proto() const { return proto_; }
 
 void ShowNode::AggregateTotalStats(ShowNode* node) {
-  TFProfNode* node_pb = node->mutable_proto();
+  TFGraphNodeProto* node_pb = node->mutable_proto();
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          node_pb->total_exec_micros());
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
@@ -151,9 +151,10 @@ void ShowNode::ResetTotalStats() {
   mutable_proto()->set_total_requested_bytes(0);
   mutable_proto()->set_total_parameters(0);
   mutable_proto()->set_total_float_ops(0);
+  mutable_proto()->mutable_children()->Clear();
 }
 
-const TFProfNode& TFShow::Show(const Options& opts) {
+const TFGraphNodeProto& TFShow::Show(const Options& opts) {
   const ShowNode* root = ShowInternal(opts);
   if (opts.dump_to_file.empty()) {
     printf("%s", root->formatted_str.c_str());

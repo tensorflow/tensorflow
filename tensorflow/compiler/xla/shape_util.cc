@@ -728,9 +728,17 @@ Status ForEachMutableSubshapeHelper(
     new_shape.add_dimensions(dim);
   }
   if (shape.has_layout()) {
-    new_shape.mutable_layout()->clear_minor_to_major();
+    Layout* new_layout = new_shape.mutable_layout();
+    new_layout->clear_minor_to_major();
     for (auto index : Permute(permutation, shape.layout().minor_to_major())) {
-      new_shape.mutable_layout()->add_minor_to_major(index);
+      new_layout->add_minor_to_major(index);
+    }
+    if (shape.layout().padded_dimensions_size() > 0) {
+      new_layout->clear_padded_dimensions();
+      for (auto dim :
+           Permute(permutation, shape.layout().padded_dimensions())) {
+        new_layout->add_padded_dimensions(dim);
+      }
     }
   }
   return new_shape;
@@ -1045,6 +1053,33 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     shape = DeleteDimension(dim, shape);
   }
   return shape;
+}
+
+/* static */ void ShapeUtil::ForEachIndex(
+    const Shape& shape, tensorflow::gtl::ArraySlice<int64> base,
+    tensorflow::gtl::ArraySlice<int64> count,
+    tensorflow::gtl::ArraySlice<int64> incr,
+    const IndexVisitorFunction& visitor_function) {
+  DCHECK_EQ(Rank(shape), base.size());
+  DCHECK_EQ(incr.size(), base.size());
+  DCHECK_EQ(count.size(), base.size());
+  const Layout& layout = shape.layout();
+  int64 rank = layout.minor_to_major_size();
+  // Allows handling R0 arrays, such that the visitor function will be called
+  // once with the proper empty indexes.
+  int64 n = -1;
+  std::vector<int64> indexes(base.begin(), base.end());
+  while (n < rank && visitor_function(indexes)) {
+    // Increments dimensions in minor to major order.
+    for (n = 0; n < rank; ++n) {
+      int64 dim = layout.minor_to_major(n);
+      indexes[dim] += incr[dim];
+      if (indexes[dim] < base[dim] + count[dim]) {
+        break;
+      }
+      indexes[dim] = base[dim];
+    }
+  }
 }
 
 }  // namespace xla

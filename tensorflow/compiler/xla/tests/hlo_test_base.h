@@ -84,28 +84,6 @@ class HloTestBase : public ::testing::Test {
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments);
 
-  // Helpers for comparing ordered and unordered equality of HloInstruction
-  // containers.
-  void ExpectEqOrdered(
-      tensorflow::gtl::ArraySlice<const HloInstruction*> actual,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> expected) {
-    std::vector<const HloInstruction*> expected_vec(expected.begin(),
-                                                    expected.end());
-    std::vector<const HloInstruction*> actual_vec(actual.begin(), actual.end());
-    EXPECT_TRUE(testing::VectorMatcher<const HloInstruction*>(expected_vec)(
-        actual_vec));
-  }
-
-  void ExpectEqUnordered(
-      tensorflow::gtl::ArraySlice<const HloInstruction*> actual,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> expected) {
-    std::vector<const HloInstruction*> expected_vec(expected.begin(),
-                                                    expected.end());
-    std::vector<const HloInstruction*> actual_vec(actual.begin(), actual.end());
-    EXPECT_TRUE(testing::UnorderedElementsAre<const HloInstruction*>(
-        expected_vec)(actual_vec));
-  }
-
   string TestName() const;
 
   std::unique_ptr<Backend> backend_;

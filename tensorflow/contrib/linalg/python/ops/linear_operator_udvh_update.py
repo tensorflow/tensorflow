@@ -348,21 +348,21 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
     return array_ops.concat(
         [batch_shape, self.base_operator.shape_tensor()[-2:]], axis=0)
 
-  def _apply(self, x, adjoint=False):
+  def _apply(self, x, adjoint=False, adjoint_arg=False):
     u = self.u
     v = self.v
     l = self.base_operator
     d = self.diag_operator
 
-    leading_term = l.apply(x, adjoint=adjoint)
+    leading_term = l.apply(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
     if adjoint:
-      uh_x = math_ops.matmul(u, x, adjoint_a=True)
+      uh_x = math_ops.matmul(u, x, adjoint_a=True, adjoint_b=adjoint_arg)
       d_uh_x = d.apply(uh_x, adjoint=adjoint)
       v_d_uh_x = math_ops.matmul(v, d_uh_x)
       return leading_term + v_d_uh_x
     else:
-      vh_x = math_ops.matmul(v, x, adjoint_a=True)
+      vh_x = math_ops.matmul(v, x, adjoint_a=True, adjoint_b=adjoint_arg)
       d_vh_x = d.apply(vh_x, adjoint=adjoint)
       u_d_vh_x = math_ops.matmul(u, d_vh_x)
       return leading_term + u_d_vh_x
@@ -398,7 +398,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
 
     return log_abs_det_c + log_abs_det_d + log_abs_det_l
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     if self.base_operator.is_non_singular is False:
       raise ValueError(
           "Solve not implemented unless this is a perturbation of a "
@@ -421,7 +421,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
       u = self.u
 
     # L^{-1} rhs
-    linv_rhs = l.solve(rhs, adjoint=adjoint)
+    linv_rhs = l.solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
     # V^H L^{-1} rhs
     vh_linv_rhs = math_ops.matmul(v, linv_rhs, adjoint_a=True)
     # C^{-1} V^H L^{-1} rhs

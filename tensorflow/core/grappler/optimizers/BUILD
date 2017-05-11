@@ -13,16 +13,58 @@ filegroup(
 )
 
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = glob(
         [
             "*_optimizer.*",
+            "auto_parallel.*",
             "constant_folding.*",
             "model_pruner.*",
             "graph_rewriter.*",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+cc_library(
+    name = "auto_parallel",
+    srcs = ["auto_parallel.cc"],
+    hdrs = [
+        "auto_parallel.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+    ],
+)
+
+cc_test(
+    name = "auto_parallel_test",
+    srcs = ["auto_parallel_test.cc"],
+    deps = [
+        ":auto_parallel",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
 )
 
 cc_library(
@@ -163,8 +205,25 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
+    ],
+)
+
+cc_test(
+    name = "layout_optimizer_test",
+    srcs = ["layout_optimizer_test.cc"],
+    deps = [
+        ":layout_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
 
@@ -176,9 +235,11 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":auto_parallel",
         ":constant_folding",
         ":graph_optimizer",
         ":layout_optimizer",
+        ":memory_optimizer",
         ":model_pruner",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

@@ -97,6 +97,10 @@ static void BatchToSpaceOpCompute(OpKernelContext* context,
   for (int block_dim = 0; block_dim < block_dims; ++block_dim) {
     block_shape_product *= block_shape[block_dim];
   }
+  OP_REQUIRES(
+      context, block_shape_product > 0,
+      errors::InvalidArgument("Product of block sizes must be positive, got ",
+                              block_shape_product));
 
   const int64 orig_input_batch_size = orig_input_tensor.dim_size(0);
   OP_REQUIRES(

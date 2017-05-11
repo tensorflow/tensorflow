@@ -1489,10 +1489,6 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
     }
   });
   // Do matrix-matrix multiplication
-  // TODO(jewillco): libxsmm doesn't support beta != 1 yet -- remove when
-  // release
-  // includes beta handling
-  memset(output_data, 0, left_dim0 * right_dim1 * sizeof(TR));
   ptrdiff_t total_num_mult_blocks =
       libxsmm_spmdm_get_num_compute_blocks(&entry->handle);
   std::atomic<int> cur_mult_block_number;

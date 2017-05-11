@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 using tensorflow::int32;
 using tensorflow::string;
@@ -103,6 +104,22 @@ TEST(CAPI, AllocateTensor) {
   EXPECT_EQ(dims[1], TF_Dim(t, 1));
   EXPECT_EQ(num_bytes, TF_TensorByteSize(t));
   TF_DeleteTensor(t);
+}
+
+TEST(CAPI, MaybeMove) {
+  const int num_bytes = 6 * sizeof(float);
+  float* values =
+      reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
+          EIGEN_MAX_ALIGN_BYTES, num_bytes));
+  int64_t dims[] = {2, 3};
+  bool deallocator_called = false;
+  TF_Tensor* t = TF_NewTensor(TF_FLOAT, dims, 2, values, num_bytes,
+                              &Deallocator, &deallocator_called);
+
+  TF_Tensor* o = TF_TensorMaybeMove(t);
+  ASSERT_TRUE(o == nullptr);  // It is unsafe to move memory TF might not own.
+  TF_DeleteTensor(t);
+  EXPECT_TRUE(deallocator_called);
 }
 
 TEST(CAPI, LibraryLoadFunctions) {
@@ -805,6 +822,33 @@ TEST(CAPI, ImportGraphDef) {
   EXPECT_EQ(feed, control_inputs[0]);
   EXPECT_EQ(feed2, control_inputs[1]);
 
+  // Export to a graph def so we can import a graph with control dependencies
+  TF_DeleteBuffer(graph_def);
+  graph_def = TF_NewBuffer();
+  TF_GraphToGraphDef(graph, graph_def, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Import again, with remapped control dependency, into the same graph
+  TF_DeleteImportGraphDefOptions(opts);
+  opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsSetPrefix(opts, "imported4");
+  TF_ImportGraphDefOptionsRemapControlDependency(opts, "imported/feed", feed);
+  TF_GraphImportGraphDef(graph, graph_def, opts, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* scalar4 =
+      TF_GraphOperationByName(graph, "imported4/imported3/scalar");
+  TF_Operation* feed4 =
+      TF_GraphOperationByName(graph, "imported4/imported2/feed");
+
+  // Check that imported `imported3/scalar` has remapped control dep from
+  // original graph and imported control dep
+  num_control_inputs = TF_OperationGetControlInputs(
+      scalar4, control_inputs, TF_OperationNumControlInputs(scalar4));
+  ASSERT_EQ(2, num_control_inputs);
+  EXPECT_EQ(feed, control_inputs[0]);
+  EXPECT_EQ(feed4, control_inputs[1]);
+
   TF_DeleteImportGraphDefOptions(opts);
   TF_DeleteBuffer(graph_def);
 
@@ -1480,6 +1524,281 @@ TEST_F(CApiWhileLoopTest, BadTypes) {
                      "building NodeDef 'float_op'"),
             msg.npos);
   TF_AbortWhile(params_.get());
+}
+
+REGISTER_OP("TestOpWithNoGradient")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Test op with no grad registered.
+
+x: input
+y: output
+)doc");
+
+class CApiGradientsTest : public ::testing::Test {
+ protected:
+  CApiGradientsTest()
+      : s_(TF_NewStatus()),
+        graph_(TF_NewGraph()),
+        expected_graph_(TF_NewGraph()) {}
+
+  ~CApiGradientsTest() override {
+    TF_DeleteGraph(graph_);
+    TF_DeleteGraph(expected_graph_);
+    TF_DeleteStatus(s_);
+  }
+
+  void TestGradientsSuccess(bool grad_inputs_provided) {
+    TF_Output inputs[2];
+    TF_Output outputs[1];
+    TF_Output grad_outputs[2];
+    TF_Output expected_grad_outputs[2];
+
+    BuildSuccessGraph(inputs, outputs);
+    BuildExpectedGraph(grad_inputs_provided, expected_grad_outputs);
+
+    AddGradients(grad_inputs_provided, inputs, 2, outputs, 1, grad_outputs);
+
+    EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+    // Compare that the graphs match.
+    GraphDef expected_gdef;
+    GraphDef gdef;
+    EXPECT_TRUE(GetGraphDef(expected_graph_, &expected_gdef));
+    EXPECT_TRUE(GetGraphDef(graph_, &gdef));
+    TF_EXPECT_GRAPH_EQ(expected_gdef, gdef);
+
+    // Compare that the output of the gradients of both graphs match.
+    RunGraphsAndCompareOutputs(grad_outputs, expected_grad_outputs);
+  }
+
+  void TestGradientsError(bool grad_inputs_provided) {
+    TF_Output inputs[1];
+    TF_Output outputs[1];
+    TF_Output grad_outputs[1];
+
+    BuildErrorGraph(inputs, outputs);
+
+    AddGradients(grad_inputs_provided, inputs, 1, outputs, 1, grad_outputs);
+
+    string expected_msg =
+        "No gradient defined for op: TestOpWithNoGradient. Please see "
+        "https://www.tensorflow.org/code/"
+        "tensorflow/cc/gradients/README.md"
+        " for instructions on how to add C++ gradients.";
+    EXPECT_EQ(expected_msg, TF_Message(s_));
+  }
+
+  // Run the graph and ensure that the gradient values are as expected.
+  void RunGraphsAndCompareOutputs(TF_Output* grad_outputs,
+                                  TF_Output* expected_grad_outputs) {
+    std::unique_ptr<CSession> csession(new CSession(graph_, s_));
+    std::unique_ptr<CSession> expected_csession(
+        new CSession(expected_graph_, s_));
+
+    std::vector<TF_Output> grad_outputs_vec;
+    grad_outputs_vec.assign(grad_outputs, grad_outputs + 2);
+    csession->SetOutputs(grad_outputs_vec);
+    csession->Run(s_);
+    ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+    TF_Tensor* out0 = csession->output_tensor(0);
+    TF_Tensor* out1 = csession->output_tensor(1);
+
+    std::vector<TF_Output> expected_grad_outputs_vec;
+    expected_grad_outputs_vec.assign(expected_grad_outputs,
+                                     expected_grad_outputs + 2);
+    expected_csession->SetOutputs(expected_grad_outputs_vec);
+    expected_csession->Run(s_);
+    ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+    TF_Tensor* expected_out0 = expected_csession->output_tensor(0);
+    TF_Tensor* expected_out1 = expected_csession->output_tensor(1);
+
+    CompareTensors(out0, expected_out0);
+    CompareTensors(out1, expected_out1);
+  }
+
+  void CompareTensors(TF_Tensor* a, TF_Tensor* b) {
+    float* a_data = static_cast<float*>(TF_TensorData(a));
+    float* b_data = static_cast<float*>(TF_TensorData(b));
+    EXPECT_EQ(*a_data, *b_data);
+  }
+
+  void AddGradients(bool grad_inputs_provided, TF_Output* inputs, int ninputs,
+                    TF_Output* outputs, int noutputs, TF_Output* grad_outputs) {
+    if (grad_inputs_provided) {
+      TF_Output grad_inputs[1];
+      const float grad_inputs_val[] = {1.0, 1.0, 1.0, 1.0};
+      TF_Operation* grad_inputs_op =
+          FloatConst2x2(graph_, s_, grad_inputs_val, "GradInputs");
+      grad_inputs[0] = TF_Output{grad_inputs_op, 0};
+      TF_AddGradients(graph_, outputs, noutputs, inputs, ninputs, grad_inputs,
+                      s_, grad_outputs);
+    } else {
+      TF_AddGradients(graph_, outputs, noutputs, inputs, ninputs, nullptr, s_,
+                      grad_outputs);
+    }
+  }
+
+  void BuildErrorGraph(TF_Output* inputs, TF_Output* outputs) {
+    const float const0_val[] = {1.0, 2.0, 3.0, 4.0};
+    TF_Operation* const0 = FloatConst2x2(graph_, s_, const0_val, "Const_0");
+    TF_Operation* nograd = NoGradientOp(graph_, s_, const0, "NoGrad");
+    inputs[0] = TF_Output{const0, 0};
+    outputs[0] = TF_Output{nograd, 0};
+    EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  }
+
+  void BuildSuccessGraph(TF_Output* inputs, TF_Output* outputs) {
+    // Construct the following graph:
+    //            |
+    //           z|
+    //            |
+    //          MatMul
+    //         /       \
+    //        ^         ^
+    //        |         |
+    //       x|        y|
+    //        |         |
+    //        |         |
+    //      Const_0    Const_1
+    //
+    const float const0_val[] = {1.0, 2.0, 3.0, 4.0};
+    const float const1_val[] = {1.0, 0.0, 0.0, 1.0};
+    TF_Operation* const0 = FloatConst2x2(graph_, s_, const0_val, "Const_0");
+    TF_Operation* const1 = FloatConst2x2(graph_, s_, const1_val, "Const_1");
+    TF_Operation* matmul = MatMul(graph_, s_, const0, const1, "MatMul");
+    inputs[0] = TF_Output{const0, 0};
+    inputs[1] = TF_Output{const1, 0};
+    outputs[0] = TF_Output{matmul, 0};
+    EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  }
+
+  void BuildExpectedGraph(bool grad_inputs_provided,
+                          TF_Output* expected_grad_outputs) {
+    // The expected graph looks like this if grad_inputs_provided.
+    // If grad_inputs_provided is false, Const_0 will be a OnesLike op.
+    //      ^             ^
+    //    dy|           dx|        // MatMul Gradient Graph
+    //      |             |
+    //   MatMul_2      MatMul_1
+    //   ^   ^          ^    ^
+    //   |   |----------|    |
+    //   |        ^          |
+    //   |      dz|          |
+    //   |        |          |
+    //   |     Const_3       |
+    //   |                   |
+    //   |        ^          |
+    //   |       z|          |     // MatMul Forward Graph
+    //   |        |          |
+    //   |      MatMul       |
+    //   |     /       \     |
+    //   |    ^         ^    |
+    //   |    |         |    |
+    //   |---x|        y|----|
+    //        |         |
+    //        |         |
+    //      Const_0   Const_1
+    //
+    const float const0_val[] = {1.0, 2.0, 3.0, 4.0};
+    const float const1_val[] = {1.0, 0.0, 0.0, 1.0};
+    TF_Operation* const0 =
+        FloatConst2x2(expected_graph_, s_, const0_val, "Const_0");
+    TF_Operation* const1 =
+        FloatConst2x2(expected_graph_, s_, const1_val, "Const_1");
+    TF_Operation* matmul =
+        MatMul(expected_graph_, s_, const0, const1, "MatMul");
+
+    TF_Operation* const3;
+    if (grad_inputs_provided) {
+      const float const3_val[] = {1.0, 1.0, 1.0, 1.0};
+      const3 = FloatConst2x2(expected_graph_, s_, const3_val, "GradInputs");
+    } else {
+      const3 = OnesLike(expected_graph_, s_, matmul, "OnesLike");
+    }
+
+    TF_Operation* matmul1 =
+        MatMul(expected_graph_, s_, const3, const1, "MatMul_1", false, true);
+    TF_Operation* matmul2 =
+        MatMul(expected_graph_, s_, const0, const3, "MatMul_2", true, false);
+    expected_grad_outputs[0] = {matmul1, 0};
+    expected_grad_outputs[1] = {matmul2, 0};
+  }
+
+  TF_Tensor* FloatTensor2x2(const float* values) {
+    const int64_t dims[2] = {2, 2};
+    TF_Tensor* t = TF_AllocateTensor(TF_FLOAT, dims, 2, sizeof(float) * 4);
+    memcpy(TF_TensorData(t), values, sizeof(float) * 4);
+    return t;
+  }
+
+  TF_Operation* FloatConst2x2(TF_Graph* graph, TF_Status* s,
+                              const float* values, const char* name) {
+    unique_tensor_ptr tensor(FloatTensor2x2(values), TF_DeleteTensor);
+    TF_OperationDescription* desc = TF_NewOperation(graph, "Const", name);
+    TF_SetAttrTensor(desc, "value", tensor.get(), s);
+    if (TF_GetCode(s) != TF_OK) return nullptr;
+    TF_SetAttrType(desc, "dtype", TF_FLOAT);
+    TF_Operation* op = TF_FinishOperation(desc, s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    return op;
+  }
+
+  TF_Operation* MatMul(TF_Graph* graph, TF_Status* s, TF_Operation* l,
+                       TF_Operation* r, const char* name,
+                       bool transpose_a = false, bool transpose_b = false) {
+    TF_OperationDescription* desc = TF_NewOperation(graph, "MatMul", name);
+    if (transpose_a) {
+      TF_SetAttrBool(desc, "transpose_a", 1);
+    }
+    if (transpose_b) {
+      TF_SetAttrBool(desc, "transpose_b", 1);
+    }
+    TF_AddInput(desc, {l, 0});
+    TF_AddInput(desc, {r, 0});
+    TF_Operation* op = TF_FinishOperation(desc, s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    return op;
+  }
+
+  TF_Operation* OnesLike(TF_Graph* graph, TF_Status* s, TF_Operation* in,
+                         const char* name) {
+    TF_OperationDescription* desc = TF_NewOperation(graph, "OnesLike", name);
+    TF_AddInput(desc, {in, 0});
+    TF_Operation* op = TF_FinishOperation(desc, s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    return op;
+  }
+
+  TF_Operation* NoGradientOp(TF_Graph* graph, TF_Status* s, TF_Operation* in,
+                             const char* name) {
+    TF_OperationDescription* desc =
+        TF_NewOperation(graph, "TestOpWithNoGradient", name);
+    TF_AddInput(desc, {in, 0});
+    TF_Operation* op = TF_FinishOperation(desc, s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    return op;
+  }
+
+  TF_Status* s_;
+  TF_Graph* graph_;
+  TF_Graph* expected_graph_;
+};
+
+TEST_F(CApiGradientsTest, Gradients_GradInputs) { TestGradientsSuccess(true); }
+
+TEST_F(CApiGradientsTest, Gradients_NoGradInputs) {
+  TestGradientsSuccess(false);
+}
+
+TEST_F(CApiGradientsTest, OpWithNoGradientRegistered_GradInputs) {
+  TestGradientsError(true);
+}
+
+TEST_F(CApiGradientsTest, OpWithNoGradientRegistered_NoGradInputs) {
+  TestGradientsError(false);
 }
 
 // Create a tensor with values of type TF_INT8 provided by `values`.

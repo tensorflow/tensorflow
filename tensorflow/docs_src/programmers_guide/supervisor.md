@@ -362,8 +362,8 @@ following keyword arguments to the `Supervisor()` constructor:
    If not specified, the supervisor uses the first op in the
    `tf.GraphKeys.LOCAL_INIT_OP` collection.  If the collection is empty the
    supervisor adds an op to initialize all the tables and local variables in
-   the graph by calling `tf.initialize_all_tables()` and
-   `tf.initialize_all_local_variables()`.
+   the graph by calling `tf.tables_initializer()` and
+   `tf.local_variables_initializer()`.
 
    Pass `None` to not use a local init op.
 

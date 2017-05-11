@@ -306,6 +306,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "spacetobatch_op_test",
+    size = "medium",
+    srcs = ["spacetobatch_op_test.py"],
+    shard_count = 3,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "ternary_ops_test",
     size = "small",
     srcs = ["ternary_ops_test.py"],

@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
@@ -239,7 +240,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     aggregated_grad = []
     var_list = []
 
-    self._local_step = variables.Variable(
+    self._local_step = variable_scope.variable(
         initial_value=0,
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],

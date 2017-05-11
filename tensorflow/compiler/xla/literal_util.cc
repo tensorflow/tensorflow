@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 
 #include <algorithm>
+#include <cstring>
+#include <functional>
 #include <limits>
 #include <numeric>
 #include <vector>
 
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -32,6 +35,115 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
+
+/* static */ std::unique_ptr<Literal> LiteralUtil::CreateFromShape(
+    const Shape& shape) {
+  auto literal = MakeUnique<Literal>();
+  *literal->mutable_shape() = shape;
+  Reserve(ShapeUtil::ElementsIn(literal->shape()), literal.get());
+  return literal;
+}
+
+/* static */ std::unique_ptr<Literal> LiteralUtil::CreateFromDimensions(
+    PrimitiveType primitive_type,
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
+  return CreateFromShape(ShapeUtil::MakeShape(primitive_type, dimensions));
+}
+
+template <typename T, typename WT>
+/* static */ Status LiteralUtil::CopyRange(
+    const Literal& src_literal, tensorflow::gtl::ArraySlice<int64> src_base,
+    Literal* dest_literal, tensorflow::gtl::ArraySlice<int64> dest_base,
+    tensorflow::gtl::ArraySlice<int64> copy_size) {
+  const Shape& src_shape = src_literal.shape();
+  const Shape& dest_shape = dest_literal->shape();
+  tensorflow::gtl::ArraySlice<T> src_data = GetArraySlice<T>(src_literal);
+  tensorflow::protobuf::RepeatedField<WT>* dest_data =
+      GetMutableRepeatedField<WT>(dest_literal);
+
+  TF_RET_CHECK(ShapeUtil::Rank(src_shape) == src_base.size());
+  TF_RET_CHECK(ShapeUtil::Rank(dest_shape) == dest_base.size());
+  if (ShapeUtil::Rank(src_shape) == 0 || ShapeUtil::Rank(dest_shape) == 0) {
+    // If any of the two shapes are scalars, we can just call the StridedCopy()
+    // directly, and we know we will be copying only one value.
+    TF_RET_CHECK(copy_size.empty());
+    StridedCopy(dest_data, LinearIndex(*dest_literal, dest_base), 0, src_data,
+                LinearIndex(src_literal, src_base), 0, 1);
+  } else if (!ShapeUtil::HasZeroElements(dest_shape)) {
+    TF_RET_CHECK(!ShapeUtil::HasZeroElements(src_shape));
+    TF_RET_CHECK(src_base.size() == dest_base.size());
+    TF_RET_CHECK(src_base.size() == copy_size.size());
+
+    // Scan the source from minor, stepping in copy size blocks, then within
+    // the index enumaration functor, do a strided copy advancing source index
+    // by one (walking through the minor dimension), and destination index by
+    // proper stride size at the matching dimension.
+    std::vector<int64> src_indexes(src_base.size(), 0);
+    std::vector<int64> dest_indexes(dest_base.size(), 0);
+    std::vector<int64> base(src_base.size(), 0);
+    std::vector<int64> incr(src_base.size(), 1);
+    int64 sdim = src_shape.layout().minor_to_major()[0];
+    int64 dest_stride = IndexUtil::GetDimensionStride(dest_shape, sdim);
+
+    incr[sdim] = copy_size[sdim];
+    auto copy_proc = [&](const std::vector<int64>& indexes) {
+      // Map from multi-dimensional index, to source index.
+      std::copy(indexes.begin(), indexes.end(), src_indexes.begin());
+      std::transform(src_indexes.begin(), src_indexes.end(), src_base.begin(),
+                     src_indexes.begin(), std::plus<int64>());
+      // Map from multi-dimensional index, to destination index.
+      std::copy(indexes.begin(), indexes.end(), dest_indexes.begin());
+      std::transform(dest_indexes.begin(), dest_indexes.end(),
+                     dest_base.begin(), dest_indexes.begin(),
+                     std::plus<int64>());
+
+      int64 src_index = LinearIndex(src_literal, src_indexes);
+      int64 dest_index = LinearIndex(*dest_literal, dest_indexes);
+
+      StridedCopy(dest_data, dest_index, dest_stride, src_data, src_index, 1,
+                  copy_size[sdim]);
+      return true;
+    };
+
+    ShapeUtil::ForEachIndex(src_shape, base, copy_size, incr, copy_proc);
+  }
+  return Status::OK();
+}
+
+/* static */ Status LiteralUtil::Copy(
+    const Literal& src_literal, tensorflow::gtl::ArraySlice<int64> src_base,
+    Literal* dest_literal, tensorflow::gtl::ArraySlice<int64> dest_base,
+    tensorflow::gtl::ArraySlice<int64> copy_size) {
+  TF_RET_CHECK(
+      ShapeUtil::SameElementType(src_literal.shape(), dest_literal->shape()));
+  switch (src_literal.shape().element_type()) {
+    case U32:
+      return CopyRange<uint32>(src_literal, src_base, dest_literal, dest_base,
+                               copy_size);
+    case U64:
+      return CopyRange<uint64, tensorflow::protobuf_uint64>(
+          src_literal, src_base, dest_literal, dest_base, copy_size);
+    case S32:
+      return CopyRange<int32>(src_literal, src_base, dest_literal, dest_base,
+                              copy_size);
+    case S64:
+      return CopyRange<int64, tensorflow::protobuf_int64>(
+          src_literal, src_base, dest_literal, dest_base, copy_size);
+    case F32:
+      return CopyRange<float>(src_literal, src_base, dest_literal, dest_base,
+                              copy_size);
+    case F64:
+      return CopyRange<double>(src_literal, src_base, dest_literal, dest_base,
+                               copy_size);
+    case PRED:
+      return CopyRange<bool>(src_literal, src_base, dest_literal, dest_base,
+                             copy_size);
+    default:
+      break;
+  }
+  return Unimplemented("Unhandled primitive type %d",
+                       src_literal.shape().element_type());
+}
 
 /* static */ Literal LiteralUtil::Zero(PrimitiveType primitive_type) {
   switch (primitive_type) {
@@ -197,37 +309,16 @@ namespace xla {
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::Relayout(
     const Literal& original, const Layout& layout) {
-  // Note: if this were a performance bottleneck, we avoid cloning and just make
-  // an uninitialized array instead, since all values are clobbered below.
   std::unique_ptr<Literal> result = CloneToUnique(original);
   *result->mutable_shape()->mutable_layout() = layout;
-  const PrimitiveType primitive_type = original.shape().element_type();
-  switch (primitive_type) {
-    case F32:
-      LiteralUtil::EachCell<float>(
-          original,
-          [&](tensorflow::gtl::ArraySlice<int64> indices, float value) {
-            LiteralUtil::Set<float>(result.get(), indices, value);
-          });
-      return result;
-    case S32:
-      LiteralUtil::EachCell<int32>(
-          original,
-          [&](tensorflow::gtl::ArraySlice<int64> indices, int32 value) {
-            LiteralUtil::Set<int32>(result.get(), indices, value);
-          });
-      return result;
-    case U32:
-      LiteralUtil::EachCell<uint32>(
-          original,
-          [&](tensorflow::gtl::ArraySlice<int64> indices, uint32 value) {
-            LiteralUtil::Set<uint32>(result.get(), indices, value);
-          });
-      return result;
-    default:
-      LOG(FATAL) << "not yet implemented: "
-                 << PrimitiveType_Name(primitive_type);
-  }
+
+  const Shape& shape = original.shape();
+  std::vector<int64> base(ShapeUtil::Rank(shape), 0);
+  std::vector<int64> copy_size(shape.dimensions().begin(),
+                               shape.dimensions().end());
+
+  TF_CHECK_OK(Copy(original, base, result.get(), base, copy_size));
+  return result;
 }
 
 /* static */ StatusOr<std::unique_ptr<Literal>> LiteralUtil::Reshape(
@@ -235,25 +326,19 @@ namespace xla {
   if (ShapeUtil::IsTuple(input.shape())) {
     return InvalidArgument("Reshape does not support tuples.");
   }
-
+  std::unique_ptr<Literal> output;
   if (!LayoutUtil::IsMonotonicWithDim0Major(input.shape().layout())) {
-    return Unimplemented(
-        "Input shape must have a monotonic layout where dimension 0 is major, "
-        "was: %s",
-        LayoutUtil::HumanString(input.shape().layout()).c_str());
+    std::vector<int64> minor_to_major(ShapeUtil::Rank(input.shape()));
+    std::iota(minor_to_major.rbegin(), minor_to_major.rend(),
+              static_cast<int64>(0));
+    output = Relayout(input, LayoutUtil::MakeLayout(minor_to_major));
+  } else {
+    output = CloneToUnique(input);
   }
-  std::vector<int64> layout(dimensions.size());
-  std::iota(layout.rbegin(), layout.rend(), 0);
-
   // Because the layout is monotonic, we can simply reuse the same sequence of
   // values without changing their order.
-  std::unique_ptr<Literal> output = CloneToUnique(input);
-  output->clear_shape();
-  output->mutable_shape()->set_element_type(input.shape().element_type());
-  for (int64 dimension : dimensions) {
-    output->mutable_shape()->add_dimensions(dimension);
-  }
-  *output->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout(layout);
+  *output->mutable_shape() =
+      ShapeUtil::MakeShape(input.shape().element_type(), dimensions);
 
   int64 elements_before = ShapeUtil::ElementsIn(input.shape());
   int64 elements_after = ShapeUtil::ElementsIn(output->shape());
@@ -267,73 +352,42 @@ namespace xla {
   return std::move(output);
 }
 
-namespace {
-
-template <class T>
-void TransposeLiteralInternal(const Literal& original,
-                              tensorflow::gtl::ArraySlice<int64> permutation,
-                              Literal* result) {
-  std::vector<int64> new_indices(ShapeUtil::Rank(original.shape()));
-  LiteralUtil::EachCell<T>(
-      original, [&](tensorflow::gtl::ArraySlice<int64> indices, T value) {
-        for (int64 i = 0; i < indices.size(); ++i) {
-          new_indices[i] = indices[permutation[i]];
-        }
-        LiteralUtil::Set<T>(result, new_indices, value);
-      });
-}
-}  // namespace
-
 /* static */ std::unique_ptr<Literal> LiteralUtil::Transpose(
     const Literal& original, tensorflow::gtl::ArraySlice<int64> permutation) {
   CHECK(!ShapeUtil::IsTuple(original.shape()))
-      << "tuple is not supported for transpose";
-  std::vector<int64> dimension_numbers(ShapeUtil::Rank(original.shape()));
-  std::iota(dimension_numbers.begin(), dimension_numbers.end(), 0);
-  CHECK(std::is_permutation(permutation.begin(), permutation.end(),
-                            dimension_numbers.begin()))
-      << "given permutation is not a permutation of dimension numbers";
-  std::vector<int64> new_dimension_sizes;
-  for (const int64 dim : permutation) {
-    new_dimension_sizes.push_back(original.shape().dimensions(dim));
+      << "Tuple is not supported for transpose";
+  CHECK(IsPermutation(permutation, ShapeUtil::Rank(original.shape())))
+      << "Given permutation is not a permutation of dimension numbers";
+  // To transpose the array, we just permute the dimensions and layout, and
+  // do a straight memory copy of the raw data set.
+  // This is considerably faster than iterating over every array element using
+  // the EachCell<>() and Set<>() APIs.
+  std::vector<int64> inverse_permutation = InversePermutation(permutation);
+  Shape shape =
+      ShapeUtil::PermuteDimensions(inverse_permutation, original.shape());
+  // Replace the layout with one affine to the original shape, such that a
+  // transpose operation can be performed by leaving the flat values
+  // representation intact.
+  // For example, consider the shape F32[11,8]{1,0} under a {1,0} permutation.
+  // The shape with affine layout resulting from that operation will be
+  // F32[8,11]{0,1}, since it leave the original most minor (the 8 sized), the
+  // most minor.
+  // Essentially, given MinMaj(Di) the position of the Di dimension within the
+  // minor to major vector, and given T(Di) the index that the original Di
+  // dimension has within the transposed array, a layout is affine if
+  // MinMaj(Di) == TMinMaj(T(Di)), with TMinMaj() being the minor to major
+  // vector of the affine layout.
+  Layout* layout = shape.mutable_layout();
+  layout->clear_minor_to_major();
+  for (auto index : original.shape().layout().minor_to_major()) {
+    layout->add_minor_to_major(inverse_permutation[index]);
   }
-  const auto result_shape = ShapeUtil::MakeShape(
-      original.shape().element_type(), new_dimension_sizes);
-  std::unique_ptr<Literal> result = CloneToUnique(original);
-  *result->mutable_shape() = result_shape;
-  const PrimitiveType primitive_type = original.shape().element_type();
-  switch (primitive_type) {
-    case F32:
-      TransposeLiteralInternal<float>(original, permutation, result.get());
-      return result;
-    case F64:
-      TransposeLiteralInternal<double>(original, permutation, result.get());
-      return result;
-    case PRED:
-      TransposeLiteralInternal<bool>(original, permutation, result.get());
-      return result;
-    case S8:
-      TransposeLiteralInternal<int8>(original, permutation, result.get());
-      return result;
-    case U8:
-      TransposeLiteralInternal<uint8>(original, permutation, result.get());
-      return result;
-    case S32:
-      TransposeLiteralInternal<int32>(original, permutation, result.get());
-      return result;
-    case U32:
-      TransposeLiteralInternal<uint32>(original, permutation, result.get());
-      return result;
-    case S64:
-      TransposeLiteralInternal<int64>(original, permutation, result.get());
-      return result;
-    case U64:
-      TransposeLiteralInternal<uint64>(original, permutation, result.get());
-      return result;
-    default:
-      LOG(FATAL) << "not yet implemented: "
-                 << PrimitiveType_Name(primitive_type);
-  }
+  std::unique_ptr<Literal> new_literal = CreateFromShape(shape);
+  DCHECK_GE(ShapeUtil::ByteSizeOf(new_literal->shape()),
+            ShapeUtil::ByteSizeOf(original.shape()));
+  std::memcpy(MutableInternalData(new_literal.get()), InternalData(original),
+              ShapeUtil::ByteSizeOf(original.shape()));
+  return new_literal;
 }
 
 /* static */ std::unique_ptr<Literal> LiteralUtil::Slice(
@@ -680,50 +734,16 @@ void TransposeLiteralInternal(const Literal& original,
 
 /* static */ void LiteralUtil::EachCellAsString(
     const Literal& literal,
-    std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
-                       const string& value)>
-        per_cell) {
-  if (ShapeUtil::Rank(literal.shape()) == 1) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      per_cell({i0}, GetAsString(literal, {i0}));
-    }
+    const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
+                             const string& value)>& per_cell) {
+  if (ShapeUtil::HasZeroElements(literal.shape())) {
     return;
   }
-
-  if (ShapeUtil::Rank(literal.shape()) == 2) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      for (int64 i1 = 0; i1 < literal.shape().dimensions(1); ++i1) {
-        per_cell({i0, i1}, GetAsString(literal, {i0, i1}));
-      }
-    }
-    return;
-  }
-
-  if (ShapeUtil::Rank(literal.shape()) == 3) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      for (int64 i1 = 0; i1 < literal.shape().dimensions(1); ++i1) {
-        for (int64 i2 = 0; i2 < literal.shape().dimensions(2); ++i2) {
-          per_cell({i0, i1, i2}, GetAsString(literal, {i0, i1, i2}));
-        }
-      }
-    }
-    return;
-  }
-
-  if (ShapeUtil::Rank(literal.shape()) == 4) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      for (int64 i1 = 0; i1 < literal.shape().dimensions(1); ++i1) {
-        for (int64 i2 = 0; i2 < literal.shape().dimensions(2); ++i2) {
-          for (int64 i3 = 0; i3 < literal.shape().dimensions(3); ++i3) {
-            per_cell({i0, i1, i2, i3}, GetAsString(literal, {i0, i1, i2, i3}));
-          }
-        }
-      }
-    }
-    return;
-  }
-
-  LOG(FATAL) << "unhandled rank: " << ShapeUtil::Rank(literal.shape());
+  std::vector<int64> indices = IndexUtil::LinearIndexToMultidimensionalIndex(
+      literal.shape(), /*linear_index=*/0);
+  do {
+    per_cell(indices, GetAsString(literal, indices));
+  } while (IndexUtil::BumpIndices(literal.shape(), &indices));
 }
 
 namespace {

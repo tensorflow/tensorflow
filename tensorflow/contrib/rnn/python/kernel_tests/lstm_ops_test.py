@@ -68,8 +68,8 @@ class LSTMBlockCellTest(test.TestCase):
         m3 = array_ops.zeros([1, 2])
         g, ((out_m0, out_m1),
             (out_m2, out_m3)) = core_rnn_cell_impl.MultiRNNCell(
-                [lstm_ops.LSTMBlockCell(2)] * 2, state_is_tuple=True)(x, (
-                    (m0, m1), (m2, m3)))
+                [lstm_ops.LSTMBlockCell(2) for _ in range(2)],
+                state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([variables.global_variables_initializer()])
         res = sess.run([g, out_m0, out_m1, out_m2, out_m3], {
             x.name: np.array([[1., 1.]]),

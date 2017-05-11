@@ -29,7 +29,7 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.1.0-rc1'
+_VERSION = '1.1.0'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
@@ -59,6 +59,7 @@ else:
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'tensorboard = tensorflow.tensorboard.tensorboard:main',
+    'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
 ]
 # pylint: enable=line-too-long
 

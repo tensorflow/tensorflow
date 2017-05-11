@@ -56,29 +56,38 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
   printf("Preparing Views...\n");
   scope_view_ = std::unique_ptr<TFScope>(new TFScope(ckpt_reader_.get()));
   graph_view_ = std::unique_ptr<TFGraph>(new TFGraph(ckpt_reader_.get()));
+  code_view_ = std::unique_ptr<TFCode>(new TFCode());
+
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     scope_view_->AddNode(&it->second);
     graph_view_->AddNode(&it->second);
+    code_view_->AddNode(&it->second);
   }
   scope_view_->Build();
   graph_view_->Build();
+  code_view_->Build();
 }
 
-const TFProfNode& TFStats::PrintGraph(const string& cmd, const Options& opts) {
+const TFGraphNodeProto& TFStats::PrintGraph(const string& cmd,
+                                            const Options& opts) {
   if (cmd == kCmds[0]) {
     return scope_view_->Show(opts);
   } else if (cmd == kCmds[1]) {
     return graph_view_->Show(opts);
   } else {
     fprintf(stderr, "Unknown command: %s\n", cmd.c_str());
-    return empty_node_;
+    return empty_graph_node_;
   }
+}
+
+const TFCodeNodeProto& TFStats::PrintCode(const Options& opts) {
+  return code_view_->Show(opts);
 }
 
 void TFStats::ParseGraph() {
   for (const NodeDef& node : graph_->node()) {
     CHECK(nodes_map_.find(node.name()) == nodes_map_.end());
-    nodes_map_[node.name()] = TFNode(&node);
+    nodes_map_[node.name()] = TFGraphNode(&node);
   }
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     const NodeDef* node_def = it->second.node_def();
@@ -110,6 +119,9 @@ void TFStats::ParseOpLog() {
     if (entry.float_ops()) {
       node->second.AddFloatOps(entry.float_ops());
     }
+    if (entry.has_code_def()) {
+      node->second.AddCode(&entry.code_def());
+    }
   }
 }
 
@@ -131,13 +143,14 @@ void TFStats::ParseRunMeta() {
             "Missing CostGraphDef in RunMetadata.\nMaybe you forget to"
             "set tf.ConfigProto(graph_options=tf.GraphOptions("
             "build_cost_model=1)) to Session()\n");
-  }
-  for (const auto& node_pb : run_meta_->cost_graph().node()) {
-    auto node = nodes_map_.find(node_pb.name());
-    if (node == nodes_map_.end()) {
-      continue;
+  } else {
+    for (const auto& node_pb : run_meta_->cost_graph().node()) {
+      auto node = nodes_map_.find(node_pb.name());
+      if (node == nodes_map_.end()) {
+        continue;
+      }
+      node->second.AddNodeStat(&node_pb);
     }
-    node->second.AddNodeStat(&node_pb);
   }
 }
 }  // namespace tfprof

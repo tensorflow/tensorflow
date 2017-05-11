@@ -19,6 +19,21 @@ Instead, use `gulp regenerate` to create a new version with your changes.
 
 <html><head><!--
 @license
+Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+--><!--
+@license
 Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -66,7 +81,7 @@ var TF;
         // The names of TensorBoard tabs.
         Globals.TABS = [
             'scalars', 'images', 'audio', 'graphs', 'distributions', 'histograms',
-            'embeddings'
+            'embeddings', 'text'
         ];
         // If true, TensorBoard stores its hash in the URI state.
         // If false, tab switching in TensorBoard will not update location hash,
@@ -318,11 +333,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-};
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+    return function (d, b) {
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
 var TF;
 (function (TF) {
     var Backend;
@@ -616,6 +636,8 @@ var TF;
                 audio: standardRoute('audio'),
                 runMetadata: standardRoute('run_metadata', '.pbtxt'),
                 healthPills: function () { return dataDir + '/plugin/debugger/health_pills'; },
+                textRuns: function () { return dataDir + '/plugin/text/runs' + (demoMode ? '.json' : ''); },
+                text: standardRoute('plugin/text/text'),
             };
         }
         Backend.router = router;
@@ -644,7 +666,7 @@ var TF;
         ;
         Backend_1.TYPES = [
             'scalar', 'histogram', 'compressedHistogram', 'graph', 'image', 'audio',
-            'runMetadata'
+            'runMetadata', 'text'
         ];
         /**
          * The Backend class provides a convenient and typed interface to the backend.
@@ -722,6 +744,23 @@ var TF;
                 return this.runs().then(function (x) { return _.mapValues(x, 'run_metadata'); });
             };
             /**
+             * Returns a promise showing the Run-to-Tag mapping for text data.
+             */
+            Backend.prototype.textRuns = function () {
+                return this.requestManager.request(this.router.textRuns());
+            };
+            /**
+             * Returns a promise containing TextDatums for given run and tag.
+             */
+            Backend.prototype.text = function (tag, run) {
+                var url = this.router.text(tag, run);
+                // tslint:disable-next-line:no-any it's convenient and harmless here
+                return this.requestManager.request(url).then(map(function (x) {
+                    x.wall_time = timeToDate(x.wall_time);
+                    return x;
+                }));
+            };
+            /**
              * Return a promise of a graph string from the backend.
              */
             Backend.prototype.graph = function (tag, limit_attr_size, large_attrs_key) {
@@ -740,8 +779,13 @@ var TF;
             /**
              * Returns a promise for requesting the health pills for a list of nodes.
              */
-            Backend.prototype.healthPills = function (nodeNames) {
+            Backend.prototype.healthPills = function (nodeNames, step) {
                 var postData = { 'node_names': JSON.stringify(nodeNames) };
+                if (step !== undefined) {
+                    // The user requested health pills for a specific step. This request
+                    // might be slow since the backend reads events sequentially from disk.
+                    postData['step'] = step;
+                }
                 return this.requestManager.request(this.router.healthPills(), postData);
             };
             /**
@@ -1457,10 +1501,9 @@ var TF;
             and pass the graph either via the constructor, or by calling its
             <code>add_graph()</code> method.
             You may want to check out the
-            <a href="https://www.tensorflow.org/versions/master/how_tos/graph_viz/index.html">
+            <a href="https://www.tensorflow.org/get_started/graph_viz">
               graph visualizer tutorial
-            </a>
-            .
+            </a>.
           </p>
         </template>
         <template is="dom-if" if="[[_isProjector(dataType)]]">
@@ -1476,7 +1519,7 @@ var TF;
               <li>
                 You are not saving any checkpoint. To save your model,
                 create a
-                <a href="https://www.tensorflow.org/versions/master/api_docs/python/state_ops.html#Saver">
+                <a href="https://www.tensorflow.org/api_docs/python/tf/train/Saver">
                   <code>tf.train.Saver</code>
                 </a>
                 and save your model periodically
@@ -1509,7 +1552,7 @@ var TF;
             README
           </a>
           and perhaps the
-          <a href="https://www.tensorflow.org/versions/master/how_tos/summaries_and_tensorboard/index.html">
+          <a href="https://www.tensorflow.org/get_started/summaries_and_tensorboard">
             TensorBoard tutorial
           </a>.
         </p>
@@ -1570,6 +1613,49 @@ var TF;
     var Dashboard;
     (function (Dashboard) {
         /**
+         * A behavior that TensorBoard dashboards must implement. This behavior serves
+         * the purpose of an interface.
+         */
+        function DashboardBehavior(dashboardName) {
+            return {
+                properties: {
+                    name: {
+                        type: String,
+                        value: dashboardName,
+                        readOnly: true,
+                    },
+                },
+                // This method is called when the dashboard reloads, either when the
+                // dashboard is first visited, periodically reloaded, or manually reloaded
+                // via the user clicking the button. Note that dashboard custom elements
+                // that use TF.Dashboard.ReloadBehavior already implement a reload method.
+                reload: function () {
+                    throw Error('The ' + dashboardName + ' dashboard does not implement reload.');
+                },
+            };
+        }
+        Dashboard.DashboardBehavior = DashboardBehavior;
+    })(Dashboard = TF.Dashboard || (TF.Dashboard = {}));
+})(TF || (TF = {}));
+</script><script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+var TF;
+(function (TF) {
+    var Dashboard;
+    (function (Dashboard) {
+        /**
          * ReloadBehavior: A simple behavior for dashboards where the
          * frontendReload() function should find every child element with a
          * given tag name (e.g. "tf-line-chart" or "tf-image-loader")
@@ -1595,6 +1681,7 @@ var TF;
     })(Dashboard = TF.Dashboard || (TF.Dashboard = {}));
 })(TF || (TF = {}));
 </script>
+
 
 <dom-module id="tf-option-selector" assetpath="../tf-dashboard-common/">
   <template>
@@ -1692,7 +1779,7 @@ var TF;
       :host:first-of-type {
         margin-top: 20px;
       }
-
+      
       :host:last-of-type {
         margin-bottom: 20px;
       }
@@ -2121,7 +2208,7 @@ svg.plottable {
 
 <dom-module id="tf-panes-helper" assetpath="../tf-dashboard-common/">
   <template>
-    <content></content>
+    <content></content> 
     <tf-no-data-warning data-type="[[dataType]]" show-warning="[[dataNotFound]]"></tf-no-data-warning>
 
     <template is="dom-repeat" items="[[categories]]" as="category">
@@ -2137,7 +2224,7 @@ svg.plottable {
                 </div>
                 <div class="card-content">
                   <tf-chart-scaffold tag="[[item.tag]]" data-provider="[[dataProvider]]" visible-series="[[item.runs]]" on-ready="_instantiateTemplate">
-
+                    
                   </tf-chart-scaffold>
                 </div>
                 <div class="card-bottom-row">
@@ -2160,7 +2247,7 @@ svg.plottable {
         display: flex;
         flex-direction: column;
         margin: 5px;
-        padding: 0 30px 35px 0;
+        padding: var(--card-padding, 0 30px 35px 0);
         -webkit-user-select: none;
         -moz-user-select: none;
         position: relative;
@@ -2213,6 +2300,7 @@ svg.plottable {
         padding: 4px;
         border-radius: 100%;
         pointer-events: auto;
+        display: var(--show-expand-button, block);
       }
 
       .card-expanded .expand-button {
@@ -2419,6 +2507,8 @@ limitations under the License.
  * It generates URI components like: events&runPrefix=train*
  * which TensorBoard uses after like localhost:8000/#events&runPrefix=train*
  * to store state in the URI.
+ *
+ * It also allows saving the values to localStorage for long-term persistance.
  */
 var TF;
 (function (TF) {
@@ -2447,76 +2537,79 @@ var TF;
          */
         URIStorage.DISAMBIGUATOR = 'disambiguator';
         /**
-         * Return a boolean stored in the URI, given a corresponding key.
+         * Return a string stored in URI or localStorage.
          * Undefined if not found.
          */
-        function getBoolean(key) {
-            var items = _componentToDict(_readComponent());
-            var item = items[key];
+        function getString(key, useLocalStorage) {
+            if (useLocalStorage) {
+                return window.localStorage.getItem(key);
+            }
+            else {
+                return _componentToDict(_readComponent())[key];
+            }
+        }
+        URIStorage.getString = getString;
+        /**
+         * Set a string in URI or localStorage.
+         */
+        function setString(key, value, useLocalStorage) {
+            if (useLocalStorage) {
+                window.localStorage.setItem(key, value);
+            }
+            else {
+                var items = _componentToDict(_readComponent());
+                items[key] = value;
+                _writeComponent(_dictToComponent(items));
+            }
+        }
+        URIStorage.setString = setString;
+        /**
+         * Return a boolean stored in stored in URI or localStorage.
+         * Undefined if not found.
+         */
+        function getBoolean(key, useLocalStorage) {
+            var item = getString(key, useLocalStorage);
             return item === 'true' ? true : item === 'false' ? false : undefined;
         }
         URIStorage.getBoolean = getBoolean;
         /**
-         * Store a boolean in the URI, with a corresponding key.
+         * Store a boolean in URI or localStorage.
          */
-        function setBoolean(key, value) {
-            var items = _componentToDict(_readComponent());
-            items[key] = value.toString();
-            _writeComponent(_dictToComponent(items));
+        function setBoolean(key, value, useLocalStorage) {
+            if (useLocalStorage === void 0) { useLocalStorage = false; }
+            setString(key, value.toString(), useLocalStorage);
         }
         URIStorage.setBoolean = setBoolean;
         /**
-         * Return a string stored in the URI, given a corresponding key.
+         * Return a number stored in stored in URI or localStorage.
          * Undefined if not found.
          */
-        function getString(key) {
-            var items = _componentToDict(_readComponent());
-            return items[key];
-        }
-        URIStorage.getString = getString;
-        /**
-         * Store a string in the URI, with a corresponding key.
-         */
-        function setString(key, value) {
-            var items = _componentToDict(_readComponent());
-            items[key] = value;
-            _writeComponent(_dictToComponent(items));
-        }
-        URIStorage.setString = setString;
-        /**
-         * Return a number stored in the URI, given a corresponding key.
-         * Undefined if not found.
-         */
-        function getNumber(key) {
-            var items = _componentToDict(_readComponent());
-            return items[key] === undefined ? undefined : +items[key];
+        function getNumber(key, useLocalStorage) {
+            var item = getString(key, useLocalStorage);
+            return item === undefined ? undefined : +item;
         }
         URIStorage.getNumber = getNumber;
         /**
-         * Store a number in the URI, with a corresponding key.
+         * Store a number in URI or localStorage.
          */
-        function setNumber(key, value) {
-            var items = _componentToDict(_readComponent());
-            items[key] = '' + value;
-            _writeComponent(_dictToComponent(items));
+        function setNumber(key, value, useLocalStorage) {
+            setString(key, '' + value, useLocalStorage);
         }
         URIStorage.setNumber = setNumber;
         /**
-         * Return an object stored in the URI, given a corresponding key.
+         * Return an object stored in stored in URI or localStorage.
          * Undefined if not found.
          */
-        function getObject(key) {
-            var items = _componentToDict(_readComponent());
-            return items[key] === undefined ? undefined : JSON.parse(atob(items[key]));
+        function getObject(key, useLocalStorage) {
+            var item = getString(key, useLocalStorage);
+            return item === undefined ? undefined : JSON.parse(atob(item));
         }
         URIStorage.getObject = getObject;
         /**
-         * Store an object in the URI, with a corresponding key.
+         * Store an object in URI or localStorage.
          */
-        function setObject(key, value) {
-            var items = _componentToDict(_readComponent());
-            items[key] = btoa(JSON.stringify(value));
-            _writeComponent(_dictToComponent(items));
+        function setObject(key, value, useLocalStorage) {
+            setString(key, btoa(JSON.stringify(value)), useLocalStorage);
         }
         URIStorage.setObject = setObject;
         /**
@@ -2537,8 +2630,9 @@ var TF;
          *     value is not already set
          * (2) Sets up listener that updates Polymer property on hash change.
          */
-        function getBooleanInitializer(propertyName, defaultVal) {
-            return _getInitializer(getBoolean, propertyName, defaultVal);
+        function getBooleanInitializer(propertyName, defaultVal, useLocalStorage) {
+            if (useLocalStorage === void 0) { useLocalStorage = false; }
+            return _getInitializer(getBoolean, propertyName, defaultVal, useLocalStorage);
         }
         URIStorage.getBooleanInitializer = getBooleanInitializer;
         /**
@@ -2547,8 +2641,9 @@ var TF;
          *     value is not already set
          * (2) Sets up listener that updates Polymer property on hash change.
          */
-        function getStringInitializer(propertyName, defaultVal) {
-            return _getInitializer(getString, propertyName, defaultVal);
+        function getStringInitializer(propertyName, defaultVal, useLocalStorage) {
+            if (useLocalStorage === void 0) { useLocalStorage = false; }
+            return _getInitializer(getString, propertyName, defaultVal, useLocalStorage);
         }
         URIStorage.getStringInitializer = getStringInitializer;
         /**
@@ -2557,8 +2652,9 @@ var TF;
          *     value is not already set
          * (2) Sets up listener that updates Polymer property on hash change.
          */
-        function getNumberInitializer(propertyName, defaultVal) {
-            return _getInitializer(getNumber, propertyName, defaultVal);
+        function getNumberInitializer(propertyName, defaultVal, useLocalStorage) {
+            if (useLocalStorage === void 0) { useLocalStorage = false; }
+            return _getInitializer(getNumber, propertyName, defaultVal, useLocalStorage);
         }
         URIStorage.getNumberInitializer = getNumberInitializer;
         /**
@@ -2569,38 +2665,43 @@ var TF;
          *
          * Generates a deep clone of the defaultVal to avoid mutation issues.
          */
-        function getObjectInitializer(propertyName, defaultVal) {
-            return _getInitializer(getObject, propertyName, defaultVal);
+        function getObjectInitializer(propertyName, defaultVal, useLocalStorage) {
+            if (useLocalStorage === void 0) { useLocalStorage = false; }
+            return _getInitializer(getObject, propertyName, defaultVal, useLocalStorage);
         }
         URIStorage.getObjectInitializer = getObjectInitializer;
         /**
          * Return a function that updates URIStorage when a string property changes.
          */
-        function getBooleanObserver(propertyName, defaultVal) {
-            return _getObserver(getBoolean, setBoolean, propertyName, defaultVal);
+        function getBooleanObserver(propertyName, defaultVal, useLocalStorage) {
+            if (useLocalStorage === void 0) { useLocalStorage = false; }
+            return _getObserver(getBoolean, setBoolean, propertyName, defaultVal, useLocalStorage);
         }
         URIStorage.getBooleanObserver = getBooleanObserver;
         /**
          * Return a function that updates URIStorage when a string property changes.
          */
-        function getStringObserver(propertyName, defaultVal) {
-            return _getObserver(getString, setString, propertyName, defaultVal);
+        function getStringObserver(propertyName, defaultVal, useLocalStorage) {
+            if (useLocalStorage === void 0) { useLocalStorage = false; }
+            return _getObserver(getString, setString, propertyName, defaultVal, useLocalStorage);
         }
         URIStorage.getStringObserver = getStringObserver;
         /**
          * Return a function that updates URIStorage when a number property changes.
          */
-        function getNumberObserver(propertyName, defaultVal) {
-            return _getObserver(getNumber, setNumber, propertyName, defaultVal);
+        function getNumberObserver(propertyName, defaultVal, useLocalStorage) {
+            if (useLocalStorage === void 0) { useLocalStorage = false; }
+            return _getObserver(getNumber, setNumber, propertyName, defaultVal, useLocalStorage);
         }
         URIStorage.getNumberObserver = getNumberObserver;
         /**
          * Return a function that updates URIStorage when an object property changes.
          * Generates a deep clone of the defaultVal to avoid mutation issues.
          */
-        function getObjectObserver(propertyName, defaultVal) {
+        function getObjectObserver(propertyName, defaultVal, useLocalStorage) {
+            if (useLocalStorage === void 0) { useLocalStorage = false; }
             var clone = _.cloneDeep(defaultVal);
-            return _getObserver(getObject, setObject, propertyName, clone);
+            return _getObserver(getObject, setObject, propertyName, clone, useLocalStorage);
         }
         URIStorage.getObjectObserver = getObjectObserver;
         /**
@@ -2673,7 +2774,7 @@ var TF;
          *     value is not already set
          * (2) Sets up listener that updates Polymer property on hash change.
          */
-        function _getInitializer(get, propertyName, defaultVal) {
+        function _getInitializer(get, propertyName, defaultVal, useLocalStorage) {
             return function () {
                 var _this = this;
                 var URIStorageName = getURIStorageName(this, propertyName);
@@ -2683,22 +2784,41 @@ var TF;
                 // It is important that this function does not re-assign needlessly,
                 // to avoid Polymer observer churn.
                 var setComponentValue = function () {
-                    var uriValue = get(URIStorageName);
+                    var uriValue = get(URIStorageName, false);
                     var currentValue = _this[propertyName];
                     // if uriValue is undefined, we will ensure that the property has the
                     // default value
                     if (uriValue === undefined) {
-                        if (!_.isEqual(currentValue, defaultVal)) {
+                        var valueToSet = void 0;
+                        // if we are using localStorage, we will set the value to the value
+                        // from localStorage. Then, the corresponding observer will proxy
+                        // the localStorage value into URI storage.
+                        // in this way, localStorage takes precedence over the default val
+                        // but not over the URI value.
+                        if (useLocalStorage) {
+                            var useLocalStorageValue = get(URIStorageName, true);
+                            valueToSet = useLocalStorageValue === undefined ?
+                                defaultVal :
+                                useLocalStorageValue;
+                        }
+                        else {
+                            valueToSet = defaultVal;
+                        }
+                        if (!_.isEqual(currentValue, valueToSet)) {
                             // If we don't have an explicit URI value, then we need to ensure
                             // the property value is equal to the default value.
                             // We will assign a clone rather than the canonical default, because
                             // the component receiving this property may mutate it, and we need
                             // to keep a pristine copy of the default.
-                            _this[propertyName] = _.clone(defaultVal);
+                            _this[propertyName] = _.clone(valueToSet);
                         }
+                        // In this case, we have an explicit URI value, so we will ensure that
+                        // the component has an equivalent value.
                     }
-                    else if (!_.isEqual(uriValue, currentValue)) {
-                        _this[propertyName] = uriValue;
+                    else {
+                        if (!_.isEqual(uriValue, currentValue)) {
+                            _this[propertyName] = uriValue;
+                        }
                     }
                 };
                 // Set the value on the property.
@@ -2710,16 +2830,21 @@ var TF;
         /**
          * Return a function that updates URIStorage when a property changes.
          */
-        function _getObserver(get, set, propertyName, defaultVal) {
+        function _getObserver(get, set, propertyName, defaultVal, useLocalStorage) {
             return function () {
                 var URIStorageName = getURIStorageName(this, propertyName);
                 var newVal = this[propertyName];
-                if (!_.isEqual(newVal, get(URIStorageName))) {
+                // if this is a localStorage property, we always synchronize the value
+                // in localStorage to match the one currently in the URI.
+                if (useLocalStorage) {
+                    set(URIStorageName, newVal, true);
+                }
+                if (!_.isEqual(newVal, get(URIStorageName, false))) {
                     if (_.isEqual(newVal, defaultVal)) {
-                        _unset(URIStorageName);
+                        _unsetFromURI(URIStorageName);
                     }
                     else {
-                        set(URIStorageName, newVal);
+                        set(URIStorageName, newVal, false);
                     }
                 }
             };
@@ -2727,7 +2852,7 @@ var TF;
         /**
          * Delete a key from the URI.
          */
-        function _unset(key) {
+        function _unsetFromURI(key) {
             var items = _componentToDict(_readComponent());
             delete items[key];
             _writeComponent(_dictToComponent(items));
@@ -3200,6 +3325,7 @@ var Categorizer;
       // if undefined, default value (enable for first k runs, disable after).
         type: Object,
         value: TF.URIStorage.getObjectInitializer('runSelectionState', {}),
+        observer: "_storeRunToIsCheckedMapping",
       },
       // (Allows state to persist across regex filtering)
       outSelected: {
@@ -3211,10 +3337,11 @@ var Categorizer;
         type: Object,
         observer: "synchronizeColors",
       }, // map from run name to css class
-      numRunsEnabledByDefault: {
-        // When TB first loads, first k runs are enabled, rest are disabled.
+      maxRunsToEnableByDefault: {
+        // When TB first loads, if it has k or fewer runs, they are all enabled
+        // by default. If there are more, then they are all disabled.
         type: Number,
-        value: 10,
+        value: 40,
       },
       _debouncedRegexChange: {
         type: Function,
@@ -3247,7 +3374,6 @@ var Categorizer;
     },
     observers: [
       "_setIsolatorIcon(runSelectionState, names)",
-      "_storeRunToIsCheckedMapping(runSelectionState)",
     ],
     _storeRunToIsCheckedMapping: TF.URIStorage.getObjectObserver('runSelectionState', {}),
     _makeRegex: function(regex) {
@@ -3278,9 +3404,10 @@ var Categorizer;
     },
     computeOutSelected: function(__, ___) {
       var runSelectionState = this.runSelectionState;
-      var num = this.numRunsEnabledByDefault;
+      var num = this.maxRunsToEnableByDefault;
+      var allEnabled = this.namesMatchingRegex.length <= num;
       return this.namesMatchingRegex.filter(function(n, i) {
-        return runSelectionState[n] == null ? i<num : runSelectionState[n];
+        return runSelectionState[n] == null ? allEnabled : runSelectionState[n];
       });
     },
     synchronizeColors: function(e) {
@@ -3330,18 +3457,24 @@ var Categorizer;
     _regexInputObserver: TF.URIStorage.getStringObserver("regexInput", ""),
     toggleAll: function() {
       var _this = this;
-      var allToggledOn = this.namesMatchingRegex
-                    .every(function(n) {return _this.runSelectionState[n]});
+      var anyToggledOn = this.namesMatchingRegex
+                    .some(function(n) {return _this.runSelectionState[n]});
+
 
       var runSelectionStateIsDefault = Object.keys(this.runSelectionState).length == 0;
 
-      var numRuns = this.namesMatchingRegex.length;
+      var defaultOff = this.namesMatchingRegex.length > this.maxRunsToEnableByDefault;
+      // We have runs toggled either if some were explicitly toggled on, or if
+      // we are in the default state, and there are few enough that we default
+      // to toggling on.
+      anyToggledOn = anyToggledOn || runSelectionStateIsDefault && !defaultOff;
 
-      var shouldDisable = allToggledOn || runSelectionStateIsDefault;
+      // If any are toggled on, we turn everything off. Or, if none are toggled
+      // on, we turn everything on.
 
       var newRunsDisabled = {};
       this.names.forEach(function(n) {
-        newRunsDisabled[n] = !shouldDisable;
+        newRunsDisabled[n] = !anyToggledOn;
       })
       this.runSelectionState = newRunsDisabled;
     },
@@ -3437,17 +3570,9 @@ var Categorizer;
       },
     },
     observers: [
+      "_onBackendUpdate(backend)",
       "_logdirSet(logdir)",
     ],
-    ready: function() {
-      // Populate the logdir.
-      this.backend.logdir().then(logdirObject => {
-        this.set('logdir', logdirObject.logdir);
-      }).catch(e => {
-        // Fetching the logdir failed. Prevent the exception from logging to
-        // console. The console already logs a 404 network event.
-      });
-    },
     _toggleAll: function() {
       this.$.multiCheckbox.toggleAll();
     },
@@ -3455,8 +3580,21 @@ var Categorizer;
     _breakString: function(originalString) {
       return originalString.replace(/([\/=\-_,])/g, "$1<wbr>");
     },
+    _onBackendUpdate: function(backend) {
+      if (backend === undefined) {
+        return;
+      }
+
+      // When the backend is set, the selector can request the logdir.
+      backend.logdir().then(logdirObject => {
+        this.set('logdir', logdirObject.logdir);
+      }).catch(e => {
+        // Fetching the logdir failed. Prevent the exception from logging to
+        // console. The console already logs a 404 network event.
+      });
+    },
     _logdirSet: function(logdir) {
-      if (!logdir) {
+      if (logdir === undefined) {
         // The logdir has not been set yet.
         return;
       }
@@ -3694,11 +3832,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-};
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+    return function (d, b) {
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
 var Plottable;
 (function (Plottable) {
     var DragZoomLayer = (function (_super) {
@@ -3888,7 +4031,7 @@ var VZ;
             this.colorScale = colorScale;
             this.tooltip = tooltip;
             this.datasets = [];
-            this._ignoreYOutliers = true;
+            this._ignoreYOutliers = false;
             // lastPointDataset is a dataset that contains just the last point of
             // every dataset we're currently drawing.
             this.lastPointsDataset = new Plottable.Dataset();
@@ -4230,34 +4373,20 @@ var VZ;
             }
         };
         LineChart.prototype.resmoothDataset = function (dataset) {
-            // When increasing the smoothing window, it smoothes a lot with the first
-            // few points and then starts to gradually smooth slower, so using an
-            // exponential function makes the slider more consistent. 1000^x has a
-            // range of [1, 1000], so subtracting 1 and dividing by 999 results in a
-            // range of [0, 1], which can be used as the percentage of the data, so
-            // that the kernel size can be specified as a percentage instead of a
-            // hardcoded number, what would be bad with multiple series.
-            var factor = (Math.pow(1000, this.smoothingWeight) - 1) / 999;
             var data = dataset.data();
-            var kernelRadius = Math.floor(data.length * factor / 2);
-            data.forEach(function (d, i) {
-                var actualKernelRadius = Math.min(kernelRadius, i);
-                var start = i - actualKernelRadius;
-                var end = i + actualKernelRadius + 1;
-                if (end >= data.length) {
-                    // In the beginning, it's OK for the smoothing window to be small,
-                    // but this is not desirable towards the end. Rather than shrinking
-                    // the window, or extrapolating data to fill the gap, we're simply
-                    // not going to display the smoothed line towards the end.
-                    d.smoothed = Infinity;
-                }
-                else if (!_.isFinite(d.scalar)) {
-                    // Only smooth finite numbers.
+            var smoothingWeight = this.smoothingWeight;
+            var last = data.length > 0 ? data[0].scalar : NaN;
+            data.forEach(function (d) {
+                if (!_.isFinite(last)) {
                     d.smoothed = d.scalar;
                 }
                 else {
-                    d.smoothed = d3.mean(data.slice(start, end).filter(function (d) { return _.isFinite(d.scalar); }), function (d) { return d.scalar; });
+                    // 1st-order IIR low-pass filter to attenuate the higher-
+                    // frequency components of the time-series.
+                    d.smoothed =
+                        last * smoothingWeight + (1 - smoothingWeight) * d.scalar;
                 }
+                last = d.smoothed;
             });
         };
         LineChart.prototype.getDataset = function (name) {
@@ -4424,23 +4553,36 @@ var VZ;
             var b;
             if (ignoreOutliers) {
                 var sorted = _.sortBy(values);
-                a = d3.quantile(sorted, 0.10);
-                b = d3.quantile(sorted, 0.90);
+                a = d3.quantile(sorted, 0.05);
+                b = d3.quantile(sorted, 0.95);
             }
             else {
                 a = d3.min(values);
                 b = d3.max(values);
             }
-            // When the data all fits into the unit interval, we switch to a consistent
-            // domain for unit data. This is helpful for proportional parameters like
-            // error rates or % of queue that is full. This way, users can meaningfully
-            // compare charts and see information at a glance (if the value is always
-            // 1, it appears at top of the chart, 0 is bottom, etc.)
-            if (a >= 0 && b <= 1) {
-                return [-0.1, 1.1];
+            var padding;
+            var span = b - a;
+            if (span === 0) {
+                // If b===a, we would create an empty range. We instead select the range
+                // [0, 2*a] if a > 0, or [-2*a, 0] if a < 0, plus a little bit of
+                // extra padding on the top and bottom of the plot.
+                padding = Math.abs(a) * 1.1 + 1.1;
             }
-            var padding = (b - a) * 0.20;
-            var domain = [a - padding, b + padding];
+            else {
+                padding = span * 0.2;
+            }
+            var lower;
+            if (a >= 0 && a < span) {
+                // We include the intercept (y = 0) if doing so less than doubles the span
+                // of the y-axis. (We actually select a lower bound that's slightly less
+                // than 0 so that 0.00 will clearly be written on the lower edge of the
+                // chart. The label on the lowest tick is often filtered out.)
+                lower = -0.1 * b;
+            }
+            else {
+                lower = a - padding;
+            }
+            var domain = [lower, b + padding];
             domain = d3.scale.linear().domain(domain).nice().domain();
             return domain;
         }
@@ -4623,7 +4765,7 @@ var VZ;
 
         ignoreYOutliers: {
           type: Boolean,
-          value: true,
+          value: false,
         },
 
         /**
@@ -4818,7 +4960,7 @@ var VZ;
         </tf-sidebar-helper>
       </div>
       <div class="center">
-        <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" show-download-links="[[_showDownloadLinks]]" download-link-url-function="[[scalarUrl]]">
+        <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" data-not-found="[[dataNotFound]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" show-download-links="[[_showDownloadLinks]]" download-link-url-function="[[scalarUrl]]">
           <template>
             <vz-line-chart x-type="[[_xType]]" color-scale="[[_colorScale]]" smoothing-enabled="[[_smoothingEnabled]]" smoothing-weight="[[_smoothingWeight]]" tooltip-sorting-method="[[_tooltipSortingMethod]]" ignore-y-outliers="[[_ignoreYOutliers]]"></vz-line-chart>
             <paper-icon-button class="log-button" icon="line-weight" on-tap="toggleLogScale" title="Toggle y-axis log scale"></paper-icon-button>
@@ -4870,9 +5012,14 @@ var VZ;
   </template>
 
   <script>
-    Polymer({
+    TF.Dashboard.TfScalarDashboard = Polymer({
       is: "tf-scalar-dashboard",
+      factoryImpl: function(backend, router) {
+        this.backend = backend;
+        this.router = router;
+      },
       behaviors: [
+        TF.Dashboard.DashboardBehavior("scalars"),
         TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
         TF.Backend.Behavior,
       ],
@@ -4891,7 +5038,7 @@ var VZ;
           type: Boolean,
           notify: true,
           value: TF.URIStorage.getBooleanInitializer('_showDownloadLinks',
-              false),
+              false, true),
           observer: '_showDownloadLinksObserver'
         },
         _smoothingWeight: {
@@ -4906,7 +5053,8 @@ var VZ;
         },
         _ignoreYOutliers: {
           type: Boolean,
-          value: true,
+          value: TF.URIStorage.getBooleanInitializer('_ignoreYOutliers', true, true),
+          observer: '_ignoreYOutliersObserver',
         },
         _xType: {
           type: String,
@@ -4922,9 +5070,11 @@ var VZ;
         return this.router.scalars;
       },
       _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
-          '_showDownloadLinks', false),
+          '_showDownloadLinks', /*default=*/ false, /*useLocalStorage=*/ true),
       _smoothingWeightObserver: TF.URIStorage.getNumberObserver(
           '_smoothingWeight', 0.6),
+      _ignoreYOutliersObserver: TF.URIStorage.getBooleanObserver(
+          '_ignoreYOutliers', /*default=*/ true, /*useLocalStorage=*/true),
       _computeSmoothingEnabled: function(_smoothingWeight) {
         return _smoothingWeight > 0;
       },
@@ -5153,23 +5303,36 @@ var VZ;
             var b;
             if (ignoreOutliers) {
                 var sorted = _.sortBy(values);
-                a = d3.quantile(sorted, 0.10);
-                b = d3.quantile(sorted, 0.90);
+                a = d3.quantile(sorted, 0.05);
+                b = d3.quantile(sorted, 0.95);
             }
             else {
                 a = d3.min(values);
                 b = d3.max(values);
             }
-            // When the data all fits into the unit interval, we switch to a consistent
-            // domain for unit data. This is helpful for proportional parameters like
-            // error rates or % of queue that is full. This way, users can meaningfully
-            // compare charts and see information at a glance (if the value is always
-            // 1, it appears at top of the chart, 0 is bottom, etc.)
-            if (a >= 0 && b <= 1) {
-                return [-0.1, 1.1];
+            var padding;
+            var span = b - a;
+            if (span === 0) {
+                // If b===a, we would create an empty range. We instead select the range
+                // [0, 2*a] if a > 0, or [-2*a, 0] if a < 0, plus a little bit of
+                // extra padding on the top and bottom of the plot.
+                padding = Math.abs(a) * 1.1 + 1.1;
             }
-            var padding = (b - a) * 0.20;
-            var domain = [a - padding, b + padding];
+            else {
+                padding = span * 0.2;
+            }
+            var lower;
+            if (a >= 0 && a < span) {
+                // We include the intercept (y = 0) if doing so less than doubles the span
+                // of the y-axis. (We actually select a lower bound that's slightly less
+                // than 0 so that 0.00 will clearly be written on the lower edge of the
+                // chart. The label on the lowest tick is often filtered out.)
+                lower = -0.1 * b;
+            }
+            else {
+                lower = a - padding;
+            }
+            var domain = [lower, b + padding];
             domain = d3.scale.linear().domain(domain).nice().domain();
             return domain;
         }
@@ -5383,7 +5546,7 @@ var VZ;
       </div>
 
       <div class="center">
-        <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" repeat-for-runs="">
+        <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" data-not-found="[[dataNotFound]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" repeat-for-runs="">
           <template>
             <vz-distribution-chart x-type="[[_xType]]" color-scale="[[_colorScale]]"></vz-distribution-chart>
           </template>
@@ -5395,9 +5558,13 @@ var VZ;
   </template>
 
   <script>
-    Polymer({
+    TF.Dashboard.TfDistributionDashboard = Polymer({
       is: "tf-distribution-dashboard",
+      factoryImpl: function(backend) {
+        this.backend = backend;
+      },
       behaviors: [
+        TF.Dashboard.DashboardBehavior("distributions"),
         TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
         TF.Backend.Behavior,
       ],
@@ -6114,12 +6281,12 @@ var VZ;
               <paper-button id="relative">relative</paper-button>
               <paper-button id="wall_time">wall</paper-button>
             </tf-option-selector>
-
+          
        </div>
       </tf-sidebar-helper></div>
 
       <div class="center">
-        <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" repeat-for-runs="">
+        <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" data-not-found="[[dataNotFound]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" repeat-for-runs="">
           <template>
             <vz-histogram-timeseries time-property="[[_timeProperty]]" mode="[[_histogramMode]]" color-scale="[[_colorScaleFunction]]"></vz-histogram-timeseries>
           </template>
@@ -6137,9 +6304,13 @@ var VZ;
   </template>
 
   <script>
-    Polymer({
+    TF.Dashboard.TfHistogramDashboard = Polymer({
       is: "tf-histogram-dashboard",
+      factoryImpl: function(backend) {
+        this.backend = backend;
+      },
       behaviors: [
+        TF.Dashboard.DashboardBehavior("histograms"),
         TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
         TF.Backend.Behavior,
       ],
@@ -6383,7 +6554,7 @@ var VZ;
         </tf-sidebar-helper>
       </div>
       <div class="center">
-        <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" repeat-for-runs="">
+        <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" data-not-found="[[dataNotFound]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" repeat-for-runs="">
           <template>
             <tf-image-loader color-scale="[[_colorScale]]"></tf-image-loader>
             <paper-icon-button class="actual-size-button" icon="aspect-ratio" on-tap="_showActualSize" title="Show the image at its true pixel size"></paper-icon-button>
@@ -6423,8 +6594,11 @@ var VZ;
     </style>
   </template>
   <script>
-    Polymer({
+    TF.Dashboard.TfImageDashboard = Polymer({
       is: "tf-image-dashboard",
+      factoryImpl: function(backend) {
+        this.backend = backend;
+      },
       properties: {
         backend: Object,
         dataType: {
@@ -6433,8 +6607,9 @@ var VZ;
         },
       },
       behaviors: [
-          TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
-          TF.Backend.Behavior,
+        TF.Dashboard.DashboardBehavior("images"),
+        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
+        TF.Backend.Behavior,
       ],
       attached: function() {
         this.async(function() {
@@ -6470,20 +6645,70 @@ var VZ;
 
 <dom-module id="tf-audio-loader" assetpath="../tf-audio-dashboard/">
   <style>
-  :host {
-    display: block;
-  }
-  img {
-    width: 100%;
-    height: 100%;
-    image-rendering: pixelated;
-  }
+    :host {
+      display: block;
+      --step-slider-knob-color: #424242;
+    }
+
+    img {
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+    }
+
+    .step-description {
+      font-size: 12px;
+    }
+
+    .step-value {
+      font-weight: bold;
+    }
+
+    #audio-loading-spinner {
+      width: 14px;
+      height: 14px;
+      vertical-align: text-bottom;
+      --paper-spinner-color: var(--tb-orange-strong)
+    }
+
+    #steps {
+      height: 15px;
+      margin: 0 0 0 -15px;
+      /* 31 comes from adding a padding of 15px from both sides of the paper-slider, subtracting
+       * 1px so that the slider width aligns with the image (the last slider marker takes up 1px),
+       * and adding 2px to account for a border of 1px on both sides of the image. 30 - 1 + 2. */
+      width: calc(100% + 31px);
+      --paper-slider-active-color: var(--step-slider-knob-color);
+      --paper-slider-knob-color: var(--step-slider-knob-color);
+      --paper-slider-pin-color: var(--step-slider-knob-color);
+      --paper-slider-knob-start-color: var(--step-slider-knob-color);
+      --paper-slider-knob-start-border-color: var(--step-slider-knob-color);
+      --paper-slider-pin-start-color: var(--step-slider-knob-color);
+    }
+
+    #individual-audio-container audio {
+      margin: 5px 0 0 -10px;
+      width: calc(100% + 20px);
+    }
   </style>
   <template>
-    <template is="dom-if" if="[[audioUrl]]">
-      <audio controls="" loop="">
-        <source src="[[audioUrl]]" type="[[audioContentType]]">
-      </audio>
+    <template is="dom-if" if="[[_metadatas]]">
+      <template is="dom-if" if="[[_hasAtLeastOneStep(_metadatas)]]">
+        <div class="step-description">
+          step
+          <span class="step-value">
+            [[_stepValue]]
+          </span><br>
+          <template is="dom-if" if="[[_stepWallTime]]">
+            [[_stepWallTime]]
+          </template>
+          <paper-spinner-lite active="" id="audio-loading-spinner" hidden$="[[!_isAudioLoading]]"></paper-spinner-lite>
+        </div>
+      </template>
+      <template is="dom-if" if="[[_maxStepIndex]]">
+        <paper-slider id="steps" immediate-value="{{_stepIndex}}" max="[[_maxStepIndex]]" max-markers="[[_maxStepIndex]]" snaps="" step="1" value="{{_stepIndex}}"></paper-slider>
+      </template>
+      <div id="individual-audio-container"></div>
     </template>
   </template>
   <script>
@@ -6493,18 +6718,42 @@ var VZ;
         run: String,
         tag: String,
         audioGenerator: Function,
-        audioUrl: String,
-        audioContentType: String
+        // todo: document.
+        _metadatas: Array,
+        _stepIndex: Number,
+        _stepValue: {
+          type: Number,
+          computed: "_computeStepValue(_metadatas, _stepIndex)",
+          value: 0,
+        },
+        _stepWallTime: {
+          type: Number,
+          computed: "_computeStepWallTime(_metadatas, _stepIndex)",
+          value: 0,
+        },
+        _maxStepIndex: {
+          type: Number,
+          computed: "_computeMaxStepIndex(_metadatas)",
+          value: 0,
+        },
+        _isAudioLoading: Boolean,
+        // Used to identify stale requests for audio.
+        _audioRequestId: {
+          type: Number,
+          value: 1
+        },
       },
+      observers: [
+        "_updateAudio(_metadatas, _stepIndex)",
+      ],
       reload: function() {
-        var _this = this;
-        this.audioUrl = ""; // force reload
-        this.audioContentType = "";
         this.audioGenerator(this.tag, this.run).then(function(metadatas) {
-          var last_metadata = _.last(metadatas);
-          _this.audioUrl = last_metadata.url;
-          _this.audioContentType = last_metadata.content_type;
-        })
+          // Set the list of available metadata.
+          this.set("_metadatas", metadatas);
+
+          // Set the index to be the last one.
+          this.set("_stepIndex", this._maxStepIndex);
+        }.bind(this));
       },
       ready: function() {
         // Need to test so that it will not error if it is constructed w/o
@@ -6512,6 +6761,79 @@ var VZ;
         if (this.run != null && this.tag != null && this.audioGenerator != null) {
           this.reload();
         }
+      },
+      _updateAudio: function(metadatas, stepIndex) {
+        if (!metadatas || stepIndex >= metadatas.length) {
+          // No audio to show. The audio section should be hidden.
+          return;
+        }
+
+        // Load new audio.
+        const requestId = ++this._audioRequestId;
+        this.set("_isAudioLoading", true);
+
+        // Create a new audio element. Only replace the previous one once the new audio loads.
+        let audioElement = document.createElement("audio");
+        audioElement.setAttribute("controls", true);
+        audioElement.setAttribute("loop", "loop");
+        let canPlayHandler = function() {
+          if (requestId !== this._audioRequestId) {
+            // This request is no longer relevant.
+            return;
+          }
+
+          // Remove this event listener: "canplay" apparently fires in Chrome every time playing
+          // begins again on loop. So, if we create a new audio element every time that happens, we
+          // don't actually loop.
+          audioElement.removeEventListener("canplay", canPlayHandler);
+
+          let individualAudioContainer = this.$$("#individual-audio-container");
+          individualAudioContainer.innerHTML = "";
+          Polymer.dom(individualAudioContainer).appendChild(audioElement);
+          this.set("_isAudioLoading", false);
+        }.bind(this);
+        audioElement.addEventListener("canplay", canPlayHandler);
+        audioElement.addEventListener("error", function() {
+          if (requestId !== this._audioRequestId) {
+            // This request is no longer relevant.
+            return;
+          }
+
+          // The audio could not be loaded.
+          this.$$("#individual-audio-container").innerHTML = "";
+          this.set("_isAudioLoading", false);
+        }.bind(this));
+
+        // Initiate the request for new audio.
+        var sourceElement = document.createElement("source");
+        let metadata = metadatas[stepIndex];
+        sourceElement.setAttribute("src", metadata.url);
+        sourceElement.setAttribute("type", metadata.content_type);
+        audioElement.appendChild(sourceElement);
+      },
+      _computeStepValue: function(metadatas, stepIndex) {
+        if (!metadatas || stepIndex >= metadatas.length) {
+          // No audio to show. The audio section should be hidden.
+          return 0;
+        }
+        return metadatas[stepIndex].step;
+      },
+      _computeStepWallTime: function(metadatas, stepIndex) {
+        if (!metadatas || stepIndex >= metadatas.length) {
+          // No audio to show. The audio section should be hidden.
+          return 0;
+        }
+        return metadatas[stepIndex].wall_time.toString();
+      },
+      _computeMaxStepIndex: function(metadatas) {
+        if (!metadatas || metadatas.length === 0) {
+          // No audio to show. The audio section should be hidden.
+          return 0;
+        }
+        return metadatas.length - 1;
+      },
+      _hasAtLeastOneStep: function(metadatas) {
+        return metadatas && metadatas.length > 0;
       },
     });
   </script>
@@ -6523,11 +6845,13 @@ var VZ;
     <div id="fullContainer" class="container scrollbar">
       <div id="topRow" class="container">
         <div class="noshrink" id="paddingCell"></div>
-        <template is="dom-repeat" items="[[runs]]" as="run">
-        <div class="run-name-cell noshrink">
-          <span>[[run]]</span>
-        </div>
-      </template>
+        <template is="dom-if" if="[[_tagsExist(tags)]]">
+          <template is="dom-repeat" items="[[runs]]" as="run">
+            <div class="run-name-cell noshrink">
+              <span>[[run]]</span>
+            </div>
+          </template>
+        </template>
       </div>
       <div id="bottomContainer" class="container">
         <template is="dom-repeat" items="[[tags]]" as="tag">
@@ -6551,6 +6875,7 @@ var VZ;
       :host {
         display: block;
         height: 100%;
+        --audio-cell-min-height: 105px;
       }
       .container {
         display: flex;
@@ -6579,14 +6904,17 @@ var VZ;
         padding-top: 5px;
       }
       .audio-cell {
+        background: #FAFAFA;
         width: 300px;
-        height: 36px;
+        min-height: var(--audio-cell-min-height);
         border: 1px solid black;
         margin-right: 3px;
+        padding: 10px;
+        box-sizing: border-box;
       }
       .tag-name-cell {
         width: 300px;
-        height: 36px;
+        height: var(--audio-cell-min-height);
         display:flex;
         flex-direction: column;
         justify-content: center;
@@ -6598,7 +6926,6 @@ var VZ;
       }
       .run-name-cell {
         width: 300px;
-        height: 36px;
         text-align: center;
         margin-right: 5px;
       }
@@ -6607,7 +6934,6 @@ var VZ;
       }
       #paddingCell {
         width: 300px;
-        height: 36px;
       }
     </style>
   </template>
@@ -6619,6 +6945,9 @@ var VZ;
         tags: Array,
         runs: Array,
         audioGenerator: Function,
+      },
+      _tagsExist: function(tags) {
+        return tags && tags.length > 0;
       },
       _exists: function (run, tag) {
         return this.runToAudio[run].indexOf(tag) !== -1;
@@ -6650,12 +6979,16 @@ var VZ;
     </style>
   </template>
   <script>
-    Polymer({
+    TF.Dashboard.TfAudioDashboard = Polymer({
       is: "tf-audio-dashboard",
+      factoryImpl: function(backend) {
+        this.backend = backend;
+      },
       properties: {
         dataType: {value: "audio"},
       },
       behaviors: [
+        TF.Dashboard.DashboardBehavior("audio"),
         TF.Dashboard.ReloadBehavior("tf-audio-loader"),
         TF.Backend.Behavior
       ],
@@ -6834,7 +7167,6 @@ Polymer({
   }
 });
 </script>
-<script src="../lodash/lodash.min.js"></script>
 <script src="../graphlib/dist/graphlib.core.js"></script>
 <script src="../dagre/dist/dagre.core.js"></script>
 <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
@@ -7065,6 +7397,8 @@ var tf;
         ;
         /** Attribute key reserved for the shapes of the output tensors. */
         var OUTPUT_SHAPES_KEY = '_output_shapes';
+        /** Attribute key reserved for the XLA cluster that an op runs on. */
+        var _XLA_CLUSTER_KEY = '_XlaCluster';
         /**
          * A SlimGraph is inspired by graphlib.Graph, but having only the functionality
          * that we need.
@@ -7121,6 +7455,7 @@ var tf;
                 // control dependency.
                 this.inputs = normalizeInputs(rawNode.input);
                 this.outputShapes = extractOutputShapes(rawNode.attr);
+                this.xlaCluster = extractXlaCluster(rawNode.attr);
                 // additional properties
                 this.type = NodeType.OP;
                 this.isGroupNode = false;
@@ -7174,6 +7509,7 @@ var tf;
                                 else {
                                     /* tslint:disable */
                                     console.log('ignoring negative memory allocation for ' + nodeName);
+                                    /* tslint:enable */
                                 }
                             }
                         });
@@ -7196,6 +7532,7 @@ var tf;
                         else {
                             /* tslint:disable */
                             console.log('ignoring negative runtime for ' + nodeName);
+                            /* tslint:enable */
                         }
                     }
                 });
@@ -7447,6 +7784,7 @@ var tf;
          * Extracts the shapes of the output tensors from the attr property in the
          * node proto.
          */
+        // tslint:disable-next-line:no-any
         function extractOutputShapes(attr) {
             var result = null;
             // We don't know anything about the output tensors.
@@ -7487,6 +7825,25 @@ var tf;
             }
             // We didn't find OUTPUT_SHAPES_KEY in attributes, so we don't know anything
             // about the output tensors.
+            return null;
+        }
+        /**
+         * Extracts the XLA Cluster that an op runs on from the attrs of the OpNode.
+         * @param attr The attr property.
+         * @return A string that is the name of the cluster. Or null if it could not be
+         *     determined.
+         */
+        // tslint:disable-next-line:no-any
+        function extractXlaCluster(attr) {
+            if (!attr) {
+                return null;
+            }
+            // Find the attribute for XLA cluster if there is one.
+            for (var i = 0; i < attr.length; i++) {
+                if (attr[i].key === _XLA_CLUSTER_KEY) {
+                    return attr[i].value['s'] || null;
+                }
+            }
             return null;
         }
         /**
@@ -8176,14 +8533,19 @@ var tf;
                 var seriesNames = {};
                 return tf.graph.util
                     .runAsyncTask('Adding nodes', 20, function () {
-                    // Get all the possible device names.
+                    // Get all the possible device and XLA cluster names.
                     var deviceNames = {};
+                    var xlaClusterNames = {};
                     _.each(graph.nodes, function (node, nodeName) {
-                        if (node.device != null) {
+                        if (node.device) {
                             deviceNames[node.device] = true;
+                        }
+                        if (node.xlaCluster) {
+                            xlaClusterNames[node.xlaCluster] = true;
                         }
                     });
                     h.devices = _.keys(deviceNames);
+                    h.xlaClusters = _.keys(xlaClusterNames);
                     addNodes(h, graph);
                 }, tracker)
                     .then(function () {
@@ -8203,7 +8565,9 @@ var tf;
                         h.templates = graph_1.template.detect(h, params.verifyTemplate);
                     }, tracker);
                 })
-                    .then(function () { return h; });
+                    .then(function () {
+                    return h;
+                });
             }
             hierarchy_1.build = build;
             ;
@@ -9518,11 +9882,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 </script>
-<script>var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-};
+<script>var __extends = (this && this.__extends) || (function () {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+    return function (d, b) {
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
 /* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
@@ -9582,7 +9951,12 @@ var tf;
                     var light = lightened ? 95 : 80;
                     return d3.hsl(hue, .01 * sat, .01 * light).toString();
                 },
-                DEVICE_PALETTE: function (index) { return render.MetanodeColors.STRUCTURE_PALETTE(index); },
+                DEVICE_PALETTE: function (index) {
+                    return render.MetanodeColors.STRUCTURE_PALETTE(index);
+                },
+                XLA_CLUSTER_PALETTE: function (index) {
+                    return render.MetanodeColors.STRUCTURE_PALETTE(index);
+                },
                 UNKNOWN: '#eee',
                 GRADIENT_OUTLINE: '#888'
             };
@@ -9690,6 +10064,10 @@ var tf;
                     this.deviceColorMap = d3.scale.ordinal()
                         .domain(this.hierarchy.devices)
                         .range(_.map(d3.range(this.hierarchy.devices.length), render.MetanodeColors.DEVICE_PALETTE));
+                    this.xlaClusterColorMap =
+                        d3.scale.ordinal()
+                            .domain(this.hierarchy.xlaClusters)
+                            .range(_.map(d3.range(this.hierarchy.xlaClusters.length), render.MetanodeColors.XLA_CLUSTER_PALETTE));
                     var topLevelGraph = this.hierarchy.root.metagraph;
                     // Find the maximum and minimum memory usage.
                     var memoryExtent = d3.extent(topLevelGraph.nodes(), function (nodeName, index) {
@@ -9760,6 +10138,12 @@ var tf;
                         renderInfo.memoryColor = this.memoryUsageScale(node.stats.totalBytes);
                         renderInfo.computeTimeColor =
                             this.computeTimeScale(node.stats.totalMicros);
+                    }
+                    if (!node.isGroupNode) {
+                        var clusterName = node.xlaCluster;
+                        if (clusterName) {
+                            renderInfo.xlaClusterColor = this.xlaClusterColorMap(clusterName);
+                        }
                     }
                     // We only fade nodes when we're displaying stats.
                     renderInfo.isFadedOut = this.displayingStats &&
@@ -10747,6 +11131,8 @@ var tf;
                                 graph.removeNode(n);
                             }
                             else {
+                                // if a low degree node has both in- & out- annotations, do nothing
+                                // because it is unclear which side it should go to.
                             }
                         }
                     }
@@ -11913,8 +12299,9 @@ var tf;
                 (function (ColorBy) {
                     ColorBy[ColorBy["STRUCTURE"] = 0] = "STRUCTURE";
                     ColorBy[ColorBy["DEVICE"] = 1] = "DEVICE";
-                    ColorBy[ColorBy["COMPUTE_TIME"] = 2] = "COMPUTE_TIME";
-                    ColorBy[ColorBy["MEMORY"] = 3] = "MEMORY";
+                    ColorBy[ColorBy["XLA_CLUSTER"] = 2] = "XLA_CLUSTER";
+                    ColorBy[ColorBy["COMPUTE_TIME"] = 3] = "COMPUTE_TIME";
+                    ColorBy[ColorBy["MEMORY"] = 4] = "MEMORY";
                 })(ColorBy = node_1.ColorBy || (node_1.ColorBy = {}));
                 ;
                 /**
@@ -11974,6 +12361,9 @@ var tf;
                                 });
                             }
                             return isExpanded ? colorParams.EXPANDED_COLOR : "url(#" + escapedId + ")";
+                        case ColorBy.XLA_CLUSTER:
+                            return isExpanded ? colorParams.EXPANDED_COLOR :
+                                renderInfo.xlaClusterColor || colorParams.UNKNOWN;
                         case ColorBy.COMPUTE_TIME:
                             return isExpanded ?
                                 colorParams.EXPANDED_COLOR : renderInfo.computeTimeColor ||
@@ -14351,7 +14741,7 @@ Polymer({
 <svg id="svg">
   <defs>
 
-
+    
     <path id="ref-arrowhead-path" d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"></path>
     <marker class="ref-arrowhead" id="ref-arrowhead-small" viewBox="0 0 10 10" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
       <use xlink:href="#ref-arrowhead-path"></use>
@@ -14366,7 +14756,7 @@ Polymer({
       <use xlink:href="#ref-arrowhead-path"></use>
     </marker>
 
-
+    
     <marker id="annotation-arrowhead" markerWidth="5" markerHeight="5" refX="5" refY="2.5" orient="auto">
       <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"></path>
     </marker>
@@ -14379,23 +14769,23 @@ Polymer({
     <marker id="ref-annotation-arrowhead-faded" markerWidth="5" markerHeight="5" refX="0" refY="2.5" orient="auto">
       <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"></path>
     </marker>
-
+    
     <ellipse id="op-node-stamp" rx="7.5" ry="3" stroke="inherit" fill="inherit"></ellipse>
-
+    
     <ellipse id="op-node-annotation-stamp" rx="5" ry="2" stroke="inherit" fill="inherit"></ellipse>
-
+    
     <g id="op-series-vertical-stamp">
       <use xlink:href="#op-node-stamp" x="8" y="9"></use>
       <use xlink:href="#op-node-stamp" x="8" y="6"></use>
       <use xlink:href="#op-node-stamp" x="8" y="3"></use>
     </g>
-
+    
     <g id="op-series-horizontal-stamp">
       <use xlink:href="#op-node-stamp" x="16" y="4"></use>
       <use xlink:href="#op-node-stamp" x="12" y="4"></use>
       <use xlink:href="#op-node-stamp" x="8" y="4"></use>
     </g>
-
+    
     <g id="op-series-annotation-stamp">
       <use xlink:href="#op-node-annotation-stamp" x="9" y="2"></use>
       <use xlink:href="#op-node-annotation-stamp" x="7" y="2"></use>
@@ -14404,10 +14794,10 @@ Polymer({
     <svg id="summary-icon" fill="#848484" height="12" viewBox="0 0 24 24" width="12">
       <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
     </svg>
-
+    
     <g id="linearGradients"></g>
 
-
+    
     <pattern id="rectHatch" patternTransform="rotate(45 0 0)" width="5" height="5" patternUnits="userSpaceOnUse">
       <line x1="0" y1="0" x2="0" y2="5" style="stroke-width: 1"></line>
     </pattern>
@@ -14415,7 +14805,7 @@ Polymer({
       <line x1="0" y1="0" x2="0" y2="2" style="stroke-width: 1"></line>
     </pattern>
 
-
+    
     <filter id="health-pill-shadow" x="-40%" y="-40%" width="180%" height="180%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="0.8"></feGaussianBlur>
       <feOffset dx="0" dy="0" result="offsetblur"></feOffset>
@@ -14427,7 +14817,7 @@ Polymer({
       </feMerge>
     </filter>
   </defs>
-
+  
   <rect fill="white" width="10000" height="10000"></rect>
   <g id="root"></g>
 </svg>
@@ -14440,6 +14830,18 @@ Polymer({
     renderHierarchy: Object,
     name: String,
     colorBy: String,
+
+    // For each render hierarchy, we only fit it to the viewport once (when the scene is attached to
+    // the DOM). We do not fit the hierarchy again (unless the user clicks the reset button). For
+    // instance, if the user enters a certain view in the graph, switches to another dashboard, and
+    // returns to the graph dashboard, the user expects the previous view. These properties enable
+    // that behavior.
+
+    /** Whether the scene has fit the current render hierarchy (to the viewport) at least once. */
+    _hasRenderHierarchyBeenFitOnce: Boolean,
+    /** Whether this scene element is currently attached to a parent element. */
+    _isAttached: Boolean,
+
     /** @type {d3_zoom} d3 zoom object */
     _zoom: Object,
     highlightedNode: {
@@ -14544,7 +14946,10 @@ Polymer({
   },
   observers: [
     '_colorByChanged(colorBy)',
-    '_buildAndFit(renderHierarchy)',
+    '_renderHierarchyChanged(renderHierarchy)',
+    // Animation and fitting must come after the observer for the hierarchy changing because we must
+    // first build the render hierarchy.
+    '_animateAndFit(_isAttached, renderHierarchy)',
     '_updateHealthPills(nodeNamesToHealthPills, healthPillStepIndex)',
   ],
   getNode: function(nodeName) {
@@ -14647,9 +15052,24 @@ Polymer({
         tf.graph.layout.PARAMS.minimap.size,
         tf.graph.layout.PARAMS.subscene.meta.labelHeight);
   },
-  _buildAndFit: function(renderHierarchy) {
+  attached: function() {
+    this.set('_isAttached', true);
+  },
+  detached: function() {
+    this.set('_isAttached', false);
+  },
+  _renderHierarchyChanged: function(renderHierarchy) {
+    this._hasRenderHierarchyBeenFitOnce = false;
     this._resetState();
     this._build(renderHierarchy);
+  },
+  _animateAndFit: function(isAttached, renderHierarchy) {
+    if (this._hasRenderHierarchyBeenFitOnce || !isAttached) {
+      // Do not animate and fit if the scene has already fitted this render hierarchy once. Or if
+      // the graph dashboard is not attached (in which case the scene lacks DOM info for fitting).
+      return;
+    }
+
     // Fit to screen after the graph is done animating.
     setTimeout(this.fit.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
@@ -14702,6 +15122,7 @@ Polymer({
     }
   },
   fit: function() {
+    this._hasRenderHierarchyBeenFitOnce = true;
     tf.graph.scene.fit(this.$.svg, this.$.root, this._zoom, function() {
       this._zoomed = false;
     }.bind(this));
@@ -14983,7 +15404,14 @@ Polymer({
             device: deviceName,
             color: renderGraph.deviceColorMap(deviceName)
           };
-        })
+        }),
+        xla_cluster: _.map(renderGraph.xlaClusterColorMap.domain(),
+            function(xlaClusterName) {
+          return {
+            xla_cluster: xlaClusterName,
+            color: renderGraph.xlaClusterColorMap(xlaClusterName)
+          };
+        }),
       });
       this._setRenderHierarchy(renderGraph);
       this.async(function() {
@@ -16111,6 +16539,17 @@ h2 {
    * Apparently, the paper-slider lacks a mixin for those padding values. */
   width: calc(100% + 31px);
 }
+
+#health-pills-loading-spinner {
+  width: 20px;
+  height: 20px;
+  vertical-align: top;
+}
+
+#health-pill-step-number-input {
+  text-align: center;
+  vertical-align: top;
+}
 </style>
 <template is="dom-if" if="{{selectedNode}}">
   <paper-material elevation="1" class="card">
@@ -16118,13 +16557,31 @@ h2 {
     </tf-node-info>
   </paper-material>
 </template>
-<template is="dom-if" if="[[_healthPillsAvailable(nodeNamesToHealthPills)]]">
+<template is="dom-if" if="[[_healthPillsAvailable(debuggerDataEnabled, nodeNamesToHealthPills)]]">
   <paper-material elevation="1" class="card health-pill-legend">
-    <template is="dom-if" if="[[_maxStepIndex]]">
-      <h2>
-        Step of Health Pills: [[_currentStepDisplayValue]]
-      </h2>
-      <paper-slider id="health-pill-step-slider" immediate-value="{{healthPillStepIndex}}" max="[[_maxStepIndex]]" snaps="" step="1" value="{{healthPillStepIndex}}"></paper-slider>
+    <div class="title">
+      Enable all (not just sampled) steps. Requires slow disk read.
+    </div>
+    <paper-toggle-button id="enableAllStepsModeToggle" checked="{{allStepsModeEnabled}}">
+    </paper-toggle-button>
+    <h2>
+      Step of Health Pills:
+      <template is="dom-if" if="[[allStepsModeEnabled]]">
+        <input type="number" id="health-pill-step-number-input" min="0" max="[[_biggestStepEverSeen]]" value="{{specificHealthPillStep::input}}">
+      </template>
+      <template is="dom-if" if="[[!allStepsModeEnabled]]">
+        [[_currentStepDisplayValue]]
+      </template>
+
+      <paper-spinner-lite active="" hidden$="[[!areHealthPillsLoading]]" id="health-pills-loading-spinner"></paper-spinner-lite>
+    </h2>
+    <template is="dom-if" if="[[allStepsModeEnabled]]">
+      <paper-slider id="health-pill-step-slider" immediate-value="{{specificHealthPillStep}}" max="[[_biggestStepEverSeen]]" snaps="" step="1" value="{{specificHealthPillStep}}"></paper-slider>
+    </template>
+    <template is="dom-if" if="[[!allStepsModeEnabled]]">
+      <template is="dom-if" if="[[_maxStepIndex]]">
+        <paper-slider id="health-pill-step-slider" immediate-value="{{healthPillStepIndex}}" max="[[_maxStepIndex]]" snaps="" step="1" value="{{healthPillStepIndex}}"></paper-slider>
+      </template>
     </template>
     <h2>
       Health Pill
@@ -16162,6 +16619,13 @@ h2 {
         type: Number,
         notify: true,
       },
+      // Only relevant if we are in all steps mode, in which case the user may want to view health
+      // pills for a specific step.
+      specificHealthPillStep: {
+        type: Number,
+        value: 0,
+        notify: true,
+      },
       colorBy: String,
       // Two-ways
       selectedNode: {
@@ -16177,6 +16641,11 @@ h2 {
         type: Number,
         notify: true
       },
+      // Whether debugger data is enabled for this instance of Tensorboard.
+      debuggerDataEnabled: Boolean,
+      // Whether health pills are currently being loaded, in which case we show a spinner (and the
+      // current health pills shown might be out of date).
+      areHealthPillsLoading: Boolean,
       healthPillEntries: {
         type: Array,
         value: tf.graph.scene.healthPillEntries,
@@ -16184,7 +16653,19 @@ h2 {
       },
       healthPillValuesForSelectedNode: {
         type: Array,
-        computed: '_computeHealthPillForNode(nodeNamesToHealthPills, healthPillStepIndex, selectedNode)',
+        computed: '_computeHealthPillForNode(nodeNamesToHealthPills, healthPillStepIndex, selectedNode, allStepsModeEnabled, areHealthPillsLoading)',
+      },
+      // When all-steps mode is enabled, the user can request health pills for any step. In this
+      // mode, Tensorboard makes a request every time the user drags the slider to a different step.
+      allStepsModeEnabled: {
+        type: Boolean,
+        notify: true,
+      },
+      // The biggest step value ever seen. Used to determine what steps of health pills to let the
+      // user fetch in all steps mode.
+      _biggestStepEverSeen: {
+        type: Number,
+        computed: '_computeBiggestStepEverSeen(nodeNamesToHealthPills)',
       },
       _maxStepIndex: {
         type: Number,
@@ -16192,7 +16673,7 @@ h2 {
       },
       _currentStepDisplayValue: {
         type: String,
-        computed: '_computeCurrentStepDisplayValue(nodeNamesToHealthPills, healthPillStepIndex)',
+        computed: '_computeCurrentStepDisplayValue(nodeNamesToHealthPills, healthPillStepIndex, allStepsModeEnabled, specificHealthPillStep, areHealthPillsLoading)',
       },
     },
     listeners: {
@@ -16209,12 +16690,11 @@ h2 {
     _nodeListItemMouseout: function() {
       this.highlightedNode = null;
     },
-    _healthPillsAvailable: function(nodeNamesToHealthPills) {
-      let count = 0;
-      for (let nodeName in nodeNamesToHealthPills) {
-        return true;
-      }
-      return false;
+    _healthPillsAvailable: function(debuggerDataEnabled, nodeNamesToHealthPills) {
+      // So long as there is a mapping (even if empty) from node name to health pills, show the
+      // legend and slider. We do that because, even if no health pills exist at the current step,
+      // the user may desire to change steps, and the slider must show for the user to do that.
+      return debuggerDataEnabled && nodeNamesToHealthPills;
     },
     _computeTensorCountString: function(healthPillValuesForSelectedNode, valueIndex) {
       if (!healthPillValuesForSelectedNode) {
@@ -16225,7 +16705,12 @@ h2 {
       return healthPillValuesForSelectedNode[valueIndex].toFixed(0);
     },
     _computeHealthPillForNode: function(
-        nodeNamesToHealthPills, healthPillStepIndex, selectedNode) {
+        nodeNamesToHealthPills, healthPillStepIndex, selectedNode, allStepsModeEnabled, areHealthPillsLoading) {
+      if (areHealthPillsLoading) {
+        // Health pills are loading. Do not render data that is out of date.
+        return null;
+      }
+
       if (!selectedNode) {
         // No node is selected.
         return null;
@@ -16237,7 +16722,9 @@ h2 {
         return null;
       }
 
-      const healthPill = healthPills[healthPillStepIndex];
+      // If all steps mode is enabled, we use the first health pill in the list because the JSON
+      // response from the server is a mapping between node name and a list of 1 health pill.
+      const healthPill = healthPills[allStepsModeEnabled ? 0 : healthPillStepIndex];
       if (!healthPill) {
         // This node lacks a health pill at the current step.
         return null;
@@ -16246,15 +16733,43 @@ h2 {
       // The health pill count values start at 2. Each health pill contains 6 values.
       return healthPill.value.slice(2, 8);
     },
-    _computeCurrentStepDisplayValue: function(nodeNamesToHealthPills, healthPillStepIndex) {
+    _computeCurrentStepDisplayValue: function(
+        nodeNamesToHealthPills,
+        healthPillStepIndex,
+        allStepsModeEnabled,
+        specificHealthPillStep,
+        areHealthPillsLoading) {
+      if (allStepsModeEnabled) {
+        // The user seeks health pills for specific step from the server.
+        return specificHealthPillStep.toFixed(0);
+      }
+
+      if (areHealthPillsLoading) {
+        // The current step is undefined.
+        return 0;
+      }
+
       for (let nodeName in nodeNamesToHealthPills) {
         // All nodes have the same number of steps stored, so only examine 1 node. We cannot
         // directly index into the nodeNamesToHealthPills object because we do not have a key.
+        // If all steps mode is enabled, we only have 1 step to show.
         return nodeNamesToHealthPills[nodeName][healthPillStepIndex].step.toFixed(0);
       }
 
       // The current step could not be computed.
       return 0;
+    },
+    _computeBiggestStepEverSeen: function(nodeNamesToHealthPills) {
+      for (let nodeName in nodeNamesToHealthPills) {
+        // All nodes have the same number of steps stored, so only examine 1 node.
+        // The index is 1 less than the count. Tensorboard backend logic guarantees that the length
+        // of the array will be greater than 1.
+        var healthPills = nodeNamesToHealthPills[nodeName];
+        return Math.max(this._biggestStepEverSeen, healthPills[healthPills.length - 1].step);
+      }
+
+      // No steps seen so far. Default to 0.
+      return this._biggestStepEverSeen || 0;
     },
     _computeMaxStepIndex: function(nodeNamesToHealthPills) {
       for (let nodeName in nodeNamesToHealthPills) {
@@ -16379,7 +16894,7 @@ paper-progress {
     <tf-graph id="graph" graph-hierarchy="{{graphHierarchy}}" basic-graph="[[graph]]" hierarchy-params="[[hierarchyParams]]" render-hierarchy="{{renderHierarchy}}" devices-for-stats="[[devicesForStats]]" stats="[[stats]]" selected-node="{{_selectedNode}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="{{colorByParams}}" progress="{{progress}}" node-names-to-health-pills="[[nodeNamesToHealthPills]]" health-pill-step-index="[[healthPillStepIndex]]"></tf-graph>
   </div>
   <div id="info">
-    <tf-graph-info id="graph-info" title="selected" graph-hierarchy="[[graphHierarchy]]" render-hierarchy="[[renderHierarchy]]" graph="[[graph]]" selected-node="{{_selectedNode}}" selected-node-include="{{_selectedNodeInclude}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="[[colorByParams]]" node-names-to-health-pills="[[nodeNamesToHealthPills]]" health-pill-step-index="{{healthPillStepIndex}}"></tf-graph-info>
+    <tf-graph-info id="graph-info" title="selected" graph-hierarchy="[[graphHierarchy]]" render-hierarchy="[[renderHierarchy]]" graph="[[graph]]" selected-node="{{_selectedNode}}" selected-node-include="{{_selectedNodeInclude}}" highlighted-node="{{_highlightedNode}}" color-by="[[colorBy]]" color-by-params="[[colorByParams]]" debugger-data-enabled="[[debuggerDataEnabled]]" are-health-pills-loading="[[areHealthPillsLoading]]" node-names-to-health-pills="[[nodeNamesToHealthPills]]" all-steps-mode-enabled="{{allStepsModeEnabled}}" specific-health-pill-step="{{specificHealthPillStep}}" health-pill-step-index="{{healthPillStepIndex}}"></tf-graph-info>
   </div>
   <div class="context-menu"></div>
 </div>
@@ -16410,8 +16925,26 @@ Polymer({
       type: Object,
       notify: true
     },
+    // Whether debugger data is enabled for this instance of Tensorboard.
+    debuggerDataEnabled: Boolean,
+    // Whether health pills are currently being loaded.
+    areHealthPillsLoading: Boolean,
     // A mapping between node name to the tf.graph.scene.HealthPill to render.
     nodeNamesToHealthPills: Object,
+    // Whether the user can request health pills for individual steps from the server. This can be
+    // slow compared the default of showing sampled health pills.
+    allStepsModeEnabled: {
+      type: Boolean,
+      notify: true,
+      value: false,
+    },
+    // Relevant if allStepsModeEnabled. The specific step for which to fetch health pills from the
+    // server for.
+    specificHealthPillStep: {
+      type: Number,
+      notify: true,
+      value: 0,
+    },
     // The step of health pills to show throughout the graph.
     healthPillStepIndex: Number,
     // Private API: Data routing between child components.
@@ -16574,7 +17107,7 @@ svg.icon {
 .title small {
   font-weight: normal;
 }
-.deviceList {
+.deviceList, .xlaClusterList {
   max-height: 200px;
   overflow-y: auto;
 }
@@ -16664,6 +17197,12 @@ table.control-holder {
 table.tf-graph-controls td.input-element-table-data {
   padding: 0 0 0 20px;
 }
+
+/** Override inline styles that suppress pointer events for disabled buttons. Otherwise, the */
+/*  tooltips do not appear. */
+#color-by-radio-group paper-radio-button {
+  pointer-events: auto !important;
+}
 </style>
 <svg width="0" height="0">
   <defs>
@@ -16743,13 +17282,33 @@ table.tf-graph-controls td.input-element-table-data {
   </tbody></table>
   <div class="control-holder">
     <div class="title">Color</div>
-    <paper-radio-group selected="{{colorBy}}">
+    <paper-radio-group id="color-by-radio-group" selected="{{colorBy}}">
       <paper-radio-button name="structure">Structure</paper-radio-button>
+
       <paper-radio-button name="device">Device</paper-radio-button>
-      <template is="dom-if" if="[[_statsNotNull(stats)]]">
-        <paper-radio-button name="compute_time">Compute time</paper-radio-button>
-        <paper-radio-button name="memory">Memory</paper-radio-button>
-      </template>
+
+      <paper-radio-button id="xla-cluster-radio-button" name="xla_cluster" disabled="[[!_xlaClustersProvided(renderHierarchy)]]">
+        XLA Cluster
+      </paper-radio-button>
+      <paper-tooltip for="xla-cluster-radio-button" position="right">
+        Coloring by XLA cluster is only enabled if at least 1 op specifies an XLA cluster.
+      </paper-tooltip>
+
+      <paper-radio-button id="compute-time-radio-button" name="compute_time" disabled="[[!stats]]">
+        Compute time
+      </paper-radio-button>
+      <paper-tooltip for="compute-time-radio-button" position="right">
+        Coloring by compute time is only enabled if the RunMetadata proto is passed to the
+        FileWriter when a specific session is run.
+      </paper-tooltip>
+
+      <paper-radio-button id="memory-radio-button" name="memory" disabled="[[!stats]]">
+        Memory
+      </paper-radio-button>
+      <paper-tooltip for="memory-radio-button" position="right">
+        Coloring by memory is only enabled if the RunMetadata proto is passed to the
+        FileWriter when a specific session is run.
+      </paper-tooltip>
     </paper-radio-group>
   </div>
   <div>
@@ -16831,6 +17390,31 @@ table.tf-graph-controls td.input-element-table-data {
         </div>
       </div>
     </template>
+    <template is="dom-if" if="[[_equals(colorBy, 'xla_cluster')]]">
+      <div class="color-text">
+        <div class="xlaClusterList">
+          <table>
+          <template is="dom-repeat" items="[[colorByParams.xla_cluster]]">
+            <tr>
+              <td style$="[[_getBackgroundColor(item.color)]]">
+                <div class="colorBox"></div>
+              </td>
+              <td>
+                <div>[[item.xla_cluster]]</div>
+              </td>
+            </tr>
+          </template>
+          </table>
+        </div>
+        <br>
+        <div class="color-legend-row">
+          <svg>
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#grey-rect" x="0" y="0"></use>
+          </svg>
+          <span class="color-legend-value">unknown XLA cluster</span>
+        </div>
+      </div>
+    </template>
     <template is="dom-if" if="[[_statsNotNull(stats)]]">
       <div class="color-legend-row">
         <svg>
@@ -16840,7 +17424,7 @@ table.tf-graph-controls td.input-element-table-data {
       </div>
     </template>
   </div>
-
+  
   <template is="dom-if" if="[[!_isGradientColoring(stats, colorBy)]]">
     <div class="legend-holder">
       <table>
@@ -17022,8 +17606,10 @@ Polymer({
     this.renderHierarchy.traceInputs = event.target.active;
     tf.graph.scene.node.traceInputs(this.renderHierarchy);
   },
-  _statsNotNull: function(stats) {
-    return stats != null;
+  _xlaClustersProvided: function(renderHierarchy) {
+    return renderHierarchy &&
+        renderHierarchy.hierarchy &&
+        renderHierarchy.hierarchy.xlaClusters.length > 0;
   },
   _statsChanged: function(stats) {
     if (stats == null) {
@@ -17175,7 +17761,7 @@ Polymer({
   <tf-graph-loader id="loader" datasets="[[_datasets]]" selected-dataset="[[_selectedDataset]]" selected-metadata-tag="[[_selectedMetadataTag]]" selected-file="[[_selectedFile]]" out-graph-hierarchy="{{_graphHierarchy}}" out-graph="{{_graph}}" out-stats="{{_stats}}" progress="{{_progress}}" out-hierarchy-params="{{_hierarchyParams}}"></tf-graph-loader>
 </div>
 <div class="center">
-    <tf-graph-board id="graphboard" devices-for-stats="[[_devicesForStats]]" color-by="[[_colorBy]]" color-by-params="{{_colorByParams}}" graph-hierarchy="[[_graphHierarchy]]" graph="[[_graph]]" hierarchy-params="[[_hierarchyParams]]" progress="[[_progress]]" node-names-to-health-pills="[[_nodeNamesToHealthPills]]" health-pill-step-index="[[_healthPillStepIndex]]" render-hierarchy="{{_renderHierarchy}}" stats="[[_stats]]"></tf-graph-board>
+    <tf-graph-board id="graphboard" devices-for-stats="[[_devicesForStats]]" color-by="[[_colorBy]]" color-by-params="{{_colorByParams}}" graph-hierarchy="[[_graphHierarchy]]" graph="[[_graph]]" hierarchy-params="[[_hierarchyParams]]" progress="[[_progress]]" debugger-data-enabled="[[debuggerDataEnabled]]" are-health-pills-loading="[[_areHealthPillsLoading]]" node-names-to-health-pills="[[_nodeNamesToHealthPills]]" all-steps-mode-enabled="{{allStepsModeEnabled}}" specific-health-pill-step="{{specificHealthPillStep}}" health-pill-step-index="[[_healthPillStepIndex]]" render-hierarchy="{{_renderHierarchy}}" stats="[[_stats]]"></tf-graph-board>
 </div>
 </tf-dashboard-layout>
 </template>
@@ -17196,28 +17782,63 @@ Polymer({
 
 <script>
 (function() {
-Polymer({
+TF.Dashboard.TfGraphDashboard = Polymer({
   is: 'tf-graph-dashboard',
+  factoryImpl: function(backend, debuggerDataEnabled) {
+    this.backend = backend;
+    this.debuggerDataEnabled = debuggerDataEnabled;
+  },
   behaviors: [
+    TF.Dashboard.DashboardBehavior("graphs"),
     TF.Dashboard.ReloadBehavior("tf-graph-dashboard"),
     TF.Backend.Behavior,
   ],
   properties: {
     _datasets: Object,
     _renderHierarchy: {type: Object, observer: '_renderHierarchyChanged'},
-    backend: {type: Object, observer: '_backendChanged'},
+    backend: Object,
     debuggerDataEnabled: Boolean,
+    allStepsModeEnabled: Boolean,
+    specificHealthPillStep: {type: Number, value: 0},
     healthPillsToggledOn: {type: Boolean, value: true, observer: '_healthPillsToggledOnChanged'},
+    _isAttached: Boolean,
+    // Whether this dashboard is initialized. This dashboard should only be initialized once.
+    _initialized: Boolean,
+    // Whether health pills are currently being loaded, in which case we may want to say show a
+    // spinner.
+    _areHealthPillsLoading: Boolean,
     // Maps the names of nodes to an array of health pills (HealthPillDatums).
     _nodeNamesToHealthPills: {
       type: Object,
       value: {},
     },
     _healthPillStepIndex: Number,
-    runs: Array
+    // A strictly increasing ID. Each request for health pills has a unique ID. This helps us
+    // identify stale requests.
+    _healthPillRequestId: {type: Number, value: 1},
+    // The setTimeout ID for the pending request for health pills at a specific step.
+    _healthPillStepRequestTimerId: Number,
+    // The request for health pills at a specific step (as opposed to all sampled health pills) may
+    // involve slow disk reads. Hence, we throttle to 1 of those requests every this many ms.
+    _healthPillStepRequestTimerDelay: {
+      type: Number,
+      value: 500,
+      readOnly: true,
+    },
+    runs: Array,
   },
   listeners: {
     'node-toggle-expand': '_handleNodeToggleExpand',
+  },
+  observers: [
+    '_maybeFetchHealthPillsAtSpecificStep(allStepsModeEnabled, specificHealthPillStep)',
+    '_maybeInitializeDashboard(backend, _isAttached)',
+  ],
+  attached: function() {
+    this.set('_isAttached', true);
+  },
+  detached: function() {
+    this.set('_isAttached', false);
   },
   reload: function() {
     if (!this.debuggerDataEnabled ||
@@ -17234,7 +17855,14 @@ Polymer({
     // would not change across reloads.
     this._requestHealthPills();
   },
-  _backendChanged: function(backend) {
+  _maybeInitializeDashboard: function(backend, isAttached) {
+    if (this._initialized || !backend || !isAttached) {
+      // Either this dashboard is already initialized ... or we are not yet ready to initialize.
+      return;
+    }
+
+    // Set this to true so we only initialize once.
+    this._initialized = true;
     Promise.all([backend.graphRuns(), backend.runMetadataRuns()])
       .then(function(result) {
         var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
@@ -17257,9 +17885,48 @@ Polymer({
       }.bind(this));
   },
   _requestHealthPills: function() {
-    this.backend.healthPills(this._renderHierarchy.getNamesOfRenderedOps()).then(function(result) {
+    this.set('_areHealthPillsLoading', true);
+    const requestId = ++this._healthPillRequestId;
+
+    if (this._healthPillStepRequestTimerId !== null) {
+      // A request for health pills is already scheduled to be initiated. Clear it, and schedule a
+      // new request.
+      window.clearTimeout(this._healthPillStepRequestTimerId);
+      this._healthPillStepRequestTimerId = null;
+    }
+
+    if (this.allStepsModeEnabled) {
+      // This path may be slow. Schedule network requests to start some time later. If another
+      // request is scheduled in the mean time, drop this current request.
+      this._healthPillStepRequestTimerId = setTimeout(function() {
+        this._healthPillStepRequestTimerId = null;
+        this._initiateNetworkRequestForHealthPills(requestId);
+      }.bind(this), this._healthPillStepRequestTimerDelay);
+    } else {
+      // The user is fetching sampled steps. This path is fast, so no need to throttle. Directly
+      // fetch the health pills across the network.
+      this._initiateNetworkRequestForHealthPills(requestId);
+    }
+  },
+  // Initiates the network request for health pills. Do not directly call this method - network
+  // requests may be throttled. Instead, call _requestHealthPills, which uses this method.
+  _initiateNetworkRequestForHealthPills: function(requestId) {
+    if (this._healthPillRequestId !== requestId) {
+      // This possibly scheduled request was outdated before it was even sent across the network. Do
+      // not bother initiating it.
+      return;
+    }
+
+    const specificStep = this.allStepsModeEnabled ? this.specificHealthPillStep : undefined;
+    this.backend.healthPills(this._renderHierarchy.getNamesOfRenderedOps(), specificStep).then(
+        function(result) {
       if (!this.healthPillsToggledOn) {
         // The user has opted to hide health pills via the toggle button.
+        return;
+      }
+
+      if (requestId !== this._healthPillRequestId) {
+        // This response is no longer relevant.
         return;
       }
 
@@ -17272,6 +17939,8 @@ Polymer({
       }
 
       this.set('_nodeNamesToHealthPills', result);
+      this.set('_areHealthPillsLoading', false);
+      this.set('_healthPillStepRequestTimerId', null);
     }.bind(this));
   },
   _datasetsEmpty: function(datasets) {
@@ -17295,9 +17964,195 @@ Polymer({
       this.set('_nodeNamesToHealthPills', {});
     }
   },
+  // Fetch health pills for a specific step if applicable.
+  _maybeFetchHealthPillsAtSpecificStep: function(allStepsModeEnabled, specificHealthPillStep) {
+    if (!this._renderHierarchy) {
+      // The graph is not ready yet.
+      return;
+    }
+
+    this._requestHealthPills();
+  },
 });
 })();
 </script>
+<link rel="import" href="../paper-material/paper-material.html">
+
+
+<style>
+  tf-text-loader p {
+    margin: 0.3em 0;
+  }
+
+  tf-text-loader table {
+    border-collapse: collapse;
+  }
+
+  tf-text-loader table th {
+    font-weight: 600;
+  }
+
+  tf-text-loader table th,
+  tf-text-loader table td {
+    padding: 6px 13px;
+    border: 1px solid #dfe2e5;
+  }
+
+  tf-text-loader table tr {
+    background-color: #fff;
+    border-top: 1px solid #c6cbd1;
+  }
+
+</style>
+<dom-module id="tf-text-loader" assetpath="../tf-text-dashboard/">
+
+  
+  <template>
+    <style include="scrollbar-style"></style>
+    <paper-material elevation="1" id="outer" class="container scrollbar">
+      <template id="repeater" is="dom-repeat" items="[[_texts]]">
+      <paper-material elevation="1" class="step-container">
+        step <span class="step-value">[[_numfmt(item.step)]]</span>
+      </paper-material>
+      <paper-material elevation="1" inner-h-t-m-l="[[item.text]]" class="text">
+        </paper-material>
+      </template>
+    </paper-material>
+
+
+    <style>
+      #outer {
+        display: block;
+        overflow: auto;
+        max-height: 500px;
+        position: relative;
+        border-radius: 3px;
+        border: 2px solid black;
+      }
+      .text {
+        margin: 0 10px 10px 10px;
+        border-radius: 0 3px 3px 3px;
+        background-color: white;
+        padding: 5px;
+        word-break: break-word;
+      }
+      .step-container {
+        border-left: 1px solid #ccc;
+        border-right: 1px solid #ccc;
+        border-top: 1px solid #ccc;
+        border-radius: 3px 3px 0 0;
+        font-style: italic;
+        margin-top: 10px;
+        background-color: var(--tb-ui-light-accent);
+        display: inline-block;
+        margin-left: 9px;
+        padding: 3px;
+        font-size: 12px;
+      }
+
+    </style>
+
+  </template>
+  <script>
+    Polymer({
+      is: "tf-text-loader",
+      properties: {
+        colorScale: Object,
+        run: String,
+        // This is an array of Tensorboard Text&Datum objects (See backend.ts for details). The
+        // properties of objects in this array are
+        // {
+        //   wall_time: Date,
+        //   step: number,
+        //   text: string,
+        // }
+        // they are ordered from most recent to oldest
+        _texts: {
+          type: Array,
+          value: [],
+        },
+
+      },
+      redraw: function() {
+        // Other dashboards logic requires a redraw method to be defined.
+      },
+      setVisibleSeries: function(runs) {
+        // Do nothing.
+      },
+      setSeriesData: function(run, texts) {
+        this.set("run", run);
+        this.set("_texts", texts.reverse());
+
+        // Update the border color based on the run.
+        var color = this.colorScale.scale(run);
+        this.$$("#outer").style.borderColor = color;
+      },
+      _numfmt: function(n) {
+        return d3.format(",")(n);
+      }
+    });
+  </script>
+</dom-module>
+
+<dom-module id="tf-text-dashboard" assetpath="../tf-text-dashboard/">
+  <template>
+    <paper-dialog with-backdrop="" id="actual-text-size-dialog"></paper-dialog>
+    <div id="plumbing">
+      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{_colorScale}}"></tf-color-scale>
+    </div>
+
+    <tf-dashboard-layout>
+      <div class="sidebar">
+        <tf-sidebar-helper backend="[[backend]]" categories="{{_categories}}" color-scale="[[_colorScale]]" run2tag="[[run2tag]]" runs="[[runs]]" selected-runs="{{_selectedRuns}}">
+        </tf-sidebar-helper>
+      </div>
+      <div class="center">
+        <tf-panes-helper categories="[[_categories]]" color-scale="[[_colorScale]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" data-not-found="[[dataNotFound]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" repeat-for-runs="">
+          <template>
+            <tf-text-loader color-scale="[[_colorScale]]"></tf-text-loader>
+          </template>
+        </tf-panes-helper>
+      </div>
+    </tf-dashboard-layout>
+    <style include="dashboard-style"></style>
+    <style>
+      tf-panes-helper {
+        --card-width: 100%;
+        --card-height: auto;
+        --card-expanded-width: 100%;
+        --card-expanded-height: 1000px;
+        --card-padding: 0 5px 5px 5px;
+        --show-expand-button: none;
+      }
+
+    </style>
+  </template>
+  <script>
+    TF.Dashboard.TfTextDashboard = Polymer({
+      is: "tf-text-dashboard",
+      factoryImpl: function(backend) {
+        this.backend = backend;
+      },
+      properties: {
+        backend: Object,
+        dataType: {
+          type: String,
+          value: "text"
+        },
+      },
+      behaviors: [
+        TF.Dashboard.DashboardBehavior("text"),
+        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
+        TF.Backend.Behavior,
+      ],
+      attached: function() {
+        this.async(function() {
+          this.fire("rendered");
+        });
+      },
+    });
+  </script>
+</dom-module>
 <dom-module id="vz-projector-styles" assetpath="../vz-projector/">
 <template>
 <style>
@@ -17575,13 +18430,13 @@ paper-textarea {
       </paper-tooltip>
     </div>
     <div id="icon-container">
-
+      
       <paper-icon-button id="expand-more" icon="expand-less" on-tap="_expandMore"></paper-icon-button>
       <paper-icon-button id="expand-less" style="display: none" icon="expand-more" on-tap="_expandLess"></paper-icon-button>
     </div>
   </div>
   <iron-collapse id="panel">
-
+    
     <div id="state-section">
       <template is="dom-if" if="[[!savedStates.length]]">
         <p id="no-bookmarks">
@@ -17838,7 +18693,7 @@ paper-dropdown-menu paper-item {
 </style>
 <div class="title">DATA</div>
 <div class="container">
-
+  
   <template is="dom-if" if="[[_hasChoices(runNames)]]">
     <paper-dropdown-menu no-animations="" label="[[_getNumRunsLabel(runNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedRun}}">
@@ -17852,7 +18707,7 @@ paper-dropdown-menu paper-item {
   </template>
 
   <template is="dom-if" if="[[tensorNames]]">
-
+    
     <paper-dropdown-menu no-animations="" label="[[_getNumTensorsLabel(tensorNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedTensor}}">
         <template is="dom-repeat" items="[[tensorNames]]">
@@ -17866,7 +18721,7 @@ paper-dropdown-menu paper-item {
       </paper-listbox>
     </paper-dropdown-menu>
   </template>
-
+  
   <template is="dom-if" if="[[_hasChoices(labelOptions)]]">
     <paper-dropdown-menu no-animations="" label="Label by">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedLabelOption}}">
@@ -17879,7 +18734,7 @@ paper-dropdown-menu paper-item {
     </paper-dropdown-menu>
   </template>
 
-
+  
   <div hidden$="[[!_hasChoices(colorOptions)]]" class="colorby-container">
     <paper-dropdown-menu id="colorby" no-animations="" label="Color by">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedColorOptionName}}">
@@ -17920,7 +18775,7 @@ paper-dropdown-menu paper-item {
       </paper-tooltip>
       <paper-button id="upload" class="ink-button" onclick="dataDialog.open()">Load data</paper-button>
     </span>
-    <span>
+    <span id="publish-container">
       <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds="">
         Publish your embedding visualization and data
       </paper-tooltip>
@@ -17931,7 +18786,7 @@ paper-dropdown-menu paper-item {
     <paper-dialog id="dataDialog" with-backdrop="">
       <h2>Load data from your computer</h2>
       <paper-dialog-scrollable class="scrollable-container">
-        <div class="data-step">
+        <div class="data-step" id="upload-tensors-step-container">
           <div class="upload-step">
             <div>
                 <b><span class="step-label">Step 1:</span> Load a TSV file of vectors.</b>
@@ -17955,7 +18810,7 @@ paper-dropdown-menu paper-item {
         <div class="data-step">
           <div class="upload-step">
             <div>
-                <span class="step-label"><b>Step 2</b> (optional):</span> <b>Load a TSV file of metadata.</b>
+                <span class="step-label" id="upload-metadata-label"><b>Step 2</b> (optional):</span> <b>Load a TSV file of metadata.</b>
             </div>
           </div>
           <div class="data-step-contents">
@@ -17984,7 +18839,7 @@ paper-dropdown-menu paper-item {
         <div>
           <p>
             If you'd like to share your visualization with the world, follow these simple steps.
-            See <a target="_blank" href="https://www.tensorflow.org/versions/master/how_tos/embedding_viz/index.md">this tutorial</a> for more.
+            See <a target="_blank" href="https://www.tensorflow.org/get_started/embedding_viz">this tutorial</a> for more.
           </p>
           <h4><span class="step-label">Step 1:</span> Make data public</h4>
           <p>
@@ -17992,6 +18847,7 @@ paper-dropdown-menu paper-item {
           </p>
           <p>
             One option is using a <a target="_blank" href="https://gist.github.com/">github gist</a>.
+            If you choose this approach, make sure to link directly to the raw file.
           </p>
         </div>
         <div>
@@ -18511,7 +19367,7 @@ paper-dropdown-menu paper-item {
     </div>
   </div>
   <div class="container">
-
+    
     <div data-panel="tsne" class="ink-panel-content">
       <div class="slider">
         <label>Dimension</label>
@@ -18562,10 +19418,10 @@ paper-dropdown-menu paper-item {
         </a>
       </p>
     </div>
-
+    
     <div data-panel="pca" class="ink-panel-content">
       <div class="two-columns">
-        <div>
+        <div> 
           <paper-dropdown-menu class="pca-dropdown" vertical-align="bottom" no-animations="" label="X">
             <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaX}}">
               <paper-item disabled="" class="dropdown-item header">
@@ -18595,7 +19451,7 @@ paper-dropdown-menu paper-item {
             </paper-listbox>
           </paper-dropdown-menu>
         </div>
-        <div>
+        <div> 
           <paper-dropdown-menu class="pca-dropdown" vertical-align="bottom" no-animations="" label="Y">
             <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaY}}">
               <paper-item disabled="" class="dropdown-item header">
@@ -18622,7 +19478,7 @@ paper-dropdown-menu paper-item {
         For fast results, the data was sampled to [[getPcaSampleSizeText()]] points and randomly projected down to [[getPcaSampledDimText()]] dimensions.
       </paper-tooltip>
     </div>
-
+    
     <div data-panel="custom" class="ink-panel-content">
       <paper-dropdown-menu style="width: 100%" no-animations="" label="Search by">
         <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{customSelectedSearchByMetadataOption}}">
@@ -18950,7 +19806,7 @@ paper-dropdown-menu paper-item {
 </div>
 <paper-toast id="toast" always-on-top=""></paper-toast>
 
-</template>
+</template> 
 </dom-module>
 <dom-module id="vz-projector-dashboard" assetpath="../vz-projector/">
 <template>
@@ -18961,18 +19817,35 @@ paper-dropdown-menu paper-item {
 </template>
 <script>
 (function() {
-Polymer({
+TF.Dashboard.VzProjectorDashboard = Polymer({
   is: 'vz-projector-dashboard',
+  factoryImpl: function(routePrefix) {
+    this.routePrefix = routePrefix;
+  },
   properties: {
     dataNotFound: Boolean,
-    routePrefix: String
+    routePrefix: String,
+    // Whether this dashboard is initialized. This dashboard should only be initialized once.
+    _initialized: Boolean,
   },
-  ready() {
-    var self = this;
-    d3.json(this.routePrefix + '/runs', function(err, runs) {
-      self.dataNotFound = (runs.length === 0);
+  behaviors: [
+    TF.Dashboard.DashboardBehavior("embeddings"),
+  ],
+  reload: function() {
+    // Do not reload the embedding projector. Reloading could take a long time.
+  },
+  attached: function() {
+    if (this._initialized) {
+      return;
+    }
+
+    // Set this to true so we only initialize once.
+    this._initialized = true;
+
+    d3.json(this.routePrefix + '/runs', (err, runs) => {
+      this.set('dataNotFound', runs.length === 0);
     });
-  }
+  },
 });
 })();
 </script>
@@ -19051,9 +19924,9 @@ var TF;
         <div id="toolbar-content">
           <div class="toolbar-title">TensorBoard</div>
           <paper-tabs selected="{{modeIndex}}" noink="" class="tabs" id="tabs">
-            <template is="dom-repeat" items="[[tabs]]">
-              <template is="dom-if" if="[[_isTabEnabled(item)]]">
-                <paper-tab data-mode="[[item]]">[[item]]</paper-tab>
+            <template is="dom-repeat" items="[[_dashboards]]">
+              <template is="dom-if" if="[[_isTabEnabled(item.name)]]">
+                <paper-tab data-mode="[[item.name]]">[[item.name]]</paper-tab>
               </template>
             </template>
           </paper-tabs>
@@ -19067,38 +19940,7 @@ var TF;
         </div>
       </paper-toolbar>
 
-      <div id="content" class="fit">
-        <content id="injected-overview"></content>
-
-        <template is="dom-if" if="[[_modeIsScalars(mode)]]">
-          <tf-scalar-dashboard id="scalars" backend="[[_backend]]" router="[[router]]"></tf-scalar-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsImages(mode)]]">
-          <tf-image-dashboard id="images" backend="[[_backend]]"></tf-image-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsAudio(mode)]]">
-          <tf-audio-dashboard id="audio" backend="[[_backend]]"></tf-audio-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsGraphs(mode)]]">
-          <tf-graph-dashboard id="graphs" backend="[[_backend]]" debugger-data-enabled="[[_debuggerDataEnabled]]"></tf-graph-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsDistributions(mode)]]">
-          <tf-distribution-dashboard id="distributions" backend="[[_backend]]"></tf-distribution-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsHistograms(mode)]]">
-          <tf-histogram-dashboard id="histograms" backend="[[_backend]]"></tf-histogram-dashboard>
-        </template>
-
-        <template is="dom-if" if="[[_modeIsEmbeddings(mode)]]">
-          <vz-projector-dashboard id="projector" route-prefix="/data/plugin/projector">
-          </vz-projector-dashboard>
-        </template>
-      </div>
+      <div id="content" class="fit"></div>
     </paper-header-panel>
 
     <style>
@@ -19189,16 +20031,21 @@ var TF;
             return match && match.length == 1;
           },
         },
+        _dashboards: {
+          type: Array,
+          computed: "_makeDashboardList(_backend, router, _debuggerDataEnabled)",
+        },
+        // Maps dashboard name to dashboard object.
+        _dashboardMapping: {
+          type: Object,
+          computed: "_makeDashboardMapping(_dashboards)",
+        },
         // Which tab is selected (scalars, graph, images etc).
         mode: {
           type: String,
           computed: '_getModeFromIndex(modeIndex)',
           notify: true,
-        },
-        tabs: {
-          type: Array,
-          readOnly: true,
-          value: TF.Globals.TABS,
+          observer: '_modeChanged',
         },
         // If this is set to a string, TensorBoard will switch to "demo mode"
         // and attempt to load serialized json data from that directory. You can
@@ -19223,7 +20070,7 @@ var TF;
         return true;
       },
       _getModeFromIndex: function(modeIndex) {
-        var mode = this.tabs[modeIndex];
+        var mode = this._dashboards[modeIndex].name;
         TF.URIStorage.setString(TF.URIStorage.TAB, mode);
         return mode;
       },
@@ -19235,31 +20082,10 @@ var TF;
         return new TF.Backend.Backend(router);
       },
       _isReloadDisabled: function(mode) {
-        return !this._debuggerDataEnabled && this._modeIsGraphs(mode);
-      },
-      _modeIsScalars: function(mode) {
-        return mode === "scalars";
-      },
-      _modeIsImages: function(mode) {
-        return mode === "images";
-      },
-      _modeIsAudio: function(mode) {
-        return mode === "audio";
-      },
-      _modeIsGraphs: function(mode) {
-        return mode === "graphs";
-      },
-      _modeIsEmbeddings: function(mode) {
-        return mode === "embeddings";
-      },
-      _modeIsDistributions: function(mode) {
-        return mode === "distributions";
-      },
-      _modeIsHistograms: function(mode) {
-        return mode === "histograms";
+        return !this._debuggerDataEnabled && mode == 'graphs';
       },
       selectedDashboard: function() {
-        var dashboard = this.$$("#" + this.mode);
+        var dashboard = this._dashboardMapping[this.mode];
         if (dashboard == null) {
           throw new Error(`Unable to find dashboard for mode: ${this.mode}`);
         }
@@ -19273,24 +20099,67 @@ var TF;
           this._getModeFromHash();
         }.bind(this));
       },
+      _makeDashboardList: function(backend, router, debuggerDataEnabled) {
+        if (!backend || !router) {
+          // The dashboards require these entities. We are not ready to construct dashboards.
+          return null;
+        }
+
+        return [
+          new TF.Dashboard.TfScalarDashboard(backend, router),
+          new TF.Dashboard.TfImageDashboard(backend),
+          new TF.Dashboard.TfAudioDashboard(backend),
+          new TF.Dashboard.TfGraphDashboard(backend, debuggerDataEnabled),
+          new TF.Dashboard.TfDistributionDashboard(backend),
+          new TF.Dashboard.TfHistogramDashboard(backend),
+          new TF.Dashboard.VzProjectorDashboard('data/plugin/projector'),
+          new TF.Dashboard.TfTextDashboard(backend),
+        ];
+      },
+      _makeDashboardMapping: function(dashboards) {
+        if (!dashboards) {
+          return null;
+        }
+
+        let mapping = {};
+        dashboards.forEach(function(dashboard) {
+          mapping[dashboard.name] = dashboard;
+        });
+        return mapping;
+      },
       _getModeFromHash: function() {
         var tabName = TF.URIStorage.getString(TF.URIStorage.TAB);
-        var modeIndex = this.tabs.indexOf(tabName);
-        if (modeIndex == -1 && this.modeIndex == null) {
+        var modeIndex;
+        for (var i = 0; i < this._dashboards.length; i++) {
+          if (this._dashboards[i].name == tabName) {
+            modeIndex = i;
+            break;
+          }
+        }
+
+        if (modeIndex === undefined && this.modeIndex == null) {
           // Select the first tab as default.
           this.set('modeIndex', 0);
         }
-        if (modeIndex != -1 && modeIndex != this.modeIndex) {
+        if (modeIndex !== undefined && modeIndex != this.modeIndex) {
           this.set('modeIndex', modeIndex);
         }
       },
+      _modeChanged: function(mode) {
+        let currentDashboard = this.$.content.firstChild;
+        if (currentDashboard) {
+          this.$.content.removeChild(currentDashboard);
+        }
+
+        if (!mode || !this._dashboardMapping) {
+          return;
+        }
+
+        // Append the new dashboard.
+        const newDashboard = this.selectedDashboard();
+        this.$.content.appendChild(newDashboard);
+      },
       reload: function() {
-        if (this._modeIsEmbeddings(this.mode)) {
-          return;
-        }
-        if (!this._debuggerDataEnabled && this._modeIsGraphs(this.mode)) {
-          return;
-        }
         this.selectedDashboard().reload();
       },
       openSettings: function() {
@@ -19298,7 +20167,7 @@ var TF;
       },
     });
   </script>
-
+  
   <script>(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 "use strict";
 var AnalyticsLogger = (function () {
@@ -19837,15 +20706,18 @@ var DemoDataProvider = (function () {
         }
         else {
             logging.setModalMessage('Fetching tensors...', data_provider_1.TENSORS_MSG_ID);
-            d3.text(url, function (error, dataString) {
-                if (error) {
-                    logging.setErrorMessage(error.responseText, 'fetching tensors');
-                    return;
-                }
-                dataProvider.parseTensors(dataString).then(function (points) {
+            var request_1 = new XMLHttpRequest();
+            request_1.open('GET', url);
+            request_1.responseType = 'arraybuffer';
+            request_1.onerror = function () {
+                logging.setErrorMessage(request_1.responseText, 'fetching tensors');
+            };
+            request_1.onload = function () {
+                dataProvider.parseTensors(request_1.response).then(function (points) {
                     callback(new data_1.DataSet(points));
                 });
-            });
+            };
+            request_1.send();
         }
     };
     DemoDataProvider.prototype.retrieveSpriteAndMetadata = function (run, tensorName, callback) {
@@ -20131,19 +21003,69 @@ function parseRawMetadata(contents, callback) {
     parseMetadata(contents).then(function (result) { return callback(result); });
 }
 exports.parseRawMetadata = parseRawMetadata;
+/**
+ * Parse an ArrayBuffer in a streaming fashion line by line (or custom delim).
+ * Can handle very large files.
+ *
+ * @param content The array buffer.
+ * @param callback The callback called on each line.
+ * @param chunkSize The size of each read chunk, defaults to ~1MB. (optional)
+ * @param delim The delimiter used to split a line, defaults to '\n'. (optional)
+ * @returns A promise for when it is finished.
+ */
+function streamParse(content, callback, chunkSize, delim) {
+    if (chunkSize === void 0) { chunkSize = 1000000; }
+    if (delim === void 0) { delim = '\n'; }
+    return new Promise(function (resolve, reject) {
+        var offset = 0;
+        var bufferSize = content.byteLength - 1;
+        var data = '';
+        function readHandler(str) {
+            offset += chunkSize;
+            var parts = str.split(delim);
+            var first = data + parts[0];
+            if (parts.length === 1) {
+                data = first;
+                readChunk(offset, chunkSize);
+                return;
+            }
+            data = parts[parts.length - 1];
+            callback(first);
+            for (var i = 1; i < parts.length - 1; i++) {
+                callback(parts[i]);
+            }
+            if (offset >= bufferSize) {
+                if (data) {
+                    callback(data);
+                }
+                resolve();
+                return;
+            }
+            readChunk(offset, chunkSize);
+        }
+        function readChunk(offset, size) {
+            var contentChunk = content.slice(offset, offset + size);
+            var blob = new Blob([contentChunk]);
+            var file = new FileReader();
+            file.onload = function (e) { return readHandler(e.target.result); };
+            file.readAsText(blob);
+        }
+        readChunk(offset, chunkSize);
+    });
+}
 /** Parses a tsv text file. */
-function parseTensors(content, delim) {
-    if (delim === void 0) { delim = '\t'; }
-    var data = [];
-    var numDim;
-    return util_1.runAsyncTask('Parsing tensors...', function () {
-        var lines = content.split('\n');
-        lines.forEach(function (line) {
+function parseTensors(content, valueDelim) {
+    if (valueDelim === void 0) { valueDelim = '\t'; }
+    logging.setModalMessage('Parsing tensors...', exports.TENSORS_MSG_ID);
+    return new Promise(function (resolve, reject) {
+        var data = [];
+        var numDim;
+        streamParse(content, function (line) {
             line = line.trim();
             if (line === '') {
                 return;
             }
-            var row = line.split(delim);
+            var row = line.split(valueDelim);
             var dataPoint = {
                 metadata: {},
                 vector: null,
@@ -20170,11 +21092,10 @@ function parseTensors(content, delim) {
                 logging.setModalMessage('Parsing failed. Found a vector with only one dimension?');
                 throw Error('Parsing failed');
             }
+        }).then(function () {
+            logging.setModalMessage(null, exports.TENSORS_MSG_ID);
+            resolve(data);
         });
-        return data;
-    }, exports.TENSORS_MSG_ID).then(function (dataPoints) {
-        logging.setModalMessage(null, exports.TENSORS_MSG_ID);
-        return dataPoints;
     });
 }
 exports.parseTensors = parseTensors;
@@ -20250,18 +21171,27 @@ function analyzeMetadata(columnNames, pointsMetadata) {
 }
 exports.analyzeMetadata = analyzeMetadata;
 function parseMetadata(content) {
-    return util_1.runAsyncTask('Parsing metadata...', function () {
-        var lines = content.split('\n').filter(function (line) { return line.trim().length > 0; });
-        var hasHeader = lines[0].indexOf('\t') >= 0;
+    logging.setModalMessage('Parsing metadata...', exports.METADATA_MSG_ID);
+    return new Promise(function (resolve, reject) {
         var pointsMetadata = [];
-        // If the first row doesn't contain metadata keys, we assume that the values
-        // are labels.
+        var hasHeader = false;
+        var lineNumber = 0;
         var columnNames = ['label'];
-        if (hasHeader) {
-            columnNames = lines[0].split('\t');
-            lines = lines.slice(1);
-        }
-        lines.forEach(function (line) {
+        streamParse(content, function (line) {
+            if (line.trim().length === 0) {
+                return;
+            }
+            if (lineNumber === 0) {
+                hasHeader = line.indexOf('\t') >= 0;
+                // If the first row doesn't contain metadata keys, we assume that the
+                // values are labels.
+                if (hasHeader) {
+                    columnNames = line.split('\t');
+                    lineNumber++;
+                    return;
+                }
+            }
+            lineNumber++;
             var rowValues = line.split('\t');
             var metadata = {};
             pointsMetadata.push(metadata);
@@ -20271,14 +21201,13 @@ function parseMetadata(content) {
                 value = (value === '' ? null : value);
                 metadata[name] = value;
             });
+        }).then(function () {
+            logging.setModalMessage(null, exports.METADATA_MSG_ID);
+            resolve({
+                stats: analyzeMetadata(columnNames, pointsMetadata),
+                pointsInfo: pointsMetadata
+            });
         });
-        return {
-            stats: analyzeMetadata(columnNames, pointsMetadata),
-            pointsInfo: pointsMetadata
-        };
-    }, exports.METADATA_MSG_ID).then(function (metadata) {
-        logging.setModalMessage(null, exports.METADATA_MSG_ID);
-        return metadata;
     });
 }
 exports.parseMetadata = parseMetadata;
@@ -20297,14 +21226,17 @@ function retrieveSpriteAndMetadataInfo(metadataPath, spriteImagePath, spriteMeta
     if (metadataPath) {
         metadataPromise = new Promise(function (resolve, reject) {
             logging.setModalMessage('Fetching metadata...', exports.METADATA_MSG_ID);
-            d3.text(metadataPath, function (err, rawMetadata) {
-                if (err) {
-                    logging.setErrorMessage(err.responseText, 'fetching metadata');
-                    reject(err);
-                    return;
-                }
-                resolve(parseMetadata(rawMetadata));
-            });
+            var request = new XMLHttpRequest();
+            request.open('GET', metadataPath);
+            request.responseType = 'arraybuffer';
+            request.onerror = function () {
+                logging.setErrorMessage(request.responseText, 'fetching metadata');
+                reject();
+            };
+            request.onload = function () {
+                resolve(parseMetadata(request.response));
+            };
+            request.send(null);
         });
     }
     var spriteMsgId = null;
@@ -20364,8 +21296,25 @@ exports.PCA_SAMPLE_SIZE = 50000;
 exports.PCA_SAMPLE_DIM = 200;
 /** Number of pca components to compute. */
 var NUM_PCA_COMPONENTS = 10;
-/** Reserved metadata attribute used for trace information. */
-var TRACE_METADATA_ATTR = '__next__';
+/**
+ * Reserved metadata attributes used for sequence information
+ * NOTE: Use "__seq_next__" as "__next__" is deprecated.
+ */
+var SEQUENCE_METADATA_ATTRS = ['__next__', '__seq_next__'];
+function getSequenceNextPointIndex(pointMetadata) {
+    var sequenceAttr = null;
+    for (var _i = 0, SEQUENCE_METADATA_ATTRS_1 = SEQUENCE_METADATA_ATTRS; _i < SEQUENCE_METADATA_ATTRS_1.length; _i++) {
+        var metadataAttr = SEQUENCE_METADATA_ATTRS_1[_i];
+        if (metadataAttr in pointMetadata && pointMetadata[metadataAttr] !== '') {
+            sequenceAttr = pointMetadata[metadataAttr];
+            break;
+        }
+    }
+    if (sequenceAttr == null) {
+        return null;
+    }
+    return +sequenceAttr;
+}
 /**
  * Dataset contains a DataPoints array that should be treated as immutable. This
  * acts as a working subset of the original data, with cached properties
@@ -20388,52 +21337,52 @@ var DataSet = (function () {
         this.hasTSNERun = false;
         this.points = points;
         this.shuffledDataIndices = util.shuffle(d3.range(this.points.length));
-        this.traces = this.computeTraces(points);
+        this.sequences = this.computeSequences(points);
         this.dim = [this.points.length, this.points[0].vector.length];
         this.spriteAndMetadataInfo = spriteAndMetadataInfo;
     }
-    DataSet.prototype.computeTraces = function (points) {
-        // Keep a list of indices seen so we don't compute traces for a given
+    DataSet.prototype.computeSequences = function (points) {
+        // Keep a list of indices seen so we don't compute sequences for a given
         // point twice.
         var indicesSeen = new Int8Array(points.length);
-        // Compute traces.
-        var indexToTrace = {};
-        var traces = [];
+        // Compute sequences.
+        var indexToSequence = {};
+        var sequences = [];
         for (var i = 0; i < points.length; i++) {
             if (indicesSeen[i]) {
                 continue;
             }
             indicesSeen[i] = 1;
-            // Ignore points without a trace attribute.
-            var next = points[i].metadata[TRACE_METADATA_ATTR];
-            if (next == null || next === '') {
+            // Ignore points without a sequence attribute.
+            var next = getSequenceNextPointIndex(points[i].metadata);
+            if (next == null) {
                 continue;
             }
-            if (next in indexToTrace) {
-                var existingTrace = indexToTrace[+next];
+            if (next in indexToSequence) {
+                var existingSequence = indexToSequence[next];
                 // Pushing at the beginning of the array.
-                existingTrace.pointIndices.unshift(i);
-                indexToTrace[i] = existingTrace;
+                existingSequence.pointIndices.unshift(i);
+                indexToSequence[i] = existingSequence;
                 continue;
             }
-            // The current point is pointing to a new/unseen trace.
-            var newTrace = { pointIndices: [] };
-            indexToTrace[i] = newTrace;
-            traces.push(newTrace);
+            // The current point is pointing to a new/unseen sequence.
+            var newSequence = { pointIndices: [] };
+            indexToSequence[i] = newSequence;
+            sequences.push(newSequence);
             var currentIndex = i;
             while (points[currentIndex]) {
-                newTrace.pointIndices.push(currentIndex);
-                var next_1 = points[currentIndex].metadata[TRACE_METADATA_ATTR];
-                if (next_1 != null && next_1 !== '') {
-                    indicesSeen[+next_1] = 1;
-                    currentIndex = +next_1;
+                newSequence.pointIndices.push(currentIndex);
+                var next_1 = getSequenceNextPointIndex(points[currentIndex].metadata);
+                if (next_1 != null) {
+                    indicesSeen[next_1] = 1;
+                    currentIndex = next_1;
                 }
                 else {
                     currentIndex = -1;
                 }
             }
         }
-        return traces;
+        return sequences;
     };
     DataSet.prototype.projectionCanBeRendered = function (projection) {
         if (projection !== 'tsne') {
@@ -21348,8 +22297,8 @@ var renderContext_1 = require('./renderContext');
 var scatterPlot_1 = require('./scatterPlot');
 var scatterPlotVisualizer3DLabels_1 = require('./scatterPlotVisualizer3DLabels');
 var scatterPlotVisualizerCanvasLabels_1 = require('./scatterPlotVisualizerCanvasLabels');
+var scatterPlotVisualizerPolylines_1 = require('./scatterPlotVisualizerPolylines');
 var scatterPlotVisualizerSprites_1 = require('./scatterPlotVisualizerSprites');
-var scatterPlotVisualizerTraces_1 = require('./scatterPlotVisualizerTraces');
 var vector = require('./vector');
 var LABEL_FONT_SIZE = 10;
 var LABEL_SCALE_DEFAULT = 1.0;
@@ -21372,15 +22321,15 @@ var LABELS_3D_COLOR_UNSELECTED = 0xFFFFFF;
 var LABELS_3D_COLOR_NO_SELECTION = 0xFFFFFF;
 var SPRITE_IMAGE_COLOR_UNSELECTED = 0xFFFFFF;
 var SPRITE_IMAGE_COLOR_NO_SELECTION = 0xFFFFFF;
-var TRACE_START_HUE = 60;
-var TRACE_END_HUE = 360;
-var TRACE_SATURATION = 1;
-var TRACE_LIGHTNESS = .3;
-var TRACE_DEFAULT_OPACITY = .2;
-var TRACE_DEFAULT_LINEWIDTH = 2;
-var TRACE_SELECTED_OPACITY = .9;
-var TRACE_SELECTED_LINEWIDTH = 3;
-var TRACE_DESELECTED_OPACITY = .05;
+var POLYLINE_START_HUE = 60;
+var POLYLINE_END_HUE = 360;
+var POLYLINE_SATURATION = 1;
+var POLYLINE_LIGHTNESS = .3;
+var POLYLINE_DEFAULT_OPACITY = .2;
+var POLYLINE_DEFAULT_LINEWIDTH = 2;
+var POLYLINE_SELECTED_OPACITY = .9;
+var POLYLINE_SELECTED_LINEWIDTH = 3;
+var POLYLINE_DESELECTED_OPACITY = .05;
 var SCATTER_PLOT_CUBE_LENGTH = 2;
 /** Color scale for nearest neighbors. */
 var NN_COLOR_SCALE = d3.scale.linear()
@@ -21431,8 +22380,8 @@ var ProjectorScatterPlotAdapter = (function () {
             // atomic unit of update.
             this.projection.dataSet = dataSet;
         }
-        if (this.traceVisualizer != null) {
-            this.traceVisualizer.setDataSet(dataSet);
+        if (this.polylineVisualizer != null) {
+            this.polylineVisualizer.setDataSet(dataSet);
         }
         if (this.labels3DVisualizer != null) {
             this.labels3DVisualizer.setLabelStrings(this.generate3DLabelsArray(dataSet, this.labelPointAccessor));
@@ -21498,15 +22447,15 @@ var ProjectorScatterPlotAdapter = (function () {
         var pointColors = this.generatePointColorArray(dataSet, pointColorer, this.distanceMetric, selectedSet, neighbors, hoverIndex, this.renderLabelsIn3D, this.getSpriteImageMode());
         var pointScaleFactors = this.generatePointScaleFactorArray(dataSet, selectedSet, neighbors, hoverIndex);
         var labels = this.generateVisibleLabelRenderParams(dataSet, selectedSet, neighbors, hoverIndex);
-        var traceColors = this.generateLineSegmentColorMap(dataSet, pointColorer);
-        var traceOpacities = this.generateLineSegmentOpacityArray(dataSet, selectedSet);
-        var traceWidths = this.generateLineSegmentWidthArray(dataSet, selectedSet);
+        var polylineColors = this.generateLineSegmentColorMap(dataSet, pointColorer);
+        var polylineOpacities = this.generateLineSegmentOpacityArray(dataSet, selectedSet);
+        var polylineWidths = this.generateLineSegmentWidthArray(dataSet, selectedSet);
         this.scatterPlot.setPointColors(pointColors);
         this.scatterPlot.setPointScaleFactors(pointScaleFactors);
         this.scatterPlot.setLabels(labels);
-        this.scatterPlot.setTraceColors(traceColors);
-        this.scatterPlot.setTraceOpacities(traceOpacities);
-        this.scatterPlot.setTraceWidths(traceWidths);
+        this.scatterPlot.setPolylineColors(polylineColors);
+        this.scatterPlot.setPolylineOpacities(polylineOpacities);
+        this.scatterPlot.setPolylineWidths(polylineWidths);
     };
     ProjectorScatterPlotAdapter.prototype.render = function () {
         this.scatterPlot.render();
@@ -21641,18 +22590,18 @@ var ProjectorScatterPlotAdapter = (function () {
         return scale;
     };
     ProjectorScatterPlotAdapter.prototype.generateLineSegmentColorMap = function (ds, legendPointColorer) {
-        var traceColorArrayMap = {};
+        var polylineColorArrayMap = {};
         if (ds == null) {
-            return traceColorArrayMap;
+            return polylineColorArrayMap;
         }
-        for (var i = 0; i < ds.traces.length; i++) {
-            var dataTrace = ds.traces[i];
-            var colors = new Float32Array(2 * (dataTrace.pointIndices.length - 1) * 3);
+        for (var i = 0; i < ds.sequences.length; i++) {
+            var sequence = ds.sequences[i];
+            var colors = new Float32Array(2 * (sequence.pointIndices.length - 1) * 3);
             var colorIndex = 0;
             if (legendPointColorer) {
-                for (var j = 0; j < dataTrace.pointIndices.length - 1; j++) {
-                    var c1 = new THREE.Color(legendPointColorer(ds, dataTrace.pointIndices[j]));
-                    var c2 = new THREE.Color(legendPointColorer(ds, dataTrace.pointIndices[j + 1]));
+                for (var j = 0; j < sequence.pointIndices.length - 1; j++) {
+                    var c1 = new THREE.Color(legendPointColorer(ds, sequence.pointIndices[j]));
+                    var c2 = new THREE.Color(legendPointColorer(ds, sequence.pointIndices[j + 1]));
                     colors[colorIndex++] = c1.r;
                     colors[colorIndex++] = c1.g;
                     colors[colorIndex++] = c1.b;
@@ -21662,9 +22611,9 @@ var ProjectorScatterPlotAdapter = (function () {
                 }
             }
             else {
-                for (var j = 0; j < dataTrace.pointIndices.length - 1; j++) {
-                    var c1 = getDefaultPointInTraceColor(j, dataTrace.pointIndices.length);
-                    var c2 = getDefaultPointInTraceColor(j + 1, dataTrace.pointIndices.length);
+                for (var j = 0; j < sequence.pointIndices.length - 1; j++) {
+                    var c1 = getDefaultPointInPolylineColor(j, sequence.pointIndices.length);
+                    var c2 = getDefaultPointInPolylineColor(j + 1, sequence.pointIndices.length);
                     colors[colorIndex++] = c1.r;
                     colors[colorIndex++] = c1.g;
                     colors[colorIndex++] = c1.b;
@@ -21673,23 +22622,23 @@ var ProjectorScatterPlotAdapter = (function () {
                     colors[colorIndex++] = c2.b;
                 }
             }
-            traceColorArrayMap[i] = colors;
+            polylineColorArrayMap[i] = colors;
         }
-        return traceColorArrayMap;
+        return polylineColorArrayMap;
     };
     ProjectorScatterPlotAdapter.prototype.generateLineSegmentOpacityArray = function (ds, selectedPoints) {
         if (ds == null) {
             return new Float32Array(0);
         }
-        var opacities = new Float32Array(ds.traces.length);
+        var opacities = new Float32Array(ds.sequences.length);
         var selectedPointCount = (selectedPoints == null) ? 0 : selectedPoints.length;
         if (selectedPointCount > 0) {
-            opacities.fill(TRACE_DESELECTED_OPACITY);
-            var i = ds.points[selectedPoints[0]].traceIndex;
-            opacities[i] = TRACE_SELECTED_OPACITY;
+            opacities.fill(POLYLINE_DESELECTED_OPACITY);
+            var i = ds.points[selectedPoints[0]].sequenceIndex;
+            opacities[i] = POLYLINE_SELECTED_OPACITY;
         }
         else {
-            opacities.fill(TRACE_DEFAULT_OPACITY);
+            opacities.fill(POLYLINE_DEFAULT_OPACITY);
         }
         return opacities;
     };
@@ -21697,12 +22646,12 @@ var ProjectorScatterPlotAdapter = (function () {
         if (ds == null) {
             return new Float32Array(0);
         }
-        var widths = new Float32Array(ds.traces.length);
-        widths.fill(TRACE_DEFAULT_LINEWIDTH);
+        var widths = new Float32Array(ds.sequences.length);
+        widths.fill(POLYLINE_DEFAULT_LINEWIDTH);
         var selectedPointCount = (selectedPoints == null) ? 0 : selectedPoints.length;
         if (selectedPointCount > 0) {
-            var i = ds.points[selectedPoints[0]].traceIndex;
-            widths[i] = TRACE_SELECTED_LINEWIDTH;
+            var i = ds.points[selectedPoints[0]].sequenceIndex;
+            widths[i] = POLYLINE_SELECTED_LINEWIDTH;
         }
         return widths;
     };
@@ -21822,7 +22771,7 @@ var ProjectorScatterPlotAdapter = (function () {
         this.labels3DVisualizer = null;
         this.canvasLabelsVisualizer = null;
         this.spriteVisualizer = null;
-        this.traceVisualizer = null;
+        this.polylineVisualizer = null;
         if (inLabels3DMode) {
             this.labels3DVisualizer = new scatterPlotVisualizer3DLabels_1.ScatterPlotVisualizer3DLabels();
             this.labels3DVisualizer.setLabelStrings(this.generate3DLabelsArray(ds, this.labelPointAccessor));
@@ -21833,7 +22782,7 @@ var ProjectorScatterPlotAdapter = (function () {
             this.canvasLabelsVisualizer =
                 new scatterPlotVisualizerCanvasLabels_1.ScatterPlotVisualizerCanvasLabels(this.scatterPlotContainer);
         }
-        this.traceVisualizer = new scatterPlotVisualizerTraces_1.ScatterPlotVisualizerTraces();
+        this.polylineVisualizer = new scatterPlotVisualizerPolylines_1.ScatterPlotVisualizerPolylines();
         this.setDataSet(ds);
         if (this.spriteVisualizer) {
             scatterPlot.addVisualizer(this.spriteVisualizer);
@@ -21844,7 +22793,7 @@ var ProjectorScatterPlotAdapter = (function () {
         if (this.canvasLabelsVisualizer) {
             scatterPlot.addVisualizer(this.canvasLabelsVisualizer);
         }
-        scatterPlot.addVisualizer(this.traceVisualizer);
+        scatterPlot.addVisualizer(this.polylineVisualizer);
     };
     ProjectorScatterPlotAdapter.prototype.getSpriteImageMode = function () {
         if (this.projection == null) {
@@ -21868,9 +22817,10 @@ function styleRgbFromHexColor(hex) {
     var c = new THREE.Color(hex);
     return [(c.r * 255) | 0, (c.g * 255) | 0, (c.b * 255) | 0];
 }
-function getDefaultPointInTraceColor(index, totalPoints) {
-    var hue = TRACE_START_HUE + (TRACE_END_HUE - TRACE_START_HUE) * index / totalPoints;
-    var rgb = d3.hsl(hue, TRACE_SATURATION, TRACE_LIGHTNESS).rgb();
+function getDefaultPointInPolylineColor(index, totalPoints) {
+    var hue = POLYLINE_START_HUE +
+        (POLYLINE_END_HUE - POLYLINE_START_HUE) * index / totalPoints;
+    var rgb = d3.hsl(hue, POLYLINE_SATURATION, POLYLINE_LIGHTNESS).rgb();
     return new THREE.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255);
 }
 /**
@@ -21887,7 +22837,7 @@ function dist2color(distFunc, d, minDist) {
 }
 exports.dist2color = dist2color;
 
-},{"./renderContext":15,"./scatterPlot":16,"./scatterPlotVisualizer3DLabels":19,"./scatterPlotVisualizerCanvasLabels":20,"./scatterPlotVisualizerSprites":21,"./scatterPlotVisualizerTraces":22,"./vector":25}],15:[function(require,module,exports){
+},{"./renderContext":15,"./scatterPlot":16,"./scatterPlotVisualizer3DLabels":19,"./scatterPlotVisualizerCanvasLabels":20,"./scatterPlotVisualizerPolylines":21,"./scatterPlotVisualizerSprites":22,"./vector":25}],15:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21935,7 +22885,7 @@ var CameraType = exports.CameraType;
  * only when they change.
  */
 var RenderContext = (function () {
-    function RenderContext(camera, cameraType, cameraTarget, screenWidth, screenHeight, nearestCameraSpacePointZ, farthestCameraSpacePointZ, backgroundColor, pointColors, pointScaleFactors, labels, traceColors, traceOpacities, traceWidths) {
+    function RenderContext(camera, cameraType, cameraTarget, screenWidth, screenHeight, nearestCameraSpacePointZ, farthestCameraSpacePointZ, backgroundColor, pointColors, pointScaleFactors, labels, polylineColors, polylineOpacities, polylineWidths) {
         this.camera = camera;
         this.cameraType = cameraType;
         this.cameraTarget = cameraTarget;
@@ -21947,9 +22897,9 @@ var RenderContext = (function () {
         this.pointColors = pointColors;
         this.pointScaleFactors = pointScaleFactors;
         this.labels = labels;
-        this.traceColors = traceColors;
-        this.traceOpacities = traceOpacities;
-        this.traceWidths = traceWidths;
+        this.polylineColors = polylineColors;
+        this.polylineOpacities = polylineOpacities;
+        this.polylineWidths = polylineWidths;
     }
     return RenderContext;
 }());
@@ -22438,7 +23388,7 @@ var ScatterPlot = (function () {
         if (this.worldSpacePointPositions != null) {
             cameraSpacePointExtents = util.getNearFarPoints(this.worldSpacePointPositions, this.camera.position, this.orbitCameraControls.target);
         }
-        var rc = new renderContext_1.RenderContext(this.camera, cameraType, this.orbitCameraControls.target, this.width, this.height, cameraSpacePointExtents[0], cameraSpacePointExtents[1], this.backgroundColor, this.pointColors, this.pointScaleFactors, this.labels, this.traceColors, this.traceOpacities, this.traceWidths);
+        var rc = new renderContext_1.RenderContext(this.camera, cameraType, this.orbitCameraControls.target, this.width, this.height, cameraSpacePointExtents[0], cameraSpacePointExtents[1], this.backgroundColor, this.pointColors, this.pointScaleFactors, this.labels, this.polylineColors, this.polylineOpacities, this.polylineWidths);
         // Render first pass to picking target. This render fills pickingTexture
         // with colors that are actually point ids, so that sampling the texture at
         // the mouse's current x,y coordinates will reveal the data point that the
@@ -22478,15 +23428,15 @@ var ScatterPlot = (function () {
     ScatterPlot.prototype.setLabels = function (labels) {
         this.labels = labels;
     };
-    /** Set the colors for every data trace. (RGB triplets) */
-    ScatterPlot.prototype.setTraceColors = function (colors) {
-        this.traceColors = colors;
+    /** Set the colors for every data polyline. (RGB triplets) */
+    ScatterPlot.prototype.setPolylineColors = function (colors) {
+        this.polylineColors = colors;
     };
-    ScatterPlot.prototype.setTraceOpacities = function (opacities) {
-        this.traceOpacities = opacities;
+    ScatterPlot.prototype.setPolylineOpacities = function (opacities) {
+        this.polylineOpacities = opacities;
     };
-    ScatterPlot.prototype.setTraceWidths = function (widths) {
-        this.traceWidths = widths;
+    ScatterPlot.prototype.setPolylineWidths = function (widths) {
+        this.polylineWidths = widths;
     };
     ScatterPlot.prototype.getMouseMode = function () {
         return this.mouseMode;
@@ -23089,6 +24039,136 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 "use strict";
+var util = require('./util');
+var RGB_NUM_ELEMENTS = 3;
+var XYZ_NUM_ELEMENTS = 3;
+/**
+ * Renders polylines that connect multiple points in the dataset.
+ */
+var ScatterPlotVisualizerPolylines = (function () {
+    function ScatterPlotVisualizerPolylines() {
+        this.polylinePositionBuffer = {};
+        this.polylineColorBuffer = {};
+    }
+    ScatterPlotVisualizerPolylines.prototype.updateSequenceIndicesInDataSet = function (ds) {
+        for (var i = 0; i < ds.sequences.length; i++) {
+            var sequence = ds.sequences[i];
+            for (var j = 0; j < sequence.pointIndices.length - 1; j++) {
+                ds.points[sequence.pointIndices[j]].sequenceIndex = i;
+                ds.points[sequence.pointIndices[j + 1]].sequenceIndex = i;
+            }
+        }
+    };
+    ScatterPlotVisualizerPolylines.prototype.createPolylines = function (scene) {
+        if (!this.dataSet || !this.dataSet.sequences) {
+            return;
+        }
+        this.updateSequenceIndicesInDataSet(this.dataSet);
+        this.polylines = [];
+        for (var i = 0; i < this.dataSet.sequences.length; i++) {
+            var geometry = new THREE.BufferGeometry();
+            geometry.addAttribute('position', this.polylinePositionBuffer[i]);
+            geometry.addAttribute('color', this.polylineColorBuffer[i]);
+            var material = new THREE.LineBasicMaterial({
+                linewidth: 1,
+                opacity: 1.0,
+                transparent: true,
+                vertexColors: THREE.VertexColors
+            });
+            var polyline = new THREE.LineSegments(geometry, material);
+            polyline.frustumCulled = false;
+            this.polylines.push(polyline);
+            scene.add(polyline);
+        }
+    };
+    ScatterPlotVisualizerPolylines.prototype.dispose = function () {
+        if (this.polylines == null) {
+            return;
+        }
+        for (var i = 0; i < this.polylines.length; i++) {
+            this.scene.remove(this.polylines[i]);
+            this.polylines[i].geometry.dispose();
+        }
+        this.polylines = null;
+        this.polylinePositionBuffer = {};
+        this.polylineColorBuffer = {};
+    };
+    ScatterPlotVisualizerPolylines.prototype.setScene = function (scene) {
+        this.scene = scene;
+    };
+    ScatterPlotVisualizerPolylines.prototype.setDataSet = function (dataSet) {
+        this.dataSet = dataSet;
+    };
+    ScatterPlotVisualizerPolylines.prototype.onPointPositionsChanged = function (newPositions) {
+        if ((newPositions == null) || (this.polylines != null)) {
+            this.dispose();
+        }
+        if ((newPositions == null) || (this.dataSet == null)) {
+            return;
+        }
+        // Set up the position buffer arrays for each polyline.
+        for (var i = 0; i < this.dataSet.sequences.length; i++) {
+            var sequence = this.dataSet.sequences[i];
+            var vertexCount = 2 * (sequence.pointIndices.length - 1);
+            var polylines = new Float32Array(vertexCount * XYZ_NUM_ELEMENTS);
+            this.polylinePositionBuffer[i] =
+                new THREE.BufferAttribute(polylines, XYZ_NUM_ELEMENTS);
+            var colors = new Float32Array(vertexCount * RGB_NUM_ELEMENTS);
+            this.polylineColorBuffer[i] =
+                new THREE.BufferAttribute(colors, RGB_NUM_ELEMENTS);
+        }
+        for (var i = 0; i < this.dataSet.sequences.length; i++) {
+            var sequence = this.dataSet.sequences[i];
+            var src = 0;
+            for (var j = 0; j < sequence.pointIndices.length - 1; j++) {
+                var p1Index = sequence.pointIndices[j];
+                var p2Index = sequence.pointIndices[j + 1];
+                var p1 = util.vector3FromPackedArray(newPositions, p1Index);
+                var p2 = util.vector3FromPackedArray(newPositions, p2Index);
+                this.polylinePositionBuffer[i].setXYZ(src, p1.x, p1.y, p1.z);
+                this.polylinePositionBuffer[i].setXYZ(src + 1, p2.x, p2.y, p2.z);
+                src += 2;
+            }
+            this.polylinePositionBuffer[i].needsUpdate = true;
+        }
+        if (this.polylines == null) {
+            this.createPolylines(this.scene);
+        }
+    };
+    ScatterPlotVisualizerPolylines.prototype.onRender = function (renderContext) {
+        if (this.polylines == null) {
+            return;
+        }
+        for (var i = 0; i < this.polylines.length; i++) {
+            this.polylines[i].material.opacity = renderContext.polylineOpacities[i];
+            this.polylines[i].material.linewidth =
+                renderContext.polylineWidths[i];
+            this.polylineColorBuffer[i].array = renderContext.polylineColors[i];
+            this.polylineColorBuffer[i].needsUpdate = true;
+        }
+    };
+    ScatterPlotVisualizerPolylines.prototype.onPickingRender = function (renderContext) { };
+    ScatterPlotVisualizerPolylines.prototype.onResize = function (newWidth, newHeight) { };
+    return ScatterPlotVisualizerPolylines;
+}());
+exports.ScatterPlotVisualizerPolylines = ScatterPlotVisualizerPolylines;
+
+},{"./util":24}],22:[function(require,module,exports){
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+"use strict";
 var renderContext_1 = require('./renderContext');
 var util = require('./util');
 var NUM_POINTS_FOG_THRESHOLD = 5000;
@@ -23339,137 +24419,7 @@ var ScatterPlotVisualizerSprites = (function () {
 }());
 exports.ScatterPlotVisualizerSprites = ScatterPlotVisualizerSprites;
 
-},{"./renderContext":15,"./util":24}],22:[function(require,module,exports){
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-"use strict";
-var util = require('./util');
-var RGB_NUM_ELEMENTS = 3;
-var XYZ_NUM_ELEMENTS = 3;
-/**
- * Renders 'traces' (polylines) that connect multiple points in the dataset
- */
-var ScatterPlotVisualizerTraces = (function () {
-    function ScatterPlotVisualizerTraces() {
-        this.tracePositionBuffer = {};
-        this.traceColorBuffer = {};
-    }
-    ScatterPlotVisualizerTraces.prototype.updateTraceIndicesInDataSet = function (ds) {
-        for (var i = 0; i < ds.traces.length; i++) {
-            var trace = ds.traces[i];
-            for (var j = 0; j < trace.pointIndices.length - 1; j++) {
-                ds.points[trace.pointIndices[j]].traceIndex = i;
-                ds.points[trace.pointIndices[j + 1]].traceIndex = i;
-            }
-        }
-    };
-    ScatterPlotVisualizerTraces.prototype.createTraces = function (scene) {
-        if (!this.dataSet || !this.dataSet.traces) {
-            return;
-        }
-        this.updateTraceIndicesInDataSet(this.dataSet);
-        this.traces = [];
-        for (var i = 0; i < this.dataSet.traces.length; i++) {
-            var geometry = new THREE.BufferGeometry();
-            geometry.addAttribute('position', this.tracePositionBuffer[i]);
-            geometry.addAttribute('color', this.traceColorBuffer[i]);
-            var material = new THREE.LineBasicMaterial({
-                linewidth: 1,
-                opacity: 1.0,
-                transparent: true,
-                vertexColors: THREE.VertexColors
-            });
-            var trace = new THREE.LineSegments(geometry, material);
-            trace.frustumCulled = false;
-            this.traces.push(trace);
-            scene.add(trace);
-        }
-    };
-    ScatterPlotVisualizerTraces.prototype.dispose = function () {
-        if (this.traces == null) {
-            return;
-        }
-        for (var i = 0; i < this.traces.length; i++) {
-            this.scene.remove(this.traces[i]);
-            this.traces[i].geometry.dispose();
-        }
-        this.traces = null;
-        this.tracePositionBuffer = {};
-        this.traceColorBuffer = {};
-    };
-    ScatterPlotVisualizerTraces.prototype.setScene = function (scene) {
-        this.scene = scene;
-    };
-    ScatterPlotVisualizerTraces.prototype.setDataSet = function (dataSet) {
-        this.dataSet = dataSet;
-    };
-    ScatterPlotVisualizerTraces.prototype.onPointPositionsChanged = function (newPositions) {
-        if ((newPositions == null) || (this.traces != null)) {
-            this.dispose();
-        }
-        if ((newPositions == null) || (this.dataSet == null)) {
-            return;
-        }
-        // Set up the position buffer arrays for each trace.
-        for (var i = 0; i < this.dataSet.traces.length; i++) {
-            var dataTrace = this.dataSet.traces[i];
-            var vertexCount = 2 * (dataTrace.pointIndices.length - 1);
-            var traces = new Float32Array(vertexCount * XYZ_NUM_ELEMENTS);
-            this.tracePositionBuffer[i] =
-                new THREE.BufferAttribute(traces, XYZ_NUM_ELEMENTS);
-            var colors = new Float32Array(vertexCount * RGB_NUM_ELEMENTS);
-            this.traceColorBuffer[i] =
-                new THREE.BufferAttribute(colors, RGB_NUM_ELEMENTS);
-        }
-        for (var i = 0; i < this.dataSet.traces.length; i++) {
-            var dataTrace = this.dataSet.traces[i];
-            var src = 0;
-            for (var j = 0; j < dataTrace.pointIndices.length - 1; j++) {
-                var p1Index = dataTrace.pointIndices[j];
-                var p2Index = dataTrace.pointIndices[j + 1];
-                var p1 = util.vector3FromPackedArray(newPositions, p1Index);
-                var p2 = util.vector3FromPackedArray(newPositions, p2Index);
-                this.tracePositionBuffer[i].setXYZ(src, p1.x, p1.y, p1.z);
-                this.tracePositionBuffer[i].setXYZ(src + 1, p2.x, p2.y, p2.z);
-                src += 2;
-            }
-            this.tracePositionBuffer[i].needsUpdate = true;
-        }
-        if (this.traces == null) {
-            this.createTraces(this.scene);
-        }
-    };
-    ScatterPlotVisualizerTraces.prototype.onRender = function (renderContext) {
-        if (this.traces == null) {
-            return;
-        }
-        for (var i = 0; i < this.traces.length; i++) {
-            this.traces[i].material.opacity = renderContext.traceOpacities[i];
-            this.traces[i].material.linewidth =
-                renderContext.traceWidths[i];
-            this.traceColorBuffer[i].array = renderContext.traceColors[i];
-            this.traceColorBuffer[i].needsUpdate = true;
-        }
-    };
-    ScatterPlotVisualizerTraces.prototype.onPickingRender = function (renderContext) { };
-    ScatterPlotVisualizerTraces.prototype.onResize = function (newWidth, newHeight) { };
-    return ScatterPlotVisualizerTraces;
-}());
-exports.ScatterPlotVisualizerTraces = ScatterPlotVisualizerTraces;
-
-},{"./util":24}],23:[function(require,module,exports){
+},{"./renderContext":15,"./util":24}],23:[function(require,module,exports){
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -24635,7 +25585,7 @@ var DataPanel = (function (_super) {
                 var content = evt.target.result;
                 _this.tensorWasReadFromFile(content, file.name);
             };
-            fileReader.readAsText(file);
+            fileReader.readAsArrayBuffer(file);
         });
         var uploadButton = this.dom.select('#upload-tensors');
         uploadButton.on('click', function () {
@@ -24653,74 +25603,79 @@ var DataPanel = (function (_super) {
                 var contents = evt.target.result;
                 _this.metadataWasReadFromFile(contents, file.name);
             };
-            fileReader.readAsText(file);
+            fileReader.readAsArrayBuffer(file);
         });
         var uploadMetadataButton = this.dom.select('#upload-metadata');
         uploadMetadataButton.on('click', function () {
             fileMetadataInput.node().click();
         });
-        if (this.projector.servingMode === 'demo') {
-            this.$$('#demo-data-buttons-container').style.display =
-                'block';
-            // Fill out the projector config.
-            var projectorConfigTemplate_1 = this.$$('#projector-config-template');
-            var projectorConfigTemplateJson_1 = {
-                embeddings: [{
-                        tensorName: 'My tensor',
-                        tensorShape: [1000, 50],
-                        tensorPath: 'https://gist.github.com/.../tensors.tsv',
-                        metadataPath: 'https://gist.github.com/.../optional.metadata.tsv',
-                    }],
-            };
-            this.setProjectorConfigTemplateJson(projectorConfigTemplate_1, projectorConfigTemplateJson_1);
-            // Set up optional field checkboxes.
-            var spriteFieldCheckbox_1 = this.$$('#config-sprite-checkbox');
-            spriteFieldCheckbox_1.addEventListener('change', function () {
-                if (spriteFieldCheckbox_1.checked) {
-                    projectorConfigTemplateJson_1.embeddings[0].sprite = {
-                        imagePath: 'https://github.com/.../optional.sprite.png',
-                        singleImageDim: [32, 32]
-                    };
-                }
-                else {
-                    delete projectorConfigTemplateJson_1.embeddings[0].sprite;
-                }
-                _this.setProjectorConfigTemplateJson(projectorConfigTemplate_1, projectorConfigTemplateJson_1);
-            });
-            var bookmarksFieldCheckbox_1 = this.$$('#config-bookmarks-checkbox');
-            bookmarksFieldCheckbox_1.addEventListener('change', function () {
-                if (bookmarksFieldCheckbox_1.checked) {
-                    projectorConfigTemplateJson_1.embeddings[0].bookmarksPath =
-                        'https://gist.github.com/.../bookmarks.txt';
-                }
-                else {
-                    delete projectorConfigTemplateJson_1.embeddings[0].bookmarksPath;
-                }
-                _this.setProjectorConfigTemplateJson(projectorConfigTemplate_1, projectorConfigTemplateJson_1);
-            });
-            var metadataFieldCheckbox_1 = this.$$('#config-metadata-checkbox');
-            metadataFieldCheckbox_1.addEventListener('change', function () {
-                if (metadataFieldCheckbox_1.checked) {
-                    projectorConfigTemplateJson_1.embeddings[0].metadataPath =
-                        'https://gist.github.com/.../optional.metadata.tsv';
-                }
-                else {
-                    delete projectorConfigTemplateJson_1.embeddings[0].metadataPath;
-                }
-                _this.setProjectorConfigTemplateJson(projectorConfigTemplate_1, projectorConfigTemplateJson_1);
-            });
-            // Update the link and the readonly shareable URL.
-            var projectorConfigUrlInput_1 = this.$$('#projector-config-url');
-            var projectorConfigDemoUrlInput_1 = this.$$('#projector-share-url');
-            var projectorConfigDemoUrlLink_1 = this.$$('#projector-share-url-link');
-            projectorConfigUrlInput_1.addEventListener('input', function () {
-                var projectorDemoUrl = location.protocol + '//' + location.host +
-                    location.pathname + '?config=' +
-                    projectorConfigUrlInput_1.value;
-                projectorConfigDemoUrlInput_1.value = projectorDemoUrl;
-                projectorConfigDemoUrlLink_1.href = projectorDemoUrl;
-            });
+        if (this.projector.servingMode !== 'demo') {
+            this.$$('#publish-container').style.display = 'none';
+            this.$$('#upload-tensors-step-container').style.display =
+                'none';
+            this.$$('#upload-metadata-label').style.display = 'none';
         }
+        this.$$('#demo-data-buttons-container').style.display =
+            'block';
+        // Fill out the projector config.
+        var projectorConfigTemplate = this.$$('#projector-config-template');
+        var projectorConfigTemplateJson = {
+            embeddings: [{
+                    tensorName: 'My tensor',
+                    tensorShape: [1000, 50],
+                    tensorPath: 'https://raw.githubusercontent.com/.../tensors.tsv',
+                    metadataPath: 'https://raw.githubusercontent.com/.../optional.metadata.tsv',
+                }],
+        };
+        this.setProjectorConfigTemplateJson(projectorConfigTemplate, projectorConfigTemplateJson);
+        // Set up optional field checkboxes.
+        var spriteFieldCheckbox = this.$$('#config-sprite-checkbox');
+        spriteFieldCheckbox.addEventListener('change', function () {
+            if (spriteFieldCheckbox.checked) {
+                projectorConfigTemplateJson.embeddings[0].sprite = {
+                    imagePath: 'https://github.com/.../optional.sprite.png',
+                    singleImageDim: [32, 32]
+                };
+            }
+            else {
+                delete projectorConfigTemplateJson.embeddings[0].sprite;
+            }
+            _this.setProjectorConfigTemplateJson(projectorConfigTemplate, projectorConfigTemplateJson);
+        });
+        var bookmarksFieldCheckbox = this.$$('#config-bookmarks-checkbox');
+        bookmarksFieldCheckbox.addEventListener('change', function () {
+            if (bookmarksFieldCheckbox.checked) {
+                projectorConfigTemplateJson.embeddings[0].bookmarksPath =
+                    'https://raw.githubusercontent.com/.../bookmarks.txt';
+            }
+            else {
+                delete projectorConfigTemplateJson.embeddings[0].bookmarksPath;
+            }
+            _this.setProjectorConfigTemplateJson(projectorConfigTemplate, projectorConfigTemplateJson);
+        });
+        var metadataFieldCheckbox = this.$$('#config-metadata-checkbox');
+        metadataFieldCheckbox.addEventListener('change', function () {
+            if (metadataFieldCheckbox.checked) {
+                projectorConfigTemplateJson.embeddings[0].metadataPath =
+                    'https://raw.githubusercontent.com/.../optional.metadata.tsv';
+            }
+            else {
+                delete projectorConfigTemplateJson.embeddings[0].metadataPath;
+            }
+            _this.setProjectorConfigTemplateJson(projectorConfigTemplate, projectorConfigTemplateJson);
+        });
+        // Update the link and the readonly shareable URL.
+        var projectorConfigUrlInput = this.$$('#projector-config-url');
+        var projectorConfigDemoUrlInput = this.$$('#projector-share-url');
+        var projectorConfigDemoUrlLink = this.$$('#projector-share-url-link');
+        projectorConfigUrlInput.addEventListener('input', function () {
+            var projectorDemoUrl = location.protocol + '//' + location.host +
+                location.pathname +
+                '?config=' + projectorConfigUrlInput.value;
+            projectorConfigDemoUrlInput.value =
+                projectorDemoUrl;
+            projectorConfigDemoUrlLink.href = projectorDemoUrl;
+        });
     };
     DataPanel.prototype.setProjectorConfigTemplateJson = function (projectorConfigTemplate, config) {
         projectorConfigTemplate.value =

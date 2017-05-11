@@ -333,9 +333,34 @@ class LinearClassifier(estimator.Estimator):
     ...
   def input_fn_eval: # returns x, y (where y represents label's class index).
     ...
+  def input_fn_predict: # returns x, None.
+    ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
+  # predict_classes returns class indices.
+  estimator.predict_classes(input_fn=input_fn_predict)
+  ```
+
+  If the user specifies `label_keys` in constructor, labels must be strings from
+  the `label_keys` vocabulary. Example:
+
+  ```python
+  label_keys = ['label0', 'label1', 'label2']
+  estimator = LinearClassifier(
+      n_classes=n_classes,
+      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
+      label_keys=label_keys)
+
+  def input_fn_train: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.fit(input_fn=input_fn_train)
+
+  def input_fn_eval: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  def input_fn_predict: # returns x, None
+  # predict_classes returns one of label_keys.
+  estimator.predict_classes(input_fn=input_fn_predict)
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -363,7 +388,8 @@ class LinearClassifier(estimator.Estimator):
                enable_centered_bias=False,
                _joint_weight=False,
                config=None,
-               feature_engineering_fn=None):
+               feature_engineering_fn=None,
+               label_keys=None):
     """Construct a `LinearClassifier` estimator object.
 
     Args:
@@ -398,6 +424,8 @@ class LinearClassifier(estimator.Estimator):
                         labels which are the output of `input_fn` and
                         returns features and labels which will be fed
                         into the model.
+      label_keys: Optional list of strings with size `[n_classes]` defining the
+        label vocabulary. Only supported for `n_classes` > 2.
 
     Returns:
       A `LinearClassifier` estimator.
@@ -419,7 +447,8 @@ class LinearClassifier(estimator.Estimator):
     head = head_lib.multi_class_head(
         n_classes,
         weight_column_name=weight_column_name,
-        enable_centered_bias=enable_centered_bias)
+        enable_centered_bias=enable_centered_bias,
+        label_keys=label_keys)
     params = {
         "head": head,
         "feature_columns": feature_columns,

@@ -71,7 +71,8 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
       if (ri.sender_device_type == src_device_type &&
           ri.receiver_device_type == dst_device_type) {
         ri.copy_function(send_dev_context, recv_dev_context, src, dst,
-                         src_alloc_attr, dst_alloc_attr, input, output, done);
+                         src_alloc_attr, dst_alloc_attr, input, output,
+                         std::move(done));
         return;
       }
     }

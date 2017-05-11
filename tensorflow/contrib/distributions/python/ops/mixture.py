@@ -20,9 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import categorical
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -31,6 +28,9 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops.distributions import categorical
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 class Mixture(distribution.Distribution):
@@ -228,6 +228,19 @@ class Mixture(distribution.Distribution):
       concat_log_probs = array_ops.stack(final_log_probs, 0)
       log_sum_exp = math_ops.reduce_logsumexp(concat_log_probs, [0])
       return log_sum_exp
+
+  def _log_cdf(self, x):
+    with ops.control_dependencies(self._assertions):
+      x = ops.convert_to_tensor(x, name="x")
+      distribution_log_cdfs = [d.log_cdf(x) for d in self.components]
+      cat_log_probs = self._cat_probs(log_probs=True)
+      final_log_cdfs = [
+          cat_lp + d_lcdf
+          for (cat_lp, d_lcdf) in zip(cat_log_probs, distribution_log_cdfs)
+      ]
+      concatted_log_cdfs = array_ops.stack(final_log_cdfs, axis=0)
+      mixture_log_cdf = math_ops.reduce_logsumexp(concatted_log_cdfs, [0])
+      return mixture_log_cdf
 
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))

@@ -47,11 +47,11 @@ def normalize_tuple(value, n, name):
     try:
       value_tuple = tuple(value)
     except TypeError:
-      raise ValueError('The `' + name + '` argument must be a tuple of ' + str(
-          n) + ' integers. Received: ' + str(value))
+      raise ValueError('The `' + name + '` argument must be a tuple of ' +
+                       str(n) + ' integers. Received: ' + str(value))
     if len(value_tuple) != n:
-      raise ValueError('The `' + name + '` argument must be a tuple of ' + str(
-          n) + ' integers. Received: ' + str(value))
+      raise ValueError('The `' + name + '` argument must be a tuple of ' +
+                       str(n) + ' integers. Received: ' + str(value))
     for single_value in value_tuple:
       try:
         int(single_value)
@@ -69,8 +69,8 @@ def normalize_data_format(value):
   data_format = value.lower()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('The `data_format` argument must be one of '
-                     '"channels_first", "channels_last". Received: ' + str(
-                         value))
+                     '"channels_first", "channels_last". Received: ' +
+                     str(value))
   return data_format
 
 

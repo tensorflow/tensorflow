@@ -101,12 +101,15 @@ class Array {
 // 2. PhiloxRandom is compilable by gcc and nvcc.
 class PhiloxRandom {
  public:
-  typedef Array<uint32, 4> ResultType;
-  typedef uint32 ResultElementType;
+  using ResultType = Array<uint32, 4>;
+  using ResultElementType = uint32;
   // The number of elements that will be returned.
   static const int kResultElementCount = 4;
   // Cost of generation of a single element (in cycles).
   static const int kElementCost = 10;
+  // The type for the 64-bit key stored in the form of two 32-bit uint
+  // that are used in the diffusion process.
+  using Key = Array<uint32, 2>;
 
   PHILOX_DEVICE_INLINE
   PhiloxRandom() {}
@@ -124,6 +127,9 @@ class PhiloxRandom {
     counter_[2] = static_cast<uint32>(seed_hi);
     counter_[3] = static_cast<uint32>(seed_hi >> 32);
   }
+
+  PHILOX_DEVICE_INLINE
+  PhiloxRandom(ResultType counter, Key key) : counter_(counter), key_(key) {}
 
   // Skip the specified number of samples of 128-bits in the current stream.
   PHILOX_DEVICE_INLINE
@@ -178,10 +184,6 @@ class PhiloxRandom {
   }
 
  private:
-  // The type for the 64-bit key stored in the form of two 32-bit uint
-  // that are used in the diffusion process.
-  typedef Array<uint32, 2> Key;
-
   // We use the same constants as recommended by the original paper.
   static const uint32 kPhiloxW32A = 0x9E3779B9;
   static const uint32 kPhiloxW32B = 0xBB67AE85;

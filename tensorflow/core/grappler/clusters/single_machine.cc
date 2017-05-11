@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/cc/training/queue_runner.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -31,6 +33,7 @@ namespace grappler {
 SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
     : Cluster(timeout_s),
       num_gpus_(num_gpus),
+      expected_init_time_s_(0),
       closing_(false) {
   thread_pool_.reset(new thread::ThreadPool(
       Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
@@ -41,7 +44,10 @@ SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
   }
   CHECK_GE(num_cpu_cores, 1);
   options_.config.set_intra_op_parallelism_threads(num_cpu_cores);
-  options_.config.set_inter_op_parallelism_threads(num_cpu_cores);
+  // Create a session specific thread pool to ensure the threads are reset when
+  // the session is reset.
+  options_.config.add_session_inter_op_thread_pool()->set_num_threads(
+      num_cpu_cores);
   if (timeout_s > 0) {
     options_.config.set_operation_timeout_in_ms(timeout_s * 1000);
   }
@@ -61,16 +67,12 @@ Status SingleMachine::Provision() {
     return status;
   }
 
-  DeviceAttributes attr;
-  attr.set_name("/job:localhost/replica:0/task:0/cpu:0");
-  attr.set_device_type("CPU");
-  devices_.push_back(attr);
+  DeviceProperties attr = GetLocalCPUInfo();
+  devices_["/job:localhost/replica:0/task:0/cpu:0"] = GetLocalCPUInfo();
 
   for (int i = 0; i < num_gpus_; ++i) {
-    DeviceAttributes attr;
-    attr.set_name(strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i));
-    attr.set_device_type("GPU");
-    devices_.push_back(attr);
+    devices_[strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i)] =
+        GetLocalGPUInfo(i);
   }
   return Status::OK();
 }
@@ -79,6 +81,7 @@ Status SingleMachine::Initialize(const GrapplerItem& item) {
   mutex_lock l(this->last_graph_mu_);
   if (last_graph_ != &item.graph || last_graph_id_ != item.id) {
     init_ops_ = item.init_ops;
+    expected_init_time_s_ = item.expected_init_time;
     last_graph_ = nullptr;
     queue_runner_defs_ = item.queue_runners;
     last_graph_id_ = item.id;
@@ -97,20 +100,23 @@ Status SingleMachine::Run(const GraphDef& graph_def,
       TF_RETURN_IF_ERROR(session_->Create(graph_def));
       if (!init_ops_.empty()) {
         init_metadata_ = RunMetadata();
-        TF_RETURN_IF_ERROR(RunWithTimeout({}, init_ops_, &init_metadata_));
+        int64 timeout_s = timeout_s_ + expected_init_time_s_;
+        TF_RETURN_IF_ERROR(
+            RunWithTimeout({}, init_ops_, &init_metadata_, timeout_s));
         // The compute cost for init ops is likely to be pessimistic since init
         // ops are run only once before warmup. Therefore we only keep their
         // memory costs.
         for (auto node : *init_metadata_.mutable_cost_graph()->mutable_node()) {
           node.clear_compute_cost();
         }
-        metadata->MergeFrom(init_metadata_);
+        // Also clear the timeline to save memory
+        init_metadata_.clear_step_stats();
       }
       for (int i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
         TF_RETURN_IF_ERROR(QueueRunner::New(queue_runner_defs_[i],
                                             coordinator_.get(), &queue_runner));
-        TF_RETURN_IF_ERROR(queue_runner->StartAndCollectRunMetadata(
+        TF_RETURN_IF_ERROR(queue_runner->StartAndCollectCostGraph(
             session_.get(), &run_options_));
         TF_RETURN_IF_ERROR(
             coordinator_->RegisterRunner(std::move(queue_runner)));
@@ -127,17 +133,29 @@ Status SingleMachine::Run(const GraphDef& graph_def,
     }
   }
 
-  TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
   if (metadata) {
-    return coordinator_->ExportCostGraph(metadata->mutable_cost_graph());
+    TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
+    // Merge the costs of the initialization and the queue runners.
+    CostGraphDef queue_costs;
+    TF_RETURN_IF_ERROR(coordinator_->ExportCostGraph(&queue_costs));
+    MergeCosts(metadata->mutable_cost_graph(), init_metadata_.cost_graph(),
+               queue_costs);
   } else {
-    return Status::OK();
+    return RunWithTimeout(feed, fetch, nullptr);
   }
+  return Status::OK();
 }
 
 Status SingleMachine::RunWithTimeout(
     const std::vector<std::pair<string, Tensor>>& feed,
     const std::vector<string>& fetch, RunMetadata* run_metadata) {
+  return RunWithTimeout(feed, fetch, run_metadata, timeout_s_);
+}
+
+Status SingleMachine::RunWithTimeout(
+    const std::vector<std::pair<string, Tensor>>& feed,
+    const std::vector<string>& fetch, RunMetadata* run_metadata,
+    int64 timeout_s) {
   // We shouldn't be running or closing the session at this point.
   {
     mutex_lock l(close_mu_);
@@ -150,10 +168,10 @@ Status SingleMachine::RunWithTimeout(
         *status = session_->Run(run_options_, feed, {}, fetch, nullptr,
                                 local_metadata.get());
       },
-      timeout_s_ * 1000, thread_pool_.get());
+      timeout_s * 1000, thread_pool_.get());
   if (!executed_in_time) {
-    return errors::DeadlineExceeded("Failed to run the graph after ",
-                                    timeout_s_, " seconds, aborting");
+    return errors::DeadlineExceeded("Failed to run the graph after ", timeout_s,
+                                    " seconds, aborting");
   } else if (run_metadata && status->ok()) {
     *run_metadata = *local_metadata;
   }
@@ -231,6 +249,37 @@ Status SingleMachine::ResetSession() {
   coordinator_.reset(new Coordinator());
 
   return Status::OK();
+}
+
+void SingleMachine::MergeCosts(CostGraphDef* graph_costs,
+                               const CostGraphDef& init_costs,
+                               const CostGraphDef& queue_costs) {
+  graph_costs->mutable_node()->Reserve(graph_costs->node_size() +
+                                       init_costs.node_size() +
+                                       queue_costs.node_size());
+  std::unordered_set<string> nodes_seen;
+  for (const auto& node : graph_costs->node()) {
+    nodes_seen.insert(node.name());
+  }
+
+  // The costs obtained by running the main graph could be more stable than
+  // the one we get from the queue runners since the queue runners run
+  // asynchronously.
+  for (const auto& node : queue_costs.node()) {
+    if (nodes_seen.find(node.name()) != nodes_seen.end()) {
+      continue;
+    }
+    graph_costs->add_node()->MergeFrom(node);
+  }
+
+  // Don't overwrite the costs with that generated during initialization since
+  // these are possibly outdated.
+  for (const auto& node : init_costs.node()) {
+    if (nodes_seen.find(node.name()) != nodes_seen.end()) {
+      continue;
+    }
+    graph_costs->add_node()->MergeFrom(node);
+  }
 }
 
 }  // namespace grappler

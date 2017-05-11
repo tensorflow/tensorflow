@@ -43,7 +43,7 @@ tensorboard_webcomponent_library(
 
 tensorboard_ts_library(
     name = "legacy_ts",
-    srcs = [
-        "globals.ts",
-    ],
+    srcs = ["globals.ts"],
+    deps_mgmt = "off",
+    runtime = "nodejs",
 )

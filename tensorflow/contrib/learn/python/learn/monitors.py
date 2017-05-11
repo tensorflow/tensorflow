@@ -35,7 +35,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import os
 import time
 
@@ -53,6 +52,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import summary_io
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import tf_inspect
 
 
 # TODO(ptucker): Split each monitor class into a separate file.
@@ -473,7 +473,7 @@ class LoggingTrainable(EveryN):
 
   def every_n_step_begin(self, step):
     super(LoggingTrainable, self).every_n_step_begin(step)
-    # Get a list of trainable variables at the begining of every N steps.
+    # Get a list of trainable variables at the beginning of every N steps.
     # We cannot get this in __init__ because train_op has not been generated.
     trainables = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES,
                                     scope=self._scope)
@@ -1164,7 +1164,7 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
   def end(self, session):
     self._last_step = None
     for m in self._monitors:
-      if "session" in inspect.getargspec(m.end).args:
+      if "session" in tf_inspect.getargspec(m.end).args:
         m.end(session=session)
       else:
         m.end()

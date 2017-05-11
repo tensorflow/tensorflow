@@ -186,6 +186,31 @@ Status XlaOpKernelContext::ConstantInputAsIntVector(int index,
   return LiteralToInt64Vector(literal, out);
 }
 
+Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
+                                                       xla::Literal* out) {
+  xla::Literal literal;
+  TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
+  switch (literal.shape().element_type()) {
+    case xla::S32:
+      out->Clear();
+      *out->mutable_shape() = literal.shape();
+      out->mutable_shape()->set_element_type(xla::S64);
+      for (int32 x : literal.s32s()) {
+        out->add_s64s(x);
+      }
+      return Status::OK();
+
+    case xla::S64:
+      out->Swap(&literal);
+      return Status::OK();
+
+    default:
+      return errors::InvalidArgument(
+          "Invalid argument to ConstantInputAsInt64Literal: ",
+          xla::ShapeUtil::HumanString(literal.shape()));
+  }
+}
+
 // TODO(phawkins): validate that the dimensions form a valid shape, fail
 // gracefully if they do not.
 Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape) {

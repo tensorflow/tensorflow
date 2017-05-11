@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -34,6 +35,7 @@ namespace xla {
 namespace {
 
 using ConcatTest = ClientLibraryTestBase;
+using ::testing::HasSubstr;
 
 // Concatenate expects at least one argument.
 XLA_TEST_F(ConcatTest, Concat_Nothing) {
@@ -41,9 +43,8 @@ XLA_TEST_F(ConcatTest, Concat_Nothing) {
   auto concatenated = builder.ConcatInDim({}, 0);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(
-      computation_status.status().ToString(),
-      testing::ContainsRegex("Concatenate expects at least one argument"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              HasSubstr("Concatenate expects at least one argument"));
 }
 
 // Concatenate with one argument works.
@@ -56,6 +57,15 @@ XLA_TEST_F(ConcatTest, Concat_R1_With_Nothing) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
+XLA_TEST_F(ConcatTest, Concat_R1_L0_With_Nothing) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({});
+  auto concatenated = builder.ConcatInDim({a}, 0);
+
+  std::vector<float> expected = {};
+  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+}
+
 // Show that we can't concatenate R0 with R0 because we can't name the dimension
 // to concatenate on.
 XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {
@@ -65,9 +75,8 @@ XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {
   auto concatenated = builder.ConcatInDim({a, b}, 0);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(computation_status.status().ToString(),
-               testing::ContainsRegex(
-                   "dimension to concatenate along out of bounds: 0"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              HasSubstr("dimension to concatenate along out of bounds: 0"));
 }
 
 XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L0) {
@@ -404,10 +413,9 @@ XLA_TEST_F(ConcatTest, CannotConcatOpaques) {
   auto concatenated = builder.ConcatInDim({x, y}, 0);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(
+  EXPECT_THAT(
       computation_status.status().ToString(),
-      testing::ContainsRegex(
-          "Expected non-opaque argument for operand of concatenation"));
+      HasSubstr("Expected non-opaque argument for operand of concatenation"));
 }
 
 XLA_TEST_F(ConcatTest, ConcatSeveralBoxedPredicates) {

@@ -79,7 +79,13 @@ float QuantizedToFloat(T input, float range_min, float range_max) {
   const int64 lowest_quantized =
       static_cast<int64>(Eigen::NumTraits<T>::lowest());
   const double offset_input = static_cast<double>(input) - lowest_quantized;
-  const double result = range_min + (offset_input * range_scale);
+  // For compatibility with DEQUANTIZE_WITH_EIGEN, we should convert
+  // range_scale to a float, otherwise range_min_rounded might be slighly
+  // different.
+  const double range_min_rounded =
+      round(range_min / static_cast<float>(range_scale)) *
+      static_cast<float>(range_scale);
+  const double result = range_min_rounded + (offset_input * range_scale);
   return static_cast<float>(result);
 }
 
@@ -113,8 +119,8 @@ void QuantizationRangeForMultiplication(float min_a, float max_a, float min_b,
 // input_array is an eigen Tensor.  q2f is a QuantizedToFloatStruct.
 // This evaluates to an eigen tensor expression, to be used like:
 // auto tensor = DEQUANTIZE_WITH_EIGEN(input_tensor, q2f);
-#define DEQUANTIZE_WITH_EIGEN(input_array, q2f)                 \
-  ((q2f.range_min - q2f.lowest_quantized() * q2f.range_scale) + \
+#define DEQUANTIZE_WITH_EIGEN(input_array, q2f)                         \
+  ((q2f.range_min_rounded - q2f.lowest_quantized() * q2f.range_scale) + \
    input_array.template cast<float>() * q2f.range_scale)
 
 // input_array is an eigen Tensor.  f2q is a FloatToQuantizedStruct.
@@ -142,10 +148,14 @@ struct QuantizedToFloatStruct {
 
   QuantizedToFloatStruct(float range_min, float range_max)
       : range_min(range_min),
-        range_scale((range_max - range_min) / (number_of_steps - 1.0)) {}
+        range_scale((range_max - range_min) / (number_of_steps - 1.0)),
+        range_min_rounded(range_max == range_min
+                              ? range_min
+                              : round(range_min / range_scale) * range_scale) {}
 
   const float range_min;
   const float range_scale;
+  const float range_min_rounded;
 };
 
 // For use with QUANTIZE_WITH_EIGEN.

@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/parallel_cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -192,16 +193,16 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   }
   // It is important to recurse for "while" or else we risk overly coarse
   // profiling information.
-  Status HandleWhile(HloInstruction* xla_while, HloInstruction* /*init*/,
-                     HloComputation* condition, HloComputation* body) override {
+  Status HandleWhile(HloInstruction* xla_while) override {
     TF_RETURN_IF_ERROR(DefaultAction(xla_while));
 
     CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(
-        condition->root_instruction()->Accept(&candidates_for_condition));
+    TF_RETURN_IF_ERROR(xla_while->while_condition()->root_instruction()->Accept(
+        &candidates_for_condition));
 
     CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(body->root_instruction()->Accept(&candidates_for_body));
+    TF_RETURN_IF_ERROR(xla_while->while_body()->root_instruction()->Accept(
+        &candidates_for_body));
 
     return Status::OK();
   }
@@ -232,8 +233,14 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
   }
-  pipeline.AddPass<TransposeFolding>(PotentiallyImplementedAsEigenDot);
-  pipeline.AddPass<HloSubcomputationUnification>();
+  pipeline.AddPass<TransposeFolding>(
+      [](const HloInstruction& dot,
+         const TransposeFolding::OperandIndices& candidate_operands) {
+        return PotentiallyImplementedAsEigenDot(dot)
+                   ? candidate_operands
+                   : TransposeFolding::OperandIndices{};
+      },
+      TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
   pipeline.AddPass<CpuInstructionFusion>();
   pipeline.AddPass<CpuLayoutAssignment>(
@@ -250,10 +257,13 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
   if (flags->xla_cpu_parallel) {
     pipeline.AddPass<ParallelizationPreparation>();
   }
-  // Copy insertion should be performed immediately before IR emission to
-  // avoid inserting unnecessary copies (later pass adds an instruction which
-  // materializes the value) or missing a necessary copy (later pass removes
-  // an instruction which materializes a value).
+  // Copy insertion should be performed immediately before IR emission to avoid
+  // inserting unnecessary copies (later pass adds an instruction which
+  // materializes the value) or missing a necessary copy (later pass removes an
+  // instruction which materializes a value). DCE must be run immediately before
+  // (and sometime after) copy insertion, to avoid dead code from interfering
+  // with the rewrites.
+  pipeline.AddPass<HloDCE>();
   pipeline.AddPass<CopyInsertion>();
   if (flags->xla_cpu_parallel) {
     // Re-run the outlining, in case any copies were inserted into the entry
@@ -261,6 +271,7 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
     pipeline.AddPass<ParallelizationPreparation>();
   }
   pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 

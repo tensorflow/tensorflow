@@ -37,18 +37,18 @@ namespace tensorflow {
 namespace tfprof {
 class ShowNode {
  public:
-  explicit ShowNode(TFNode* node);
+  explicit ShowNode(const TFGraphNode* node);
   virtual ~ShowNode() {}
 
-  const string& name() const { return node->node_def()->name(); }
-  TFProfNode* mutable_proto();
-  const TFProfNode& proto() const;
+  const string& name() const { return node->name(); }
+  TFGraphNodeProto* mutable_proto();
+  const TFGraphNodeProto& proto() const;
 
   string Format(const Options& opts);
 
   string FormatMeta(const Options& opts);
 
-  TFNode* node;
+  const TFGraphNode* node;
   bool account;
   string formatted_str;
 
@@ -59,7 +59,7 @@ class ShowNode {
 
   void ResetTotalStats();
 
-  TFProfNode proto_;
+  TFGraphNodeProto proto_;
 };
 
 class TFShow {
@@ -67,9 +67,9 @@ class TFShow {
   explicit TFShow(checkpoint::CheckpointReader* ckpt_reader)
       : ckpt_reader_(ckpt_reader) {}
   virtual ~TFShow() {}
-  virtual void AddNode(TFNode* node) = 0;
+  virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  const TFProfNode& Show(const Options& opts);
+  const TFGraphNodeProto& Show(const Options& opts);
 
  protected:
   virtual const ShowNode* ShowInternal(const Options& opts) = 0;

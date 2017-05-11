@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Ftrl-proximal for TensorFlow."""
 from __future__ import absolute_import
 from __future__ import division
@@ -32,12 +31,16 @@ class FtrlOptimizer(optimizer.Optimizer):
   https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
   """
 
-  def __init__(self, learning_rate,
+  def __init__(self,
+               learning_rate,
                learning_rate_power=-0.5,
                initial_accumulator_value=0.1,
                l1_regularization_strength=0.0,
                l2_regularization_strength=0.0,
-               use_locking=False, name="Ftrl"):
+               use_locking=False,
+               name="Ftrl",
+               accum_name=None,
+               linear_name=None):
     """Construct a new FTRL optimizer.
 
     Args:
@@ -52,6 +55,10 @@ class FtrlOptimizer(optimizer.Optimizer):
       use_locking: If `True` use locks for update operations.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Ftrl".
+      accum_name: The suffix for the variable that keeps the gradient squared
+        accumulator.  If not present, defaults to name.
+      linear_name: The suffix for the variable that keeps the linear gradient
+        accumulator.  If not present, defaults to name + "_1".
 
     Raises:
       ValueError: If one of the arguments is invalid.
@@ -82,35 +89,36 @@ class FtrlOptimizer(optimizer.Optimizer):
     self._learning_rate_power_tensor = None
     self._l1_regularization_strength_tensor = None
     self._l2_regularization_strength_tensor = None
+    self._accum_name = accum_name
+    self._linear_name = linear_name
 
   def _create_slots(self, var_list):
     # Create the "accum" and "linear" slots.
     for v in var_list:
       with ops.colocate_with(v):
-        val = constant_op.constant(self._initial_accumulator_value,
-                                   dtype=v.dtype, shape=v.get_shape())
-        self._get_or_make_slot(v, val, "accum", self._name)
-        self._zeros_slot(v, "linear", self._name)
+        val = constant_op.constant(
+            self._initial_accumulator_value, dtype=v.dtype, shape=v.get_shape())
+        self._get_or_make_slot(v, val, "accum", self._accum_name or self._name)
+        self._zeros_slot(v, "linear", self._linear_name or self._name)
 
   def _prepare(self):
     self._learning_rate_tensor = ops.convert_to_tensor(
-        self._learning_rate,
-        name="learning_rate")
+        self._learning_rate, name="learning_rate")
     self._l1_regularization_strength_tensor = ops.convert_to_tensor(
-        self._l1_regularization_strength,
-        name="l1_regularization_strength")
+        self._l1_regularization_strength, name="l1_regularization_strength")
     self._l2_regularization_strength_tensor = ops.convert_to_tensor(
-        self._l2_regularization_strength,
-        name="l2_regularization_strength")
+        self._l2_regularization_strength, name="l2_regularization_strength")
     self._learning_rate_power_tensor = ops.convert_to_tensor(
-        self._learning_rate_power,
-        name="learning_rate_power")
+        self._learning_rate_power, name="learning_rate_power")
 
   def _apply_dense(self, grad, var):
     accum = self.get_slot(var, "accum")
     linear = self.get_slot(var, "linear")
     return training_ops.apply_ftrl(
-        var, accum, linear, grad,
+        var,
+        accum,
+        linear,
+        grad,
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
         math_ops.cast(self._l1_regularization_strength_tensor,
                       var.dtype.base_dtype),
@@ -123,7 +131,10 @@ class FtrlOptimizer(optimizer.Optimizer):
     accum = self.get_slot(var, "accum")
     linear = self.get_slot(var, "linear")
     return training_ops.resource_apply_ftrl(
-        var.handle, accum.handle, linear.handle, grad,
+        var.handle,
+        accum.handle,
+        linear.handle,
+        grad,
         math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
         math_ops.cast(self._l1_regularization_strength_tensor,
                       grad.dtype.base_dtype),
@@ -136,7 +147,11 @@ class FtrlOptimizer(optimizer.Optimizer):
     accum = self.get_slot(var, "accum")
     linear = self.get_slot(var, "linear")
     return training_ops.sparse_apply_ftrl(
-        var, accum, linear, grad.values, grad.indices,
+        var,
+        accum,
+        linear,
+        grad.values,
+        grad.indices,
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
         math_ops.cast(self._l1_regularization_strength_tensor,
                       var.dtype.base_dtype),
@@ -149,11 +164,13 @@ class FtrlOptimizer(optimizer.Optimizer):
     accum = self.get_slot(var, "accum")
     linear = self.get_slot(var, "linear")
     return training_ops.resource_sparse_apply_ftrl(
-        var.handle, accum.handle, linear.handle, grad, indices,
+        var.handle,
+        accum.handle,
+        linear.handle,
+        grad,
+        indices,
         math_ops.cast(self._learning_rate_tensor, grad.dtype),
-        math_ops.cast(self._l1_regularization_strength_tensor,
-                      grad.dtype),
-        math_ops.cast(self._l2_regularization_strength_tensor,
-                      grad.dtype),
+        math_ops.cast(self._l1_regularization_strength_tensor, grad.dtype),
+        math_ops.cast(self._l2_regularization_strength_tensor, grad.dtype),
         math_ops.cast(self._learning_rate_power_tensor, grad.dtype),
         use_locking=self._use_locking)

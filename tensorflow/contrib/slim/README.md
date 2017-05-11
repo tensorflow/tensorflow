@@ -447,7 +447,7 @@ vgg = tf.contrib.slim.nets.vgg
 images, labels = ...
 
 # Create the model.
-predictions = vgg.vgg16(images)
+predictions, _ = vgg.vgg_16(images)
 
 # Define the loss functions and get the total loss.
 loss = slim.losses.softmax_cross_entropy(predictions, labels)

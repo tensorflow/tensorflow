@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -32,20 +33,22 @@ namespace grappler {
 // Returns a vector of InputProperties for 'node'. The vector will contain one
 // entry for each input of 'node'.
 // For each node in the graph, the 'name_to_cost' map stores a pointer to the
-// corresponding cost graph node indexed by node name.
+// corresponding cost graph node indexed by node name. The 'name_to_node' maps a
+// node name to its node definition.
 std::vector<OpInfo::TensorProperties> FindInputFeatures(
     const NodeDef& node,
-    const std::unordered_map<string, const CostGraphDef::Node*>& name_to_cost);
+    const std::unordered_map<string, const CostGraphDef::Node*>& name_to_cost,
+    const std::unordered_map<string, const NodeDef*>& name_to_node);
 
 // Returns the DeviceProperties of the device on which 'node' runs.
-OpInfo::DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node);
+DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node);
 
 // Returns the DeviceProperties of the CPU on which grappler is running.
-OpInfo::DeviceProperties GetLocalCPUInfo();
+DeviceProperties GetLocalCPUInfo();
 
 // Returns the DeviceProperties for the specified GPU attached to the server on
 // which grappler is running.
-OpInfo::DeviceProperties GetLocalGPUInfo(int gpu_id);
+DeviceProperties GetLocalGPUInfo(int gpu_id);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -125,6 +125,23 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   }
 }
 
+Status OpKernel::MakeShape(const Tensor& shape, TensorShape* out) const {
+  if (!IsLegacyVector(shape.shape())) {
+    return errors::InvalidArgument(
+        "shape must be a vector of {int32,int64}, got shape ",
+        shape.shape().DebugString());
+  }
+  if (shape.dtype() == DataType::DT_INT32) {
+    auto vec = shape.flat<int32>();
+    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
+  } else if (shape.dtype() == DataType::DT_INT64) {
+    auto vec = shape.flat<int64>();
+    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
+  } else {
+    return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
+  }
+}
+
 void AsyncOpKernel::Compute(OpKernelContext* context) {
   Notification n;
   ComputeAsync(context, [&n]() { n.Notify(); });
@@ -637,22 +654,6 @@ Status OpKernelContext::allocate_persistent(DataType type,
     *out_persistent = PersistentTensor(persistent);
     if (out_tensor) {
       *out_tensor = out_persistent->AccessTensor(this);
-    }
-  }
-  if (track_allocations() && persistent.TotalBytes() > 0) {
-    // TODO(yuefengz): some allocators allocate memory even if the requested
-    // size is 0.
-    Allocator* a = get_allocator(attr);
-    if (a->TracksAllocationSizes()) {
-      int64 alloc_size =
-          a->AllocatedSize(const_cast<char*>(persistent.tensor_data().data()));
-      int64 alloc_id =
-          a->AllocationId(const_cast<char*>(persistent.tensor_data().data()));
-      if (allocate_on_host(attr)) {
-        record_host_persistent_memory_allocation(alloc_size, alloc_id);
-      } else {
-        record_device_persistent_memory_allocation(alloc_size, alloc_id);
-      }
     }
   }
   return s;

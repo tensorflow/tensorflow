@@ -41,10 +41,12 @@ tensorboard_typescript_genrule(
     name = "ts",
     srcs = [
         "categorizer.ts",
+        "dashboard-behavior.ts",
         "reload-behavior.ts",
     ],
     typings = [
         "@org_definitelytyped//:d3.d.ts",
+        "@org_definitelytyped//:lodash.d.ts",
         "//tensorflow/tensorboard/components/vz_sorting:ts_typings",
     ],
 )
@@ -89,8 +91,11 @@ tensorboard_ts_library(
     name = "legacy_ts",
     srcs = [
         "categorizer.ts",
+        "dashboard-behavior.ts",
         "reload-behavior.ts",
     ],
+    deps_mgmt = "off",
+    runtime = "nodejs",
     deps = [
         "//tensorflow/tensorboard/components:common_deps",
         "//tensorflow/tensorboard/components/vz_sorting:legacy_ts",
