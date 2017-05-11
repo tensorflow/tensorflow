@@ -1,12 +1,12 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "vz_histogram_timeseries",
     srcs = [
         "vz-histogram-timeseries.html",
@@ -25,7 +25,7 @@ filegroup(
 )
 
 # bazel run //third_party/tensorflow/tensorboard/components/vz_histogram_timeseries/demo
-webfiles(
+web_library(
     name = "demo",
     srcs = ["demo.html"],
     path = "/vz-histogram-timeseries",

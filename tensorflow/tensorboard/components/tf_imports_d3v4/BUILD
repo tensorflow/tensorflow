@@ -1,18 +1,18 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "lodash",
     srcs = ["lodash.html"],
     path = "/tf-imports-d3v4",
     deps = ["@com_lodash"],
 )
 
-webfiles(
+web_library(
     name = "threejs",
     srcs = [
         "threejs.html",
@@ -22,7 +22,7 @@ webfiles(
     path = "/tf-imports",
 )
 
-webfiles(
+web_library(
     name = "numericjs",
     srcs = [
         "numericjs.html",
@@ -31,7 +31,7 @@ webfiles(
     path = "/tf-imports",
 )
 
-webfiles(
+web_library(
     name = "weblas",
     srcs = [
         "weblas.html",
@@ -40,7 +40,7 @@ webfiles(
     path = "/tf-imports",
 )
 
-webfiles(
+web_library(
     name = "graphlib",
     srcs = [
         "graphlib.html",
@@ -50,7 +50,7 @@ webfiles(
     deps = [":lodash"],
 )
 
-webfiles(
+web_library(
     name = "dagre",
     srcs = [
         "dagre.html",
@@ -63,7 +63,7 @@ webfiles(
     ],
 )
 
-webfiles(
+web_library(
     name = "d3",
     srcs = [
         "d3.html",
@@ -72,7 +72,7 @@ webfiles(
     path = "/tf-imports",
 )
 
-webfiles(
+web_library(
     name = "plottable",
     srcs = ["plottable.html"],
     path = "/tf-imports",
@@ -82,7 +82,7 @@ webfiles(
     ],
 )
 
-webfiles(
+web_library(
     name = "plottable_js_css",
     srcs = [
         "@com_palantir_plottable_v3//:package/plottable.css",

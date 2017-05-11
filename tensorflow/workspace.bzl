@@ -4,7 +4,7 @@ load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles_external")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
 
 
@@ -717,7 +717,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   ##############################################################################
   # TensorBoard JavaScript Production Dependencies
 
-  webfiles_external(
+  web_library_external(
       name = "com_lodash",
       licenses = ["notice"],  # MIT
       sha256 = "0e88207e5f90af4ce8790d6e1e7d09d2702d81bce0bafdc253d18c0a5bf7661e",
@@ -1209,7 +1209,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   ##############################################################################
   # TensorBoard Polymer Dependencies
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_font_roboto",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "fae51429b56a4a4c15f1f0c23b733c7095940cc9c04c275fa7adb3bf055b23b3",
@@ -1222,7 +1222,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       srcs = ["roboto.html"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_a11y_announcer",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "6bce143db7a374a68535ec8b861a5f30e81f2f1e4ee36a55bda2a891f6fd2818",
@@ -1236,7 +1236,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_a11y_keys_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "6823efc47a83208fd51d39c5a1d3eb0c0bebc705df1ce01310509da22a13ebd2",
@@ -1250,7 +1250,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_ajax",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "9162d8af4611e911ac3ebbfc08bb7038ac04f6e79a9287b1476fe36ad6770bc5",
@@ -1270,7 +1270,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_autogrow_textarea",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "50bbb901d2c8f87462e3552e3d671a552faa12c37c485e548d7a234ebffbc427",
@@ -1290,7 +1290,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_behaviors",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "a1e8d4b7a13f3d36beba9c2a6b186ed33a53e6af2e79f98c1fcc7e85e7b53f89",
@@ -1310,7 +1310,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_checked_element_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "539a0e1c4df0bc702d3bd342388e4e56c77ec4c2066cce69e41426a69f92e8bd",
@@ -1328,7 +1328,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_collapse",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "275808994a609a2f9923e2dd2db1957945ab141ba840eadc33f19e1f406d600e",
@@ -1345,7 +1345,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_demo_helpers",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "aa7458492a6ac3d1f6344640a4c2ab07bce64e7ad0422b83b5d665707598cce6",
@@ -1370,7 +1370,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_dropdown",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "f7e4a31d096d10d8af1920397695cb17f3eb1cbe5e5ff91a861dabfcc085f376",
@@ -1394,7 +1394,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_fit_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "10132a2ea309a37c4c07b8fead71f64abc588ee6107931e34680f5f36dd8291e",
@@ -1408,7 +1408,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_flex_layout",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "79287f6ca1c2d4e003f68b88fe19d03a1b6a0011e2b4cae579fe4d1474163a2e",
@@ -1427,7 +1427,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_form_element_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "1dd9371c638e5bc2ecba8a64074aa680dfb8712198e9612f9ed24d387efc8f26",
@@ -1441,7 +1441,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_icon",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "9ed58a69159a02c07a6050d242e6d4e585a29f3245b8c8c390cfd52ddb786dc4",
@@ -1459,7 +1459,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_icons",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "3b18542c147c7923dc3a36b1a51984a73255d610f297d43c9aaccc52859bd0d0",
@@ -1488,7 +1488,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_iconset_svg",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "7e3925b7e63a7d22524c4b43ce16ab80d06a576649644783643c11a003284368",
@@ -1505,7 +1505,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_input",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "c505101ead08ab25526b1f49baecc8c28b4221b92a65e7334c783bdc81553c36",
@@ -1523,7 +1523,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_list",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "72a6530b9f0ad5557f5d287845792a0ada74d8b159198e27f940e226313dc116",
@@ -1542,7 +1542,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_menu_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "ad27889343bc9a709258b073f69abc028bb1ffd3fdb975cd2d3939f7f5d7bb6c",
@@ -1563,7 +1563,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_meta",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "fb05e6031bae6b4effe5f15d44b3f548d5807f9e3b3aa2442ba17cf4b8b84361",
@@ -1577,7 +1577,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_overlay_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "3df5b54ff2e0510c87a2aff8c9d730d3fe83d3d11277cc1a49fa29b549acb46c",
@@ -1601,7 +1601,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_range_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "b2f2b6d52284542330bd30b586e217926eb0adec5e13934a3cef557717c22dc2",
@@ -1615,7 +1615,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_resizable_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "a87a78ee9223c2f6afae7fc94a3ff91cbce6f7e2a7ed3f2979af7945c9281616",
@@ -1629,7 +1629,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_scroll_target_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "d0de0c804b1ec91d814754144afd9da1cdb082690de88bd5e47fd5f41990746f",
@@ -1643,7 +1643,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_selector",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "ba28a47443bad3b744611c9d7a79fb21dbdf2e35edc5ef8f812e2dcd72b16747",
@@ -1662,7 +1662,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_iron_validatable_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "aef4901e68043824f36104799269573dd345ffaac494186e466fdc79c06fdb63",
@@ -1679,7 +1679,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_marked",
       licenses = ["notice"],  # MIT
       sha256 = "93d30bd593736ca440938d77808b7ef5972da0f3fcfe4ae63ae7b4ce117da2cb",
@@ -1692,7 +1692,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       srcs = ["lib/marked.js"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_marked_element",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "7547616df95f8b903757e6afbabfcdba5322c2bcec3f17c726b8bba5adf4bc5f",
@@ -1712,7 +1712,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_neon_animation",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "8800c314a76b2da190a2b203259c1091f6d38e0057ed37c2a3d0b734980fa9a5",
@@ -1761,7 +1761,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_behaviors",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "7cfcb9082ef9909da262df6b5c120bc62dbeaff278cb563e8fc60465ddd387e5",
@@ -1785,7 +1785,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_button",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "896c0a7e34bfcce63fc23c63e105ed9c4d62fa3a6385b7161e1e5cd4058820a6",
@@ -1805,7 +1805,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_checkbox",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "6828a6954a048b1230fbd2606faffbae950ba1d042175b96ec50ae355786a166",
@@ -1823,7 +1823,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_dialog",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "c6a9709e7f528d03dcd574503c18b72d4751ca30017346d16e6a791d37ed9259",
@@ -1841,7 +1841,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_dialog_behavior",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "a7e0e27ce63554bc14f384cf94bcfa24da8dc5f5120dfd565f45e166261aee40",
@@ -1865,7 +1865,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_dialog_scrollable",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "a2e69283e7674f782c44d811387a0f8da2d01fac0172743d1add65e253e6b5ff",
@@ -1884,7 +1884,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_dropdown_menu",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "9d88f654ec03ee9be211df9e69bede9e8a22b51bf1dbcc63b79762e4256d81ad",
@@ -1916,7 +1916,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_header_panel",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "0db4bd8a4bf6f20dcd0dffb4f907b31c93a8647c9c021344239cf30b40b87075",
@@ -1933,7 +1933,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_icon_button",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "9cba5bcfd6aeb4c41581c1392c678cf2278d360e9d122f4d9db54a9ebb404496",
@@ -1955,7 +1955,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_input",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "17c3dea9bb1c2026cc61324696c6c774214a0dc37686b91ca214a6af550994db",
@@ -1986,7 +1986,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_item",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "12ee0dcb61b0d5721c5988571f6974d7b2211e97724f4195893fbcc9058cdac8",
@@ -2011,7 +2011,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_listbox",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "3cb35f4fe9a3f15185a9e91711dba8f27e9291c8cd371ebf1be21b8f1d5f65fb",
@@ -2029,7 +2029,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_material",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "09f6c8bd6ddbea2be541dc86306efe41cdfb31bec0b69d35a5dc29772bbc8506",
@@ -2049,7 +2049,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_menu",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "a3cee220926e315f7412236b3628288774694447c0da4428345f36d0f127ba3b",
@@ -2074,7 +2074,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_menu_button",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "be3290c288a2bd4f9887213db22c75add99cc29ff4d088100c0bc4eb0e57997b",
@@ -2098,7 +2098,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_progress",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "2b6776b2f023c1f344feea17ba29b58d879e46f8ed43b7256495054b5183fff6",
@@ -2117,7 +2117,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_radio_button",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "6e911d0c308aa388136b3af79d1bdcbe5a1f4159cbc79d71efb4ff3b6c0b4e91",
@@ -2135,7 +2135,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_radio_group",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "7885ad1f81e9dcc03dcea4139b54a201ff55c18543770cd44f94530046c9e163",
@@ -2154,7 +2154,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_ripple",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "ba76bfb1c737260a8a103d3ca97faa1f7c3288c7db9b2519f401b7a782147c09",
@@ -2171,7 +2171,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_slider",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "08e7c541dbf5d2e959208810bfc03188e82ced87e4d30d325172967f67962c3c",
@@ -2195,7 +2195,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_spinner",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "6a752907fab7899cbeed15b478e7b9299047c15fbf9d1561d6eb4d204bdbd178",
@@ -2216,7 +2216,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_styles",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "6d26b0a4c286402098853dc7388f6b22f30dfb7a74e47b34992ac03380144bb2",
@@ -2247,7 +2247,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_tabs",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "c23b6a5221db35e5b1ed3eb8e8696b952572563e285adaec96aba1e3134db825",
@@ -2276,7 +2276,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_toast",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "55f623712ed1f2bae6d6fadc522a2458e083ccd44cc0a907672547e7b10758a9",
@@ -2294,7 +2294,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_toggle_button",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "4aa7cf0396fa2994a8bc2ac6e8428f48b07b945bb7c41bd52041ef5827b45de3",
@@ -2313,7 +2313,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_toolbar",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "dbddffc0654d9fb5fb48843087eebe16bf7a134902495a664c96c11bf8a2c63d",
@@ -2331,7 +2331,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_paper_tooltip",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "4c6667acf01f73da14c3cbc0aa574bf14280304567987ee0314534328377d2ad",
@@ -2348,7 +2348,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "07a9e62ffb52193da3af09adda2fbac5cc690439978520e2d03e783863f65f91",
@@ -2365,7 +2365,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_prism",
       licenses = ["notice"],  # MIT
       sha256 = "e06eb54f2a80e6b3cd0bd4d59f900423bcaee53fc03998a056df63740c684683",
@@ -2381,7 +2381,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_prism_element",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "ad70bf9cd5bbdf525d465e1b0658867ab4022193eb9c74087a839044b46312b4",
@@ -2401,7 +2401,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_promise_polyfill",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "4495450e5d884c3e16b537b43afead7f84d17c7dc061bcfcbf440eac083e4ef5",
@@ -2420,7 +2420,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       deps = ["@org_polymer"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_web_animations_js",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "f8bd760cbdeba131f6790bd5abe170bcbf7b1755ff58ed16d0b82fa8a7f34a7f",
@@ -2433,7 +2433,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       srcs = ["web-animations-next-lite.min.js"],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_webcomponentsjs",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "138c43306ee0a6d699ddca9b3c6b0f4982974ea8b7bdad291ea7276c72301df9",
@@ -2462,7 +2462,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   ##############################################################################
   # TensorBoard Testing Dependencies
 
-  webfiles_external(
+  web_library_external(
       name = "org_npmjs_registry_accessibility_developer_tools",
       licenses = ["notice"],  # Apache License 2.0
       sha256 = "1d6a72f401c9d53f68238c617dd43a05cd85ca5aa2e676a5b3c352711448e093",
@@ -2474,7 +2474,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       path = "/accessibility-developer-tools",
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_npmjs_registry_async",
       licenses = ["notice"],  # MIT
       sha256 = "08655255ae810bf4d1cb1642df57658fcce823776d3ba8f4b46f4bbff6c87ece",
@@ -2486,7 +2486,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       path = "/async",
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_npmjs_registry_chai",
       licenses = ["notice"],  # MIT
       sha256 = "aca8137bed5bb295bd7173325b7ad604cd2aeb341d739232b4f9f0b26745be90",
@@ -2498,7 +2498,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       path = "/chai",
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_npmjs_registry_mocha",
       licenses = ["notice"],  # MIT
       sha256 = "13ef37a071196a2fba680799b906555d3f0ab61e80a7e8f73f93e77914590dd4",
@@ -2511,7 +2511,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       path = "/mocha",
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_npmjs_registry_sinon",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "49edb057695fc9019aae992bf7e677a07de7c6ce2bf9f9facde4a245045d1532",
@@ -2523,7 +2523,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       path = "/sinonjs",
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_npmjs_registry_sinon_chai",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "b85fc56f713832960b56fe9269ee4bb2cd41edd2ceb130b0936e5bdbed5dea63",
@@ -2535,7 +2535,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       path = "/sinon-chai",
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_npmjs_registry_stacky",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "c659e60f7957d9d80c23a7aacc4d71b19c6421a08f91174c0062de369595acae",
@@ -2547,7 +2547,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       path = "/stacky",
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_npmjs_registry_web_component_tester",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "9d4ebd4945df8a936916d4d32b7f280f2a3afa35f79e7ca8ad3ed0a42770c537",
@@ -2574,7 +2574,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
   )
 
-  webfiles_external(
+  web_library_external(
       name = "org_polymer_test_fixture",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "59d6cfb1187733b71275becfea181fe0aa1f734df5ff77f5850c806bbbf9a0d9",
