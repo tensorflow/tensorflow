@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -47,10 +48,14 @@ class DecodeBmpOp : public OpKernel {
     const StringPiece input = contents.scalar<string>()();
 
     const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
-    const int32 header_size = *(reinterpret_cast<const int32*>(img_bytes + 10));
-    const int32 width = *(reinterpret_cast<const int32*>(img_bytes + 18));
-    const int32 height = *(reinterpret_cast<const int32*>(img_bytes + 22));
-    const int32 bpp = *(reinterpret_cast<const int32*>(img_bytes + 28));
+    const int32 header_size = internal::SubtleMustCopy(
+        *(reinterpret_cast<const int32*>(img_bytes + 10)));
+    const int32 width = internal::SubtleMustCopy(
+        *(reinterpret_cast<const int32*>(img_bytes + 18)));
+    const int32 height = internal::SubtleMustCopy(
+        *(reinterpret_cast<const int32*>(img_bytes + 22)));
+    const int32 bpp = internal::SubtleMustCopy(
+        *(reinterpret_cast<const int32*>(img_bytes + 28)));
 
     if (channels_) {
       OP_REQUIRES(
