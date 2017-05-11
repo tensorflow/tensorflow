@@ -36,6 +36,7 @@ from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
+from tensorflow.contrib.distributions.python.ops.mvn_full_covariance import *
 from tensorflow.contrib.distributions.python.ops.mvn_tril import *
 from tensorflow.contrib.distributions.python.ops.negative_binomial import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
@@ -116,6 +117,7 @@ _allowed_symbols = [
     'StudentTWithAbsDfSoftplusScale',
     'Uniform',
     'MultivariateNormalDiag',
+    'MultivariateNormalFullCovariance',
     'MultivariateNormalTriL',
     'MultivariateNormalDiagPlusLowRank',
     'MultivariateNormalDiagWithSoftplusScale',

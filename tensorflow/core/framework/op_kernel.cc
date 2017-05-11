@@ -893,14 +893,17 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
   return Status::OK();
 }
 
+static const StringPiece kKernelAttr("_kernel");
+
 Status FindKernelRegistration(const DeviceType& device_type,
                               const NodeDef& node_def,
                               const KernelRegistration** reg,
                               bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
-  string label;  // Label defaults to empty if not found in NodeDef.
-  GetNodeAttr(node_def, "_kernel", &label).IgnoreError();
+  // Label defaults to empty if not found in NodeDef.
+  const string& label = GetNodeAttrString(node_def, kKernelAttr);
+
   const string key = Key(node_def.op(), device_type, label);
   auto regs = GlobalKernelRegistryTyped()->equal_range(key);
   for (auto iter = regs.first; iter != regs.second; ++iter) {

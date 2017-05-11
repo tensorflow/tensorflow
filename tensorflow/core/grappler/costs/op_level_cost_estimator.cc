@@ -77,7 +77,13 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
   }
 
   if (device.type() == "CPU") {
-    const DeviceProperties local_cpu = GetLocalCPUInfo();
+    DeviceProperties local_cpu;
+    if (device.num_cores() <= 0 || device.frequency() <= 0) {
+      local_cpu = GetLocalCPUInfo();
+    } else {
+      local_cpu = device;
+    }
+
     // Check if vector instructions are available, and refine performance
     // prediction based on this.
     // Frequencies are stored in MHz in the DeviceProperties.

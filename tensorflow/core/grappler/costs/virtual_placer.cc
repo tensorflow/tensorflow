@@ -42,7 +42,7 @@ const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
     if (it != devices_.end()) {
       return it->second;
     }
-    if (DeviceNameUtils::ParseFullName(node.device(), &parsed)) {
+    if (DeviceNameUtils::ParseLocalName(node.device(), &parsed)) {
       string device_name =
           strings::StrCat("/job:localhost/replica:0/task:0/",
                           str_util::Lowercase(parsed.type), ":", parsed.id);

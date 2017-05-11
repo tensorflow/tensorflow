@@ -34,6 +34,11 @@ namespace tensorflow {
 
 namespace {
 
+// We hoist the conversion from C-style string literal to StringPiece here,
+// so that we can avoid the many repeated calls to strlen().
+const StringPiece kColocationAttrNameStringPiece(kColocationAttrName);
+const StringPiece kColocationGroupPrefixStringPiece(kColocationGroupPrefix);
+
 // Returns a list of devices sorted by preferred type and then name
 // from 'devices' whose type is in 'supported_device_types'.  This
 // function searches the device types in 'supported_device_types' and
@@ -71,24 +76,26 @@ void ColocationGroups(const Node& node,
   std::vector<string> class_specs;
   // TODO(vrv): We should consider adding a GetNodeAttr that returns a
   // StringPiece, to avoid a copy.
-  Status s = GetNodeAttr(node.def(), kColocationAttrName, &class_specs);
-  if (!s.ok()) {
+  if (!GetNodeAttrSimple(node.def(), kColocationAttrNameStringPiece,
+                         &class_specs)) {
     // No attribute value is equivalent to the empty colocation_group.
-    *colocation_groups = {strings::StrCat(kColocationGroupPrefix, node.name())};
+    *colocation_groups = {
+        strings::StrCat(kColocationGroupPrefixStringPiece, node.name())};
     return;
   }
 
   bool found_spec = false;
   for (const string& class_spec : class_specs) {
     StringPiece spec(class_spec);
-    if (spec.Consume(kColocationGroupPrefix)) {
+    if (spec.Consume(kColocationGroupPrefixStringPiece)) {
       found_spec = true;
       colocation_groups->emplace_back(class_spec);
     }
   }
 
   if (!found_spec) {
-    *colocation_groups = {strings::StrCat(kColocationGroupPrefix, node.name())};
+    *colocation_groups = {
+        strings::StrCat(kColocationGroupPrefixStringPiece, node.name())};
   }
 }
 

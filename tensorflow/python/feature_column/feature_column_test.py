@@ -65,7 +65,7 @@ class LazyColumnTest(test.TestCase):
         return cache.get('a')
 
       @property
-      def _parse_example_config(self):
+      def _parse_example_spec(self):
         pass
 
     builder = fc._LazyBuilder(features={'a': [[2], [3.]]})
@@ -88,7 +88,7 @@ class LazyColumnTest(test.TestCase):
         return 'Output'
 
       @property
-      def _parse_example_config(self):
+      def _parse_example_spec(self):
         pass
 
     builder = fc._LazyBuilder(features={'a': [[2], [3.]]})
@@ -108,7 +108,7 @@ class LazyColumnTest(test.TestCase):
         return 'Output'
 
       @property
-      def _parse_example_config(self):
+      def _parse_example_spec(self):
         pass
 
     features = {'a': [[2], [3.]]}
@@ -135,7 +135,7 @@ class LazyColumnTest(test.TestCase):
         pass
 
       @property
-      def _parse_example_config(self):
+      def _parse_example_spec(self):
         pass
 
     builder = fc._LazyBuilder(features={'a': [[2], [3.]]})
@@ -222,11 +222,11 @@ class NumericColumnTest(test.TestCase):
     a = fc.numeric_column('aaa', shape=[2, 3], default_value=2.)
     self.assertEqual(((2., 2., 2.), (2., 2., 2.)), a.default_value)
 
-  def test_parse_config(self):
+  def test_parse_spec(self):
     a = fc.numeric_column('aaa', shape=[2, 3], dtype=dtypes.int32)
     self.assertEqual({
         'aaa': parsing_ops.FixedLenFeature((2, 3), dtype=dtypes.int32)
-    }, a._parse_example_config)
+    }, a._parse_example_spec)
 
   def test_parse_example_no_default_value(self):
     price = fc.numeric_column('price', shape=[2])
@@ -238,7 +238,7 @@ class NumericColumnTest(test.TestCase):
         }))
     features = parsing_ops.parse_example(
         serialized=[data.SerializeToString()],
-        features=price._parse_example_config)
+        features=fc.make_parse_example_spec([price]))
     self.assertIn('price', features)
     with self.test_session():
       self.assertAllEqual([[20., 110.]], features['price'].eval())
@@ -260,7 +260,7 @@ class NumericColumnTest(test.TestCase):
     features = parsing_ops.parse_example(
         serialized=[data.SerializeToString(),
                     no_data.SerializeToString()],
-        features=price._parse_example_config)
+        features=fc.make_parse_example_spec([price]))
     self.assertIn('price', features)
     with self.test_session():
       self.assertAllEqual([[20., 110.], [11., 11.]], features['price'].eval())
@@ -312,11 +312,11 @@ class NumericColumnTest(test.TestCase):
         'aaa', shape=[1, 2], default_value=np.array([[3., 2.]]))
     self.assertEqual(a.default_value, ((3., 2.),))
 
-  def test_make_linear_model(self):
+  def test_linear_model(self):
     price = fc.numeric_column('price')
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      predictions = fc.make_linear_model(features, [price])
+      predictions = fc.linear_model(features, [price])
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
@@ -362,12 +362,12 @@ class BucketizedColumnTest(test.TestCase):
     b = fc.bucketized_column(a, boundaries=[0, 1])
     self.assertEqual('aaa_bucketized', b.name)
 
-  def test_parse_config(self):
+  def test_parse_spec(self):
     a = fc.numeric_column('aaa', shape=[2], dtype=dtypes.int32)
     b = fc.bucketized_column(a, boundaries=[0, 1])
     self.assertEqual({
         'aaa': parsing_ops.FixedLenFeature((2,), dtype=dtypes.int32)
-    }, b._parse_example_config)
+    }, b._parse_example_spec)
 
   def test_variable_shape(self):
     a = fc.numeric_column('aaa', shape=[2], dtype=dtypes.int32)
@@ -392,7 +392,7 @@ class BucketizedColumnTest(test.TestCase):
         }))
     features = parsing_ops.parse_example(
         serialized=[data.SerializeToString()],
-        features=bucketized_price._parse_example_config)
+        features=fc.make_parse_example_spec([bucketized_price]))
     self.assertIn('price', features)
     with self.test_session():
       self.assertAllEqual([[20., 110.]], features['price'].eval())
@@ -497,13 +497,13 @@ class BucketizedColumnTest(test.TestCase):
     self.assertAllEqual(a_bucketized_copy._variable_shape, (2, 3))
     self.assertEqual(a_bucketized_copy.boundaries, (0, 1))
 
-  def test_make_linear_model_one_input_value(self):
-    """Tests make_linear_model() for input with shape=[1]."""
+  def test_linear_model_one_input_value(self):
+    """Tests linear_model() for input with shape=[1]."""
     price = fc.numeric_column('price', shape=[1])
     bucketized_price = fc.bucketized_column(price, boundaries=[0, 2, 4, 6])
     with ops.Graph().as_default():
       features = {'price': [[-1.], [1.], [5.], [6.]]}
-      predictions = fc.make_linear_model(features, [bucketized_price])
+      predictions = fc.linear_model(features, [bucketized_price])
       bias = get_linear_model_bias()
       bucketized_price_var = get_linear_model_column_var(bucketized_price)
       with _initialized_session() as sess:
@@ -522,13 +522,13 @@ class BucketizedColumnTest(test.TestCase):
         sess.run(bias.assign([1.]))
         self.assertAllClose([[11.], [21.], [41.], [51.]], predictions.eval())
 
-  def test_make_linear_model_two_input_values(self):
-    """Tests make_linear_model() for input with shape=[2]."""
+  def test_linear_model_two_input_values(self):
+    """Tests linear_model() for input with shape=[2]."""
     price = fc.numeric_column('price', shape=[2])
     bucketized_price = fc.bucketized_column(price, boundaries=[0, 2, 4, 6])
     with ops.Graph().as_default():
       features = {'price': [[-1., 1.], [5., 6.]]}
-      predictions = fc.make_linear_model(features, [bucketized_price])
+      predictions = fc.linear_model(features, [bucketized_price])
       bias = get_linear_model_bias()
       bucketized_price_var = get_linear_model_column_var(bucketized_price)
       with _initialized_session() as sess:
@@ -584,17 +584,38 @@ class HashedCategoricalColumnTest(test.TestCase):
       self.assertEqual(10, column._num_buckets)
       self.assertEqual(dtypes.string, column.dtype)
 
-  def test_parse_config(self):
+  def test_parse_spec_string(self):
     a = fc.categorical_column_with_hash_bucket('aaa', 10)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
-    }, a._parse_example_config)
+    }, a._parse_example_spec)
 
-  def test_parse_config_int(self):
+  def test_parse_spec_int(self):
     a = fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.int32)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int32)
-    }, a._parse_example_config)
+    }, a._parse_example_spec)
+
+  def test_parse_example(self):
+    a = fc.categorical_column_with_hash_bucket('aaa', 10)
+    data = example_pb2.Example(features=feature_pb2.Features(
+        feature={
+            'aaa':
+                feature_pb2.Feature(bytes_list=feature_pb2.BytesList(
+                    value=[b'omar', b'stringer']))
+        }))
+    features = parsing_ops.parse_example(
+        serialized=[data.SerializeToString()],
+        features=fc.make_parse_example_spec([a]))
+    self.assertIn('aaa', features)
+    with self.test_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [0, 1]],
+              values=np.array([b'omar', b'stringer'], dtype=np.object_),
+              dense_shape=[1, 2]),
+          features['aaa'].eval())
 
   def test_strings_should_be_hashed(self):
     hashed_sparse = fc.categorical_column_with_hash_bucket('wire', 10)
@@ -713,11 +734,11 @@ class HashedCategoricalColumnTest(test.TestCase):
     self.assertIsNone(id_weight_pair.weight_tensor)
     self.assertEqual(builder.get(hashed_sparse), id_weight_pair.id_tensor)
 
-  def test_make_linear_model(self):
+  def test_linear_model(self):
     wire_column = fc.categorical_column_with_hash_bucket('wire', 4)
     self.assertEqual(4, wire_column._num_buckets)
     with ops.Graph().as_default():
-      predictions = fc.make_linear_model({
+      predictions = fc.linear_model({
           wire_column.name: sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1)),
               values=('marlo', 'skywalker', 'omar'),
@@ -797,14 +818,14 @@ class CrossedColumnTest(test.TestCase):
     crossed2 = fc.crossed_column([crossed1, 'd1', b], 10)
     self.assertEqual('a_bucketized_X_c_X_d1_X_d2', crossed2.name)
 
-  def test_parse_config(self):
+  def test_parse_spec(self):
     a = fc.numeric_column('a', shape=[2], dtype=dtypes.int32)
     b = fc.bucketized_column(a, boundaries=[0, 1])
     crossed = fc.crossed_column([b, 'c'], 10)
     self.assertEqual({
         'a': parsing_ops.FixedLenFeature((2,), dtype=dtypes.int32),
         'c': parsing_ops.VarLenFeature(dtypes.string),
-    }, crossed._parse_example_config)
+    }, crossed._parse_example_spec)
 
   def test_num_buckets(self):
     a = fc.numeric_column('a', shape=[2], dtype=dtypes.int32)
@@ -837,7 +858,7 @@ class CrossedColumnTest(test.TestCase):
         }))
     features = parsing_ops.parse_example(
         serialized=[data.SerializeToString()],
-        features=price_cross_wire._parse_example_config)
+        features=fc.make_parse_example_spec([price_cross_wire]))
     self.assertIn('price', features)
     self.assertIn('wire', features)
     with self.test_session():
@@ -847,6 +868,29 @@ class CrossedColumnTest(test.TestCase):
       # Use byte constants to pass the open-source test.
       self.assertAllEqual([b'omar', b'stringer'], wire_sparse.values.eval())
       self.assertAllEqual([1, 2], wire_sparse.dense_shape.eval())
+
+  def test_transform_feature(self):
+    price = fc.numeric_column('price', shape=[2])
+    bucketized_price = fc.bucketized_column(price, boundaries=[0, 50])
+    hash_bucket_size = 10
+    price_cross_wire = fc.crossed_column(
+        [bucketized_price, 'wire'], hash_bucket_size)
+    features = {
+        'price': constant_op.constant([[1., 2.], [5., 6.]]),
+        'wire': sparse_tensor.SparseTensor(
+            values=['omar', 'stringer', 'marlo'],
+            indices=[[0, 0], [1, 0], [1, 1]],
+            dense_shape=[2, 2]),
+    }
+    outputs = fc._transform_features(features, [price_cross_wire])
+    output = outputs[price_cross_wire]
+    with self.test_session() as sess:
+      output_val = sess.run(output)
+      self.assertAllEqual(
+          [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [1, 3]], output_val.indices)
+      for val in output_val.values:
+        self.assertIn(val, list(range(hash_bucket_size)))
+      self.assertAllEqual([2, 4], output_val.dense_shape)
 
   def test_get_sparse_tensors(self):
     a = fc.numeric_column('a', dtype=dtypes.int32, shape=(2,))
@@ -909,8 +953,8 @@ class CrossedColumnTest(test.TestCase):
         self.assertAllEqual(expected_values, id_tensor_eval.values)
         self.assertAllEqual((2, 4), id_tensor_eval.dense_shape)
 
-  def test_make_linear_model(self):
-    """Tests make_linear_model.
+  def test_linear_model(self):
+    """Tests linear_model.
 
     Uses data from test_get_sparse_tesnsors_simple.
     """
@@ -918,7 +962,7 @@ class CrossedColumnTest(test.TestCase):
     b = fc.bucketized_column(a, boundaries=(0, 1))
     crossed = fc.crossed_column([b, 'c'], hash_bucket_size=5, hash_key=5)
     with ops.Graph().as_default():
-      predictions = fc.make_linear_model({
+      predictions = fc.linear_model({
           'a': constant_op.constant(((-1., .5), (.5, 1.))),
           'c': sparse_tensor.SparseTensor(
               indices=((0, 0), (1, 0), (1, 1)),
@@ -938,7 +982,7 @@ class CrossedColumnTest(test.TestCase):
         sess.run(bias.assign((.1,)))
         self.assertAllClose(((3.1,), (14.1,)), predictions.eval())
 
-  def test_make_linear_model_with_weights(self):
+  def test_linear_model_with_weights(self):
     class _TestColumnWithWeights(fc._CategoricalColumn):
       """Produces sparse IDs and sparse weights."""
 
@@ -947,7 +991,7 @@ class CrossedColumnTest(test.TestCase):
         return 'test_column'
 
       @property
-      def _parse_example_config(self):
+      def _parse_example_spec(self):
         return {
             self.name: parsing_ops.VarLenFeature(dtypes.int32),
             '{}_weights'.format(self.name): parsing_ops.VarLenFeature(
@@ -975,7 +1019,7 @@ class CrossedColumnTest(test.TestCase):
       with self.assertRaisesRegexp(
           ValueError,
           'crossed_column does not support weight_tensor.*{}'.format(t.name)):
-        fc.make_linear_model({
+        fc.linear_model({
             t.name: sparse_tensor.SparseTensor(
                 indices=((0, 0), (1, 0), (1, 1)),
                 values=[0, 1, 2],
@@ -992,21 +1036,25 @@ class CrossedColumnTest(test.TestCase):
 
 
 def get_linear_model_bias():
-  with variable_scope.variable_scope('make_linear_model', reuse=True):
+  with variable_scope.variable_scope('linear_model', reuse=True):
     return variable_scope.get_variable('bias_weights')
 
 
 def get_linear_model_column_var(column):
   return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
-                            'make_linear_model/' + column.name)[0]
+                            'linear_model/' + column.name)[0]
 
 
 class MakeLinearModelTest(test.TestCase):
 
+  def test_raises_if_empty_feature_columns(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'feature_columns must not be empty'):
+      fc.linear_model(features={}, feature_columns=[])
+
   def test_should_be_feature_column(self):
     with self.assertRaisesRegexp(ValueError, 'must be a _FeatureColumn'):
-      fc.make_linear_model(
-          features={'a': [[0]]}, feature_columns='NotSupported')
+      fc.linear_model(features={'a': [[0]]}, feature_columns='NotSupported')
 
   def test_should_be_dense_or_categorical_column(self):
 
@@ -1020,24 +1068,24 @@ class MakeLinearModelTest(test.TestCase):
         pass
 
       @property
-      def _parse_example_config(self):
+      def _parse_example_spec(self):
         pass
 
     with self.assertRaisesRegexp(
         ValueError, 'must be either a _DenseColumn or _CategoricalColumn'):
-      fc.make_linear_model(
+      fc.linear_model(
           features={'a': [[0]]}, feature_columns=[NotSupportedColumn()])
 
   def test_does_not_support_dict_columns(self):
     with self.assertRaisesRegexp(
         ValueError, 'Expected feature_columns to be iterable, found dict.'):
-      fc.make_linear_model(
+      fc.linear_model(
           features={'a': [[0]]}, feature_columns={'a': fc.numeric_column('a')})
 
   def test_raises_if_duplicate_name(self):
     with self.assertRaisesRegexp(
         ValueError, 'Duplicate feature column name found for columns'):
-      fc.make_linear_model(
+      fc.linear_model(
           features={'a': [[0]]},
           feature_columns=[fc.numeric_column('a'),
                            fc.numeric_column('a')])
@@ -1046,7 +1094,7 @@ class MakeLinearModelTest(test.TestCase):
     price = fc.numeric_column('price')
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      predictions = fc.make_linear_model(features, [price])
+      predictions = fc.linear_model(features, [price])
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
@@ -1063,7 +1111,7 @@ class MakeLinearModelTest(test.TestCase):
           indices=[[0, 0], [1, 0], [1, 1]],
           dense_shape=[2, 2])
       features = {'wire_cast': wire_tensor}
-      predictions = fc.make_linear_model(features, [wire_cast])
+      predictions = fc.linear_model(features, [wire_cast])
       bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       with _initialized_session() as sess:
@@ -1082,7 +1130,7 @@ class MakeLinearModelTest(test.TestCase):
           indices=[[0, 0], [1, 0], [1, 1]],
           dense_shape=[2, 2])
       features = {'wire_cast': wire_tensor, 'price': [[1.], [5.]]}
-      predictions = fc.make_linear_model(features, [wire_cast, price])
+      predictions = fc.linear_model(features, [wire_cast, price])
       bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       price_var = get_linear_model_column_var(price)
@@ -1102,7 +1150,7 @@ class MakeLinearModelTest(test.TestCase):
         return 'dense_and_sparse_column'
 
       @property
-      def _parse_example_config(self):
+      def _parse_example_spec(self):
         return {self.name: parsing_ops.VarLenFeature(self.dtype)}
 
       def _transform_feature(self, inputs):
@@ -1135,7 +1183,7 @@ class MakeLinearModelTest(test.TestCase):
           indices=[[0, 0], [1, 0], [1, 1]],
           dense_shape=[2, 2])
       features = {dense_and_sparse_column.name: sp_tensor}
-      predictions = fc.make_linear_model(features, [dense_and_sparse_column])
+      predictions = fc.linear_model(features, [dense_and_sparse_column])
       bias = get_linear_model_bias()
       dense_and_sparse_column_var = get_linear_model_column_var(
           dense_and_sparse_column)
@@ -1149,7 +1197,7 @@ class MakeLinearModelTest(test.TestCase):
     price = fc.numeric_column('price')
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      predictions = fc.make_linear_model(features, [price], units=3)
+      predictions = fc.linear_model(features, [price], units=3)
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
@@ -1168,7 +1216,7 @@ class MakeLinearModelTest(test.TestCase):
           indices=[[0, 0], [1, 0], [1, 1]],
           dense_shape=[2, 2])
       features = {'wire_cast': wire_tensor}
-      predictions = fc.make_linear_model(features, [wire_cast], units=3)
+      predictions = fc.linear_model(features, [wire_cast], units=3)
       bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       with _initialized_session() as sess:
@@ -1186,7 +1234,7 @@ class MakeLinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1., 2.], [5., 6.]]}
-      predictions = fc.make_linear_model(features, [price])
+      predictions = fc.linear_model(features, [price])
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
         self.assertAllClose([[0.], [0.]], price_var.eval())
@@ -1201,7 +1249,7 @@ class MakeLinearModelTest(test.TestCase):
           indices=[[0, 0], [1, 0], [1, 1]],
           dense_shape=[2, 2])
       features = {'wire_cast': wire_tensor}
-      predictions = fc.make_linear_model(
+      predictions = fc.linear_model(
           features, [wire_cast], sparse_combiner='mean')
       bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
@@ -1214,7 +1262,7 @@ class MakeLinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1., 2.], [5., 6.]]}
-      predictions = fc.make_linear_model(features, [price], units=3)
+      predictions = fc.linear_model(features, [price], units=3)
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
@@ -1229,7 +1277,7 @@ class MakeLinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      predictions = fc.make_linear_model(features, [price])
+      predictions = fc.linear_model(features, [price])
       with _initialized_session():
         with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
           predictions.eval()
@@ -1238,7 +1286,7 @@ class MakeLinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=[1, 2])
     with ops.Graph().as_default():
       features = {'price': [[[1., 2.]], [[5., 6.]]]}
-      predictions = fc.make_linear_model(features, [price])
+      predictions = fc.linear_model(features, [price])
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
@@ -1256,7 +1304,7 @@ class MakeLinearModelTest(test.TestCase):
           'price1': [[1., 2.], [5., 6.]],
           'price2': [[3.], [4.]]
       }
-      predictions = fc.make_linear_model(features, [price1, price2])
+      predictions = fc.linear_model(features, [price1, price2])
       bias = get_linear_model_bias()
       price1_var = get_linear_model_column_var(price1)
       price2_var = get_linear_model_column_var(price2)
@@ -1274,7 +1322,7 @@ class MakeLinearModelTest(test.TestCase):
     price = fc.numeric_column('price')
     with ops.Graph().as_default() as g:
       features = {'price': [[1.], [5.]]}
-      fc.make_linear_model(features, [price], weight_collections=['my-vars'])
+      fc.linear_model(features, [price], weight_collections=['my-vars'])
       my_vars = g.get_collection('my-vars')
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
@@ -1287,7 +1335,7 @@ class MakeLinearModelTest(test.TestCase):
       wire_tensor = sparse_tensor.SparseTensor(
           values=['omar'], indices=[[0, 0]], dense_shape=[1, 1])
       features = {'wire_cast': wire_tensor}
-      fc.make_linear_model(
+      fc.linear_model(
           features, [wire_cast], weight_collections=['my-vars'])
       my_vars = g.get_collection('my-vars')
       bias = get_linear_model_bias()
@@ -1299,7 +1347,7 @@ class MakeLinearModelTest(test.TestCase):
     price = fc.numeric_column('price')
     with ops.Graph().as_default() as g:
       features = {'price': [[1.], [5.]]}
-      fc.make_linear_model(features, [price])
+      fc.linear_model(features, [price])
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       trainable_vars = g.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
@@ -1312,7 +1360,7 @@ class MakeLinearModelTest(test.TestCase):
       wire_tensor = sparse_tensor.SparseTensor(
           values=['omar'], indices=[[0, 0]], dense_shape=[1, 1])
       features = {'wire_cast': wire_tensor}
-      fc.make_linear_model(features, [wire_cast])
+      fc.linear_model(features, [wire_cast])
       trainable_vars = g.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
       bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
@@ -1323,7 +1371,7 @@ class MakeLinearModelTest(test.TestCase):
     price = fc.numeric_column('price')
     with ops.Graph().as_default() as g:
       features = {'price': [[1.], [5.]]}
-      fc.make_linear_model(features, [price], trainable=False)
+      fc.linear_model(features, [price], trainable=False)
       trainable_vars = g.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
       self.assertEqual([], trainable_vars)
 
@@ -1333,7 +1381,7 @@ class MakeLinearModelTest(test.TestCase):
       wire_tensor = sparse_tensor.SparseTensor(
           values=['omar'], indices=[[0, 0]], dense_shape=[1, 1])
       features = {'wire_cast': wire_tensor}
-      fc.make_linear_model(features, [wire_cast], trainable=False)
+      fc.linear_model(features, [wire_cast], trainable=False)
       trainable_vars = g.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
       self.assertEqual([], trainable_vars)
 
@@ -1349,7 +1397,7 @@ class MakeLinearModelTest(test.TestCase):
               sparse_tensor.SparseTensor(
                   values=['omar'], indices=[[0, 0]], dense_shape=[1, 1])
       }
-      fc.make_linear_model(
+      fc.linear_model(
           features, [price_a, wire_cast, price_b],
           weight_collections=['my-vars'])
       my_vars = g.get_collection('my-vars')
@@ -1365,7 +1413,7 @@ class MakeLinearModelTest(test.TestCase):
               sparse_tensor.SparseTensor(
                   values=['omar'], indices=[[0, 0]], dense_shape=[1, 1])
       }
-      fc.make_linear_model(
+      fc.linear_model(
           features, [wire_cast, price_b, price_a],
           weight_collections=['my-vars'])
       my_vars = g.get_collection('my-vars')
@@ -1373,12 +1421,77 @@ class MakeLinearModelTest(test.TestCase):
       self.assertIn('price_b', my_vars[1].name)
       self.assertIn('wire_cast', my_vars[2].name)
 
+  def test_static_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[1.], [5.], [7.]],  # batchsize = 3
+          'price2': [[3.], [4.]]  # batchsize = 2
+      }
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+      fc.linear_model(features, [price1, price2])
+
+  def test_subset_of_static_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    price3 = fc.numeric_column('price3')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 3
+          'price2': [[3.], [4.]],  # batchsize = 2
+          'price3': [[3.], [4.], [5.]]  # batchsize = 3
+      }
+      with self.assertRaisesRegexp(
+          ValueError,
+          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+        fc.linear_model(features, [price1, price2, price3])
+
+  def test_runtime_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 3
+          'price2': [[3.], [4.]]  # batchsize = 2
+      }
+      predictions = fc.linear_model(features, [price1, price2])
+      with _initialized_session() as sess:
+        with self.assertRaisesRegexp(errors.OpError,
+                                     'must have the same size and shape'):
+          sess.run(
+              predictions, feed_dict={features['price1']: [[1.], [5.], [7.]]})
+
+  def test_runtime_batch_size_matches(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 2
+          'price2': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 2
+      }
+      predictions = fc.linear_model(features, [price1, price2])
+      with _initialized_session() as sess:
+        sess.run(
+            predictions,
+            feed_dict={
+                features['price1']: [[1.], [5.]],
+                features['price2']: [[1.], [5.]],
+            })
+
 
 class MakeInputLayerTest(test.TestCase):
 
+  def test_raises_if_empty_feature_columns(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'feature_columns must not be empty'):
+      fc.input_layer(features={}, feature_columns=[])
+
   def test_should_be_dense_column(self):
     with self.assertRaisesRegexp(ValueError, 'must be a _DenseColumn'):
-      fc.make_input_layer(
+      fc.input_layer(
           features={'a': [[0]]},
           feature_columns=[
               fc.categorical_column_with_hash_bucket('wire_cast', 4)
@@ -1387,13 +1500,13 @@ class MakeInputLayerTest(test.TestCase):
   def test_does_not_support_dict_columns(self):
     with self.assertRaisesRegexp(
         ValueError, 'Expected feature_columns to be iterable, found dict.'):
-      fc.make_input_layer(
+      fc.input_layer(
           features={'a': [[0]]}, feature_columns={'a': fc.numeric_column('a')})
 
   def test_raises_if_duplicate_name(self):
     with self.assertRaisesRegexp(
         ValueError, 'Duplicate feature column name found for columns'):
-      fc.make_input_layer(
+      fc.input_layer(
           features={'a': [[0]]},
           feature_columns=[fc.numeric_column('a'),
                            fc.numeric_column('a')])
@@ -1402,7 +1515,7 @@ class MakeInputLayerTest(test.TestCase):
     price = fc.numeric_column('price')
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      net = fc.make_input_layer(features, [price])
+      net = fc.input_layer(features, [price])
       with _initialized_session():
         self.assertAllClose([[1.], [5.]], net.eval())
 
@@ -1410,7 +1523,7 @@ class MakeInputLayerTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1., 2.], [5., 6.]]}
-      net = fc.make_input_layer(features, [price])
+      net = fc.input_layer(features, [price])
       with _initialized_session():
         self.assertAllClose([[1., 2.], [5., 6.]], net.eval())
 
@@ -1418,7 +1531,7 @@ class MakeInputLayerTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      net = fc.make_input_layer(features, [price])
+      net = fc.input_layer(features, [price])
       with _initialized_session():
         with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
           net.eval()
@@ -1427,7 +1540,7 @@ class MakeInputLayerTest(test.TestCase):
     price = fc.numeric_column('price', shape=[1, 2])
     with ops.Graph().as_default():
       features = {'price': [[[1., 2.]], [[5., 6.]]]}
-      net = fc.make_input_layer(features, [price])
+      net = fc.input_layer(features, [price])
       with _initialized_session():
         self.assertAllClose([[1., 2.], [5., 6.]], net.eval())
 
@@ -1439,7 +1552,7 @@ class MakeInputLayerTest(test.TestCase):
           'price1': [[1., 2.], [5., 6.]],
           'price2': [[3.], [4.]]
       }
-      net = fc.make_input_layer(features, [price1, price2])
+      net = fc.input_layer(features, [price1, price2])
       with _initialized_session():
         self.assertAllClose([[1., 2., 3.], [5., 6., 4.]], net.eval())
 
@@ -1451,8 +1564,8 @@ class MakeInputLayerTest(test.TestCase):
           'price_a': [[1.]],
           'price_b': [[3.]],
       }
-      net1 = fc.make_input_layer(features, [price_a, price_b])
-      net2 = fc.make_input_layer(features, [price_b, price_a])
+      net1 = fc.input_layer(features, [price_a, price_b])
+      net2 = fc.input_layer(features, [price_b, price_a])
       with _initialized_session():
         self.assertAllClose([[1., 3.]], net1.eval())
         self.assertAllClose([[1., 3.]], net2.eval())
@@ -1466,18 +1579,77 @@ class MakeInputLayerTest(test.TestCase):
                   indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
       }
       with self.assertRaisesRegexp(Exception, 'must be a _DenseColumn'):
-        fc.make_input_layer(features, [animal])
+        fc.input_layer(features, [animal])
+
+  def test_static_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[1.], [5.], [7.]],  # batchsize = 3
+          'price2': [[3.], [4.]]  # batchsize = 2
+      }
+      with self.assertRaisesRegexp(
+          ValueError,
+          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+        fc.input_layer(features, [price1, price2])
+
+  def test_subset_of_static_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    price3 = fc.numeric_column('price3')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 3
+          'price2': [[3.], [4.]],  # batchsize = 2
+          'price3': [[3.], [4.], [5.]]  # batchsize = 3
+      }
+      with self.assertRaisesRegexp(
+          ValueError,
+          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+        fc.input_layer(features, [price1, price2, price3])
+
+  def test_runtime_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 3
+          'price2': [[3.], [4.]]  # batchsize = 2
+      }
+      net = fc.input_layer(features, [price1, price2])
+      with _initialized_session() as sess:
+        with self.assertRaisesRegexp(errors.OpError,
+                                     'Dimensions of inputs should match'):
+          sess.run(net, feed_dict={features['price1']: [[1.], [5.], [7.]]})
+
+  def test_runtime_batch_size_matches(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 2
+          'price2': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 2
+      }
+      net = fc.input_layer(features, [price1, price2])
+      with _initialized_session() as sess:
+        sess.run(
+            net,
+            feed_dict={
+                features['price1']: [[1.], [5.]],
+                features['price2']: [[1.], [5.]],
+            })
 
 
 class MakeParseExampleSpecTest(test.TestCase):
 
   class _TestFeatureColumn(
       fc._FeatureColumn,
-      collections.namedtuple('_TestFeatureColumn', ['parse_config'])):
+      collections.namedtuple('_TestFeatureColumn', ['parse_spec'])):
 
     @property
-    def _parse_example_config(self):
-      return self.parse_config
+    def _parse_example_spec(self):
+      return self.parse_spec
 
   def test_no_feature_columns(self):
     actual = fc.make_parse_example_spec([])
@@ -1583,7 +1755,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
-    }, column._parse_example_config)
+    }, column._parse_example_spec)
 
   def test_all_constructor_args(self):
     column = fc.categorical_column_with_vocabulary_file(
@@ -1592,7 +1764,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
     self.assertEqual(7, column._num_buckets)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int32)
-    }, column._parse_example_config)
+    }, column._parse_example_spec)
 
   def test_deep_copy(self):
     original = fc.categorical_column_with_vocabulary_file(
@@ -1603,7 +1775,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
       self.assertEqual(7, column._num_buckets)
       self.assertEqual({
           'aaa': parsing_ops.VarLenFeature(dtypes.int32)
-      }, column._parse_example_config)
+      }, column._parse_example_spec)
 
   def test_vocabulary_file_none(self):
     with self.assertRaisesRegexp(ValueError, 'Missing vocabulary_file'):
@@ -1702,6 +1874,28 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         dense_shape=(2, 2))
     with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
       column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+
+  def test_parse_example(self):
+    a = fc.categorical_column_with_vocabulary_file(
+        key='aaa', vocabulary_file='path_to_file', vocabulary_size=3)
+    data = example_pb2.Example(features=feature_pb2.Features(
+        feature={
+            'aaa':
+                feature_pb2.Feature(bytes_list=feature_pb2.BytesList(
+                    value=[b'omar', b'stringer']))
+        }))
+    features = parsing_ops.parse_example(
+        serialized=[data.SerializeToString()],
+        features=fc.make_parse_example_spec([a]))
+    self.assertIn('aaa', features)
+    with self.test_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [0, 1]],
+              values=np.array([b'omar', b'stringer'], dtype=np.object_),
+              dense_shape=[1, 2]),
+          features['aaa'].eval())
 
   def test_get_sparse_tensors(self):
     column = fc.categorical_column_with_vocabulary_file(
@@ -1911,7 +2105,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
               dense_shape=inputs.dense_shape),
           id_weight_pair.id_tensor.eval())
 
-  def test_make_linear_model(self):
+  def test_linear_model(self):
     wire_column = fc.categorical_column_with_vocabulary_file(
         key='wire',
         vocabulary_file=self._wire_vocabulary_file_name,
@@ -1919,7 +2113,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         num_oov_buckets=1)
     self.assertEqual(4, wire_column._num_buckets)
     with ops.Graph().as_default():
-      predictions = fc.make_linear_model({
+      predictions = fc.linear_model({
           wire_column.name: sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1)),
               values=('marlo', 'skywalker', 'omar'),
@@ -1946,7 +2140,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.string)
-    }, column._parse_example_config)
+    }, column._parse_example_spec)
 
   def test_defaults_int(self):
     column = fc.categorical_column_with_vocabulary_list(
@@ -1955,7 +2149,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
-    }, column._parse_example_config)
+    }, column._parse_example_spec)
 
   def test_all_constructor_args(self):
     column = fc.categorical_column_with_vocabulary_list(
@@ -1964,7 +2158,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int32)
-    }, column._parse_example_config)
+    }, column._parse_example_spec)
 
   def test_deep_copy(self):
     original = fc.categorical_column_with_vocabulary_list(
@@ -1974,7 +2168,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
       self.assertEqual(3, column._num_buckets)
       self.assertEqual({
           'aaa': parsing_ops.VarLenFeature(dtypes.int32)
-      }, column._parse_example_config)
+      }, column._parse_example_spec)
 
   def test_invalid_dtype(self):
     with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
@@ -2040,6 +2234,50 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
       column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
 
+  def test_parse_example_string(self):
+    a = fc.categorical_column_with_vocabulary_list(
+        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+    data = example_pb2.Example(features=feature_pb2.Features(
+        feature={
+            'aaa':
+                feature_pb2.Feature(bytes_list=feature_pb2.BytesList(
+                    value=[b'omar', b'stringer']))
+        }))
+    features = parsing_ops.parse_example(
+        serialized=[data.SerializeToString()],
+        features=fc.make_parse_example_spec([a]))
+    self.assertIn('aaa', features)
+    with self.test_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [0, 1]],
+              values=np.array([b'omar', b'stringer'], dtype=np.object_),
+              dense_shape=[1, 2]),
+          features['aaa'].eval())
+
+  def test_parse_example_int(self):
+    a = fc.categorical_column_with_vocabulary_list(
+        key='aaa', vocabulary_list=(11, 21, 31))
+    data = example_pb2.Example(features=feature_pb2.Features(
+        feature={
+            'aaa':
+                feature_pb2.Feature(int64_list=feature_pb2.Int64List(
+                    value=[11, 21]))
+        }))
+    features = parsing_ops.parse_example(
+        serialized=[data.SerializeToString()],
+        features=fc.make_parse_example_spec([a]))
+    self.assertIn('aaa', features)
+    with self.test_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [0, 1]],
+              values=[11, 21],
+              dense_shape=[1, 2]),
+          features['aaa'].eval())
+
   def test_get_sparse_tensors(self):
     column = fc.categorical_column_with_vocabulary_list(
         key='aaa',
@@ -2059,6 +2297,24 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
               values=np.array((2, -1, 0), dtype=np.int64),
               dense_shape=inputs.dense_shape),
           id_weight_pair.id_tensor.eval())
+
+  def test_transform_feature(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=('omar', 'stringer', 'marlo'))
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=('marlo', 'skywalker', 'omar'),
+        dense_shape=(2, 2))
+    id_tensor = fc._transform_features({'aaa': inputs}, [column])[column]
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, -1, 0), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_tensor.eval())
 
   def test_get_sparse_tensors_weight_collections(self):
     column = fc.categorical_column_with_vocabulary_list(
@@ -2156,13 +2412,13 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
               dense_shape=(3, 3)),
           id_weight_pair.id_tensor.eval())
 
-  def test_make_linear_model(self):
+  def test_linear_model(self):
     wire_column = fc.categorical_column_with_vocabulary_list(
         key='aaa',
         vocabulary_list=('omar', 'stringer', 'marlo'))
     self.assertEqual(3, wire_column._num_buckets)
     with ops.Graph().as_default():
-      predictions = fc.make_linear_model({
+      predictions = fc.linear_model({
           wire_column.name: sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1)),
               values=('marlo', 'skywalker', 'omar'),
@@ -2188,7 +2444,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
-    }, column._parse_example_config)
+    }, column._parse_example_spec)
 
   def test_deep_copy(self):
     original = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
@@ -2197,7 +2453,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
       self.assertEqual(3, column._num_buckets)
       self.assertEqual({
           'aaa': parsing_ops.VarLenFeature(dtypes.int64)
-      }, column._parse_example_config)
+      }, column._parse_example_spec)
 
   def test_invalid_num_buckets_zero(self):
     with self.assertRaisesRegexp(ValueError, 'num_buckets 0 < 1'):
@@ -2226,6 +2482,27 @@ class IdentityCategoricalColumnTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Invalid input, not integer'):
       column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
 
+  def test_parse_example(self):
+    a = fc.categorical_column_with_identity(key='aaa', num_buckets=30)
+    data = example_pb2.Example(features=feature_pb2.Features(
+        feature={
+            'aaa':
+                feature_pb2.Feature(int64_list=feature_pb2.Int64List(
+                    value=[11, 21]))
+        }))
+    features = parsing_ops.parse_example(
+        serialized=[data.SerializeToString()],
+        features=fc.make_parse_example_spec([a]))
+    self.assertIn('aaa', features)
+    with self.test_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [0, 1]],
+              values=np.array([11, 21], dtype=np.int64),
+              dense_shape=[1, 2]),
+          features['aaa'].eval())
+
   def test_get_sparse_tensors(self):
     column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
     inputs = sparse_tensor.SparseTensorValue(
@@ -2243,6 +2520,22 @@ class IdentityCategoricalColumnTest(test.TestCase):
               values=np.array((0, 1, 0), dtype=np.int64),
               dense_shape=inputs.dense_shape),
           id_weight_pair.id_tensor.eval())
+
+  def test_transform_feature(self):
+    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)),
+        values=(0, 1, 0),
+        dense_shape=(2, 2))
+    id_tensor = fc._transform_features({'aaa': inputs}, [column])[column]
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((0, 1, 0), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_tensor.eval())
 
   def test_get_sparse_tensors_weight_collections(self):
     column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
@@ -2345,11 +2638,11 @@ class IdentityCategoricalColumnTest(test.TestCase):
               input_shape: (2, 2),
           }))
 
-  def test_make_linear_model(self):
+  def test_linear_model(self):
     column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
     self.assertEqual(3, column._num_buckets)
     with ops.Graph().as_default():
-      predictions = fc.make_linear_model({
+      predictions = fc.linear_model({
           column.name: sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1)),
               values=(0, 2, 1),
@@ -2411,7 +2704,7 @@ class TransformFeaturesTest(test.TestCase):
         return 'Anything'
 
       @property
-      def _parse_example_config(self):
+      def _parse_example_spec(self):
         pass
 
     with ops.Graph().as_default():
@@ -2489,7 +2782,7 @@ class IndicatorColumnTest(test.TestCase):
     with self.test_session():
       self.assertAllEqual([[0., 1., 1., 0.]], output.eval())
 
-  def test_indicator_column_deep_copy(self):
+  def test_deep_copy(self):
     a = fc.categorical_column_with_hash_bucket('a', 4)
     column = fc.indicator_column(a)
     column_copy = copy.deepcopy(column)
@@ -2497,7 +2790,45 @@ class IndicatorColumnTest(test.TestCase):
     self.assertEqual(column.name, 'a_indicator')
     self.assertEqual(column._variable_shape, [1, 4])
 
-  def test_make_linear_model(self):
+  def test_parse_example(self):
+    a = fc.categorical_column_with_vocabulary_list(
+        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+    a_indicator = fc.indicator_column(a)
+    data = example_pb2.Example(features=feature_pb2.Features(
+        feature={
+            'aaa':
+                feature_pb2.Feature(bytes_list=feature_pb2.BytesList(
+                    value=[b'omar', b'stringer']))
+        }))
+    features = parsing_ops.parse_example(
+        serialized=[data.SerializeToString()],
+        features=fc.make_parse_example_spec([a_indicator]))
+    self.assertIn('aaa', features)
+    with self.test_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [0, 1]],
+              values=np.array([b'omar', b'stringer'], dtype=np.object_),
+              dense_shape=[1, 2]),
+          features['aaa'].eval())
+
+  def test_transform(self):
+    a = fc.categorical_column_with_vocabulary_list(
+        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+    a_indicator = fc.indicator_column(a)
+    features = {
+        'aaa': sparse_tensor.SparseTensorValue(
+            indices=((0, 0), (1, 0), (1, 1)),
+            values=('marlo', 'skywalker', 'omar'),
+            dense_shape=(2, 2))
+    }
+    indicator_tensor = fc._transform_features(
+        features, [a_indicator])[a_indicator]
+    with _initialized_session():
+      self.assertAllEqual([[0, 0, 1], [1, 0, 0]], indicator_tensor.eval())
+
+  def test_linear_model(self):
     animal = fc.indicator_column(
         fc.categorical_column_with_identity('animal', num_buckets=4))
     with ops.Graph().as_default():
@@ -2507,7 +2838,7 @@ class IndicatorColumnTest(test.TestCase):
                   indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
       }
 
-      predictions = fc.make_linear_model(features, [animal])
+      predictions = fc.linear_model(features, [animal])
       weight_var = get_linear_model_column_var(animal)
       with _initialized_session():
         # All should be zero-initialized.
@@ -2516,7 +2847,7 @@ class IndicatorColumnTest(test.TestCase):
         weight_var.assign([[1.], [2.], [3.], [4.]]).eval()
         self.assertAllClose([[2. + 3.]], predictions.eval())
 
-  def test_make_input_layer(self):
+  def test_input_layer(self):
     animal = fc.indicator_column(
         fc.categorical_column_with_identity('animal', num_buckets=4))
     with ops.Graph().as_default():
@@ -2525,7 +2856,7 @@ class IndicatorColumnTest(test.TestCase):
               sparse_tensor.SparseTensor(
                   indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
       }
-      net = fc.make_input_layer(features, [animal])
+      net = fc.input_layer(features, [animal])
       with _initialized_session():
         self.assertAllClose([[0., 1., 1., 0.]], net.eval())
 
@@ -2551,7 +2882,7 @@ class EmbeddingColumnTest(test.TestCase):
         (embedding_dimension,), embedding_column._variable_shape)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
-    }, embedding_column._parse_example_config)
+    }, embedding_column._parse_example_spec)
 
   def test_all_constructor_args(self):
     categorical_column = fc.categorical_column_with_identity(
@@ -2575,7 +2906,7 @@ class EmbeddingColumnTest(test.TestCase):
         (embedding_dimension,), embedding_column._variable_shape)
     self.assertEqual({
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
-    }, embedding_column._parse_example_config)
+    }, embedding_column._parse_example_spec)
 
   def test_deep_copy(self):
     categorical_column = fc.categorical_column_with_identity(
@@ -2591,7 +2922,7 @@ class EmbeddingColumnTest(test.TestCase):
       self.assertEqual(3, embedding_column.categorical_column._num_buckets)
       self.assertEqual({
           'aaa': parsing_ops.VarLenFeature(dtypes.int64)
-      }, embedding_column.categorical_column._parse_example_config)
+      }, embedding_column.categorical_column._parse_example_spec)
 
       self.assertEqual(embedding_dimension, embedding_column.dimension)
       self.assertEqual('my_combiner', embedding_column.combiner)
@@ -2605,13 +2936,52 @@ class EmbeddingColumnTest(test.TestCase):
           (embedding_dimension,), embedding_column._variable_shape)
       self.assertEqual({
           'aaa': parsing_ops.VarLenFeature(dtypes.int64)
-      }, embedding_column._parse_example_config)
+      }, embedding_column._parse_example_spec)
 
   def test_invalid_initializer(self):
     categorical_column = fc.categorical_column_with_identity(
         key='aaa', num_buckets=3)
     with self.assertRaisesRegexp(ValueError, 'initializer must be callable'):
       fc.embedding_column(categorical_column, dimension=2, initializer='not_fn')
+
+  def test_parse_example(self):
+    a = fc.categorical_column_with_vocabulary_list(
+        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+    a_embedded = fc.embedding_column(a, dimension=2)
+    data = example_pb2.Example(features=feature_pb2.Features(
+        feature={
+            'aaa':
+                feature_pb2.Feature(bytes_list=feature_pb2.BytesList(
+                    value=[b'omar', b'stringer']))
+        }))
+    features = parsing_ops.parse_example(
+        serialized=[data.SerializeToString()],
+        features=fc.make_parse_example_spec([a_embedded]))
+    self.assertIn('aaa', features)
+    with self.test_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [0, 1]],
+              values=np.array([b'omar', b'stringer'], dtype=np.object_),
+              dense_shape=[1, 2]),
+          features['aaa'].eval())
+
+  def test_transform_feature(self):
+    a = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+    a_embedded = fc.embedding_column(a, dimension=2)
+    features = {
+        'aaa': sparse_tensor.SparseTensor(
+            indices=((0, 0), (1, 0), (1, 1)),
+            values=(0, 1, 0),
+            dense_shape=(2, 2))
+    }
+    outputs = fc._transform_features(features, [a, a_embedded])
+    output_a = outputs[a]
+    output_embedded = outputs[a_embedded]
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self, output_a.eval(), output_embedded.eval())
 
   def test_get_dense_tensor(self):
     # Inputs.
@@ -2880,7 +3250,7 @@ class EmbeddingColumnTest(test.TestCase):
       self.assertAllEqual(embedding_values, global_vars[0].eval())
       self.assertAllEqual(expected_lookups, embedding_lookup.eval())
 
-  def test_make_linear_model(self):
+  def test_linear_model(self):
     # Inputs.
     batch_size = 4
     vocabulary_size = 3
@@ -2911,13 +3281,13 @@ class EmbeddingColumnTest(test.TestCase):
         initializer=_initializer)
 
     with ops.Graph().as_default():
-      predictions = fc.make_linear_model({
+      predictions = fc.linear_model({
           categorical_column.name: sparse_input
       }, (embedding_column,))
       expected_var_names = (
-          'make_linear_model/bias_weights:0',
-          'make_linear_model/aaa_embedding/weights:0',
-          'make_linear_model/aaa_embedding/embedding_weights:0',
+          'linear_model/bias_weights:0',
+          'linear_model/aaa_embedding/weights:0',
+          'linear_model/aaa_embedding/embedding_weights:0',
       )
       self.assertItemsEqual(
           expected_var_names,
@@ -2927,11 +3297,11 @@ class EmbeddingColumnTest(test.TestCase):
               ops.GraphKeys.TRAINABLE_VARIABLES)
       }
       self.assertItemsEqual(expected_var_names, trainable_vars.keys())
-      bias = trainable_vars['make_linear_model/bias_weights:0']
+      bias = trainable_vars['linear_model/bias_weights:0']
       embedding_weights = trainable_vars[
-          'make_linear_model/aaa_embedding/embedding_weights:0']
+          'linear_model/aaa_embedding/embedding_weights:0']
       linear_weights = trainable_vars[
-          'make_linear_model/aaa_embedding/weights:0']
+          'linear_model/aaa_embedding/weights:0']
       with _initialized_session():
         # Predictions with all zero weights.
         self.assertAllClose(np.zeros((1,)), bias.eval())
@@ -2955,7 +3325,7 @@ class EmbeddingColumnTest(test.TestCase):
         # = [4*7 + 6*11, 4*2 + 6*3.5, 4*0 + 6*0, 4*3 + 6*5] = [94, 29, 0, 42]
         self.assertAllClose(((94.,), (29.,), (0.,), (42.,)), predictions.eval())
 
-  def test_make_input_layer(self):
+  def test_input_layer(self):
     # Inputs.
     vocabulary_size = 3
     sparse_input = sparse_tensor.SparseTensorValue(
@@ -3000,24 +3370,22 @@ class EmbeddingColumnTest(test.TestCase):
         initializer=_initializer)
 
     # Provide sparse input and get dense result.
-    input_layer = fc.make_input_layer({
-        'aaa': sparse_input
-    }, (embedding_column,))
+    input_layer = fc.input_layer({'aaa': sparse_input}, (embedding_column,))
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     self.assertItemsEqual(
-        ('make_input_layer/aaa_embedding/embedding_weights:0',),
+        ('input_layer/aaa_embedding/embedding_weights:0',),
         tuple([v.name for v in global_vars]))
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     self.assertItemsEqual(
-        ('make_input_layer/aaa_embedding/embedding_weights:0',),
+        ('input_layer/aaa_embedding/embedding_weights:0',),
         tuple([v.name for v in trainable_vars]))
     with _initialized_session():
       self.assertAllEqual(embedding_values, trainable_vars[0].eval())
       self.assertAllEqual(expected_lookups, input_layer.eval())
 
-  def test_make_input_layer_not_trainable(self):
+  def test_input_layer_not_trainable(self):
     # Inputs.
     vocabulary_size = 3
     sparse_input = sparse_tensor.SparseTensorValue(
@@ -3062,14 +3430,12 @@ class EmbeddingColumnTest(test.TestCase):
         initializer=_initializer, trainable=False)
 
     # Provide sparse input and get dense result.
-    input_layer = fc.make_input_layer({
-        'aaa': sparse_input
-    }, (embedding_column,))
+    input_layer = fc.input_layer({'aaa': sparse_input}, (embedding_column,))
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     self.assertItemsEqual(
-        ('make_input_layer/aaa_embedding/embedding_weights:0',),
+        ('input_layer/aaa_embedding/embedding_weights:0',),
         tuple([v.name for v in global_vars]))
     self.assertItemsEqual(
         [], ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
@@ -3084,34 +3450,34 @@ class WeightedCategoricalColumnTest(test.TestCase):
     column = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     self.assertEqual('ids_weighted_by_values', column.name)
     self.assertEqual(3, column._num_buckets)
     self.assertEqual({
         'ids': parsing_ops.VarLenFeature(dtypes.int64),
         'values': parsing_ops.VarLenFeature(dtypes.float32)
-    }, column._parse_example_config)
+    }, column._parse_example_spec)
 
   def test_deep_copy(self):
     """Tests deepcopy of categorical_column_with_hash_bucket."""
     original = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     for column in (original, copy.deepcopy(original)):
       self.assertEqual('ids_weighted_by_values', column.name)
       self.assertEqual(3, column._num_buckets)
       self.assertEqual({
           'ids': parsing_ops.VarLenFeature(dtypes.int64),
           'values': parsing_ops.VarLenFeature(dtypes.float32)
-      }, column._parse_example_config)
+      }, column._parse_example_spec)
 
   def test_invalid_dtype_none(self):
     with self.assertRaisesRegexp(ValueError, 'is not convertible to float'):
       fc.weighted_categorical_column(
           categorical_column=fc.categorical_column_with_identity(
               key='ids', num_buckets=3),
-          weight_column_name='values',
+          weight_feature_key='values',
           dtype=None)
 
   def test_invalid_dtype_string(self):
@@ -3119,14 +3485,14 @@ class WeightedCategoricalColumnTest(test.TestCase):
       fc.weighted_categorical_column(
           categorical_column=fc.categorical_column_with_identity(
               key='ids', num_buckets=3),
-          weight_column_name='values',
+          weight_feature_key='values',
           dtype=dtypes.string)
 
   def test_invalid_input_dtype(self):
     column = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     strings = sparse_tensor.SparseTensorValue(
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
@@ -3139,13 +3505,13 @@ class WeightedCategoricalColumnTest(test.TestCase):
       fc.weighted_categorical_column(
           categorical_column=fc.categorical_column_with_identity(
               key='aaa', num_buckets=3),
-          weight_column_name='aaa')._parse_example_config()
+          weight_feature_key='aaa')._parse_example_spec()
 
   def test_missing_weights(self):
     column = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     inputs = sparse_tensor.SparseTensorValue(
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
@@ -3154,11 +3520,45 @@ class WeightedCategoricalColumnTest(test.TestCase):
         ValueError, 'values is not in features dictionary'):
       fc._transform_features({'ids': inputs}, (column,))
 
-  def test_get_sparse_tensors(self):
+  def test_parse_example(self):
+    a = fc.categorical_column_with_vocabulary_list(
+        key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
+    a_weighted = fc.weighted_categorical_column(a, weight_feature_key='weights')
+    data = example_pb2.Example(features=feature_pb2.Features(
+        feature={
+            'aaa':
+                feature_pb2.Feature(bytes_list=feature_pb2.BytesList(
+                    value=[b'omar', b'stringer'])),
+            'weights':
+                feature_pb2.Feature(float_list=feature_pb2.FloatList(
+                    value=[1., 10.]))
+        }))
+    features = parsing_ops.parse_example(
+        serialized=[data.SerializeToString()],
+        features=fc.make_parse_example_spec([a_weighted]))
+    self.assertIn('aaa', features)
+    self.assertIn('weights', features)
+    with self.test_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [0, 1]],
+              values=np.array([b'omar', b'stringer'], dtype=np.object_),
+              dense_shape=[1, 2]),
+          features['aaa'].eval())
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [0, 1]],
+              values=np.array([1., 10.], dtype=np.float32),
+              dense_shape=[1, 2]),
+          features['weights'].eval())
+
+  def test_transform_features(self):
     column = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     inputs = sparse_tensor.SparseTensorValue(
         indices=((0, 0), (1, 0), (1, 1)),
         values=(0, 1, 0),
@@ -3187,11 +3587,11 @@ class WeightedCategoricalColumnTest(test.TestCase):
               dense_shape=weights.dense_shape),
           weight_tensor.eval())
 
-  def test_get_sparse_tensors_dense_input(self):
+  def test_transform_features_dense_input(self):
     column = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     weights = sparse_tensor.SparseTensorValue(
         indices=((0, 0), (1, 0), (1, 1)),
         values=(0.5, 1.0, 0.1),
@@ -3216,11 +3616,11 @@ class WeightedCategoricalColumnTest(test.TestCase):
               dense_shape=weights.dense_shape),
           weight_tensor.eval())
 
-  def test_get_sparse_tensors_dense_weights(self):
+  def test_transform_features_dense_weights(self):
     column = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     inputs = sparse_tensor.SparseTensorValue(
         indices=((0, 0), (1, 0), (1, 1)),
         values=(2, 1, 0),
@@ -3245,13 +3645,13 @@ class WeightedCategoricalColumnTest(test.TestCase):
               dense_shape=(2, 2)),
           weight_tensor.eval())
 
-  def test_make_linear_model(self):
+  def test_linear_model(self):
     column = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     with ops.Graph().as_default():
-      predictions = fc.make_linear_model({
+      predictions = fc.linear_model({
           'ids': sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1)),
               values=(0, 2, 1),
@@ -3273,15 +3673,15 @@ class WeightedCategoricalColumnTest(test.TestCase):
         # = 3*1 + 2*.1 = 3+.2 = 3.2
         self.assertAllClose(((.5,), (3.2,)), predictions.eval())
 
-  def test_make_linear_model_mismatched_shape(self):
+  def test_linear_model_mismatched_shape(self):
     column = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(
           ValueError, r'Dimensions.*are not compatible'):
-        fc.make_linear_model({
+        fc.linear_model({
             'ids': sparse_tensor.SparseTensorValue(
                 indices=((0, 0), (1, 0), (1, 1)),
                 values=(0, 2, 1),
@@ -3292,13 +3692,13 @@ class WeightedCategoricalColumnTest(test.TestCase):
                 dense_shape=(2, 2))
         }, (column,))
 
-  def test_make_linear_model_mismatched_dense_values(self):
+  def test_linear_model_mismatched_dense_values(self):
     column = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     with ops.Graph().as_default():
-      predictions = fc.make_linear_model({
+      predictions = fc.linear_model({
           'ids': sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1)),
               values=(0, 2, 1),
@@ -3309,13 +3709,13 @@ class WeightedCategoricalColumnTest(test.TestCase):
         with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
           predictions.eval()
 
-  def test_make_linear_model_mismatched_dense_shape(self):
+  def test_linear_model_mismatched_dense_shape(self):
     column = fc.weighted_categorical_column(
         categorical_column=fc.categorical_column_with_identity(
             key='ids', num_buckets=3),
-        weight_column_name='values')
+        weight_feature_key='values')
     with ops.Graph().as_default():
-      predictions = fc.make_linear_model({
+      predictions = fc.linear_model({
           'ids': sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1)),
               values=(0, 2, 1),
