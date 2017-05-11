@@ -8,7 +8,7 @@ licenses(["notice"])  # Apache 2.0
 web_library(
     name = "lodash",
     srcs = ["lodash.html"],
-    path = "/tf-imports-d3v4",
+    path = "/tf-imports",
     deps = ["@com_lodash"],
 )
 
@@ -46,7 +46,7 @@ web_library(
         "graphlib.html",
         "@io_github_cpettitt_graphlib",
     ],
-    path = "/tf-imports-d3v4",
+    path = "/tf-imports",
     deps = [":lodash"],
 )
 
@@ -56,7 +56,7 @@ web_library(
         "dagre.html",
         "@io_github_cpettitt_dagre",
     ],
-    path = "/tf-imports-d3v4",
+    path = "/tf-imports",
     deps = [
         ":graphlib",
         ":lodash",
