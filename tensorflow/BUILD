@@ -282,6 +282,7 @@ filegroup(
         "//tensorflow/core/grappler/costs:all_files",
         "//tensorflow/core/grappler/inputs:all_files",
         "//tensorflow/core/grappler/optimizers:all_files",
+        "//tensorflow/core/grappler/utils:all_files",
         "//tensorflow/core/kernels:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
         "//tensorflow/core/ops/compat:all_files",
