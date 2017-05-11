@@ -212,7 +212,9 @@ def make_input_layer(features,
       None, default_name='make_input_layer', values=features.values()):
     builder = _LazyBuilder(features)
     output_tensors = []
+    ordered_columns = []
     for column in sorted(feature_columns, key=lambda x: x.name):
+      ordered_columns.append(column)
       with variable_scope.variable_scope(None, default_name=column.name):
         tensor = column._get_dense_tensor(  # pylint: disable=protected-access
             builder,
@@ -222,6 +224,7 @@ def make_input_layer(features,
         batch_size = array_ops.shape(tensor)[0]
         tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
         output_tensors.append(tensor)
+    _verify_static_batch_size_equality(output_tensors, ordered_columns)
     return array_ops.concat(output_tensors, 1)
 
 
@@ -293,9 +296,11 @@ def make_linear_model(features,
   with variable_scope.variable_scope(
       None, default_name='make_linear_model', values=features.values()):
     weighted_sums = []
+    ordered_columns = []
     builder = _LazyBuilder(features)
     for column in sorted(feature_columns, key=lambda x: x.name):
       with variable_scope.variable_scope(None, default_name=column.name):
+        ordered_columns.append(column)
         if isinstance(column, _CategoricalColumn):
           weighted_sums.append(_create_categorical_column_weighted_sum(
               column, builder, units, sparse_combiner, weight_collections,
@@ -303,6 +308,7 @@ def make_linear_model(features,
         else:
           weighted_sums.append(_create_dense_column_weighted_sum(
               column, builder, units, weight_collections, trainable))
+    _verify_static_batch_size_equality(weighted_sums, ordered_columns)
     predictions_no_bias = math_ops.add_n(
         weighted_sums, name='weighted_sum_no_bias')
     bias = variable_scope.get_variable(
@@ -1495,12 +1501,15 @@ def _to_sparse_input(input_tensor, ignore_value=None):
 
 
 def _check_feature_columns(feature_columns):
+  """Verifies feature_columns input."""
   if isinstance(feature_columns, dict):
     raise ValueError('Expected feature_columns to be iterable, found dict.')
   for column in feature_columns:
     if not isinstance(column, _FeatureColumn):
       raise ValueError('Items of feature_columns must be a _FeatureColumn.'
                        'Given: {}.'.format(column))
+  if not feature_columns:
+    raise ValueError('feature_columns must not be empty.')
   name_to_column = dict()
   for column in feature_columns:
     if column.name in name_to_column:
@@ -2360,3 +2369,19 @@ class _IndicatorColumn(_DenseColumn,
     # Feature has been already transformed. Return the intermediate
     # representation created by _transform_feature.
     return inputs.get(self)
+
+
+def _verify_static_batch_size_equality(tensors, columns):
+  # bath_size is a tf.Dimension object.
+  expected_batch_size = None
+  for i in range(0, len(tensors)):
+    if tensors[i].shape[0].value is not None:
+      if expected_batch_size is None:
+        bath_size_column_index = i
+        expected_batch_size = tensors[i].shape[0]
+      elif not expected_batch_size.is_compatible_with(tensors[i].shape[0]):
+        raise ValueError(
+            'Batch size (first dimension) of each feature must be same. '
+            'Batch size of columns ({}, {}): ({}, {})'.format(
+                columns[bath_size_column_index].name, columns[i].name,
+                expected_batch_size, tensors[i].shape[0]))

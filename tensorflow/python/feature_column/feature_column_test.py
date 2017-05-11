@@ -1047,6 +1047,11 @@ def get_linear_model_column_var(column):
 
 class MakeLinearModelTest(test.TestCase):
 
+  def test_raises_if_empty_feature_columns(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'feature_columns must not be empty'):
+      fc.make_linear_model(features={}, feature_columns=[])
+
   def test_should_be_feature_column(self):
     with self.assertRaisesRegexp(ValueError, 'must be a _FeatureColumn'):
       fc.make_linear_model(
@@ -1417,8 +1422,73 @@ class MakeLinearModelTest(test.TestCase):
       self.assertIn('price_b', my_vars[1].name)
       self.assertIn('wire_cast', my_vars[2].name)
 
+  def test_static_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[1.], [5.], [7.]],  # batchsize = 3
+          'price2': [[3.], [4.]]  # batchsize = 2
+      }
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+      fc.make_linear_model(features, [price1, price2])
+
+  def test_subset_of_static_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    price3 = fc.numeric_column('price3')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 3
+          'price2': [[3.], [4.]],  # batchsize = 2
+          'price3': [[3.], [4.], [5.]]  # batchsize = 3
+      }
+      with self.assertRaisesRegexp(
+          ValueError,
+          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+        fc.make_linear_model(features, [price1, price2, price3])
+
+  def test_runtime_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 3
+          'price2': [[3.], [4.]]  # batchsize = 2
+      }
+      predictions = fc.make_linear_model(features, [price1, price2])
+      with _initialized_session() as sess:
+        with self.assertRaisesRegexp(errors.OpError,
+                                     'must have the same size and shape'):
+          sess.run(
+              predictions, feed_dict={features['price1']: [[1.], [5.], [7.]]})
+
+  def test_runtime_batch_size_matches(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 2
+          'price2': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 2
+      }
+      predictions = fc.make_linear_model(features, [price1, price2])
+      with _initialized_session() as sess:
+        sess.run(
+            predictions,
+            feed_dict={
+                features['price1']: [[1.], [5.]],
+                features['price2']: [[1.], [5.]],
+            })
+
 
 class MakeInputLayerTest(test.TestCase):
+
+  def test_raises_if_empty_feature_columns(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'feature_columns must not be empty'):
+      fc.make_input_layer(features={}, feature_columns=[])
 
   def test_should_be_dense_column(self):
     with self.assertRaisesRegexp(ValueError, 'must be a _DenseColumn'):
@@ -1511,6 +1581,65 @@ class MakeInputLayerTest(test.TestCase):
       }
       with self.assertRaisesRegexp(Exception, 'must be a _DenseColumn'):
         fc.make_input_layer(features, [animal])
+
+  def test_static_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[1.], [5.], [7.]],  # batchsize = 3
+          'price2': [[3.], [4.]]  # batchsize = 2
+      }
+      with self.assertRaisesRegexp(
+          ValueError,
+          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+        fc.make_input_layer(features, [price1, price2])
+
+  def test_subset_of_static_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    price3 = fc.numeric_column('price3')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 3
+          'price2': [[3.], [4.]],  # batchsize = 2
+          'price3': [[3.], [4.], [5.]]  # batchsize = 3
+      }
+      with self.assertRaisesRegexp(
+          ValueError,
+          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+        fc.make_input_layer(features, [price1, price2, price3])
+
+  def test_runtime_batch_size_mismatch(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 3
+          'price2': [[3.], [4.]]  # batchsize = 2
+      }
+      net = fc.make_input_layer(features, [price1, price2])
+      with _initialized_session() as sess:
+        with self.assertRaisesRegexp(errors.OpError,
+                                     'Dimensions of inputs should match'):
+          sess.run(net, feed_dict={features['price1']: [[1.], [5.], [7.]]})
+
+  def test_runtime_batch_size_matches(self):
+    price1 = fc.numeric_column('price1')
+    price2 = fc.numeric_column('price2')
+    with ops.Graph().as_default():
+      features = {
+          'price1': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 2
+          'price2': array_ops.placeholder(dtype=dtypes.int64),  # batchsize = 2
+      }
+      net = fc.make_input_layer(features, [price1, price2])
+      with _initialized_session() as sess:
+        sess.run(
+            net,
+            feed_dict={
+                features['price1']: [[1.], [5.]],
+                features['price2']: [[1.], [5.]],
+            })
 
 
 class MakeParseExampleSpecTest(test.TestCase):
