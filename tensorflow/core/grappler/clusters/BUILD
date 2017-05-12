@@ -30,6 +30,14 @@ alias(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+config_setting(
+    name = "xsmm",
+    licenses = ["notice"],
+    values = {
+        "define": "tensorflow_xsmm=1",
+    },
+)
+
 cc_library(
     name = "utils",
     srcs = ["utils.cc"],
@@ -38,11 +46,14 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//third_party/eigen3",
-    ],
+    ] + select({
+        ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
