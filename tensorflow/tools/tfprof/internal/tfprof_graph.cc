@@ -66,7 +66,7 @@ void TFGraph::Build() {
   }
 }
 
-const ShowNode* TFGraph::ShowInternal(const Options& opts) {
+const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
   // Search the nodes to start from.
   std::vector<GraphNode*> roots = roots_;
   if (opts.start_name_regexes.size() != 1 ||
@@ -81,11 +81,13 @@ const ShowNode* TFGraph::ShowInternal(const Options& opts) {
   std::map<string, int64> account_visits;
   Account({root}, opts, &account_visits);
 
-  if (opts.viz) {
-    printf("Visualizing feature disabled...\n");
-  }
   std::set<string> visits;
-  return PrintGraph({root}, opts, 1, 0, 0, &visits)[0];
+  root = PrintGraph({root}, opts, 1, 0, 0, &visits)[0];
+
+  if (timeline) {
+    timeline->GenerateGraphTimeline(root);
+  }
+  return root;
 }
 
 std::vector<GraphNode*> TFGraph::SearchRoot(
@@ -155,8 +157,14 @@ std::vector<GraphNode*> TFGraph::PrintGraph(const std::vector<GraphNode*> roots,
       show_cnodes = SortNodes(show_cnodes, opts);
       string children_str;
       for (GraphNode* sc : show_cnodes) {
-        children_str += sc->formatted_str;
-        node->mutable_proto()->add_children()->MergeFrom(sc->proto());
+        if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
+          children_str += sc->formatted_str;
+          sc->formatted_str.clear();
+        }
+        // This swap and reinit pattern is critical for performance.
+        node->mutable_proto()->add_children()->Swap(sc->mutable_proto());
+        sc->ReInit();
+        node->show_children.push_back(sc);
         if (opts.account_displayed_op_only) {
           node->AggregateTotalStats(sc);
         }
@@ -181,7 +189,6 @@ std::vector<GraphNode*> TFGraph::PrintGraph(const std::vector<GraphNode*> roots,
           node->formatted_str += value_str;
         }
       }
-
       node->formatted_str += children_str;
       show_nodes.push_back(node);
     } else {

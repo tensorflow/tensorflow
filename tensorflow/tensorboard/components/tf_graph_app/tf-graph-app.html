@@ -120,6 +120,8 @@ Polymer({
   },
   _updateGraph: function() {
     var blob = new Blob([this.pbtxt]);
+
+    // TODO(chizeng): Find out why we call a private method here and do away with the call.
     this.$.loader._parseAndConstructHierarchicalGraph(null, blob);
   }
 });

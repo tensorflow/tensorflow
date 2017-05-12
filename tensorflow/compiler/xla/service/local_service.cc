@@ -77,21 +77,6 @@ LocalService::LocalService(std::unique_ptr<Backend> execute_backend,
   runs_in_client_process_ = true;
 }
 
-tensorflow::Status LocalService::ResolveArguments(
-    const tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-    int device_ordinal,
-    std::vector<perftools::gputools::DeviceMemoryBase>* argument_ptrs) {
-  TF_ASSIGN_OR_RETURN(std::vector<const Allocation*> arg_allocations,
-                      ResolveAndValidateArguments(
-                          arguments, execute_backend_.get(), device_ordinal));
-  argument_ptrs->resize(arg_allocations.size());
-  for (int i = 0; i < arguments.size(); ++i) {
-    const Allocation& allocation = *arg_allocations[i];
-    (*argument_ptrs)[i] = allocation.device_memory();
-  }
-  return tensorflow::Status::OK();
-}
-
 namespace {
 // Returns the space required to allocate a shape. If
 // allocate_space_for_deep_copy the space includes all sub-buffers of
