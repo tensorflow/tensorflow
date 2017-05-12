@@ -215,7 +215,7 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul' \
 --outputs='softmax' \
---transforms='\
+--transforms='
   strip_unused_nodes(type=float, shape="1,299,299,3")
   fold_constants(ignore_errors=true)
   fold_batch_norms
@@ -431,12 +431,11 @@ graph:
 ```bash
 bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
---logtostderr \
 --in_graph=/tmp/quantized_inception.pb \
 --out_graph=/tmp/logged_quantized_inception.pb \
 --inputs=Mul \
 --outputs=softmax \
---transforms='\
+--transforms='
 insert_logging(op=RequantizationRange, show_name=true, message="__requant_min_max:")\
 '
 ```
@@ -450,12 +449,10 @@ log:
 bazel build tensorflow/examples/label_image:label_image
 bazel-bin/tensorflow/examples/label_image/label_image \
 --image=${HOME}/Downloads/grace_hopper.jpg \
---logtostderr \
 --input_layer=Mul \
 --output_layer=softmax \
 --graph=/tmp/logged_quantized_inception.pb \
 --labels=${HOME}/Downloads/imagenet_comp_graph_label_strings.txt \
---logtostderr \
 2>/tmp/min_max_log_small.txt
 ```
 
