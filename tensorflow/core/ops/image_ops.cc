@@ -577,7 +577,7 @@ decoded image.
 
 Accepted values are:
 
-*   0: Use the number of channels in the PNG-encoded image.
+*   0: Use the number of channels in the BMP-encoded image.
 *   3: output an RGB image.
 *   4: output an RGBA image.
 
