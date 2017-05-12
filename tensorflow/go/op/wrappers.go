@@ -5177,7 +5177,10 @@ func HSVToRGB(scope *Scope, images tf.Output) (output tf.Output) {
 // GIF with frame or transparency compression are not supported
 // convert animated GIF from compressed to uncompressed by:
 //
-// convert $src.gif -coalesce $dst.gif
+//     convert $src.gif -coalesce $dst.gif
+//
+// This op also supports decoding JPEGs and PNGs, though it is cleaner to use
+// `tf.image.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The GIF-encoded image.
@@ -5232,6 +5235,9 @@ func DecodePngDtype(value tf.DataType) DecodePngAttr {
 //
 // If needed, the PNG-encoded image is transformed to match the requested number
 // of color channels.
+//
+// This op also supports decoding JPEGs and non-animated GIFs since the interface
+// is the same, though it is cleaner to use `tf.image.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The PNG-encoded image.
@@ -5374,6 +5380,9 @@ func DecodeJpegDctMethod(value string) DecodeJpegAttr {
 // The attr `ratio` allows downscaling the image by an integer factor during
 // decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
 // downscaling the image later.
+//
+// This op also supports decoding PNGs and non-animated GIFs since the interface is
+// the same, though it is cleaner to use `tf.image.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The JPEG-encoded image.
