@@ -158,14 +158,6 @@ class LocalClient : public Client {
   LocalClient(const LocalClient&) = delete;
   void operator=(const LocalClient&) = delete;
 
-  // For an array of arguments held on the local service, validate
-  // that each is placed on the specified device_ordinal, and return
-  // the DeviceMemoryBase corresponding to each argument.
-  tensorflow::Status ResolveArguments(
-      const tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-      int device_ordinal,
-      std::vector<perftools::gputools::DeviceMemoryBase>* argument_ptrs);
-
   // Return a handle to a buffer large enough to hold shape, allocated
   // on device_ordinal on the local service. If
   // allocate_space_for_deep_copy, the buffer is large enough to hold

@@ -19,8 +19,10 @@ from __future__ import print_function
 
 from tensorflow.contrib import framework as contrib_framework
 
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 
 from tensorflow.contrib.tensor_forest.client import eval_metrics
 from tensorflow.contrib.tensor_forest.python import tensor_forest
@@ -145,14 +147,28 @@ def get_model_fn(params,
     graph_builder = graph_builder_class(params,
                                         device_assigner=dev_assn)
     inference = {}
+    output_alternatives = None
     if (mode == model_fn_lib.ModeKeys.EVAL or
         mode == model_fn_lib.ModeKeys.INFER):
       inference[eval_metrics.INFERENCE_PROB_NAME] = (
           graph_builder.inference_graph(features))
 
-      if not params.regression:
+      if params.regression:
+        predictions = {
+            None: inference[eval_metrics.INFERENCE_PROB_NAME]}
+        output_alternatives = {
+            None: (constants.ProblemType.LINEAR_REGRESSION, predictions)}
+      else:
         inference[eval_metrics.INFERENCE_PRED_NAME] = math_ops.argmax(
             inference[eval_metrics.INFERENCE_PROB_NAME], 1)
+
+        predictions = {
+            prediction_key.PredictionKey.PROBABILITIES:
+                inference[eval_metrics.INFERENCE_PROB_NAME],
+            prediction_key.PredictionKey.CLASSES:
+                inference[eval_metrics.INFERENCE_PRED_NAME]}
+        output_alternatives = {
+            None: (constants.ProblemType.CLASSIFICATION, predictions)}
 
       if report_feature_importances:
         inference[eval_metrics.FEATURE_IMPORTANCE_NAME] = (
@@ -205,7 +221,8 @@ def get_model_fn(params,
         loss=training_loss,
         train_op=training_graph,
         training_hooks=training_hooks,
-        scaffold=scaffold)
+        scaffold=scaffold,
+        output_alternatives=output_alternatives)
 
   return _model_fn
 

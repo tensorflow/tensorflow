@@ -20,20 +20,22 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
+// Notes about start and end time from the NodeExecStats proto.
+// For GPU, there is no difference between op_end_rel_micros and
+// all_end_rel_micros. All are kernel times.
+// For CPU, op_end_rel is the kernel time, while all_end_rel_micros includes
+// some post-processing.
+// Here, we only consider kernel time for simplicity.
 void TFGraphNode::AddStepStat(const string& device,
                               const NodeExecStats* step_stat) {
-  if (!device.empty()) {
-    // This might override device from GraphDef.
-    device_ = device;
-  }
   step_stat_ = step_stat;
+  CHECK(step_stat_);
 
-  op_start_micros_ = step_stat_->all_start_micros();
-  if (step_stat_->op_end_rel_micros() && step_stat_->op_start_rel_micros()) {
-    op_schedule_micros_ =
-        step_stat_->op_end_rel_micros() - step_stat_->op_start_rel_micros();
-  }
-  all_spent_micros_ = step_stat_->all_end_rel_micros();
+  string dev = str_util::Lowercase(device);
+
+  devices_.insert(dev);
+  op_kernel_execs_[dev].push_back(std::make_pair(
+      step_stat_->all_start_micros(), step_stat_->op_end_rel_micros()));
 
   for (const auto& output : step_stat_->output()) {
     if (output.has_tensor_description() &&
@@ -43,10 +45,6 @@ void TFGraphNode::AddStepStat(const string& device,
                               .requested_bytes();
     }
   }
-}
-
-void TFGraphNode::AddNodeStat(const CostGraphDef::Node* cost_node) {
-  kernel_compute_micros_ = cost_node->compute_cost();
 }
 }  // namespace tfprof
 }  // namespace tensorflow

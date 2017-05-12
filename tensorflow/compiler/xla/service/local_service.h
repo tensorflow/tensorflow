@@ -43,14 +43,6 @@ class LocalService : public Service {
   static StatusOr<std::unique_ptr<LocalService>> NewService(
       const ServiceOptions& options);
 
-  // For an array of arguments, validate that each is placed on the
-  // specified device_ordinal, and return the DeviceMemoryBase
-  // corresponding to each argument.
-  tensorflow::Status ResolveArguments(
-      const tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-      int device_ordinal,
-      std::vector<perftools::gputools::DeviceMemoryBase>* argument_ptrs);
-
   // Return a handle to a buffer large enough to hold shape, allocated
   // on device_ordinal. If allocate_space_for_deep_copy, the buffer is
   // large enough to hold all sub-buffers of a tuple shape, otherwise

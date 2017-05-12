@@ -21,12 +21,27 @@ cc_library(
         ":tfprof_options",
         ":tfprof_scope",
         ":tfprof_show",
+        ":tfprof_timeline",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/tools/tfprof:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "tfprof_timeline",
+    srcs = ["tfprof_timeline.cc"],
+    hdrs = ["tfprof_timeline.h"],
+    deps = [
+        ":tfprof_node_show",
+        ":tfprof_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tools/tfprof:protos_all_cc",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
@@ -71,7 +86,7 @@ cc_library(
         ":tfprof_node",
         ":tfprof_options",
         ":tfprof_show_code",
-        ":tfprof_tensor",
+        ":tfprof_timeline",
         ":tfprof_utils",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
@@ -93,11 +108,27 @@ cc_library(
         ":tfprof_options",
         ":tfprof_show",
         ":tfprof_tensor",
+        ":tfprof_timeline",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
+        "//tensorflow/tools/tfprof:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "tfprof_node_show",
+    srcs = ["tfprof_node_show.cc"],
+    hdrs = ["tfprof_node_show.h"],
+    deps = [
+        ":tfprof_constants",
+        ":tfprof_node",
+        ":tfprof_options",
+        ":tfprof_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/tools/tfprof:protos_all_cc",
     ],
 )
@@ -109,8 +140,10 @@ cc_library(
     deps = [
         ":tfprof_constants",
         ":tfprof_node",
+        ":tfprof_node_show",
         ":tfprof_options",
         ":tfprof_tensor",
+        ":tfprof_timeline",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
@@ -127,10 +160,12 @@ cc_library(
     deps = [
         ":tfprof_constants",
         ":tfprof_node",
+        ":tfprof_node_show",
         ":tfprof_options",
         ":tfprof_scope",
         ":tfprof_show",
         ":tfprof_tensor",
+        ":tfprof_timeline",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:lib",
@@ -157,6 +192,27 @@ tf_cc_test(
         ":tfprof_stats",
         ":tfprof_utils",
         "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/tools/tfprof:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "tfprof_timeline_test",
+    srcs = ["tfprof_timeline_test.cc"],
+    data = [
+        "testdata/graph.pbtxt",
+        "testdata/run_meta",
+    ],
+    deps = [
+        ":tfprof_constants",
+        ":tfprof_options",
+        ":tfprof_stats",
+        ":tfprof_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
