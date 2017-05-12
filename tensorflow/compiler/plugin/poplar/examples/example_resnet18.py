@@ -6,77 +6,67 @@
 import tensorflow as tf
 import numpy as np
 
-def _get_variable(name, shape, initializer, dtype=tf.float32):
+def _get_variable(name, shape, init, dtype=tf.float32):
+  return tf.get_variable(name, shape, initializer=init, dtype=dtype)
 
-  return tf.get_variable(name,
-                         shape=shape,
-                         initializer=initializer,
-                         dtype=dtype)
 def inference(x):
 
-  with tf.variable_scope('scale1', use_resource=True):
+  with tf.variable_scope('all', use_resource=True):
     x = conv(x, 7, 2, 64)
     x = tf.nn.relu(x)
-
-  with tf.variable_scope('max_pool', use_resource=True):
     x = max_pool(x, ksize=3, stride=2)
-
-  with tf.variable_scope('scale2-1', use_resource=True):
-    x = block(x, 1, 64)
-
-  with tf.variable_scope('scale3-1', use_resource=True):
-    x = block(x, 2, 128)
-
-  with tf.variable_scope('scale4-1', use_resource=True):
-    x = block(x, 2, 256)
-
-  with tf.variable_scope('scale5-1', use_resource=True):
-    x = block(x, 2, 512)
-
-  x = tf.reduce_mean(x, reduction_indices=[1, 2])
-
-  with tf.variable_scope('fc', use_resource=True):
-    x = fc(x, 1000)
+    x = block("b1", 64, 1, 2, x)
+    x = block("b2", 128, 2, 2, x)
+    x = block("b3", 256, 2, 2, x)
+    x = block("b4", 512, 2, 2, x)
+    x = tf.reduce_mean(x, reduction_indices=[1, 2])
+    x = fc("fc1", x, 1000)
 
   return x
 
 
-def block(x, first_stride, out_filters):
-  shape_in = x.get_shape()
+def block(name, out_filters, first_stride, count, x):
 
-  shortcut = x
+  for i in range(count):
+    shortcut = x
+    shape_in = x.get_shape()
+    stride = (first_stride if (i==0) else 1)
 
-  with tf.variable_scope('a', use_resource=True):
-    x = conv(x, 3, first_stride, out_filters)
-    x = tf.nn.relu(x)
+    with tf.variable_scope(name + "/" + str(i) + "/1", use_resource=True):
+      x = conv(x, 3, stride, out_filters)
+      x = tf.nn.relu(x)
 
-  with tf.variable_scope('b', use_resource=True):
-    x = conv(x, 3, 1, out_filters)
+    with tf.variable_scope(name + "/" + str(i) + "/2", use_resource=True):
+      x = conv(x, 3, 1, out_filters)
 
-  with tf.variable_scope('shortcut', use_resource=True):
-    if (first_stride != 1):
-      shortcut = tf.strided_slice(shortcut, [0,0,0,0], shortcut.get_shape(),
-                                  strides=[1, first_stride, first_stride, 1])
-    pad = int(x.get_shape()[3] - shape_in[3])
-    if (pad != 0):
-      shortcut = tf.pad(shortcut, paddings=[[0,0],[0,0],[0,0],[0,pad]])
+      # shortcut
+      if (stride != 1):
+        shortcut = tf.strided_slice(shortcut, [0,0,0,0], shortcut.get_shape(),
+                                    strides=[1, stride, stride, 1])
+      pad = int(x.get_shape()[3] - shape_in[3])
+      if (pad != 0):
+        shortcut = tf.pad(shortcut, paddings=[[0,0],[0,0],[0,0],[0,pad]])
 
-  return tf.nn.relu(x + shortcut)
+      x = tf.nn.relu(x + shortcut)
+
+  return x
 
 
 
-def fc(x, num_units_out):
+def fc(name, x, num_units_out):
   num_units_in = x.get_shape()[1]
   weights_initializer = tf.truncated_normal_initializer(stddev=0.01)
 
-  weights = _get_variable('weights', shape=[num_units_in, num_units_out],
-                          initializer=weights_initializer)
-  biases = _get_variable('biases', shape=[num_units_out],
-                         initializer=tf.constant_initializer(0.0))
+  with tf.variable_scope(name, use_resource=True):
+    weights = _get_variable('weights', shape=[num_units_in, num_units_out],
+                            init=weights_initializer)
+    biases = _get_variable('biases', shape=[num_units_out],
+                           init=tf.constant_initializer(0.0))
 
-  x = tf.nn.xw_plus_b(x, weights, biases)
+    x = tf.nn.xw_plus_b(x, weights, biases)
 
   return x
+
 
 def conv(x, ksize, stride, filters_out):
 
@@ -84,11 +74,8 @@ def conv(x, ksize, stride, filters_out):
   shape = [ksize, ksize, filters_in, filters_out]
   initializer = tf.truncated_normal_initializer(stddev=0.1)
 
-  weights = _get_variable('weights', shape=shape, initializer=initializer)
-  return tf.nn.conv2d(x,
-                      weights,
-                      [1, stride, stride, 1],
-                      padding='SAME')
+  weights = _get_variable('weights', shape=shape, init=initializer)
+  return tf.nn.conv2d(x, weights, [1, stride, stride, 1], padding='SAME')
 
 
 def max_pool(x, ksize=3, stride=2):
