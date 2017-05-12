@@ -10,9 +10,30 @@
 
 using namespace poplar;
 
-#define IN_PLACE_UPDATE(NAME, EXP) \
+#define BINARY_ELEMENTWISE(NAME, EXP) \
 template<typename T> \
 class NAME : public Vertex { \
+public: \
+  Input<Vector<T>> a; \
+  Input<Vector<T>> b; \
+  Output<Vector<T>> out; \
+\
+  bool compute() { \
+    for (unsigned i = 0; i < a.size(); ++i) { \
+      out[i] = (EXP); \
+    } \
+    return true; \
+  } \
+\
+  int getCycleEstimate() const { return 1; } \
+}; \
+\
+template class NAME<float>; \
+template class NAME<half>; \
+template class NAME<int>; \
+\
+template<typename T> \
+class NAME##InPlace : public Vertex { \
 public: \
   InOut<Vector<T>> a; \
   Input<Vector<T>> b; \
@@ -27,15 +48,82 @@ public: \
   int getCycleEstimate() const { return 1; } \
 }; \
 \
-template class NAME<float>; \
-template class NAME<half>; \
-template class NAME<int>;
+template class NAME##InPlace<float>; \
+template class NAME##InPlace<half>; \
+template class NAME##InPlace<int>;
 
 // General math
-IN_PLACE_UPDATE(AddInPlace, a[i] + b[i])
-IN_PLACE_UPDATE(MulInPlace, a[i] * b[i])
-IN_PLACE_UPDATE(SubInPlace, a[i] - b[i])
+BINARY_ELEMENTWISE(Add, a[i] + b[i])
+BINARY_ELEMENTWISE(Div, a[i] / b[i])
+BINARY_ELEMENTWISE(Maximum, a[i] > b[i] ? a[i] : b[i])
+BINARY_ELEMENTWISE(Minimum, a[i] < b[i] ? a[i] : b[i])
+BINARY_ELEMENTWISE(Mul, a[i] * b[i])
+BINARY_ELEMENTWISE(Pow, pow(a[i], b[i]))
+BINARY_ELEMENTWISE(Remainder, fmod(a[i], b[i]))
+BINARY_ELEMENTWISE(Sub, a[i] - b[i])
 
+
+// Predicates
+#define PREDICATE_ELEMENTWISE(NAME, EXP) \
+template<typename T> \
+class NAME : public Vertex { \
+public: \
+  Input<Vector<T>> a; \
+  Input<Vector<T>> b; \
+  Output<Vector<bool>> out; \
+\
+  bool compute() { \
+    bool res=true; \
+    for (unsigned i = 0; i < a.size(); ++i) { \
+      out[i] = (EXP); \
+      res = res & out[i]; \
+    } \
+    return res; \
+  } \
+\
+  int getCycleEstimate() const { return 1; } \
+};  \
+\
+template class NAME<float>; \
+template class NAME<half>; \
+template class NAME<int>; \
+template class NAME<bool>;
+
+
+// Predicates
+PREDICATE_ELEMENTWISE(EqualTo, a[i] == b[i])
+PREDICATE_ELEMENTWISE(NotEqual, a[i] != b[i])
+PREDICATE_ELEMENTWISE(LessEqual, a[i] <= b[i])
+PREDICATE_ELEMENTWISE(LessThan, a[i] < b[i])
+PREDICATE_ELEMENTWISE(GreaterEqual, a[i] >= b[i])
+PREDICATE_ELEMENTWISE(GreaterThan, a[i] > b[i])
+
+// Logical binary
+#define LOGICAL_BINARY_ELEMENTWISE(NAME, EXP) \
+template<typename T> \
+class NAME : public Vertex { \
+public: \
+  Input<Vector<bool>> a; \
+  Input<Vector<bool>> b; \
+  Output<Vector<bool>> out; \
+\
+  bool compute() { \
+    bool res=true; \
+    for (unsigned i = 0; i < a.size(); ++i) { \
+      out[i] = (EXP); \
+      res = res & out[i]; \
+    } \
+    return res; \
+  } \
+\
+  int getCycleEstimate() const { return 1; } \
+}; \
+\
+template class NAME<bool>;
+
+// Predicates
+LOGICAL_BINARY_ELEMENTWISE(LogicalAnd, a[i] && b[i])
+LOGICAL_BINARY_ELEMENTWISE(LogicalOr, a[i] || b[i])
 
 // Clamp
 template <typename T>
@@ -144,6 +232,62 @@ public:
 template class RandomNormal<float>;
 template class RandomNormal<half>;
 
+
+
+#define UNARY_ELEMENTWISE(NAME, EXP) \
+template<typename T> \
+class NAME : public Vertex { \
+public: \
+  Input<Vector<T>> a; \
+  Output<Vector<T>> out; \
+\
+  bool compute() { \
+    for (unsigned i = 0; i < a.size(); ++i) { \
+      out[i] = (EXP); \
+    } \
+    return true; \
+  } \
+\
+  int getCycleEstimate() const { return 1; } \
+}; \
+\
+template class NAME<float>; \
+template class NAME<half>; \
+template class NAME<int>;
+
+UNARY_ELEMENTWISE(Abs, std::abs(a[i]))
+UNARY_ELEMENTWISE(Ceil, ceil(a[i]))
+UNARY_ELEMENTWISE(Exp, exp(a[i]))
+UNARY_ELEMENTWISE(Floor, floor(a[i]))
+UNARY_ELEMENTWISE(Log, log(a[i]))
+UNARY_ELEMENTWISE(Neg, -a[i])
+UNARY_ELEMENTWISE(Sign, (a[i] > (T)0) ? (T)1 : ((a[i] < (T)0) ? (T)-1 : (T)0))
+UNARY_ELEMENTWISE(Tanh, tanh(a[i]))
+
+// Logical unary
+#define LOGICAL_UNNARY_ELEMENTWISE(NAME, EXP) \
+template<typename T> \
+class NAME : public Vertex { \
+public: \
+  Input<Vector<bool>> a; \
+  Output<Vector<bool>> out; \
+\
+  bool compute() { \
+    bool res=true; \
+    for (unsigned i = 0; i < a.size(); ++i) { \
+      out[i] = (EXP); \
+      res = res & out[i]; \
+    } \
+    return res; \
+  } \
+\
+  int getCycleEstimate() const { return 1; } \
+}; \
+\
+template class NAME<bool>;
+
+// Predicates
+LOGICAL_UNNARY_ELEMENTWISE(LogicalNot, !a[i])
 
 template<typename T>
 class ScalarSelect : public Vertex {

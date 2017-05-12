@@ -15,83 +15,91 @@
 #include <poplar/Engine.hpp>
 
 #include <popstd/Cast.hpp>
-#include <popstd/Operations.hpp>
 #include <poplin/MatMul.hpp>
 
 namespace xla {
 namespace poplarplugin {
-
-typedef poplar::Tensor (*unary_fn)(poplar::Graph&,
-                                   poplar::Tensor,
-                                   poplar::program::Sequence&,
-                                   const std::string&);
-
-typedef poplar::Tensor (*binary_fn)(poplar::Graph&,
-                                    poplar::Tensor,
-                                    poplar::Tensor,
-                                    poplar::program::Sequence&,
-                                    const std::string&);
 
 static const std::string a_conn("a");
 static const std::string b_conn("b");
 static const std::string c_conn("c");
 static const std::string out_conn("out");
 
-#define POPLAR_OPCODE(O, N) case HloOpcode::O: return N;
+#define POPLAR_OPCODE(O, N) case HloOpcode::O: return std::string(N)
+#define UNUSED_OPCODE(O) case HloOpcode::O: break;
 
-static port::StatusOr<unary_fn> GetPoplarUnaryFn(HloOpcode opcode) {
+// NOTE 'Unused' Opcodes are implemented as a fixed function in the visitor
+static port::StatusOr<std::string>
+LookupPoplarVertexName(HloOpcode opcode) {
   switch (opcode) {
-    POPLAR_OPCODE(kAbs, popstd::abs);
-    POPLAR_OPCODE(kCeil, popstd::ceil);
-    POPLAR_OPCODE(kExp, popstd::exp);
-    POPLAR_OPCODE(kFloor, popstd::floor);
-    POPLAR_OPCODE(kLog, popstd::log);
-    POPLAR_OPCODE(kLogicalNot, popstd::logicalNot);
-    POPLAR_OPCODE(kNegate, popstd::neg);
-    POPLAR_OPCODE(kSign, popstd::signum);
-    POPLAR_OPCODE(kTanh, popstd::tanh);
-    default:
-      return port::Status(port::error::UNKNOWN,
-                          port::StrCat("[Poplar] Invalid opcode lookup ",
-                                       HloOpcodeString(opcode)));
+    POPLAR_OPCODE(kAbs, "Abs");
+    POPLAR_OPCODE(kAdd, "Add");
+    UNUSED_OPCODE(kBitcast);
+    UNUSED_OPCODE(kBroadcast);
+    UNUSED_OPCODE(kCall);
+    POPLAR_OPCODE(kCeil, "Ceil");
+    POPLAR_OPCODE(kClamp, "");
+    UNUSED_OPCODE(kConcatenate);
+    UNUSED_OPCODE(kConstant);
+    UNUSED_OPCODE(kConvert);
+    UNUSED_OPCODE(kConvolution);
+    UNUSED_OPCODE(kCopy);
+    POPLAR_OPCODE(kCrossReplicaSum, "");
+    UNUSED_OPCODE(kCustomCall);
+    POPLAR_OPCODE(kDivide, "Div");
+    UNUSED_OPCODE(kDot);
+    UNUSED_OPCODE(kDynamicSlice);
+    UNUSED_OPCODE(kDynamicUpdateSlice);
+    POPLAR_OPCODE(kEq, "EqualTo");
+    POPLAR_OPCODE(kExp, "Exp");
+    POPLAR_OPCODE(kFloor, "Floor");
+    POPLAR_OPCODE(kFusion, "");
+    POPLAR_OPCODE(kGe, "GreaterEqual");
+    UNUSED_OPCODE(kGetTupleElement);
+    POPLAR_OPCODE(kGt, "GreaterThan");
+    POPLAR_OPCODE(kIndex, "");
+    UNUSED_OPCODE(kInfeed);
+    POPLAR_OPCODE(kIsFinite, "");
+    POPLAR_OPCODE(kLe, "LessEqual");
+    POPLAR_OPCODE(kLog, "Log");
+    POPLAR_OPCODE(kLogicalAnd, "LogicalAnd");
+    POPLAR_OPCODE(kLogicalNot, "LogicalNot");
+    POPLAR_OPCODE(kLogicalOr, "LogicalOr");
+    POPLAR_OPCODE(kLt, "LessThan");
+    UNUSED_OPCODE(kMap);
+    POPLAR_OPCODE(kMaximum, "Maximum");
+    POPLAR_OPCODE(kMinimum, "Minimum");
+    POPLAR_OPCODE(kMultiply, "Mul");
+    POPLAR_OPCODE(kNe, "NotEqual");
+    POPLAR_OPCODE(kNegate, "Neg");
+    UNUSED_OPCODE(kOutfeed);
+    UNUSED_OPCODE(kPad);
+    UNUSED_OPCODE(kParameter);
+    POPLAR_OPCODE(kPower, "Pow");
+    UNUSED_OPCODE(kRecv);
+    UNUSED_OPCODE(kReduce);
+    UNUSED_OPCODE(kReduceWindow);
+    POPLAR_OPCODE(kRemainder, "Remainder");
+    UNUSED_OPCODE(kReshape);
+    POPLAR_OPCODE(kReverse, "");
+    POPLAR_OPCODE(kRng, "");
+    POPLAR_OPCODE(kSelect, "Select");
+    POPLAR_OPCODE(kSelectAndScatter, "");
+    UNUSED_OPCODE(kSend);
+    POPLAR_OPCODE(kSign, "Sign");
+    UNUSED_OPCODE(kSlice);
+    POPLAR_OPCODE(kSort, "");
+    POPLAR_OPCODE(kSubtract, "Sub");
+    POPLAR_OPCODE(kTanh, "Tanh");
+    POPLAR_OPCODE(kTrace, "");
+    UNUSED_OPCODE(kTranspose);
+    UNUSED_OPCODE(kTuple);
+    POPLAR_OPCODE(kUpdate, "");
+    POPLAR_OPCODE(kWhile, "");
   }
-}
-
-static port::StatusOr<binary_fn> GetPoplarBinaryFn(HloOpcode opcode) {
-  switch (opcode) {
-    POPLAR_OPCODE(kAdd, popstd::add);
-    POPLAR_OPCODE(kDivide, popstd::div);
-    POPLAR_OPCODE(kEq, popstd::eq);
-    POPLAR_OPCODE(kGe, popstd::gteq);
-    POPLAR_OPCODE(kGt, popstd::gt);
-    POPLAR_OPCODE(kLe, popstd::lteq);
-    POPLAR_OPCODE(kLogicalAnd, popstd::logicalAnd);
-    POPLAR_OPCODE(kLogicalOr, popstd::logicalOr);
-    POPLAR_OPCODE(kLt, popstd::lt);
-    POPLAR_OPCODE(kMaximum, popstd::max);
-    POPLAR_OPCODE(kMinimum, popstd::min);
-    POPLAR_OPCODE(kMultiply, popstd::mul);
-    POPLAR_OPCODE(kNe, popstd::neq);
-    POPLAR_OPCODE(kPower, popstd::pow);
-    POPLAR_OPCODE(kRemainder, popstd::rem);
-    POPLAR_OPCODE(kSubtract, popstd::sub);
-    default:
-      return port::Status(port::error::UNKNOWN,
-                          port::StrCat("[Poplar] Invalid opcode lookup ",
-                                       HloOpcodeString(opcode)));
-  }
-}
-
-static port::StatusOr<std::string> GetInPlaceUpdate(HloOpcode opcode) {
-  switch (opcode) {
-    POPLAR_OPCODE(kAdd, std::string("AddInPlace"));
-    POPLAR_OPCODE(kSubtract, std::string("SubInPlace"));
-    POPLAR_OPCODE(kMultiply, std::string("MulInPlace"));
-    default:
-      return port::Status(port::error::UNKNOWN,
-                          port::StrCat("[Poplar] Invalid opcode lookup ",
-                                       HloOpcodeString(opcode)));
-  }
+  return port::Status(port::error::UNKNOWN,
+                      port::StrCat("[Poplar] Invalid opcode lookup ",
+                                   HloOpcodeString(opcode)));
 }
 
 static bool
@@ -137,18 +145,42 @@ CreateUnaryElementwiseOp(poplar::Graph &graph,
                          const HloInstruction *inst,
                          const xla::Shape& output_shape,
                          TensorMap& tensor_map){
+
+  // Find the input tensor
   poplar::Tensor in;
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0, 0));
+  in = in.flatten();
 
-  unary_fn fn;
-  TF_ASSIGN_OR_RETURN(fn, GetPoplarUnaryFn(inst->opcode()));
+  const std::string& poplar_data_type(graph.getTensorElementType(in));
 
-  poplar::program::Sequence seq;
-  poplar::Tensor out = fn(graph, in, seq, inst->name());
+  std::string vrtxTemplate;
+  TF_ASSIGN_OR_RETURN(vrtxTemplate, LookupPoplarVertexName(inst->opcode()));
+  std::string vertex_name = templateVertex(vrtxTemplate, poplar_data_type);
 
+  // Allocate the output tensor
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  out = out.flatten();
 
-  return seq;
+  auto cs = graph.addComputeSet(inst->ToString());
+  const auto &device_info = graph.getDevice().getDeviceInfo();
+
+  const unsigned long N = ShapeUtil::ElementsIn(output_shape);
+
+  unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
+  num_workers = std::min(num_workers, N);
+
+  for (unsigned i = 0; i < num_workers; ++i) {
+    const auto begin = i * N / num_workers;
+    const auto end = (i + 1) * N / num_workers;
+    auto v = graph.addVertex(cs, vertex_name,
+                             {{a_conn, in.slice(begin, end)},
+                              {out_conn, out.slice(begin, end)}});
+    graph.setTileMapping(v, i / device_info.numWorkerContexts);
+  }
+
+  return poplar::program::Execute(cs);
 }
 
 port::StatusOr<poplar::program::Program>
@@ -165,74 +197,80 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 1, 0));
 
-  if (IsInPlaceUpdate(inst) && (in0.shape() == in1.shape())) {
-    std::string vrtxTemplate;
-    TF_ASSIGN_OR_RETURN(vrtxTemplate, GetInPlaceUpdate(inst->opcode()));
+  const std::string& poplar_data_type(graph.getTensorElementType(in0));
 
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in0));
+  bool in_place_update(IsInPlaceUpdate(inst) && (in0.shape() == in1.shape()));
 
-    const std::string& poplar_data_type(graph.getTensorElementType(in0));
-    std::string vertex_name = templateVertex(vrtxTemplate, poplar_data_type);
+  std::string vrtxTemplate;
+  TF_ASSIGN_OR_RETURN(vrtxTemplate, LookupPoplarVertexName(inst->opcode()));
+  if (in_place_update) {
+    vrtxTemplate = vrtxTemplate + "InPlace";
+  }
+  std::string vertex_name = templateVertex(vrtxTemplate, poplar_data_type);
 
-    in0 = in0.flatten();
-    in1 = in1.flatten();
+  if (in0.shape() != in1.shape()) {
 
-    auto cs = graph.addComputeSet(inst->name());
-    const auto &device_info = graph.getDevice().getDeviceInfo();
+    tensorflow::BCast::Vec shape1 =
+            convert_array<tensorflow::BCast::Vec>(in0.shape());
+    tensorflow::BCast::Vec shape2 =
+            convert_array<tensorflow::BCast::Vec>(in1.shape());
 
-    const unsigned long N = ShapeUtil::ElementsIn(output_shape);
+    tensorflow::BCast bcast(shape1, shape2);
+    if (!bcast.IsValid()) {
+      return port::Status(port::error::FAILED_PRECONDITION,
+                          port::StrCat("Incompatible broadcast on ",
+                                       inst->name()));
+    }
 
-    unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-    num_workers = std::min(num_workers, N);
+    poplar::Tensor r0 =
+            in0.reshape(convert_array<std::vector<size_t>>(bcast.x_reshape()));
+    poplar::Tensor r1 =
+            in1.reshape(convert_array<std::vector<size_t>>(bcast.y_reshape()));
 
-    for (unsigned i = 0; i < num_workers; ++i) {
-      const auto begin = i * N / num_workers;
-      const auto end = (i + 1) * N / num_workers;
+    in0 = TileTensor(bcast.x_bcast(), r0);
+    in1 = TileTensor(bcast.y_bcast(), r1);
+  }
+
+  // Allocate the output tensor
+  poplar::Tensor out;
+  if (!in_place_update) {
+    TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  } else {
+    out = in0;
+  }
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  // And now flatten
+  in0 = in0.flatten();
+  in1 = in1.flatten();
+  out = out.flatten();
+
+  auto cs = graph.addComputeSet(inst->name());
+  const auto &device_info = graph.getDevice().getDeviceInfo();
+
+  const unsigned long N = ShapeUtil::ElementsIn(output_shape);
+
+  unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
+  num_workers = std::min(num_workers, N);
+
+  for (unsigned i = 0; i < num_workers; ++i) {
+    const auto begin = i * N / num_workers;
+    const auto end = (i + 1) * N / num_workers;
+    if (in_place_update) {
       auto v = graph.addVertex(cs, vertex_name,
                                {{a_conn, in0.slice(begin, end)},
                                 {b_conn, in1.slice(begin, end)}});
       graph.setTileMapping(v, i / device_info.numWorkerContexts);
+    } else {
+      auto v = graph.addVertex(cs, vertex_name,
+                               {{a_conn, in0.slice(begin, end)},
+                                {b_conn, in1.slice(begin, end)},
+                                {out_conn, out.slice(begin, end)}});
+      graph.setTileMapping(v, i / device_info.numWorkerContexts);
     }
-
-    return poplar::program::Execute(cs);
-  } else {
-
-    if (in0.shape() != in1.shape()) {
-
-      tensorflow::BCast::Vec shape1 =
-              convert_array<tensorflow::BCast::Vec>(in0.shape());
-      tensorflow::BCast::Vec shape2 =
-              convert_array<tensorflow::BCast::Vec>(in1.shape());
-
-      tensorflow::BCast bcast(shape1, shape2);
-      if (!bcast.IsValid()) {
-        return port::Status(port::error::FAILED_PRECONDITION,
-                            port::StrCat("Incompatible broadcast on ",
-                                         inst->name()));
-      }
-
-      poplar::Tensor r0 =
-              in0.reshape(convert_array<std::vector<size_t>>(bcast.x_reshape()));
-      poplar::Tensor r1 =
-              in1.reshape(convert_array<std::vector<size_t>>(bcast.y_reshape()));
-
-      in0 = TileTensor(bcast.x_bcast(), r0);
-      in1 = TileTensor(bcast.y_bcast(), r1);
-
-      in0 = in0.reshape(PoplarShapeFromXlaShape(output_shape));
-      in1 = in1.reshape(PoplarShapeFromXlaShape(output_shape));
-    }
-
-    binary_fn fn;
-    TF_ASSIGN_OR_RETURN(fn, GetPoplarBinaryFn(inst->opcode()));
-
-    poplar::program::Sequence seq;
-    poplar::Tensor out = fn(graph, in0, in1, seq, inst->name());
-
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-
-    return seq;
   }
+
+  return poplar::program::Execute(cs);
 }
 
 port::StatusOr<poplar::program::Program>
