@@ -349,6 +349,19 @@ def _SoftplusGrad(op, grad):
   return gen_nn_ops._softplus_grad(grad, op.inputs[0])
 
 
+@ops.RegisterGradient("SoftplusGrad")
+def _SoftplusGradGrad(op, grad):
+  # Let:
+  #   y = tf.nn.softplus(x)
+  #   dx = gen_nn_ops._softplus_grad(dy, x) = dy / (1 + exp(-x))
+  # This op computes (ddy, d2x) from op.inputs == [dy, x] and grad == ddx.
+  dy, x = op.inputs
+  with ops.control_dependencies([grad.op]):
+    ddy = gen_nn_ops._softplus_grad(grad, x)  # pylint: disable=protected-access
+    d2x = grad * dy / (math_ops.exp(-x) + 2.0 + math_ops.exp(x))
+    return (ddy, d2x)
+
+
 @ops.RegisterGradient("Softsign")
 def _SoftsignGrad(op, grad):
   return gen_nn_ops._softsign_grad(grad, op.inputs[0])
