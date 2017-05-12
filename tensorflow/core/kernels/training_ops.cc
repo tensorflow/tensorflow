@@ -57,9 +57,9 @@ struct ApplyGradientDescent<SYCLDevice, T> {
   }
 };
 #endif
-    
+
 template <typename T>
-struct ApplyGradientDescentDC<CPUDevice, T> {
+struct ApplyDelayCompensatedGradientDescent<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
@@ -463,11 +463,11 @@ REGISTER_KERNELS(GPU, double);
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
-    
+
 template <typename Device, typename T>
-class ApplyGradientDescentDCOp : public OpKernel {
+class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
  public:
-  explicit ApplyGradientDescentDCOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit ApplyDelayCompensatedGradientDescentOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
@@ -502,7 +502,7 @@ class ApplyGradientDescentDCOp : public OpKernel {
                                 var.shape().DebugString()));
 
     const Device& device = ctx->template eigen_device<Device>();
-    functor::ApplyGradientDescentDC<Device, T>()(
+    functor::ApplyDelayCompensatedGradientDescent<Device, T>()(
         device, var.flat<T>(), alpha.scalar<T>(), delta.flat<T>(),
          lambda.scalar<T>(), var_bak.flat<T>()
     );
@@ -514,10 +514,12 @@ class ApplyGradientDescentDCOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#define REGISTER_KERNELS(D, T)                                                 \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("ApplyGradientDescentDC").Device(DEVICE_##D).TypeConstraint<T>("T"),\
-      ApplyGradientDescentDCOp<D##Device, T>);
+#define REGISTER_KERNELS(D, T)                                 \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("ApplyDelayCompensatedGradientDescent")             \
+          .Device(DEVICE_##D)                                  \
+          .TypeConstraint<T>("T"),                             \
+      ApplyDelayCompensatedGradientDescentOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);

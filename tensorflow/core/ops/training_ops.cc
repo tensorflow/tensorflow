@@ -101,8 +101,8 @@ delta: The change.
 use_locking: If `True`, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
-    
-REGISTER_OP("ApplyGradientDescentDC")
+
+REGISTER_OP("ApplyDelayCompensatedGradientDescent")
     .Input("var: Ref(T)")
     .Input("alpha: T")
     .Input("delta: T")
@@ -1028,7 +1028,7 @@ out: Same as "var".
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
+use_nesterov: If `True`, the tensor passed to compute grad will be
 var - lr * momentum * accum, so in the end, the var you get is actually
 var - lr * momentum * accum.
 )doc");
@@ -1067,7 +1067,7 @@ out: Same as "var".
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
+use_nesterov: If `True`, the tensor passed to compute grad will be
 var - lr * momentum * accum, so in the end, the var you get is actually
 var - lr * momentum * accum.
 )doc");
@@ -1099,7 +1099,7 @@ momentum: Momentum. Must be a scalar.
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
+use_nesterov: If `True`, the tensor passed to compute grad will be
 var - lr * momentum * accum, so in the end, the var you get is actually
 var - lr * momentum * accum.
 )doc");
@@ -1136,7 +1136,7 @@ momentum: Momentum. Must be a scalar.
 use_locking: If `True`, updating of the var and accum tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
+use_nesterov: If `True`, the tensor passed to compute grad will be
 var - lr * momentum * accum, so in the end, the var you get is actually
 var - lr * momentum * accum.
 )doc");

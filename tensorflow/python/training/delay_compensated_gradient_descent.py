@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""GradientDescentDC for TensorFlow."""
+"""DelayCompensatedGradientDescentOptimizer for TensorFlow."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -25,7 +25,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
-class GradientDescentDCOptimizer(optimizer.Optimizer):
+class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
 
     """Optimizer that implements the gradient descent algorithm with delay
     compensation.
@@ -35,7 +35,7 @@ class GradientDescentDCOptimizer(optimizer.Optimizer):
     """
 
     def __init__(self, learning_rate, variance_parameter, num_workers=1,
-                 use_locking=False, name="GradientDescentDC"):
+                 use_locking=False, name="DelayCompensatedGradientDescent"):
         """Construct a new gradient descent optimizer with delay compensation.
 
         Args:
@@ -47,11 +47,12 @@ class GradientDescentDCOptimizer(optimizer.Optimizer):
             asynchronously.
           use_locking: If True use locks for update operations.
           name: Optional name prefix for the operations created when applying
-            gradients. Defaults to "GradientDescentDC".
+            gradients. Defaults to "DelayCompensatedGradientDescent".
         """
         if num_workers <= 0:
             raise ValueError("num_workers must be positive: %s" % num_workers)
-        super(GradientDescentDCOptimizer, self).__init__(use_locking, name)
+        super(DelayCompensatedGradientDescentOptimizer, self).__init__(
+            use_locking, name)
         self._learning_rate = learning_rate
         self._lambda = variance_parameter
         self._num_workers = num_workers
@@ -69,7 +70,7 @@ class GradientDescentDCOptimizer(optimizer.Optimizer):
     def _apply_dense(self, grad, var, worker_index=0):
         # Get previous value of the variable from the slot
         var_bak = self.get_slot(var, "var_bak_{0}".format(worker_index))
-        return training_ops.apply_gradient_descent_dc(
+        return training_ops.apply_delay_compensated_gradient_descent(
             var,
             math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
             grad,
