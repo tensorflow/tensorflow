@@ -20,71 +20,65 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
+class GradientDescentDCOptimizer(optimizer.Optimizer):
 
-class GradientDescentOptimizerDC(optimizer.Optimizer):
-  """Optimizer that implements the gradient descent algorithm with delay compensation.
-  
-  See [Zheng, Shuxin, et al., 2016](https://arxiv.org/abs/1609.08326)
-  ([pdf](https://arxiv.org/pdf/1609.08326.pdf)).
-  """
-  
-  # Values for gate_gradients.
-  GATE_NONE = 0
-  GATE_OP = 1
-  GATE_GRAPH = 2
+    """Optimizer that implements the gradient descent algorithm with delay
+    compensation.
 
-  def __init__(self, learning_rate, variance_parameter, use_locking=False, name="GradientDescentDC"):
-    """Construct a new gradient descent optimizer with delay compensation.
-
-    Args:
-      learning_rate: A Tensor or a floating point value.  The learning
-        rate to use.
-      variance_parameter: A Tensor or a floating point value. The lambda value to use.
-      use_locking: If True use locks for update operations.
-      name: Optional name prefix for the operations created when applying
-        gradients. Defaults to "GradientDescentDC".
+    See [Zheng, Shuxin, et al., 2016](https://arxiv.org/abs/1609.08326)
+    ([pdf](https://arxiv.org/pdf/1609.08326.pdf)).
     """
-    super(GradientDescentOptimizerDC, self).__init__(use_locking, name)
-    self._learning_rate = learning_rate
-    self._lambda = variance_parameter
 
-  def compute_gradients(self, loss, var_list=None,
-                        gate_gradients=GATE_OP,
-                        aggregation_method=None,
-                        colocate_gradients_with_ops=False,
-                        grad_loss=None):
-    grads_and_vars = super(GradientDescentOptimizerDC, self).compute_gradients(loss, var_list, gate_gradients, aggregation_method, colocate_gradients_with_ops, grad_loss)
-    for _, var in grads_and_vars:
-      var2 = tf.identity(var.initialized_value())
-      self._get_or_make_slot(var, var2, "var_bak", self._name)
-    return grads_and_vars
+    def __init__(self, learning_rate, variance_parameter, num_workers=1,
+                 use_locking=False, name="GradientDescentDC"):
+        """Construct a new gradient descent optimizer with delay compensation.
 
-  def _apply_dense(self, grad, var):
-    var_bak = self.get_slot(var, "var_bak")
-    return training_ops.apply_gradient_descent(
-        var,
-        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
-        math_ops.add(grad, math_ops.multiply(math_ops.multiply(grad, math_ops.cast(self._lambda_tensor, grad.dtype.base_dtype)), math_ops.subtract(var, var_bak))),
-        use_locking=self._use_locking).op
+        Args:
+          learning_rate: A Tensor or a floating point value.  The learning
+            rate to use.
+          variance_parameter: A Tensor or a floating point value. The lambda
+            value to use.
+          num_workers: A value to indicate number of workers computing gradients
+            asynchronously.
+          use_locking: If True use locks for update operations.
+          name: Optional name prefix for the operations created when applying
+            gradients. Defaults to "GradientDescentDC".
+        """
+        if num_workers <= 0:
+            raise ValueError("num_workers must be positive: %s" % num_workers)
+        super(GradientDescentDCOptimizer, self).__init__(use_locking, name)
+        self._learning_rate = learning_rate
+        self._lambda = variance_parameter
+        self._num_workers = num_workers
 
-  def _resource_apply_dense(self, grad, handle):
-    var_bak = self.get_slot(handle.handle, "var_bak")
-    return training_ops.resource_apply_gradient_descent(
-        handle.handle, math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
-        math_ops.add(grad, math_ops.multiply(math_ops.multiply(grad, math_ops.cast(self._lambda_tensor, grad.dtype.base_dtype)), math_ops.subtract(handle.handle, var_bak))),
-        use_locking=self._use_locking)
+    def _create_slots(self, var_list):
+        """Initialize slots for all the vars of each worker to store
+            the previous values of it
+        """
+        for index in range(self._num_workers):
+            for v in var_list:
+                var2 = array_ops.identity(v.initialized_value())
+                self._get_or_make_slot(v, var2, "var_bak_{0}".format(index),
+                                       self._name)
 
-  def _create_slots(self, var_list):
-    for v in var_list:
-      var2 = tf.identity(v.initialized_value())
-      self._get_or_make_slot(v, var2, "var_bak", self._name)
+    def _apply_dense(self, grad, var, worker_index=0):
+        # Get previous value of the variable from the slot
+        var_bak = self.get_slot(var, "var_bak_{0}".format(worker_index))
+        return training_ops.apply_gradient_descent_dc(
+            var,
+            math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+            grad,
+            math_ops.cast(self._lambda_tensor, var.dtype.base_dtype),
+            var_bak,
+            use_locking=self._use_locking).op
 
-  def _prepare(self):
-    self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
-                                                       name="learning_rate")
-    self._lambda_tensor = ops.convert_to_tensor(self._lambda,
-                                                      name="lambda")
+    def _prepare(self):
+        self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
+                                                           name="learning_rate")
+        self._lambda_tensor = ops.convert_to_tensor(self._lambda,
+                                                    name="lambda")
