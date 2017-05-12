@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functional test for GradientDescentDC."""
+"""Functional test for DelayCompensatedGradientDescentOptimizer."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,10 +23,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import gradient_descent_dc
+from tensorflow.python.training import delay_compensated_gradient_descent
 
 
-class GradientDescentDCOptimizerTest(test.TestCase):
+class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
 
     def testBasic(self):
         for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -35,10 +35,11 @@ class GradientDescentDCOptimizerTest(test.TestCase):
                 var1 = variables.Variable([3.0, 4.0], dtype=dtype)
                 grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
                 grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-                optimizer = gradient_descent_dc.GradientDescentDCOptimizer(
-                    learning_rate=3.0,
-                    variance_parameter=2.0,
-                    num_workers=1)
+                optimizer = (delay_compensated_gradient_descent.
+                             DelayCompensatedGradientDescentOptimizer)(
+                                 learning_rate=3.0,
+                                 variance_parameter=2.0,
+                                 num_workers=1)
                 sgd_op = optimizer.apply_gradients(
                     zip([grads0, grads1], [var0, var1]), worker_index=0)
                 variables.global_variables_initializer().run()
@@ -61,10 +62,11 @@ class GradientDescentDCOptimizerTest(test.TestCase):
                 grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
                 grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
                 lrate = constant_op.constant(3.0)
-                optimizer = gradient_descent_dc.GradientDescentDCOptimizer(
-                    learning_rate=lrate,
-                    variance_parameter=2.0,
-                    num_workers=1)
+                optimizer = (delay_compensated_gradient_descent.
+                             DelayCompensatedGradientDescentOptimizer)(
+                                 learning_rate=3.0,
+                                 variance_parameter=2.0,
+                                 num_workers=1)
                 sgd_op = optimizer.apply_gradients(
                     zip([grads0, grads1], [var0, var1]),
                     worker_index=0)
@@ -83,10 +85,11 @@ class GradientDescentDCOptimizerTest(test.TestCase):
     def testGradWrtRef(self):
         for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
             with self.test_session():
-                optimizer = gradient_descent_dc.GradientDescentDCOptimizer(
-                    learning_rate=3.0,
-                    variance_parameter=2.0,
-                    num_workers=1)
+                optimizer = (delay_compensated_gradient_descent.
+                             DelayCompensatedGradientDescentOptimizer)(
+                                 learning_rate=3.0,
+                                 variance_parameter=2.0,
+                                 num_workers=1)
                 values = [1.0, 3.0]
                 vars_ = [variables.Variable([v], dtype=dtype) for v in values]
                 grads_and_vars = optimizer.compute_gradients(
@@ -103,10 +106,11 @@ class GradientDescentDCOptimizerTest(test.TestCase):
                 var1 = variables.Variable([3.0, 4.0], dtype=dtype)
                 grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
                 grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-                optimizer = gradient_descent_dc.GradientDescentDCOptimizer(
-                    learning_rate=3.0,
-                    variance_parameter=2.0,
-                    num_workers=1)
+                optimizer = (delay_compensated_gradient_descent.
+                             DelayCompensatedGradientDescentOptimizer)(
+                                 learning_rate=3.0,
+                                 variance_parameter=2.0,
+                                 num_workers=1)
                 sgd_op = optimizer.apply_gradients(
                     zip([grads0, grads1], [var0, var1]),
                     global_step=global_step,
