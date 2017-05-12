@@ -253,14 +253,6 @@ StatusOr<std::unique_ptr<GlobalData>> LocalClient::AllocateBufferOnDevice(
   return std::unique_ptr<GlobalData>(new GlobalData(local_service_, handle));
 }
 
-tensorflow::Status LocalClient::ResolveArguments(
-    const tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-    int device_ordinal,
-    std::vector<perftools::gputools::DeviceMemoryBase>* argument_ptrs) {
-  return local_service_->ResolveArguments(arguments, device_ordinal,
-                                          argument_ptrs);
-}
-
 se::Platform* LocalClient::platform() const {
   return local_service_->backend().platform();
 }

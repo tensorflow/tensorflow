@@ -351,6 +351,8 @@ filegroup(
         "//tensorflow/tensorboard/components/tf_globals_d3v4:all_files",
         "//tensorflow/tensorboard/components/tf_graph:all_files",
         "//tensorflow/tensorboard/components/tf_graph/demo:all_files",
+        "//tensorflow/tensorboard/components/tf_graph_app:all_files",
+        "//tensorflow/tensorboard/components/tf_graph_app/demo:all_files",
         "//tensorflow/tensorboard/components/tf_graph_board:all_files",
         "//tensorflow/tensorboard/components/tf_graph_board/demo:all_files",
         "//tensorflow/tensorboard/components/tf_graph_common:all_files",
