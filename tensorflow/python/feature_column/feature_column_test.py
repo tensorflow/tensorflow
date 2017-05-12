@@ -1045,7 +1045,7 @@ def get_linear_model_column_var(column):
                             'linear_model/' + column.name)[0]
 
 
-class MakeLinearModelTest(test.TestCase):
+class LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
     with self.assertRaisesRegexp(ValueError,
@@ -1503,7 +1503,7 @@ class MakeLinearModelTest(test.TestCase):
             })
 
 
-class MakeInputLayerTest(test.TestCase):
+class InputLayerTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
     with self.assertRaisesRegexp(ValueError,
