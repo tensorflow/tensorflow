@@ -1,41 +1,53 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
+load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
 
 licenses(["notice"])  # Apache 2.0
 
-tensorboard_ts_library(
-    name = "ts",
+web_library(
+    name = "tf_backend_d3v4",
     srcs = [
-        "backend.ts",
-        "behavior.ts",
-        "requestManager.ts",
-        "router.ts",
-        "urlPathHelpers.ts",
+        "bundle.js",
+        "tf-backend.html",
     ],
+    path = "/tf-backend",
     deps = [
-        "//tensorflow/tensorboard/components/vz_sorting_d3v4:ts",
-        "//third_party/javascript/node_modules/typescript:es2015.promise",
-        "//third_party/javascript/typings/chai",
-        "//third_party/javascript/typings/d3_v4:bundle",
-        "//third_party/javascript/typings/lodash",
-        "//third_party/javascript/typings/mocha",
-        "//third_party/javascript/typings/polymer:polymer_without_externs",
-        "//third_party/javascript/typings/sinon",
+        "//tensorflow/tensorboard/components/tf_imports_d3v4:d3",
+        "//tensorflow/tensorboard/components/tf_imports_d3v4:lodash",
+        "//tensorflow/tensorboard/components/tf_imports_d3v4:plottable",
+        "//tensorflow/tensorboard/components/vz_sorting_d3v4",
+        "@org_polymer",
     ],
 )
 
-# TODO(dandelion): Add runners for these tests
-tensorboard_ts_library(
-    name = "tests",
-    srcs = [
-        "backendTests.ts",
-        "behaviorTests.ts",
-        "requestManagerTests.ts",
+tensorboard_typescript_genrule(
+    name = "ts",
+    srcs = ["bundle.ts"],
+    typings = [
+        "@org_definitelytyped//:lodash.d.ts",
+        "@org_definitelytyped//:polymer.d.ts",
+        "@org_definitelytyped//:webcomponents.js.d.ts",
+        "//tensorflow/tensorboard/components/tf_imports_d3v4:d3.d.ts",
+        "//tensorflow/tensorboard/components/tf_imports_d3v4:plottable.d.ts",
+        "//tensorflow/tensorboard/components/vz_sorting_d3v4:bundle.d.ts",
     ],
-    deps = [
-        ":ts",
-    ],
+)
+
+tensorboard_typescript_bundle(
+    name = "bundle",
+    out = "bundle.ts",
+    namespace_srcs = {"TF.Backend": [
+        "requestManager.ts",
+        "backend.ts",
+        "behavior.ts",
+        "urlPathHelpers.ts",
+        "router.ts",
+    ]},
+    namespace_symbol_aliases = {"TF.Backend": {
+        "compareTagNames": "VZ.Sorting.compareTagNames",
+    }},
 )
 
 filegroup(

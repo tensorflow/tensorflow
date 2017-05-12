@@ -28,9 +28,9 @@ on API >= 14 devices.
         using Deep Neural Networks](https://arxiv.org/abs/1312.2249) to
         localize and track people in the camera preview in real-time.
 3. [TF Stylize](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/android/src/org/tensorflow/demo/StylizeActivity.java):
-        Uses a model based on [A Learned Representation For Artistic Style]
-        (https://arxiv.org/abs/1610.07629) to restyle the camera preview image
-        to that of a number of different artists.
+        Uses a model based on [A Learned Representation For Artistic
+        Style](https://arxiv.org/abs/1610.07629) to restyle the camera preview 
+        image to that of a number of different artists.
 
 <img src="sample_images/classify1.jpg" width="30%"><img src="sample_images/stylize1.jpg" width="30%"><img src="sample_images/detect1.jpg" width="30%">
 

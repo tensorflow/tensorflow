@@ -20,7 +20,6 @@ limitations under the License.
 #include <map>
 #include <string>
 
-#include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/util/padding.h"
@@ -40,7 +39,7 @@ class OpLevelCostEstimator {
   // executed per second) and memory bandwith (in GigaBytes/second) for the
   // specified device.
   virtual std::pair<double, double> GetDeviceInfo(
-      const OpInfo::DeviceProperties& device) const;
+      const DeviceProperties& device) const;
 
   // For operations for which we haven't yet built estimates, returns a dummy
   // value based on input size.

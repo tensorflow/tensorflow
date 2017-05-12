@@ -9,14 +9,24 @@ package(default_visibility = ["//tensorflow:internal"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
+# TODO(yleon): Refactor after one we switching to the V2 kernels.
 py_library(
     name = "lookup_py",
     srcs = [
         "__init__.py",
+        "lookup_ops.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python/feature_column:lookup_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lookup_ops_gen",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
     ],
 )
 

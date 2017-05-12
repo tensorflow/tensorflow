@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import gzip
 
-from pprof import profile_pb2
+from proto import profile_pb2
 from tensorflow.contrib.tfprof.python.tools.tfprof import pprof_profiler
 from tensorflow.core.framework import step_stats_pb2
 from tensorflow.core.protobuf import config_pb2

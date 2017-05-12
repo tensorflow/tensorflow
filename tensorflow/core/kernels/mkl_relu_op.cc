@@ -216,7 +216,6 @@ class MklReluGradOp : public OpKernel {
       }
 
       relu_res[dnnResourceDiffDst] = user_g;
-
     }
 
     void MklCreateInputLayouts(OpKernelContext* context) {

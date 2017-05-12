@@ -36,7 +36,7 @@ namespace tensorflow {
 
 class DebugIdentityOpTest : public OpsTestBase {
  protected:
-  Status Init(DataType input_type, const std::vector<string> debug_urls) {
+  Status Init(DataType input_type, const std::vector<string>& debug_urls) {
     env_ = Env::Default();
 
     TF_CHECK_OK(NodeDefBuilder("op", "DebugIdentity")

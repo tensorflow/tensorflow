@@ -54,16 +54,18 @@ const RemoteFusedGraphExecuteUtils::TensorShapeMap EMPTY_OUTPUT_TENSOR_MAP;
 class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
  public:
   int GetTotalOpsCount() const final { return OP_TYPES.size(); }
-  int GetOpIdFor(const string& op_type) const final {
-    for (int i = 0; i < OP_TYPES.size(); ++i) {
-      if (OP_TYPES[i] == op_type) {
-        return i;
-      }
+
+int GetOpIdFor(const string& op_type, const DataTypeVector&) const final {
+  for (int i = 0; i < OP_TYPES.size(); ++i) {
+    if (OP_TYPES[i] == op_type) {
+      return i;
     }
-    return -1;
   }
-  GraphTransferInfo::Destination GetTransferDestination() const final {
-    return GraphTransferInfo::NOP;
+  return -1;
+}
+
+GraphTransferInfo::Destination GetTransferDestination() const final {
+  return GraphTransferInfo::NOP;
   }
 
  private:

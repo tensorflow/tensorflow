@@ -35,15 +35,15 @@ ScopeNode* TFScope::CreateParentNode(const string& name) {
   node_defs_.back()->set_name(name);
   node_defs_.back()->set_op(kTFScopeParent);
   parent_nodes_[name] =
-      std::unique_ptr<TFNode>(new TFNode(node_defs_.back().get()));
+      std::unique_ptr<TFGraphNode>(new TFGraphNode(node_defs_.back().get()));
   nodes_map_[name] =
       std::unique_ptr<ScopeNode>(new ScopeNode(parent_nodes_[name].get()));
   return nodes_map_[name].get();
 }
 
-void TFScope::AddNode(TFNode* node) {
-  string name = node->node_def()->name();
-  if (nodes_map_.find(node->node_def()->name()) == nodes_map_.end()) {
+void TFScope::AddNode(TFGraphNode* node) {
+  string name = node->name();
+  if (nodes_map_.find(node->name()) == nodes_map_.end()) {
     nodes_map_[name] = std::unique_ptr<ScopeNode>(new ScopeNode(node));
   }
 
@@ -72,7 +72,7 @@ void TFScope::Build() {
   }
 }
 
-const ShowNode* TFScope::ShowInternal(const Options& opts) {
+const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
   // Search from roots recursively to find start node, if start_name_regexes
   // is specified.
   std::vector<ScopeNode*> roots = roots_;
@@ -86,6 +86,9 @@ const ShowNode* TFScope::ShowInternal(const Options& opts) {
   Account({root}, opts);
 
   root = PrintScope({root}, opts, 1, 0)[0];
+  if (timeline) {
+    timeline->GenerateScopeTimeline(root);
+  }
   return root;
 }
 
@@ -139,8 +142,13 @@ std::vector<ScopeNode*> TFScope::PrintScope(const std::vector<ScopeNode*> roots,
       show_cnodes = SortNodes(show_cnodes, opts);
       string children_str;
       for (ScopeNode* sc : show_cnodes) {
-        children_str += sc->formatted_str;
+        if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
+          children_str += sc->formatted_str;
+          sc->formatted_str.clear();
+        }
         node->mutable_proto()->add_children()->MergeFrom(sc->proto());
+        sc->mutable_proto()->mutable_children()->Clear();
+        node->show_children.push_back(sc);
         if (opts.account_displayed_op_only) {
           node->AggregateTotalStats(sc);
         }

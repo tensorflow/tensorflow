@@ -782,7 +782,7 @@ class LinearClassifierTest(test.TestCase):
           'example_id':
               constant_op.constant(['1', '2', '3']),
           'price':
-              constant_op.constant([[0.4], [0.6], [0.3]]),
+              constant_op.constant([0.4, 0.6, 0.3]),
           'country':
               sparse_tensor.SparseTensor(
                   values=['IT', 'US', 'GB'],
@@ -1451,7 +1451,7 @@ class LinearRegressorTest(test.TestCase):
           'example_id':
               constant_op.constant(['1', '2', '3']),
           'price':
-              constant_op.constant([[0.6], [0.8], [0.3]]),
+              constant_op.constant([0.6, 0.8, 0.3]),
           'sq_footage':
               constant_op.constant([[900.0], [700.0], [600.0]]),
           'country':

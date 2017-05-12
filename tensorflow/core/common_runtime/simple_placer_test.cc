@@ -237,7 +237,7 @@ class SimplePlacerTest : public ::testing::Test {
 
   Status ReferenceTestHelper(const string& variable_op_type,
                              const string& assign_op_type,
-                             DeviceType expected_device_type);
+                             const DeviceType& expected_device_type);
 };
 
 #define EXPECT_COLOCATED(g, name_a, name_b)                         \
@@ -500,9 +500,9 @@ TEST_F(SimplePlacerTest, TestAssignedGpuDeviceToCpuDevice) {
 // Build a graph containing a Variable op of "variable_op_type" and an
 // Assign op of "assign_op_type", and expect all of the ops to be
 // placed on a device of type "expected_device_type".
-Status SimplePlacerTest::ReferenceTestHelper(const string& variable_op_type,
-                                             const string& assign_op_type,
-                                             DeviceType expected_device_type) {
+Status SimplePlacerTest::ReferenceTestHelper(
+    const string& variable_op_type, const string& assign_op_type,
+    const DeviceType& expected_device_type) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);

@@ -75,7 +75,7 @@ TEST_F(WeightedQuantilesSummaryTest, BuildFromBuffer) {
   Summary summary;
   summary.BuildFromBufferEntries(buffer1_->GenerateEntryList());
 
-  // We expect no approximation error because no compress operation occured.
+  // We expect no approximation error because no compress operation occurred.
   EXPECT_EQ(summary.ApproximationError(), 0);
 
   // Check first and last elements in the summary.
