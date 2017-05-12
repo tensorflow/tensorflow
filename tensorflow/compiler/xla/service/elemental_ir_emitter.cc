@@ -240,14 +240,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       return ir_builder_->CreateFDiv(lhs_value, rhs_value);
     case HloOpcode::kRemainder:
       return ir_builder_->CreateFRem(lhs_value, rhs_value);
-
-    // The 'O' prefix on the LLVM ops means "ordered" compare where comparisons
-    // with NAN always return false.
+    // LLVM comparisons can be "unordered" (U) or "ordered" (O) -- ordered
+    // comparisons always return false when one of the operands is NaN, whereas
+    // unordered comparisons return true.
+    //
+    // We use ordered comparisons for everything except kNe, where we use an
+    // unordered comparison.  This makes x != y equivalent to !(x == y), and
+    // matches C++'s semantics.
     case HloOpcode::kEq:
       return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
                                      rhs_value, ir_builder_);
     case HloOpcode::kNe:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_ONE, lhs_value,
+      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, lhs_value,
                                      rhs_value, ir_builder_);
     case HloOpcode::kLt:
       return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, lhs_value,
@@ -739,11 +743,11 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           const HloInstruction* operand = hlo->operand(operand_idx);
           auto true_block = llvm_ir::CreateBasicBlock(
               exit_block, tensorflow::strings::StrCat(
-                              "concat_index_from_operand", operand_idx),
+                      "concat_index_from_operand", operand_idx),
               ir_builder_);
           auto false_block = llvm_ir::CreateBasicBlock(
               exit_block, tensorflow::strings::StrCat(
-                              "concat_index_not_from_operand", operand_idx),
+                      "concat_index_not_from_operand", operand_idx),
               ir_builder_);
           auto concat_dim_size =
               llvm::ConstantInt::get(source_index[concat_dim]->getType(),
