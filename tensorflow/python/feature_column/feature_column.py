@@ -1346,7 +1346,7 @@ def _create_categorical_column_weighted_sum(
         weight_tensor, [array_ops.shape(weight_tensor)[0], -1])
 
   weight = variable_scope.get_variable(
-      name='weight',
+      name='weights',
       shape=(column._num_buckets, units),  # pylint: disable=protected-access
       initializer=init_ops.zeros_initializer(),
       trainable=trainable,
