@@ -30,3 +30,10 @@ def tf_additional_verbs_deps():
       "//tensorflow/contrib/verbs:grpc_verbs_client"], 
       "//conditions:default": [],
   })
+
+def tf_additional_mpi_deps():
+  return select({
+      "//tensorflow:with_mpi_support": [
+      "//tensorflow/contrib/mpi:mpi_server_lib"],
+      "//conditions:default": [],
+  })
