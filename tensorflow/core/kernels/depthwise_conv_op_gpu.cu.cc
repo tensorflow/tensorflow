@@ -38,9 +38,9 @@ using Eigen::GpuDevice;
 // in NHWC format.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
-__global__ void DepthwiseConv2dGPUKernelNHWC(const DepthwiseArgs args,
-                                             const T* input, const T* filter,
-                                             T* output, int num_outputs) {
+__global__ void __launch_bounds__(1024, 2)
+    DepthwiseConv2dGPUKernelNHWC(const DepthwiseArgs args, const T* input,
+                                 const T* filter, T* output, int num_outputs) {
   const int in_rows = args.in_rows;
   const int in_cols = args.in_cols;
   const int in_depth = args.in_depth;
@@ -120,9 +120,9 @@ __global__ void DepthwiseConv2dGPUKernelNHWC(const DepthwiseArgs args,
 // in NCHW format.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
-__global__ void DepthwiseConv2dGPUKernelNCHW(const DepthwiseArgs args,
-                                             const T* input, const T* filter,
-                                             T* output, int num_outputs) {
+__global__ void __launch_bounds__(1024, 2)
+    DepthwiseConv2dGPUKernelNCHW(const DepthwiseArgs args, const T* input,
+                                 const T* filter, T* output, int num_outputs) {
   const int in_rows = args.in_rows;
   const int in_cols = args.in_cols;
   const int in_depth = args.in_depth;
@@ -250,17 +250,34 @@ void LaunchDepthwiseConv2dGPU(const GpuDevice& d, const DepthwiseArgs args,
                               TensorFormat data_format) {
   const int num_outputs =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
-  CudaLaunchConfig config = GetCudaLaunchConfig(num_outputs, d);
+  // The compile-time constant version runs faster with a single block.
+  const int max_block_count = kKnownFilterWidth < 0 || kKnownFilterHeight < 0 ||
+                                      kKnownDepthMultiplier < 0 ||
+                                      args.out_rows * args.out_cols <= 256
+                                  ? std::numeric_limits<int>::max()
+                                  : d.getNumCudaMultiProcessors();
   if (data_format == FORMAT_NHWC) {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        num_outputs, d,
+        DepthwiseConv2dGPUKernelNHWC<T, kKnownFilterWidth, kKnownFilterHeight,
+                                     kKnownDepthMultiplier>,
+        0);
     DepthwiseConv2dGPUKernelNHWC<T, kKnownFilterWidth, kKnownFilterHeight,
                                  kKnownDepthMultiplier>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            args, input, filter, output, num_outputs);
+        <<<std::min(max_block_count, config.block_count),
+           config.thread_per_block, 0, d.stream()>>>(args, input, filter,
+                                                     output, num_outputs);
   } else if (data_format == FORMAT_NCHW) {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        num_outputs, d,
+        DepthwiseConv2dGPUKernelNCHW<T, kKnownFilterWidth, kKnownFilterHeight,
+                                     kKnownDepthMultiplier>,
+        0);
     DepthwiseConv2dGPUKernelNCHW<T, kKnownFilterWidth, kKnownFilterHeight,
                                  kKnownDepthMultiplier>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            args, input, filter, output, num_outputs);
+        <<<std::min(max_block_count, config.block_count),
+           config.thread_per_block, 0, d.stream()>>>(args, input, filter,
+                                                     output, num_outputs);
   } else {
     assert(false);
   }
@@ -288,9 +305,11 @@ template struct DepthwiseConv2dGPULaunch<double>;
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. input.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
-__global__ void DepthwiseConv2dBackpropInputGPUKernelNHWC(
-    const DepthwiseArgs args, const T* out_backprop, const T* filter,
-    T* in_backprop, int num_in_backprop) {
+__global__ void __launch_bounds__(640, 2)
+    DepthwiseConv2dBackpropInputGPUKernelNHWC(const DepthwiseArgs args,
+                                              const T* out_backprop,
+                                              const T* filter, T* in_backprop,
+                                              int num_in_backprop) {
   const int in_rows = args.in_rows;
   const int in_cols = args.in_cols;
   const int in_depth = args.in_depth;
@@ -350,7 +369,7 @@ __global__ void DepthwiseConv2dBackpropInputGPUKernelNHWC(
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
-__global__ void __launch_bounds__(1024)
+__global__ void __launch_bounds__(640, 2)
     DepthwiseConv2dBackpropInputGPUKernelNCHW(const DepthwiseArgs args,
                                               const T* out_backprop,
                                               const T* filter, T* in_backprop,
@@ -428,17 +447,22 @@ void LaunchDepthwiseConv2dBackpropInputGPU(const GpuDevice& d,
                                            TensorFormat data_format) {
   const int num_in_backprop =
       args.batch * args.in_rows * args.in_cols * args.in_depth;
-  CudaLaunchConfig config = GetCudaLaunchConfig(num_in_backprop, d);
-  // Increase block count for when there are more warps/SM than threads/SM.
-  // TODO(csigg): this is pretty arbitraty and should be generalized using
-  // cudaOccupancyMaxPotentialBlockSize().
-  config.block_count *= 4;
   if (data_format == FORMAT_NHWC) {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        num_in_backprop, d,
+        DepthwiseConv2dBackpropInputGPUKernelNHWC<
+            T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>,
+        0);
     DepthwiseConv2dBackpropInputGPUKernelNHWC<
         T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             args, out_backprop, filter, in_backprop, num_in_backprop);
   } else if (data_format == FORMAT_NCHW) {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        num_in_backprop, d,
+        DepthwiseConv2dBackpropInputGPUKernelNCHW<
+            T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>,
+        0);
     DepthwiseConv2dBackpropInputGPUKernelNCHW<
         T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
@@ -475,9 +499,12 @@ template struct DepthwiseConv2dBackpropInputGPULaunch<double>;
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. filter.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
-__global__ void DepthwiseConv2dBackpropFilterGPUKernelNHWC(
-    const DepthwiseArgs args, const T* out_backprop, const T* input,
-    T* filter_backprop, int num_out_backprop) {
+__global__ void __launch_bounds__(640, 2)
+    DepthwiseConv2dBackpropFilterGPUKernelNHWC(const DepthwiseArgs args,
+                                               const T* out_backprop,
+                                               const T* input,
+                                               T* filter_backprop,
+                                               int num_out_backprop) {
   const int in_rows = args.in_rows;
   const int in_cols = args.in_cols;
   const int in_depth = args.in_depth;
@@ -566,9 +593,12 @@ __global__ void DepthwiseConv2dBackpropFilterGPUKernelNHWC(
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. filter.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
-__global__ void DepthwiseConv2dBackpropFilterGPUKernelNCHW(
-    const DepthwiseArgs args, const T* out_backprop, const T* input,
-    T* filter_backprop, int num_out_backprop) {
+__global__ void __launch_bounds__(640, 2)
+    DepthwiseConv2dBackpropFilterGPUKernelNCHW(const DepthwiseArgs args,
+                                               const T* out_backprop,
+                                               const T* input,
+                                               T* filter_backprop,
+                                               int num_out_backprop) {
   const int in_rows = args.in_rows;
   const int in_cols = args.in_cols;
   const int in_depth = args.in_depth;
@@ -669,13 +699,22 @@ void LaunchDepthwiseConv2dBackpropFilterGPU(const GpuDevice& d,
                                             TensorFormat data_format) {
   const int num_out_backprop =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
-  CudaLaunchConfig config = GetCudaLaunchConfig(num_out_backprop, d);
   if (data_format == FORMAT_NHWC) {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        num_out_backprop, d,
+        DepthwiseConv2dBackpropFilterGPUKernelNHWC<
+            T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>,
+        0);
     DepthwiseConv2dBackpropFilterGPUKernelNHWC<
         T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             args, out_backprop, input, filter_backprop, num_out_backprop);
   } else if (data_format == FORMAT_NCHW) {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        num_out_backprop, d,
+        DepthwiseConv2dBackpropFilterGPUKernelNCHW<
+            T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>,
+        0);
     DepthwiseConv2dBackpropFilterGPUKernelNCHW<
         T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(

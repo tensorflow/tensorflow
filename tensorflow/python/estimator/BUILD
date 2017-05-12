@@ -73,6 +73,17 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "run_config_test",
+    size = "small",
+    srcs = ["run_config_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":run_config",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 py_library(
     name = "estimator",
     srcs = [

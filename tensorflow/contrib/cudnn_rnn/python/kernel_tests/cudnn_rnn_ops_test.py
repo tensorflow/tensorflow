@@ -38,15 +38,24 @@ from tensorflow.python.training import saver as saver_lib
 
 class CudnnRNNTest(TensorFlowTestCase):
 
-  def _CreateModel(self, rnn_mode, num_layers, num_units, input_size):
+  def _CreateModel(self,
+                   rnn_mode,
+                   num_layers,
+                   num_units,
+                   input_size,
+                   dropout=0.):
     if rnn_mode == "lstm":
-      model = cudnn_rnn_ops.CudnnLSTM(num_layers, num_units, input_size)
+      model = cudnn_rnn_ops.CudnnLSTM(
+          num_layers, num_units, input_size, dropout=dropout)
     elif rnn_mode == "gru":
-      model = cudnn_rnn_ops.CudnnGRU(num_layers, num_units, input_size)
+      model = cudnn_rnn_ops.CudnnGRU(
+          num_layers, num_units, input_size, dropout=dropout)
     elif rnn_mode == "rnn_tanh":
-      model = cudnn_rnn_ops.CudnnRNNTanh(num_layers, num_units, input_size)
+      model = cudnn_rnn_ops.CudnnRNNTanh(
+          num_layers, num_units, input_size, dropout=dropout)
     elif rnn_mode == "rnn_relu":
-      model = cudnn_rnn_ops.CudnnRNNRelu(num_layers, num_units, input_size)
+      model = cudnn_rnn_ops.CudnnRNNRelu(
+          num_layers, num_units, input_size, dropout=dropout)
     else:
       raise ValueError("Invalid rnn_mode: %s" % rnn_mode)
     return model
@@ -174,9 +183,11 @@ class CudnnRNNTest(TensorFlowTestCase):
         self._testOneLSTMParamsSize(num_layers, num_units, input_size)
 
   def _testOneSimpleInference(self, rnn_mode, num_layers, num_units, input_size,
-                              batch_size, seq_length, dir_count, expected,
-                              tolerance):
-    model = self._CreateModel(rnn_mode, num_layers, num_units, input_size)
+                              batch_size, seq_length, dir_count, dropout,
+                              expected, tolerance):
+    random_seed.set_random_seed(5678)
+    model = self._CreateModel(rnn_mode, num_layers, num_units, input_size,
+                              dropout)
     has_input_c = (rnn_mode == "lstm")
     params_size_t = model.params_size()
     input_data = array_ops.ones([seq_length, batch_size, input_size])
@@ -206,18 +217,24 @@ class CudnnRNNTest(TensorFlowTestCase):
     with self.test_session(use_gpu=True) as sess:
       sess.run(variables.global_variables_initializer())
       total_sum_v = sess.run([total_sum])
+
       self.assertAllClose(
           total_sum_v[0], expected, atol=tolerance, rtol=tolerance)
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
   def testSimpleInference(self):
+    # Cudnn scales result for dropout during training, therefore dropout has no
+    # impact for inference results.
+    # (lstm, gru, rnn_tanh are saturated in the test. rnn_relu case is most
+    # demonstrative of the dropout-invariant nature of CudnnRnn.)
     test_configs = [
-        [
-            "lstm",
-            231833.22,
-            1e-2,
-            {
+        {
+            "rnn_mode": "lstm",
+            "dropout": [0., 0.5, 1.],
+            "expected": 231833.22,
+            "tolerance": 1e-2,
+            "shape": {
                 "num_layers": 4,
                 "num_units": 200,
                 "input_size": 200,
@@ -225,12 +242,13 @@ class CudnnRNNTest(TensorFlowTestCase):
                 "seq_length": 10,
                 "dir_count": 1,
             },
-        ],
-        [
-            "gru",
-            56000,
-            1e-2,
-            {
+        },
+        {
+            "rnn_mode": "gru",
+            "dropout": [0., 0.5, 1.],
+            "expected": 56000,
+            "tolerance": 1e-2,
+            "shape": {
                 "num_layers": 4,
                 "num_units": 200,
                 "input_size": 200,
@@ -238,12 +256,13 @@ class CudnnRNNTest(TensorFlowTestCase):
                 "seq_length": 10,
                 "dir_count": 1,
             },
-        ],
-        [
-            "rnn_tanh",
-            56000,
-            1e-2,
-            {
+        },
+        {
+            "rnn_mode": "rnn_tanh",
+            "dropout": [0., 0.5, 1.],
+            "expected": 56000,
+            "tolerance": 1e-2,
+            "shape": {
                 "num_layers": 4,
                 "num_units": 200,
                 "input_size": 200,
@@ -251,12 +270,13 @@ class CudnnRNNTest(TensorFlowTestCase):
                 "seq_length": 10,
                 "dir_count": 1,
             },
-        ],
-        [
-            "rnn_relu",
-            130688,
-            1e-2,
-            {
+        },
+        {
+            "rnn_mode": "rnn_relu",
+            "dropout": [0., 0.5, 1.],
+            "expected": 130688,
+            "tolerance": 1e-2,
+            "shape": {
                 "num_layers": 2,
                 "num_units": 8,
                 "input_size": 4,
@@ -264,24 +284,32 @@ class CudnnRNNTest(TensorFlowTestCase):
                 "seq_length": 2,
                 "dir_count": 1,
             },
-        ],
+        },
     ]
     with ops.Graph().as_default():
       for config in test_configs:
-        rnn_mode = config[0]
-        expected = config[1]
-        tolerance = config[2]
-        shapes = config[3]
-        self._testOneSimpleInference(rnn_mode, shapes["num_layers"],
-                                     shapes["num_units"], shapes["input_size"],
-                                     shapes["batch_size"], shapes["seq_length"],
-                                     shapes["dir_count"], expected, tolerance)
+        rnn_mode = config["rnn_mode"]
+        dropout_list = config.get("dropout", [0.])
+        expected = config["expected"]
+        tolerance = config["tolerance"]
+        shape = config["shape"]
+        for dropout in dropout_list:
+          self._testOneSimpleInference(
+              rnn_mode, shape["num_layers"], shape["num_units"],
+              shape["input_size"], shape["batch_size"], shape["seq_length"],
+              shape["dir_count"], dropout, expected, tolerance)
 
   def _testOneSimpleTraining(self, rnn_mode, num_layers, num_units, input_size,
-                             batch_size, seq_length, dir_count, tolerance):
+                             batch_size, seq_length, dir_count, dropout,
+                             tolerance):
+    # Gradient checking runs two forward ops with almost the same input. Need to
+    # make sure the drop patterns across the two runs are the same.
+    old_env_state = os.environ.get("TF_CUDNN_RESET_RND_GEN_STATE", str(False))
+    os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = str(True)
     has_input_c = (rnn_mode == "lstm")
     random_seed.set_random_seed(1234)
-    model = self._CreateModel(rnn_mode, num_layers, num_units, input_size)
+    model = self._CreateModel(rnn_mode, num_layers, num_units, input_size,
+                              dropout)
     params_size_t = model.params_size()
     input_data = variables.Variable(
         random_ops.random_uniform([seq_length, batch_size, input_size]))
@@ -294,6 +322,7 @@ class CudnnRNNTest(TensorFlowTestCase):
       input_c = variables.Variable(
           random_ops.random_uniform(
               [num_layers * dir_count, batch_size, num_units]))
+
       output, output_h, output_c = model(
           input_data=input_data,
           input_h=input_h,
@@ -322,18 +351,22 @@ class CudnnRNNTest(TensorFlowTestCase):
       sess.run(variables.global_variables_initializer())
       all_inputs = [entry[0] for entry in inputs_and_shapes]
       all_shapes = [entry[1] for entry in inputs_and_shapes]
+
       err = gradient_checker.compute_gradient_error(all_inputs, all_shapes,
                                                     total_sum, [1])
+
       self.assertLess(err, tolerance)
+      os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = old_env_state
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
   def testSimpleTraining(self):
     test_configs = [
-        [
-            "lstm",
-            1e-2,
-            {
+        {
+            "rnn_mode": "lstm",
+            "dropout": [0., 0.5, 1.],
+            "tolerance": 1e-2,
+            "shape": {
                 "num_layers": 2,
                 "num_units": 3,
                 "input_size": 4,
@@ -341,11 +374,12 @@ class CudnnRNNTest(TensorFlowTestCase):
                 "seq_length": 4,
                 "dir_count": 1,
             },
-        ],
-        [
-            "gru",
-            4e-3,
-            {
+        },
+        {
+            "rnn_mode": "gru",
+            "dropout": [0., 0.5, 1.],
+            "tolerance": 4e-3,
+            "shape": {
                 "num_layers": 2,
                 "num_units": 3,
                 "input_size": 4,
@@ -353,11 +387,12 @@ class CudnnRNNTest(TensorFlowTestCase):
                 "seq_length": 4,
                 "dir_count": 1,
             },
-        ],
-        [
-            "rnn_tanh",
-            5e-3,
-            {
+        },
+        {
+            "rnn_mode": "rnn_tanh",
+            "dropout": [0., 0.5, 1.],
+            "tolerance": 5e-3,
+            "shape": {
                 "num_layers": 2,
                 "num_units": 3,
                 "input_size": 4,
@@ -365,11 +400,12 @@ class CudnnRNNTest(TensorFlowTestCase):
                 "seq_length": 4,
                 "dir_count": 1,
             },
-        ],
-        [
-            "rnn_relu",
-            3e-1,
-            {
+        },
+        {
+            "rnn_mode": "rnn_relu",
+            "dropout": [0., 0.5, 1.],
+            "tolerance": 4e-1,
+            "shape": {
                 "num_layers": 2,
                 "num_units": 3,
                 "input_size": 4,
@@ -377,17 +413,19 @@ class CudnnRNNTest(TensorFlowTestCase):
                 "seq_length": 4,
                 "dir_count": 1,
             },
-        ],
+        },
     ]
     with ops.Graph().as_default():
       for config in test_configs:
-        rnn_mode = config[0]
-        tolerance = config[1]
-        shape = config[2]
-        self._testOneSimpleTraining(rnn_mode, shape["num_layers"],
-                                    shape["num_units"], shape["input_size"],
-                                    shape["batch_size"], shape["seq_length"],
-                                    shape["dir_count"], tolerance)
+        rnn_mode = config["rnn_mode"]
+        dropout_list = config.get("dropout", [0.])
+        tolerance = config["tolerance"]
+        shape = config["shape"]
+        for dropout in dropout_list:
+          self._testOneSimpleTraining(rnn_mode, shape["num_layers"],
+                                      shape["num_units"], shape["input_size"],
+                                      shape["batch_size"], shape["seq_length"],
+                                      shape["dir_count"], dropout, tolerance)
 
 
 if __name__ == "__main__":

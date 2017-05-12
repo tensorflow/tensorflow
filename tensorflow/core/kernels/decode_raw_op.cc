@@ -50,7 +50,7 @@ class DecodeRawOp : public OpKernel {
       }
     }
     TensorShape out_shape = input.shape();
-    if (str_size == -1) {  // Empty input
+    if (str_size == -1 || str_size == 0) {  // Empty input
       out_shape.AddDim(1);
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output("output", out_shape,

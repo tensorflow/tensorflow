@@ -37,34 +37,19 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-class ScopeNode : public ShowNode {
- public:
-  explicit ScopeNode(TFNode* node) : ShowNode(node) {}
-  ~ScopeNode() override {}
-
-  void AggregateTotalStats(ScopeNode* node) {
-    ShowNode::AggregateTotalStats(node);
-  }
-
-  void AddSelfToTotalStats() { ShowNode::AddSelfToTotalStats(); }
-
-  void ResetTotalStats() { ShowNode::ResetTotalStats(); }
-
-  std::vector<ScopeNode*> children;
-};
-
 class TFScope : public TFShow {
  public:
   explicit TFScope(checkpoint::CheckpointReader* ckpt_reader)
       : TFShow(ckpt_reader) {}
   ~TFScope() override {}
 
-  void AddNode(TFNode* node) override;
+  void AddNode(TFGraphNode* node) override;
 
   void Build() override;
 
  private:
-  const ShowNode* ShowInternal(const Options& opts) override;
+  const ShowNode* ShowInternal(const Options& opts,
+                               Timeline* timeline) override;
 
   ScopeNode* CreateParentNode(const string& name);
 
@@ -79,7 +64,7 @@ class TFScope : public TFShow {
 
   std::vector<ScopeNode*> roots_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;
-  std::map<string, std::unique_ptr<TFNode>> parent_nodes_;
+  std::map<string, std::unique_ptr<TFGraphNode>> parent_nodes_;
   std::map<string, std::unique_ptr<ScopeNode>> nodes_map_;
 };
 }  // namespace tfprof

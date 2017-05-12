@@ -21,7 +21,10 @@ limitations under the License.
 
 namespace xla {
 
-// Defines the interface for an XLA service.
+// Defines the interface for an XLA service on the client side. This service
+// helps abstract around the actual implementation of a service - the service
+// can be local (running in the same process), or remote - in which case an RPC
+// stub is used as the implementation.
 class ServiceInterface {
  public:
   ServiceInterface() {}

@@ -24,9 +24,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
-#include "tensorflow/core/util/mkl_util.h"
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -50,14 +50,14 @@ class MklIdentityOp : public OpKernel {
   bool IsExpensive() override { return false; }
 };
 
-#define REGISTER_MKL_CPU(T)                                                   \
-  REGISTER_KERNEL_BUILDER(Name("_MklIdentity")                                \
-                            .Device(DEVICE_CPU)                               \
-                            .TypeConstraint<T>("T")                           \
-                            .Label(mkl_op_registry::kMklOpLabel),             \
-                        MklIdentityOp<CPUDevice, T>);                         \
+#define REGISTER_MKL_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("_MklIdentity")                      \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklIdentityOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 }  // namespace tensorflow
-#endif // INTEL_MKL
+#endif  // INTEL_MKL

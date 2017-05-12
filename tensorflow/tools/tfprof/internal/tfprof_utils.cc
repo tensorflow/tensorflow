@@ -94,7 +94,7 @@ string StripQuote(const string& s) {
   return s.substr(start, end - start + 1);
 }
 
-tensorflow::Status ReturnError(const std::vector<string> pieces, int idx) {
+tensorflow::Status ReturnError(const std::vector<string>& pieces, int idx) {
   string val;
   if (pieces.size() > idx + 1) {
     val = pieces[idx + 1];
@@ -251,19 +251,13 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       opts->select = requested_set;
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[14]) {
-      if ((pieces.size() > i + 1 && pieces[i + 1].find("-") == 0) ||
-          pieces.size() == i + 1) {
-        opts->viz = true;
-      } else if (!StringToBool(pieces[i + 1], &opts->viz)) {
-        return ReturnError(pieces, i);
-      } else {
-        ++i;
-      }
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[15]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
-      opts->dump_to_file = StripQuote(pieces[i + 1]);
+
+      tensorflow::Status s =
+          ParseOutput(pieces[i + 1], &opts->output_type, &opts->output_options);
+      if (!s.ok()) return s;
       ++i;
     } else {
       return ReturnError(pieces, i);

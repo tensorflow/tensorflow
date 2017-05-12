@@ -58,6 +58,7 @@ limitations under the License.
   #include "tensorflow/core/framework/graph.pb.h"
   #include "tensorflow/core/grappler/grappler_item.h"
   #include "tensorflow/core/grappler/grappler_item_builder.h"
+  #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
   #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
   #include "tensorflow/core/protobuf/meta_graph.pb.h"
   #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -69,9 +70,11 @@ PyObject* TF_OptimizeGraph(
     const tensorflow::grappler::ItemConfig item_config;
     std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
         tensorflow::grappler::GrapplerItemFromMetaGraphDef(graph_id, metagraph, item_config);
+    std::unordered_map<string, tensorflow::DeviceProperties> device_map;
+    tensorflow::grappler::VirtualCluster cluster(device_map);
     tensorflow::GraphDef out_graph;
     tensorflow::Status status = tensorflow::grappler::RunMetaOptimizer(
-        *grappler_item, rewriter_config, &out_graph);
+        *grappler_item, rewriter_config, &cluster, &out_graph);
     tensorflow::Set_TF_Status_from_Status(out_status, status);
     string out_graph_str = out_graph.SerializeAsString();
     PyObject* ret = PyBytes_FromStringAndSize(out_graph_str.data(),

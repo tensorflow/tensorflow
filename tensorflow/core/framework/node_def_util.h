@@ -153,6 +153,20 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<NameAttrList>* value);  // type: "list(func)"
 
+// Look up the attr with name attr_name and set *value to its value.  If no
+// attr with attr_name is found in node_def, or the attr does not have
+// a matching type, false is returned.
+bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
+                       string* value);  // type: "string"
+bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
+                       std::vector<string>* value);  // type: "string"
+
+// Look up the attr with name attr_name and return a reference to its value.
+// If no attr with attr_name is found in node_def, or the attr does not have
+// a matching type, a reference to an empty string is returned.
+// REQUIRES: Must not use the returned value beyond the lifetime of node_def.
+const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
+
 // Computes the input and output types for a specific node.
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,

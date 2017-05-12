@@ -215,8 +215,16 @@ class DebugGrpcChannel {
 
   virtual ~DebugGrpcChannel() {}
 
-  // Query whether the gRPC channel is ready for use.
-  bool is_channel_ready();
+  // Attempt to establish connection with server.
+  //
+  // Args:
+  //   timeout_micros: Timeout (in microseconds) for the attempt to establish
+  //     the connection.
+  //
+  // Returns:
+  //   OK Status iff connection is successfully established before timeout,
+  //   otherwise return an error Status.
+  Status Connect(const int64 timeout_micros);
 
   // Write an Event proto to the debug gRPC stream.
   //
@@ -234,6 +242,7 @@ class DebugGrpcChannel {
   Status ReceiveServerRepliesAndClose();
 
  private:
+  string server_stream_addr_;
   string url_;
   ::grpc::ClientContext ctx_;
   std::shared_ptr<::grpc::Channel> channel_;
@@ -302,6 +311,7 @@ class DebugGrpcIO {
   static void CreateEmptyEnabledSet(const string& grpc_debug_url);
 
   static mutex streams_mu;
+  static int64 channel_connection_timeout_micros;
 
   friend class GrpcDebugTest;
   friend class DebugNumericSummaryOpTest;

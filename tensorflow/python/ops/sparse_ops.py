@@ -315,6 +315,126 @@ def sparse_add(a, b, thresh=0):
         a.indices, a.values, a.dense_shape, b)
 
 
+def _sparse_cross(inputs, name=None):
+  """Generates sparse cross from a list of sparse and dense tensors.
+
+  For example, if the inputs are
+  * inputs[0]: SparseTensor with shape = [2, 2]
+    [0, 0]: "a"
+    [1, 0]: "b"
+    [1, 1]: "c"
+  * inputs[1]: SparseTensor with shape = [2, 1]
+    [0, 0]: "d"
+    [1, 0]: "e"
+  * inputs[2]: Tensor [["f"], ["g"]]
+
+  then the output will be:
+    shape = [2, 2]
+    [0, 0]: "a_X_d_X_f"
+    [1, 0]: "b_X_e_X_g"
+    [1, 1]: "c_X_e_X_g"
+
+  Args:
+    inputs: An iterable of `Tensor` or `SparseTensor`.
+    name: Optional name for the op.
+
+  Returns:
+    A `SparseTensor` of type `string`.
+  """
+  return _sparse_cross_internal(inputs=inputs, hashed_output=False, name=name)
+
+
+def _sparse_cross_hashed(inputs, num_buckets=0, hash_key=None, name=None):
+  """Generates hashed sparse cross from a list of sparse and dense tensors.
+
+  For example, if the inputs are
+  * inputs[0]: SparseTensor with shape = [2, 2]
+    [0, 0]: "a"
+    [1, 0]: "b"
+    [1, 1]: "c"
+  * inputs[1]: SparseTensor with shape = [2, 1]
+    [0, 0]: "d"
+    [1, 0]: "e"
+  * inputs[2]: Tensor [["f"], ["g"]]
+
+  then the output will be:
+    shape = [2, 2]
+    [0, 0]: FingerprintCat64(
+                Fingerprint64("f"), FingerprintCat64(
+                    Fingerprint64("d"), Fingerprint64("a")))
+    [1, 0]: FingerprintCat64(
+                Fingerprint64("g"), FingerprintCat64(
+                    Fingerprint64("e"), Fingerprint64("b")))
+    [1, 1]: FingerprintCat64(
+                Fingerprint64("g"), FingerprintCat64(
+                    Fingerprint64("e"), Fingerprint64("c")))
+
+  Args:
+    inputs: An iterable of `Tensor` or `SparseTensor`.
+    num_buckets: An `int` that is `>= 0`.
+      output = hashed_value%num_buckets if num_buckets > 0 else hashed_value.
+    hash_key: Integer hash_key that will be used by the `FingerprintCat64`
+      function. If not given, will use a default key.
+    name: Optional name for the op.
+
+  Returns:
+    A `SparseTensor` of type `int64`.
+  """
+  return _sparse_cross_internal(
+      inputs=inputs,
+      hashed_output=True,
+      num_buckets=num_buckets,
+      hash_key=hash_key,
+      name=name)
+
+
+_DEFAULT_HASH_KEY = 0xDECAFCAFFE
+
+
+def _sparse_cross_internal(
+    inputs, hashed_output=False, num_buckets=0, hash_key=None, name=None):
+  """See gen_sparse_ops._sparse_cross."""
+  if not isinstance(inputs, list):
+    raise TypeError("Inputs must be a list")
+  if not all(isinstance(i, sparse_tensor.SparseTensor) or
+             isinstance(i, ops.Tensor) for i in inputs):
+    raise TypeError("All inputs must be SparseTensors")
+
+  sparse_inputs = [i for i in inputs
+                   if isinstance(i, sparse_tensor.SparseTensor)]
+  dense_inputs = [i for i in inputs
+                  if not isinstance(i, sparse_tensor.SparseTensor)]
+
+  indices = [sp_input.indices for sp_input in sparse_inputs]
+  values = [sp_input.values for sp_input in sparse_inputs]
+  shapes = [sp_input.dense_shape for sp_input in sparse_inputs]
+  out_type = dtypes.int64 if hashed_output else dtypes.string
+
+  internal_type = dtypes.string
+  for i in range(len(values)):
+    if values[i].dtype != dtypes.string:
+      values[i] = math_ops.to_int64(values[i])
+      internal_type = dtypes.int64
+  for i in range(len(dense_inputs)):
+    if dense_inputs[i].dtype != dtypes.string:
+      dense_inputs[i] = math_ops.to_int64(dense_inputs[i])
+      internal_type = dtypes.int64
+
+  indices_out, values_out, shape_out = gen_sparse_ops._sparse_cross(
+      indices=indices,
+      values=values,
+      shapes=shapes,
+      dense_inputs=dense_inputs,
+      hashed_output=hashed_output,
+      num_buckets=num_buckets,
+      hash_key=hash_key or _DEFAULT_HASH_KEY,
+      out_type=out_type,
+      internal_type=internal_type,
+      name=name)
+
+  return sparse_tensor.SparseTensor(indices_out, values_out, shape_out)
+
+
 def sparse_dense_cwise_add(sp_t, dense_t):
   """Adds up a SparseTensor and a dense Tensor, using these special rules:
 

@@ -71,14 +71,20 @@ class LocalCLIDebuggerWrapperSessionForTest(
         "tf_errors": [],
         "run_start_cli_run_numbers": [],
         "run_end_cli_run_numbers": [],
+        "profiler_py_graphs": [],
+        "profiler_run_metadata": [],
     }
 
   def _prep_cli_for_run_start(self):
     pass
 
-  def _prep_cli_for_run_end(self, debug_dump, tf_error, passed_filter):
+  def _prep_debug_cli_for_run_end(self, debug_dump, tf_error, passed_filter):
     self.observers["debug_dumps"].append(debug_dump)
     self.observers["tf_errors"].append(tf_error)
+
+  def _prep_profile_cli_for_run_end(self, py_graph, run_metadata):
+    self.observers["profiler_py_graphs"].append(py_graph)
+    self.observers["profiler_run_metadata"].append(run_metadata)
 
   def _launch_cli(self):
     if self._is_run_start:
@@ -467,6 +473,19 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     dumps = wrapped_sess.observers["debug_dumps"][0]
     self.assertEqual(1, dumps.size)
     self.assertEqual("w_int_inner", dumps.dumped_tensor_data[0].node_name)
+
+  def testRunUnderProfilerModeWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["-p"], []], self.sess)
+
+    wrapped_sess.run(self.w_int)
+
+    self.assertEqual(1, len(wrapped_sess.observers["profiler_run_metadata"]))
+    self.assertTrue(
+        wrapped_sess.observers["profiler_run_metadata"][0].step_stats)
+    self.assertEqual(1, len(wrapped_sess.observers["profiler_py_graphs"]))
+    self.assertIsInstance(
+        wrapped_sess.observers["profiler_py_graphs"][0], ops.Graph)
 
 
 if __name__ == "__main__":

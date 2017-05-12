@@ -87,6 +87,12 @@ class SplitVOpBase : public OpKernel {
     // Special case 1: num_split == 1. Nothing to do.
     if (num_split == 1) {
       context->set_output(0, context->input(0));
+      OP_REQUIRES(
+          context, (*split_sizes_vec)[0] == input_size_split_dim,
+          errors::InvalidArgument("If there is only one output, it must have "
+                                  "the same size as the input. Input size: ",
+                                  input_size_split_dim,
+                                  " output size: ", (*split_sizes_vec)[0]));
       *done = true;
       return;
     }

@@ -257,6 +257,11 @@ class ResourceVariable(object):
     return self._handle.device
 
   @property
+  def graph(self):
+    """The `Graph` of this variable."""
+    return self._handle.graph
+
+  @property
   def name(self):
     """The name of the handle for this variable."""
     return self._handle.name

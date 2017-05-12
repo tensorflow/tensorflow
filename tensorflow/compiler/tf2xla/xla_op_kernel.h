@@ -186,10 +186,9 @@ class XlaOpKernelContext {
   // Returns the underlying OpKernelContext. Use rarely.
   OpKernelContext* op_kernel_context() const { return context_; }
 
-  // Returns the options passed to the XlaCompiler that is being
-  // run. Used for, e.g., While to inherit options needed for nested
-  // computation.
-  const XlaCompiler::Options& GetCompilerOptions() const;
+  // Returns the XlaCompiler that is performing the compilation. Used for, e.g.,
+  // While to compile nested computations.
+  XlaCompiler* compiler() const;
 
   // TODO(phawkins): find a better home for these helpers.
 
