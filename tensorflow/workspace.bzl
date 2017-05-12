@@ -1246,6 +1246,24 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   web_library_external(
+      name = "org_polymer_hydrolysis",
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256 = "703b50f6b00f9e0546b5a3451da57bb20f77a166e27e4967923b9e835bab9b80",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/Polymer/polymer-analyzer/archive/v1.19.3.tar.gz",
+          "https://github.com/Polymer/polymer-analyzer/archive/v1.19.3.tar.gz",
+      ],
+      strip_prefix = "polymer-analyzer-1.19.3",
+      path = "/hydrolysis",
+      srcs = [
+          "hydrolysis-analyzer.html",
+          "hydrolysis.html",
+          "hydrolysis.js",
+      ],
+      deps = ["@org_polymer"],
+  )
+
+  web_library_external(
       name = "org_polymer_iron_a11y_announcer",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "6bce143db7a374a68535ec8b861a5f30e81f2f1e4ee36a55bda2a891f6fd2818",
@@ -1352,6 +1370,31 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   web_library_external(
+      name = "org_polymer_iron_component_page",
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256 = "3636e8b9a1f229fc33b5aad3933bd02a9825f66e679a0be31855d7c8245c4b4b",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-component-page/archive/v1.1.4.tar.gz",
+          "https://github.com/PolymerElements/iron-component-page/archive/v1.1.4.tar.gz",
+      ],
+      strip_prefix = "iron-component-page-1.1.4",
+      path = "/iron-component-page",
+      srcs = ["iron-component-page.html"],
+      deps = [
+          "@org_polymer",
+          "@org_polymer_hydrolysis",
+          "@org_polymer_iron_ajax",
+          "@org_polymer_iron_doc_viewer",
+          "@org_polymer_iron_flex_layout",
+          "@org_polymer_iron_icons",
+          "@org_polymer_iron_selector",
+          "@org_polymer_paper_header_panel",
+          "@org_polymer_paper_styles",
+          "@org_polymer_paper_toolbar",
+      ],
+  )
+
+  web_library_external(
       name = "org_polymer_iron_collapse",
       licenses = ["notice"],  # BSD-3-Clause
       sha256 = "275808994a609a2f9923e2dd2db1957945ab141ba840eadc33f19e1f406d600e",
@@ -1388,6 +1431,31 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "@org_polymer_iron_icons",
           "@org_polymer_marked_element",
           "@org_polymer_paper_icon_button",
+          "@org_polymer_paper_styles",
+          "@org_polymer_prism_element",
+      ],
+  )
+
+  web_library_external(
+      name = "org_polymer_iron_doc_viewer",
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256 = "f0e9dfbbcd94d7e88ce82cb61e615406ace63c185fee9396f7f182206ca5cc9a",
+      urls = [
+          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-doc-viewer/archive/v1.0.12.tar.gz",
+          "https://github.com/PolymerElements/iron-doc-viewer/archive/v1.0.12.tar.gz",
+      ],
+      strip_prefix = "iron-doc-viewer-1.0.12",
+      path = "/iron-doc-viewer",
+      srcs = [
+          "iron-doc-property-styles.html",
+          "iron-doc-property.html",
+          "iron-doc-viewer-styles.html",
+          "iron-doc-viewer.html",
+      ],
+      deps = [
+          "@org_polymer",
+          "@org_polymer_marked_element",
+          "@org_polymer_paper_button",
           "@org_polymer_paper_styles",
           "@org_polymer_prism_element",
       ],
