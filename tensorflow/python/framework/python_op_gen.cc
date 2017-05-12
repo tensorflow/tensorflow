@@ -283,7 +283,7 @@ static string GetReturns(const OpDef& op_def,
           out_names[i] = strings::StrCat("output", i);
         }
       }
-      strings::Appendf(&result, "    A tuple of `Tensor` objects (%s).\n",
+      strings::Appendf(&result, "    A tuple of `Tensor` objects (%s).\n\n",
                        str_util::Join(out_names, ", ").c_str());
       for (int i = 0; i < num_outs; ++i) {
         string desc = strings::StrCat(out_names[i], ": ");
