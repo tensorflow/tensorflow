@@ -567,13 +567,22 @@ contents: 0-D. PNG-encoded image.
 REGISTER_OP("DecodeBmp")
     .Input("contents: string")
     .Output("image: uint8")
-    .Attr("channels: int = 3")
+    .Attr("channels: int = 0")
     .SetShapeFn(DecodeImageShapeFn)
     .Doc(R"doc(
 Decode the first frame of a BMP-encoded image to a uint8 tensor.
 
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the PNG-encoded image.
+*   3: output an RGB image.
+*   4: output an RGBA image.
+
 contents: 0-D.  The BMP-encoded image.
-image: 3-D with shape `[height, width, 3]`. RGB order
+image: 3-D with shape `[height, width, channels]`. RGB order
 )doc");
 
 // --------------------------------------------------------------------------

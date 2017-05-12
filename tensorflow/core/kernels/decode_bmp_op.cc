@@ -70,7 +70,7 @@ class DecodeBmpOp : public OpKernel {
     // Current implementation only supports 3 or 4 channel
     // bitmaps.
     OP_REQUIRES(
-        context, (channels_ == 3 || channels == 4),
+        context, (channels_ == 3 || channels_ == 4),
         errors::InvalidArgument("Number of channels must be 3 or 4, was ",
                                 channels_));
 
