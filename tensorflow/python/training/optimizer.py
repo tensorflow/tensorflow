@@ -101,6 +101,14 @@ class _RefVariableProcessor(_OptimizableVariable):
       # pylint: disable=protected-access
       return optimizer._apply_sparse_duplicate_indices(g, self._v)
 
+  def update_op_asynchronous(self, optimizer, g, index):
+    if isinstance(g, ops.Tensor):
+      return optimizer._apply_dense(g, self._v, index)
+    else:
+      assert isinstance(g, ops.IndexedSlices), ("Gradient ", g, " is neither a "
+                                                "tensor nor IndexedSlices.")
+      # pylint: disable=protected-access
+      return optimizer._apply_sparse_duplicate_indices(g, self._v, index)
 
 class _DenseReadResourceVariableProcessor(_OptimizableVariable):
   """Processor for dense ResourceVariables."""
@@ -115,6 +123,9 @@ class _DenseReadResourceVariableProcessor(_OptimizableVariable):
     # pylint: disable=protected-access
     return optimizer._resource_apply_dense(g, self._v.op.inputs[0])
 
+  def update_op_asynchronous(self, optimizer, g, index):
+    # pylint: disable=protected-access
+    return optimizer._resource_apply_dense(g, self._v.op.inputs[0], index)
 
 class _DenseResourceVariableProcessor(_OptimizableVariable):
   """Processor for dense ResourceVariables."""
@@ -132,6 +143,12 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
           g.values, self._v, g.indices)
     return optimizer._resource_apply_dense(g, self._v)
 
+  def update_op_asynchronous(self, optimizer, g, index):
+    # pylint: disable=protected-access
+    if isinstance(g, ops.IndexedSlices):
+      return optimizer._resource_apply_sparse_duplicate_indices(
+          g.values, self._v, g.indices, index)
+    return optimizer._resource_apply_dense(g, self._v, index)
 
 class _StreamingModelPortProcessor(_OptimizableVariable):
   """Processor for streaming ModelPorts."""
@@ -277,7 +294,7 @@ class Optimizer(object):
   def minimize(self, loss, global_step=None, var_list=None,
                gate_gradients=GATE_OP, aggregation_method=None,
                colocate_gradients_with_ops=False, name=None,
-               grad_loss=None):
+               grad_loss=None, worker_index=None):
     """Add operations to minimize `loss` by updating `var_list`.
 
     This method simply combines calls `compute_gradients()` and
@@ -300,6 +317,8 @@ class Optimizer(object):
         the corresponding op.
       name: Optional name for the returned operation.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
+      worker_index: Optional. A value to indicate the instance of worker
+        minimizing if computing asynchronously.
 
     Returns:
       An Operation that updates the variables in `var_list`.  If `global_step`
@@ -322,7 +341,8 @@ class Optimizer(object):
           ([str(v) for _, v in grads_and_vars], loss))
 
     return self.apply_gradients(grads_and_vars, global_step=global_step,
-                                name=name)
+                                name=name,
+                                worker_index=worker_index)
 
   def compute_gradients(self, loss, var_list=None,
                         gate_gradients=GATE_OP,
@@ -392,7 +412,7 @@ class Optimizer(object):
          if g is not None and v.dtype != dtypes.resource])
     return grads_and_vars
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+  def apply_gradients(self, grads_and_vars, global_step=None, name=None, worker_index=None):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -453,7 +473,11 @@ class Optimizer(object):
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
         with ops.name_scope("update_" + var.op.name), ops.colocate_with(var):
-          update_ops.append(processor.update_op(self, grad))
+          if worker_index is None:
+            update_ops.append(processor.update_op(self, grad))
+          else:
+            update_ops.append(processor.update_op_asynchronous(self, grad,
+                                                        worker_index))
       if global_step is None:
         apply_updates = self._finish(update_ops, name)
       else:
