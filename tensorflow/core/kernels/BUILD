@@ -4132,6 +4132,7 @@ filegroup(
         "cwise_op_equal_to_2.cc",
         "cwise_op_exp.cc",
         "cwise_op_floor.cc",
+        "cwise_op_floor_div.cc",
         "cwise_op_greater.cc",
         "cwise_op_greater_equal.cc",
         "cwise_op_isfinite.cc",

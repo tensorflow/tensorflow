@@ -25,8 +25,9 @@ namespace tensorflow {
 namespace grappler {
 
 VirtualPlacer::VirtualPlacer(const Cluster* cluster) : has_gpu_(false) {
+  CHECK(cluster);
   devices_ = cluster->GetDevices();
-  for (const auto& device : cluster->GetDevices()) {
+  for (const auto& device : devices_) {
     if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
       has_gpu_ = true;
     }

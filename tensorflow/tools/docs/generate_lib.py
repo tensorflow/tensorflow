@@ -64,8 +64,16 @@ def write_docs(output_dir, parser_config, yaml_toc):
     parser_config: A `parser.ParserConfig` object, containing all the necessary
       indices.
     yaml_toc: Set to `True` to generate a "_toc.yaml" file.
+
+  Raises:
+    ValueError: if `output_dir` is not an absolute path
   """
   # Make output_dir.
+  if not os.path.isabs(output_dir):
+    raise ValueError(
+        "'output_dir' must be an absolute path.\n"
+        "    output_dir='%s'" % output_dir)
+
   try:
     if not os.path.exists(output_dir):
       os.makedirs(output_dir)
@@ -257,6 +265,14 @@ class _DocInfo(object):
 def build_doc_index(src_dir):
   """Build an index from a keyword designating a doc to _DocInfo objects."""
   doc_index = {}
+  if not os.path.isabs(src_dir):
+    raise ValueError("'src_dir' must be an absolute path.\n"
+                     "    src_dir='%s'" % src_dir)
+
+  if not os.path.exists(src_dir):
+    raise ValueError("'src_dir' path must exist.\n"
+                     "    src_dir='%s'" % src_dir)
+
   for dirpath, _, filenames in os.walk(src_dir):
     suffix = os.path.relpath(path=dirpath, start=src_dir)
     for base_name in filenames:
