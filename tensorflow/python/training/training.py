@@ -19,7 +19,11 @@ See the @{$python/train} guide.
 
 @@Optimizer
 @@GradientDescentOptimizer
+<<<<<<< HEAD
 @@DelayCompensatedGradientDescentOptimizer
+=======
+@@GradientDescentDCOptimizer
+>>>>>>> ac348186c119dd397cd42d18fc4b4d48a70df6ce
 @@AdadeltaOptimizer
 @@AdagradOptimizer
 @@AdagradDAOptimizer
