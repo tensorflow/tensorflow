@@ -185,8 +185,15 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::Run(
   if (options.allocator() == nullptr) {
     actual_options.set_allocator(backend_->memory_allocator());
   }
-  ServiceExecutableRunOptions service_options(actual_options,
-                                              backend_->StreamBorrower());
+
+  // For local client execution on CPU backends:
+  // *) The thread pool used for eigen CPU ops is from
+  //    ExecutableRunOptions.eigen_intra_op_thread_pool.
+  // *) The thread pool used for XLA CPU ops is from
+  //    backend_->eigen_intra_op_thread_pool().
+  ServiceExecutableRunOptions service_options(
+      actual_options, backend_->StreamBorrower(),
+      backend_->eigen_intra_op_thread_pool());
 
   if (executable_->dumping()) {
     return ExecuteAndDump(&service_options, arguments);

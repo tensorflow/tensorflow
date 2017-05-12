@@ -43,6 +43,16 @@ int LocalClientOptions::number_of_replicas() const {
   return number_of_replicas_;
 }
 
+LocalClientOptions& LocalClientOptions::set_intra_op_parallelism_threads(
+    int num_threads) {
+  intra_op_parallelism_threads_ = num_threads;
+  return *this;
+}
+
+int LocalClientOptions::intra_op_parallelism_threads() const {
+  return intra_op_parallelism_threads_;
+}
+
 /* static */ ClientLibrary& ClientLibrary::Singleton() {
   static ClientLibrary* c = new ClientLibrary;
   return *c;
@@ -77,6 +87,8 @@ ClientLibrary::~ClientLibrary() = default;
   ServiceOptions service_options;
   service_options.set_platform(platform);
   service_options.set_number_of_replicas(replica_count);
+  service_options.set_intra_op_parallelism_threads(
+      options.intra_op_parallelism_threads());
 
   auto instance = MakeUnique<LocalInstance>();
   TF_ASSIGN_OR_RETURN(instance->service,
