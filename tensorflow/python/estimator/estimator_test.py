@@ -256,6 +256,17 @@ class EstimatorConstructorTest(test.TestCase):
         features, labels, 'something')
     estimator.Estimator(model_fn=new_model_fn)
 
+  def test_if_model_fn_is_a_member_function_of_a_class(self):
+
+    class ModelFnClass(object):
+      def __init__(self):
+        estimator.Estimator(model_fn=self.model_fn)
+
+      def model_fn(self, features, labels, mode):
+        _, _, _ = features, labels, mode
+
+    ModelFnClass()
+
 
 def dummy_input_fn():
   return ({'x': constant_op.constant([[1], [1]])},
