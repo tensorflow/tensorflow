@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.platform import test
 
@@ -27,6 +28,14 @@ _NOT_SUPPORTED_REPLACE_PROPERTY_MSG = 'Replacing .*is not supported'
 _SAVE_CKPT_ERR = (
     '`save_checkpoints_steps` and `save_checkpoints_secs` cannot be both set.'
 )
+_MODEL_DIR_ERR = 'model_dir should be non-empty'
+_SAVE_SUMMARY_STEPS_ERR = 'save_summary_steps should be >= 0'
+_SAVE_CKPT_STEPS_ERR = 'save_checkpoints_steps should be >= 0'
+_SAVE_CKPT_SECS_ERR = 'save_checkpoints_secs should be >= 0'
+_SESSION_CONFIG_ERR = 'session_config must be instance of ConfigProto'
+_KEEP_CKPT_MAX_ERR = 'keep_checkpoint_max should be >= 0'
+_KEEP_CKPT_HOURS_ERR = 'keep_checkpoint_every_n_hours should be > 0'
+_TF_RANDOM_SEED_ERR = 'tf_random_seed must be integer'
 
 
 class RunConfigTest(test.TestCase):
@@ -50,19 +59,40 @@ class RunConfigTest(test.TestCase):
     self.assertEqual(_TEST_DIR, new_config.model_dir)
 
   def test_replace_with_allowed_properties(self):
+    session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+
     config = run_config_lib.RunConfig().replace(
         tf_random_seed=11,
         save_summary_steps=12,
         save_checkpoints_secs=14,
-        session_config=15,
+        session_config=session_config,
         keep_checkpoint_max=16,
         keep_checkpoint_every_n_hours=17)
     self.assertEqual(11, config.tf_random_seed)
     self.assertEqual(12, config.save_summary_steps)
     self.assertEqual(14, config.save_checkpoints_secs)
-    self.assertEqual(15, config.session_config)
+    self.assertEqual(session_config, config.session_config)
     self.assertEqual(16, config.keep_checkpoint_max)
     self.assertEqual(17, config.keep_checkpoint_every_n_hours)
+
+  def test_replace_none_value(self):
+    config = run_config_lib.RunConfig().replace(
+        tf_random_seed=None,
+        model_dir=None,
+        save_summary_steps=None,
+        save_checkpoints_secs=None,
+        save_checkpoints_steps=None,
+        session_config=None,
+        keep_checkpoint_max=None,
+        keep_checkpoint_every_n_hours=None)
+    self.assertIsNone(config.tf_random_seed)
+    self.assertIsNone(config.model_dir)
+    self.assertIsNone(config.save_summary_steps)
+    self.assertIsNone(config.save_checkpoints_secs)
+    self.assertIsNone(config.save_checkpoints_steps)
+    self.assertIsNone(config.session_config)
+    self.assertIsNone(config.keep_checkpoint_max)
+    self.assertIsNone(config.keep_checkpoint_every_n_hours)
 
   def test_replace_with_disallowallowed_properties(self):
     config = run_config_lib.RunConfig()
@@ -83,6 +113,26 @@ class RunConfigTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError, _NOT_SUPPORTED_REPLACE_PROPERTY_MSG):
       config.replace(some_undefined_property=_MASTER)
+
+  def test_replace_invalid_values(self):
+    config = run_config_lib.RunConfig()
+
+    with self.assertRaisesRegexp(ValueError, _MODEL_DIR_ERR):
+      config.replace(model_dir='')
+    with self.assertRaisesRegexp(ValueError, _SAVE_SUMMARY_STEPS_ERR):
+      config.replace(save_summary_steps=-1)
+    with self.assertRaisesRegexp(ValueError, _SAVE_CKPT_STEPS_ERR):
+      config.replace(save_checkpoints_steps=-1)
+    with self.assertRaisesRegexp(ValueError, _SAVE_CKPT_SECS_ERR):
+      config.replace(save_checkpoints_secs=-1)
+    with self.assertRaisesRegexp(ValueError, _SESSION_CONFIG_ERR):
+      config.replace(session_config={})
+    with self.assertRaisesRegexp(ValueError, _KEEP_CKPT_MAX_ERR):
+      config.replace(keep_checkpoint_max=-1)
+    with self.assertRaisesRegexp(ValueError, _KEEP_CKPT_HOURS_ERR):
+      config.replace(keep_checkpoint_every_n_hours=0)
+    with self.assertRaisesRegexp(ValueError, _TF_RANDOM_SEED_ERR):
+      config.replace(tf_random_seed=1.0)
 
 
 class RunConfigSaveCheckpointsTest(test.TestCase):
