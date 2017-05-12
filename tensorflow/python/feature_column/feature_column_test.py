@@ -1241,6 +1241,27 @@ class MakeLinearModelTest(test.TestCase):
         sess.run(price_var.assign([[10.], [100.]]))
         self.assertAllClose([[210.], [650.]], predictions.eval())
 
+  def test_sparse_multi_rank(self):
+    wire_cast = fc.categorical_column_with_hash_bucket('wire_cast', 4)
+    with ops.Graph().as_default():
+      wire_tensor = array_ops.sparse_placeholder(dtypes.string)
+      wire_value = sparse_tensor.SparseTensorValue(
+          values=['omar', 'stringer', 'marlo', 'omar'],  # hashed = [2, 0, 3, 2]
+          indices=[[0, 0, 0], [0, 1, 0], [1, 0, 0], [1, 0, 1]],
+          dense_shape=[2, 2, 2])
+      features = {'wire_cast': wire_tensor}
+      predictions = fc.linear_model(features, [wire_cast])
+      wire_cast_var = get_linear_model_column_var(wire_cast)
+      with _initialized_session() as sess:
+        self.assertAllClose(np.zeros((4, 1)), wire_cast_var.eval())
+        self.assertAllClose(
+            np.zeros((2, 1)),
+            predictions.eval(feed_dict={wire_tensor: wire_value}))
+        sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
+        self.assertAllClose(
+            [[1010.], [11000.]],
+            predictions.eval(feed_dict={wire_tensor: wire_value}))
+
   def test_sparse_combiner(self):
     wire_cast = fc.categorical_column_with_hash_bucket('wire_cast', 4)
     with ops.Graph().as_default():

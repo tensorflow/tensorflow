@@ -1330,6 +1330,13 @@ class _CategoricalColumn(_FeatureColumn):
     pass
 
 
+def _sparse_reshape(inputs, shape):
+  # Satisfies sparse_reshape assumptions such as dtype int64.
+  # shape is a list.
+  return sparse_ops.sparse_reshape(inputs,
+                                   math_ops.cast(shape, dtypes.int64))
+
+
 def _create_categorical_column_weighted_sum(
     column, builder, units, sparse_combiner, weight_collections, trainable):
   """Create a weighted sum of a categorical column for linear_model."""
@@ -1337,6 +1344,14 @@ def _create_categorical_column_weighted_sum(
       builder,
       weight_collections=weight_collections,
       trainable=trainable)
+  id_tensor = _sparse_reshape(sparse_tensors.id_tensor, [
+      array_ops.shape(sparse_tensors.id_tensor)[0], -1
+  ])
+  weight_tensor = sparse_tensors.weight_tensor
+  if weight_tensor is not None:
+    weight_tensor = _sparse_reshape(weight_tensor,
+                                    [array_ops.shape(weight_tensor)[0], -1])
+
   weight = variable_scope.get_variable(
       name='weight',
       shape=(column._num_buckets, units),  # pylint: disable=protected-access
@@ -1345,8 +1360,8 @@ def _create_categorical_column_weighted_sum(
       collections=weight_collections)
   return _safe_embedding_lookup_sparse(
       weight,
-      sparse_tensors.id_tensor,
-      sparse_weights=sparse_tensors.weight_tensor,
+      id_tensor,
+      sparse_weights=weight_tensor,
       combiner=sparse_combiner,
       name='weighted_sum')
 
