@@ -341,8 +341,7 @@ class Optimizer(object):
           ([str(v) for _, v in grads_and_vars], loss))
 
     return self.apply_gradients(grads_and_vars, global_step=global_step,
-                                name=name,
-                                worker_index=worker_index)
+                                name=name, worker_index=worker_index)
 
   def compute_gradients(self, loss, var_list=None,
                         gate_gradients=GATE_OP,
@@ -412,7 +411,11 @@ class Optimizer(object):
          if g is not None and v.dtype != dtypes.resource])
     return grads_and_vars
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None, worker_index=None):
+  def apply_gradients(self,
+                      grads_and_vars,
+                      global_step=None,
+                      name=None,
+                      worker_index=None):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -425,6 +428,8 @@ class Optimizer(object):
         variables have been updated.
       name: Optional name for the returned operation.  Default to the
         name passed to the `Optimizer` constructor.
+      worker_index: Optional value to indicate the instance of worker
+        minimizing if computing asynchronously.
 
     Returns:
       An `Operation` that applies the specified gradients. If `global_step`
@@ -477,7 +482,7 @@ class Optimizer(object):
             update_ops.append(processor.update_op(self, grad))
           else:
             update_ops.append(processor.update_op_asynchronous(self, grad,
-                                                        worker_index))
+                worker_index))
       if global_step is None:
         apply_updates = self._finish(update_ops, name)
       else:
