@@ -29,11 +29,6 @@ limitations under the License.
 <h3>Answer to the Ultimate Question of Life, the Universe, and Everything</h3>
 <demo-snippet>
   <template>
-    <tf-graph-app></tf-graph-app>
-    <script>
-      fetch("data/graph.pbtxt", {credentials: "include"}).then(r => r.text()).then(pbtxt => {
-        document.querySelector("tf-graph-app").pbtxt = pbtxt;
-      });
-    </script>
+    <tf-graph-app pbtxt-file-location="data/graph.pbtxt"></tf-graph-app>
   </template>
 </demo-snippet>
