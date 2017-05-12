@@ -2412,6 +2412,51 @@ max_output: The float value that the highest quantized output value represents.
 
 )doc");
 
+// This interface is similar to the QuantizedConv2D op's interface:
+// See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/ops/nn_ops.cc#L2369
+//
+// Some discussions for the output_shape parameter:
+// https://github.com/tensorflow/tensorflow/issues/2118
+REGISTER_OP("QuantizedDeconv2D")
+  .Input("value: Tinput")
+  .Input("filter: Tfilter")
+  .Input("output_sizes: int32")
+  .Input("min_input: float")
+  .Input("max_input: float")
+  .Input("min_filter: float")
+  .Input("max_filter: float")
+  .Output("output: out_type")
+  .Output("min_output: float")
+  .Output("max_output: float")
+  .Attr("Tinput: quantizedtype")
+  .Attr("Tfilter: quantizedtype")
+  .Attr("out_type: quantizedtype = DT_QINT32") // default quantized type
+  // .Attr("Tinput: numbertype")
+  // .Attr("Tfilter: numbertype")
+  // .Attr("out_type: numbertype")
+  .Attr("strides: list(int)")
+  .Attr(GetPaddingAttrString()) // add padding string
+  .SetShapeFn([] (InferenceContext *c) {
+    // TODO: Don't understand this shape handle funtion for now, will check later
+    // TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+
+    ShapeHandle unused;
+
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+    
+    c->set_output(1, c->Scalar());
+    c->set_output(2, c->Scalar());
+
+    return Status::OK();
+  })
+  .Doc(R"doc(
+Computes quantized conv2d_transpose.
+)doc");
+
+
 REGISTER_OP("QuantizedMaxPool")
     .Input("input: T")
     .Input("min_input: float")
