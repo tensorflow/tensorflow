@@ -599,7 +599,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     }
     columns = [one_hot_column, embedding_column, real_valued_column]
     output = feature_column_ops.input_from_feature_columns(features, columns)
-    output_core = fc_core.make_input_layer(features, columns)
+    output_core = fc_core.input_layer(features, columns)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
@@ -616,8 +616,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
       self.assertAllClose(output.eval(), features["price"].eval())
       # Verify cross compatibility: Core builder output should equal to contrib.
       self.assertAllClose(output.eval(),
-                          fc_core.make_input_layer(features,
-                                                   [real_valued]).eval())
+                          fc_core.input_layer(features, [real_valued]).eval())
 
   def testRealValuedColumnWithMultiDimensions(self):
     real_valued = feature_column.real_valued_column("price", 2)
@@ -630,8 +629,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
       self.assertAllClose(output.eval(), features["price"].eval())
       # Verify cross compatibility: Core builder output should equal to contrib.
       self.assertAllClose(output.eval(),
-                          fc_core.make_input_layer(features,
-                                                   [real_valued]).eval())
+                          fc_core.input_layer(features, [real_valued]).eval())
 
   def testRealValuedColumnDense(self):
     var_len_real_valued = feature_column._real_valued_var_len_column(
@@ -665,8 +663,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
       self.assertAllClose(output.eval(), features["price"].eval() - 2)
       # Verify cross compatibility: Core builder output should equal to contrib.
       self.assertAllClose(output.eval(),
-                          fc_core.make_input_layer(features,
-                                                   [real_valued]).eval())
+                          fc_core.input_layer(features, [real_valued]).eval())
 
   def testRealValuedColumnWithMultiDimensionsAndNormalizer(self):
     real_valued = feature_column.real_valued_column(
@@ -680,8 +677,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
       self.assertAllClose(output.eval(), features["price"].eval() - 2)
       # Verify cross compatibility: Core builder output should equal to contrib.
       self.assertAllClose(output.eval(),
-                          fc_core.make_input_layer(features,
-                                                   [real_valued]).eval())
+                          fc_core.input_layer(features, [real_valued]).eval())
 
   def testBucketizedColumnWithNormalizerSucceedsForDNN(self):
     bucket = feature_column.bucketized_column(
@@ -695,7 +691,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     with self.test_session():
       self.assertAllClose(output.eval(), expected)
       self.assertAllClose(output.eval(),
-                          fc_core.make_input_layer(features, [bucket]).eval())
+                          fc_core.input_layer(features, [bucket]).eval())
 
   def testBucketizedColumnWithMultiDimensionsSucceedsForDNN(self):
     bucket = feature_column.bucketized_column(
@@ -711,7 +707,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     with self.test_session():
       self.assertAllClose(output.eval(), expected)
       self.assertAllClose(output.eval(),
-                          fc_core.make_input_layer(features, [bucket]).eval())
+                          fc_core.input_layer(features, [bucket]).eval())
 
   def testOneHotColumnFromWeightedSparseColumnSucceedsForDNN(self):
     ids_column = feature_column.sparse_column_with_keys(
@@ -730,7 +726,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     one_hot_column = feature_column.one_hot_column(weighted_ids_column)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_column])
-    output_core = fc_core.make_input_layer(features, [one_hot_column])
+    output_core = fc_core.input_layer(features, [one_hot_column])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
@@ -750,7 +746,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     features = {"ids": ids_tensor}
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_sparse])
-    output_core = fc_core.make_input_layer(features, [one_hot_sparse])
+    output_core = fc_core.input_layer(features, [one_hot_sparse])
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
@@ -771,7 +767,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     features = {"ids": ids_tensor}
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_sparse])
-    output_core = fc_core.make_input_layer(features, [one_hot_sparse])
+    output_core = fc_core.input_layer(features, [one_hot_sparse])
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
@@ -794,7 +790,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     }
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_sparse])
-    output_core = fc_core.make_input_layer(features, [one_hot_sparse])
+    output_core = fc_core.input_layer(features, [one_hot_sparse])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 1, 0]],
@@ -812,7 +808,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     one_hot_sparse = feature_column.one_hot_column(hashed_sparse)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_sparse])
-    output_core = fc_core.make_input_layer(features, [one_hot_sparse])
+    output_core = fc_core.input_layer(features, [one_hot_sparse])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
@@ -830,7 +826,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     embeded_sparse = feature_column.embedding_column(hashed_sparse, 10)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
-    output_core = fc_core.make_input_layer(features, [embeded_sparse])
+    output_core = fc_core.input_layer(features, [embeded_sparse])
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(output.eval().shape, [4, 10])
@@ -853,7 +849,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     grad = gradients_impl.gradients(output, weights)
     # Calcuates the tensors calculated by FC core libs. Later, the values will
     # be compared with the contrib version.
-    output_core = fc_core.make_input_layer(
+    output_core = fc_core.input_layer(
         features, [embedded_sparse], weight_collections=["my_collection_core"])
     weights_core = ops.get_collection("my_collection_core")
     grad_core = gradients_impl.gradients(output_core, weights_core)
@@ -884,7 +880,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         initializer=init_ops.constant_initializer(init_value))
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
-    output_core = fc_core.make_input_layer(features, [embeded_sparse])
+    output_core = fc_core.input_layer(features, [embeded_sparse])
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
@@ -938,7 +934,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     embeded_sparse = feature_column.embedding_column(weighted_ids, 10)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
-    output_core = fc_core.make_input_layer(features, [embeded_sparse])
+    output_core = fc_core.input_layer(features, [embeded_sparse])
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
@@ -1600,7 +1596,7 @@ class WeightedSumTest(test.TestCase):
     features = {"wire": wire_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
-    logits_core = fc_core.make_linear_model(features, [hashed_sparse], units=5)
+    logits_core = fc_core.linear_model(features, [hashed_sparse], units=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
@@ -1618,7 +1614,7 @@ class WeightedSumTest(test.TestCase):
     features = {"wire": wire_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
-    logits_core = fc_core.make_linear_model(features, [hashed_sparse], units=5)
+    logits_core = fc_core.linear_model(features, [hashed_sparse], units=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
@@ -1632,7 +1628,7 @@ class WeightedSumTest(test.TestCase):
     features = {"wire": wire_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
-    logits_core = fc_core.make_linear_model(features, [hashed_sparse], units=5)
+    logits_core = fc_core.linear_model(features, [hashed_sparse], units=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
@@ -1654,7 +1650,7 @@ class WeightedSumTest(test.TestCase):
     features = {"ids": ids_tensor, "weights": weights_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [weighted_ids], num_outputs=5)
-    logits_core = fc_core.make_linear_model(features, [weighted_ids], units=5)
+    logits_core = fc_core.linear_model(features, [weighted_ids], units=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
@@ -1672,7 +1668,7 @@ class WeightedSumTest(test.TestCase):
     features = {"ids": ids_tensor, "weights": weights_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [weighted_ids], num_outputs=5)
-    logits_core = fc_core.make_linear_model(features, [weighted_ids], units=5)
+    logits_core = fc_core.linear_model(features, [weighted_ids], units=5)
 
     with self.test_session():
       variables_lib.global_variables_initializer().run()
@@ -1694,7 +1690,7 @@ class WeightedSumTest(test.TestCase):
     features = {"aaa": wire_tensor, "bbb": wire_tensor}
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [crossed], num_outputs=5)
-    logits_core = fc_core.make_linear_model(features, [crossed], units=5)
+    logits_core = fc_core.linear_model(features, [crossed], units=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
@@ -1733,7 +1729,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [movies], num_outputs=1))
-      logits_core = fc_core.make_linear_model(features, [movies])
+      logits_core = fc_core.linear_model(features, [movies])
 
       with self.test_session() as sess:
         variables_lib.initialize_all_variables().run()
@@ -1791,7 +1787,7 @@ class WeightedSumTest(test.TestCase):
     }
     output, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [real_valued, bucket, hashed_sparse, crossed], num_outputs=5)
-    output_core = fc_core.make_linear_model(
+    output_core = fc_core.linear_model(
         features, [real_valued, bucket, hashed_sparse, crossed], units=5)
     with self.test_session():
       variables_lib.global_variables_initializer().run()
@@ -2206,7 +2202,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [bucket], num_outputs=1))
-      output_core = fc_core.make_linear_model(features, [bucket])
+      output_core = fc_core.linear_model(features, [bucket])
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
@@ -2237,7 +2233,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [bucket, country], num_outputs=1))
-      output_core = fc_core.make_linear_model(features, [bucket, country])
+      output_core = fc_core.linear_model(features, [bucket, country])
       with self.test_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()

@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {getObjectInitializer, getObjectObserver} from '../tf_storage_d3v4/storage'
+import * as storage from '../tf-storage/storage';
 
 Polymer({
   is: 'tf-regex-group',
   properties: {
     rawRegexes: {
       type: Array,
-      value: getObjectInitializer('rawRegexes', [{regex: '', valid: true}]),
+      value: storage.getObjectInitializer(
+          'rawRegexes', [{regex: '', valid: true}]),
     },
     regexes:
         {type: Array, computed: 'usableRegexes(rawRegexes.*)', notify: true},
@@ -30,7 +31,8 @@ Polymer({
     'checkValidity(rawRegexes.*)',
     '_uriStoreRegexes(rawRegexes.*)',
   ],
-  _uriStoreRegexes: getObjectObserver('rawRegexes', [{regex: '', valid: true}]),
+  _uriStoreRegexes:
+      storage.getObjectObserver('rawRegexes', [{regex: '', valid: true}]),
   checkValidity: function(x) {
     var match = x.path.match(/rawRegexes\.(\d+)\.regex/);
     if (match) {
