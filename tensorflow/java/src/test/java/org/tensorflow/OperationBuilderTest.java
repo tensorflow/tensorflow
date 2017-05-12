@@ -101,7 +101,7 @@ public class OperationBuilderTest {
       assertTrue(hasNode(g, "StringAndBool"));
       // int (TF "int" attributes are 64-bit signed, so a Java long).
       g.opBuilder("RandomUniform", "Int")
-          .addInput(TestUtil.constant(g, "RandomUniformShape", 1))
+          .addInput(TestUtil.constant(g, "RandomUniformShape", new int[]{1}))
           .setAttr("seed", 10)
           .setAttr("dtype", DataType.FLOAT)
           .build();
