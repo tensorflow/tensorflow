@@ -40,6 +40,9 @@ See the @{$python/contrib.framework} guide.
 @@has_arg_scope
 @@arg_scoped_arguments
 
+@@prepend_name_scope
+@@strip_name_scope
+
 @@add_model_variable
 @@assert_global_step
 @@assert_or_get_global_step
@@ -81,6 +84,9 @@ from __future__ import print_function
 from tensorflow.contrib.framework.python.framework import *
 from tensorflow.contrib.framework.python.ops import *
 # pylint: enable=unused-import,wildcard-import
+
+from tensorflow.python.framework.ops import prepend_name_scope
+from tensorflow.python.framework.ops import strip_name_scope
 
 from tensorflow.python.util.all_util import remove_undocumented
 

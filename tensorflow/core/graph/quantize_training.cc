@@ -526,31 +526,42 @@ Status MakeInputMinMax(Graph* graph, const string& name_prefix,
   return Status::OK();
 }
 
-// Adds a QuantizeAndDequantizeV2Op (and required input nodes) based on edge.
+// Adds a QuantizeAndDequantizeV2 or FakeQuantizeWithMinMaxVars op
+// (and required input nodes) based on edge.
 // The result is stored in convert_node.
-Status MakeQuantizeAndDequantizeV2(Graph* graph, const string& name_prefix,
-                                   const EdgeToConvert& edge,
-                                   std::vector<Node*>* added_variables,
-                                   Node** convert_node) {
+Status MakeQuantizeOp(Graph* graph, const string& name_prefix,
+                      const string& quant_op_type, const EdgeToConvert& edge,
+                      std::vector<Node*>* added_variables,
+                      Node** convert_node) {
   Node* input_min;
   Node* input_max;
   TF_RETURN_IF_ERROR(MakeInputMinMax(graph, name_prefix, edge, added_variables,
                                      &input_min, &input_max));
-
-  string quant_name = strings::StrCat(name_prefix, "/QuantizeAndDequantizeV2");
-  TF_RETURN_IF_ERROR(NodeBuilder(quant_name, "QuantizeAndDequantizeV2")
-                         .Input(edge.edge->src())
-                         .Input(input_min)
-                         .Input(input_max)
-                         .Attr("signed_input", edge.signed_input)
-                         .Attr("num_bits", edge.num_bits)
-                         .Attr("range_given", true)
-                         .Finalize(graph, convert_node));
+  string quant_name = strings::StrCat(name_prefix, "/", quant_op_type);
+  if (quant_op_type == "QuantizeAndDequantizeV2") {
+    TF_RETURN_IF_ERROR(NodeBuilder(quant_name, quant_op_type)
+                           .Input(edge.edge->src())
+                           .Input(input_min)
+                           .Input(input_max)
+                           .Attr("signed_input", edge.signed_input)
+                           .Attr("num_bits", edge.num_bits)
+                           .Attr("range_given", true)
+                           .Finalize(graph, convert_node));
+  } else if (quant_op_type == "FakeQuantWithMinMaxVars") {
+    TF_RETURN_IF_ERROR(NodeBuilder(quant_name, quant_op_type)
+                           .Input(edge.edge->src())
+                           .Input(input_min)
+                           .Input(input_max)
+                           .Attr("num_bits", edge.num_bits)
+                           .Finalize(graph, convert_node));
+  } else {
+    return errors::InvalidArgument("Unknown quant op type: ", quant_op_type);
+  }
   return Status::OK();
 }
 
 // Insert conversion op, connect it to the graph and remove the old edge.
-Status ProcessTargetEdges(Graph* graph,
+Status ProcessTargetEdges(Graph* graph, const string& quant_op_type,
                           const std::vector<EdgeToConvert>& target_edges) {
   // Remember previously converted ops to avoid duplicated conversion on the
   // same input.
@@ -562,8 +573,8 @@ Status ProcessTargetEdges(Graph* graph,
 
     auto iter = name_index.find(name_prefix);
     if (iter == name_index.end()) {
-      TF_RETURN_IF_ERROR(MakeQuantizeAndDequantizeV2(
-          graph, name_prefix, edge, &added_variables, &convert_node));
+      TF_RETURN_IF_ERROR(MakeQuantizeOp(graph, name_prefix, quant_op_type, edge,
+                                        &added_variables, &convert_node));
       name_index[name_prefix] = convert_node;
     } else {
       convert_node = iter->second;
@@ -580,7 +591,8 @@ Status ProcessTargetEdges(Graph* graph,
 
 }  // namespace
 
-Status DoQuantizeTraining(int32 num_bits, Graph* graph) {
+Status DoQuantizeTraining(int32 num_bits, const string& quant_op_type,
+                          Graph* graph) {
   if (graph == nullptr) {
     return errors::InvalidArgument("Cannot accept empty graph pointer.");
   }
@@ -638,13 +650,14 @@ Status DoQuantizeTraining(int32 num_bits, Graph* graph) {
     }
   }
 
-  TF_RETURN_IF_ERROR(ProcessTargetEdges(graph, target_edges));
+  TF_RETURN_IF_ERROR(ProcessTargetEdges(graph, quant_op_type, target_edges));
 
   return Status::OK();
 }
 
 Status DoQuantizeTrainingOnSerializedGraphDef(const string& input_graph,
                                               int32 num_bits,
+                                              const string& quant_op_type,
                                               string* result_graph) {
   // First create the graph from the GraphDef.
   Graph graph(OpRegistry::Global());
@@ -656,7 +669,7 @@ Status DoQuantizeTrainingOnSerializedGraphDef(const string& input_graph,
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, input_graphdef, &graph));
 
   // Call the rewriter on the graph.
-  TF_RETURN_IF_ERROR(DoQuantizeTraining(num_bits, &graph));
+  TF_RETURN_IF_ERROR(DoQuantizeTraining(num_bits, quant_op_type, &graph));
 
   // Convert the result graph back to a GraphDef.
   GraphDef output_graphdef;

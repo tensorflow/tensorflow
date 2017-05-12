@@ -19,13 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import inspect
 import types
 
 import numpy as np
 
 from tensorflow.contrib.keras.python.keras.models import Sequential
 from tensorflow.contrib.keras.python.keras.utils.np_utils import to_categorical
+from tensorflow.python.util import tf_inspect
 
 
 class BaseWrapper(object):
@@ -97,7 +97,7 @@ class BaseWrapper(object):
 
     legal_params = []
     for fn in legal_params_fns:
-      legal_params += inspect.getargspec(fn)[0]
+      legal_params += tf_inspect.getargspec(fn)[0]
     legal_params = set(legal_params)
 
     for params_name in params:
@@ -182,7 +182,7 @@ class BaseWrapper(object):
     """
     override = override or {}
     res = {}
-    fn_args = inspect.getargspec(fn)[0]
+    fn_args = tf_inspect.getargspec(fn)[0]
     for name, value in self.sk_params.items():
       if name in fn_args:
         res.update({name: value})

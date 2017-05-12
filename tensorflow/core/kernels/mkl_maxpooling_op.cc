@@ -276,11 +276,6 @@ class MklMaxPoolingGradOp : public OpKernel {
     mkl_context.pooling_res[dnnResourceDiffSrc] = const_cast<void*>(
         static_cast<const void*>(output_tensor->flat<T>().data()));
 
-    int64 output_size = output_tensor->NumElements();
-    for (int64 i = 0; i < output_size; ++i) {
-      (static_cast<float*>(mkl_context.pooling_res[dnnResourceDiffSrc]))[i] = 0;
-    }
-
     CHECK_EQ(
         dnnExecute_F32(mkl_context.prim_pooling_bwd, mkl_context.pooling_res),
         E_SUCCESS);
@@ -482,13 +477,13 @@ class MklMaxPoolingGradOp : public OpKernel {
   bool workspace_enabled_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("MklMaxPool")
+REGISTER_KERNEL_BUILDER(Name("_MklMaxPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
                             .Label(mkl_op_registry::kMklOpLabel),
                         MklMaxPoolingOp<CPUDevice, float>);
 
-REGISTER_KERNEL_BUILDER(Name("MklMaxPoolGrad")
+REGISTER_KERNEL_BUILDER(Name("_MklMaxPoolGrad")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<float>("T")
                             .Label(mkl_op_registry::kMklOpLabel),

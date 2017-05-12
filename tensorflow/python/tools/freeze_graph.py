@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Converts checkpoint variables into Const ops in a standalone GraphDef file.
+r"""Converts checkpoint variables into Const ops in a standalone GraphDef file.
 
 This script is designed to take a GraphDef proto, a SaverDef proto, and a set of
 variable values stored in a checkpoint file, and output a GraphDef with all of
@@ -55,28 +55,19 @@ from tensorflow.python.training import saver as saver_lib
 FLAGS = None
 
 
-def freeze_graph(input_graph,
-                 input_saver,
-                 input_binary,
-                 input_checkpoint,
-                 output_node_names,
-                 restore_op_name,
-                 filename_tensor_name,
-                 output_graph,
-                 clear_devices,
-                 initializer_nodes,
-                 variable_names_blacklist=""):
+def freeze_graph_with_def_protos(
+    input_graph_def,
+    input_saver_def,
+    input_checkpoint,
+    output_node_names,
+    restore_op_name,
+    filename_tensor_name,
+    output_graph,
+    clear_devices,
+    initializer_nodes,
+    variable_names_blacklist=""):
   """Converts all variables in a graph and checkpoint into constants."""
-
   del restore_op_name, filename_tensor_name  # Unused by updated loading code.
-
-  if not gfile.Exists(input_graph):
-    print("Input graph file '" + input_graph + "' does not exist!")
-    return -1
-
-  if input_saver and not gfile.Exists(input_saver):
-    print("Input saver file '" + input_saver + "' does not exist!")
-    return -1
 
   # 'input_checkpoint' may be a prefix if we're using Saver V2 format
   if not saver_lib.checkpoint_exists(input_checkpoint):
@@ -87,13 +78,6 @@ def freeze_graph(input_graph,
     print("You need to supply the name of a node to --output_node_names.")
     return -1
 
-  input_graph_def = graph_pb2.GraphDef()
-  mode = "rb" if input_binary else "r"
-  with gfile.FastGFile(input_graph, mode) as f:
-    if input_binary:
-      input_graph_def.ParseFromString(f.read())
-    else:
-      text_format.Merge(f.read(), input_graph_def)
   # Remove all the explicit device specifications for this node. This helps to
   # make the graph more portable.
   if clear_devices:
@@ -103,15 +87,9 @@ def freeze_graph(input_graph,
   _ = importer.import_graph_def(input_graph_def, name="")
 
   with session.Session() as sess:
-    if input_saver:
-      with gfile.FastGFile(input_saver, mode) as f:
-        saver_def = saver_pb2.SaverDef()
-        if input_binary:
-          saver_def.ParseFromString(f.read())
-        else:
-          text_format.Merge(f.read(), saver_def)
-        saver = saver_lib.Saver(saver_def=saver_def)
-        saver.restore(sess, input_checkpoint)
+    if input_saver_def:
+      saver = saver_lib.Saver(saver_def=input_saver_def)
+      saver.restore(sess, input_checkpoint)
     else:
       var_list = {}
       reader = pywrap_tensorflow.NewCheckpointReader(input_checkpoint)
@@ -140,6 +118,65 @@ def freeze_graph(input_graph,
   with gfile.GFile(output_graph, "wb") as f:
     f.write(output_graph_def.SerializeToString())
   print("%d ops in the final graph." % len(output_graph_def.node))
+
+
+def _parse_input_graph_proto(input_graph, input_binary):
+  """Parser input tensorflow graph into GraphDef proto."""
+  if not gfile.Exists(input_graph):
+    print("Input graph file '" + input_graph + "' does not exist!")
+    return -1
+  input_graph_def = graph_pb2.GraphDef()
+  mode = "rb" if input_binary else "r"
+  with gfile.FastGFile(input_graph, mode) as f:
+    if input_binary:
+      input_graph_def.ParseFromString(f.read())
+    else:
+      text_format.Merge(f.read(), input_graph_def)
+  return input_graph_def
+
+
+def _parse_input_saver_proto(input_saver, input_binary):
+  """Parser input tensorflow Saver into SaverDef proto."""
+  if not gfile.Exists(input_saver):
+    print("Input saver file '" + input_saver + "' does not exist!")
+    return -1
+  mode = "rb" if input_binary else "r"
+  with gfile.FastGFile(input_saver, mode) as f:
+    saver_def = saver_pb2.SaverDef()
+    if input_binary:
+      saver_def.ParseFromString(f.read())
+    else:
+      text_format.Merge(f.read(), saver_def)
+  return saver_def
+
+
+def freeze_graph(input_graph,
+                 input_saver,
+                 input_binary,
+                 input_checkpoint,
+                 output_node_names,
+                 restore_op_name,
+                 filename_tensor_name,
+                 output_graph,
+                 clear_devices,
+                 initializer_nodes,
+                 variable_names_blacklist=""):
+  """Converts all variables in a graph and checkpoint into constants."""
+  input_graph_def = _parse_input_graph_proto(input_graph, input_binary)
+  input_saver_def = None
+  if input_saver:
+    input_saver_def = _parse_input_saver_proto(input_saver, input_binary)
+  freeze_graph_with_def_protos(
+      input_graph_def,
+      input_saver_def,
+      input_checkpoint,
+      output_node_names,
+      restore_op_name,
+      filename_tensor_name,
+      output_graph,
+      clear_devices,
+      initializer_nodes,
+      variable_names_blacklist)
 
 
 def main(unused_args):

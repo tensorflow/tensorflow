@@ -16,6 +16,7 @@ load(
 cc_library(
     name = "intel_binary_blob",
     srcs = if_mkl([
+        "libdl.so.2",
         "libmklml_intel.so",
         "libiomp5.so",
     ]),

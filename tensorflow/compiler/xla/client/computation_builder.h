@@ -668,6 +668,14 @@ class ComputationBuilder {
   // then Build() should be used instead.
   Computation BuildAndNoteError();
 
+  // Returns the first error that was encountered while building the
+  // computation. When an error is encountered, by default we return a vacuous
+  // ComputationDataHandle and inform the user of the error that occurred while
+  // building the computation when they make a final call to Build().
+  //
+  // See also set_die_immediately_on_error().
+  Status first_error() const { return first_error_; }
+
  private:
   using PopulateLiteral = std::function<void(Literal*)>;
 

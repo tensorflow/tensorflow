@@ -43,8 +43,8 @@ DataColumnTypes FindSparseFeatureSpec(
   return static_cast<DataColumnTypes>(spec.sparse(column_num).original_type());
 }
 
-void GetTwoBest(int max, std::function<float(int)> score_fn, float* best_score,
-                int* best_index, float* second_best_score,
+void GetTwoBest(int max, const std::function<float(int)>& score_fn,
+                float* best_score, int* best_index, float* second_best_score,
                 int* second_best_index) {
   *best_index = -1;
   *second_best_index = -1;

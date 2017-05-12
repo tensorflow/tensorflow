@@ -124,7 +124,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
+    tracker = new MultiBoxTracker(this);
 
     if (USE_YOLO) {
       detector =
@@ -273,13 +273,12 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
           yuvBytes[0],
           yuvBytes[1],
           yuvBytes[2],
-          rgbBytes,
           previewWidth,
           previewHeight,
           yRowStride,
           uvRowStride,
           uvPixelStride,
-          false);
+          rgbBytes);
 
       image.close();
     } catch (final Exception e) {

@@ -24,9 +24,11 @@ import numpy as np
 from scipy import special
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.linalg.python.ops import linear_operator_diag
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -41,42 +43,44 @@ from tensorflow.python.platform import tf_logging as logging
 class AssertCloseTest(test.TestCase):
 
   def testAssertCloseIntegerDtype(self):
-    x = [1, 5, 10, 15, 20]
+    x = array_ops.placeholder(dtypes.int32)
     y = x
-    z = [2, 5, 10, 15, 20]
+    z = array_ops.placeholder(dtypes.int32)
+    feed_dict = {x: [1, 5, 10, 15, 20], z: [2, 5, 10, 15, 20]}
     with self.test_session():
       with ops.control_dependencies([distribution_util.assert_close(x, y)]):
-        array_ops.identity(x).eval()
+        array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with ops.control_dependencies([distribution_util.assert_close(y, x)]):
-        array_ops.identity(x).eval()
+        array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x ~= y"):
         with ops.control_dependencies([distribution_util.assert_close(x, z)]):
-          array_ops.identity(x).eval()
+          array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x ~= y"):
         with ops.control_dependencies([distribution_util.assert_close(y, z)]):
-          array_ops.identity(y).eval()
+          array_ops.identity(y).eval(feed_dict=feed_dict)
 
   def testAssertCloseNonIntegerDtype(self):
-    x = np.array([1., 5, 10, 15, 20], dtype=np.float32)
+    x = array_ops.placeholder(dtypes.float32)
     y = x + 1e-8
-    z = [2., 5, 10, 15, 20]
+    z = array_ops.placeholder(dtypes.float32)
+    feed_dict = {x: [1., 5, 10, 15, 20], z: [2., 5, 10, 15, 20]}
     with self.test_session():
       with ops.control_dependencies([distribution_util.assert_close(x, y)]):
-        array_ops.identity(x).eval()
+        array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with ops.control_dependencies([distribution_util.assert_close(y, x)]):
-        array_ops.identity(x).eval()
+        array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x ~= y"):
         with ops.control_dependencies([distribution_util.assert_close(x, z)]):
-          array_ops.identity(x).eval()
+          array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x ~= y"):
         with ops.control_dependencies([distribution_util.assert_close(y, z)]):
-          array_ops.identity(y).eval()
+          array_ops.identity(y).eval(feed_dict=feed_dict)
 
   def testAssertCloseEpsilon(self):
     x = [0., 5, 10, 15, 20]
@@ -98,30 +102,106 @@ class AssertCloseTest(test.TestCase):
 
   def testAssertIntegerForm(self):
     # This should only be detected as an integer.
-    x = [1., 5, 10, 15, 20]
-    y = [1.1, 5, 10, 15, 20]
+    x = array_ops.placeholder(dtypes.float32)
+    y = array_ops.placeholder(dtypes.float32)
     # First component isn't less than float32.eps = 1e-7
-    z = [1.0001, 5, 10, 15, 20]
+    z = array_ops.placeholder(dtypes.float32)
     # This shouldn"t be detected as an integer.
-    w = [1e-8, 5, 10, 15, 20]
+    w = array_ops.placeholder(dtypes.float32)
+    feed_dict = {x: [1., 5, 10, 15, 20], y: [1.1, 5, 10, 15, 20],
+                 z: [1.0001, 5, 10, 15, 20], w: [1e-8, 5, 10, 15, 20]}
     with self.test_session():
       with ops.control_dependencies([distribution_util.assert_integer_form(x)]):
-        array_ops.identity(x).eval()
+        array_ops.identity(x).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("x has non-integer components"):
         with ops.control_dependencies(
             [distribution_util.assert_integer_form(y)]):
-          array_ops.identity(y).eval()
+          array_ops.identity(y).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("x has non-integer components"):
         with ops.control_dependencies(
             [distribution_util.assert_integer_form(z)]):
-          array_ops.identity(z).eval()
+          array_ops.identity(z).eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("x has non-integer components"):
         with ops.control_dependencies(
             [distribution_util.assert_integer_form(w)]):
-          array_ops.identity(w).eval()
+          array_ops.identity(w).eval(feed_dict=feed_dict)
+
+
+class ShapesFromLocAndScaleTest(test.TestCase):
+
+  def test_static_loc_static_scale_non_matching_event_size_raises(self):
+    loc = constant_op.constant(np.zeros((2, 4)))
+    scale = linear_operator_diag.LinearOperatorDiag(np.ones((5, 1, 3)))
+    with self.assertRaisesRegexp(ValueError, "could not be broadcast"):
+      distribution_util.shapes_from_loc_and_scale(loc, scale)
+
+  def test_static_loc_static_scale(self):
+    loc = constant_op.constant(np.zeros((2, 3)))
+    scale = linear_operator_diag.LinearOperatorDiag(np.ones((5, 1, 3)))
+    batch_shape, event_shape = distribution_util.shapes_from_loc_and_scale(
+        loc, scale)
+
+    self.assertEqual(tensor_shape.TensorShape([5, 2]), batch_shape)
+    self.assertEqual(tensor_shape.TensorShape([3]), event_shape)
+
+  def test_static_loc_dynamic_scale(self):
+    loc = constant_op.constant(np.zeros((2, 3)))
+    diag = array_ops.placeholder(dtypes.float64)
+    scale = linear_operator_diag.LinearOperatorDiag(diag)
+    with self.test_session() as sess:
+      batch_shape, event_shape = sess.run(
+          distribution_util.shapes_from_loc_and_scale(loc, scale),
+          feed_dict={diag: np.ones((5, 1, 3))})
+      self.assertAllEqual([5, 2], batch_shape)
+      self.assertAllEqual([3], event_shape)
+
+  def test_dynamic_loc_static_scale(self):
+    loc = array_ops.placeholder(dtypes.float64)
+    diag = constant_op.constant(np.ones((5, 2, 3)))
+    scale = linear_operator_diag.LinearOperatorDiag(diag)
+    with self.test_session():
+      batch_shape, event_shape = distribution_util.shapes_from_loc_and_scale(
+          loc, scale)
+      # batch_shape depends on both args, and so is dynamic.  Since loc did not
+      # have static shape, we infered event shape entirely from scale, and this
+      # is available statically.
+      self.assertAllEqual(
+          [5, 2], batch_shape.eval(feed_dict={loc: np.zeros((2, 3))}))
+      self.assertAllEqual([3], event_shape)
+
+  def test_dynamic_loc_dynamic_scale(self):
+    loc = array_ops.placeholder(dtypes.float64)
+    diag = array_ops.placeholder(dtypes.float64)
+    scale = linear_operator_diag.LinearOperatorDiag(diag)
+    with self.test_session() as sess:
+      batch_shape, event_shape = sess.run(
+          distribution_util.shapes_from_loc_and_scale(loc, scale),
+          feed_dict={diag: np.ones((5, 2, 3)), loc: np.zeros((2, 3))})
+      self.assertAllEqual([5, 2], batch_shape)
+      self.assertAllEqual([3], event_shape)
+
+  def test_none_loc_static_scale(self):
+    loc = None
+    scale = linear_operator_diag.LinearOperatorDiag(np.ones((5, 1, 3)))
+    batch_shape, event_shape = distribution_util.shapes_from_loc_and_scale(
+        loc, scale)
+
+    self.assertEqual(tensor_shape.TensorShape([5, 1]), batch_shape)
+    self.assertEqual(tensor_shape.TensorShape([3]), event_shape)
+
+  def test_none_loc_dynamic_scale(self):
+    loc = None
+    diag = array_ops.placeholder(dtypes.float64)
+    scale = linear_operator_diag.LinearOperatorDiag(diag)
+    with self.test_session() as sess:
+      batch_shape, event_shape = sess.run(
+          distribution_util.shapes_from_loc_and_scale(loc, scale),
+          feed_dict={diag: np.ones((5, 1, 3))})
+      self.assertAllEqual([5, 1], batch_shape)
+      self.assertAllEqual([3], event_shape)
 
 
 class GetLogitsAndProbsTest(test.TestCase):

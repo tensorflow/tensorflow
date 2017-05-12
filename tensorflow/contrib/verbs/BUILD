@@ -1,6 +1,10 @@
 # Description:
 #   Verbs RDMA communication interfaces and implementations for TensorFlow.
 
+package(default_visibility = [
+    "//tensorflow:__subpackages__",
+])
+
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
@@ -31,13 +35,10 @@ load(
     "tf_proto_library_cc",
 )
 
-package(default_visibility = [
-    "//tensorflow:__subpackages__",
-])
-
 tf_proto_library_cc(
     name = "verbs_service_proto",
     srcs = ["verbs_service.proto"],
+    has_services = 1,
     cc_api_version = 2,
     visibility = [
         "//tensorflow:__subpackages__",

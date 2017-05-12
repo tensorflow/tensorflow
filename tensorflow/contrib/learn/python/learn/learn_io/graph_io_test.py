@@ -26,7 +26,6 @@ import tempfile
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.learn.python.learn.learn_io import graph_io
-from tensorflow.contrib.learn.python.learn.learn_io.graph_io import _read_keyed_batch_examples_shared_queue
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
@@ -464,7 +463,7 @@ class GraphIOTest(test.TestCase):
     name = "my_batch"
 
     with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
-      keys, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = graph_io.read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=io_ops.TextLineReader,
@@ -528,7 +527,7 @@ class GraphIOTest(test.TestCase):
 
     with ops.Graph().as_default() as g1, session_lib.Session(
         server.target, graph=g1) as session:
-      keys, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = graph_io.read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=io_ops.TextLineReader,
@@ -557,7 +556,7 @@ class GraphIOTest(test.TestCase):
 
     with ops.Graph().as_default() as g2, session_lib.Session(
         server.target, graph=g2) as session:
-      keys, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = graph_io.read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=io_ops.TextLineReader,

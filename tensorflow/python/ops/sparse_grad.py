@@ -151,8 +151,8 @@ def _SparseTensorDenseMatMulGrad(op, grad):
                               "complex gradients.")
 
   # gradient w.r.t. dense
-  b_grad = gen_sparse_ops._sparse_tensor_dense_mat_mul(
-    a_indices, a_values, a_shape, grad, adjoint_a=not adj_a)
+  b_grad = gen_sparse_ops._sparse_tensor_dense_mat_mul(  # pylint: disable=protected-access
+      a_indices, a_values, a_shape, grad, adjoint_a=not adj_a)
   if adj_b:
     b_grad = array_ops.transpose(b_grad)
 

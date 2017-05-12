@@ -50,8 +50,8 @@ void PrintNodeInfo(const NodeDef* node) {
   std::cout << ", shape=" << shape.DebugString() << ") ";
 }
 
-void PrintBenchmarkUsage(const std::vector<const NodeDef*> placeholders,
-                         const std::vector<const NodeDef*> variables,
+void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
+                         const std::vector<const NodeDef*>& variables,
                          const std::vector<const NodeDef*> outputs,
                          const string& graph_path) {
   std::vector<const NodeDef*> all_inputs(placeholders);
@@ -94,7 +94,6 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*> placeholders,
   std::cout << "bazel run tensorflow/tools/benchmark:benchmark_model --";
   std::cout << " --graph=" << graph_path;
   std::cout << " --show_flops";
-  std::cout << " --logtostderr";
   std::cout << " --input_layer=" << input_layer_value;
   std::cout << " --input_layer_type=" << input_layer_type_value;
   std::cout << " --input_layer_shape=" << input_layer_shape_value;
@@ -102,7 +101,18 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*> placeholders,
   std::cout << std::endl;
 }
 
-Status SummarizeGraph(const GraphDef& graph, const string& graph_path) {
+Status PrintStructure(const GraphDef& graph) {
+  GraphDef sorted_graph;
+  TF_RETURN_IF_ERROR(SortByExecutionOrder(graph, &sorted_graph));
+  for (const NodeDef& node : sorted_graph.node()) {
+    std::cout << node.name() << " (" << node.op() << "): ["
+              << str_util::Join(node.input(), ", ") << "]" << std::endl;
+  }
+  return Status::OK();
+}
+
+Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
+                      bool print_structure) {
   std::vector<const NodeDef*> placeholders;
   std::vector<const NodeDef*> variables;
   for (const NodeDef& node : graph.node()) {
@@ -233,13 +243,20 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path) {
 
   PrintBenchmarkUsage(placeholders, variables, outputs, graph_path);
 
+  if (print_structure) {
+    TF_RETURN_IF_ERROR(PrintStructure(graph));
+  }
+
   return Status::OK();
 }
 
 int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
   string in_graph = "";
+  bool print_structure = false;
   std::vector<Flag> flag_list = {
       Flag("in_graph", &in_graph, "input graph file name"),
+      Flag("print_structure", &print_structure,
+           "whether to print the network connections of the graph"),
   };
   string usage = Flags::Usage(argv[0], flag_list);
 
@@ -269,7 +286,8 @@ int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
     return -1;
   }
 
-  Status summarize_result = SummarizeGraph(graph_def, in_graph);
+  Status summarize_result =
+      SummarizeGraph(graph_def, in_graph, print_structure);
   if (!summarize_result.ok()) {
     LOG(ERROR) << summarize_result.error_message() << "\n" << usage;
     return -1;

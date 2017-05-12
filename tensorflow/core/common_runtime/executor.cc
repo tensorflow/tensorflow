@@ -1213,7 +1213,8 @@ class ExecutorState {
       GUARDED_BY(mu_);
 
   // The unique name of a frame.
-  inline string MakeFrameName(FrameState* frame, int64 iter_id, string name) {
+  inline string MakeFrameName(FrameState* frame, int64 iter_id,
+                              const string& name) {
     return strings::StrCat(frame->frame_name, ";", iter_id, ";", name);
   }
 
@@ -1434,7 +1435,7 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
   } else {
     num_outstanding_ops_ = ready.size();
     root_frame_->iterations[0]->outstanding_ops = ready.size();
-    done_cb_ = done;
+    done_cb_ = std::move(done);
     // Schedule to run all the ready ops in thread pool.
     ScheduleReady(ready, nullptr);
   }
@@ -2560,7 +2561,7 @@ bool ExecutorState::FrameState::CleanupIterations(const GraphView* gview,
 }
 
 void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {
-  (new ExecutorState(args, this))->RunAsync(done);
+  (new ExecutorState(args, this))->RunAsync(std::move(done));
 }
 
 }  // end namespace

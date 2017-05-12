@@ -1,10 +1,10 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "data",
     srcs = glob(["*"]),
     path = "/tf-audio-dashboard/demo/data",

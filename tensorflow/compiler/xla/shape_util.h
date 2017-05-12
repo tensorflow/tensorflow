@@ -299,13 +299,14 @@ class ShapeUtil {
   // pre-order starting with the entire shape (index {}).
   using VisitorFunction = std::function<Status(const Shape& /*subshape*/,
                                                const ShapeIndex& /*index*/)>;
-  static Status ForEachSubshape(const Shape& shape, VisitorFunction func);
+  static Status ForEachSubshape(const Shape& shape,
+                                const VisitorFunction& func);
 
   // Mutating variant of ForEachSubshape.
   using MutatingVisitorFunction =
       std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
   static Status ForEachMutableSubshape(Shape* shape,
-                                       MutatingVisitorFunction func);
+                                       const MutatingVisitorFunction& func);
 
   // Removes all degenerate dimensions (size one) from the given shape. The
   // stripped minor_to_major preserves the relative ordering of non-degenerate
@@ -389,6 +390,19 @@ class ShapeUtil {
   // • `FilterDimensions(is_even_number, T[m, n, k]) = T[m, k]`
   static Shape FilterDimensions(const std::function<bool(int64)>& p,
                                 Shape shape);
+
+  // Iterates through all the shape indexes, in minor to major order, starting
+  // from the base indexes, incrementing by the incr steps, up to count
+  // (index[i] < base[i] + count[i]), and calls the visitor_function with the
+  // current index.
+  // The visitor_function visitor function should return true if it wants to
+  // continue, or false otherwise.
+  using IndexVisitorFunction = std::function<bool(const std::vector<int64>&)>;
+  static void ForEachIndex(const Shape& shape,
+                           tensorflow::gtl::ArraySlice<int64> base,
+                           tensorflow::gtl::ArraySlice<int64> count,
+                           tensorflow::gtl::ArraySlice<int64> incr,
+                           const IndexVisitorFunction& visitor_function);
 
  private:
   // Validates all of the non-layout properties of the shape -- this is a helper

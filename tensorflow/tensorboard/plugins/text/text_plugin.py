@@ -30,6 +30,7 @@ import bleach
 # pylint: disable=g-bad-import-order
 # Google-only: import markdown_freewisdom
 import markdown
+import six
 # pylint: enable=g-bad-import-order
 from werkzeug import wrappers
 
@@ -95,8 +96,8 @@ def markdown_and_sanitize(markdown_string):
   Returns:
     a string containing sanitized html for input markdown
   """
-  # Convert to utf-8 because we get a bytearray in python3
-  if not isinstance(markdown_string, str):
+  # Convert to utf-8 whenever we have a binary input.
+  if isinstance(markdown_string, six.binary_type):
     markdown_string = markdown_string.decode('utf-8')
 
   string_html = markdown.markdown(

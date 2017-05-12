@@ -46,6 +46,8 @@ def tensorboard_typescript_genrule(name, srcs, typings=[], **kwargs):
       cmd = "$(location @com_microsoft_typescript//:tsc.sh)" +
             " --inlineSourceMap" +
             " --inlineSources" +
+            # Do not follow triple slash references within typings.
+            " --noResolve" +
             " --declaration" +
             " --outDir $(@D) " +
             " ".join(["$(locations %s)" % i for i in inputs]),
@@ -57,6 +59,26 @@ def tensorboard_typescript_genrule(name, srcs, typings=[], **kwargs):
       srcs = typings_out,
       **kwargs
   )
+
+def tensorboard_karma_web_test_suite(**kwargs):
+  """Rules referencing this will be deleted from the codebase soon."""
+  pass
+
+def tensorboard_ts_config(**kwargs):
+  """Rules referencing this will be deleted from the codebase soon."""
+  pass
+
+def tensorboard_ts_declaration(**kwargs):
+  """Rules referencing this will be deleted from the codebase soon."""
+  pass
+
+def tensorboard_ts_development_sources(**kwargs):
+  """Rules referencing this will be deleted from the codebase soon."""
+  pass
+
+def tensorboard_ts_devserver(**kwargs):
+  """Rules referencing this will be deleted from the codebase soon."""
+  pass
 
 def tensorboard_ts_library(**kwargs):
   """Rules referencing this will be deleted from the codebase soon."""

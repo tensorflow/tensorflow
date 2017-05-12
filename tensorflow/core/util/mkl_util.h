@@ -218,7 +218,7 @@ class MklShape {
   (IS_MKL_TENSOR_OFFSET + sizeof(size_t))  // Location of dimension_
 #define SIZES_OFFSET(dims) \
   (DIMS_OFFSET +           \
-  sizeof(size_t))  // Location of sizes. Note dim is not used here, left here
+   sizeof(size_t))  // Location of sizes. Note dim is not used here, left here
                     // to make macros consistent.
 #define STRIDES_OFFSET(dims) \
   (SIZES_OFFSET(dims) + dims * sizeof(size_t))  // Location of strides
@@ -228,7 +228,7 @@ class MklShape {
   (MKL_LAYOUT_OFFSET(dims) + SIZE_OF_MKL_DNN_BUF)  // Location of tfLayout_
 #define TF_TO_MKL_DIM_MAP_OFFSET(dims) \
   (TF_LAYOUT_OFFSET(dims) +            \
-  SIZE_OF_MKL_DNN_BUF)  // Location of tf_to_mkl_dim_map_
+   SIZE_OF_MKL_DNN_BUF)  // Location of tf_to_mkl_dim_map_
 
   // TODO(agramesh1) make sure to create a const to share with rewrite pass
   // for min size of MKL metadata tensor.
@@ -315,25 +315,22 @@ inline bool AreAllMklTensors(const MklShapeList& shapes) {
 }
 
 template <typename T>
-inline Tensor ConvertMklToTF(OpKernelContext *context,
-                             const Tensor& mkl_tensor,
+inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
                              const MklShape& mkl_shape) {
   Tensor output_tensor;
   TensorShape output_shape;
 
   for (size_t j = 0; j < mkl_shape.GetDimension(); j++) {
-     // Outermost to innermost dimension
-     output_shape.AddDim(mkl_shape.GetSizes()[mkl_shape.tf_dim_idx(j)]);
+    // Outermost to innermost dimension
+    output_shape.AddDim(mkl_shape.GetSizes()[mkl_shape.tf_dim_idx(j)]);
   }
 
   // Allocate output tensor.
-  context->allocate_temp(DataTypeToEnum<T>::v(),
-                       output_shape, &output_tensor);
+  context->allocate_temp(DataTypeToEnum<T>::v(), output_shape, &output_tensor);
 
-  dnnLayout_t output_layout = static_cast<dnnLayout_t>(
-                                mkl_shape.GetTfLayout());
-  void *input_buffer = const_cast<T*>(mkl_tensor.flat<T>().data());
-  void *output_buffer = const_cast<T*>(output_tensor.flat<T>().data());
+  dnnLayout_t output_layout = static_cast<dnnLayout_t>(mkl_shape.GetTfLayout());
+  void* input_buffer = const_cast<T*>(mkl_tensor.flat<T>().data());
+  void* output_buffer = const_cast<T*>(output_tensor.flat<T>().data());
 
   if (mkl_tensor.NumElements() != 0) {
     mkl_shape.GetConvertedFlatData(output_layout, input_buffer, output_buffer);
@@ -394,14 +391,15 @@ int inline GetTensorMetaDataIndex(int n, int total_tensors) {
   return DataIndexToMetaDataIndex(tidx, total_tensors);
 }
 
-
 // Get the MKL shape from the second string tensor
 inline void GetMklShape(OpKernelContext* ctext, int n, MklShape* mklshape) {
   mklshape->DeSerializeMklShape(
-      ctext->input(
-        GetTensorMetaDataIndex(n, ctext->num_inputs())).flat<uint8>().data(),
-      ctext->input(
-        GetTensorMetaDataIndex(n, ctext->num_inputs())).flat<uint8>().size() *
+      ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
+          .flat<uint8>()
+          .data(),
+      ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
+              .flat<uint8>()
+              .size() *
           sizeof(uint8));
 }
 
@@ -410,8 +408,8 @@ inline const Tensor& MklGetInput(OpKernelContext* ctext, int n) {
   return ctext->input(GetTensorDataIndex(n, ctext->num_inputs()));
 }
 
-inline void GetMklInputList(OpKernelContext* ctext,
-    StringPiece name, OpInputList* input_tensors) {
+inline void GetMklInputList(OpKernelContext* ctext, StringPiece name,
+                            OpInputList* input_tensors) {
   CHECK_NOTNULL(input_tensors);
   ctext->input_list(name, input_tensors);
 }
@@ -423,8 +421,8 @@ inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
 
   for (int i = 0; i < input_mkl_tensors.size(); i++) {
     (*mkl_shapes)[i].DeSerializeMklShape(
-      input_mkl_tensors[i].flat<uint8>().data(),
-      input_mkl_tensors[i].flat<uint8>().size() * sizeof(uint8));
+        input_mkl_tensors[i].flat<uint8>().data(),
+        input_mkl_tensors[i].flat<uint8>().size() * sizeof(uint8));
   }
 }
 
@@ -435,9 +433,9 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
   Tensor* second_tensor = nullptr;
   TensorShape second_shape;
   second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mkl_shape.GetDimension()));
-  OP_REQUIRES_OK(ctext, ctext->allocate_output(GetTensorMetaDataIndex(n,
-                                                ctext->num_outputs()),
-                                               second_shape, &second_tensor));
+  OP_REQUIRES_OK(ctext, ctext->allocate_output(
+                            GetTensorMetaDataIndex(n, ctext->num_outputs()),
+                            second_shape, &second_tensor));
   mkl_shape.SerializeMklShape(
       second_tensor->flat<uint8>().data(),
       second_tensor->flat<uint8>().size() * sizeof(uint8));
@@ -453,13 +451,11 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
   TensorShape second_shape;
   second_shape.AddDim(SIZE_OF_MKL_SERIAL_DATA(mkl_shape.GetDimension()));
   OP_REQUIRES_OK(
-      ctext,
-      ctext->allocate_output(GetTensorDataIndex(n, ctext->num_outputs()),
-      tf_shape, output));
-  OP_REQUIRES_OK(
-      ctext,
-      ctext->allocate_output(GetTensorMetaDataIndex(n, ctext->num_outputs()),
-      second_shape, &second_tensor));
+      ctext, ctext->allocate_output(GetTensorDataIndex(n, ctext->num_outputs()),
+                                    tf_shape, output));
+  OP_REQUIRES_OK(ctext, ctext->allocate_output(
+                            GetTensorMetaDataIndex(n, ctext->num_outputs()),
+                            second_shape, &second_tensor));
   mkl_shape.SerializeMklShape(
       second_tensor->flat<uint8>().data(),
       second_tensor->flat<uint8>().size() * sizeof(uint8));
@@ -499,7 +495,8 @@ inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
 
 inline void MklSizesToTFSizes(OpKernelContext* context,
                               TensorFormat data_format_,
-                            const MklShape& mkl_shape, TensorShape* tf_shape) {
+                              const MklShape& mkl_shape,
+                              TensorShape* tf_shape) {
   size_t tf_dim = mkl_shape.GetDimension();
   const size_t* tf_sizes = mkl_shape.GetSizes();
 
@@ -566,9 +563,9 @@ inline void CopyMklTensorInToOut(OpKernelContext* context,
   context->set_output(idx_meta_out, meta_output);
 }
 
-inline void CopyTFTensorInToOut(OpKernelContext* context,
-                                int idx_in, int idx_out,
-                                const TensorShape& shape) {
+inline void CopyTfTensorInToOutWithShape(OpKernelContext* context,
+                                         int idx_in, int idx_out,
+                                         const TensorShape& shape) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
@@ -582,6 +579,41 @@ inline void CopyTFTensorInToOut(OpKernelContext* context,
   // TODO(intel_tf): alternatively, call forward_input_to_output_with_shape(...)
   CHECK(output.CopyFrom(data, shape));
   context->set_output(idx_data_out, output);
+}
+
+inline void FowardTfTensorInToOut(OpKernelContext* context,
+                                  int idx_in, int idx_out) {
+  int num_inputs = context->num_inputs();
+  int num_outputs = context->num_outputs();
+  int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
+  int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
+
+  MklShape mkl_shape_output;
+  mkl_shape_output.SetMklTensor(false);
+  AllocateOutputSetMklShape(context, idx_out, mkl_shape_output);
+  if (IsRefType(context->input_dtype(idx_data_in))) {
+    context->forward_ref_input_to_ref_output(idx_data_in, idx_data_out);
+  } else {
+    context->set_output(idx_data_out, context->input(idx_data_in));
+  }
+}
+
+inline void ForwarMklTensorInToOut(OpKernelContext* context,
+                                   int idx_in, int idx_out) {
+  int num_inputs = context->num_inputs();
+  int num_outputs = context->num_outputs();
+  int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
+  int idx_meta_in = GetTensorMetaDataIndex(idx_in, num_inputs);
+  int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
+  int idx_meta_out = GetTensorMetaDataIndex(idx_out, num_outputs);
+
+  if (IsRefType(context->input_dtype(idx_data_in))) {
+    context->forward_ref_input_to_ref_output(idx_data_in, idx_data_out);
+    context->forward_ref_input_to_ref_output(idx_meta_in, idx_meta_out);
+  } else {
+    context->set_output(idx_data_out, context->input(idx_data_in));
+    context->set_output(idx_meta_out, context->input(idx_meta_in));
+  }
 }
 
 namespace mkl_op_registry {

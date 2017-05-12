@@ -29,7 +29,9 @@ option java_package = "org.tensorflow.contrib.verbs";
 message Channel {
   int32 lid = 1;
   int32 qpn = 2;
-  int32 psn = 3;     
+  int32 psn = 3;
+  uint64 snp = 4;
+  uint64 iid = 5;
 }
 
 message MemoryRegion {
@@ -39,15 +41,14 @@ message MemoryRegion {
 message GetRemoteAddressRequest {
   string host_name = 1;
   Channel channel = 2;
-  repeated MemoryRegion mr = 3;  
+  repeated MemoryRegion mr = 3;
 }
 
 message GetRemoteAddressResponse {
   string host_name = 1;
   Channel channel = 2;
-  repeated MemoryRegion mr = 3; 
-} 
-
+  repeated MemoryRegion mr = 3;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -56,5 +57,6 @@ message GetRemoteAddressResponse {
 ////////////////////////////////////////////////////////////////////////////////
 
 service VerbsService {
-  rpc GetRemoteAddress(GetRemoteAddressRequest) returns (GetRemoteAddressResponse);
+  rpc GetRemoteAddress(GetRemoteAddressRequest)
+      returns (GetRemoteAddressResponse);
 }

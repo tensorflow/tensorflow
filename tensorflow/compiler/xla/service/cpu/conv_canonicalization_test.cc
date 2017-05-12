@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -27,6 +28,8 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
+
+using ::testing::ElementsAre;
 
 class ConvCanonicalizationTest : public HloTestBase {
  public:
@@ -96,14 +99,14 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
 
   // The input is in CNHW order. input_reshape should produce
   // NHWC for the convolution to hit the Eigen fast path.
-  EXPECT_TRUE(ContainersEqual(input_reshape->dimensions(), {1, 2, 3, 0}));
+  EXPECT_THAT(input_reshape->dimensions(), ElementsAre(1, 2, 3, 0));
   // The kernel is in OIHW order. kernel_reshape should produce
   // HWIO for the convolution to hit the Eigen fast path.
-  EXPECT_TRUE(ContainersEqual(kernel_reshape->dimensions(), {2, 3, 1, 0}));
+  EXPECT_THAT(kernel_reshape->dimensions(), ElementsAre(2, 3, 1, 0));
   // The output of the canonical convolution is in NHWC order (the same as
   // input_reshape's order). output_reshape should restore that order to the
   // order of the computation root (CNHW).
-  EXPECT_TRUE(ContainersEqual(output_reshape->dimensions(), {3, 0, 1, 2}));
+  EXPECT_THAT(output_reshape->dimensions(), ElementsAre(3, 0, 1, 2));
 }
 
 TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {

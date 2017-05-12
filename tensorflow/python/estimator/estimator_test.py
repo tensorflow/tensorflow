@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import os
 import tempfile
 
 import numpy as np
+import six
 
 from google.protobuf import text_format
 
@@ -38,9 +40,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import layers
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
@@ -51,6 +54,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import saver
 from tensorflow.python.training import saver_test_utils
@@ -148,8 +152,10 @@ class EstimatorConstructorTest(test.TestCase):
     def model_fn(features, labels):
       _, _ = features, labels
 
-    est = estimator.Estimator(model_fn=model_fn)
-    self.assertTrue(est.model_dir is not None)
+    with test.mock.patch.object(tempfile, 'mkdtemp', return_value=_TMP_DIR):
+      est = estimator.Estimator(model_fn=model_fn)
+      self.assertEqual(_TMP_DIR, est.config.model_dir)
+      self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_model_dir_in_constructor(self):
 
@@ -157,6 +163,7 @@ class EstimatorConstructorTest(test.TestCase):
       _, _ = features, labels
 
     est = estimator.Estimator(model_fn=model_fn, model_dir=_TMP_DIR)
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_model_dir_in_run_config(self):
@@ -171,6 +178,7 @@ class EstimatorConstructorTest(test.TestCase):
       _, _ = features, labels
 
     est = estimator.Estimator(model_fn=model_fn, config=FakeConfig())
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_same_model_dir_in_constructor_and_run_config(self):
@@ -186,6 +194,7 @@ class EstimatorConstructorTest(test.TestCase):
 
     est = estimator.Estimator(
         model_fn=model_fn, config=FakeConfig(), model_dir=_TMP_DIR)
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_different_model_dir_in_constructor_and_run_config(self):
@@ -247,6 +256,17 @@ class EstimatorConstructorTest(test.TestCase):
         features, labels, 'something')
     estimator.Estimator(model_fn=new_model_fn)
 
+  def test_if_model_fn_is_a_member_function_of_a_class(self):
+
+    class ModelFnClass(object):
+      def __init__(self):
+        estimator.Estimator(model_fn=self.model_fn)
+
+      def model_fn(self, features, labels, mode):
+        _, _, _ = features, labels, mode
+
+    ModelFnClass()
+
 
 def dummy_input_fn():
   return ({'x': constant_op.constant([[1], [1]])},
@@ -262,7 +282,119 @@ def model_fn_global_step_incrementer(features, labels, mode):
       train_op=state_ops.assign_add(global_step, 1))
 
 
+def _estimator_spec(
+    expected_features, expected_labels, actual_features, actual_labels, mode):
+  assert_ops = tuple([
+      check_ops.assert_equal(
+          expected_features[k], actual_features[k], name='assert_%s' % k)
+      for k in expected_features
+  ] + [
+      check_ops.assert_equal(
+          expected_labels, actual_labels, name='assert_labels')
+  ])
+  with ops.control_dependencies(assert_ops):
+    return model_fn_lib.EstimatorSpec(
+        mode=mode,
+        predictions=constant_op.constant(0.),
+        loss=constant_op.constant(0.),
+        train_op=constant_op.constant(0.))
+
+
+def _make_input_fn(features, labels):
+  def _input_fn():
+    return {
+        k: constant_op.constant(v)
+        for k, v in six.iteritems(features)
+    }, constant_op.constant(labels)
+  return _input_fn
+
+
 class EstimatorTrainTest(test.TestCase):
+
+  def test_minimal_model_fn_args(self):
+    expected_features = {'x': 42., 'y': 43.}
+    expected_labels = 44.
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    def _model_fn(features, labels):
+      model_fn_call_count[0] += 1
+      self.assertItemsEqual(expected_features.keys(), features.keys())
+      return _estimator_spec(
+          expected_features, expected_labels, features, labels,
+          model_fn_lib.ModeKeys.TRAIN)
+
+    with self.assertRaisesRegexp(ValueError, 'does not include params'):
+      estimator.Estimator(model_fn=_model_fn, params={'a': 'b'})
+    est = estimator.Estimator(model_fn=_model_fn, config=run_config.RunConfig())
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(
+        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
+
+  def test_all_model_fn_args(self):
+    expected_features = {'x': 42., 'y': 43.}
+    expected_labels = 44.
+    expected_params = {'some_param': 'some_value'}
+    expected_config = run_config.RunConfig()
+    expected_config.i_am_test = True
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    # Note that args are all passed by keyword, so can be in any order.
+    def _model_fn(mode, params, features, labels, config):
+      model_fn_call_count[0] += 1
+      self.assertItemsEqual(expected_features.keys(), features.keys())
+      self.assertEqual(model_fn_lib.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_params, params)
+      self.assertTrue(config.i_am_test)
+      return _estimator_spec(
+          expected_features, expected_labels, features, labels, mode)
+
+    est = estimator.Estimator(
+        model_fn=_model_fn, params=expected_params, config=expected_config)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(
+        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
+
+  def test_partial_model_fn_args(self):
+    expected_features = {'x': 42., 'y': 43.}
+    expected_labels = 44.
+    expected_params = {'some_param': 'some_value'}
+    expected_config = run_config.RunConfig()
+    expected_config.i_am_test = True
+    expected_foo = 45.
+    expected_bar = 46.
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    def _model_fn(features, labels, foo, mode, params, config, bar):
+      model_fn_call_count[0] += 1
+      self.assertEqual(expected_foo, foo)
+      self.assertEqual(expected_bar, bar)
+      self.assertItemsEqual(expected_features.keys(), features.keys())
+      self.assertEqual(model_fn_lib.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_params, params)
+      self.assertTrue(config.i_am_test)
+      return _estimator_spec(
+          expected_features, expected_labels, features, labels, mode)
+    partial_model_fn = functools.partial(
+        _model_fn, foo=expected_foo, bar=expected_bar)
+
+    est = estimator.Estimator(
+        model_fn=partial_model_fn, params=expected_params,
+        config=expected_config)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(
+        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
 
   def test_model_fn_must_return_estimator_spec(self):
 
@@ -321,8 +453,12 @@ class EstimatorTrainTest(test.TestCase):
         model_fn=model_fn_global_step_incrementer)
     est1.train(dummy_input_fn, steps=5)
 
+    # We have to clear the cache before we can rename the directory,
+    # otherwise open file handles will prevent the delete on Windows.
+    writer_cache.FileWriterCache.clear()
     model_dir2 = os.path.join(tmpdir, 'model_dir2')
     os.renames(model_dir1, model_dir2)
+
     est2 = estimator.Estimator(
         model_dir=model_dir2,
         model_fn=model_fn_global_step_incrementer)
@@ -425,6 +561,8 @@ class EstimatorTrainTest(test.TestCase):
     # Mocking the SessionManager.wait_for_session, so that worker doesn't wait
     # for chief.
     def get_initialized_session(*args, **kwargs):
+      # Session doesn't take 'max_wait_secs' argument.
+      kwargs.pop('max_wait_secs', None)
       scaffold = training.Scaffold().finalize()
       sess = session.Session(*args, **kwargs)
       sess.run(scaffold.init_op)
@@ -1274,9 +1412,10 @@ class EstimatorExportTest(test.TestCase):
       my_int = variables.Variable(1, name='my_int',
                                   collections=[ops.GraphKeys.LOCAL_VARIABLES])
       scores = constant_op.constant([3.])
-      with ops.control_dependencies(
-          [variables.local_variables_initializer(),
-           data_flow_ops.tables_initializer()]):
+      with ops.control_dependencies([
+          variables.local_variables_initializer(),
+          lookup_ops.tables_initializer()
+      ]):
         assign_op = state_ops.assign(my_int, 12345)
 
       # local_initSop must be an Operation, not a Tensor.

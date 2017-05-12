@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/function.pb_text.h"
@@ -582,14 +583,14 @@ string Print(const GraphDef& gdef) {
   for (size_t i = 0; i < arg.size(); ++i) {
     const NodeDef* n = arg[i];
     if (i > 0) strings::StrAppend(&out, ", ");
-    CHECK_EQ(2, n->attr_size());
+    CHECK_GE(n->attr_size(), 2);
     strings::StrAppend(&out, n->name(), ":", get_type(*n));
   }
   strings::StrAppend(&out, ") -> (");
   for (size_t i = 0; i < ret.size(); ++i) {
     const NodeDef* n = ret[i];
     if (i > 0) strings::StrAppend(&out, ", ");
-    CHECK_EQ(2, n->attr_size());
+    CHECK_LE(2, n->attr_size());
     CHECK_EQ(1, n->input_size());
     strings::StrAppend(&out, n->input(0), ":", get_type(*n));
   }
@@ -601,7 +602,8 @@ string Print(const GraphDef& gdef) {
   return out;
 }
 
-Status AddDefaultAttrs(const string& op, GetFunctionSignature get_function,
+Status AddDefaultAttrs(const string& op,
+                       const GetFunctionSignature& get_function,
                        InstantiateAttrValueMap* attrs) {
   const OpDef* op_def = nullptr;
   TF_RETURN_IF_ERROR(get_function(op, &op_def));
@@ -789,9 +791,22 @@ Status FunctionCallFrame::GetRetvals(std::vector<Tensor>* rets) const {
   rets->clear();
   rets->reserve(rets_.size());
   for (size_t i = 0; i < rets_.size(); ++i) {
-    auto item = rets_[i];
+    const auto& item = rets_[i];
     if (item.has_val) {
       rets->push_back(item.val);
+    } else {
+      return errors::Internal("Retval[", i, "] does not have value");
+    }
+  }
+  return Status::OK();
+}
+
+Status FunctionCallFrame::ConsumeRetvals(std::vector<Tensor>* rets) {
+  rets->clear();
+  rets->reserve(rets_.size());
+  for (size_t i = 0; i < rets_.size(); ++i) {
+    if (rets_[i].has_val) {
+      rets->emplace_back(std::move(rets_[i].val));
     } else {
       return errors::Internal("Retval[", i, "] does not have value");
     }
@@ -868,6 +883,12 @@ Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
     return errors::InvalidArgument("Function with name: ",
                                    fdef.signature().name(),
                                    " already exists in function library.");
+  }
+  const OpDef* op_def;
+  if (default_registry_->LookUpOpDef(fdef.signature().name(), &op_def).ok()) {
+    return errors::InvalidArgument(
+        "Cannot add function '", fdef.signature().name(),
+        "' because an op with the same name already exists.");
   }
   ptr.reset(new FunctionDefAndOpRegistration(fdef));
   return Status::OK();
@@ -968,7 +989,7 @@ Status InstantiateFunction(const FunctionDef& fdef,
   for (const auto& aval : attr_values) {
     m.insert({aval.first, aval.second.proto});
   }
-  return InstantiateFunction(fdef, m, get_function, result);
+  return InstantiateFunction(fdef, m, std::move(get_function), result);
 }
 
 string Canonicalize(const string& funcname, InstantiateAttrValueSlice attrs) {

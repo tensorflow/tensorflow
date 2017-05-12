@@ -201,7 +201,8 @@ void IrEmitter::InitializeIrFunction(const string& function_name,
     if (&argument == retval) {
       continue;
     }
-    compute_function_->setDoesNotAlias(argument.getArgNo() + 1);
+    compute_function_->addAttribute(argument.getArgNo() + 1,
+                                    llvm::Attribute::NoAlias);
   }
 
   ir_builder_.SetInsertPoint(llvm::BasicBlock::Create(

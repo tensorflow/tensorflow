@@ -252,6 +252,14 @@ string ProtoRunStepRequest::DebugString() const {
 
 const RunStepRequest& ProtoRunStepRequest::ToProto() const { return *request_; }
 
+const string& InMemoryRunGraphRequest::session_handle() const {
+  return session_handle_;
+}
+
+void InMemoryRunGraphRequest::set_session_handle(const string& handle) {
+  session_handle_ = handle;
+}
+
 const string& InMemoryRunGraphRequest::graph_handle() const {
   return graph_handle_;
 }
@@ -320,6 +328,7 @@ void InMemoryRunGraphRequest::set_is_last_partial_run(
 const RunGraphRequest& InMemoryRunGraphRequest::ToProto() const {
   if (!proto_version_) {
     proto_version_.reset(new RunGraphRequest);
+    proto_version_->set_session_handle(session_handle());
     proto_version_->set_graph_handle(graph_handle());
     proto_version_->set_step_id(step_id());
     *proto_version_->mutable_exec_opts() = exec_opts();
@@ -335,6 +344,14 @@ const RunGraphRequest& InMemoryRunGraphRequest::ToProto() const {
     proto_version_->set_is_last_partial_run(is_last_partial_run());
   }
   return *proto_version_;
+}
+
+const string& MutableProtoRunGraphRequest::session_handle() const {
+  return request_.session_handle();
+}
+
+void MutableProtoRunGraphRequest::set_session_handle(const string& handle) {
+  request_.set_session_handle(handle);
 }
 
 const string& MutableProtoRunGraphRequest::graph_handle() const {
@@ -422,6 +439,10 @@ const RunGraphRequest& MutableProtoRunGraphRequest::ToProto() const {
 
 ProtoRunGraphRequest::ProtoRunGraphRequest(const RunGraphRequest* request)
     : request_(request) {}
+
+const string& ProtoRunGraphRequest::session_handle() const {
+  return request_->session_handle();
+}
 
 const string& ProtoRunGraphRequest::graph_handle() const {
   return request_->graph_handle();

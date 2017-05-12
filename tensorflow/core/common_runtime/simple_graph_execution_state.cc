@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/graph/validate.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -267,7 +269,14 @@ Status SimpleGraphExecutionState::InitBaseGraph(
     }
 
     if (s.ok()) {
-      s = grappler::RunMetaOptimizer(item, rewrite_options, &optimized_graph);
+      std::unordered_map<string, DeviceProperties> device_map;
+      for (const auto& device : device_set_->devices()) {
+        device_map[device->name()] =
+            grappler::GetDeviceInfo(device->parsed_name());
+      }
+      grappler::VirtualCluster cluster(device_map);
+      s = grappler::RunMetaOptimizer(item, rewrite_options, &cluster,
+                                     &optimized_graph);
     }
     if (s.ok()) {
       graph_def = &optimized_graph;
@@ -284,9 +293,11 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   if (session_options_ &&
       session_options_->config.graph_options().place_pruned_graph()) {
     // Rewrite the graph before placement.
+    rewrite_metadata_.reset(new subgraph::RewriteGraphMetadata);
     TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
         new_graph.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes()));
+        options.target_nodes, device_set_->client_device()->attributes(),
+        options.use_function_convention, rewrite_metadata_.get()));
   }
 
   // Save stateful placements before placing.
@@ -333,14 +344,25 @@ Status SimpleGraphExecutionState::BuildGraph(
   std::unique_ptr<Graph> ng(new Graph(flib_def_.get()));
   CopyGraph(*graph_, ng.get());
 
+  subgraph::RewriteGraphMetadata rewrite_metadata;
   if (session_options_ == nullptr ||
       !session_options_->config.graph_options().place_pruned_graph()) {
     // Extract the subset of the graph that needs to be run, adding feed/fetch
     // ops as needed.
     TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
         ng.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes()));
+        options.target_nodes, device_set_->client_device()->attributes(),
+        options.use_function_convention, &rewrite_metadata));
+  } else {
+    // This SimpleGraphExecutionState represents a graph that was
+    // pruned when this was constructed, so we copy the metadata from
+    // a member variable.
+    CHECK(rewrite_metadata_);
+    rewrite_metadata = *rewrite_metadata_;
   }
+
+  CHECK_EQ(options.feed_endpoints.size(), rewrite_metadata.feed_types.size());
+  CHECK_EQ(options.fetch_endpoints.size(), rewrite_metadata.fetch_types.size());
 
   // Make a fresh copy of the function library for the client graph.
   std::unique_ptr<FunctionLibraryDefinition> flib(
@@ -363,7 +385,8 @@ Status SimpleGraphExecutionState::BuildGraph(
   // since the local CostModel used to record its stats is sized by
   // the largest node id.
   std::unique_ptr<SimpleClientGraph> dense_copy(
-      new SimpleClientGraph(std::move(flib)));
+      new SimpleClientGraph(std::move(flib), rewrite_metadata.feed_types,
+                            rewrite_metadata.fetch_types));
   CopyGraph(*ng, &dense_copy->graph);
 
   // TODO(vrv): We should check invariants of the graph here.

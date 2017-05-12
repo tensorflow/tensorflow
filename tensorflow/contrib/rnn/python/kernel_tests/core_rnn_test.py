@@ -521,7 +521,7 @@ class LSTMTest(test.TestCase):
       input_value = np.random.randn(batch_size, input_size)
       sess.run(outputs, feed_dict={inputs[0]: input_value})
 
-  def testStateTupleWithProjAndSequenceLength(self):
+  def _testStateTupleWithProjAndSequenceLength(self):
     num_units = 3
     input_size = 5
     batch_size = 2

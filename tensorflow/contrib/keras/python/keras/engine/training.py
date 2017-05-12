@@ -245,7 +245,7 @@ def _check_array_lengths(inputs, targets, weights):
 
 
 def _check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
-  """Does validation on the compatiblity of targets and loss functions.
+  """Does validation on the compatibility of targets and loss functions.
 
   This helps prevent users from using loss functions incorrectly.
 

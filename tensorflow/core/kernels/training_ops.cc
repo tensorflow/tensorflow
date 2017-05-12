@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -311,80 +312,6 @@ struct ApplyCenteredRMSProp<CPUDevice, T> {
 
 }  // namespace functor
 
-mutex* GetMutex(OpKernelContext* ctx, int input) {
-  if (ctx->input_dtype(input) == DT_RESOURCE) {
-    Var* var;
-    if (LookupResource(ctx, HandleFromInput(ctx, input), &var).ok()) {
-      return var->mu();
-    } else {
-      ctx->CtxFailureWithWarning(
-          errors::Internal("Invalid variable reference."));
-      return nullptr;
-    }
-  }
-  return ctx->input_ref_mutex(input);
-}
-
-// MaybeLockMutexesInOrder is a helper function to acquire mutexes in address
-// order to mitigate deadlock.  Returns a vector of acquired mutexes.  Safe to
-// pass duplicates - will only lock each distinct mutex once.  If do_lock is
-// false, returns immediately.  Note that this silently doesn't lock mutexes for
-// invalid variable references; in all usages this is followed by GetInputTensor
-// which will signal a failure.
-std::vector<mutex_lock> MaybeLockMutexesInOrder(
-    OpKernelContext* ctx, bool do_lock, const std::vector<int>& input_ids) {
-  std::vector<mutex_lock> locks;
-  if (!do_lock) {
-    return locks;
-  }
-  std::vector<mutex*> mutexes;
-  std::vector<int> acquire_order;
-  for (auto input : input_ids) {
-    mutex* mutex = GetMutex(ctx, input);
-    // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
-    if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
-      acquire_order.push_back(input);
-      mutexes.push_back(mutex);
-    }
-  }
-  std::sort(acquire_order.begin(), acquire_order.end(),
-            [&mutexes](int a, int b) { return mutexes[a] < mutexes[b]; });
-
-  for (auto input : acquire_order) {
-    mutex* mu = GetMutex(ctx, input);
-    if (mu != nullptr) {
-      locks.emplace_back(*mu);
-    }
-  }
-  return locks;
-}
-
-Status GetInputTensor(OpKernelContext* ctx, int input, bool lock_held,
-                      Tensor* out) {
-  if (ctx->input_dtype(input) == DT_RESOURCE) {
-    Var* var;
-    if (LookupResource(ctx, HandleFromInput(ctx, input), &var).ok()) {
-      if (lock_held) {
-        *out = *var->tensor();
-      } else {
-        mutex_lock ml(*var->mu());
-        *out = *var->tensor();
-      }
-      return Status::OK();
-    } else {
-      return errors::Internal("Invalid variable reference.");
-    }
-  }
-  *out = ctx->mutable_input(input, lock_held);
-  return Status::OK();
-}
-
-void MaybeForwardRefInputToRefOutput(OpKernelContext* ctx, int input,
-                                     int output) {
-  if (ctx->input_dtype(input) != DT_RESOURCE) {
-    ctx->forward_ref_input_to_ref_output(input, output);
-  }
-}
 
 template <typename Device, typename T>
 class ApplyGradientDescentOp : public OpKernel {
@@ -394,9 +321,11 @@ class ApplyGradientDescentOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -524,7 +453,7 @@ class ApplyAdadeltaOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     if (use_exclusive_lock_) {
-      mutex_lock l1(*GetMutex(ctx, 0));
+      mutex_lock l1(*GetTrainingVariableMutex(ctx, 0));
       // Don't try to acquire a lock on the second ref as they share the same
       // mutex.
       //
@@ -545,12 +474,14 @@ class ApplyAdadeltaOp : public OpKernel {
 
   void DoValidate(OpKernelContext* ctx) {
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx,
-                   GetInputTensor(ctx, 2, use_exclusive_lock_, &accum_update));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_,
+                                                   &accum_update));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -597,12 +528,14 @@ class ApplyAdadeltaOp : public OpKernel {
   void DoCompute(OpKernelContext* ctx) {
     const Device& device = ctx->template eigen_device<Device>();
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx,
-                   GetInputTensor(ctx, 2, use_exclusive_lock_, &accum_update));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_,
+                                                   &accum_update));
 
     const Tensor& lr = ctx->input(3);
     const Tensor& rho = ctx->input(4);
@@ -669,7 +602,7 @@ class SparseApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    mutex* mu_var = GetMutex(ctx, 0);
+    mutex* mu_var = GetTrainingVariableMutex(ctx, 0);
     // mu_accum is actually the same mutex as mu_var since currently we use a
     // global mutex.
     //
@@ -678,13 +611,14 @@ class SparseApplyAdadeltaOp : public OpKernel {
       mu_var->lock();
     }
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum_grad;
-    OP_REQUIRES_OK(ctx,
-                   GetInputTensor(ctx, 1, use_exclusive_lock_, &accum_grad));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_,
+                                                   &accum_grad));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx,
-                   GetInputTensor(ctx, 2, use_exclusive_lock_, &accum_update));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_,
+                                                   &accum_update));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -819,9 +753,11 @@ class ApplyProximalGradientDescentOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -886,9 +822,11 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(var.shape()),
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
@@ -1028,11 +966,14 @@ class ApplyAdagradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1118,11 +1059,14 @@ class ApplyProximalAdagradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1222,11 +1166,14 @@ class SparseApplyAdagradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1353,11 +1300,14 @@ class SparseApplyProximalAdagradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1522,15 +1472,17 @@ class ApplyAdagradDAOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
-    Tensor gradient_accum;
     OP_REQUIRES_OK(
-        ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &gradient_accum));
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    Tensor gradient_accum;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_,
+                                                   &gradient_accum));
     Tensor gradient_squared_accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 2, use_exclusive_lock_,
-                                       &gradient_squared_accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_,
+                                                   &gradient_squared_accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1622,15 +1574,17 @@ class SparseApplyAdagradDAOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
-    Tensor gradient_accum;
     OP_REQUIRES_OK(
-        ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &gradient_accum));
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    Tensor gradient_accum;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_,
+                                                   &gradient_accum));
     Tensor gradient_squared_accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 2, use_exclusive_lock_,
-                                       &gradient_squared_accum));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_,
+                                                   &gradient_squared_accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1816,14 +1770,18 @@ class ApplyFtrlOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
 
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
     Tensor linear;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 2, use_exclusive_lock_, &linear));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &linear));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1927,13 +1885,17 @@ class SparseApplyFtrlOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
     Tensor linear;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 2, use_exclusive_lock_, &linear));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &linear));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2133,12 +2095,15 @@ class ApplyMomentumOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
 
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2233,12 +2198,15 @@ class SparseApplyMomentumOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
 
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &accum));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2346,14 +2314,18 @@ class ApplyAdamOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
 
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor m;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &m));
+    OP_REQUIRES_OK(ctx,
+                   GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &m));
     Tensor v;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 2, use_exclusive_lock_, &v));
+    OP_REQUIRES_OK(ctx,
+                   GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &v));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2600,14 +2572,18 @@ class ApplyRMSPropOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
 
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor ms;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &ms));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &ms));
     Tensor mom;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 2, use_exclusive_lock_, &mom));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -2678,17 +2654,21 @@ class ApplyCenteredRMSPropOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2, 3});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2, 3});
 
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor mg;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &mg));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &mg));
     Tensor ms;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 2, use_exclusive_lock_, &ms));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &ms));
     Tensor mom;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 3, use_exclusive_lock_, &mom));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 3, use_exclusive_lock_, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -2835,14 +2815,18 @@ class SparseApplyRMSPropOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
 
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor ms;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &ms));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &ms));
     Tensor mom;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 2, use_exclusive_lock_, &mom));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -2960,17 +2944,21 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks =
-        MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2, 3});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2, 3});
 
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor mg;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 1, use_exclusive_lock_, &mg));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &mg));
     Tensor ms;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 2, use_exclusive_lock_, &ms));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &ms));
     Tensor mom;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 3, use_exclusive_lock_, &mom));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 3, use_exclusive_lock_, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),

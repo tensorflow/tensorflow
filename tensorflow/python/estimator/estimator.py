@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import inspect
 import os
 import tempfile
 
@@ -48,6 +47,9 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
+
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'config'])
@@ -89,14 +91,18 @@ class Estimator(object):
 
     Args:
       model_fn: Model function. Follows the signature:
+
         * Args:
-          * `features`: single `Tensor` or `dict` of `Tensor`s
-                 (depending on data passed to `train`),
-          * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
-                 models). If mode is `ModeKeys.PREDICT`, `labels=None` will be
-                 passed. If the `model_fn`'s signature does not accept
-                 `mode`, the `model_fn` must still be able to handle
-                 `labels=None`.
+
+          * `features`: This is the first item returned from the `input_fn`
+                 passed to `train`, 'evaluate`, and `predict`. This should be a
+                 single `Tensor` or `dict` of same.
+          * `labels`: This is the second item returned from the `input_fn`
+                 passed to `train`, 'evaluate`, and `predict`. This should be a
+                 single `Tensor` or `dict` of same (for multi-head models). If
+                 mode is `ModeKeys.PREDICT`, `labels=None` will be passed. If
+                 the `model_fn`'s signature does not accept `mode`, the
+                 `model_fn` must still be able to handle `labels=None`.
           * `mode`: Optional. Specifies if this training, evaluation or
                  prediction. See `ModeKeys`.
           * `params`: Optional `dict` of hyperparameters.  Will receive what
@@ -109,6 +115,7 @@ class Estimator(object):
 
         * Returns:
           `EstimatorSpec`
+
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model. If `None`, the model_dir in
@@ -150,6 +157,8 @@ class Estimator(object):
       self._model_dir = tempfile.mkdtemp()
       logging.warning('Using temporary folder as model directory: %s',
                       self._model_dir)
+    if self._config.model_dir is None:
+      self._config = self._config.replace(model_dir=self._model_dir)
     logging.info('Using config: %s', str(vars(self._config)))
 
     if self._config.session_config is None:
@@ -524,7 +533,7 @@ class Estimator(object):
     Raises:
       ValueError: if model_fn returns invalid objects.
     """
-    model_fn_args = _get_arguments(self._model_fn).args
+    model_fn_args = _model_fn_args(self._model_fn)
     kwargs = {}
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode
@@ -577,7 +586,7 @@ class Estimator(object):
         saver_hook_exists = any([
             isinstance(h, training.CheckpointSaverHook)
             for h in (all_hooks + chief_hooks +
-                      estimator_spec.training_chief_hooks)
+                      list(estimator_spec.training_chief_hooks))
         ])
         if not saver_hook_exists:
           chief_hooks = [
@@ -593,7 +602,8 @@ class Estimator(object):
           checkpoint_dir=self._model_dir,
           scaffold=estimator_spec.scaffold,
           hooks=all_hooks,
-          chief_only_hooks=chief_hooks + estimator_spec.training_chief_hooks,
+          chief_only_hooks=(
+              tuple(chief_hooks) + tuple(estimator_spec.training_chief_hooks)),
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
           config=self._session_config) as mon_sess:
@@ -704,35 +714,48 @@ def _get_replica_device_setter(config):
     return None
 
 
-def _get_arguments(func):
-  """Returns a spec of given func."""
-  if hasattr(func, '__code__'):
-    # Regular function.
-    return inspect.getargspec(func)
-  elif hasattr(func, '__call__'):
-    # Callable object.
-    return _get_arguments(func.__call__)
-  elif hasattr(func, 'func'):
-    # Partial function.
-    return _get_arguments(func.func)
+def _model_fn_args(fn):
+  """Get argument names for function-like object.
+
+  Args:
+    fn: Function, or function-like object (e.g., result of `functools.partial`).
+
+  Returns:
+    `tuple` of string argument names.
+
+  Raises:
+    ValueError: if partial function has positionally bound arguments
+  """
+  _, fn = tf_decorator.unwrap(fn)
+  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
+    # Handle functools.partial and similar objects.
+    return tuple([
+        arg for arg in tf_inspect.getargspec(fn.func).args[len(fn.args):]
+        if arg not in set(fn.keywords.keys())
+    ])
+  # Handle function.
+  return tuple(tf_inspect.getargspec(fn).args)
 
 
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  fn_spec = _get_arguments(model_fn)
-  if 'features' not in fn_spec.args:
+  args = set(_model_fn_args(model_fn))
+  if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
-  if 'labels' not in fn_spec.args:
+  if 'labels' not in args:
     raise ValueError('model_fn (%s) must include labels argument.' % model_fn)
-  if params is not None and 'params' not in fn_spec.args:
+  if params is not None and 'params' not in args:
     raise ValueError('model_fn (%s) does not include params argument, '
                      'but params (%s) is passed to Estimator.' % (model_fn,
                                                                   params))
-  if params is None and 'params' in fn_spec.args:
+  if params is None and 'params' in args:
     logging.warning('Estimator\'s model_fn (%s) includes params '
                     'argument, but params are not passed to Estimator.',
                     model_fn)
-  non_valid_args = list(set(fn_spec.args) - _VALID_MODEL_FN_ARGS)
+  if tf_inspect.ismethod(model_fn):
+    if 'self' in args:
+      args.remove('self')
+  non_valid_args = list(args - _VALID_MODEL_FN_ARGS)
   if non_valid_args:
     raise ValueError('model_fn (%s) has following not expected args: %s' %
                      (model_fn, non_valid_args))

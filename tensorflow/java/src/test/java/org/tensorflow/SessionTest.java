@@ -63,6 +63,36 @@ public class SessionTest {
   }
 
   @Test
+  public void runUsingColonSeparatedNames() {
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+      Operation split =
+          g.opBuilder("Split", "Split")
+              .addInput(TestUtil.constant(g, "split_dim", 0))
+              .addInput(TestUtil.constant(g, "value", new int[] {1, 2, 3, 4}))
+              .setAttr("num_split", 2)
+              .build();
+      g.opBuilder("Add", "Add")
+          .addInput(split.output(0))
+          .addInput(split.output(1))
+          .build()
+          .output(0);
+      // Fetch using colon separated names.
+      try (Tensor fetched = s.runner().fetch("Split:1").run().get(0)) {
+        final int[] expected = {3, 4};
+        assertArrayEquals(expected, fetched.copyTo(new int[2]));
+      }
+      // Feed using colon separated names.
+      try (Tensor fed = Tensor.create(new int[] {4, 3, 2, 1});
+          Tensor fetched =
+              s.runner().feed("Split:0", fed).feed("Split:1", fed).fetch("Add").run().get(0)) {
+        final int[] expected = {8, 6, 4, 2};
+        assertArrayEquals(expected, fetched.copyTo(new int[4]));
+      }
+    }
+  }
+
+  @Test
   public void runWithMetadata() {
     try (Graph g = new Graph();
         Session s = new Session(g)) {

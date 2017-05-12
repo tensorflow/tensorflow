@@ -73,7 +73,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/core:core_cpu",

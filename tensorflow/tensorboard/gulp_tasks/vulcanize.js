@@ -21,7 +21,8 @@ const replace = require('gulp-replace');
 const rename = require('gulp-rename');
 const header = require('gulp-header');
 
-const HEADER_STR = '<!-- Copyright 2015 The TensorFlow Authors. All Rights Reserved.\n\
+const HEADER_STR =
+    '<!-- Copyright 2015 The TensorFlow Authors. All Rights Reserved.\n\
 \n\
 Licensed under the Apache License, Version 2.0 (the "License");\n\
 you may not use this file except in compliance with the License.\n\

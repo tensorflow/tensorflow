@@ -15,7 +15,7 @@ filegroup(
 )
 
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "devices.cc",
         "devices.h",
@@ -28,7 +28,14 @@ filegroup(
         "//tensorflow/core/grappler/clusters:android_srcs",
         "//tensorflow/core/grappler/inputs:android_srcs",
         "//tensorflow/core/grappler/optimizers:android_srcs",
+        "//tensorflow/core/grappler/utils:android_srcs",
     ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
     visibility = ["//tensorflow:__subpackages__"],
 )
 

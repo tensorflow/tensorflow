@@ -76,7 +76,7 @@ bool EqualFunctionDefLibrary(const FunctionDefLibrary& expected,
 #define TF_EXPECT_FUNCTIONDEFLIBRARY_EQ(expected, actual)         \
   do {                                                            \
     string diff;                                                  \
-    EXPECT_TRUE(EqualFunctionDefLibrary(actual, expected, &diff)) \
+    EXPECT_TRUE(EqualFunctionDefLibrary(expected, actual, &diff)) \
         << diff << "\nActual: " << actual.DebugString();          \
   } while (false)
 
@@ -109,7 +109,7 @@ Node* Binary(ops::NodeOut a, ops::NodeOut b,
   return ops::BinaryOp("BinaryTest", a, b, opts);
 }
 
-Node* AddNLike(std::vector<ops::NodeOut> inputs,
+Node* AddNLike(const std::vector<ops::NodeOut>& inputs,
                const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
   NodeBuilder node_builder(opts.GetNameForOp("AddN"), "AddNLikeTest",
@@ -144,8 +144,9 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library) {
 
   std::unique_ptr<Graph> graph_out;
   s = EncapsulateSubgraphsInFunctions("_encapsulate", *graph,
-                                      /* rewrite_subgraph_fn= */ {},
-                                      /* parallel_checking= */ false,
+                                      /*rewrite_subgraph_fn=*/{},
+                                      /*parallel_checking=*/false,
+                                      /*reuse_existing_functions=*/false,
                                       &graph_out, lib_def.get());
   if (!s.ok()) return s;
 
@@ -205,12 +206,12 @@ TEST(EncapsulateSubgraphsTest, OneFunction) {
 
   *library_expected.add_function() = test::function::XTimesTwo();
   *library_expected.add_function() = FunctionDefHelper::Create(
-      "F1", {"input__0:float", "input__1:float"}, {"output__2:float"}, {},
+      "F1", {"a_0_arg:float", "b_0_arg:float"}, {"c_0_retval:float"}, {},
       {
-          {{"C"}, "UnaryTest", {"input__0"}},
-          {{"c"}, "BinaryTest", {"input__1", "C:o:0"}, {}, {"C"}},
+          {{"C"}, "UnaryTest", {"a_0_arg"}},
+          {{"c"}, "BinaryTest", {"b_0_arg", "C:o:0"}, {}, {"C"}},
       },
-      {{"output__2", "c:o:0"}});
+      {{"c_0_retval", "c:o:0"}});
 
   {
     std::unique_ptr<FunctionLibraryDefinition> lib_def(
@@ -261,17 +262,17 @@ TEST(EncapsulateSubgraphsTest, TwoFunctions) {
 
   *library_expected.add_function() = test::function::XTimesTwo();
   *library_expected.add_function() = FunctionDefHelper::Create(
-      "F1", {"input__0:float"}, {"output__1:float"}, {},
+      "F1", {"a_0_arg:float"}, {"c_0_retval:float"}, {},
       {
-          {{"C"}, "UnaryTest", {"input__0"}},
+          {{"C"}, "UnaryTest", {"a_0_arg"}},
       },
-      {{"output__1", "C:o:0"}});
+      {{"c_0_retval", "C:o:0"}});
   *library_expected.add_function() = FunctionDefHelper::Create(
-      "F2", {"input__0:float", "input__1:float"}, {"output__2:float"}, {},
+      "F2", {"b_0_arg:float", "c_0_arg:float"}, {"d_0_retval:float"}, {},
       {
-          {{"D"}, "BinaryTest", {"input__0", "input__1"}},
+          {{"D"}, "BinaryTest", {"b_0_arg", "c_0_arg"}},
       },
-      {{"output__2", "D:o:0"}});
+      {{"d_0_retval", "D:o:0"}});
 
   {
     std::unique_ptr<FunctionLibraryDefinition> lib_def(
@@ -340,7 +341,8 @@ TEST(EncapsulateSubgraphsTest, InputDeduplication) {
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_cluster", graph_before_encapsulation, /*rewrite_subgraph_fn=*/{},
-      /*parallel_checking=*/false, &graph, &library));
+      /*parallel_checking=*/false, /*reuse_existing_functions=*/false, &graph,
+      &library));
 
   std::vector<string> expected_nodes = {"cluster1", "cluster2", "mul", "x"};
   EXPECT_EQ(expected_nodes, GraphNodes(*graph));
@@ -371,7 +373,8 @@ TEST(EncapsulateSubgraphsTest, ParallelChecking) {
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_cluster", graph_before_encapsulation, /*rewrite_subgraph_fn=*/{},
-      /*parallel_checking=*/true, &graph, &library));
+      /*parallel_checking=*/true, /*reuse_existing_functions=*/false, &graph,
+      &library));
 
   std::vector<string> expected_nodes = {
       "add1", "add2", "cluster1", "cluster1_parallel_check/_0",
