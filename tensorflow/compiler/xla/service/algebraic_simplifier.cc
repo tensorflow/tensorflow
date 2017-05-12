@@ -160,6 +160,10 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
                       tensorflow::gtl::ArraySlice<int64> dimensions,
                       HloComputation* function) override;
 
+  Status HandleReduceWindow(HloInstruction* reduce_window,
+                            HloInstruction* operand, const Window& window,
+                            HloComputation* function) override;
+
   Status HandleReverse(HloInstruction* reverse,
                        HloInstruction* operand) override;
   Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
@@ -1094,6 +1098,66 @@ Status AlgebraicSimplifierVisitor::HandleReduce(
                                           {reshape, init_value}, function));
   }
   return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleReduceWindow(
+    HloInstruction* reduce_window, HloInstruction* operand,
+    const Window& window, HloComputation* function) {
+  VLOG(10) << "Considering folding Pad: " << operand->ToString()
+           << "\ninto reduce-window: " << reduce_window->ToString();
+
+  // This optimization folds a pad op into reduce_window.
+  if (operand->opcode() != HloOpcode::kPad) {
+    VLOG(10) << "Not folding pad into reduce-window as there is no pad.";
+    return Status::OK();
+  }
+
+  // Do not fold interior padding into ReduceWindow since the backends do not
+  // support it.
+  const PaddingConfig& pad_config = operand->padding_config();
+  if (HasInteriorPadding(pad_config)) {
+    VLOG(10) << "Not folding pad into reduce-window due to interior padding.";
+    return Status::OK();
+  }
+
+  // If reduce_window already has padding, the pad value of the pad op and the
+  // init value of reduce_window must match to allow folding the pad.
+  const HloInstruction* pad_value = operand->operand(1);
+  const HloInstruction* reduce_init_value = reduce_window->operand(1);
+  if (pad_value != reduce_init_value) {
+    // The pad value is usually a constant, so we handle that case and do not
+    // try to get more fancy about proving equivalence in cases beyond that.
+    if (pad_value->opcode() != HloOpcode::kConstant ||
+        reduce_init_value->opcode() != HloOpcode::kConstant ||
+        !LiteralUtil::Equal(pad_value->literal(),
+                            reduce_init_value->literal())) {
+      VLOG(10)
+          << "Not folding pad into reduce-window due to different pad values.";
+      return Status::OK();
+    }
+  }
+
+  // Carry out the folding of the pad into reduce_window.
+  VLOG(10) << "Folding pad into reduce-window.";
+  Window new_window = window;
+  const int64 rank = ShapeUtil::Rank(reduce_window->shape());
+  TF_RET_CHECK(pad_config.dimensions_size() == rank);
+  TF_RET_CHECK(window.dimensions_size() == rank);
+  for (int64 i = 0; i < rank; ++i) {
+    const auto& pad_dim = pad_config.dimensions(i);
+    auto& window_dim = *new_window.mutable_dimensions(i);
+    window_dim.set_padding_low(window_dim.padding_low() +
+                               pad_dim.edge_padding_low());
+    window_dim.set_padding_high(window_dim.padding_high() +
+                                pad_dim.edge_padding_high());
+  }
+  return ReplaceWithNewInstruction(
+      reduce_window, HloInstruction::CreateReduceWindow(
+                         /*shape=*/reduce_window->shape(),
+                         /*operand=*/operand->mutable_operand(0),
+                         /*init_value=*/reduce_window->mutable_operand(1),
+                         /*window=*/new_window,
+                         /*reduce_computation=*/function));
 }
 
 Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {

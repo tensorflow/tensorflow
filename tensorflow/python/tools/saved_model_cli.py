@@ -489,7 +489,7 @@ def show(args):
   else:
     # If no tag is specified, display all tag_set, if no signaure_def key is
     # specified, display all SignatureDef keys, else show input output tensor
-    # infomation corresponding to the given SignatureDef key
+    # information corresponding to the given SignatureDef key
     if args.tag_set is None:
       _show_tag_sets(args.dir)
     else:
@@ -504,7 +504,14 @@ def run(args):
 
   Args:
     args: A namespace parsed from command line.
+
+  Raises:
+    AttributeError: An error when neither --inputs nor --input_exprs is passed
+    to run command.
   """
+  if not args.inputs and not args.input_exprs:
+    raise AttributeError(
+        'At least one of --inputs and --input_exprs must be required')
   tensor_key_feed_dict = load_inputs_from_input_arg_string(
       args.inputs, args.input_exprs)
   run_saved_model_with_feed_dict(args.dir, args.tag_set, args.signature_def,
@@ -555,7 +562,7 @@ def create_parser():
   parser_show.add_argument(
       '--all',
       action='store_true',
-      help='if set, will output all infomation in given SavedModel')
+      help='if set, will output all information in given SavedModel')
   parser_show.add_argument(
       '--tag_set',
       type=str,
@@ -629,8 +636,6 @@ def create_parser():
 def main():
   parser = create_parser()
   args = parser.parse_args()
-  if not args.inputs and not args.input_exprs:
-    args.error('At least one of --inputs and --input_exprs is required')
   args.func(args)
 
 

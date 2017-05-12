@@ -649,7 +649,7 @@ class Layer(tf_base_layers.Layer):
                           'but was passed an input_mask: ' + str(mask))
       # masking not explicitly supported: return None as mask
       return None
-    # if masking is explictly supported, by default
+    # if masking is explicitly supported, by default
     # carry over the input mask
     return mask
 

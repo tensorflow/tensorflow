@@ -56,9 +56,9 @@ class CWiseUnaryGradTest : public ::testing::Test {
     ATAN
   };
 
-  void TestCWiseGrad(UnaryOpType op_type, std::function<float(int)> x_fn,
-                     std::function<float(float)> dy_fn,
-                     std::function<float(float, float)> dx_fn) {
+  void TestCWiseGrad(UnaryOpType op_type, const std::function<float(int)>& x_fn,
+                     const std::function<float(float)>& dy_fn,
+                     const std::function<float(float, float)>& dx_fn) {
     Tensor x(DT_FLOAT, {2, 3, 2});
     auto x_flat = x.flat<float>();
     for (int i = 0; i < x_flat.size(); ++i) {

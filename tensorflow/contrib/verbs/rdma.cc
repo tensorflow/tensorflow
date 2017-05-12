@@ -272,7 +272,8 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
     self_.qpn = qp_->qp_num;
     self_.psn = static_cast<uint32_t>(random::New64()) & 0xffffff;
     union ibv_gid gid;
-    CHECK(!ibv_query_gid(adapter_->context_, (uint8_t) 1, 0, &gid)) << "Query gid";
+    CHECK(!ibv_query_gid(adapter_->context_, (uint8_t)1, 0, &gid))
+        << "Query gid";
     self_.snp = gid.global.subnet_prefix;
     self_.iid = gid.global.interface_id;
   }
@@ -479,7 +480,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     attr.dest_qp_num = remoteAddr.qpn;
     attr.rq_psn = remoteAddr.psn;
     attr.max_dest_rd_atomic = 1;
-    attr.min_rnr_timer = 12;   
+    attr.min_rnr_timer = 12;
     attr.ah_attr.is_global = 1;
     attr.ah_attr.grh.dgid.global.subnet_prefix = remoteAddr.snp;
     attr.ah_attr.grh.dgid.global.interface_id = remoteAddr.iid;
@@ -777,11 +778,8 @@ void RdmaTensorBuffer::SendNextItem() {
         EnqueueItem(key_with_step_id);
       }
     };
-    // Use default session (legacy_session_)
-    // TODO use WorkerSessionForSession
-    // need to pass in session handle
-    channel_->adapter_->worker_env_->session_mgr->LegacySession()
-        ->rendezvous_mgr->RecvLocalAsync(step_id, parsed, cb);
+    channel_->adapter_->worker_env_->rendezvous_mgr
+        ->RecvLocalAsync(step_id, parsed, cb);
   }
 }
 

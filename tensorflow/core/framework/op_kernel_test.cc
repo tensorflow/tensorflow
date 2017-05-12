@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -133,8 +134,8 @@ class OpKernelTest : public ::testing::Test {
                      const DataTypeVector& outputs) {
     Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(
-        device_type, &device_, cpu_allocator(), CreateNodeDef(op_type, inputs),
-        TF_GRAPH_DEF_VERSION, &status));
+        std::move(device_type), &device_, cpu_allocator(),
+        CreateNodeDef(op_type, inputs), TF_GRAPH_DEF_VERSION, &status));
     EXPECT_TRUE(status.ok()) << status;
     EXPECT_TRUE(op != nullptr);
     if (op != nullptr) {
@@ -148,9 +149,9 @@ class OpKernelTest : public ::testing::Test {
     NodeDef node_def;
     protobuf::TextFormat::ParseFromString(ascii_node_def, &node_def);
     Status status;
-    std::unique_ptr<OpKernel> op(CreateOpKernel(device_type, &device_,
-                                                cpu_allocator(), node_def,
-                                                TF_GRAPH_DEF_VERSION, &status));
+    std::unique_ptr<OpKernel> op(
+        CreateOpKernel(std::move(device_type), &device_, cpu_allocator(),
+                       node_def, TF_GRAPH_DEF_VERSION, &status));
     EXPECT_TRUE(op == nullptr);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
@@ -384,7 +385,7 @@ class OpKernelBuilderTest : public ::testing::Test {
   }
 
   std::unique_ptr<OpKernel> ExpectSuccess(const string& op_type,
-                                          DeviceType device_type,
+                                          const DeviceType& device_type,
                                           const std::vector<string>& attrs,
                                           DataTypeSlice input_types = {}) {
     Status status;
@@ -423,7 +424,7 @@ class OpKernelBuilderTest : public ::testing::Test {
     return op;
   }
 
-  void ExpectFailure(const string& op_type, DeviceType device_type,
+  void ExpectFailure(const string& op_type, const DeviceType& device_type,
                      const std::vector<string>& attrs, error::Code code) {
     Status status;
     const NodeDef def = CreateNodeDef(op_type, attrs);

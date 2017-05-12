@@ -102,9 +102,10 @@ def _linear_learning_rate(num_linear_feature_columns):
 def _add_hidden_layer_summary(value, tag):
   summary.scalar("%s/fraction_of_zero_values" % tag, nn.zero_fraction(value))
   summary.histogram("%s/activation" % tag, value)
+
+
 def _add_layer_summary(value, tag):
-  summary.scalar("%s/fraction_of_zero_values" % tag,
-                             nn.zero_fraction(value))
+  summary.scalar("%s/fraction_of_zero_values" % tag, nn.zero_fraction(value))
   summary.histogram("%s/activation" % tag, value)
 
 

@@ -176,8 +176,6 @@ cc_library(
         ".",
         "include",
     ],
-    deps = [
-    ],
     linkopts = ["-lpthread"],
 )
 
@@ -1783,12 +1781,12 @@ cc_library(
         ".",
         "include",
     ],
+    linkopts = ["-lpthread"],
     deps = [
         ":gpr",
         ":grpc_unsecure",
         "//external:protobuf_clib",
     ],
-    linkopts = ["-lpthread"],
 )
 
 cc_library(

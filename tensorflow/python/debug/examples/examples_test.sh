@@ -66,17 +66,18 @@ run
 exit
 EOF
 
-# Use a large enough "run -t" number to let the process end properly.
-cat << EOF | ${DEBUG_MNIST_BIN} --debug --fake_data --ui_type=readline
+cat << EOF | ${DEBUG_MNIST_BIN} --debug --max_steps=1 --fake_data --ui_type=readline
+run -t 1
+run --node_name_filter hidden --op_type_filter MatMul
 run -f has_inf_or_nan
-run -t 1000
 EOF
 
 # Test the custom dump_root option.
 CUSTOM_DUMP_ROOT=$(mktemp -d)
 mkdir -p ${CUSTOM_DUMP_ROOT}
 
-cat << EOF | ${DEBUG_TFLEARN_IRIS_BIN} --debug --fake_data --train_steps=1 --dump_root="${CUSTOM_DUMP_ROOT}" --ui_type=readline
+cat << EOF | ${DEBUG_TFLEARN_IRIS_BIN} --debug --fake_data --train_steps=2 --dump_root="${CUSTOM_DUMP_ROOT}" --ui_type=readline
+run -p
 run -f has_inf_or_nan
 EOF
 

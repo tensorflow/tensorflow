@@ -41,13 +41,10 @@ tensorflow::Status KernelThunk::Initialize(const GpuExecutable& executable) {
     // Already initialized by another thread.
     return tensorflow::Status::OK();
   }
-
   loader_spec_.reset(new se::MultiKernelLoaderSpec(io_buffers_.size() + 1));
-  tensorflow::StringPiece ptx = executable.ptx();
-  // Convert tensorflow::StringPiece to se::port::StringPiece because
-  // StreamExecutor uses the latter.
-  loader_spec_->AddCudaPtxInMemory(
-      se::port::StringPiece(ptx.data(), ptx.size()), kernel_name_);
+
+  tensorflow::StringPiece cubin = executable.cubin();
+  loader_spec_->AddCudaCubinInMemory(cubin.data(), kernel_name_);
   return tensorflow::Status::OK();
 }
 

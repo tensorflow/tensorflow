@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/index_util.h"
@@ -675,7 +676,7 @@ namespace {
 // Helper for ForEachSubshape which visits the subshapes of the given shape in
 // DFS pre-order starting with the index.
 Status ForEachSubshapeHelper(const Shape& shape,
-                             const ShapeUtil::VisitorFunction func,
+                             const ShapeUtil::VisitorFunction& func,
                              ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(shape)) {
@@ -692,7 +693,7 @@ Status ForEachSubshapeHelper(const Shape& shape,
 // Helper for ForEachMutableSubshape which visits the subshapes of the given
 // shape in DFS pre-order starting with the index.
 Status ForEachMutableSubshapeHelper(
-    Shape* shape, const ShapeUtil::MutatingVisitorFunction func,
+    Shape* shape, const ShapeUtil::MutatingVisitorFunction& func,
     ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(*shape)) {
@@ -709,13 +710,13 @@ Status ForEachMutableSubshapeHelper(
 }  // namespace
 
 /* static */ Status ShapeUtil::ForEachSubshape(const Shape& shape,
-                                               VisitorFunction func) {
+                                               const VisitorFunction& func) {
   ShapeIndex index;
   return ForEachSubshapeHelper(shape, func, &index);
 }
 
 /* static */ Status ShapeUtil::ForEachMutableSubshape(
-    Shape* shape, MutatingVisitorFunction func) {
+    Shape* shape, const MutatingVisitorFunction& func) {
   ShapeIndex index;
   return ForEachMutableSubshapeHelper(shape, func, &index);
 }
@@ -728,9 +729,17 @@ Status ForEachMutableSubshapeHelper(
     new_shape.add_dimensions(dim);
   }
   if (shape.has_layout()) {
-    new_shape.mutable_layout()->clear_minor_to_major();
+    Layout* new_layout = new_shape.mutable_layout();
+    new_layout->clear_minor_to_major();
     for (auto index : Permute(permutation, shape.layout().minor_to_major())) {
-      new_shape.mutable_layout()->add_minor_to_major(index);
+      new_layout->add_minor_to_major(index);
+    }
+    if (shape.layout().padded_dimensions_size() > 0) {
+      new_layout->clear_padded_dimensions();
+      for (auto dim :
+           Permute(permutation, shape.layout().padded_dimensions())) {
+        new_layout->add_padded_dimensions(dim);
+      }
     }
   }
   return new_shape;
@@ -1057,7 +1066,9 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   DCHECK_EQ(count.size(), base.size());
   const Layout& layout = shape.layout();
   int64 rank = layout.minor_to_major_size();
-  int64 n = 0;
+  // Allows handling R0 arrays, such that the visitor function will be called
+  // once with the proper empty indexes.
+  int64 n = -1;
   std::vector<int64> indexes(base.begin(), base.end());
   while (n < rank && visitor_function(indexes)) {
     // Increments dimensions in minor to major order.

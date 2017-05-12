@@ -42,7 +42,7 @@ To incorporate your custom op you'll need to:
     Python @{tf.test.compute_gradient_error$gradient checker}.
     See
     [`relu_op_test.py`](https://www.tensorflow.org/code/tensorflow/python/kernel_tests/relu_op_test.py) as
-    an example that does tests the forward functions of Relu-like operators and
+    an example that tests the forward functions of Relu-like operators and
     their gradients.
 
 PREREQUISITES:
@@ -152,6 +152,163 @@ REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU), ZeroOutOp);
 >   Consider using a [`ResourceMgr`](https://www.tensorflow.org/code/tensorflow/core/framework/resource_mgr.h)
 >   to keep track of op state.
 
+### Multi-threaded CPU kernels
+
+To write a multi-threaded CPU kernel, the Shard function in
+[`work_sharder.h`](https://www.tensorflow.org/code/tensorflow/core/framework/work_sharder.h)
+can be used. This function shards a computation function across the
+threads configured to be used for intra-op threading (see
+intra_op_parallelism_threads in
+[`config.proto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)).
+
+### GPU kernels
+
+A GPU kernel is implemented in two parts: the OpKernel and the CUDA kernel and
+its launch code.
+
+Sometimes the OpKernel implementation is common between a CPU and GPU kernel,
+such as around inspecting inputs and allocating outputs.  In that case, a
+suggested implementation is to:
+
+1. Define the OpKernel templated on the Device and the primitive type of the
+   tensor.
+2. To do the actual computation of the output, the Compute function calls a
+    templated functor struct.
+3. The specialization of that functor for the CPUDevice is defined in the same
+   file, but the specialization for the GPUDevice is defined in a .cu.cc file,
+   since it will be compiled with the CUDA compiler.
+
+<!--zippy-->
+
+Expand this to see the example implementation.
+
+```c++
+// example.h
+#ifndef KERNEL_EXAMPLE_H_
+#define KERNEL_EXAMPLE_H_
+
+template <typename Device, typename T>
+struct ExampleFunctor {
+  void operator()(const Device& d, int size, const T* in, T* out);
+};
+
+#endif KERNEL_EXAMPLE_H_
+```
+
+```c++
+// example.cc
+#define EIGEN_USE_THREADS
+#include "example.h"
+#include "tensorflow/core/framework/op_kernel.h"
+
+using namespace tensorflow;
+
+using CPUDevice = Eigen::ThreadPoolDevice;
+using GPUDevice = Eigen::GpuDevice;
+
+// CPU specialization of actual computation.
+template <typename T>
+struct ExampleFunctor<CPUDevice, T> {
+  void operator()(const CPUDevice& d, int size, const T* in, T* out) {
+    for (int i = 0; i < size; ++i) {
+      out[i] = 2 * in[i];
+    }
+  }
+};
+
+// OpKernel definition.
+// template parameter <T> is the datatype of the tensors.
+template <typename Device, typename T>
+class ExampleOp : public OpKernel {
+ public:
+  explicit ExampleOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    // Grab the input tensor
+    const Tensor& input_tensor = context->input(0);
+
+    // Create an output tensor
+    Tensor* output_tensor = NULL;
+    OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
+                                                     &output_tensor));
+
+    // Do the computation.
+    OP_REQUIRES(context, input_tensor.NumElements() <= tensorflow::kint32max,
+                errors::InvalidArgument("Too many elements in tensor"));
+    ExampleFunctor<Device, T>()(
+        context->eigen_device<Device>(),
+        static_cast<int>(input_tensor.NumElements()),
+        input_tensor.flat<T>().data(),
+        output_tensor->flat<T>().data());
+  }
+};
+
+// Register the CPU kernels.
+#define REGISTER_CPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("Example").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      ExampleOp<CPUDevice, T>);
+REGISTER_CPU(float);
+REGISTER_CPU(int32);
+
+// Register the GPU kernels.
+#ifdef GOOGLE_CUDA
+#define REGISTER_GPU(T)                                          \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("Example").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      ExampleOp<GPUDevice, T>);
+REGISTER_GPU(float);
+REGISTER_GPU(int32);
+#endif  // GOOGLE_CUDA
+```
+
+```c++
+#ifdef GOOGLE_CUDA
+
+#define EIGEN_USE_GPU
+#define EIGEN_USE_THREADS
+
+#include "example.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
+
+using namespace tensorflow;
+
+#define EIGEN_USE_GPU
+
+// Define the CUDA kernel.
+template <typename T>
+__global__ void ExampleCudaKernel(const int size, const T* in, T* out) {
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < size;
+       i += blockDim.x * gridDim.x) {
+    out[i] = 2 * ldg(in + i);
+  }
+}
+
+// Define the GPU implementation that launches the CUDA kernel.
+template <typename T>
+struct ExampleFunctor<GPUDevice, T> {
+  void operator()(const GPUDevice& d, int size, const T* in, T* out) {
+    // Launch the cuda kernel.
+    //
+    // See core/util/cuda_kernel_helper.h for example of computing
+    // block count and thread_per_block count.
+    int block_count = 1024;
+    int thread_per_block = 20;
+    ExampleCudaKernel<T>
+        <<<block_count, thread_per_block, 0, d.stream()>>>(size, in, out);
+  }
+};
+
+// Instantiate functors for the types of OpKernels registered.
+typedef Eigen::GpuDevice GPUDevice;
+template struct ExampleFunctor<GPUDevice, float>;
+template struct ExampleFunctor<GPUDevice, int32>;
+
+#endif  // GOOGLE_CUDA
+```
+
+<!--endzippy-->
+
 ## Build the op library
 ### Compile the op using your system compiler (TensorFlow binary installation)
 
@@ -160,7 +317,7 @@ or `clang` available on your system. The binary PIP package installs the header
 files and the library that you need to compile your op in locations that are
 system specific. However, the TensorFlow python library provides the
 `get_include` function to get the header directory.
-Here is the output of this function on a Ubuntu machine.
+Here is the output of this function on an Ubuntu machine.
 
 ```bash
 $ python
@@ -188,7 +345,7 @@ building the `.so` file.
 >   the older ABI. If you compile your op library with `gcc>=5`, add
 >   `-D_GLIBCXX_USE_CXX11_ABI=0` to the command line to make the library
 >   compatible with the older abi.
->   Furthermore if you are using TensorFlow package created from source remember to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
+>   Furthermore if you are using TensorFlow package created from source remember to add `--cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
 >   as bazel command to compile the Python package.
 
 ### Compile the op using bazel (TensorFlow source installation)
@@ -225,7 +382,7 @@ TensorFlow Python API provides the
 load the dynamic library and register the op with the TensorFlow
 framework. `load_op_library` returns a Python module that contains the Python
 wrappers for the op and the kernel. Thus, once you have built the op, you can
-do the following to run it from Python :
+do the following to run it from Python:
 
 ```python
 import tensorflow as tf
@@ -1057,6 +1214,8 @@ Note that if your CUDA libraries are not installed in `/usr/local/lib64`,
 you'll need to specify the path explicitly in the second (g++) command above.
 For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in
 `/usr/local/cuda-8.0`.
+
+>   Note in some linux settings, additional options to `nvcc` compiling step are needed. Add `-D_MWAITXINTRIN_H_INCLUDED` to the `nvcc` command line to avoid errors from `mwaitxintrin.h`.
 
 ### Implement the gradient in Python {#implement-gradient}
 

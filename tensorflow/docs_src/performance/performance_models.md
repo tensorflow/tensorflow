@@ -62,12 +62,12 @@ and executed in parallel. The image preprocessing ops include operations such as
 image decoding, distortion, and resizing.
 
 Once the images are through preprocessing, they are concatenated together into 8
-batch size 32 tensors. Rather than use @{tf.concat} for this purpose, which is
-implemented as a single op that waits for all the inputs to be ready before
-concatenating them together, @{tf.parallel_stack} is used. @{tf.parallel_stack}
-allocates an uninitialized tensor as an output, and each input tensor is written
-to its designated portion of the output tensor as soon as the input is
-available.
+tensors each with a batch-size of 32. Rather than using @{tf.concat} for this
+purpose, which is implemented as a single op that waits for all the inputs to be
+ready before concatenating them together, @{tf.parallel_stack} is used.
+@{tf.parallel_stack} allocates an uninitialized tensor as an output, and each
+input tensor is written to its designated portion of the output tensor as soon
+as the input is available.
 
 When all the input tensors are finished, the output tensor is passed along in
 the graph. This effectively hides all the memory latency with the long tail of
@@ -142,7 +142,7 @@ On GPU, NCHW is faster. But on CPU, NHWC is sometimes faster.
 
 Building a model to support both data formats keeps the model flexible and
 capable of operating optimally regardless of platform. Most TensorFlow
-operations used by a CNN support both NHWC and NCHW data format. The benchmark
+operations used by a CNN support both NHWC and NCHW data formats. The benchmark
 script was written to support both NCHW and NHWC. NCHW should always be used
 when training with GPUs. NHWC is sometimes faster on CPU. A flexible model can
 be trained on GPUs using NCHW with inference done on CPU using NHWC with the

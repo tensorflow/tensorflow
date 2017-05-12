@@ -27,7 +27,6 @@
 
 # 1. Resolve the installed version of Python (for Python.h and python).
 # TODO(mrry): Parameterize the build script to enable Python 3 building.
-include(FindPythonInterp)
 if(NOT PYTHON_INCLUDE_DIR)
   set(PYTHON_NOT_FOUND false)
   exec_program("${PYTHON_EXECUTABLE}"

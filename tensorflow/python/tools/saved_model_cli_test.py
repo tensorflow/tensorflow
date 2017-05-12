@@ -409,6 +409,16 @@ Method name is: tensorflow/serving/predict"""
     with self.assertRaises(RuntimeError):
       saved_model_cli.run(args)
 
+  def testRunCommandInputNotGivenError(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    args = self.parser.parse_args([
+        'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
+        'serving_default'
+    ])
+    with self.assertRaises(AttributeError):
+      saved_model_cli.run(args)
+
   def testRunCommandWithDebuggerEnabled(self):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)

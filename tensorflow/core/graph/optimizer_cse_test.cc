@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/optimizer_cse.h"
 
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"

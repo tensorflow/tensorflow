@@ -70,7 +70,7 @@ class ShapeRefiner {
   }
 
   // Getters and setters for graph_def_version_.
-  int32 graph_def_version() { return graph_def_version_; }
+  int32 graph_def_version() const { return graph_def_version_; }
   void set_graph_def_version(int32 version) { graph_def_version_ = version; }
 
   void set_require_shape_inference_fns(bool require_shape_inference_fns) {

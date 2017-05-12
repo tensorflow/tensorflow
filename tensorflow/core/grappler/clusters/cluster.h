@@ -17,13 +17,14 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_CLUSTERS_CLUSTER_H_
 
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -62,17 +63,13 @@ class Cluster {
 
   // Return the list of TensorFlow devices that are available to execute a
   // graph. This is empty until provision() is called.
-  const std::vector<DeviceAttributes>& GetDevices() const { return devices_; }
-
-  // Convenience method that returns the set of device names.
-  const std::vector<string> GetDeviceNames() const {
-    std::vector<string> device_names;
-    device_names.reserve(devices_.size());
-    for (const auto& device : devices_) {
-      device_names.push_back(device.name());
-    }
-    return device_names;
+  const std::unordered_map<string, DeviceProperties>& GetDevices() const {
+    return devices_;
   }
+
+  // Convenience method that returns the set of device names. These names are
+  // sorted alphabetically.
+  const std::vector<string> GetDeviceNames() const;
 
   // Prepare the session to run the specified grappler item. This include
   // initializing all the model variables.
@@ -85,7 +82,7 @@ class Cluster {
                      RunMetadata* metadata) = 0;
 
  protected:
-  std::vector<DeviceAttributes> devices_;
+  std::unordered_map<string, DeviceProperties> devices_;
   const int timeout_s_;
   SessionOptions options_;
   RunOptions run_options_;

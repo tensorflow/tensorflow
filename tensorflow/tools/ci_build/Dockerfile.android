@@ -12,6 +12,7 @@ RUN /install/install_bazel.sh
 
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc
+RUN echo "import %workspace%/.tf_configure.bazelrc" >> /etc/bazel.bazelrc
 
 # Install extra libraries for android sdk.
 RUN apt-get update && apt-get install -y \

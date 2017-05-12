@@ -1213,7 +1213,8 @@ class ExecutorState {
       GUARDED_BY(mu_);
 
   // The unique name of a frame.
-  inline string MakeFrameName(FrameState* frame, int64 iter_id, string name) {
+  inline string MakeFrameName(FrameState* frame, int64 iter_id,
+                              const string& name) {
     return strings::StrCat(frame->frame_name, ";", iter_id, ";", name);
   }
 
