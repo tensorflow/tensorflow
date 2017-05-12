@@ -77,7 +77,7 @@ class StridedSliceOp : public XlaOpKernel {
 
     gtl::InlinedVector<int64, 4> dimensions_to_reverse;
     gtl::InlinedVector<int64, 4> slice_begin, slice_end;
-    bool simple_strides(true);
+    bool simple_strides = true;
     for (int i = 0; i < begin.size(); ++i) {
       simple_strides &= (std::abs(strides[i]) == 1);
       if (strides[i] > 0) {
@@ -97,7 +97,13 @@ class StridedSliceOp : public XlaOpKernel {
       slice = ctx->builder()->Rev(slice, dimensions_to_reverse);
     }
 
+    // If at least one of the strides is > 1 (or < -1) then use Slice
+    // to pull out each of the strided slices, and Concat to put them
+    // together again.
     if (!simple_strides) {
+
+      // Re-adjust the begin and end now that the periphery has been
+      // sliced away.
       for (int d = 0; d < strides.size(); ++d) {
         slice_end[d] -= slice_begin[d];
         slice_begin[d] = 0;
@@ -108,7 +114,7 @@ class StridedSliceOp : public XlaOpKernel {
         if (stride > 1) {
           std::vector<xla::ComputationDataHandle> to_concat;
           int64 end = slice_end[d];
-          for (int64 i=0; i < end; i += stride) {
+          for (int64 i = 0; i < end; i += stride) {
             slice_begin[d] = i;
             slice_end[d] = i+1;
             to_concat.push_back(ctx->builder()->Slice(slice, slice_begin,
