@@ -52,7 +52,7 @@ TEST_F(DeallocationTest, DeallocateScalar) {
   builder.ConstantR0<float>(42.0);
   auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
-  // A result can be transfered an arbitrary number of times.  Add an extra
+  // A result can be transferred an arbitrary number of times.  Add an extra
   // transfer here so we're not just testing that a second call to Transfer
   // fails.
   ASSERT_IS_OK(client_->Transfer(*global_data).status());

@@ -73,7 +73,7 @@ Status MeasuringCostEstimator::PredictCosts(const GraphDef& optimized_graph,
       return;
     }
     if (!local_status.ok()) {
-      // Discard the data if the run wasn't sucessful.
+      // Discard the data if the run wasn't successful.
       barrier.DecrementCount();
       return;
     }
