@@ -117,7 +117,7 @@ class StridedSliceTest(XLATestCase):
         i = array_ops.placeholder(dtype, shape=[3, 4, 10])
         with self.test_scope():
           o = array_ops.strided_slice(i, [2, 2, 6], [0, 0, 2], [-1, -1, -2])
-      params = {
+        params = {
           i: [[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
                [9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
                [5, 3, 1, 7, 9, 2, 4, 6, 8, 0],
