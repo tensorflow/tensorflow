@@ -1069,7 +1069,7 @@ struct DeepConv2D<CPUDevice, T> {
       // Allocate temporary buffer 'buffer2', which is first used for
       // transformed input tiles, then re-used for transformed output tiles.
       // Calculate required buffer size for 'buffer2' as max required buffer
-      // between input and output tranform buffer sizes.
+      // between input and output transform buffer sizes.
       const int64 buffer2_tile_transform_size =
           tile_spatial_size * num_tiles * in_depth;
       const int64 buffer2_out_transform_size =

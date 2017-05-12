@@ -184,7 +184,7 @@ class DropStaleGradientOptimizerTest(test.TestCase):
     thread_0.join()
     thread_1.join()
 
-    # With 2 workers and max staleness set to 0, only cheif worker will update
+    # With 2 workers and max staleness set to 0, only chief worker will update
     # var_0 and var_1.
     self.assertAllEqual(1, sessions[0].run(global_step))
     self.assertAllEqual(1.0, sessions[0].run(stale_counter))
@@ -250,7 +250,7 @@ class DropStaleGradientOptimizerTest(test.TestCase):
     thread_1.join()
     thread_2.join()
 
-    # With 3 workers and max staleness set to 0, only cheif worker will update
+    # With 3 workers and max staleness set to 0, only chief worker will update
     # var_0 and var_1.
     self.assertAllEqual(1, sessions[0].run(global_step))
     self.assertAllEqual(2.0, sessions[0].run(stale_counter))
