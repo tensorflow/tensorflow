@@ -778,11 +778,8 @@ void RdmaTensorBuffer::SendNextItem() {
         EnqueueItem(key_with_step_id);
       }
     };
-    // Use default session (legacy_session_)
-    // TODO use WorkerSessionForSession
-    // need to pass in session handle
-    channel_->adapter_->worker_env_->session_mgr->LegacySession()
-        ->rendezvous_mgr->RecvLocalAsync(step_id, parsed, cb);
+    channel_->adapter_->worker_env_->rendezvous_mgr
+        ->RecvLocalAsync(step_id, parsed, cb);
   }
 }
 
