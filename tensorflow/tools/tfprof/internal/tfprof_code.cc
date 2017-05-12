@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_constants.h"
-#include "tensorflow/tools/tfprof/internal/tfprof_tensor.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -99,7 +98,8 @@ CodeNode* TFCode::BuildCodeNodes(TFCodeNode* root) {
   return code_root_ptr;
 }
 
-const ShowCodeNode* TFCode::ShowInternal(const Options& opts) {
+const ShowCodeNode* TFCode::ShowInternal(const Options& opts,
+                                         Timeline* timeline) {
   // Search from roots recursively to find start node, if start_name_regexes
   // is specified.
   tfprof_trace_root_.reset(new TFCodeNode(kTFProfRoot));
@@ -117,7 +117,11 @@ const ShowCodeNode* TFCode::ShowInternal(const Options& opts) {
   tfprof_code_root_->children.assign(roots.begin(), roots.end());
   Account({tfprof_code_root_.get()}, opts);
 
-  return PrintScope({tfprof_code_root_.get()}, opts, 1, 0)[0];
+  CodeNode* root = PrintScope({tfprof_code_root_.get()}, opts, 1, 0)[0];
+  if (timeline) {
+    timeline->GenerateCodeTimeline(root);
+  }
+  return root;
 }
 
 std::vector<CodeNode*> TFCode::SearchRoot(std::vector<CodeNode*> roots,
@@ -170,8 +174,13 @@ std::vector<CodeNode*> TFCode::PrintScope(const std::vector<CodeNode*> roots,
       show_cnodes = SortNodes(show_cnodes, opts);
       string children_str;
       for (CodeNode* sc : show_cnodes) {
-        children_str += sc->formatted_str;
+        if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
+          children_str += sc->formatted_str;
+          sc->formatted_str.clear();
+        }
         node->mutable_proto()->add_children()->MergeFrom(sc->proto());
+        sc->mutable_proto()->mutable_children()->Clear();
+        node->show_children.push_back(sc);
         if (opts.account_displayed_op_only) {
           node->AggregateTotalStats(sc);
         }

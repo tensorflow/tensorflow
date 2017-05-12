@@ -56,11 +56,14 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
   TFStats tf_stats(std::move(graph_ptr), std::move(run_meta_ptr),
                    std::move(op_log_ptr), std::move(ckpt_reader));
 
-  Options opts = Options::FromProtoStr(*options);
+  Options opts;
+  tensorflow::Status s = Options::FromProtoStr(*options, &opts);
+  if (!s.ok()) {
+    fprintf(stderr, "%s\n", s.ToString().c_str());
+    return "";
+  }
 
-  // TODO(xpan): We should have dump_to_file/print_stdout/etc to control
-  // side-effects independently instead of one controlling the other.
-  if (opts.dump_to_file.empty()) {
+  if (opts.output_type == kOutput[1]) {
     printf("\n=========================Options=============================\n");
     printf("%s", opts.ToString().c_str());
     printf("\n==================Model Analysis Report======================\n");

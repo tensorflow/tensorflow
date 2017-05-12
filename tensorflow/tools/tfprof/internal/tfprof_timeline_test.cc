@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
@@ -31,9 +32,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-class TFProfShowTest : public ::testing::Test {
+class TFProfTimelineTest : public ::testing::Test {
  protected:
-  TFProfShowTest() {
+  TFProfTimelineTest() {
     string graph_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "tools/tfprof/internal/testdata/graph.pbtxt");
@@ -48,47 +49,44 @@ class TFProfShowTest : public ::testing::Test {
     TF_CHECK_OK(
         ReadBinaryProto(Env::Default(), run_meta_path, run_meta_pb.get()));
 
-    std::unique_ptr<OpLog> op_log_pb(new OpLog());
-    string op_log_path =
-        io::JoinPath(testing::TensorFlowSrcRoot(),
-                     "tools/tfprof/internal/testdata/tfprof_log");
-    TF_CHECK_OK(ReadBinaryProto(Env::Default(), op_log_path, op_log_pb.get()));
-
-    string ckpt_path = io::JoinPath(testing::TensorFlowSrcRoot(),
-                                    "tools/tfprof/internal/testdata/ckpt");
-    TF_Status* status = TF_NewStatus();
-    std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader(
-        new checkpoint::CheckpointReader(ckpt_path, status));
-    CHECK(TF_GetCode(status) == TF_OK);
-    TF_DeleteStatus(status);
-
     tf_stats_.reset(new TFStats(std::move(graph_pb), std::move(run_meta_pb),
-                                std::move(op_log_pb), std::move(ckpt_reader)));
+                                nullptr, nullptr));
   }
 
   std::unique_ptr<TFStats> tf_stats_;
 };
 
-TEST_F(TFProfShowTest, DumpScopeMode) {
+// Before adding test, first dump the json file and
+// manually check it's correct
+TEST_F(TFProfTimelineTest, GraphView) {
   string dump_file = io::JoinPath(testing::TmpDir(), "dump");
-  Options opts(5, 0, 0, 0, 0, {".*"}, "name",
-               {"VariableV2"},  // accout_type_regexes
+  Options opts(10000, 0, 0, 0, 0, {".*"}, "name",
+               {".*"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
-               "file", {{"outfile", dump_file}});
+               "timeline", {{"outfile", dump_file}});
+  tf_stats_->PrintGraph("graph", opts);
+
+  string dump_str;
+  TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
+  EXPECT_EQ(14171250174278825648ull, Hash64(dump_str));
+}
+
+TEST_F(TFProfTimelineTest, ScopeView) {
+  string dump_file = io::JoinPath(testing::TmpDir(), "dump");
+  Options opts(5, 0, 0, 0, 0, {".*"}, "name", {".*"},  // accout_type_regexes
+               {".*"}, {""}, {".*"}, {""}, false,
+               {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
+               "timeline", {{"outfile", dump_file}});
   tf_stats_->PrintGraph("scope", opts);
 
   string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
-  EXPECT_EQ(
-      "_TFProfRoot (--/370 params, --/0 flops, --/1.48KB, --/5us)\n  "
-      "conv2d/bias (5, 5/5 params, 0/0 flops, 20B/20B, 1us/1us)\n  "
-      "conv2d/kernel (3x3x3x5, 135/135 params, 0/0 flops, 540B/540B, "
-      "1us/1us)\n  conv2d_1/bias (5, 5/5 params, 0/0 flops, 20B/20B, "
-      "1us/1us)\n  conv2d_1/kernel (3x3x5x5, 225/225 params, 0/0 flops, "
-      "900B/900B, 2us/2us)\n",
-      dump_str);
+  EXPECT_EQ(2355241164346147404ull, Hash64(dump_str));
 }
+
+// TODO(xpan): tfprof_log is too large to include in testdata when adding
+// code traces.
 
 }  // namespace tfprof
 }  // namespace tensorflow
