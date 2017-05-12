@@ -124,7 +124,6 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
   pipeline.AddPass<HloCSE>(true);
 
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 
