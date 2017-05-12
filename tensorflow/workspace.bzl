@@ -811,7 +811,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   filegroup_external(
       name = "io_github_cpettitt_graphlib",
-      # no @license header
       licenses = ["notice"],  # MIT
       sha256_urls = {
           "772045d412b1513b549be991c2e1846c38019429d43974efcae943fbe83489bf": [
