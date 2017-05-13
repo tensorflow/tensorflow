@@ -2674,5 +2674,5 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://github.com/PolymerElements/test-fixture/archive/v2.0.1.tar.gz",
       ],
       path = "/test-fixture",
-      suppress = ["strictDependencies"],
+      exclude = ["test/**"],
   )
