@@ -4334,7 +4334,7 @@ cc_library(
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:android": [
-            "-ldl"
+            "-ldl",
         ],
         "//conditions:default": [],
     }),

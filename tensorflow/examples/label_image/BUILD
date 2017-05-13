@@ -23,7 +23,7 @@ cc_binary(
             "-s",
             "-Wl,--exclude-libs,ALL",
         ],
-        "//conditions:default": ["-lm",],
+        "//conditions:default": ["-lm"],
     }),
     deps = select({
         "//tensorflow:android": [
@@ -37,7 +37,7 @@ cc_binary(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:tensorflow",
         ],
-   }),
+    }),
 )
 
 filegroup(
