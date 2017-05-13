@@ -73,6 +73,13 @@ class DecodeRawOp : public OpKernel {
     for (int64 i = 0; i < flat_in.size(); ++i) {
       const T* in_data = reinterpret_cast<const T*>(flat_in(i).data());
       memcpy(out_data, in_data, str_size);
+      if (port::kLittleEndian != little_endian_) {
+        char* out_data_bytes = reinterpret_cast<char*>(out_data);
+        for (char* p = out_data_bytes; p < out_data_bytes + str_size;
+             p += sizeof(T)) {
+          std::reverse(p, p + sizeof(T));
+        }
+      }
       out_data += added_dim;
     }
   }
