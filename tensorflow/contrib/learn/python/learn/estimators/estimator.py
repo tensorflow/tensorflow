@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import abc
 import copy
-import inspect
 import os
 import tempfile
 
@@ -41,6 +40,7 @@ from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -57,7 +57,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -70,6 +70,8 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import summary_io
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 AS_ITERABLE_DATE = '2016-09-15'
@@ -173,17 +175,27 @@ def infer_real_valued_columns_from_input(x):
   return infer_real_valued_columns_from_input_fn(input_fn)
 
 
-def _get_arguments(func):
-  """Returns list of arguments this function has."""
-  if hasattr(func, '__code__'):
-    # Regular function.
-    return inspect.getargspec(func).args
-  elif hasattr(func, '__call__'):
-    # Callable object.
-    return _get_arguments(func.__call__)
-  elif hasattr(func, 'func'):
-    # Partial function.
-    return _get_arguments(func.func)
+def _model_fn_args(fn):
+  """Get argument names for function-like object.
+
+  Args:
+    fn: Function, or function-like object (e.g., result of `functools.partial`).
+
+  Returns:
+    `tuple` of string argument names.
+
+  Raises:
+    ValueError: if partial function has positionally bound arguments
+  """
+  _, fn = tf_decorator.unwrap(fn)
+  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
+    # Handle functools.partial and similar objects.
+    return tuple([
+        arg for arg in tf_inspect.getargspec(fn.func).args[len(fn.args):]
+        if arg not in set(fn.keywords.keys())
+    ])
+  # Handle function.
+  return tuple(tf_inspect.getargspec(fn).args)
 
 
 def _get_replica_device_setter(config):
@@ -360,7 +372,11 @@ class BaseEstimator(
       logging.info('Using default config.')
     else:
       self._config = config
-    logging.info('Using config: %s', str(vars(self._config)))
+
+    if self._config.session_config is None:
+      self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    else:
+      self._session_config = self._config.session_config
 
     # Model directory.
     if (model_dir is not None) and (self._config.model_dir is not None):
@@ -380,6 +396,7 @@ class BaseEstimator(
                       self._model_dir)
     if self._config.model_dir is None:
       self._config = self._config.replace(model_dir=self._model_dir)
+    logging.info('Using config: %s', str(vars(self._config)))
 
     # Set device function depending if there are replicas or not.
     self._device_fn = _get_replica_device_setter(self._config)
@@ -829,7 +846,7 @@ class BaseEstimator(
           eval_ops=update_op,
           final_ops=eval_dict,
           hooks=hooks,
-          config=config_pb2.ConfigProto(allow_soft_placement=True))
+          config=self._session_config)
       current_global_step = eval_results[global_step_key]
 
       _write_dict_to_summary(eval_dir, eval_results, current_global_step)
@@ -864,7 +881,7 @@ class BaseEstimator(
           session_creator=monitored_session.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
               scaffold=infer_ops.scaffold,
-              config=config_pb2.ConfigProto(allow_soft_placement=True)))
+              config=self._session_config))
       if not as_iterable:
         with mon_sess:
           if not mon_sess.should_stop():
@@ -949,7 +966,8 @@ class BaseEstimator(
             saver.Saver(
                 sharded=True,
                 max_to_keep=self._config.keep_checkpoint_max,
-                defer_build=True))
+                defer_build=True,
+                save_relative_paths=True))
 
       chief_hooks = []
       if (self._config.save_checkpoints_secs or
@@ -976,7 +994,7 @@ class BaseEstimator(
           chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=config_pb2.ConfigProto(allow_soft_placement=True)
+          config=self._session_config
       ) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
@@ -1065,7 +1083,7 @@ class Estimator(BaseEstimator):
     super(Estimator, self).__init__(model_dir=model_dir, config=config)
     if model_fn is not None:
       # Check number of arguments of the given function matches requirements.
-      model_fn_args = _get_arguments(model_fn)
+      model_fn_args = _model_fn_args(model_fn)
       if params is not None and 'params' not in model_fn_args:
         raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
                          'arguments, but not None params (%s) are passed.' %
@@ -1095,7 +1113,7 @@ class Estimator(BaseEstimator):
       ValueError: if model_fn returns invalid objects.
     """
     features, labels = self._feature_engineering_fn(features, labels)
-    model_fn_args = _get_arguments(self._model_fn)
+    model_fn_args = _model_fn_args(self._model_fn)
     kwargs = {}
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode
@@ -1235,6 +1253,13 @@ class Estimator(BaseEstimator):
       input_alternatives, features = (
           saved_model_export_utils.get_input_alternatives(input_ops))
 
+      # TODO(b/34388557) This is a stopgap, pending recording model provenance.
+      # Record which features are expected at serving time.  It is assumed that
+      # these are the features that were used in training.
+      for feature_key in input_ops.features.keys():
+        ops.add_to_collection(
+            constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS, feature_key)
+
       # Call the model_fn and collect the output alternatives.
       model_fn_ops = self._call_model_fn(features, None,
                                          model_fn_lib.ModeKeys.INFER)
@@ -1263,14 +1288,11 @@ class Estimator(BaseEstimator):
       else:
         saver_for_restore = saver.Saver(sharded=True)
       with tf_session.Session('') as session:
-        variables.initialize_local_variables()
-        data_flow_ops.tables_initializer()
-        resources.initialize_resources(resources.shared_resources())
         saver_for_restore.restore(session, checkpoint_path)
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),
             resources.initialize_resources(resources.shared_resources()),
-            data_flow_ops.tables_initializer())
+            lookup_ops.tables_initializer())
 
         # Perform the export
         builder = saved_model_builder.SavedModelBuilder(export_dir)

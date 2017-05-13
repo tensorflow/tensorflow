@@ -66,13 +66,15 @@ RUN echo "startup --batch" >>/etc/bazel.bazelrc
 #   https://github.com/bazelbuild/bazel/issues/418
 RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/etc/bazel.bazelrc
+RUN echo "import %workspace%/.tf_configure.bazelrc" >> /etc/bazel.bazelrc
+
 # Install the most recent bazel release.
 ENV BAZEL_VERSION 0.4.5
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \
-    curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
-    curl -fSsL -o /bazel/LICENSE.txt https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE.txt && \
+    curl -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36" -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+    curl -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/57.0.2987.133 Safari/537.36" -fSsL -o /bazel/LICENSE.txt https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE && \
     chmod +x bazel-*.sh && \
     ./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
     cd / && \
@@ -92,7 +94,8 @@ WORKDIR /tensorflow
 ENV CI_BUILD_PYTHON python
 
 RUN tensorflow/tools/ci_build/builds/configured CPU \
-    bazel build -c opt tensorflow/tools/pip_package:build_pip_package && \
+    bazel build -c opt --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" \
+        tensorflow/tools/pip_package:build_pip_package && \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
     pip --no-cache-dir install --upgrade /tmp/pip/tensorflow-*.whl && \
     rm -rf /tmp/pip && \

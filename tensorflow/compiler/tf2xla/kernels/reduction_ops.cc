@@ -35,7 +35,7 @@ class SumOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Sum", SumOp);
+REGISTER_XLA_OP(Name("Sum"), SumOp);
 
 class ProdOp : public XlaReductionOp {
  public:
@@ -53,7 +53,7 @@ class ProdOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Prod", ProdOp);
+REGISTER_XLA_OP(Name("Prod"), ProdOp);
 
 class MinOp : public XlaReductionOp {
  public:
@@ -73,7 +73,7 @@ class MinOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Min", MinOp);
+REGISTER_XLA_OP(Name("Min"), MinOp);
 
 class MaxOp : public XlaReductionOp {
  public:
@@ -93,7 +93,7 @@ class MaxOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Max", MaxOp);
+REGISTER_XLA_OP(Name("Max"), MaxOp);
 
 class MeanOp : public XlaReductionOp {
  public:
@@ -115,7 +115,7 @@ class MeanOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Mean", MeanOp);
+REGISTER_XLA_OP(Name("Mean"), MeanOp);
 
 class AllOp : public XlaReductionOp {
  public:
@@ -133,7 +133,7 @@ class AllOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("All", AllOp);
+REGISTER_XLA_OP(Name("All"), AllOp);
 
 class AnyOp : public XlaReductionOp {
  public:
@@ -151,7 +151,7 @@ class AnyOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP("Any", AnyOp);
+REGISTER_XLA_OP(Name("Any"), AnyOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -28,11 +28,10 @@ from __future__ import print_function
 import os
 
 from google.protobuf import text_format
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import EmbeddingInfo
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
 from tensorflow.python.lib.io import file_io
 from tensorflow.tensorboard.plugins.projector import projector_plugin
 # pylint: disable=wildcard-import
+from tensorflow.tensorboard.plugins.projector.projector_config_pb2 import *
 from tensorflow.tensorboard.plugins.projector.projector_plugin import *
 # pylint: enable=wildcard-import
 

@@ -23,6 +23,19 @@ import "tensorflow/core/util/event.proto";
 // Event protocal buffers, e.g., debug ops inserted by a debugged runtime to a
 // TensorFlow graph being executed.
 message EventReply {
+  message DebugOpStateChange {
+    enum Change {
+      DISABLE = 0;
+      ENABLE = 1;
+    }
+
+    Change change = 1;
+    string node_name = 2;
+    int32 output_slot = 3;
+    string debug_op = 4;
+  }
+
+  repeated DebugOpStateChange debug_op_state_changes = 1;
 }
 
 // EventListener: Receives Event protos, e.g., from debugged TensorFlow

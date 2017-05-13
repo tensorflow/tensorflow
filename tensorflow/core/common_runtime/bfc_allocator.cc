@@ -453,8 +453,8 @@ void BFCAllocator::RemoveFreeChunkIterFromBin(
 void BFCAllocator::RemoveFreeChunkFromBin(BFCAllocator::ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
   CHECK(!c->in_use() && (c->bin_num != kInvalidBinNum));
-  int count = BinFromIndex(c->bin_num)->free_chunks.erase(h);
-  CHECK(count > 0) << "Could not find chunk in bin";
+  CHECK_GT(BinFromIndex(c->bin_num)->free_chunks.erase(h), 0)
+      << "Could not find chunk in bin";
   c->bin_num = kInvalidBinNum;
 }
 

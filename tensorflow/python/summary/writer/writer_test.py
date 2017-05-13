@@ -258,6 +258,15 @@ class SummaryWriterTestCase(test.TestCase):
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
+  def testNonBlockingClose(self):
+    test_dir = self._CleanTestDir("non_blocking_close")
+    sw = writer.FileWriter(test_dir)
+    # Sleep 1.2 seconds to make sure event queue is empty.
+    time.sleep(1.2)
+    time_before_close = time.time()
+    sw.close()
+    self._assertRecent(time_before_close)
+
   # Checks that values returned from session Run() calls are added correctly to
   # summaries.  These are numpy types so we need to check they fit in the
   # protocol buffers correctly.
@@ -307,6 +316,22 @@ class SummaryWriterTestCase(test.TestCase):
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
+
+  def testFileWriterWithSuffix(self):
+    test_dir = self._CleanTestDir("test_suffix")
+    sw = writer.FileWriter(test_dir, filename_suffix="_test_suffix")
+    for _ in range(10):
+      sw.add_summary(
+          summary_pb2.Summary(value=[
+              summary_pb2.Summary.Value(tag="float_ten", simple_value=10.0)
+          ]),
+          10)
+      sw.close()
+      sw.reopen()
+    sw.close()
+    event_filenames = glob.glob(os.path.join(test_dir, "event*"))
+    for filename in event_filenames:
+      self.assertTrue(filename.endswith("_test_suffix"))
 
 
 class SummaryWriterCacheTest(test.TestCase):

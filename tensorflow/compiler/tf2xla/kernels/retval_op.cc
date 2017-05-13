@@ -73,7 +73,7 @@ class RetvalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
-REGISTER_XLA_OP("_Retval", RetvalOp);
+REGISTER_XLA_OP(Name("_Retval"), RetvalOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

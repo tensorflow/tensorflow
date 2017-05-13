@@ -229,7 +229,8 @@ class DepthwiseConv2dNativeOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeOp);
 };
 
-REGISTER_XLA_OP("DepthwiseConv2dNative", DepthwiseConv2dNativeOp);
+REGISTER_XLA_OP(Name("DepthwiseConv2dNative").TypeConstraint("T", kFloatTypes),
+                DepthwiseConv2dNativeOp);
 
 }  // namespace
 }  // namespace tensorflow

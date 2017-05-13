@@ -76,7 +76,6 @@ const NN_COLOR_SCALE =
  */
 export class ProjectorScatterPlotAdapter {
   public scatterPlot: ScatterPlot;
-  private scatterPlotContainer: d3.Selection<any>;
   private projection: Projection;
   private hoverPointIndex: number;
   private selectedPointIndices: number[];
@@ -92,11 +91,10 @@ export class ProjectorScatterPlotAdapter {
   private polylineVisualizer: ScatterPlotVisualizerPolylines;
 
   constructor(
-      scatterPlotContainer: d3.Selection<any>,
+      private scatterPlotContainer: HTMLElement,
       projectorEventContext: ProjectorEventContext) {
     this.scatterPlot =
         new ScatterPlot(scatterPlotContainer, projectorEventContext);
-    this.scatterPlotContainer = scatterPlotContainer;
     projectorEventContext.registerProjectionChangedListener(projection => {
       this.projection = projection;
       this.updateScatterPlotWithNewProjection(projection);

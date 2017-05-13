@@ -73,7 +73,7 @@ class OpDefBuilderTest : public ::testing::Test {
     }
   }
 
-  void ExpectFailure(const OpDefBuilder& builder, string error) {
+  void ExpectFailure(const OpDefBuilder& builder, const string& error) {
     OpRegistrationData op_reg_data;
     Status status = builder.Finalize(&op_reg_data);
     EXPECT_FALSE(status.ok());

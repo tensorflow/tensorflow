@@ -21,7 +21,7 @@ interested in word embeddings,
 gives a good introduction.
 
 <video autoplay loop style="max-width: 100%;">
-  <source src="../images/embedding-mnist.mp4" type="video/mp4">
+  <source src="https://www.tensorflow.org/images/embedding-mnist.mp4" type="video/mp4">
   Sorry, your browser doesn't support HTML5 video in MP4 format.
 </video>
 
@@ -39,7 +39,7 @@ labels/images to the data points. You can do this by generating a
 [metadata file](#metadata) containing the labels for each point and configuring
 the projector either by using our Python API, or manually constructing and
 saving a
-<code>[projector_config.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto)</code>
+<code>[projector_config.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/plugins/projector/projector_config.proto)</code>
 in the same directory as your checkpoint file.
 
 ## Setup
@@ -68,7 +68,7 @@ saver.save(session, os.path.join(LOG_DIR, "model.ckpt"), step)
 
 If you have any metadata (labels, images) associated with your embedding, you
 can tell TensorBoard about it either by directly storing a
-<code>[projector_config.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto)</code>
+<code>[projector_config.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/plugins/projector/projector_config.proto)</code>
 in the <code>LOG_DIR</code>, or use our python API.
 
 For instance, the following <code>projector_config.ptxt</code> associates the
@@ -91,7 +91,7 @@ N = 10000 # Number of items (vocab size).
 D = 200 # Dimensionality of the embedding.
 embedding_var = tf.Variable(tf.random_normal([N,D]), name='word_embedding')
 
-# Format: tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto
+# Format: tensorflow/tensorboard/plugins/projector/projector_config.proto
 config = projector.ProjectorConfig()
 
 # You can add multiple embeddings. Here we add only one.
@@ -173,7 +173,7 @@ last data point in the bottom right:
 
 Note in the example above that the last row doesn't have to be filled. For a
 concrete example of a sprite, see
-[this sprite image](../images/mnist_10k_sprite.png) of 10,000 MNIST digits
+[this sprite image](https://www.tensorflow.org/images/mnist_10k_sprite.png) of 10,000 MNIST digits
 (100x100).
 
 Note: We currently support sprites up to 8192px X 8192px.
@@ -247,7 +247,7 @@ further analysis on their own with the "Isolate Points" button in the Inspector
 pane on the right hand side.
 
 
-![Selection of nearest neighbors](../images/embedding-nearest-points.png "Selection of nearest neighbors")
+![Selection of nearest neighbors](https://www.tensorflow.org/images/embedding-nearest-points.png "Selection of nearest neighbors")
 *Selection of the nearest neighbors of “important” in a word embedding dataset.*
 
 The combination of filtering with custom projection can be powerful. Below, we filtered
@@ -260,10 +260,10 @@ You can see that on the right side we have “ideas”, “science”, “perspe
 <table width="100%;">
   <tr>
     <td style="width: 30%;">
-      <img src="../images/embedding-custom-controls.png" alt="Custom controls panel" title="Custom controls panel" />
+      <img src="https://www.tensorflow.org/images/embedding-custom-controls.png" alt="Custom controls panel" title="Custom controls panel" />
     </td>
     <td style="width: 70%;">
-      <img src="../images/embedding-custom-projection.png" alt="Custom projection" title="Custom projection" />
+      <img src="https://www.tensorflow.org/images/embedding-custom-projection.png" alt="Custom projection" title="Custom projection" />
     </td>
   </tr>
   <tr>
@@ -284,4 +284,4 @@ projection) as a small file. The Projector can then be pointed to a set of one
 or more of these files, producing the panel below. Other users can then walk
 through a sequence of bookmarks.
 
-<img src="../images/embedding-bookmark.png" alt="Bookmark panel" style="width:300px;">
+<img src="https://www.tensorflow.org/images/embedding-bookmark.png" alt="Bookmark panel" style="width:300px;">

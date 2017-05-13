@@ -66,7 +66,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
         output, state = rnn_cell.CoupledInputForgetGateLSTMCell(
-            num_units=num_units, forget_bias=1.0)(x, m)
+            num_units=num_units, forget_bias=1.0, state_is_tuple=False)(x, m)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state], {
             x.name:
@@ -569,7 +569,7 @@ class RNNCellTest(test.TestCase):
               self.assertTrue(
                   float(np.linalg.norm((state[0, :] - state[i, :]))) > 1e-6)
 
-  def testAttentionCellWrapperCorrectResult(self):
+  def _testAttentionCellWrapperCorrectResult(self):
     num_units = 4
     attn_length = 6
     batch_size = 2
@@ -849,14 +849,12 @@ class RNNCellTest(test.TestCase):
       batch_size = 3
       input_size = 4
       expected_state_c = np.array(
-          [[2.954548e-01, 8.354891e-04],
-           [2.834632e-01, 8.158963e-01],
-           [2.291694e-01, 1.325745e-04]],
+          [[0.00072015, 0.00036633], [0.00083481, 0.00047266],
+           [0.00085111, 0.00053054]],
           dtype=np.float32)
       expected_state_h = np.array(
-          [[2.116566e-01, 5.985238e-04],
-           [2.137760e-01, 6.153145e-01],
-           [1.742966e-01, 1.008306e-04]],
+          [[0.0005159, 0.00026243], [0.00062958, 0.00035646],
+           [0.00064732, 0.00040351]],
           dtype=np.float32)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
@@ -882,6 +880,88 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(res[1].c, expected_state_c)
         self.assertAllClose(res[1].h, expected_state_h)
 
+  def testHighwayWrapper(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "base_cell", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 3])
+        base_cell = core_rnn_cell_impl.GRUCell(3)
+        g, m_new = base_cell(x, m)
+      with variable_scope.variable_scope(
+          "hw_cell", initializer=init_ops.constant_initializer(0.5)):
+        hw_cell = rnn_cell.HighwayWrapper(
+            core_rnn_cell_impl.GRUCell(3), carry_bias_init=-100.0)
+        g_res, m_new_res = hw_cell(x, m)
+        sess.run([variables.global_variables_initializer()])
+      res = sess.run([g, g_res, m_new, m_new_res], {
+          x: np.array([[1., 1., 1.]]),
+          m: np.array([[0.1, 0.1, 0.1]])
+      })
+      # As carry_bias_init is very negative, the carry gate is 'open' and the
+      # transform gate is 'closed'. This means the output equals the input.
+      self.assertAllClose(res[1], res[0])
+      # States are left untouched
+      self.assertAllClose(res[2], res[3])
+
+  def testGLSTMCell(self):
+    # Ensure that G-LSTM matches LSTM when number_of_groups = 1
+    batch_size = 2
+    num_units = 4
+    number_of_groups = 1
+
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root1", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.ones([batch_size, num_units])
+        # When number_of_groups = 1, G-LSTM is equivalent to regular LSTM
+        gcell = rnn_cell.GLSTMCell(num_units=num_units,
+                                   number_of_groups=number_of_groups)
+        cell = core_rnn_cell_impl.LSTMCell(num_units=num_units)
+        self.assertTrue(isinstance(gcell.state_size, tuple))
+        zero_state = gcell.zero_state(batch_size=batch_size,
+                                      dtype=dtypes.float32)
+        gh, gs = gcell(x, zero_state)
+        h, g = cell(x, zero_state)
+
+        sess.run([variables.global_variables_initializer()])
+        glstm_result = sess.run([gh, gs])
+        lstm_result = sess.run([h, g])
+
+        self.assertAllClose(glstm_result[0], lstm_result[0], 1e-5)
+        self.assertAllClose(glstm_result[1], lstm_result[1], 1e-5)
+
+    # Test that G-LSTM subgroup act like corresponding sub-LSTMs
+    batch_size = 2
+    num_units = 4
+    number_of_groups = 2
+
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root2", initializer=init_ops.constant_initializer(0.5)):
+        # input for G-LSTM with 2 groups
+        glstm_input = array_ops.ones([batch_size, num_units])
+        gcell = rnn_cell.GLSTMCell(num_units=num_units,
+                                   number_of_groups=number_of_groups)
+        gcell_zero_state = gcell.zero_state(batch_size=batch_size,
+                                            dtype=dtypes.float32)
+        gh, gs = gcell(glstm_input, gcell_zero_state)
+
+        # input for LSTM cell simulating single G-LSTM group
+        lstm_input = array_ops.ones([batch_size, num_units / number_of_groups])
+        # note division by number_of_groups. This cell one simulates G-LSTM group
+        cell = core_rnn_cell_impl.LSTMCell(num_units=
+                                           int(num_units / number_of_groups))
+        cell_zero_state = cell.zero_state(batch_size=batch_size,
+                                          dtype=dtypes.float32)
+        h, g = cell(lstm_input, cell_zero_state)
+
+        sess.run([variables.global_variables_initializer()])
+        [gh_res, h_res] = sess.run([gh, h])
+        self.assertAllClose(gh_res[:, 0:int(num_units / number_of_groups)],
+                            h_res, 1e-5)
+        self.assertAllClose(gh_res[:, int(num_units / number_of_groups):],
+                            h_res, 1e-5)
 
 class LayerNormBasicLSTMCellTest(test.TestCase):
 

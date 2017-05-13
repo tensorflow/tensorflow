@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace tfcompile {
 namespace {
 
-void ExpectErrorContains(Status status, StringPiece str) {
+void ExpectErrorContains(const Status& status, StringPiece str) {
   EXPECT_NE(Status::OK(), status);
   EXPECT_TRUE(StringPiece(status.error_message()).contains(str))
       << "expected error: " << status.error_message() << " to contain: " << str;

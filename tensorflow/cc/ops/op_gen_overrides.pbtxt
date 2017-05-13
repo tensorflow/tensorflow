@@ -22,7 +22,7 @@ op { name: "Where" input_rename: { from: "input" to: "condition" } }
 op { name: "ThreadUnsafeUnigramCandidateSampler", skip: true }
 
 # control_flow_ops
-# TODO(josh11b): Hide Switch and Merge once we write and migrate users to
+# TODO(joshl): Hide Switch and Merge once we write and migrate users to
 # a Cond() API.
 #op { name: "Switch" hide: true }
 #op { name: "Merge" hide: true }

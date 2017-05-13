@@ -124,6 +124,10 @@ class TileOp : public OpKernel {
                                   multiples_array[i]));
       output_shape.AddDim(input.dim_size(i) * multiples_array[i]);
     }
+    if (output_shape == input.shape()) {
+      context->set_output(0, input);
+      return;
+    }
     Tensor* result = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &result));
 
@@ -314,6 +318,10 @@ class TileGradientOp : public OpKernel {
                                           multiples_array[i], " != 0"));
       output_shape.AddDim(input.dim_size(i) / multiples_array[i]);
       input_dim_size_vec.push_back(input.dim_size(i));
+    }
+    if (output_shape == input.shape()) {
+      context->set_output(0, input);
+      return;
     }
     Tensor* result = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &result));

@@ -44,7 +44,7 @@ def percentile(x,
                keep_dims=False,
                validate_args=False,
                name=None):
-  """Compute the `q`-th percentile of `x` along leading (sample) dimensions.
+  """Compute the `q`-th percentile of `x`.
 
   Given a vector `x`, the `q`-th percentile of `x` is the value `q / 100` of the
   way from the minimum to the maximum in in a sorted copy of `x`.
@@ -58,7 +58,7 @@ def percentile(x,
 
 
   ```python
-  # Get 30th percentile with default ('linear') interpolation.
+  # Get 30th percentile with default ('nearest') interpolation.
   x = [1., 2., 3., 4.]
   percentile(x, q=30.)
   ==> 2.0
@@ -91,11 +91,10 @@ def percentile(x,
     axis:  Optional `0-D` or `1-D` integer `Tensor` with constant values.
       The axis that hold independent samples over which to return the desired
       percentile.  If `None` (the default), treat every dimension as a sample
-      dimension, returning a scalar
+      dimension, returning a scalar.
     interpolation : {"lower", "higher", "nearest"}.  Default: "nearest"
       This optional parameter specifies the interpolation method to
-      use when the desired quantile lies between two data points
-      `i < j`:
+      use when the desired quantile lies between two data points `i < j`:
         * lower: `i`.
         * higher: `j`.
         * nearest: `i` or `j`, whichever is nearest.

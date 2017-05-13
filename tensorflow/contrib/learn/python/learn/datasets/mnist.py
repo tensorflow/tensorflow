@@ -26,8 +26,10 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import random_seed
 
-SOURCE_URL = 'http://yann.lecun.com/exdb/mnist/'
+# CVDF mirror of http://yann.lecun.com/exdb/mnist/
+SOURCE_URL = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
 
 
 def _read32(bytestream):
@@ -108,12 +110,16 @@ class DataSet(object):
                fake_data=False,
                one_hot=False,
                dtype=dtypes.float32,
-               reshape=True):
+               reshape=True,
+               seed=None):
     """Construct a DataSet.
     one_hot arg is used only if fake_data is true.  `dtype` can be either
     `uint8` to leave the input as `[0, 255]`, or `float32` to rescale into
-    `[0, 1]`.
+    `[0, 1]`.  Seed arg provides for convenient deterministic testing.
     """
+    seed1, seed2 = random_seed.get_seed(seed)
+    # If op level seed is not set, use whatever graph level seed is returned
+    numpy.random.seed(seed1 if seed is None else seed2)
     dtype = dtypes.as_dtype(dtype).base_dtype
     if dtype not in (dtypes.uint8, dtypes.float32):
       raise TypeError('Invalid image dtype %r, expected uint8 or float32' %
@@ -207,11 +213,13 @@ def read_data_sets(train_dir,
                    one_hot=False,
                    dtype=dtypes.float32,
                    reshape=True,
-                   validation_size=5000):
+                   validation_size=5000,
+                   seed=None):
   if fake_data:
 
     def fake():
-      return DataSet([], [], fake_data=True, one_hot=one_hot, dtype=dtype)
+      return DataSet(
+          [], [], fake_data=True, one_hot=one_hot, dtype=dtype, seed=seed)
 
     train = fake()
     validation = fake()
@@ -253,12 +261,16 @@ def read_data_sets(train_dir,
   train_images = train_images[validation_size:]
   train_labels = train_labels[validation_size:]
 
-  train = DataSet(train_images, train_labels, dtype=dtype, reshape=reshape)
-  validation = DataSet(validation_images,
-                       validation_labels,
-                       dtype=dtype,
-                       reshape=reshape)
-  test = DataSet(test_images, test_labels, dtype=dtype, reshape=reshape)
+  train = DataSet(
+      train_images, train_labels, dtype=dtype, reshape=reshape, seed=seed)
+  validation = DataSet(
+      validation_images,
+      validation_labels,
+      dtype=dtype,
+      reshape=reshape,
+      seed=seed)
+  test = DataSet(
+      test_images, test_labels, dtype=dtype, reshape=reshape, seed=seed)
 
   return base.Datasets(train=train, validation=validation, test=test)
 

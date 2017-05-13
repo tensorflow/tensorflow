@@ -31,6 +31,47 @@ const int Graph::kControlSlot;
 
 // Node
 
+#define REF_CLASS(key, value) \
+  {key, value}, { "Ref" key, value }
+
+const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
+    *new std::unordered_map<string, Node::NodeClass>({
+        // Keep in same order as NodeClass values
+        REF_CLASS("Switch", NC_SWITCH),
+        {"Demux", NC_SWITCH},
+        REF_CLASS("Merge", NC_MERGE),
+        REF_CLASS("Mux", NC_MUX),
+        REF_CLASS("Enter", NC_ENTER),
+        REF_CLASS("Exit", NC_EXIT),
+        REF_CLASS("NextIteration", NC_NEXT_ITERATION),
+        {"LoopCond", NC_LOOP_COND},
+        {"ControlTrigger", NC_CONTROL_TRIGGER},
+        {"_Send", NC_SEND},
+        {"_HostSend", NC_HOST_SEND},
+        {"_Recv", NC_RECV},
+        {"_HostRecv", NC_HOST_RECV},
+        {"Const", NC_CONSTANT},
+        {"HostConst", NC_CONSTANT},
+        {"Variable", NC_VARIABLE},
+        {"VariableV2", NC_VARIABLE},
+        REF_CLASS("Identity", NC_IDENTITY),
+        {"GetSessionHandle", NC_GET_SESSION_HANDLE},
+        {"GetSessionHandleV2", NC_GET_SESSION_HANDLE},
+        {"GetSessionTensor", NC_GET_SESSION_TENSOR},
+        {"DeleteSessionTensor", NC_DELETE_SESSION_TENSOR},
+    });
+
+#undef REF_CLASS
+
+Node::NodeClass Node::GetNodeClassForOp(const string& ts) {
+  auto it = kNodeClassTable.find(ts);
+  if (it != kNodeClassTable.end()) {
+    return it->second;
+  } else {
+    return NC_OTHER;
+  }
+}
+
 string Node::DebugString() const {
   string ret = strings::StrCat("{name:'", name(), "' id:", id_);
   if (IsSource()) {
@@ -71,42 +112,7 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   }
   props_ = props;
   // Initialize the class_ based on the type string
-  const string& ts = this->type_string();
-  class_ = NC_UNINITIALIZED;
-
-  auto SetClass = [&] (NodeClass nc,
-                       std::initializer_list<const char*> types) {
-    for (const char* t : types) {
-      if (ts == t) {
-        CHECK(class_ == NC_UNINITIALIZED);
-        class_ = nc;
-        return;
-      }
-    }
-  };
-
-  SetClass(NC_SWITCH, {"Switch", "RefSwitch", "Demux"});
-  SetClass(NC_MERGE, {"Merge", "RefMerge"});
-  SetClass(NC_ENTER, {"Enter", "RefEnter"});
-  SetClass(NC_EXIT, {"Exit", "RefExit"});
-  SetClass(NC_NEXT_ITERATION, {"NextIteration", "RefNextIteration"});
-  SetClass(NC_LOOP_COND, {"LoopCond"});
-  SetClass(NC_CONTROL_TRIGGER, {"ControlTrigger"});
-  SetClass(NC_SEND, {"_Send"});
-  SetClass(NC_HOST_SEND, {"_HostSend"});
-  SetClass(NC_RECV, {"_Recv"});
-  SetClass(NC_HOST_RECV, {"_HostRecv"});
-  SetClass(NC_CONSTANT, {"Const", "HostConst"});
-  SetClass(NC_VARIABLE, {"Variable", "VariableV2"});
-  SetClass(NC_IDENTITY, {"Identity", "RefIdentity"});
-  SetClass(NC_GET_SESSION_HANDLE, {"GetSessionHandle"});
-  SetClass(NC_GET_SESSION_HANDLE, {"GetSessionHandleV2"});
-  SetClass(NC_GET_SESSION_TENSOR, {"GetSessionTensor"});
-  SetClass(NC_DELETE_SESSION_TENSOR, {"DeleteSessionTensor"});
-  SetClass(NC_MUX, {"Mux", "RefMux"});
-  if (class_ == NC_UNINITIALIZED) {
-    class_ = NC_OTHER;  // Catch all
-  }
+  class_ = GetNodeClassForOp(props->node_def_.op());
 }
 
 void Node::Clear() {
@@ -201,7 +207,7 @@ Status Node::input_edges(std::vector<const Edge*>* input_edges) const {
   return Status::OK();
 }
 
-Status Node::input_node(int idx, const Node** n) const {
+Status Node::input_node(int idx, Node** n) const {
   const Edge* e;
   TF_RETURN_IF_ERROR(input_edge(idx, &e));
   if (e == nullptr) {
@@ -209,6 +215,13 @@ Status Node::input_node(int idx, const Node** n) const {
   } else {
     *n = e->src();
   }
+  return Status::OK();
+}
+
+Status Node::input_node(int idx, const Node** const_n) const {
+  Node* n;
+  TF_RETURN_IF_ERROR(input_node(idx, &n));
+  *const_n = n;
   return Status::OK();
 }
 
@@ -339,7 +352,7 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
   CHECK(source->out_edges_.insert(e).second);
   CHECK(dest->in_edges_.insert(e).second);
   edges_.push_back(e);
-  edge_set_.insert(e);
+  ++num_edges_;
   return e;
 }
 
@@ -349,8 +362,8 @@ void Graph::RemoveEdge(const Edge* e) {
   CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
   CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
   CHECK_EQ(e, edges_[e->id_]);
+  CHECK_GT(num_edges_, 0);
 
-  CHECK_EQ(edge_set_.erase(e), size_t{1});
   edges_[e->id_] = nullptr;
 
   Edge* del = const_cast<Edge*>(e);
@@ -360,6 +373,39 @@ void Graph::RemoveEdge(const Edge* e) {
   del->src_output_ = kControlSlot - 1;
   del->dst_input_ = kControlSlot - 1;
   free_edges_.push_back(del);
+  --num_edges_;
+}
+
+Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+  for (const FunctionDef& fdef : fdef_lib.function()) {
+    const FunctionDef* preexisting_fdef = ops_.Find(fdef.signature().name());
+    if (preexisting_fdef != nullptr) {
+      if (!FunctionDefsEqual(*preexisting_fdef, fdef)) {
+        return errors::InvalidArgument(
+            "Cannot add function '", fdef.signature().name(),
+            "' because a different function with the same name already "
+            "exists.");
+      }
+      // Ignore duplicate FunctionDefs
+      continue;
+    }
+    TF_RETURN_IF_ERROR(ops_.AddFunctionDef(fdef));
+  }
+  for (const GradientDef& grad : fdef_lib.gradient()) {
+    string preexisting_grad_func = ops_.FindGradient(grad.function_name());
+    if (!preexisting_grad_func.empty()) {
+      if (preexisting_grad_func != grad.gradient_func()) {
+        return errors::InvalidArgument(
+            "Cannot assign gradient function '", grad.gradient_func(), "' to '",
+            grad.function_name(), "' because it already has gradient function ",
+            "'", preexisting_grad_func, "'");
+      }
+      // Ignore duplicate GradientDefs
+      continue;
+    }
+    TF_RETURN_IF_ERROR(ops_.AddGradientDef(grad));
+  }
+  return Status::OK();
 }
 
 namespace {
@@ -382,7 +428,8 @@ void Graph::ToGraphDef(GraphDef* graph_def) const {
 
 void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
-  graph_def->mutable_versions()->CopyFrom(versions());
+  *graph_def->mutable_versions() = versions();
+  *graph_def->mutable_library() = ops_.ToProto();
   std::vector<const Edge*>
       inputs;  // Construct this outside the loop for speed.
   for (auto id = from_node_id; id < num_node_ids(); ++id) {

@@ -109,14 +109,14 @@ class BatchNormalization(Layer):
     if dim is None:
       raise ValueError('Axis ' + str(self.axis) + ' of '
                        'input tensor should have a defined dimension '
-                       'but the layer received an input with shape ' + str(
-                           input_shape) + '.')
+                       'but the layer received an input with shape ' +
+                       str(input_shape) + '.')
     self.input_spec = InputSpec(ndim=len(input_shape), axes={self.axis: dim})
     shape = (dim,)
 
     if self.scale:
       self.gamma = self.add_weight(
-          shape,
+          shape=shape,
           name='gamma',
           initializer=self.gamma_initializer,
           regularizer=self.gamma_regularizer,
@@ -125,7 +125,7 @@ class BatchNormalization(Layer):
       self.gamma = None
     if self.center:
       self.beta = self.add_weight(
-          shape,
+          shape=shape,
           name='beta',
           initializer=self.beta_initializer,
           regularizer=self.beta_regularizer,
@@ -133,12 +133,12 @@ class BatchNormalization(Layer):
     else:
       self.beta = None
     self.moving_mean = self.add_weight(
-        shape,
+        shape=shape,
         name='moving_mean',
         initializer=self.moving_mean_initializer,
         trainable=False)
     self.moving_variance = self.add_weight(
-        shape,
+        shape=shape,
         name='moving_variance',
         initializer=self.moving_variance_initializer,
         trainable=False)
@@ -154,7 +154,7 @@ class BatchNormalization(Layer):
     broadcast_shape[self.axis] = input_shape[self.axis]
 
     # Determines whether broadcasting is needed.
-    needs_broadcasting = (sorted(reduction_axes) != range(ndim)[:-1])
+    needs_broadcasting = (sorted(reduction_axes) != list(range(ndim))[:-1])
 
     normed, mean, variance = K.normalize_batch_in_training(
         inputs, self.gamma, self.beta, reduction_axes, epsilon=self.epsilon)
@@ -169,7 +169,7 @@ class BatchNormalization(Layer):
 
       def normalize_inference():
         if needs_broadcasting:
-          # In this case we must explictly broadcast all parameters.
+          # In this case we must explicitly broadcast all parameters.
           broadcast_moving_mean = K.reshape(self.moving_mean, broadcast_shape)
           broadcast_moving_variance = K.reshape(self.moving_variance,
                                                 broadcast_shape)

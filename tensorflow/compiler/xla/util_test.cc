@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <list>
 
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
@@ -78,6 +78,26 @@ TEST(UtilTest, ContainersEqualDifferentContainerTypes) {
 
 TEST(UtilTest, HumanReadableNumFlopsExample) {
   ASSERT_EQ("1.00GFLOP/s", HumanReadableNumFlops(1e9, 1e9));
+}
+
+TEST(UtilTest, CommaSeparatedString) {
+  EXPECT_EQ(CommaSeparatedString({}), "");
+  EXPECT_EQ(CommaSeparatedString({"hello world"}), "hello world");
+  EXPECT_EQ(CommaSeparatedString({1, 57, 2}, "foo", "bar"), "foo1, 57, 2bar");
+}
+
+TEST(UtilTest, VectorString) {
+  std::list<int64> empty_list;
+  EXPECT_EQ(VectorString(empty_list), "()");
+
+  std::vector<float> float_vector = {5.5};
+  EXPECT_EQ(VectorString(float_vector), "(5.5)");
+
+  std::set<const char*> string_set = {"a", "b"};
+  EXPECT_EQ(VectorString(string_set), "(a, b)");
+
+  EXPECT_EQ(VectorString({}), "()");
+  EXPECT_EQ(VectorString({1, 57, 2}), "(1, 57, 2)");
 }
 
 TEST(UtilTest, LogLines) {

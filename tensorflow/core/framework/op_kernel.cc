@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -89,9 +90,9 @@ OpKernel::OpKernel(OpKernelConstruction* context)
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()) {
   OP_REQUIRES_OK(context,
-                 NameRangesForNode(def_, context->op_def(), &input_name_map_,
+                 NameRangesForNode(def_, *context->op_def_, &input_name_map_,
                                    &output_name_map_));
-  OP_REQUIRES_OK(context, CheckOpDeprecation(context->op_def(),
+  OP_REQUIRES_OK(context, CheckOpDeprecation(*context->op_def_,
                                              context->graph_def_version()));
 
   // Kernels executing on GPU tie very few resources on the CPU where the
@@ -122,6 +123,23 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
     *start = result->second.first;
     *stop = result->second.second;
     return Status::OK();
+  }
+}
+
+Status OpKernel::MakeShape(const Tensor& shape, TensorShape* out) const {
+  if (!IsLegacyVector(shape.shape())) {
+    return errors::InvalidArgument(
+        "shape must be a vector of {int32,int64}, got shape ",
+        shape.shape().DebugString());
+  }
+  if (shape.dtype() == DataType::DT_INT32) {
+    auto vec = shape.flat<int32>();
+    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
+  } else if (shape.dtype() == DataType::DT_INT64) {
+    auto vec = shape.flat<int64>();
+    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
+  } else {
+    return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
   }
 }
 
@@ -639,22 +657,6 @@ Status OpKernelContext::allocate_persistent(DataType type,
       *out_tensor = out_persistent->AccessTensor(this);
     }
   }
-  if (track_allocations() && persistent.TotalBytes() > 0) {
-    // TODO(yuefengz): some allocators allocate memory even if the requested
-    // size is 0.
-    Allocator* a = get_allocator(attr);
-    if (a->TracksAllocationSizes()) {
-      int64 alloc_size =
-          a->AllocatedSize(const_cast<char*>(persistent.tensor_data().data()));
-      int64 alloc_id =
-          a->AllocationId(const_cast<char*>(persistent.tensor_data().data()));
-      if (allocate_on_host(attr)) {
-        record_host_persistent_memory_allocation(alloc_size, alloc_id);
-      } else {
-        record_device_persistent_memory_allocation(alloc_size, alloc_id);
-      }
-    }
-  }
   return s;
 }
 
@@ -806,7 +808,7 @@ static KernelRegistry* GlobalKernelRegistryTyped() {
   return reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
 }
 
-static string Key(StringPiece op_type, DeviceType device_type,
+static string Key(StringPiece op_type, const DeviceType& device_type,
                   StringPiece label) {
   return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
                          label);
@@ -891,13 +893,17 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
   return Status::OK();
 }
 
-Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
+static const StringPiece kKernelAttr("_kernel");
+
+Status FindKernelRegistration(const DeviceType& device_type,
+                              const NodeDef& node_def,
                               const KernelRegistration** reg,
                               bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
-  string label;  // Label defaults to empty if not found in NodeDef.
-  GetNodeAttr(node_def, "_kernel", &label).IgnoreError();
+  // Label defaults to empty if not found in NodeDef.
+  const string& label = GetNodeAttrString(node_def, kKernelAttr);
+
   const string key = Key(node_def.op(), device_type, label);
   auto regs = GlobalKernelRegistryTyped()->equal_range(key);
   for (auto iter = regs.first; iter != regs.second; ++iter) {
@@ -923,7 +929,7 @@ Status FindKernelRegistration(DeviceType device_type, const NodeDef& node_def,
 
 }  // namespace
 
-Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
+Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
   bool was_attr_mismatch;
@@ -1005,8 +1011,8 @@ std::unique_ptr<OpKernel> CreateOpKernel(
     DeviceType device_type, DeviceBase* device, Allocator* allocator,
     const NodeDef& node_def, int graph_def_version, Status* status) {
   OpKernel* kernel = nullptr;
-  *status = CreateOpKernel(device_type, device, allocator, nullptr, node_def,
-                           graph_def_version, &kernel);
+  *status = CreateOpKernel(std::move(device_type), device, allocator, nullptr,
+                           node_def, graph_def_version, &kernel);
   return std::unique_ptr<OpKernel>(kernel);
 }
 

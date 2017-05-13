@@ -37,7 +37,8 @@ class ResourceApplyGradientDescent : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
   }
 };
-REGISTER_XLA_OP("ResourceApplyGradientDescent", ResourceApplyGradientDescent);
+REGISTER_XLA_OP(Name("ResourceApplyGradientDescent"),
+                ResourceApplyGradientDescent);
 
 class ResourceApplyMomentum : public XlaOpKernel {
  public:
@@ -108,7 +109,7 @@ class ResourceApplyMomentum : public XlaOpKernel {
  private:
   bool use_nesterov_;
 };
-REGISTER_XLA_OP("ResourceApplyMomentum", ResourceApplyMomentum);
+REGISTER_XLA_OP(Name("ResourceApplyMomentum"), ResourceApplyMomentum);
 
 class ResourceApplyAdagrad : public XlaOpKernel {
  public:
@@ -162,7 +163,107 @@ class ResourceApplyAdagrad : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
   }
 };
-REGISTER_XLA_OP("ResourceApplyAdagrad", ResourceApplyAdagrad);
+REGISTER_XLA_OP(Name("ResourceApplyAdagrad"), ResourceApplyAdagrad);
+
+class ResourceApplyAdam : public XlaOpKernel {
+ public:
+  explicit ResourceApplyAdam(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    DataType var_type, m_type, v_type;
+    TensorShape var_shape, m_shape, v_shape;
+    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(0, &var_type, &var_shape));
+    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(1, &m_type, &m_shape));
+    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(2, &v_type, &v_shape));
+
+    OP_REQUIRES(
+        ctx, dtype_ == var_type && dtype_ == m_type && dtype_ == v_type,
+        errors::InvalidArgument(
+            "Types of variable arguments to ResourceApplyRMSProp must match: ",
+            DataTypeString(dtype_), " vs. ", DataTypeString(var_type), " vs. ",
+            DataTypeString(m_type), " vs. ", DataTypeString(v_type)));
+
+    TensorShape beta1_power_shape = ctx->InputShape(3);
+    TensorShape beta2_power_shape = ctx->InputShape(4);
+    TensorShape lr_shape = ctx->InputShape(5);
+    TensorShape beta1_shape = ctx->InputShape(6);
+    TensorShape beta2_shape = ctx->InputShape(7);
+    TensorShape epsilon_shape = ctx->InputShape(8);
+    TensorShape grad_shape = ctx->InputShape(9);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power_shape),
+                errors::InvalidArgument("beta1_power is not a scalar: ",
+                                        beta1_power_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_power_shape),
+                errors::InvalidArgument("beta2_power is not a scalar: ",
+                                        beta2_power_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar : ",
+                                        lr_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_shape),
+                errors::InvalidArgument("beta1 is not a scalar: ",
+                                        beta1_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_shape),
+                errors::InvalidArgument("beta2 is not a scalar: ",
+                                        beta2_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
+                errors::InvalidArgument("epsilon is not a scalar: ",
+                                        epsilon_shape.DebugString()));
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(m_shape),
+                errors::InvalidArgument("var and m do not have the same shape",
+                                        var_shape.DebugString(), " ",
+                                        m_shape.DebugString()));
+    OP_REQUIRES(ctx, var_shape.IsSameSize(v_shape),
+                errors::InvalidArgument("var and v do not have the same shape",
+                                        var_shape.DebugString(), " ",
+                                        v_shape.DebugString()));
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+
+    xla::ComputationDataHandle var, m, v;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, &m));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, &v));
+    xla::ComputationDataHandle beta1_power = ctx->Input(3);
+    xla::ComputationDataHandle beta2_power = ctx->Input(4);
+    xla::ComputationDataHandle lr = ctx->Input(5);
+    xla::ComputationDataHandle beta1 = ctx->Input(6);
+    xla::ComputationDataHandle beta2 = ctx->Input(7);
+    xla::ComputationDataHandle epsilon = ctx->Input(8);
+    xla::ComputationDataHandle grad = ctx->Input(9);
+
+    // alpha <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+    // m_t <- beta1 * m_{t-1} + (1 - beta1) * g_t
+    // v_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t
+    // variable <- variable - alpha * m_t / (sqrt(v_t) + epsilon)
+
+    xla::ComputationBuilder* b = ctx->builder();
+    xla::ComputationDataHandle half = XlaHelpers::FloatLiteral(b, dtype_, 0.5);
+    xla::ComputationDataHandle one = XlaHelpers::FloatLiteral(b, dtype_, 1.0);
+    xla::ComputationDataHandle two = XlaHelpers::FloatLiteral(b, dtype_, 2.0);
+
+    xla::ComputationDataHandle alpha =
+        b->Div(b->Mul(lr, b->Pow(b->Sub(one, beta2_power), half)),
+               b->Sub(one, beta1_power));
+    m = b->Add(m, b->Mul(b->Sub(grad, m), b->Sub(one, beta1)));
+    v = b->Add(v, b->Mul(b->Sub(b->Pow(grad, two), v), b->Sub(one, beta2)));
+    var =
+        b->Sub(var, b->Div(b->Mul(m, alpha), b->Add(b->Pow(v, half), epsilon)));
+
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, m));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, dtype_, v));
+  }
+
+ private:
+  DataType dtype_;
+};
+REGISTER_XLA_OP(Name("ResourceApplyAdam"), ResourceApplyAdam);
 
 class ResourceApplyRMSProp : public XlaOpKernel {
  public:
@@ -206,9 +307,9 @@ class ResourceApplyRMSProp : public XlaOpKernel {
 
     // var should be the same shape as mom and ms.
     OP_REQUIRES(ctx, var_shape.IsSameSize(ms_shape),
-                errors::InvalidArgument(
-                    "var and grad do not have the same shape",
-                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+                errors::InvalidArgument("var and ms do not have the same shape",
+                                        var_shape.DebugString(), " ",
+                                        ms_shape.DebugString()));
     OP_REQUIRES(ctx, var_shape.IsSameSize(mom_shape),
                 errors::InvalidArgument(
                     "var and mom do not have the same shape",
@@ -261,7 +362,7 @@ class ResourceApplyRMSProp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, type, new_mom));
   }
 };
-REGISTER_XLA_OP("ResourceApplyRMSProp", ResourceApplyRMSProp);
+REGISTER_XLA_OP(Name("ResourceApplyRMSProp"), ResourceApplyRMSProp);
 
 }  // namespace
 }  // namespace tensorflow

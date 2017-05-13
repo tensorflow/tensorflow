@@ -84,14 +84,14 @@ def _standardize_input_data(data,
   elif isinstance(data, list):
     if len(data) != len(names):
       if data and hasattr(data[0], 'shape'):
-        raise ValueError('Error when checking ' + exception_prefix +
-                         ': the list of Numpy arrays '
-                         'that you are passing to your model '
-                         'is not the size the model expected. '
-                         'Expected to see ' + str(len(
-                             names)) + ' arrays but instead got '
-                         'the following list of ' + str(len(
-                             data)) + ' arrays: ' + str(data)[:200] + '...')
+        raise ValueError(
+            'Error when checking ' + exception_prefix +
+            ': the list of Numpy arrays '
+            'that you are passing to your model '
+            'is not the size the model expected. '
+            'Expected to see ' + str(len(names)) + ' arrays but instead got '
+            'the following list of ' + str(len(data)) + ' arrays: ' +
+            str(data)[:200] + '...')
       else:
         if len(names) == 1:
           data = [np.asarray(data)]
@@ -100,8 +100,8 @@ def _standardize_input_data(data,
                            ': you are passing a list as '
                            'input to your model, '
                            'but the model expects '
-                           'a list of ' + str(len(
-                               names)) + ' Numpy arrays instead. '
+                           'a list of ' + str(len(names)) +
+                           ' Numpy arrays instead. '
                            'The list you passed was: ' + str(data)[:200])
     arrays = data
   else:
@@ -133,8 +133,8 @@ def _standardize_input_data(data,
       array = arrays[i]
       if len(array.shape) != len(shapes[i]):
         raise ValueError(
-            'Error when checking ' + exception_prefix + ': expected ' + names[
-                i] + ' to have ' + str(len(shapes[i])) +
+            'Error when checking ' + exception_prefix + ': expected ' + names[i]
+            + ' to have ' + str(len(shapes[i])) +
             ' dimensions, but got array with shape ' + str(array.shape))
       for j, (dim, ref_dim) in enumerate(zip(array.shape, shapes[i])):
         if not j and not check_batch_axis:
@@ -143,8 +143,8 @@ def _standardize_input_data(data,
         if ref_dim:
           if ref_dim != dim:
             raise ValueError('Error when checking ' + exception_prefix +
-                             ': expected ' + names[i] + ' to have shape ' + str(
-                                 shapes[i]) + ' but got array with shape ' +
+                             ': expected ' + names[i] + ' to have shape ' +
+                             str(shapes[i]) + ' but got array with shape ' +
                              str(array.shape))
   return arrays
 
@@ -175,9 +175,9 @@ def _standardize_sample_or_class_weights(x_weight, output_names, weight_type):
       return [x_weight]
   if isinstance(x_weight, list):
     if len(x_weight) != len(output_names):
-      raise ValueError('Provided `' + weight_type + '` was a list of ' + str(
-          len(x_weight)) + ' elements, but the model has ' + str(
-              len(output_names)) + ' outputs. '
+      raise ValueError('Provided `' + weight_type + '` was a list of ' +
+                       str(len(x_weight)) + ' elements, but the model has ' +
+                       str(len(output_names)) + ' outputs. '
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
@@ -239,13 +239,13 @@ def _check_array_lengths(inputs, targets, weights):
                      'and ' + str(list(set_y)[0]) + ' target samples.')
   if set_y and set_w and list(set_y)[0] != list(set_w)[0]:
     raise ValueError('Sample_weight arrays should have '
-                     'the same number of samples as target arrays. Got ' + str(
-                         list(set_y)[0]) + ' input samples and ' + str(
-                             list(set_w)[0]) + ' target samples.')
+                     'the same number of samples as target arrays. Got ' +
+                     str(list(set_y)[0]) + ' input samples and ' +
+                     str(list(set_w)[0]) + ' target samples.')
 
 
 def _check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
-  """Does validation on the compatiblity of targets and loss functions.
+  """Does validation on the compatibility of targets and loss functions.
 
   This helps prevent users from using loss functions incorrectly.
 
@@ -284,8 +284,8 @@ def _check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
     if loss.__name__ in key_losses:
       for target_dim, out_dim in zip(y.shape[1:], shape[1:]):
         if out_dim is not None and target_dim != out_dim:
-          raise ValueError('A target array with shape ' + str(
-              y.shape) + ' was passed for an output of shape ' + str(shape) +
+          raise ValueError('A target array with shape ' + str(y.shape) +
+                           ' was passed for an output of shape ' + str(shape) +
                            ' while using as loss `' + loss.__name__ + '`. '
                            'This loss expects '
                            'targets to have the same shape '
@@ -535,14 +535,14 @@ def _standardize_weights(y,
                        'outputs that are at least 3D, i.e. that have '
                        'a time dimension.')
     if sample_weight is not None and len(sample_weight.shape) != 2:
-      raise ValueError('Found a sample_weight array with shape ' + str(
-          sample_weight.shape) + '. '
+      raise ValueError('Found a sample_weight array with shape ' +
+                       str(sample_weight.shape) + '. '
                        'In order to use timestep-wise sample weighting, '
                        'you should pass a 2D sample_weight array.')
   else:
     if sample_weight is not None and len(sample_weight.shape) != 1:
-      raise ValueError('Found a sample_weight array with shape ' + str(
-          sample_weight.shape) + '. '
+      raise ValueError('Found a sample_weight array with shape ' +
+                       str(sample_weight.shape) + '. '
                        'In order to use timestep-wise sample weights, '
                        'you should specify '
                        'sample_weight_mode="temporal" '
@@ -552,15 +552,15 @@ def _standardize_weights(y,
 
   if sample_weight is not None:
     if len(sample_weight.shape) > len(y.shape):
-      raise ValueError('Found a sample_weight with shape' + str(
-          sample_weight.shape) + '.'
+      raise ValueError('Found a sample_weight with shape' +
+                       str(sample_weight.shape) + '.'
                        'Expected sample_weight with rank '
                        'less than or equal to ' + str(len(y.shape)))
 
     if y.shape[:sample_weight.ndim] != sample_weight.shape:
-      raise ValueError('Found a sample_weight array with shape ' + str(
-          sample_weight.shape) + ' for an input with shape ' + str(y.shape) +
-                       '. '
+      raise ValueError('Found a sample_weight array with shape ' +
+                       str(sample_weight.shape) + ' for an input with shape ' +
+                       str(y.shape) + '. '
                        'sample_weight cannot be broadcast.')
     return sample_weight
   elif isinstance(class_weight, dict):
@@ -728,16 +728,17 @@ class Model(Container):
         if name not in self.output_names:
           raise ValueError('Unknown entry in loss '
                            'dictionary: "' + name + '". '
-                           'Only expected the following keys: ' + str(
-                               self.output_names))
+                           'Only expected the following keys: ' +
+                           str(self.output_names))
       loss_functions = []
       for name in self.output_names:
         if name not in loss:
-          warnings.warn('Output "' + name + '" missing from loss dictionary. '
-                        'We assume this was done on purpose, '
-                        'and we will not be expecting '
-                        'any data to be passed to "' + name +
-                        '" during training.')
+          warnings.warn(
+              'Output "' + name + '" missing from loss dictionary. '
+              'We assume this was done on purpose, '
+              'and we will not be expecting '
+              'any data to be passed to "' + name + '" during training.',
+              stacklevel=2)
         loss_functions.append(losses.get(loss.get(name)))
     elif isinstance(loss, list):
       if len(loss) != len(self.outputs):
@@ -780,8 +781,8 @@ class Model(Container):
         if name not in self.output_names:
           raise ValueError('Unknown entry in loss_weights '
                            'dictionary: "' + name + '". '
-                           'Only expected the following keys: ' + str(
-                               self.output_names))
+                           'Only expected the following keys: ' +
+                           str(self.output_names))
       loss_weights_list = []
       for name in self.output_names:
         loss_weights_list.append(loss_weights.get(name, 1.))
@@ -790,12 +791,12 @@ class Model(Container):
         raise ValueError('When passing a list as loss_weights, '
                          'it should have one entry per model outputs. '
                          'The model has ' + str(len(self.outputs)) +
-                         ' outputs, but you passed loss_weights=' + str(
-                             loss_weights))
+                         ' outputs, but you passed loss_weights=' +
+                         str(loss_weights))
       loss_weights_list = loss_weights
     else:
-      raise TypeError('Could not interpret loss_weights argument: ' + str(
-          loss_weights) + ' - expected a list of dicts.')
+      raise TypeError('Could not interpret loss_weights argument: ' +
+                      str(loss_weights) + ' - expected a list of dicts.')
 
     # Prepare sample weights.
     sample_weights = []
@@ -805,8 +806,8 @@ class Model(Container):
         if name not in self.output_names:
           raise ValueError('Unknown entry in '
                            'sample_weight_mode dictionary: "' + name + '". '
-                           'Only expected the following keys: ' + str(
-                               self.output_names))
+                           'Only expected the following keys: ' +
+                           str(self.output_names))
       for i, name in enumerate(self.output_names):
         if i in skip_indices:
           weight = None
@@ -940,8 +941,8 @@ class Model(Container):
           # (because of class mode duality)
           output_shape = self.internal_output_shapes[i]
           acc_fn = None
-          if output_shape[-1] == 1 or self.loss_functions[
-              i] == losses.binary_crossentropy:
+          if (output_shape[-1] == 1 or
+              self.loss_functions[i] == losses.binary_crossentropy):
             # case: binary accuracy
             acc_fn = metrics_module.binary_accuracy
           elif self.loss_functions[i] == losses.sparse_categorical_crossentropy:
@@ -1202,7 +1203,7 @@ class Model(Container):
       if batch_index == 0:
         for batch_out in batch_outs:
           shape = (samples,) + batch_out.shape[1:]
-          outs.append(np.zeros(shape, dtype=K.floatx()))
+          outs.append(np.zeros(shape, dtype=batch_out.dtype))
 
       for i, batch_out in enumerate(batch_outs):
         outs[i][batch_start:batch_end] = batch_out
@@ -1320,8 +1321,8 @@ class Model(Container):
         raise ValueError('In a stateful network, '
                          'you should only pass inputs with '
                          'a number of samples that can be '
-                         'divided by the batch size. Found: ' + str(
-                             x[0].shape[0]) + ' samples')
+                         'divided by the batch size. Found: ' +
+                         str(x[0].shape[0]) + ' samples')
     return x, y, sample_weights
 
   def fit(self,
@@ -1412,11 +1413,11 @@ class Model(Container):
       elif len(validation_data) == 3:
         val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
       else:
-        raise ValueError('When passing validation_data, '
-                         'it must contain 2 (x_val, y_val) '
-                         'or 3 (x_val, y_val, val_sample_weights) '
-                         'items, however it contains %d items' %
-                         len(validation_data))
+        raise ValueError(
+            'When passing validation_data, '
+            'it must contain 2 (x_val, y_val) '
+            'or 3 (x_val, y_val, val_sample_weights) '
+            'items, however it contains %d items' % len(validation_data))
 
       val_x, val_y, val_sample_weights = self._standardize_user_data(
           val_x,
@@ -1567,8 +1568,8 @@ class Model(Container):
         raise ValueError('In a stateful network, '
                          'you should only pass inputs with '
                          'a number of samples that can be '
-                         'divided by the batch size. Found: ' + str(
-                             x[0].shape[0]) + ' samples. '
+                         'divided by the batch size. Found: ' +
+                         str(x[0].shape[0]) + ' samples. '
                          'Batch size: ' + str(batch_size) + '.')
 
     # prepare inputs, delegate logic to _predict_loop
@@ -1718,7 +1719,7 @@ class Model(Container):
             - a tuple (inputs, targets, sample_weights).
             All arrays should contain the same number of samples.
             The generator is expected to loop over its data
-            indefinitely. An epoch finishes when `samples_per_epoch`
+            indefinitely. An epoch finishes when `steps_per_epoch`
             samples have been seen by the model.
         steps_per_epoch: Total number of steps (batches of samples)
             to yield from `generator` before declaring one epoch
@@ -1767,7 +1768,7 @@ class Model(Container):
                 f.close()
 
         model.fit_generator(generate_arrays_from_file('/my_file.txt'),
-                            samples_per_epoch=10000, epochs=10)
+                            steps_per_epoch=10000, epochs=10)
     ```
 
     Raises:
@@ -2028,7 +2029,8 @@ class Model(Container):
                         steps,
                         max_q_size=10,
                         workers=1,
-                        pickle_safe=False):
+                        pickle_safe=False,
+                        verbose=0):
     """Generates predictions for the input samples from a data generator.
 
     The generator should return the same kind of data as accepted by
@@ -2048,6 +2050,7 @@ class Model(Container):
             non picklable arguments to the generator
             as they can't be passed
             easily to children processes.
+        verbose: verbosity mode, 0 or 1.
 
     Returns:
         Numpy array(s) of predictions.
@@ -2066,6 +2069,9 @@ class Model(Container):
     try:
       enqueuer = GeneratorEnqueuer(generator, pickle_safe=pickle_safe)
       enqueuer.start(workers=workers, max_q_size=max_q_size)
+
+      if verbose == 1:
+        progbar = Progbar(target=steps)
 
       while steps_done < steps:
         generator_output = None
@@ -2103,6 +2109,8 @@ class Model(Container):
         for i, out in enumerate(outs):
           all_outs[i].append(out)
         steps_done += 1
+        if verbose == 1:
+          progbar.update(steps_done)
 
     finally:
       if enqueuer is not None:

@@ -1,12 +1,12 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "tf_audio_dashboard",
     srcs = [
         "tf-audio-dashboard.html",
@@ -53,9 +53,11 @@ tensorboard_webcomponent_library(
     ],
 )
 
+# This is needed: components/BUILD seeks a legacy_ts rule in this package.
 tensorboard_ts_library(
     name = "legacy_ts",
-    srcs = [
-    ],
+    srcs = [],
+    deps_mgmt = "off",
+    runtime = "nodejs",
     deps = ["//tensorflow/tensorboard/components:common_deps"],
 )

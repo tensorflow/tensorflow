@@ -43,7 +43,7 @@ class BasicDecoderTest(test.TestCase):
     cell_depth = 10
     output_layer_depth = 3
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
       cell = core_rnn_cell.LSTMCell(cell_depth)
@@ -127,7 +127,7 @@ class BasicDecoderTest(test.TestCase):
     start_tokens = [0] * batch_size
     end_token = 1
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       embeddings = np.random.randn(vocabulary_size,
                                    input_depth).astype(np.float32)
       cell = core_rnn_cell.LSTMCell(vocabulary_size)
@@ -196,7 +196,7 @@ class BasicDecoderTest(test.TestCase):
     input_depth = 7
     vocabulary_size = 10
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       inputs = np.random.randn(
           batch_size, max_time, input_depth).astype(np.float32)
       embeddings = np.random.randn(
@@ -275,7 +275,7 @@ class BasicDecoderTest(test.TestCase):
           np.squeeze(inputs[batch_where_not_sampling, 1]))
 
   def _testStepWithScheduledOutputTrainingHelper(
-      self, use_next_input_layer, use_auxiliary_inputs):
+      self, sampling_probability, use_next_input_layer, use_auxiliary_inputs):
     sequence_length = [3, 4, 3, 1, 0]
     batch_size = 5
     max_time = 8
@@ -290,11 +290,11 @@ class BasicDecoderTest(test.TestCase):
     else:
       auxiliary_inputs = None
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
       cell = core_rnn_cell.LSTMCell(cell_depth)
-      half = constant_op.constant(0.5)
+      sampling_probability = constant_op.constant(sampling_probability)
 
       next_input_layer = None
       if use_next_input_layer:
@@ -303,7 +303,7 @@ class BasicDecoderTest(test.TestCase):
       helper = helper_py.ScheduledOutputTrainingHelper(
           inputs=inputs,
           sequence_length=sequence_length,
-          sampling_probability=half,
+          sampling_probability=sampling_probability,
           time_major=False,
           next_input_layer=next_input_layer,
           auxiliary_inputs=auxiliary_inputs)
@@ -396,20 +396,30 @@ class BasicDecoderTest(test.TestCase):
   def testStepWithScheduledOutputTrainingHelperWithoutNextInputLayerOrAuxInputs(
       self):
     self._testStepWithScheduledOutputTrainingHelper(
-        use_next_input_layer=False, use_auxiliary_inputs=False)
+        sampling_probability=0.5, use_next_input_layer=False,
+        use_auxiliary_inputs=False)
 
   def testStepWithScheduledOutputTrainingHelperWithNextInputLayer(self):
     self._testStepWithScheduledOutputTrainingHelper(
-        use_next_input_layer=True, use_auxiliary_inputs=False)
+        sampling_probability=0.5, use_next_input_layer=True,
+        use_auxiliary_inputs=False)
 
   def testStepWithScheduledOutputTrainingHelperWithAuxiliaryInputs(self):
     self._testStepWithScheduledOutputTrainingHelper(
-        use_next_input_layer=False, use_auxiliary_inputs=True)
+        sampling_probability=0.5, use_next_input_layer=False,
+        use_auxiliary_inputs=True)
 
   def testStepWithScheduledOutputTrainingHelperWithNextInputLayerAndAuxInputs(
       self):
     self._testStepWithScheduledOutputTrainingHelper(
-        use_next_input_layer=True, use_auxiliary_inputs=True)
+        sampling_probability=0.5, use_next_input_layer=True,
+        use_auxiliary_inputs=True)
+
+  def testStepWithScheduledOutputTrainingHelperWithNoSampling(
+      self):
+    self._testStepWithScheduledOutputTrainingHelper(
+        sampling_probability=0.0, use_next_input_layer=True,
+        use_auxiliary_inputs=True)
 
 if __name__ == "__main__":
   test.main()

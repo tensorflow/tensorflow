@@ -29,7 +29,7 @@ NodeMap::NodeMap(GraphDef* graph) : graph_(graph) {
     auto node = graph_->mutable_node(i);
     nodes_.insert(std::make_pair(node->name(), node));
     for (const auto& input : node->input()) {
-      outputs_[input].insert(nodes_[node->name()]);
+      outputs_[NodeName(input)].insert(nodes_[node->name()]);
     }
   }
 }
@@ -97,10 +97,10 @@ int NodePosition(const string& name) {
 string AddPrefixToNodeName(const string& name, const string& prefix) {
   if (!name.empty()) {
     if (name[0] == '^') {
-      return strings::StrCat("^", prefix, "-", name.substr(1));
+      return strings::StrCat("^", prefix, "/", name.substr(1));
     }
   }
-  return strings::StrCat(prefix, "-", name);
+  return strings::StrCat(prefix, "/", name);
 }
 
 bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,

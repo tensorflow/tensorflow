@@ -171,7 +171,7 @@ def count_total_params(layers, layer_set=None):
           [K.count_params(p) for p in layer.trainable_weights])
       non_trainable_count += np.sum(
           [K.count_params(p) for p in layer.non_trainable_weights])
-  return trainable_count, non_trainable_count
+  return int(trainable_count), int(non_trainable_count)
 
 
 def convert_all_kernels_in_model(model):

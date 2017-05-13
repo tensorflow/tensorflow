@@ -65,12 +65,12 @@ programs is to first create a graph and then launch it in a session.
 Here we instead use the convenient `InteractiveSession` class, which makes
 TensorFlow more flexible about how you structure your code.  It allows you to
 interleave operations which build a
-@{$get_started#the_computational_graph$computation graph}
+@{$get_started/get_started#the_computational_graph$computation graph}
 with ones that run the graph.  This is particularly convenient when working in
 interactive contexts like IPython.  If you are not using an
 `InteractiveSession`, then you should build the entire computation graph before
 starting a session and
-@{$get_started#the_computational_graph$launching the graph}.
+@{$get_started/get_started#the_computational_graph$launching the graph}.
 
 ```python
 import tensorflow as tf
@@ -95,8 +95,8 @@ similar to that used in Theano or Torch.
 
 The role of the Python code is therefore to build this external computation
 graph, and to dictate which parts of the computation graph should be run. See
-the @{$get_started#the_computational_graph$Computation Graph}
-section of @{$get_started} for more detail.
+the @{$get_started/get_started#the_computational_graph$Computation Graph}
+section of @{$get_started/get_started} for more detail.
 
 ## Build a Softmax Regression Model
 

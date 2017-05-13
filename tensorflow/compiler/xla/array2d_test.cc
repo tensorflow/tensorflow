@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <initializer_list>
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/compiler/xla/test.h"
 
 namespace xla {
 namespace {

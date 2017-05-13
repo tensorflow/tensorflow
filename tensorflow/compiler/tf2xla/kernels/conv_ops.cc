@@ -124,14 +124,14 @@ class Conv2DOp : public ConvOp {
                 errors::InvalidArgument("Invalid data format"));
   }
 };
-REGISTER_XLA_OP("Conv2D", Conv2DOp);
+REGISTER_XLA_OP(Name("Conv2D"), Conv2DOp);
 
 class Conv3DOp : public ConvOp {
  public:
   explicit Conv3DOp(OpKernelConstruction* ctx)
       : ConvOp(ctx, /*num_spatial_dims=*/3) {}
 };
-REGISTER_XLA_OP("Conv3D", Conv3DOp);
+REGISTER_XLA_OP(Name("Conv3D"), Conv3DOp);
 
 // Backprop for input.
 class ConvBackpropInputOp : public XlaOpKernel {
@@ -233,14 +233,14 @@ class Conv2DBackpropInputOp : public ConvBackpropInputOp {
                 errors::InvalidArgument("Invalid data format"));
   }
 };
-REGISTER_XLA_OP("Conv2DBackpropInput", Conv2DBackpropInputOp);
+REGISTER_XLA_OP(Name("Conv2DBackpropInput"), Conv2DBackpropInputOp);
 
 class Conv3DBackpropInputOp : public ConvBackpropInputOp {
  public:
   explicit Conv3DBackpropInputOp(OpKernelConstruction* ctx)
       : ConvBackpropInputOp(ctx, /*num_spatial_dims=*/3) {}
 };
-REGISTER_XLA_OP("Conv3DBackpropInputV2", Conv3DBackpropInputOp);
+REGISTER_XLA_OP(Name("Conv3DBackpropInputV2"), Conv3DBackpropInputOp);
 
 class ConvBackpropFilterOp : public XlaOpKernel {
  public:
@@ -399,14 +399,14 @@ class Conv2DBackpropFilterOp : public ConvBackpropFilterOp {
                 errors::InvalidArgument("Invalid data format"));
   }
 };
-REGISTER_XLA_OP("Conv2DBackpropFilter", Conv2DBackpropFilterOp);
+REGISTER_XLA_OP(Name("Conv2DBackpropFilter"), Conv2DBackpropFilterOp);
 
 class Conv3DBackpropFilterOp : public ConvBackpropFilterOp {
  public:
   explicit Conv3DBackpropFilterOp(OpKernelConstruction* ctx)
       : ConvBackpropFilterOp(ctx, /*num_spatial_dims=*/3) {}
 };
-REGISTER_XLA_OP("Conv3DBackpropFilterV2", Conv3DBackpropFilterOp);
+REGISTER_XLA_OP(Name("Conv3DBackpropFilterV2"), Conv3DBackpropFilterOp);
 
 }  // namespace
 }  // namespace tensorflow

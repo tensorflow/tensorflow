@@ -123,9 +123,7 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
 
   *result_shape = executable->result_shape();
 
-  // TODO(b/36256956) Ideally tuple elements could always be distinct buffers.
-  if (ShapeUtil::IsTuple(*result_shape) &&
-      backend_->transfer_manager()->TupleElementsAreDistinctBuffers()) {
+  if (ShapeUtil::IsTuple(*result_shape)) {
     // We must record element buffers of tuples as well to avoid leaks.
     DCHECK(!ShapeUtil::IsNestedTuple(*result_shape));
     TF_ASSIGN_OR_RETURN(

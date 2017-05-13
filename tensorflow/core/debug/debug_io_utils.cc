@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <vector>
 
+#if defined(PLATFORM_GOOGLE)
 #include "grpc++/create_channel.h"
+#endif
 
 #if defined(PLATFORM_WINDOWS)
 // winsock2.h is used in grpc, so Ws2_32.lib is needed
@@ -210,7 +212,8 @@ Status DebugIO::PublishDebugMetadata(
 Status DebugIO::PublishDebugTensor(const string& tensor_name,
                                    const string& debug_op, const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string>& debug_urls) {
+                                   const gtl::ArraySlice<string>& debug_urls,
+                                   const bool gated_grpc) {
   // Split the tensor_name into node name and output slot index.
   std::vector<string> name_items = str_util::Split(tensor_name, ':');
   string node_name;
@@ -230,7 +233,7 @@ Status DebugIO::PublishDebugTensor(const string& tensor_name,
         strings::StrCat("Failed to parse tensor name: \"", tensor_name, "\""));
   }
 
-  int num_failed_urls = 0;
+  int32 num_failed_urls = 0;
   std::vector<Status> fail_statuses;
   for (const string& url : debug_urls) {
     if (str_util::Lowercase(url).find(kFileURLScheme) == 0) {
@@ -246,7 +249,8 @@ Status DebugIO::PublishDebugTensor(const string& tensor_name,
     } else if (str_util::Lowercase(url).find(kGrpcURLScheme) == 0) {
 #if defined(PLATFORM_GOOGLE)
       Status s = DebugGrpcIO::SendTensorThroughGrpcStream(
-          node_name, output_slot, debug_op, tensor, wall_time_us, url);
+          node_name, output_slot, debug_op, tensor, wall_time_us, url,
+          gated_grpc);
 
       if (!s.ok()) {
         num_failed_urls++;
@@ -274,6 +278,15 @@ Status DebugIO::PublishDebugTensor(const string& tensor_name,
 
     return Status(error::INTERNAL, error_message);
   }
+}
+
+// static
+Status DebugIO::PublishDebugTensor(const string& tensor_name,
+                                   const string& debug_op, const Tensor& tensor,
+                                   const uint64 wall_time_us,
+                                   const gtl::ArraySlice<string>& debug_urls) {
+  return PublishDebugTensor(tensor_name, debug_op, tensor, wall_time_us,
+                            debug_urls, false);
 }
 
 // static
@@ -309,6 +322,60 @@ Status DebugIO::PublishGraph(const Graph& graph,
   }
 
   return status;
+}
+
+// static
+bool DebugIO::IsCopyNodeGateOpen(
+    const std::vector<DebugWatchAndURLSpec>& specs) {
+#if defined(PLATFORM_GOOGLE)
+  for (const DebugWatchAndURLSpec& spec : specs) {
+    if (!spec.gated_grpc || spec.url.compare(0, strlen(DebugIO::kGrpcURLScheme),
+                                             DebugIO::kGrpcURLScheme)) {
+      return true;
+    } else {
+      if (DebugGrpcIO::IsGateOpen(spec.watch_key, spec.url)) {
+        return true;
+      }
+    }
+  }
+  return false;
+#else
+  return true;
+#endif
+}
+
+// static
+bool DebugIO::IsDebugNodeGateOpen(const string& watch_key,
+                                  const std::vector<string>& debug_urls) {
+#if defined(PLATFORM_GOOGLE)
+  for (const string& debug_url : debug_urls) {
+    if (debug_url.compare(0, strlen(DebugIO::kGrpcURLScheme),
+                          DebugIO::kGrpcURLScheme)) {
+      return true;
+    } else {
+      if (DebugGrpcIO::IsGateOpen(watch_key, debug_url)) {
+        return true;
+      }
+    }
+  }
+  return false;
+#else
+  return true;
+#endif
+}
+
+// static
+bool DebugIO::IsDebugURLGateOpen(const string& watch_key,
+                                 const string& debug_url) {
+#if defined(PLATFORM_GOOGLE)
+  if (debug_url.find(kGrpcURLScheme) != 0) {
+    return true;
+  } else {
+    return DebugGrpcIO::IsGateOpen(watch_key, debug_url);
+  }
+#else
+  return true;
+#endif
 }
 
 // static
@@ -430,17 +497,26 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
 
 #if defined(PLATFORM_GOOGLE)
 DebugGrpcChannel::DebugGrpcChannel(const string& server_stream_addr)
-    : ctx_(),
-      channel_(::grpc::CreateCustomChannel(server_stream_addr,
-                                           ::grpc::InsecureChannelCredentials(),
-                                           ::grpc::ChannelArguments())),
-      stub_(EventListener::NewStub(channel_)),
-      reader_writer_(stub_->SendEvents(&ctx_)),
-      mu_() {}
-// TODO(cais): Set GRPC_ARG_MAX_MESSAGE_LENGTH to max if necessary.
+    : server_stream_addr_(server_stream_addr),
+      url_(strings::StrCat(DebugIO::kGrpcURLScheme, server_stream_addr)) {}
 
-bool DebugGrpcChannel::is_channel_ready() {
-  return channel_->GetState(false) == GRPC_CHANNEL_READY;
+Status DebugGrpcChannel::Connect(const int64 timeout_micros) {
+  ::grpc::ChannelArguments args;
+  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  // Avoid problems where default reconnect backoff is too long (e.g., 20 s).
+  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  channel_ = ::grpc::CreateCustomChannel(
+      server_stream_addr_, ::grpc::InsecureChannelCredentials(), args);
+  if (!channel_->WaitForConnected(
+          gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
+                       gpr_time_from_micros(timeout_micros, GPR_TIMESPAN)))) {
+    return errors::FailedPrecondition(
+        "Failed to connect to gRPC channel at ", server_stream_addr_,
+        " within a timeout of ", timeout_micros / 1e6, " s.");
+  }
+  stub_ = EventListener::NewStub(channel_);
+  reader_writer_ = stub_->SendEvents(&ctx_);
+  return Status::OK();
 }
 
 bool DebugGrpcChannel::WriteEvent(const Event& event) {
@@ -449,10 +525,29 @@ bool DebugGrpcChannel::WriteEvent(const Event& event) {
   return reader_writer_->Write(event);
 }
 
-Status DebugGrpcChannel::Close() {
+Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
   mutex_lock l(mu_);
 
   reader_writer_->WritesDone();
+
+  // Read all EventReply messages (if any) from the server.
+  EventReply event_reply;
+  while (reader_writer_->Read(&event_reply)) {
+    for (const EventReply::DebugOpStateChange& debug_op_state_change :
+         event_reply.debug_op_state_changes()) {
+      string watch_key = strings::StrCat(debug_op_state_change.node_name(), ":",
+                                         debug_op_state_change.output_slot(),
+                                         ":", debug_op_state_change.debug_op());
+      if (debug_op_state_change.change() ==
+          EventReply::DebugOpStateChange::ENABLE) {
+        DebugGrpcIO::EnableWatchKey(url_, watch_key);
+      } else if (debug_op_state_change.change() ==
+                 EventReply::DebugOpStateChange::DISABLE) {
+        DebugGrpcIO::DisableWatchKey(url_, watch_key);
+      }
+    }
+  }
+
   if (reader_writer_->Finish().ok()) {
     return Status::OK();
   } else {
@@ -463,22 +558,35 @@ Status DebugGrpcChannel::Close() {
 
 // static
 mutex DebugGrpcIO::streams_mu;
-std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>
-    DebugGrpcIO::stream_channels;
 
 // static
-Status DebugGrpcIO::SendTensorThroughGrpcStream(const string& node_name,
-                                                const int32 output_slot,
-                                                const string& debug_op,
-                                                const Tensor& tensor,
-                                                const uint64 wall_time_us,
-                                                const string& grpc_stream_url) {
-  const string tensor_name = strings::StrCat(node_name, ":", output_slot);
+int64 DebugGrpcIO::channel_connection_timeout_micros = 900 * 1000 * 1000;
+// TODO(cais): Make this configurable?
 
-  // Prepare tensor Event data to be sent.
-  Event event = WrapTensorAsEvent(tensor_name, debug_op, tensor, wall_time_us);
+// static
+std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+DebugGrpcIO::GetStreamChannels() {
+  static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+      stream_channels =
+          new std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>();
+  return stream_channels;
+}
 
-  return SendEventProtoThroughGrpcStream(event, grpc_stream_url);
+// static
+Status DebugGrpcIO::SendTensorThroughGrpcStream(
+    const string& node_name, const int32 output_slot, const string& debug_op,
+    const Tensor& tensor, const uint64 wall_time_us,
+    const string& grpc_stream_url, const bool gated) {
+  if (gated &&
+      !IsGateOpen(strings::StrCat(node_name, ":", output_slot, ":", debug_op),
+                  grpc_stream_url)) {
+    return Status::OK();
+  } else {
+    const string tensor_name = strings::StrCat(node_name, ":", output_slot);
+    return SendEventProtoThroughGrpcStream(
+        WrapTensorAsEvent(tensor_name, debug_op, tensor, wall_time_us),
+        grpc_stream_url);
+  }
 }
 
 // static
@@ -492,45 +600,114 @@ Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
   std::shared_ptr<DebugGrpcChannel> debug_grpc_channel;
   {
     mutex_lock l(streams_mu);
-    if (stream_channels.find(grpc_stream_url) == stream_channels.end()) {
+    std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+        stream_channels = GetStreamChannels();
+    if (stream_channels->find(grpc_stream_url) == stream_channels->end()) {
       debug_grpc_channel.reset(new DebugGrpcChannel(server_stream_addr));
+      TF_RETURN_IF_ERROR(
+          debug_grpc_channel->Connect(channel_connection_timeout_micros));
 
-      if (!debug_grpc_channel->is_channel_ready()) {
-        return errors::FailedPrecondition(
-            strings::StrCat("Channel at the following gRPC stream URL is ",
-                            "not ready: ", grpc_stream_url));
-      }
-
-      stream_channels[grpc_stream_url] = debug_grpc_channel;
+      (*stream_channels)[grpc_stream_url] = debug_grpc_channel;
+      CreateEmptyEnabledSet(grpc_stream_url);
     } else {
-      debug_grpc_channel = stream_channels[grpc_stream_url];
+      debug_grpc_channel = (*stream_channels)[grpc_stream_url];
     }
   }
 
   bool write_ok = debug_grpc_channel->WriteEvent(event_proto);
   if (!write_ok) {
     return errors::Cancelled(strings::StrCat("Write event to stream URL ",
-                                             grpc_stream_url, "failed."));
+                                             grpc_stream_url, " failed."));
   }
 
   return Status::OK();
 }
 
+// static
+bool DebugGrpcIO::IsGateOpen(const string& watch_key,
+                             const string& grpc_debug_url) {
+  std::unordered_map<string, std::unordered_set<string>>* enabled_watch_keys =
+      GetEnabledWatchKeys();
+  if (enabled_watch_keys->find(grpc_debug_url) == enabled_watch_keys->end()) {
+    return false;
+  } else {
+    const auto& url_enabled = (*enabled_watch_keys)[grpc_debug_url];
+    return url_enabled.find(watch_key) != url_enabled.end();
+  }
+}
+
+// static
 Status DebugGrpcIO::CloseGrpcStream(const string& grpc_stream_url) {
   mutex_lock l(streams_mu);
 
-  if (stream_channels.find(grpc_stream_url) != stream_channels.end()) {
+  std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+      stream_channels = GetStreamChannels();
+  if (stream_channels->find(grpc_stream_url) != stream_channels->end()) {
     // Stream of the specified address exists. Close it and remove it from
     // record.
     Status s;
-    s = stream_channels[grpc_stream_url]->Close();
-    stream_channels.erase(grpc_stream_url);
+    s = (*stream_channels)[grpc_stream_url]->ReceiveServerRepliesAndClose();
+    (*stream_channels).erase(grpc_stream_url);
     return s;
   } else {
     // Stream of the specified address does not exist. No action.
     return Status::OK();
   }
 }
+
+// static
+std::unordered_map<string, std::unordered_set<string>>*
+DebugGrpcIO::GetEnabledWatchKeys() {
+  static std::unordered_map<string, std::unordered_set<string>>*
+      enabled_watch_keys =
+          new std::unordered_map<string, std::unordered_set<string>>();
+  return enabled_watch_keys;
+}
+
+// static
+void DebugGrpcIO::EnableWatchKey(const string& grpc_debug_url,
+                                 const string& watch_key) {
+  std::unordered_map<string, std::unordered_set<string>>* enabled_watch_keys =
+      GetEnabledWatchKeys();
+  if (enabled_watch_keys->find(grpc_debug_url) == enabled_watch_keys->end()) {
+    CreateEmptyEnabledSet(grpc_debug_url);
+  }
+  (*enabled_watch_keys)[grpc_debug_url].insert(watch_key);
+}
+
+// static
+void DebugGrpcIO::DisableWatchKey(const string& grpc_debug_url,
+                                  const string& watch_key) {
+  std::unordered_map<string, std::unordered_set<string>>* enabled_watch_keys =
+      GetEnabledWatchKeys();
+  if (enabled_watch_keys->find(grpc_debug_url) == enabled_watch_keys->end()) {
+    LOG(WARNING) << "Attempt to disable a watch key for an unregistered gRPC "
+                 << "debug URL: " << grpc_debug_url;
+  } else {
+    std::unordered_set<string>& url_enabled =
+        (*enabled_watch_keys)[grpc_debug_url];
+    if (url_enabled.find(watch_key) == url_enabled.end()) {
+      LOG(WARNING) << "Attempt to disable a watch key that is not currently "
+                   << "enabled at " << grpc_debug_url << ": " << watch_key;
+    } else {
+      url_enabled.erase(watch_key);
+    }
+  }
+}
+
+// static
+void DebugGrpcIO::ClearEnabledWatchKeys() { GetEnabledWatchKeys()->clear(); }
+
+// static
+void DebugGrpcIO::CreateEmptyEnabledSet(const string& grpc_debug_url) {
+  std::unordered_map<string, std::unordered_set<string>>* enabled_watch_keys =
+      GetEnabledWatchKeys();
+  if (enabled_watch_keys->find(grpc_debug_url) == enabled_watch_keys->end()) {
+    std::unordered_set<string> empty_watch_keys;
+    (*enabled_watch_keys)[grpc_debug_url] = empty_watch_keys;
+  }
+}
+
 #endif  // #if defined(PLATFORM_GOOGLE)
 
 }  // namespace tensorflow

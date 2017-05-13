@@ -258,7 +258,8 @@ class NumpyIoTest(test.TestCase):
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       input_fn()
       self.assertAllEqual(x['__target_key__'], array)
-      self.assertAllEqual(x['__target_key___n'], y)
+      # The input x should not be mutated.
+      self.assertItemsEqual(x.keys(), ['__target_key__'])
 
   def testNumpyInputFnWithMismatchLengthOfInputs(self):
     a = np.arange(4) * 1.0

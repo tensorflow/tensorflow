@@ -113,7 +113,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
     PrimitiveType output_type) const {
-  // Binary math functions tranform are of type [T] -> T.
+  // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
       return Unimplemented("Input type ≠ output type: %s ≠ %s",

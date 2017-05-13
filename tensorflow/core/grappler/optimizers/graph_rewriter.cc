@@ -64,5 +64,15 @@ bool GraphRewriter::DrivesControlDependency(const NodeDef& node) const {
          control_dependency_drivers_.end();
 }
 
+bool GraphRewriter::IsDrivenByControlDependency(const NodeDef& node) const {
+  for (const auto& input : node.input()) {
+    CHECK(!input.empty());
+    if (input[0] == '^') {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

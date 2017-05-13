@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import collections
 import hashlib
-import re
 import threading
 
 import six
@@ -39,7 +38,6 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.deprecation import deprecated
 
 
 def _as_type_list(dtypes):
@@ -56,6 +54,7 @@ def _as_type_list(dtypes):
 def _as_shape_list(shapes, dtypes, unknown_dim_allowed=False,
                    unknown_rank_allowed=False):
   """Convert shapes to a list of tuples of int (or None)."""
+  del dtypes
   if unknown_dim_allowed:
     if (not isinstance(shapes, collections.Sequence)
         or not shapes
@@ -925,16 +924,18 @@ class Barrier(object):
     If barrier has no completed elements, this operation will block
     until there are 'num_elements' elements to take.
 
+    TODO(b/25743580): the semantics of `allow_small_batch` are experimental
+    and may be extended to other cases in the future.
+
+    TODO(ebrevdo): If a take_many(allow_small_batch=True) is blocking
+    already when the barrier is closed, it will block for ever. Fix this
+    by using asynchronous operations.
+
     Args:
       num_elements: The number of elements to take.
       allow_small_batch: If the barrier is closed, don't block if there are less
         completed elements than requested, but instead return all available
         completed elements.
-        TODO(b/25743580): the semantics of `allow_small_batch` are experimental
-        and may be extended to other cases in the future.
-        TODO(ebrevdo): If a take_many(allow_small_batch=True) is blocking
-        already when the barrier is closed, it will block for ever. Fix this
-        by using asynchronous operations.
       timeout: This specifies the number of milliseconds to block
         before returning with DEADLINE_EXCEEDED. (This option is not
         supported yet.)
@@ -1033,47 +1034,6 @@ class Barrier(object):
       name = "%s_BarrierIncompleteSize" % self._name
     return gen_data_flow_ops._barrier_incomplete_size(
         self._barrier_ref, name=name)
-
-
-@deprecated("2017-03-02", "Use `tf.tables_initializer` instead.")
-def initialize_all_tables(name="init_all_tables"):
-  """Returns an Op that initializes all tables of the default graph.
-
-  Args:
-    name: Optional name for the initialization op.
-
-  Returns:
-    An Op that initializes all tables.  Note that if there are
-    not tables the returned Op is a NoOp.
-  """
-  return tables_initializer(name)
-
-
-def tables_initializer(name="init_all_tables"):
-  """Returns an Op that initializes all tables of the default graph.
-
-  Args:
-    name: Optional name for the initialization op.
-
-  Returns:
-    An Op that initializes all tables.  Note that if there are
-    not tables the returned Op is a NoOp.
-  """
-  initializers = ops.get_collection(ops.GraphKeys.TABLE_INITIALIZERS)
-  if initializers:
-    return control_flow_ops.group(*initializers, name=name)
-  return control_flow_ops.no_op(name=name)
-
-
-ops.NotDifferentiable("LookupTableFind")
-ops.NotDifferentiable("LookupTableInsert")
-ops.NotDifferentiable("LookupTableSize")
-ops.NotDifferentiable("HashTable")
-ops.NotDifferentiable("InitializeTable")
-ops.NotDifferentiable("InitializeTableFromTextFile")
-ops.NotDifferentiable("MutableDenseHashTable")
-ops.NotDifferentiable("MutableHashTable")
-ops.NotDifferentiable("MutableHashTableOfTensors")
 
 
 class ConditionalAccumulatorBase(object):
@@ -1388,8 +1348,7 @@ class StagingArea(object):
   """Class for staging inputs. No ordering guarantees.
 
   A `StagingArea` is a TensorFlow data structure that stores tensors across
-  multiple steps, and exposes operations that can put and get
-  tensors.
+  multiple steps, and exposes operations that can put and get tensors.
 
   Each `StagingArea` element is a tuple of one or more tensors, where each
   tuple component has a static dtype, and may have a static shape.
@@ -1605,6 +1564,13 @@ class StagingArea(object):
 
     If the staging area is empty when this operation executes, it will block
     until there is an element to dequeue.
+
+    Note that unlike others ops that can block, like the queue Dequeue
+    operations, this can stop other work from happening.  To avoid this, the
+    intended use is for this to be called only when there will be an element
+    already available.  One method for doing this in a training loop would be to
+    run a `put()` call during a warmup session.run call, and then call both
+    `get()` and `put()` in each subsequent step.
 
     The placement of the returned tensor will be determined by the current
     device scope when this function is called.

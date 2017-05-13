@@ -24,12 +24,7 @@ namespace tensorflow {
           .TypeConstraint<type>("T")      \
           .TypeConstraint<int32>("Tidx"), \
       ReductionOp<CPUDevice, type, Eigen::internal::SumReducer<type>>);
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
-// NOTE: We should have mean(complex64,int32), too. But that needs to
-// change Eigen::internal::MeanReducer to cast int to complex<float>.
-// We don't see immediate need of mean(complex64,int32) anyway.
-TF_CALL_complex64(REGISTER_CPU_KERNELS);
-TF_CALL_complex128(REGISTER_CPU_KERNELS);
+TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA
@@ -42,11 +37,9 @@ TF_CALL_complex128(REGISTER_CPU_KERNELS);
           .TypeConstraint<int32>("Tidx")    \
           .HostMemory("reduction_indices"), \
       ReductionOp<GPUDevice, type, Eigen::internal::SumReducer<type>>);
-REGISTER_GPU_KERNELS(Eigen::half);
-REGISTER_GPU_KERNELS(float);
-REGISTER_GPU_KERNELS(double);
-REGISTER_GPU_KERNELS(complex64);
-REGISTER_GPU_KERNELS(complex128);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_complex64(REGISTER_GPU_KERNELS);
+TF_CALL_complex128(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 // A special GPU kernel for int32.

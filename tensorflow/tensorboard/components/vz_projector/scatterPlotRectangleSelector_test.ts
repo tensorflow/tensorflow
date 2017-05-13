@@ -22,6 +22,10 @@ describe('selector callbacks make bounding box start bottom left', () => {
 
   beforeEach(() => {
     containerElement = document.createElement('div');
+    const selector = document.createElement('svg');
+    selector.id = 'selector';
+    containerElement.appendChild(selector);
+
     selectionCallback = jasmine.createSpy('selectionCallback');
     selection =
         new ScatterPlotRectangleSelector(containerElement, selectionCallback);

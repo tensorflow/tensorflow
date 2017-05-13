@@ -209,7 +209,7 @@ def assign_sub(ref, value, use_locking=None, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign_sub(
         ref, value, use_locking=use_locking, name=name)
-  return ref.assign_sub(value, name=name)
+  return ref.assign_sub(value)
 
 
 def assign_add(ref, value, use_locking=None, name=None):
@@ -237,14 +237,15 @@ def assign_add(ref, value, use_locking=None, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign_add(
         ref, value, use_locking=use_locking, name=name)
-  return ref.assign_add(value, name=name)
+  return ref.assign_add(value)
 
 
 def assign(ref, value, validate_shape=None, use_locking=None, name=None):
   """Update 'ref' by assigning 'value' to it.
 
-  This operation outputs "ref" after the assignment is done.
-  This makes it easier to chain operations that need to use the reset value.
+  This operation outputs a Tensor that holds the new value of 'ref' after
+    the value has been assigned. This makes it easier to chain operations
+    that need to use the reset value.
 
   Args:
     ref: A mutable `Tensor`.
@@ -261,11 +262,11 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
     name: A name for the operation (optional).
 
   Returns:
-    Same as "ref".  Returned as a convenience for operations that want
-    to use the new value after the variable has been reset.
+    A `Tensor` that will hold the new value of 'ref' after
+      the assignment has completed.
   """
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign(
         ref, value, use_locking=use_locking, name=name,
         validate_shape=validate_shape)
-  return ref.assign(value, name=name)
+  return ref.assign(value)

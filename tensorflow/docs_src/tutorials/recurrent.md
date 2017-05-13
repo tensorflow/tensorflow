@@ -156,9 +156,10 @@ the second and so on.
 We have a class called `MultiRNNCell` that makes the implementation seamless:
 
 ```python
-lstm = tf.contrib.rnn.BasicLSTMCell(lstm_size, state_is_tuple=False)
-stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm] * number_of_layers,
-    state_is_tuple=False)
+def lstm_cell():
+  return tf.contrib.rnn.BasicLSTMCell(lstm_size)
+stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+    [lstm_cell() for _ in range(number_of_layers)])
 
 initial_state = state = stacked_lstm.zero_state(batch_size, tf.float32)
 for i in range(num_steps):
@@ -173,15 +174,22 @@ final_state = state
 
 ## Run the Code
 
-Start by cloning the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub.
-You'll also need to download the PTB dataset, as discussed at the beginning of
-this tutorial; we'll assume the dataset is located in `/tmp/simple-examples/data`.
+Before running the code, download the PTB dataset, as discussed at the beginning
+of this tutorial.  Then, extract the PTB dataset underneath your home directory
+as follows:
 
-Run the following commands:
+```bsh
+tar xvfz simple-examples.tgz -C $HOME
+```
+_(Note: On Windows, you may need to use
+[other tools](https://wiki.haskell.org/How_to_unpack_a_tar_file_in_Windows).)_
 
-```bash
+Now, clone the [TensorFlow models repo](https://github.com/tensorflow/models)
+from GitHub. Run the following commands:
+
+```bsh
 cd models/tutorials/rnn/ptb
-python ptb_word_lm.py --data_path=/tmp/simple-examples/data/ --model=small
+python ptb_word_lm.py --data_path=$HOME/simple-examples/data/ --model=small
 ```
 
 There are 3 supported model configurations in the tutorial code: "small",

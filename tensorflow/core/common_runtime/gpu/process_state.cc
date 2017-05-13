@@ -191,7 +191,7 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   // example, process_state could maybe save the first stream executor
   // it knows is valid.
   gpu::StreamExecutor* se = nullptr;
-  for (size_t i = 0; i < gpu_allocators_.size(); ++i) {
+  for (int i = 0; i < static_cast<int>(gpu_allocators_.size()); ++i) {
     if (gpu_allocators_[i] != nullptr) {
       se = GPUMachineManager()->ExecutorForDevice(i).ValueOrDie();
       break;

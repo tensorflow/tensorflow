@@ -43,7 +43,8 @@ constexpr char kJwtType[] = "JWT";
 constexpr char kGrantType[] =
     "urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer";
 
-Status ReadJsonValue(Json::Value json, const string& name, Json::Value* value) {
+Status ReadJsonValue(const Json::Value& json, const string& name,
+                     Json::Value* value) {
   if (!value) {
     return errors::FailedPrecondition("'value' cannot be nullptr.");
   }
@@ -55,7 +56,8 @@ Status ReadJsonValue(Json::Value json, const string& name, Json::Value* value) {
   return Status::OK();
 }
 
-Status ReadJsonString(Json::Value json, const string& name, string* value) {
+Status ReadJsonString(const Json::Value& json, const string& name,
+                      string* value) {
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isString()) {
@@ -66,7 +68,7 @@ Status ReadJsonString(Json::Value json, const string& name, string* value) {
   return Status::OK();
 }
 
-Status ReadJsonInt(Json::Value json, const string& name, int64* value) {
+Status ReadJsonInt(const Json::Value& json, const string& name, int64* value) {
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isIntegral()) {

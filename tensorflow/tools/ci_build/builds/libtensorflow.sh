@@ -34,6 +34,7 @@
 # - lib_package/libtensorflow_jni${SUFFIX}.tar.gz
 # - lib_package/libtensorflow.jar
 # - lib_package/libtensorflow-src.jar
+# - lib_package/libtensorflow_proto.zip
 #
 # ASSUMPTIONS:
 # - build_libtensorflow_tarball is invoked from the root of the git tree.
@@ -45,6 +46,10 @@ function build_libtensorflow_tarball() {
     echo "Must run this from the root of the bazel workspace"
     exit 1
   fi
+  # Delete any leftovers from previous builds in this workspace.
+  DIR=lib_package
+  rm -rf ${DIR}
+
   TARBALL_SUFFIX="${1}"
   BAZEL="bazel --bazelrc ./tensorflow/tools/ci_build/install/.bazelrc"
   BAZEL_OPTS="-c opt"
@@ -69,12 +74,13 @@ function build_libtensorflow_tarball() {
     //tensorflow/tools/lib_package:libtensorflow.tar.gz \
     //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz \
     //tensorflow/java:libtensorflow.jar \
-    //tensorflow/java:libtensorflow-src.jar
+    //tensorflow/java:libtensorflow-src.jar \
+    //tensorflow/tools/lib_package:libtensorflow_proto.zip
 
-  DIR=lib_package
-  rm -rf ${DIR}
   mkdir -p ${DIR}
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz ${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz ${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz
   cp bazel-bin/tensorflow/java/libtensorflow.jar bazel-bin/tensorflow/java/libtensorflow-src.jar ${DIR}
+  cp bazel-genfiles/tensorflow/tools/lib_package/libtensorflow_proto.zip ${DIR}
+  chmod -x ${DIR}/*
 }

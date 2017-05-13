@@ -45,9 +45,7 @@ StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
 }
 
 tensorflow::Status BufferLiveness::Analyze() {
-  TF_ASSIGN_OR_RETURN(points_to_analysis_,
-                      TuplePointsToAnalysis::Run(
-                          module_, /*include_loop_fusion_instructions=*/true));
+  TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
   for (auto& computation : module_->computations()) {
     // Gather all instructions whose buffers might alias other instructions into
     // the set aliased_buffers_.  This includes those contained as a tuple
@@ -117,11 +115,7 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
 
   // If 'b' is a user of 'a' then the buffers interfere unless 'a.instruction'
   // and 'b.instruction' emit the same shape/layout, and 'b.instruction' meets
-  // one of following qualifications:
-  // *) Is element-wise.
-  // *) Is a loop fusion instruction (with DynamicUpdateSlice fused root) where
-  //    the singleton use of 'a' at 'a.index' is the fused root at operand 0.
-  // *) Use of 'operand' is DynamicUpdateSlice at operand index 0.
+  // the qualifications specified in CanShareOperandBufferWithUser.
   for (const BufferAlias& alias : points_to_analysis_->GetBufferAliases(a)) {
     if (b.instruction()->IsUserOf(alias.instruction()) &&
         !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),
@@ -135,6 +129,21 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
 
 bool BufferLiveness::MayInterfere(const LogicalBuffer& a,
                                   const LogicalBuffer& b) const {
+  // Entry parameters live for the entire execution, thus always interfere with
+  // all other instructions.
+  const HloInstruction* a_instruction = a.instruction();
+  const HloComputation* a_computation = a_instruction->parent();
+  if (a_instruction->opcode() == HloOpcode::kParameter &&
+      a_computation == a_computation->parent()->entry_computation()) {
+    return true;
+  }
+  const HloInstruction* b_instruction = b.instruction();
+  const HloComputation* b_computation = b_instruction->parent();
+  if (b_instruction->opcode() == HloOpcode::kParameter &&
+      b_computation == b_computation->parent()->entry_computation()) {
+    return true;
+  }
+  // Buffers without disjoint liveness may interfere.
   return (!live_range_strictly_before(a, b) &&
           !live_range_strictly_before(b, a));
 }

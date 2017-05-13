@@ -7,3 +7,5 @@ libtensorflow_jni/src
 libtensorflow_jni/target
 tensorflow/src
 tensorflow/target
+proto/src
+proto/target

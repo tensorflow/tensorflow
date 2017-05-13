@@ -139,17 +139,9 @@ Properties out:
       },
     },
     observers: [
+      "_onBackendUpdate(backend)",
       "_logdirSet(logdir)",
     ],
-    ready: function() {
-      // Populate the logdir.
-      this.backend.logdir().then(logdirObject => {
-        this.set('logdir', logdirObject.logdir);
-      }).catch(e => {
-        // Fetching the logdir failed. Prevent the exception from logging to
-        // console. The console already logs a 404 network event.
-      });
-    },
     _toggleAll: function() {
       this.$.multiCheckbox.toggleAll();
     },
@@ -157,8 +149,21 @@ Properties out:
     _breakString: function(originalString) {
       return originalString.replace(/([\/=\-_,])/g, "$1<wbr>");
     },
+    _onBackendUpdate: function(backend) {
+      if (backend === undefined) {
+        return;
+      }
+
+      // When the backend is set, the selector can request the logdir.
+      backend.logdir().then(logdirObject => {
+        this.set('logdir', logdirObject.logdir);
+      }).catch(e => {
+        // Fetching the logdir failed. Prevent the exception from logging to
+        // console. The console already logs a 404 network event.
+      });
+    },
     _logdirSet: function(logdir) {
-      if (!logdir) {
+      if (logdir === undefined) {
         // The logdir has not been set yet.
         return;
       }

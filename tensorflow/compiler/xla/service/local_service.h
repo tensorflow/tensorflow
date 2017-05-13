@@ -43,14 +43,6 @@ class LocalService : public Service {
   static StatusOr<std::unique_ptr<LocalService>> NewService(
       const ServiceOptions& options);
 
-  // For an array of arguments, validate that each is placed on the
-  // specified device_ordinal, and return the DeviceMemoryBase
-  // corresponding to each argument.
-  tensorflow::Status ResolveArguments(
-      const tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-      int device_ordinal,
-      std::vector<perftools::gputools::DeviceMemoryBase>* argument_ptrs);
-
   // Return a handle to a buffer large enough to hold shape, allocated
   // on device_ordinal. If allocate_space_for_deep_copy, the buffer is
   // large enough to hold all sub-buffers of a tuple shape, otherwise
@@ -58,22 +50,6 @@ class LocalService : public Service {
   StatusOr<GlobalDataHandle> AllocateBufferOnDevice(
       const Shape& shape, int device_ordinal,
       bool allocate_space_for_deep_copy);
-
-  // A description of a computation to compile using CompileAheadOfTime.
-  struct AheadOfTimeComputationInstance {
-    ComputationHandle computation;
-    std::vector<const Shape*> argument_layouts;
-    const Shape* result_layout = nullptr;
-  };
-
-  // Compiles a list of computations for ahead-of-time execution.  This is
-  // intended for use in static compilation.  See
-  // |LocalClient::CompileAheadOfTime| for additional details.
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      const tensorflow::gtl::ArraySlice<AheadOfTimeComputationInstance>
-          computations,
-      const AotCompilationOptions& Options);
 
   // Builds an Executable with the given argument layouts and options. If
   // result_layout is non-null, then the executable is compiled to produce a

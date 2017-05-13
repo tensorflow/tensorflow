@@ -281,6 +281,10 @@ ifeq ($(TARGET),ANDROID)
 		CXXFLAGS += -DUSE_HEXAGON_LIBS
 	endif
 
+	ifdef ENABLE_EXPERIMENTAL_HEXNN_OPS
+		CXXFLAGS += -DENABLE_EXPERIMENTAL_HEXNN_OPS
+	endif
+
 endif  # ANDROID
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
@@ -370,6 +374,7 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),I386)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch i386 \
+		-mno-sse \
 		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \

@@ -257,11 +257,13 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
     name: string, optional name of the operation.
 
   Returns:
-    s: Singular values. Shape is `[..., P]`.
-    u: Right singular vectors. If `full_matrices` is `False` (default) then
+    s: Singular values. Shape is `[..., P]`. The values are sorted in reverse
+      order of magnitude, so s[..., 0] is the largest value, s[..., 1] is the
+      second largest, etc.
+    u: Left singular vectors. If `full_matrices` is `False` (default) then
       shape is `[..., M, P]`; if `full_matrices` is `True` then shape is
       `[..., M, M]`. Not returned if `compute_uv` is `False`.
-    v: Left singular vectors. If `full_matrices` is `False` (default) then
+    v: Right singular vectors. If `full_matrices` is `False` (default) then
       shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
       `[..., N, N]`. Not returned if `compute_uv` is `False`.
 

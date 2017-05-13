@@ -35,7 +35,7 @@ class SDCALogisticClassifierTest(test.TestCase):
     def input_fn():
       return {
           'example_id': constant_op.constant(['1', '2']),
-          'maintenance_cost': constant_op.constant([[500.0], [200.0]]),
+          'maintenance_cost': constant_op.constant([500.0, 200.0]),
           'sq_footage': constant_op.constant([[800.0], [600.0]]),
           'weights': constant_op.constant([[1.0], [1.0]])
       }, constant_op.constant([[0], [1]])
@@ -77,7 +77,7 @@ class SDCALogisticClassifierTest(test.TestCase):
     def input_fn():
       return {
           'example_id': constant_op.constant(['1', '2', '3']),
-          'price': constant_op.constant([[600.0], [1000.0], [400.0]]),
+          'price': constant_op.constant([600.0, 1000.0, 400.0]),
           'sq_footage': constant_op.constant([[1000.0], [600.0], [700.0]]),
           'weights': constant_op.constant([[1.0], [1.0], [1.0]])
       }, constant_op.constant([[1], [0], [1]])
@@ -196,7 +196,7 @@ class SDCALogisticClassifierTest(test.TestCase):
           'price':
               constant_op.constant([[0.6], [0.8], [0.3]]),
           'sq_footage':
-              constant_op.constant([[900.0], [700.0], [600.0]]),
+              constant_op.constant([900.0, 700.0, 600.0]),
           'country':
               sparse_tensor.SparseTensor(
                   values=['IT', 'US', 'GB'],
@@ -296,7 +296,7 @@ class SDCALinearRegressorTest(test.TestCase):
           'example_id':
               constant_op.constant(['1', '2', '3']),
           'price':
-              constant_op.constant([[0.4], [0.6], [0.3]]),
+              constant_op.constant([0.4, 0.6, 0.3]),
           'country':
               sparse_tensor.SparseTensor(
                   values=['IT', 'US', 'GB'],

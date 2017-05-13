@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -74,7 +75,8 @@ namespace tensorflow {
 
 class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
  public:
-  EigenCudaStreamDevice() : scratch_(nullptr), semaphore_(nullptr) {
+  EigenCudaStreamDevice()
+      : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {
     Eigen::initializeDeviceProp();
   }
   ~EigenCudaStreamDevice() {}
@@ -84,6 +86,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
       operation_ = context->op_kernel().name() + "/EigenAllocator";
       step_id_ = context->step_id();
     }
+    context_ = context;
     scratch_ = scratch;
     semaphore_ =
         reinterpret_cast<unsigned int*>(scratch + Eigen::kCudaScratchSize);
@@ -100,8 +103,15 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   void* allocate(size_t num_bytes) const override {
     void* ret = allocator_->AllocateRaw(32 /* alignment */, num_bytes);
     if (ret == nullptr) {
-      LOG(FATAL) << "EigenAllocator for GPU ran out of memory when allocating "
-                 << num_bytes << ". See error logs for more detailed info.";
+      if (context_) {
+        context_->SetStatus(errors::ResourceExhausted(
+            strings::StrCat("Ran out of GPU memory when allocating ", num_bytes,
+                            " bytes for ", operation_)));
+      } else {
+        LOG(FATAL)
+            << "EigenAllocator for GPU ran out of memory when allocating "
+            << num_bytes << ". See error logs for more detailed info.";
+      }
     }
     if (LogMemory::IsEnabled()) {
       LogMemory::RecordRawAllocation(operation_, step_id_, num_bytes, ret,
@@ -159,6 +169,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   ::tensorflow::Allocator* allocator_;  // Not owned.
   mutable char* scratch_;
   mutable unsigned int* semaphore_;
+  OpKernelContext* context_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenCudaStreamDevice);
 };
@@ -168,10 +179,9 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
                              int gpu_id, const string& physical_device_desc,
                              Allocator* gpu_allocator, Allocator* cpu_allocator,
                              bool sync_every_op, int32 max_streams)
-    : LocalDevice(options,
-                  Device::BuildDeviceAttributes(name, DEVICE_GPU, memory_limit,
-                                                locality, physical_device_desc),
-                  gpu_allocator),
+    : LocalDevice(options, Device::BuildDeviceAttributes(name, DEVICE_GPU,
+                                                         memory_limit, locality,
+                                                         physical_device_desc)),
       gpu_allocator_(gpu_allocator),
       cpu_allocator_(cpu_allocator),
       gpu_id_(gpu_id),
@@ -274,14 +284,14 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
                                      DeviceContextMap* device_context_map) {
   VLOG(2) << "FillContextMap";
 
-  const auto num_streams = streams_.size();
+  const size_t num_streams = streams_.size();
   // Special case for single stream.
   if (num_streams == 1) {
     return Status::OK();
   }
   const int64 before = Env::Default()->NowMicros();
   gpu_stream_util::AssignStreamsOpts opts;
-  opts.max_streams = num_streams;
+  opts.max_streams = static_cast<int32>(num_streams);
   std::unordered_map<int, int> node_to_stream_id;
   TF_RETURN_IF_ERROR(
       gpu_stream_util::AssignStreams(graph, opts, &node_to_stream_id));
@@ -426,8 +436,10 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
           << op_kernel->def().op() << " on GPU" << gpu_id_ << " stream["
           << stream_id << "]";
 
-  port::Tracing::TraceMe activity(
-      strings::StrCat(op_kernel->name(), ":", op_kernel->type_string()));
+  // When TraceMe profiling is off (which is the default), the
+  // following TraceMe constructor is simply a conditional test of
+  // false value. Measurements show that its overhead is negligible.
+  port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string());
   op_kernel->ComputeAsync(context, done);
 }
 
@@ -452,6 +464,14 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                               DataTypeString(parsed.dtype()), " tensor");
     }
     Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
+
+    // If the tensor is not initialized, we likely ran out of memory.
+    if (!copy.IsInitialized()) {
+      return errors::ResourceExhausted(
+          "OOM when allocating tensor of shape ", parsed.shape().DebugString(),
+          " and type ", DataTypeString(parsed.dtype()));
+    }
+
     port::Tracing::ScopedAnnotation annotation("MakeTensorFromProto");
     Notification n;
     device_contexts_[0]->CopyCPUTensorToDevice(&parsed, this, &copy,
@@ -519,7 +539,7 @@ void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
 Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
                                            const string& name_prefix,
                                            std::vector<Device*>* devices) {
-  int n = INT_MAX;
+  size_t n = INT_MAX;
   auto iter = options.config.device_count().find("GPU");
   if (iter != options.config.device_count().end()) {
     n = iter->second;
@@ -547,15 +567,14 @@ int64 MinSystemMemory(int64 available_memory) {
   // We use the following heuristic for now:
   //
   // If the available_memory is < 2GiB, we allocate 200MiB to system memory.
-  // Otherwise, allocate 300MiB to system memory.
+  // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
   //
-  // In the future we could be more sophisticated by using a table of
-  // devices.
+  // In the future we could be more sophisticated by using a table of devices.
   if (available_memory < (1LL << 31)) {
     // 200MiB
     return 209715200LL;
   } else {
-    // max(300 MiB, 0.95 * available_memory)
+    // max(300 MiB, 0.05 * available_memory)
     return std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
   }
 }
@@ -971,7 +990,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       continue;
     }
 
-    int new_id = ids->size();
+    size_t new_id = ids->size();
     ids->push_back(visible_gpu_id);
 
     LOG(INFO) << "Creating TensorFlow device (/gpu:" << new_id << ") -> "

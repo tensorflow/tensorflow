@@ -199,9 +199,9 @@ class MaxPooling2D(_Pooling2D):
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".
@@ -255,9 +255,9 @@ class AveragePooling2D(_Pooling2D):
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".
@@ -542,9 +542,9 @@ class GlobalAveragePooling2D(_GlobalPooling2D):
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".
@@ -577,9 +577,9 @@ class GlobalMaxPooling2D(_GlobalPooling2D):
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
           `channels_last` corresponds to inputs with shape
-          `(batch, width, height, channels)` while `channels_first`
+          `(batch, height, width, channels)` while `channels_first`
           corresponds to inputs with shape
-          `(batch, channels, width, height)`.
+          `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
           If you never set it, then it will be "channels_last".

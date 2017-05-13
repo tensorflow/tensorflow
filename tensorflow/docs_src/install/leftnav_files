@@ -2,4 +2,9 @@ install_linux.md
 install_mac.md
 install_windows.md
 install_sources.md
+>>>
 migration.md
+>>>
+install_java.md
+install_go.md
+install_c.md

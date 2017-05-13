@@ -165,4 +165,17 @@ bool HloOpcodeIsComparison(HloOpcode opcode) {
   }
 }
 
+bool HloOpcodeIsVariadic(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kCall:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kFusion:
+    case HloOpcode::kMap:
+    case HloOpcode::kTuple:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace xla

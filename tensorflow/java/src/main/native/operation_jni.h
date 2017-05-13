@@ -1,4 +1,3 @@
-
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,6 +45,16 @@ JNIEXPORT jstring JNICALL Java_org_tensorflow_Operation_type(JNIEnv *, jclass,
  */
 JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_numOutputs(JNIEnv *,
                                                                 jclass, jlong);
+
+/*
+ * Class:     org_tensorflow_Operation
+ * Method:    outputListLength
+ * Signature: (JLjava/lang/String;)I
+ */
+JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_outputListLength(JNIEnv *,
+                                                                      jclass,
+                                                                      jlong,
+                                                                      jstring);
 
 /*
  * Class:     org_tensorflow_Operation

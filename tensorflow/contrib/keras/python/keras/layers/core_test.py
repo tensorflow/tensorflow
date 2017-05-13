@@ -165,24 +165,23 @@ class CoreLayersTest(test.TestCase):
           3,
           kernel_regularizer=keras.regularizers.l1(0.01),
           bias_regularizer='l1',
-          activity_regularizer='l2')
-      layer.build((None, 4))
-      assert len(layer.losses) == 2
+          activity_regularizer='l2',
+          name='dense_reg')
       layer(keras.backend.variable(np.ones((2, 4))))
-      assert len(layer.losses) == 3
+      self.assertEqual(3, len(layer.losses))
 
     # Test constraints
     with self.test_session():
       layer = keras.layers.Dense(
           3, kernel_constraint='max_norm', bias_constraint='max_norm')
-      layer.build((None, 4))
-      assert len(layer.constraints) == 2
+      layer(keras.backend.variable(np.ones((2, 4))))
+      self.assertEqual(2, len(layer.constraints))
 
   def test_activity_regularization(self):
     with self.test_session():
       layer = keras.layers.ActivityRegularization(l1=0.1)
       layer(keras.backend.variable(np.ones((2, 4))))
-      assert len(layer.losses) == 1
+      self.assertEqual(1, len(layer.losses))
 
 
 if __name__ == '__main__':

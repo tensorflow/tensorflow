@@ -177,12 +177,46 @@ static Tensor BuildImageTensor(const std::vector<float>& img_floats) {
   return img_tensor;
 }
 
+/* static */ RemoteFusedGraphExecuteInfo
+BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(
+    const GraphTransferInfo& graph_transfer_info) {
+  RemoteFusedGraphExecuteInfo execute_info;
+  execute_info.set_executor_name("build_hexagon_remote_fused_graph_executor");
+  for (const GraphTransferInfo::GraphInputNodeInfo& input :
+       graph_transfer_info.graph_input_node_info()) {
+    execute_info.add_graph_input_node_name(input.name());
+    RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
+        *execute_info.add_default_graph_input_tensor_shape();
+    tensor_shape_type.set_dtype(input.dtype());
+    TensorShapeProto& tensor_shape_proto = *tensor_shape_type.mutable_shape();
+    for (const int64 dim : input.shape()) {
+      tensor_shape_proto.add_dim()->set_size(dim);
+    }
+  }
+
+  for (const GraphTransferInfo::GraphOutputNodeInfo& output :
+       graph_transfer_info.graph_output_node_info()) {
+    execute_info.add_graph_output_node_name(output.name());
+    RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
+        *execute_info.add_default_graph_output_tensor_shape();
+    tensor_shape_type.set_dtype(output.dtype());
+    TensorShapeProto& tensor_shape_proto = *tensor_shape_type.mutable_shape();
+    for (const int64 dim : output.shape()) {
+      tensor_shape_proto.add_dim()->set_size(dim);
+    }
+  }
+
+  execute_info.set_serialized_executor_parameters(
+      graph_transfer_info.SerializeAsString());
+  return execute_info;
+}
+
 static void RunInferenceByHexagonControlWrapper(
     const GraphTransferer& gt, const std::vector<float>& img_floats) {
   const Tensor img_tensor = BuildImageTensor(img_floats);
 
   const RemoteFusedGraphExecuteInfo execute_info =
-      GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
+      BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(
           gt.GetGraphTransferInfo());
 
   HexagonControlWrapper hexagon_control_wrapper;
@@ -259,6 +293,83 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
   DumpTop10Results(
       output_tensor.TotalBytes(),
       reinterpret_cast<const float*>(output_tensor.flat<float>().data()));
+}
+
+static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
+                                     const GraphTransferInfo& gfi1) {
+  LOG(INFO) << "(1) node count: " << gfi1.node_info_size() << ", "
+            << gfi1.const_node_info_size();
+
+  // 1. check node_info
+  ASSERT_EQ(gfi0.node_info_size(), gfi1.node_info_size());
+  for (int i = 0; i < gfi0.node_info_size(); ++i) {
+    const GraphTransferInfo::NodeInfo& ni0 = gfi0.node_info(i);
+    const GraphTransferInfo::NodeInfo& ni1 = gfi1.node_info(i);
+    EXPECT_EQ(ni0.DebugString(), ni1.DebugString());
+    EXPECT_EQ(ni0.ByteSize(), ni1.ByteSize());
+  }
+
+  // 2. check const_node_info
+  ASSERT_EQ(gfi0.const_node_info_size(), gfi1.const_node_info_size());
+  for (int i = 0; i < gfi0.const_node_info_size(); ++i) {
+    const GraphTransferInfo::ConstNodeInfo& cni0 = gfi0.const_node_info(i);
+    const GraphTransferInfo::ConstNodeInfo& cni1 = gfi1.const_node_info(i);
+    ASSERT_EQ(cni0.shape_size(), cni1.shape_size());
+    for (int j = 0; j < cni0.shape_size(); ++j) {
+      EXPECT_EQ(cni0.shape(j), cni1.shape(j));
+    }
+    EXPECT_EQ(cni0.ByteSize(), cni1.ByteSize());
+    EXPECT_EQ(cni0.DebugString(), cni1.DebugString());
+  }
+
+  // 3. check node_input_info
+  ASSERT_EQ(gfi0.node_input_info_size(), gfi1.node_input_info_size());
+  for (int i = 0; i < gfi0.node_input_info_size(); ++i) {
+    const GraphTransferInfo::NodeInputInfo& nii0 = gfi0.node_input_info(i);
+    const GraphTransferInfo::NodeInputInfo& nii1 = gfi1.node_input_info(i);
+    EXPECT_EQ(nii0.ByteSize(), nii1.ByteSize());
+    EXPECT_EQ(nii0.DebugString(), nii1.DebugString());
+  }
+
+  // 4. check node_output_info
+  ASSERT_EQ(gfi0.node_output_info_size(), gfi1.node_output_info_size());
+  for (int i = 0; i < gfi0.node_output_info_size(); ++i) {
+    const GraphTransferInfo::NodeOutputInfo& noi0 = gfi0.node_output_info(i);
+    const GraphTransferInfo::NodeOutputInfo& noi1 = gfi1.node_output_info(i);
+    ASSERT_EQ(noi0.max_byte_size_size(), noi1.max_byte_size_size());
+    for (int j = 0; j < noi0.max_byte_size_size(); ++j) {
+      EXPECT_EQ(noi0.max_byte_size(j), noi1.max_byte_size(j));
+    }
+    EXPECT_EQ(noi0.ByteSize(), noi1.ByteSize());
+    EXPECT_EQ(noi0.DebugString(), noi1.DebugString());
+  }
+
+  // 5. check graph_input_node_info
+  ASSERT_EQ(gfi0.graph_input_node_info_size(),
+            gfi1.graph_input_node_info_size());
+  for (int i = 0; i < gfi0.graph_input_node_info_size(); ++i) {
+    const GraphTransferInfo::GraphInputNodeInfo& gini0 =
+        gfi0.graph_input_node_info(i);
+    const GraphTransferInfo::GraphInputNodeInfo& gini1 =
+        gfi0.graph_input_node_info(i);
+    EXPECT_EQ(gini0.ByteSize(), gini1.ByteSize());
+    EXPECT_EQ(gini0.DebugString(), gini1.DebugString());
+  }
+
+  // 6. check graph_output_node_info
+  ASSERT_EQ(gfi0.graph_output_node_info_size(),
+            gfi1.graph_output_node_info_size());
+  for (int i = 0; i < gfi0.graph_output_node_info_size(); ++i) {
+    const GraphTransferInfo::GraphOutputNodeInfo& goni0 =
+        gfi0.graph_output_node_info(i);
+    const GraphTransferInfo::GraphOutputNodeInfo& goni1 =
+        gfi0.graph_output_node_info(i);
+    EXPECT_EQ(goni0.ByteSize(), goni1.ByteSize());
+    EXPECT_EQ(goni0.DebugString(), goni1.DebugString());
+  }
+
+  // 7. check destination
+  EXPECT_EQ(gfi0.destination(), gfi1.destination());
 }
 
 // CAVEAT: This test only runs when you specify hexagon library using
@@ -352,11 +463,9 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExampleWithTfRuntime) {
   ASSERT_TRUE(status.ok());
 
   LOG(INFO) << "Build fused graph";
-  GraphTransferer gt;
-  gt.EnableStrictCheckMode(false);
   GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
       HexagonOpsDefinitions::getInstance(),
-      REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME, inputs, outputs, &graph_def, &gt);
+      REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME, inputs, outputs, &graph_def);
 
   RunFusedGraph(fused_graph_def);
 }
@@ -418,34 +527,22 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   prof1.Stop();
   prof1.DumpStatistics("Estiame shape by shape inference");
 
-  LOG(INFO) << "(1) node count: " << gfi1.node_info_size() << ", "
-            << gfi1.const_node_info_size();
+  CompareGraphTransferInfo(gfi0, gfi1);
 
-  ASSERT_EQ(gfi0.node_info_size(), gfi1.node_info_size());
+  const RemoteFusedGraphExecuteInfo ei0 =
+      BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(gfi0);
+  const RemoteFusedGraphExecuteInfo ei1 =
+      BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(gfi1);
 
-  ASSERT_EQ(gt0.GetGraphTransferInfo().const_node_info_size(),
-            gt1.GetGraphTransferInfo().const_node_info_size());
+  GraphTransferInfo rgfi0;
+  rgfi0.ParseFromString(ei0.serialized_executor_parameters());
+  GraphTransferInfo rgfi1;
+  rgfi1.ParseFromString(ei1.serialized_executor_parameters());
 
-  for (int i = 0; i < gfi0.const_node_info_size(); ++i) {
-    const GraphTransferInfo::ConstNodeInfo& ni0 = gfi0.const_node_info(i);
-    const GraphTransferInfo::ConstNodeInfo& ni1 = gfi1.const_node_info(i);
-    ASSERT_EQ(ni0.shape_size(), ni1.shape_size());
-    for (int j = 0; j < ni0.shape_size(); ++j) {
-      EXPECT_EQ(ni0.shape(j), ni1.shape(j));
-    }
-  }
-
-  ASSERT_EQ(gfi0.node_output_info_size(), gfi1.node_output_info_size());
-  for (int i = 0; i < gfi0.node_output_info_size(); ++i) {
-    const GraphTransferInfo::NodeOutputInfo& no0 = gfi0.node_output_info(i);
-    const GraphTransferInfo::NodeOutputInfo& no1 = gfi1.node_output_info(i);
-    ASSERT_EQ(no0.max_byte_size_size(), no1.max_byte_size_size());
-    for (int j = 0; j < no0.max_byte_size_size(); ++j) {
-      EXPECT_EQ(no0.max_byte_size(j), no1.max_byte_size(j));
-    }
-  }
+  CompareGraphTransferInfo(rgfi0, rgfi1);
+  CompareGraphTransferInfo(gfi0, rgfi0);
+  CompareGraphTransferInfo(gfi1, rgfi1);
 }
-
 #endif
 
 }  // namespace tensorflow

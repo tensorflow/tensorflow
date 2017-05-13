@@ -66,16 +66,27 @@ GetSessionHandle
 GetSessionHandleV2
 GetSessionTensor
 HashTable
+HashTableV2
 InitializeTable
+InitializeTableV2
 InitializeTableFromTextFile
+InitializeTableFromTextFileV2
 LookupTableExport
+LookupTableExportV2
 LookupTableFind
+LookupTableFindV2
 LookupTableImport
+LookupTableImportV2
 LookupTableInsert
+LookupTableInsertV2
 LookupTableSize
+LookupTableSizeV2
 MutableDenseHashTable
+MutableDenseHashTableV2
 MutableHashTable
+MutableHashTableV2
 MutableHashTableOfTensors
+MutableHashTableOfTensorsV2
 Mutex
 MutexAcquire
 MutexRelease
@@ -223,6 +234,7 @@ BatchFFT3D
 BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
+Bucketize
 Complex
 ComplexAbs
 Conj
@@ -304,9 +316,6 @@ PyFunc
 PyFuncStateless
 
 # sdca_ops
-SdcaFprint
-SdcaOptimizer
-SdcaShrinkL1
 
 # state_ops
 Variable
@@ -324,6 +333,7 @@ SerializeSparse
 SparseAdd
 SparseAddGrad
 SparseConcat
+SparseCross
 SparseSplit
 SparseSelectLastK
 SparseReorder

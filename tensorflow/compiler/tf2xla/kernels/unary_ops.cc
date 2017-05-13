@@ -28,10 +28,10 @@ namespace {
 // A subclass of a TlaUnaryOp must build the lambda computation that
 // describes the scalar->scalar function to apply to each element of
 // the input.
-#define XLAJIT_MAKE_UNARY(Name, COMPUTATION)                           \
-  class Name##Op : public XlaOpKernel {                                \
+#define XLAJIT_MAKE_UNARY(NAME, COMPUTATION)                           \
+  class NAME##Op : public XlaOpKernel {                                \
    public:                                                             \
-    explicit Name##Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {} \
+    explicit NAME##Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {} \
     void Compile(XlaOpKernelContext* ctx) {                            \
       xla::ComputationBuilder* b = ctx->builder();                     \
       xla::ComputationDataHandle x = ctx->Input(0);                    \
@@ -39,7 +39,7 @@ namespace {
       ctx->SetOutput(0, y);                                            \
     }                                                                  \
   };                                                                   \
-  REGISTER_XLA_OP(#Name, Name##Op);
+  REGISTER_XLA_OP(Name(#NAME), NAME##Op);
 
 // Return x if x>0, otherwise -x.
 XLAJIT_MAKE_UNARY(Abs, b->Abs(x));

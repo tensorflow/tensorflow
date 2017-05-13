@@ -37,17 +37,31 @@ namespace tensorflow {
 
 class RemoteFusedGraphExecuteTest : public OpsTestBase {};
 
-TEST_F(RemoteFusedGraphExecuteTest, ExecuteAddGraph) {
+TEST_F(RemoteFusedGraphExecuteTest, BuildModelWithOneDataType) {
+  DataTypeVector input_types({DT_FLOAT, DT_FLOAT});
+  DataTypeVector output_types({DT_FLOAT});
   TF_ASSERT_OK(
       NodeDefBuilder("remote_fused_graph_execute_op", "RemoteFusedGraphExecute")
           .Input(FakeInput(2, DT_FLOAT))
-          .Attr("M", 2)
-          .Attr("N", 1)
-          .Attr("T", DataTypeToEnum<float>::v())
-          .Attr("U", DataTypeToEnum<float>::v())
-          .Attr("serialized_graph_transfer_info", "")
+          .Attr("Tinputs", input_types)
+          .Attr("Toutputs", output_types)
+          .Attr("serialized_remote_fused_graph_execute_info", "")
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
+  // TODO(satok): Add benchmark
+}
+
+TEST_F(RemoteFusedGraphExecuteTest, BuildModelWithWrongDataType) {
+  DataTypeVector input_types({DT_INT32, DT_INT32});
+  DataTypeVector output_types({DT_FLOAT});
+  ASSERT_FALSE(
+      NodeDefBuilder("remote_fused_graph_execute_op", "RemoteFusedGraphExecute")
+          .Input(FakeInput(2, DT_FLOAT))
+          .Attr("Tinputs", input_types)
+          .Attr("Toutputs", output_types)
+          .Attr("serialized_remote_fused_graph_execute_info", "")
+          .Finalize(node_def())
+          .ok());
   // TODO(satok): Add benchmark
 }
 
@@ -94,13 +108,15 @@ static Output BuildRemoteFusedGraphExecuteOp(
   CHECK(scope.ok());
   auto node_out_list = ops::AsNodeOutList(scope, InputList(output_list));
   const auto unique_name = scope.GetUniqueNameForOp("RemoteFusedGraphExecute");
+
+  DataTypeVector input_types{DT_FLOAT};
+  DataTypeVector output_types{DT_FLOAT};
+
   auto builder = NodeBuilder(unique_name, "RemoteFusedGraphExecute")
                      .Input(node_out_list)
-                     .Attr("M", static_cast<int64>(output_list.size()))
-                     .Attr("N", static_cast<int64>(output_node_count))
-                     .Attr("T", DT_FLOAT)
-                     .Attr("U", DT_FLOAT)
-                     .Attr("serialized_graph_transfer_info",
+                     .Attr("Tinputs", input_types)
+                     .Attr("Toutputs", output_types)
+                     .Attr("serialized_remote_fused_graph_execute_info",
                            StringPiece(execute_info.SerializeAsString()));
   CHECK(scope.ok());
   scope.UpdateBuilder(&builder);
@@ -117,7 +133,7 @@ static RemoteFusedGraphExecuteInfo BuildRemoteFusedGraphExecuteInfo(
   // In this example, simply copy all nodes. Basically, you don't need to add
   // unused node for inference.
   for (const NodeDef& node : original_graph.node()) {
-    NodeDef& copied_node = *execute_info.add_node();
+    NodeDef& copied_node = *execute_info.mutable_remote_graph()->add_node();
     copied_node = node;
     // Adding tensor shape type to the node
     // TODO(satok): Use TensorShapeMap to detime tensor shape type
@@ -149,7 +165,7 @@ class TestRemoteFusedGraphExecutor final : public IRemoteFusedGraphExecutor {
   int GetVersion() final { return 1; }
   bool Init(const RemoteFusedGraphExecuteInfo& info) final {
     info_ = &info;
-    for (const NodeDef& node_def : info.node()) {
+    for (const NodeDef& node_def : info.remote_graph().node()) {
       node_def_map_.emplace(node_def.name(), &node_def);
     }
     return true;

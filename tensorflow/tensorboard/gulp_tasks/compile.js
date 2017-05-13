@@ -13,25 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-var gulp = require('gulp');
-var ts = require('gulp-typescript');
-var typescript = require('typescript');
-var gutil = require('gulp-util');
-var filter = require('gulp-filter');
-var merge = require('merge2');
-var browserify = require('browserify');
-var tsify = require('tsify');
-var source = require('vinyl-source-stream');
-var glob = require('glob').sync;
-var concat = require('gulp-concat');
+const gulp = require('gulp');
+const ts = require('gulp-typescript');
+const typescript = require('typescript');
+const gutil = require('gulp-util');
+const filter = require('gulp-filter');
+const merge = require('merge2');
+const browserify = require('browserify');
+const tsify = require('tsify');
+const source = require('vinyl-source-stream');
+const glob = require('glob').sync;
+const concat = require('gulp-concat');
 
-var tsProject = ts.createProject('./tsconfig.json', {
+const tsProject = ts.createProject('./tsconfig.json', {
   typescript: typescript,
-  noExternalResolve: true, // opt-in for faster compilation!
+  noExternalResolve: true,  // opt-in for faster compilation!
 });
 
 /** List of components (and their external deps) that are using es6 modules. */
-var ES6_COMPONENTS = [{
+const ES6_COMPONENTS = [{
   name: 'vz_projector',
   deps: [
     'd3/d3.min.js', 'weblas/dist/weblas.js', 'three.js/build/three.min.js',
@@ -44,8 +44,8 @@ module.exports = function(includeDeps) {
   return function() {
     // Compile all components that are using ES6 modules into a bundle.js
     // using browserify.
-    var entries = ['typings/index.d.ts'];
-    var deps = {};
+    const entries = ['typings/index.d.ts'];
+    const deps = {};
     ES6_COMPONENTS.forEach(function(component) {
       // Collect all the typescript files across the components.
       entries = entries.concat(glob(
@@ -79,7 +79,7 @@ module.exports = function(includeDeps) {
 
     // Compile components that are using global namespaces producing 1 js file
     // for each ts file.
-    var isComponent = filter([
+    const isComponent = filter([
       'components/tf_*/**/*.ts', 'components/vz_*/**/*.ts', 'typings/**/*.ts',
       'components/plottable/plottable.d.ts'
       // Ignore components that use es6 modules.

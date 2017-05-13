@@ -196,7 +196,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
           ir_emitter_context_->buffer_assignment().GetTempAllocation()) {
     kernel->addDereferenceableAttr(temp_buffer_arg_no + 1, allocation->size());
   }
-  kernel->setDoesNotAlias(temp_buffer_arg_no + 1);
+  kernel->addAttribute(temp_buffer_arg_no + 1, llvm::Attribute::NoAlias);
 
   // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
   // treats it as a CUDA kernel.
@@ -1540,10 +1540,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
       .EmitLoop();
 }
 
-Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while,
-                                      HloInstruction* init,
-                                      HloComputation* condition,
-                                      HloComputation* body) {
+Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
+  HloComputation* condition = xla_while->while_condition();
   TF_RET_CHECK(ShapeUtil::IsScalar(condition->root_instruction()->shape()) &&
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";

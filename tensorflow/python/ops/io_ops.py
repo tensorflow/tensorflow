@@ -391,7 +391,11 @@ class FixedLengthRecordReader(ReaderBase):
   """
   # TODO(josh11b): Support serializing and restoring state.
 
-  def __init__(self, record_bytes, header_bytes=None, footer_bytes=None,
+  def __init__(self,
+               record_bytes,
+               header_bytes=None,
+               footer_bytes=None,
+               hop_bytes=None,
                name=None):
     """Create a FixedLengthRecordReader.
 
@@ -399,11 +403,15 @@ class FixedLengthRecordReader(ReaderBase):
       record_bytes: An int.
       header_bytes: An optional int. Defaults to 0.
       footer_bytes: An optional int. Defaults to 0.
+      hop_bytes: An optional int. Defaults to 0.
       name: A name for the operation (optional).
     """
     rr = gen_io_ops._fixed_length_record_reader_v2(
-        record_bytes=record_bytes, header_bytes=header_bytes,
-        footer_bytes=footer_bytes, name=name)
+        record_bytes=record_bytes,
+        header_bytes=header_bytes,
+        footer_bytes=footer_bytes,
+        hop_bytes=hop_bytes,
+        name=name)
     super(FixedLengthRecordReader, self).__init__(rr)
 
 

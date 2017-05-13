@@ -57,7 +57,7 @@ module VZ {
       this.colorScale = colorScale;
       this.tooltip = tooltip;
       this.datasets = [];
-      this._ignoreYOutliers = true;
+      this._ignoreYOutliers = false;
       // lastPointDataset is a dataset that contains just the last point of
       // every dataset we're currently drawing.
       this.lastPointsDataset = new Plottable.Dataset();
@@ -453,8 +453,8 @@ module VZ {
     }
 
     private resmoothDataset(dataset: Plottable.Dataset) {
-      var data = dataset.data();
-      var smoothingWeight = this.smoothingWeight;
+      let data = dataset.data();
+      const smoothingWeight = this.smoothingWeight;
       let last = data.length > 0 ? data[0].scalar : NaN;
       data.forEach((d) => {
         if (!_.isFinite(last)) {
@@ -462,8 +462,8 @@ module VZ {
         } else {
           // 1st-order IIR low-pass filter to attenuate the higher-
           // frequency components of the time-series.
-          d.smoothed = last * smoothingWeight +
-                       (1 - smoothingWeight) * d.scalar;
+          d.smoothed =
+              last * smoothingWeight + (1 - smoothingWeight) * d.scalar;
         }
         last = d.smoothed;
       });

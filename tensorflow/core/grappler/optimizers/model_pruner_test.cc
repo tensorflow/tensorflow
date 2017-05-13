@@ -70,16 +70,22 @@ TEST_F(ModelPrunerTest, StopGradientPruning) {
   Status status = pruner.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(3, output.node_size());
+  EXPECT_EQ(5, output.node_size());
   const NodeDef& new_a = output.node(0);
   EXPECT_EQ(NodeName(a.name()), new_a.name());
   const NodeDef& new_b = output.node(1);
   EXPECT_EQ(NodeName(b.name()), new_b.name());
-  const NodeDef& new_e = output.node(2);
+  const NodeDef& new_c = output.node(2);
+  EXPECT_EQ(NodeName(c.name()), new_c.name());
+  const NodeDef& new_d = output.node(3);
+  EXPECT_EQ(NodeName(d.name()), new_d.name());
+  const NodeDef& new_e = output.node(4);
   EXPECT_EQ(NodeName(e.name()), new_e.name());
 
   EXPECT_EQ(1, new_e.input_size());
   EXPECT_EQ(NodeName(b.name()), new_e.input(0));
+  EXPECT_EQ(1, new_d.input_size());
+  EXPECT_EQ(NodeName(b.name()), new_d.input(0));
 }
 
 TEST_F(ModelPrunerTest, IdentityPruning) {
@@ -104,18 +110,22 @@ TEST_F(ModelPrunerTest, IdentityPruning) {
   Status status = pruner.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(4, output.node_size());
+  EXPECT_EQ(5, output.node_size());
   const NodeDef& new_a = output.node(0);
   EXPECT_EQ(NodeName(a.name()), new_a.name());
   const NodeDef& new_b = output.node(1);
   EXPECT_EQ(NodeName(b.name()), new_b.name());
   const NodeDef& new_c = output.node(2);
   EXPECT_EQ(NodeName(c.name()), new_c.name());
-  const NodeDef& new_e = output.node(3);
+  const NodeDef& new_d = output.node(3);
+  EXPECT_EQ(NodeName(d.name()), new_d.name());
+  const NodeDef& new_e = output.node(4);
   EXPECT_EQ(NodeName(e.name()), new_e.name());
 
   EXPECT_EQ(1, new_e.input_size());
   EXPECT_EQ(NodeName(c.name()), new_e.input(0));
+  EXPECT_EQ(1, new_d.input_size());
+  EXPECT_EQ(NodeName(c.name()), new_d.input(0));
 }
 
 TEST_F(ModelPrunerTest, PruningSkipsCtrlDependencies) {
@@ -142,14 +152,16 @@ TEST_F(ModelPrunerTest, PruningSkipsCtrlDependencies) {
   Status status = pruner.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(4, output.node_size());
+  EXPECT_EQ(5, output.node_size());
   const NodeDef& new_a = output.node(0);
   EXPECT_EQ(NodeName(a.name()), new_a.name());
   const NodeDef& new_b = output.node(1);
   EXPECT_EQ(NodeName(b.name()), new_b.name());
   const NodeDef& new_c = output.node(2);
   EXPECT_EQ(NodeName(c.name()), new_c.name());
-  const NodeDef& new_e = output.node(3);
+  const NodeDef& new_d = output.node(3);
+  EXPECT_EQ(NodeName(d.name()), new_d.name());
+  const NodeDef& new_e = output.node(4);
   EXPECT_EQ(NodeName(e.name()), new_e.name());
 
   EXPECT_EQ(2, new_e.input_size());
@@ -157,7 +169,7 @@ TEST_F(ModelPrunerTest, PruningSkipsCtrlDependencies) {
   EXPECT_EQ("^c", new_e.input(1));
 }
 
-TEST_F(ModelPrunerTest, PruningForwardsCtrlDependencies) {
+TEST_F(ModelPrunerTest, PruningPerservesCtrlDependencies) {
   // Build a simple graph with a few trivially prunable ops.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
@@ -183,20 +195,28 @@ TEST_F(ModelPrunerTest, PruningForwardsCtrlDependencies) {
   Status status = pruner.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(4, output.node_size());
+  EXPECT_EQ(6, output.node_size());
   const NodeDef& new_a = output.node(0);
   EXPECT_EQ(NodeName(a.name()), new_a.name());
   const NodeDef& new_b = output.node(1);
   EXPECT_EQ(NodeName(b.name()), new_b.name());
   const NodeDef& new_c = output.node(2);
   EXPECT_EQ(NodeName(c.name()), new_c.name());
-  const NodeDef& new_f = output.node(3);
+  const NodeDef& new_d = output.node(3);
+  EXPECT_EQ(NodeName(d.name()), new_d.name());
+  const NodeDef& new_e = output.node(4);
+  EXPECT_EQ(NodeName(e.name()), new_e.name());
+  const NodeDef& new_f = output.node(5);
   EXPECT_EQ(NodeName(f.name()), new_f.name());
 
-  EXPECT_EQ(3, new_f.input_size());
-  EXPECT_EQ(NodeName(c.name()), new_f.input(0));
-  EXPECT_EQ("^b", new_f.input(1));
-  EXPECT_EQ("^c", new_f.input(2));
+  EXPECT_EQ(1, new_f.input_size());
+  EXPECT_EQ(NodeName(e.name()), new_f.input(0));
+  EXPECT_EQ(2, new_e.input_size());
+  EXPECT_EQ(NodeName(d.name()), new_e.input(0));
+  EXPECT_EQ("^c", new_e.input(1));
+  EXPECT_EQ(2, new_d.input_size());
+  EXPECT_EQ(NodeName(c.name()), new_d.input(0));
+  EXPECT_EQ("^b", new_d.input(1));
 }
 
 TEST_F(ModelPrunerTest, PruningPerservesFetch) {

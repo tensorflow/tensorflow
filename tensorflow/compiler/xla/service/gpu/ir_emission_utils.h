@@ -25,16 +25,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-const int64 kWarpSize = 32;
-
-// Precondition: "hlo" is an operand of a Dot instruction.
-//
-// Returns whether "hlo" is foldable to its user.
-bool IsOperandFoldableToDot(const HloInstruction& hlo);
-
-// Returns true if GpuCompiler can fold any operands of "dot" into "dot" for
-// better performance.
-bool CanFoldOperandsIntoDot(const HloInstruction& dot);
+constexpr int64 kWarpSize = 32;
 
 // Returns true if `hlo` will be implemented as a call to BLAS gemm.
 bool ImplementedAsGemm(const HloInstruction& hlo);

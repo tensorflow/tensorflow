@@ -31,13 +31,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -383,15 +382,15 @@ XLA_TEST_F(ReshapeTest, ToScalar) {
 XLA_TEST_F(ReshapeTest, BadDimensions) {
   ComputationBuilder b(client_, TestName());
   b.Reshape(b.ConstantR1<int32>({1}), {}, {});
-  EXPECT_MATCH(ExecuteToString(&b, {}),
-               testing::HasSubstr("dimensions not a permutation"));
+  EXPECT_THAT(ExecuteToString(&b, {}),
+              ::testing::HasSubstr("dimensions not a permutation"));
 }
 
 XLA_TEST_F(ReshapeTest, BadNewSizes) {
   ComputationBuilder b(client_, TestName());
   b.Reshape(b.ConstantR1<int32>({1, 2}), {1}, {});
-  EXPECT_MATCH(ExecuteToString(&b, {}),
-               testing::HasSubstr("mismatched element counts"));
+  EXPECT_THAT(ExecuteToString(&b, {}),
+              ::testing::HasSubstr("mismatched element counts"));
 }
 
 XLA_TEST_F(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {

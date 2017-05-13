@@ -5,7 +5,8 @@ def TF_SRC_DIR = projectDir.toString() + "/../../../.."
 
 android {
     compileSdkVersion 24
-    buildToolsVersion '25.0.1'
+    // Check local build_tools_version as this is liable to change within Android Studio.
+    buildToolsVersion '25.0.2'
 
     // for debugging native code purpose
     publishNonDefault true
