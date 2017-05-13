@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/training_ops.h"
 #include <algorithm>
-#include <iostream>
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
