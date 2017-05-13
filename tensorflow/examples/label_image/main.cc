@@ -103,7 +103,10 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
     image_reader = DecodePng(root.WithOpName("png_reader"), file_reader,
                              DecodePng::Channels(wanted_channels));
   } else if (tensorflow::StringPiece(file_name).ends_with(".gif")) {
-    image_reader = DecodeGif(root.WithOpName("gif_reader"), file_reader);
+    // gif decoder returns 4-D tensor, remove the first dim
+    image_reader = Squeeze(root.WithOpName("squeeze_first_dim"),
+                           DecodeGif(root.WithOpName("gif_reader"),
+                                     file_reader));
   } else {
     // Assume if it's neither a PNG nor a GIF then it must be a JPEG.
     image_reader = DecodeJpeg(root.WithOpName("jpeg_reader"), file_reader,
