@@ -179,7 +179,7 @@ class AdamOptimizer(optimizer.Optimizer):
                            use_locking=self._use_locking)
     with ops.control_dependencies([m_t]):
       m_t = scatter_add(m, indices, m_scaled_g_values)
-      if (self._use_nesterov):
+      if self._use_nesterov:
         # m_bar = (1 - beta1) * g_t + beta1 * m_t
         m_bar = m_scaled_g_values + beta1_t * m_t
       else:
@@ -192,7 +192,7 @@ class AdamOptimizer(optimizer.Optimizer):
       v_t = scatter_add(v, indices, v_scaled_g_values)
     v_sqrt = math_ops.sqrt(v_t)
     var_update = state_ops.assign_sub(var,
-                                      lr * m_t / (v_sqrt + epsilon_t),
+                                      lr * m_bar / (v_sqrt + epsilon_t),
                                       use_locking=self._use_locking)
     return control_flow_ops.group(*[var_update, m_t, v_t])
 
