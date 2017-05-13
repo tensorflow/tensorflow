@@ -201,9 +201,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
   native.new_http_archive(
     name = "avro_archive",
-    url = "http://www-us.apache.org/dist/avro/avro-1.8.0/cpp/avro-cpp-1.8.0.tar.gz",
-    sha256 = "ec6e2ec957e95ca07f70cc25f02f5c416f47cb27bd987a6ec770dcbe72527368",
-    strip_prefix = "avro-cpp-1.8.0",
+    url = "http://www-us.apache.org/dist/avro/avro-1.8.1/cpp/avro-cpp-1.8.1.tar.gz",
+    sha256 = "6559755ac525e908e42a2aa43444576cba91e522fe989088ee7f70c169bcc403",
+    strip_prefix = "avro-cpp-1.8.1",
     build_file = str(Label("//:avro.BUILD")),
   )
 
