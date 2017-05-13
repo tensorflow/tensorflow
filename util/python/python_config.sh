@@ -46,7 +46,7 @@ function main {
 }
 
 function python_path {
-  python - <<END
+  $1 - <<END
 from __future__ import print_function
 import site
 import os
@@ -114,7 +114,7 @@ function setup_python {
     exit 1
   fi
 
-  local python_lib_path=$(python_path)
+  local python_lib_path=$(python_path "${PYTHON_BIN_PATH}")
   echo "Found possible Python library paths:"
   for x in $python_lib_path; do
     echo "  $x"

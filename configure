@@ -7,7 +7,8 @@ popd > /dev/null
 
 function bazel_clean_and_fetch() {
   bazel clean --expunge
-  bazel fetch //tensorflow/...
+  # TODO(https://github.com/bazelbuild/bazel/issues/2220) Remove the nested `bazel query`.
+  bazel fetch $(bazel query "//tensorflow/... -//tensorflow/examples/android/...")
 }
 
 ## Set up python-related environment settings
