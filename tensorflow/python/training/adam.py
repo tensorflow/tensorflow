@@ -179,6 +179,11 @@ class AdamOptimizer(optimizer.Optimizer):
                            use_locking=self._use_locking)
     with ops.control_dependencies([m_t]):
       m_t = scatter_add(m, indices, m_scaled_g_values)
+      if (self._use_nesterov):
+        # m_bar = (1 - beta1) * g_t + beta1 * m_t
+        m_bar = m_scaled_g_values + beta1_t * m_t
+      else:
+        m_bar = m_t
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
     v_scaled_g_values = (grad * grad) * (1 - beta2_t)
