@@ -562,7 +562,8 @@ def _get_scores(log_probs, sequence_lengths, length_penalty_weight):
   """Calculates scores for beam search hypotheses.
 
   Args:
-    log_probs: The log probabilities with shape [batch_size, beam_width].
+    log_probs: The log probabilities with shape
+      `[batch_size, beam_width, vocab_size]`.
     sequence_lengths: The array of sequence lengths.
     length_penalty_weight: Float weight to penalize length. Disabled with 0.0.
 
