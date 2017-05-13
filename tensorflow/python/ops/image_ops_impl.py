@@ -1328,11 +1328,11 @@ def decode_image(contents, channels=None, name=None):
   with ops.name_scope(name, 'decode_image') as scope:
     if channels not in (None, 0, 1, 3):
       raise ValueError('channels must be in (None, 0, 1, 3)')
-    substr = string_ops.substr(contents, 0, 4)
+    substr = string_ops.substr(contents, 0, 3)
 
     def _gif():
       # Create assert op to check that bytes are GIF decodable
-      is_gif = math_ops.equal(substr, b'\x47\x49\x46\x38', name='is_gif')
+      is_gif = math_ops.equal(substr, b'\x47\x49\x46', name='is_gif')
       decode_msg = 'Unable to decode bytes as JPEG, PNG, or GIF'
       assert_decode = control_flow_ops.Assert(is_gif, [decode_msg])
       # Create assert to make sure that channels is not set to 1
@@ -1348,13 +1348,15 @@ def decode_image(contents, channels=None, name=None):
       return gen_image_ops.decode_png(contents, channels)
 
     def check_png():
-      is_png = math_ops.equal(substr, b'\211PNG', name='is_png')
+      is_png = math_ops.equal(substr, b'\211PN', name='is_png')
       return control_flow_ops.cond(is_png, _png, _gif, name='cond_png')
 
     def _jpeg():
       return gen_image_ops.decode_jpeg(contents, channels)
 
-    is_jpeg = math_ops.equal(substr, b'\xff\xd8\xff\xe0', name='is_jpeg')
+    # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
+    # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
+    is_jpeg = math_ops.equal(substr, b'\xff\xd8\xff', name='is_jpeg')
     return control_flow_ops.cond(is_jpeg, _jpeg, check_png, name='cond_jpeg')
 
 

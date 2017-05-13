@@ -2736,6 +2736,7 @@ filegroup(
         # -- hand-edited variant: stops after a restart marker
         "lib/jpeg/testdata/corrupt34_4.jpg",
         # GIF data
+        "lib/gif/testdata/lena.gif",
         "lib/gif/testdata/scan.gif",
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",

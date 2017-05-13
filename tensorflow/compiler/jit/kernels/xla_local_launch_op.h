@@ -44,7 +44,8 @@ class XlaLocalLaunchOp : public OpKernel {
 
  private:
   // Builds a XlaCompilationCache class suitable for the current device.
-  Status BuildCompilationCache(XlaCompilationCache** compiler);
+  Status BuildCompilationCache(OpKernelContext* ctx,
+                               XlaCompilationCache** compiler);
 
   DeviceType device_type_;
   NameAttrList function_;

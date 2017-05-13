@@ -60,9 +60,12 @@ namespace xla {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Backend> backend,
-      Backend::CreateBackend(platform, options.number_of_replicas()));
+  BackendOptions backend_options;
+  backend_options.set_platform(platform)
+      .set_number_of_replicas(options.number_of_replicas())
+      .set_intra_op_parallelism_threads(options.intra_op_parallelism_threads());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
+                      Backend::CreateBackend(backend_options));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
                       CreateComputeConstantBackend());

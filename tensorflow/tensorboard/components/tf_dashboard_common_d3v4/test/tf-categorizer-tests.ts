@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {topLevelNamespaceCategorizer, Category, Categorizer, defineCategory, _categorizer} from '../tf-categorizer'
+import * as cat from '../tf-categorizer';
 
 let assert = chai.assert;
 
 describe('categorizer', () => {
   describe('topLevelNamespaceCategorizer', () => {
     it('returns empty array on empty tags', () => {
-      assert.lengthOf(topLevelNamespaceCategorizer([]), 0);
+      assert.lengthOf(cat.topLevelNamespaceCategorizer([]), 0);
     });
 
     it('handles a simple case', () => {
@@ -33,7 +33,7 @@ describe('categorizer', () => {
         {name: 'foo2', tags: ['foo2/bar', 'foo2/zod']},
         {name: 'gosh', tags: ['gosh/lod/mar', 'gosh/lod/ned']},
       ];
-      assert.deepEqual(topLevelNamespaceCategorizer(simple), expected);
+      assert.deepEqual(cat.topLevelNamespaceCategorizer(simple), expected);
     });
 
     it('orders the categories', () => {
@@ -46,12 +46,12 @@ describe('categorizer', () => {
         {name: 'f', tags: ['f']},
         {name: 'g', tags: ['g']},
       ];
-      assert.deepEqual(topLevelNamespaceCategorizer(test), expected);
+      assert.deepEqual(cat.topLevelNamespaceCategorizer(test), expected);
     });
 
     it('handles cases where category names overlap node names', () => {
       let test = ['a', 'a/a', 'a/b', 'a/c', 'b', 'b/a'];
-      let actual = topLevelNamespaceCategorizer(test);
+      const actual = cat.topLevelNamespaceCategorizer(test);
       let expected = [
         {name: 'a', tags: ['a', 'a/a', 'a/b', 'a/c']},
         {name: 'b', tags: ['b', 'b/a']},
@@ -61,25 +61,26 @@ describe('categorizer', () => {
 
     it('handles singleton case', () => {
       assert.deepEqual(
-          topLevelNamespaceCategorizer(['a']), [{name: 'a', tags: ['a']}]);
+          cat.topLevelNamespaceCategorizer(['a']), [{name: 'a', tags: ['a']}]);
     });
   });
 
   describe('customCategorizer', () => {
-    function noFallbackCategorizer(tags: string[]): Category[] {
+    function noFallbackCategorizer(tags: string[]): cat.Category[] {
       return [];
     }
 
     function testCategorizer(
-        defs: string[], fallback: Categorizer, tags: string[]): Category[] {
-      let catDefs = defs.map(defineCategory);
-      return _categorizer(catDefs, fallback)(tags);
+        defs: string[], fallback: cat.Categorizer,
+        tags: string[]): cat.Category[] {
+      const catDefs = defs.map(cat.defineCategory);
+      return cat._categorizer(catDefs, fallback)(tags);
     }
 
     it('categorizes by regular expression', () => {
       let defs = ['foo..', 'bar..'];
       let tags = ['fooab', 'fooxa', 'barts', 'barms'];
-      let actual = testCategorizer(defs, noFallbackCategorizer, tags);
+      const actual = testCategorizer(defs, noFallbackCategorizer, tags);
       let expected = [
         {name: 'foo..', tags: ['fooab', 'fooxa']},
         {name: 'bar..', tags: ['barms', 'barts']},
@@ -89,7 +90,7 @@ describe('categorizer', () => {
 
     it('matches non-exclusively', () => {
       let tags = ['abc', 'bar', 'zod'];
-      let actual =
+      const actual =
           testCategorizer(['...', 'bar'], noFallbackCategorizer, tags);
       let expected = [
         {name: '...', tags: ['abc', 'bar', 'zod']},
@@ -99,7 +100,7 @@ describe('categorizer', () => {
     });
 
     it('creates categories for unmatched rules', () => {
-      let actual =
+      const actual =
           testCategorizer(['a', 'b', 'c'], noFallbackCategorizer, []);
       let expected = [
         {name: 'a', tags: []},
@@ -112,7 +113,7 @@ describe('categorizer', () => {
     it('category regexs work with special characters', () => {
       let defs = ['^\\w+$', '^\\d+$', '^\\/..$'];
       let tags = ['foo', '3243', '/xa'];
-      let actual = testCategorizer(defs, noFallbackCategorizer, tags);
+      const actual = testCategorizer(defs, noFallbackCategorizer, tags);
       let expected = [
         {name: '^\\w+$', tags: ['3243', 'foo']},
         {name: '^\\d+$', tags: ['3243']},
@@ -125,13 +126,13 @@ describe('categorizer', () => {
       let tags = ['a', 'z', 'c', 'd', 'e', 'x', 'f', 'y', 'g'];
       let sorted = tags.slice().sort();
       let expected = [{name: '.*', tags: sorted}];
-      let actual = testCategorizer(['.*'], noFallbackCategorizer, tags);
+      const actual = testCategorizer(['.*'], noFallbackCategorizer, tags);
       assert.deepEqual(actual, expected);
     });
 
     it('if nonexclusive: all tags passed to fallback', () => {
       let passedToDefault = null;
-      function defaultCategorizer(tags: string[]): Category[] {
+      function defaultCategorizer(tags: string[]): cat.Category[] {
         passedToDefault = tags;
         return [];
       }
