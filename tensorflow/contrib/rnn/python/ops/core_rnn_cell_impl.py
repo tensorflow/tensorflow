@@ -1014,9 +1014,11 @@ def _linear(args, output_size, bias, bias_start=0.0):
         [num_args, input_size, output_size / num_args], dtype=dtype)
 
       res = math_ops.matmul(array_ops.stack(args, axis=0), weights)
-
-      # reshape to 2D tensor of size (batch x output_size)
-      res = array_ops.transpose(res, [1, 2, 0])
+      # below, we'll reshape our output such that:
+      # res.shape == (num_args, batch_size, output_size / num_args)
+      #           -> (batch_size, num_args, output_size / num_args)
+      #           -> (batch_size, output_size)
+      res = array_ops.transpose(res, [1, 0, 2])
       res = array_ops.reshape(res, [batch_size, output_size])
     if not bias:
       return res
