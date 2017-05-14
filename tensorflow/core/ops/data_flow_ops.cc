@@ -1935,6 +1935,7 @@ handle: The handle for a tensor stored in the session state.
 REGISTER_OP("Stage")
     .Input("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -1947,8 +1948,10 @@ optimized for performance.
 
 values: a list of tensors
 dtypes A list of data types that inserted values should adhere to.
-capacity: If > 0, inserts on the container will block when the
-  capacity is reached.
+capacity: Maximum number of elements in the Staging Area. If > 0, inserts
+  on the container will block when the capacity is reached.
+memory_limit: The maximum number of bytes allowed for Tensors in the Staging Area.
+  If > 0, inserts will block until sufficient space is available.
 container: If non-empty, this queue is placed in the given container. Otherwise,
   a default container is used.
 shared_name: It is necessary to match this name to the matching Unstage Op.
@@ -1957,6 +1960,7 @@ shared_name: It is necessary to match this name to the matching Unstage Op.
 REGISTER_OP("Unstage")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -1972,6 +1976,7 @@ REGISTER_OP("StagePeek")
     .Input("index: int32")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -1988,6 +1993,8 @@ performance.
 REGISTER_OP("StageSize")
     .Output("size: int32")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
+    .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(shape_inference::ScalarShape)
@@ -1998,6 +2005,8 @@ Op returns the number of elements in the underlying container.
 
 REGISTER_OP("StageClear")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
+    .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(shape_inference::UnknownShape)
@@ -2011,6 +2020,7 @@ REGISTER_OP("MapStage")
     .Input("key: int64")
     .Input("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -2022,8 +2032,8 @@ Stage (key, values) in the underlying container which behaves like a hashtable.
 key: int64
 values: a list of tensors
 dtypes A list of data types that inserted values should adhere to.
-capacity: If > 0, inserts on the container will block when the
-  capacity is reached.
+capacity: Maximum number of elements in the Staging Area. If > 0, inserts
+  on the container will block when the capacity is reached.
 container: If non-empty, this queue is placed in the given container. Otherwise,
   a default container is used.
 shared_name: It is necessary to match this name to the matching Unstage Op.
@@ -2033,6 +2043,7 @@ REGISTER_OP("MapPeek")
     .Input("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -2048,6 +2059,7 @@ REGISTER_OP("MapUnstage")
     .Input("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -2063,6 +2075,7 @@ REGISTER_OP("MapUnstageNoKey")
     .Output("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -2077,6 +2090,8 @@ does not contain elements, the op will block until it does.
 REGISTER_OP("MapSize")
     .Output("size: int32")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
+    .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape)
@@ -2087,6 +2102,8 @@ Op returns the number of elements in the underlying container.
 
 REGISTER_OP("MapClear")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
+    .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
@@ -2101,6 +2118,7 @@ REGISTER_OP("OrderedMapStage")
     .Input("key: int64")
     .Input("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -2113,8 +2131,8 @@ associative container.   Elements are ordered by key.
 key: int64
 values: a list of tensors
 dtypes A list of data types that inserted values should adhere to.
-capacity: If > 0, inserts on the container will block when the
-  capacity is reached.
+capacity: Maximum number of elements in the Staging Area. If > 0, inserts
+  on the container will block when the capacity is reached.
 container: If non-empty, this queue is placed in the given container. Otherwise,
   a default container is used.
 shared_name: It is necessary to match this name to the matching Unstage Op.
@@ -2124,6 +2142,7 @@ REGISTER_OP("OrderedMapPeek")
     .Input("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -2140,6 +2159,7 @@ REGISTER_OP("OrderedMapUnstage")
     .Input("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -2155,6 +2175,7 @@ REGISTER_OP("OrderedMapUnstageNoKey")
     .Output("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -2169,6 +2190,8 @@ does not contain elements, the op will block until it does.
 REGISTER_OP("OrderedMapSize")
     .Output("size: int32")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
+    .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape)
@@ -2179,6 +2202,9 @@ Op returns the number of elements in the underlying container.
 
 REGISTER_OP("OrderedMapClear")
     .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)

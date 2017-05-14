@@ -36,6 +36,8 @@ class Buffer : public ResourceBase {
  private:
   // private variables
   int capacity_;
+  int memory_limit_;
+  int current_bytes_;
   mutex mu_;
   condition_variable non_empty_cond_var_;
   condition_variable full_cond_var_;
@@ -49,42 +51,82 @@ class Buffer : public ResourceBase {
   // waiting inserters that space is now available
   void notify_inserters_if_bounded(mutex_lock & l)
   {
-    if(HasBoundedCapacity())
+    if(IsBounded())
     {
       l.unlock();
       full_cond_var_.notify_one();
     }
   }
 
-  bool HasBoundedCapacity() {
-    return capacity_ > 0;
+  // Are there a limit number of elements or a memory limit
+  // configued on this buffer?
+  bool IsBounded() {
+    return capacity_ > 0 || memory_limit_ > 0;
   }
 
-  bool IsFull() {
+  bool IsCapacityFull() {
     return buf_.size() >= capacity_;
+  }
+
+  bool WouldExceedMemoryLimit(int bytes) {
+    return bytes + current_bytes_ > memory_limit_;
+  }
+
+  int GetTupleBytes(const Tuple & tuple)
+  {
+    return std::accumulate(tuple.begin(), tuple.end(), int(0),
+      [](const int & lhs, const Tensor & rhs) {
+        return lhs + rhs.TotalBytes();
+    });
   }
 
  public:
   // public methods
-  explicit Buffer(int capacity) : capacity_(capacity) {}
+  explicit Buffer(int capacity, int memory_limit) :
+      capacity_(capacity),
+      memory_limit_(memory_limit),
+      current_bytes_(0) {}
 
   // the Buffer takes ownership of the Tuple
-  void Put(Tuple* tuple) {
+  Status Put(Tuple* tuple) {
     mutex_lock l(mu_);
 
+    int tuple_bytes = GetTupleBytes(*tuple);
+
+    // Sanity check so that we don't block for ever below
+    if(memory_limit_ > 0 && tuple_bytes > memory_limit_) {
+      return Status(errors::ResourceExhausted("Attempted to insert "
+        "tensors with combined size of '", tuple_bytes, "' bytes into "
+        "Staging Area with a memory limit of '", memory_limit_, "'."));
+    }
+
+
     // If buffer capacity is bounded wait until elements have been removed
-    if(HasBoundedCapacity()) {
-      full_cond_var_.wait(l, [this]() {
-        return !this->IsFull();
+    if(IsBounded()) {
+      full_cond_var_.wait(l, [tuple_bytes, this]() {
+        // If there's a memory limit, check if there's space for insertion
+        bool memory_limit_valid = memory_limit_ > 0 ?
+            !WouldExceedMemoryLimit(tuple_bytes) : true;
+        // If we're configured for capacity check if there's space for insertion
+        bool capacity_valid = capacity_ > 0 ? !IsCapacityFull() : true;
+
+        // Stop waiting upon success for both conditions
+        return capacity_valid && memory_limit_valid;
       });
     }
 
+    // Update bytes in the Staging Area
+    current_bytes_ += tuple_bytes;
+
+    // Store tuple
     buf_.push_back(std::move(*tuple));
 
     l.unlock();
     // maybe possible to optimize by reducing
     // how often this signal is sent
     non_empty_cond_var_.notify_one();
+
+    return Status::OK();
   }
 
   // Get tuple at front of the buffer
@@ -99,6 +141,9 @@ class Buffer : public ResourceBase {
     // Move data into the output tuple
     *tuple = std::move(buf_.front());
     buf_.pop_front();
+
+    // Update bytes in the Staging Area
+    current_bytes_ -= GetTupleBytes(*tuple);
 
     notify_inserters_if_bounded(l);
   }
@@ -129,6 +174,9 @@ class Buffer : public ResourceBase {
   void Clear() {
     mutex_lock l(mu_);
     buf_.clear();
+    current_bytes_ = 0;
+
+    notify_inserters_if_bounded(l);
   }
 
   string DebugString() {
@@ -146,8 +194,10 @@ Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {
   auto create_fn = [&ndef](Buffer** ret) -> Status
   {
     int capacity;
+    int memory_limit;
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
-    *ret = new Buffer(capacity);
+    TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));
+    *ret = new Buffer(capacity, memory_limit);
     return Status::OK();
   };
 
@@ -172,7 +222,7 @@ class StageOp : public OpKernel {
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       tuple.push_back(ctx->input(i));
     }
-    buf->Put(&tuple);
+    OP_REQUIRES_OK(ctx, buf->Put(&tuple));
   }
 };
 

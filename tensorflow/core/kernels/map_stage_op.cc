@@ -65,6 +65,8 @@ public:
 private:
   // Private variables
   int capacity_;
+  int memory_limit_;
+  int current_bytes_;
   mutex mu_;
   condition_variable not_empty_;
   condition_variable full_;
@@ -77,7 +79,6 @@ private:
   // waiting inserters that space is now available
   void notify_inserters_if_bounded(mutex_lock & l)
   {
-    if(has_bounded_capacity())
     {
       l.unlock();
       full_.notify_one();
@@ -92,28 +93,67 @@ private:
       not_empty_.notify_one();
   }
 
-  bool has_bounded_capacity()
-    { return capacity_ > 0; }
+  bool is_bounded()
+    { return capacity_ > 0 || memory_limit_ > 0; }
 
-  bool full()
+  bool would_exceed_memory_limit(int bytes)
+    { return bytes + current_bytes_ > memory_limit_; }
+
+  bool is_capacity_full()
     { return map_.size() >= capacity_; }
+
+  int get_tuple_bytes(const Tuple & tuple)
+  {
+    return std::accumulate(tuple.begin(), tuple.end(), int(0),
+      [](const int & lhs, const Tensor & rhs) {
+        return lhs + rhs.TotalBytes();
+    });
+  }
+
 
 public:
   // public methods
-  explicit StagingMap(int capacity) : capacity_(capacity) {}
+  explicit StagingMap(int capacity, int memory_limit) :
+      capacity_(capacity),
+      memory_limit_(memory_limit),
+      current_bytes_(0) {}
 
-  void put(key_type* key, Tuple* tuple)
+  Status put(key_type* key, Tuple* tuple)
   {
     mutex_lock l(mu_);
 
+    int tuple_bytes = get_tuple_bytes(*tuple);
+
+    // Sanity check so that we don't block for ever below
+    if(memory_limit_ > 0 && tuple_bytes > memory_limit_) {
+      return Status(errors::ResourceExhausted("Attempted to insert "
+        "tensors with combined size of '", tuple_bytes, "' bytes into "
+        "Staging Area with a memory limit of '", memory_limit_, "'."));
+    }
+
     // If map capacity is bounded wait until map is not full
-    if(has_bounded_capacity())
-      { full_.wait(l, [this]() { return !this->full(); }); }
+    if(is_bounded()) {
+      full_.wait(l, [tuple_bytes, this]() {
+        // If there's a memory limit, check if there's space for insertion
+        bool memory_limit_valid = memory_limit_ > 0 ?
+              !would_exceed_memory_limit(tuple_bytes) : true;
+        // If we're configured for capacity check if there's space for insertion
+        bool capacity_valid = capacity_ > 0 ? !is_capacity_full() : true;
+
+        // Stop waiting upon success for both conditions
+        return memory_limit_valid && capacity_valid;
+      });
+    }
+
+    // Update bytes in the Staging Area
+    current_bytes_ += tuple_bytes;
 
     // Insert key and tuples into the map
     map_.insert({*key, std::move(*tuple)});
 
     notify_removers(l);
+
+    return Status::OK();
   }
 
   Status get(key_type* key, Tuple* tuple)
@@ -131,6 +171,9 @@ public:
     // Copy tensors into the tuple
     for(const auto & tensor : it->second)
       { tuple->push_back(tensor); }
+
+    // Update bytes in the Staging Area
+    current_bytes_ -= get_tuple_bytes(*tuple);
 
     return Status::OK();
   }
@@ -153,6 +196,9 @@ public:
     // Remove
     map_.erase(it);
 
+    // Update bytes in the Staging Area
+    current_bytes_ -= get_tuple_bytes(*tuple);
+
     notify_inserters_if_bounded(l);
 
     return Status::OK();
@@ -170,6 +216,9 @@ public:
     *key = map_.begin()->first;
     map_.erase(map_.begin());
 
+    // Update bytes in the Staging Area
+    current_bytes_ -= get_tuple_bytes(*tuple);
+
     notify_inserters_if_bounded(l);
 
     return Status::OK();
@@ -179,6 +228,8 @@ public:
   {
     mutex_lock l(mu_);
     map_.clear();
+    current_bytes_ = 0;
+
     notify_inserters_if_bounded(l);
 
     return Status::OK();
@@ -209,8 +260,10 @@ Status GetStagingMap(OpKernelContext* ctx,
   auto create_fn = [&ndef](StagingMap<Ordered>** ret) -> Status
   {
     int capacity;
+    int memory_limit;
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
-    *ret = new StagingMap<Ordered>(capacity);
+    TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));
+    *ret = new StagingMap<Ordered>(capacity, memory_limit);
     return Status::OK();
   };
 
@@ -248,7 +301,7 @@ class MapStageOp : public OpKernel
     }
 
     // Store the tuple in the map
-    map->put(&key, &tuple);
+    OP_REQUIRES_OK(ctx, map->put(&key, &tuple));
   }
 };
 

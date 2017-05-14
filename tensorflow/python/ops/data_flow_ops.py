@@ -1350,7 +1350,7 @@ class BaseStagingArea(object):
   _lock = threading.Lock()
 
   def __init__(self, dtypes, shapes=None, names=None, shared_name=None,
-                  capacity=0):
+                  capacity=0, memory_limit=0):
     if shared_name is None:
       self._name = (ops.get_default_graph()
                        .unique_name(self.__class__.__name__))
@@ -1376,6 +1376,7 @@ class BaseStagingArea(object):
       self._names = None
 
     self._capacity = capacity
+    self._memory_limit = memory_limit
 
     # all get and put ops must colocate with this op
     with ops.name_scope("%s_root" % self._name):
@@ -1405,6 +1406,12 @@ class BaseStagingArea(object):
   def capacity(self):
     """The maximum number of elements of this staging area."""
     return self._capacity
+
+  @property
+  def capacity(self):
+    """The maximum number of bytes of this staging area."""
+    return self._memory_limit
+
 
   def _check_put_dtypes(self, vals):
     """Validate and convert `vals` to a list of `Tensor`s.
@@ -1549,10 +1556,22 @@ class StagingArea(BaseStagingArea):
   If the `shapes` argument is specified, each component of a staging area
   element must have the respective fixed shape. If it is
   unspecified, different elements may have different shapes,
+
+  It can be configured with a capacity in which case
+  put(values) will block until space becomes available.
+
+  Similarly, it can be configured with a memory limit which
+  will block put(values) until space is available.
+  This is mostly useful for limiting the number of tensors on
+  devices such as GPUs.
+
+  All get() and peek() commands block if the the requested data
+  is not present in the Staging Area.
+
   """
 
   def __init__(self, dtypes, shapes=None, names=None, shared_name=None,
-                  capacity=0):
+                  capacity=0, memory_limit=0):
     """Constructs a staging area object.
 
     The two optional lists, `shapes` and `names`, must be of the same length
@@ -1568,6 +1587,9 @@ class StagingArea(BaseStagingArea):
       dtypes:  A list of types.  The length of dtypes must equal the number
         of tensors in each element.
       capacity: (Optional.) Maximum number of elements.
+        An integer. If zero, the Staging Area is unbounded
+      memory_limit: (Optional.) Maximum number of bytes of all tensors
+        in the Staging Area.
         An integer. If zero, the Staging Area is unbounded
       shapes: (Optional.) Constraints on the shapes of tensors in an element.
         A list of shape tuples or None. This list is the same length
@@ -1586,7 +1608,7 @@ class StagingArea(BaseStagingArea):
 
     super(StagingArea, self).__init__(dtypes, shapes,
                                           names, shared_name,
-                                          capacity)
+                                          capacity, memory_limit)
 
   def put(self, values, name=None):
     """Create an op that places a value into the staging area.
@@ -1611,7 +1633,8 @@ class StagingArea(BaseStagingArea):
 
       with ops.colocate_with(self._coloc_op):
         op = gen_data_flow_ops.stage(values=vals, shared_name=self._name,
-                                     name=scope, capacity=self._capacity)
+                                     name=scope, capacity=self._capacity,
+                                     memory_limit=self._memory_limit)
 
       return op
 
@@ -1648,7 +1671,8 @@ class StagingArea(BaseStagingArea):
 
     fn = lambda: gen_data_flow_ops.unstage(dtypes=self._dtypes,
                     shared_name=self._name, name=name,
-                    capacity=self._capacity)
+                    capacity=self._capacity,
+                    memory_limit=self._memory_limit)
 
     return self.__internal_get(fn, name)
 
@@ -1675,7 +1699,8 @@ class StagingArea(BaseStagingArea):
 
     fn = lambda: gen_data_flow_ops.stage_peek(index,
                     dtypes=self._dtypes, shared_name=self._name,
-                    name=name, capacity=self._capacity)
+                    name=name, capacity=self._capacity,
+                    memory_limit=self._memory_limit)
 
     return self.__internal_get(fn, name)
 
@@ -1691,9 +1716,9 @@ class StagingArea(BaseStagingArea):
     if name is None:
         name = "%s_size" % self._name
 
-    return gen_data_flow_ops.stage_size(shared_name=self._name,
-                        name=name,
-                        capacity=self._capacity)
+    return gen_data_flow_ops.stage_size(name=name, shared_name=self._name,
+                        dtypes=self._dtypes, capacity=self._capacity,
+                        memory_limit=self._memory_limit)
 
   def clear(self, name=None):
     """Clears the staging area.
@@ -1707,9 +1732,9 @@ class StagingArea(BaseStagingArea):
     if name is None:
       name = "%s_clear" % self._name
 
-    return gen_data_flow_ops.stage_clear(shared_name=self._name,
-                        name=name,
-                        capacity=self._capacity)
+    return gen_data_flow_ops.stage_clear(name=name, shared_name=self._name,
+                        dtypes=self._dtypes, capacity=self._capacity,
+                        memory_limit=self._memory_limit)
 
 class MapStagingArea(BaseStagingArea):
     """
@@ -1751,18 +1776,25 @@ class MapStagingArea(BaseStagingArea):
     It can be configured with a capacity in which case
     put(key, values) will block until space becomes available.
 
+    Similarly, it can be configured with a memory limit which
+    will block put(key, values) until space is available.
+    This is mostly useful for limiting the number of tensors on
+    devices such as GPUs.
+
     All get() and peek() commands block if the requested
     (key, value) pair is not present in the staging area.
     """
 
-    def __init__(self, dtypes, capacity=0, ordered=False,
-                        shapes=None, names=None,
-                        shared_name=None):
+    def __init__(self, dtypes, shapes=None, names=None, shared_name=None,
+                        ordered=False, capacity=0, memory_limit=0):
         """
         Args:
           dtypes:  A list of types.  The length of dtypes must equal the number
             of tensors in each element.
           capacity: (Optional.) Maximum number of elements.
+            An integer. If zero, the Staging Area is unbounded
+          memory_limit: (Optional.) Maximum number of bytes of all tensors
+            in the Staging Area (excluding keys).
             An integer. If zero, the Staging Area is unbounded
           ordered: (Optional.) If True the underlying data structure
             is a tree ordered on key. Otherwise assume a hashtable.
@@ -1784,7 +1816,7 @@ class MapStagingArea(BaseStagingArea):
 
         super(MapStagingArea, self).__init__(dtypes, shapes,
                                           names, shared_name,
-                                          capacity)
+                                          capacity, memory_limit)
 
         # Defer to different methods depending if the map is ordered
         self._ordered = ordered
@@ -1832,7 +1864,8 @@ class MapStagingArea(BaseStagingArea):
           with ops.colocate_with(self._coloc_op):
               op = self._put_fn(key, vals, shared_name=self._name,
                                    name=scope,
-                                   capacity=self._capacity)
+                                   capacity=self._capacity,
+                                   memory_limit=self._memory_limit)
         return op
 
     def peek(self, key, name=None):
@@ -1857,7 +1890,8 @@ class MapStagingArea(BaseStagingArea):
             result = self._peek_fn(key, shared_name=self._name,
                             dtypes=self._dtypes,
                             name=name,
-                            capacity=self._capacity)
+                            capacity=self._capacity,
+                            memory_limit=self._memory_limit)
 
         return self._get_return_value(result)
 
@@ -1909,7 +1943,8 @@ class MapStagingArea(BaseStagingArea):
             result = self._pop_fn(key, shared_name=self._name,
                             dtypes=self._dtypes,
                             name=name,
-                            capacity=self._capacity)
+                            capacity=self._capacity,
+                            memory_limit=self._memory_limit)
 
         return key, self._get_return_value(result)
 
@@ -1936,7 +1971,8 @@ class MapStagingArea(BaseStagingArea):
             key, result = self._popitem_fn(shared_name=self._name,
                                     dtypes=self._dtypes,
                                     name=name,
-                                    capacity=self._capacity)
+                                    capacity=self._capacity,
+                                    memory_limit=self._memory_limit)
 
         # Separate keys and results out from
         # underlying namedtuple
@@ -1959,8 +1995,9 @@ class MapStagingArea(BaseStagingArea):
             name = "%s_size" % self._name
 
         return self._size_fn(shared_name=self._name,
-                            name=name,
-                            capacity=self._capacity)
+                            name=name, dtypes=self._dtypes,
+                            capacity=self._capacity,
+                            memory_limit=self._memory_limit)
 
     def clear(self, name=None):
         """
@@ -1976,8 +2013,9 @@ class MapStagingArea(BaseStagingArea):
             name = "%s_clear" % self._name
 
         return self._clear_fn(shared_name=self._name,
-                            name=name,
-                            capacity=self._capacity)
+                            name=name, dtypes=self._dtypes,
+                            capacity=self._capacity,
+                            memory_limit=self._memory_limit)
 
 
 class RecordInput(object):

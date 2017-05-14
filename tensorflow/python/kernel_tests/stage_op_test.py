@@ -134,7 +134,6 @@ class StageTest(test.TestCase):
 
     with ops.device('/cpu:0'):
       x = array_ops.placeholder(dtypes.int32, name='x')
-      p = array_ops.placeholder(dtypes.int32, name='p')
     with ops.device(test.gpu_device_name()):
       stager = data_flow_ops.StagingArea([dtypes.int32, ],
         capacity=capacity, shapes=[[]])
@@ -183,6 +182,65 @@ class StageTest(test.TestCase):
       # Clear the staging area completely
       for i in range(capacity):
         self.assertTrue(sess.run(ret) == i+(n-capacity))
+
+      self.assertTrue(sess.run(size) == 0)
+
+  def testMemoryLimit(self):
+    memory_limit = 512*1024  # 512K
+    chunk = 200*1024 # 256K
+    capacity = memory_limit // chunk
+
+    with ops.device('/cpu:0'):
+      x = array_ops.placeholder(dtypes.uint8, name='x')
+    with ops.device(test.gpu_device_name()):
+      stager = data_flow_ops.StagingArea([dtypes.uint8, ],
+        memory_limit=memory_limit, shapes=[[]])
+      stage = stager.put([x])
+      ret = stager.get()
+      size = stager.size()
+
+    from six.moves import queue as Queue
+    import threading
+    import numpy as np
+
+    queue = Queue.Queue()
+    n = 5
+    missed = 0
+
+    with self.test_session(use_gpu=True) as sess:
+      # Stage data in a separate thread which will block
+      # when it hits the staging area's capacity and thus
+      # not fill the queue with n tokens
+      def thread_run():
+        for i in range(n):
+          sess.run(stage, feed_dict={x: np.full(chunk, i, dtype=np.uint8)})
+          queue.put(0)
+
+      t = threading.Thread(target=thread_run)
+      t.start()
+
+      # Get tokens from the queue, making notes of when we timeout
+      for i in range(n):
+        try:
+          queue.get(timeout=0.05)
+        except Queue.Empty:
+          missed += 1
+
+      # We timed out n - capacity times waiting for queue puts
+      self.assertTrue(missed == n - capacity)
+
+      # Clear the staging area out a bit
+      for i in range(n - capacity):
+        self.assertTrue(sess.run(ret)[0] == i)
+
+      # Thread should be able to join now
+      t.join()
+
+      self.assertTrue(sess.run(size) == capacity)
+
+      # Clear the staging area completely
+      for i in range(capacity):
+        self.assertTrue(sess.run(ret)[0] == i+(n-capacity))
 
       self.assertTrue(sess.run(size) == 0)
 
