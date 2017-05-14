@@ -1372,6 +1372,18 @@ def reduce_prod(input_tensor,
   If `axis` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
 
+  For example:
+
+  ```python
+  # 'x' is [[1, 1, 1]
+  #         [2, 2, 2]]
+  tf.reduce_prod(x) ==> 8
+  tf.reduce_prod(x, 0) ==> [2, 2, 2]
+  tf.reduce_prod(x, 1) ==> [1, 8]
+  tf.reduce_prod(x, 1, keep_dims=True) ==> [[1], [8]]
+  tf.reduce_prod(x, [0, 1]) ==> 8
+  ```
+
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
@@ -1409,6 +1421,16 @@ def reduce_min(input_tensor,
   If `axis` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
 
+  For example:
+
+  ```python
+  # 'x' is [[1, 2]
+  #         [3, 4]]
+  tf.reduce_min(x) ==> 1
+  tf.reduce_min(x, 0) ==> [1, 2]
+  tf.reduce_min(x, 1) ==> [1,  3]
+  ```
+
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
@@ -1445,6 +1467,16 @@ def reduce_max(input_tensor,
 
   If `axis` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
+
+  For example:
+
+  ```python
+  # 'x' is [[1, 2]
+  #         [3, 4]]
+  tf.reduce_max(x) ==> 4
+  tf.reduce_max(x, 0) ==> [3, 4]
+  tf.reduce_max(x, 1) ==> [2,  4]
+  ```
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
