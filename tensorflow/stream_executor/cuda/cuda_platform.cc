@@ -33,7 +33,7 @@ CudaPlatform::CudaPlatform()
 
 CudaPlatform::~CudaPlatform() {}
 
-// Due to legacy issues in user code, we can't currently call InpectNumaNodes
+// Due to legacy issues in user code, we can't currently call InspectNumaNodes
 // at module initialization time, because non-GPU programs still include this
 // plugin via various methods, so instead, it has to be init-on-reference.
 void CudaPlatform::InspectNumaNodes() {
