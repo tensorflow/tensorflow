@@ -1,0 +1,17 @@
+{
+  "name": "tensorflow-studio",
+  "version": "0.0.0",
+  "description": "TensorFlow Studio",
+  "scripts": {
+    "test": "gulp test"
+  },
+  "keywords": [
+    "tensorflow"
+  ],
+  "author": "Google",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "gulp": "^3.9.1",
+    "gulp-server-livereload": "^1.7.4"
+  }
+}
