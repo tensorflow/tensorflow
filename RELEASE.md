@@ -671,7 +671,7 @@ answered questions, and were part of inspiring discussions.
 
 ## Bug Fixes and Other Changes
 
-* Added a versioning framework for `GraphDef`s to ensure compatibility
+* Added a versioning framework for `GraphDef` to ensure compatibility
 * Enforced Python 3 compatibility
 * Internal changes now show up as sensibly separated commits
 * Open-sourced the doc generator
