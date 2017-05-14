@@ -1,0 +1,5 @@
+model_checkpoint_path: "/tmp/tmpnwrc7165/model.ckpt-3000-?????-of-00001"
+all_model_checkpoint_paths: "/tmp/tmpnwrc7165/model.ckpt-1-?????-of-00001"
+all_model_checkpoint_paths: "/tmp/tmpnwrc7165/model.ckpt-1000-?????-of-00001"
+all_model_checkpoint_paths: "/tmp/tmpnwrc7165/model.ckpt-1001-?????-of-00001"
+all_model_checkpoint_paths: "/tmp/tmpnwrc7165/model.ckpt-3000-?????-of-00001"

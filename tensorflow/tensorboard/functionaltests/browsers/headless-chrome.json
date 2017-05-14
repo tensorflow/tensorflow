@@ -1,0 +1,10 @@
+{
+    "environment": "chrome",
+    "capabilities": {
+        "browserName": "chrome",
+        "chromeOptions": {
+            "args": ["--no-sandbox"],
+            "binary": "%CHROME%"
+        }
+    }
+}
