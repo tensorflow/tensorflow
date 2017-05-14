@@ -102,7 +102,7 @@ def load_iris(data_path=None):
   return load_csv_with_header(
       data_path,
       target_dtype=np.int,
-      features_dtype=np.float)
+      features_dtype=np.float32)
 
 
 def load_boston(data_path=None):
@@ -119,8 +119,8 @@ def load_boston(data_path=None):
     data_path = path.join(module_path, 'data', 'boston_house_prices.csv')
   return load_csv_with_header(
       data_path,
-      target_dtype=np.float,
-      features_dtype=np.float)
+      target_dtype=np.float32,
+      features_dtype=np.float32)
 
 
 def retry(initial_delay,
