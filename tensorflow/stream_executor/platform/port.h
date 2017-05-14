@@ -40,9 +40,14 @@ using std::string;
 #endif
 
 #if !defined(COMPILER_MSVC)
-#define ARRAYSIZE(a)              \
-    ((sizeof(a) / sizeof(*(a))) / \
-    static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
+template <typename T, size_t N>
+char (&ArraySizeHelper(T (&array)[N]))[N];
+template <typename T, size_t N>
+char (&ArraySizeHelper(const T (&array)[N]))[N];
+#define ARRAYSIZE(a) (sizeof(ArraySizeHelper(a)))
+#define ARRAYSIZE_UNSAFE(a) \
+  ((sizeof(a) / sizeof(*(a))) / \
+   static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
 #endif
 
 using tensorflow::LinkerInitialized;
