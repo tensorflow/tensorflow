@@ -23,7 +23,7 @@ straight in, feel free to look at the minimalistic implementation in
 This basic example contains the code needed to download some data, train on it a
 bit and visualize the result. Once you get comfortable with reading and running
 the basic version, you can graduate to
-[tensorflow_models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py)
+[models/tutorials/embedding/word2vec.py](https://github.com/tensorflow/models/blob/51fcc99bc6975025f0ca223692b7f38ba0259efb/tutorials/embedding/word2vec.py)
 which is a more serious implementation that showcases some more advanced
 TensorFlow principles about how to efficiently use threads to move data into a
 text model, how to checkpoint during training, etc.
