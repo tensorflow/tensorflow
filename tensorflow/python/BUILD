@@ -3612,3 +3612,20 @@ py_test(
         "//third_party/py/numpy",
     ],
 )
+
+py_test(
+    name = "memory_optimizer_test",
+    size = "medium",
+    srcs = [
+        "grappler/memory_optimizer_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":tf_optimizer",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
