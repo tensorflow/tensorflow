@@ -12,24 +12,6 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-filegroup(
-    name = "mobile_srcs",
-    srcs = glob(
-        [
-            "cluster.*",
-            "utils.*",
-            "virtual_cluster.*",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-alias(
-    name = "android_srcs",
-    actual = ":mobile_srcs",
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 config_setting(
     name = "xsmm",
     licenses = ["notice"],
