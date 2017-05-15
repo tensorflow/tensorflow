@@ -285,6 +285,7 @@ filegroup(
         "//tensorflow/core/grappler/utils:all_files",
         "//tensorflow/core/kernels:all_files",
         "//tensorflow/core/kernels/hexagon:all_files",
+        "//tensorflow/core/kernels/neon:all_files",
         "//tensorflow/core/ops/compat:all_files",
         "//tensorflow/core/platform/cloud:all_files",
         "//tensorflow/core/platform/default/build_config:all_files",
