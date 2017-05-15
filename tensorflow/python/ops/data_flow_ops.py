@@ -1413,14 +1413,18 @@ class BaseStagingArea(object):
     return self._memory_limit
 
 
-  def _check_put_dtypes(self, vals):
+  def _check_put_dtypes(self, vals, indices=None):
     """Validate and convert `vals` to a list of `Tensor`s.
 
     The `vals` argument can be a Tensor, a list or tuple of tensors, or a
     dictionary with tensor values.
 
+    If `vals` is a list, then the appropriate indices associated with the
+    values must be provided.
+
     If it is a dictionary, the staging area must have been constructed with a
     `names` attribute and the dictionary keys must match the staging area names.
+    `indices` will be inferred from the dictionary keys.
     If the staging area was constructed with a `names` attribute, `vals` must
     be a dictionary.
 
@@ -1431,37 +1435,50 @@ class BaseStagingArea(object):
       vals: A tensor, a list or tuple of tensors, or a dictionary..
 
     Returns:
-      A list of `Tensor` objects.
+      A (tensors, indices) tuple where `tensors` is a list of `Tensor` objects
+      and `indices` is a list of indices associed with the tensors.
 
     Raises:
-      ValueError: If `vals` is invalid.
+      ValueError: If `vals` or `indices` is invalid.
     """
     if isinstance(vals, dict):
       if not self._names:
         raise ValueError(
             "Staging areas must have names to enqueue a dictionary")
-      if sorted(self._names) != sorted(vals.keys()):
+      if not set(vals.keys()).issubset(self._names):
         raise ValueError("Keys in dictionary to put do not match names "
                          "of staging area. Dictionary: (%s), Queue: (%s)" %
                          (sorted(vals.keys()), sorted(self._names)))
       # The order of values in `self._names` indicates the order in which the
       # tensors in the dictionary `vals` must be listed.
-      vals = [vals[k] for k in self._names]
+      vals, indices, n = zip(*[(vals[k], i, k) for i, k in enumerate(self._names)
+                                                  if k in vals])
     else:
       if self._names:
         raise ValueError("You must enqueue a dictionary in a staging area "
                          "with names")
+
+      if indices is None:
+        raise ValueError("Indices must be supplied when inserting a list "
+                        "of tensors")
+
+      if len(indices) != len(vals):
+        raise ValueError("Number of indices '%s' doesn't match "
+                         "number of values '%s'")
+
       if not isinstance(vals, (list, tuple)):
         vals = [vals]
+        indices = [0]
 
     # Sanity check number of values
-    if not len(vals) == len(self._dtypes):
+    if not len(vals) <= len(self._dtypes):
       raise ValueError("Unexpected number of inputs '%s' vs '%s'" % (
                           len(values), len(self._dtypes)))
 
     tensors = []
 
-    for i, (val, dtype, shape) in enumerate(zip(vals, self._dtypes, self._shapes)):
+    for val, i in zip(vals, indices):
+      dtype, shape = self._dtypes[i], self._shapes[i]
       # Check dtype
       if not val.dtype == dtype:
         raise ValueError("Datatypes do not match. '%s' != '%s'" %(
@@ -1473,7 +1490,7 @@ class BaseStagingArea(object):
       tensors.append(ops.convert_to_tensor(val, dtype=dtype,
                                           name="component_%d" % i))
 
-    return tensors
+    return tensors, indices
 
   def _create_device_transfers(self, tensors):
     """Encode inter-device transfers if the current device
@@ -1629,7 +1646,9 @@ class StagingArea(BaseStagingArea):
     with ops.name_scope(name, "%s_put" % self._name,
                         self._scope_vals(values)) as scope:
 
-      vals = self._check_put_dtypes(values)
+      # Hard-code indices for this staging area
+      indices = range(len(values)) if isinstance(values, (list, tuple)) else None
+      vals, _ = self._check_put_dtypes(values, indices)
 
       with ops.colocate_with(self._coloc_op):
         op = gen_data_flow_ops.stage(values=vals, shared_name=self._name,
@@ -1783,6 +1802,12 @@ class MapStagingArea(BaseStagingArea):
 
     All get() and peek() commands block if the requested
     (key, value) pair is not present in the staging area.
+
+    Incomplete puts are supported and will be placed in an incomplete
+    hash until such time as all values associated with the key have
+    been inserted. Once completed, this (key, value) pair will be
+    inserted into the main data structure. Data in the incomplete set
+    counts towards the memory limit, but not towards capacity limit.
     """
 
     def __init__(self, dtypes, shapes=None, names=None, shared_name=None,
@@ -1827,6 +1852,7 @@ class MapStagingArea(BaseStagingArea):
             self._popitem_fn = gen_data_flow_ops.ordered_map_unstage_no_key
             self._peek_fn = gen_data_flow_ops.ordered_map_peek
             self._size_fn = gen_data_flow_ops.ordered_map_size
+            self._incomplete_size_fn = gen_data_flow_ops.ordered_map_incomplete_size
             self._clear_fn = gen_data_flow_ops.ordered_map_clear
         else:
             self._put_fn = gen_data_flow_ops.map_stage
@@ -1834,19 +1860,27 @@ class MapStagingArea(BaseStagingArea):
             self._popitem_fn = gen_data_flow_ops.map_unstage_no_key
             self._peek_fn = gen_data_flow_ops.map_peek
             self._size_fn = gen_data_flow_ops.map_size
+            self._incomplete_size_fn = gen_data_flow_ops.map_incomplete_size
             self._clear_fn = gen_data_flow_ops.map_clear
 
-    def put(self, key, vals, name=None):
+    def put(self, key, vals, indices=None, name=None):
         """
-        Create an op that stores the (key, data) pair in the staging area
+        Create an op that stores the (key, vals) pair in the staging area.
 
-        This operation will block if the capacity of this
+        Incomplete puts are possible, preferably using a dictionary for vals
+        as the appropriate dtypes and shapes can be inferred from the value names
+        dictionary key values. If vals is a list or tuple, indices must
+        also be specified so that the op knows at which element position
+        to perform the insert.
+
+        This operation will block if the capacity or memory limit of this
         container is reached.
 
         Args:
             key: Key associated with the data
-            vals: Tensor (or a tuple of Tensors) to place
+            vals: Tensor (or a dict/tuple of Tensors) to place
                     into the staging area.
+            indices: (Optional) if vals is a tuple/list, this is required.
             name: A name for the operation (optional)
 
         Returns:
@@ -1859,11 +1893,11 @@ class MapStagingArea(BaseStagingArea):
         with ops.name_scope(name, "%s_put" % self._name,
                             self._scope_vals(vals)) as scope:
 
-          vals = self._check_put_dtypes(vals)
+          vals, indices = self._check_put_dtypes(vals, indices)
 
           with ops.colocate_with(self._coloc_op):
-              op = self._put_fn(key, vals, shared_name=self._name,
-                                   name=scope,
+              op = self._put_fn(key, indices, vals, dtypes=self._dtypes,
+                                   shared_name=self._name, name=scope,
                                    capacity=self._capacity,
                                    memory_limit=self._memory_limit)
         return op
@@ -1998,6 +2032,26 @@ class MapStagingArea(BaseStagingArea):
                             name=name, dtypes=self._dtypes,
                             capacity=self._capacity,
                             memory_limit=self._memory_limit)
+
+    def incomplete_size(self, name=None):
+        """
+        Returns the number of incomplete elements in the staging area.
+
+        Args:
+            name: A name for the operation (optional)
+
+        Returns:
+            The created op
+        """
+        if name is None:
+            name = "%s_incomplete_size" % self._name
+
+        return self._incomplete_size_fn(shared_name=self._name,
+                            name=name, dtypes=self._dtypes,
+                            capacity=self._capacity,
+                            memory_limit=self._memory_limit)
+
+
 
     def clear(self, name=None):
         """

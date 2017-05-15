@@ -30,6 +30,7 @@ namespace tensorflow {
 
 namespace {
 
+// Partial Ordering Comparator for Tensor keys containing scalar int64's
 struct KeyTensorLess {
   bool operator()(const Tensor & lhs, const Tensor & rhs) const {
     return std::less<int64>{}(lhs.scalar<int64>()(),
@@ -37,6 +38,7 @@ struct KeyTensorLess {
   }
 };
 
+// Key Equality operator for Tensor keys containing scalar int64's
 struct KeyTensorEqual {
   bool operator()(const Tensor & lhs, const Tensor & rhs) const {
     return std::equal_to<int64>{}(lhs.scalar<int64>()(),
@@ -44,6 +46,7 @@ struct KeyTensorEqual {
   }
 };
 
+// Hash for Tensor keys containing scalar int64's
 struct KeyTensorHash {
   std::size_t operator()(const Tensor & key) const {
     return std::hash<int64>{}(key.scalar<int64>()());
@@ -93,10 +96,10 @@ public:
 
 private:
   // Private variables
-  DataTypeVector dtypes_;
-  int capacity_;
-  int memory_limit_;
-  int current_bytes_;
+  DataTypeVector dtypes_ GUARDED_BY(mu_);
+  int capacity_ GUARDED_BY(mu_);
+  int memory_limit_ GUARDED_BY(mu_);
+  int current_bytes_ GUARDED_BY(mu_);
   mutex mu_;
   condition_variable not_empty_;
   condition_variable full_;
@@ -110,6 +113,7 @@ private:
   // waiting inserters that space is now available
   void notify_inserters_if_bounded(mutex_lock & l)
   {
+    if(has_capacity() || has_memory_limit())
     {
       l.unlock();
       full_.notify_one();
@@ -124,17 +128,20 @@ private:
       not_empty_.notify_one();
   }
 
-  bool is_bounded()
-    { return capacity_ > 0 || memory_limit_ > 0; }
+  inline bool has_capacity()
+    { return capacity_ > 0; }
 
-  bool would_exceed_memory_limit(int bytes)
+  inline bool has_memory_limit()
+    { return memory_limit_ > 0; }
+
+  inline bool would_exceed_memory_limit(int bytes)
     { return bytes + current_bytes_ > memory_limit_; }
 
-  bool is_capacity_full()
+  inline bool is_capacity_full()
     { return map_.size() >= capacity_; }
 
   // Get number of bytes in the tuple
-  int get_tuple_bytes(const Tuple & tuple)
+  inline int get_tuple_bytes(const Tuple & tuple)
   {
     return std::accumulate(tuple.begin(), tuple.end(), int(0),
       [](const int & lhs, const Tensor & rhs) {
@@ -142,6 +149,167 @@ private:
     });
   }
 
+  // Check that the index is within bounds
+  inline Status check_index(const Tensor & key, int index)
+  {
+    if(index >= dtypes_.size())
+    {
+      return Status(errors::InvalidArgument("Index '",
+        index, "' for key '", key.scalar<int64>()(),
+        "' was out of bounds '", dtypes_.size(), "'."));
+    }
+
+    return Status::OK();
+  }
+
+
+  // Check that the optional value at the specified index
+  // is uninitialized
+  inline Status check_index_uninitialized(const Tensor & key,
+                                  int index,
+                                  const IncompleteTuple & tuple)
+  {
+    if(tuple[index].has_value())
+    {
+      return Status(errors::InvalidArgument("The tensor for index '",
+        index, "' for key '", key.scalar<int64>()(),
+        "' was already initialized '", dtypes_.size(), "'."));
+    }
+
+    return Status::OK();
+  }
+
+  // Check that the indices are strictly ordered
+  inline Status check_index_ordering(const Tensor & indices)
+  {
+    auto findices = indices.flat<int>();
+
+    for(int i = 0; i < findices.dimension(0)-1; ++i)
+    {
+      if(findices(i) < findices(i+1))
+        { continue; }
+
+      return Status(errors::InvalidArgument("Indices are not "
+                                          "strictly ordered"));
+    }
+
+    return Status::OK();
+  }
+
+  // Check bytes are within memory limits memory limits
+  inline Status check_memory_limit(int bytes)
+  {
+    if(has_memory_limit() && bytes > memory_limit_) {
+      return Status(errors::ResourceExhausted("Attempted to insert "
+        "tensors with combined size of '", bytes, "' bytes into "
+        "Staging Area with a memory limit of '", memory_limit_, "'."));
+    }
+
+    return Status::OK();
+  }
+
+  // Insert incomplete data into the Barrier
+  Status put_incomplete(const KeyType & key,
+                        const Tensor & indices,
+                        Tuple *  tuple,
+                        mutex_lock &l)
+  {
+    auto findices = indices.flat<int>();
+
+    // Search for the key in our incomplete set
+    auto it = incomplete_.find(key);
+
+    // Check that the tuple fits within the memory limit
+    int tuple_bytes = get_tuple_bytes(*tuple);
+    TF_RETURN_IF_ERROR(check_memory_limit(tuple_bytes));
+
+    if(has_memory_limit())
+    {
+      full_.wait(l, [tuple_bytes, this]() {
+        // Stop waiting if we don't exceed the memory limit
+        return !would_exceed_memory_limit(tuple_bytes);
+      });
+    }
+
+    // This key isn't present in the incomplete set
+    // Create IncompleteTuple and insert
+    if(it == incomplete_.end())
+    {
+      IncompleteTuple empty(dtypes_.size());
+
+      // Initialise empty tuple with given dta
+      for(int i = 0; i < findices.dimension(0); ++i)
+      {
+        int index = findices(i);
+        TF_RETURN_IF_ERROR(check_index(key, index));
+
+        // Assign tuple at this index
+        empty[index] = std::move((*tuple)[i]);
+      }
+
+      // Insert into incomplete map
+      incomplete_.insert({key, std::move(empty)});
+
+      // Increment size
+      current_bytes_ += tuple_bytes;
+    }
+    // Found an entry in the incomplete index
+    // Update with given data and insert complete entries
+    // into the main map
+    else
+    {
+      // Reference existing incomplete tuple
+      IncompleteTuple & present = it->second;
+
+      // Assign given data
+      for(int i = 0; i < findices.dimension(0); ++i)
+      {
+        int index = findices(i);
+        TF_RETURN_IF_ERROR(check_index(key, index));
+        TF_RETURN_IF_ERROR(check_index_uninitialized(key,
+                                                    index, present));
+
+        // Assign tuple at this index
+        present[index] = std::move((*tuple)[i]);
+      }
+
+      // Increment size
+      current_bytes_ += tuple_bytes;
+
+      // Do we have values at all tuple elements?
+      bool complete = std::all_of(present.begin(), present.end(),
+        [](const OptionalTensor & v) { return v.has_value(); });
+
+      // If so, put the tuple in the actual map
+      if(complete)
+      {
+        // Create a tuple for insertion
+        Tuple new_tuple;
+
+        for(const auto & v: present)
+          { new_tuple.push_back(v.value()); }
+
+        // Remove from incomplete
+        incomplete_.erase(it);
+
+        TF_RETURN_IF_ERROR(put_complete(key, &new_tuple, l));
+      }
+    }
+
+    return Status::OK();
+  }
+
+  // Does the insertion into the actual staging area
+  Status put_complete(const KeyType & key, Tuple * tuple,
+                    mutex_lock & l)
+  {
+    // Insert key and tuples into the map
+    map_.insert({key, std::move(*tuple)});
+
+    notify_removers(l);
+
+    return Status::OK();
+  }
 
 public:
   // public methods
@@ -152,40 +320,43 @@ public:
       memory_limit_(memory_limit),
       current_bytes_(0) {}
 
-  Status put(KeyType* key, Tuple* tuple)
+  Status put(KeyType* key, const Tensor * indices,
+              Tuple* tuple)
   {
     mutex_lock l(mu_);
 
-    int tuple_bytes = get_tuple_bytes(*tuple);
+    // Sanity check the indices
+    TF_RETURN_IF_ERROR(check_index_ordering(*indices));
 
-    // Sanity check so that we don't block for ever below
-    if(memory_limit_ > 0 && tuple_bytes > memory_limit_) {
-      return Status(errors::ResourceExhausted("Attempted to insert "
-        "tensors with combined size of '", tuple_bytes, "' bytes into "
-        "Staging Area with a memory limit of '", memory_limit_, "'."));
+    // Handle incomplete inserts
+    if(indices->NumElements() != dtypes_.size())
+    {
+      return put_incomplete(*key, *indices, tuple, l);
     }
 
+    int tuple_bytes = get_tuple_bytes(*tuple);
+    // Check that tuple_bytes fits within the memory limit
+    TF_RETURN_IF_ERROR(check_memory_limit(tuple_bytes));
+
     // If map capacity is bounded wait until map is not full
-    if(is_bounded()) {
+    if(has_capacity() || has_memory_limit()) {
       full_.wait(l, [tuple_bytes, this]() {
         // If there's a memory limit, check if there's space for insertion
-        bool memory_limit_valid = memory_limit_ > 0 ?
+        bool memory_limit_valid = has_memory_limit() ?
               !would_exceed_memory_limit(tuple_bytes) : true;
         // If we're configured for capacity check if there's space for insertion
-        bool capacity_valid = capacity_ > 0 ? !is_capacity_full() : true;
+        bool capacity_valid = has_capacity() ? !is_capacity_full() : true;
 
         // Stop waiting upon success for both conditions
         return memory_limit_valid && capacity_valid;
       });
     }
 
-    // Update bytes in the Staging Area
+    // Do the put operation
+    TF_RETURN_IF_ERROR(put_complete(*key, tuple, l));
+
+    // Update the current size
     current_bytes_ += tuple_bytes;
-
-    // Insert key and tuples into the map
-    map_.insert({*key, std::move(*tuple)});
-
-    notify_removers(l);
 
     return Status::OK();
   }
@@ -262,11 +433,18 @@ public:
   {
     mutex_lock l(mu_);
     map_.clear();
+    incomplete_.clear();
     current_bytes_ = 0;
 
     notify_inserters_if_bounded(l);
 
     return Status::OK();
+  }
+
+  size_t incomplete_size()
+  {
+    mutex_lock l(mu_);
+    return incomplete_.size();
   }
 
   size_t size()
@@ -323,9 +501,11 @@ class MapStageOp : public OpKernel
     typename StagingMap<Ordered>::Tuple tuple;
 
     const Tensor * key_tensor;
+    const Tensor * indices_tensor;
     OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
+    OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
     OP_REQUIRES_OK(ctx, ctx->input_list("values", &values_tensor));
 
     // Create copy for insertion into Staging Area
@@ -337,7 +517,7 @@ class MapStageOp : public OpKernel
     }
 
     // Store the tuple in the map
-    OP_REQUIRES_OK(ctx, map->put(&key, &tuple));
+    OP_REQUIRES_OK(ctx, map->put(&key, indices_tensor, &tuple));
   }
 };
 
@@ -347,9 +527,13 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapStage").Device(DEVICE_CPU),
                       MapStageOp<true>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("MapStage").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("MapStage")
+                      .HostMemory("key")
+                      .HostMemory("indices")
                       .Device(DEVICE_GPU), MapStageOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapStage").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("OrderedMapStage")
+                      .HostMemory("key")
+                      .HostMemory("indices")
                       .Device(DEVICE_GPU), MapStageOp<true>);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
@@ -550,6 +734,46 @@ REGISTER_KERNEL_BUILDER(Name("MapSize").Device(DEVICE_SYCL)
                         .HostMemory("size"), MapSizeOp<false>);
 REGISTER_KERNEL_BUILDER(Name("OrderedMapSize").Device(DEVICE_SYCL)
                         .HostMemory("size"), MapSizeOp<true>);
+#endif // TENSORFLOW_USE_SYCL
+
+template <bool Ordered>
+class MapIncompleteSizeOp : public OpKernel
+{
+ public:
+  explicit MapIncompleteSizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override
+  {
+    StagingMap<Ordered>* map = nullptr;
+    OP_REQUIRES_OK(ctx, GetStagingMap(ctx, def(), &map));
+    core::ScopedUnref scope(map);
+
+    // Allocate size output tensor
+    Tensor * size = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}),
+                                                     &size));
+
+    // Set it to the actual size
+    size->scalar<int32>().setConstant(map->incomplete_size());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("MapIncompleteSize").Device(DEVICE_CPU),
+                        MapIncompleteSizeOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapIncompleteSize").Device(DEVICE_CPU),
+                        MapIncompleteSizeOp<true>);
+
+#if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("MapIncompleteSize").Device(DEVICE_GPU)
+                        .HostMemory("size"), MapIncompleteSizeOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapIncompleteSizeOp").Device(DEVICE_GPU)
+                        .HostMemory("size"), MapIncompleteSizeOp<true>);
+#endif
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("MapIncompleteSize").Device(DEVICE_SYCL)
+                        .HostMemory("size"), MapIncompleteSizeOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapIncompleteSize").Device(DEVICE_SYCL)
+                        .HostMemory("size"), MapIncompleteSizeOp<true>);
 #endif // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>

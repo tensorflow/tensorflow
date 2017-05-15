@@ -2018,10 +2018,12 @@ Op removes all elements in the underlying container.
 // UnorderedMap
 REGISTER_OP("MapStage")
     .Input("key: int64")
-    .Input("values: dtypes")
+    .Input("indices: int32")
+    .Input("values: fake_dtypes")
     .Attr("capacity: int = 0")
     .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
+    .Attr("fake_dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
@@ -2100,6 +2102,20 @@ REGISTER_OP("MapSize")
 Op returns the number of elements in the underlying container.
     )doc");
 
+REGISTER_OP("MapIncompleteSize")
+    .Output("size: int32")
+    .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of incomplete elements in the underlying container.
+    )doc");
+
+
 REGISTER_OP("MapClear")
     .Attr("capacity: int = 0")
     .Attr("memory_limit: int = 0")
@@ -2116,10 +2132,12 @@ Op removes all elements in the underlying container.
 // OrderedMap
 REGISTER_OP("OrderedMapStage")
     .Input("key: int64")
-    .Input("values: dtypes")
+    .Input("indices: int32")
+    .Input("values: fake_dtypes")
     .Attr("capacity: int = 0")
     .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
+    .Attr("fake_dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
@@ -2200,11 +2218,23 @@ REGISTER_OP("OrderedMapSize")
 Op returns the number of elements in the underlying container.
     )doc");
 
-REGISTER_OP("OrderedMapClear")
+REGISTER_OP("OrderedMapIncompleteSize")
+    .Output("size: int32")
     .Attr("capacity: int = 0")
     .Attr("memory_limit: int = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of incomplete elements in the underlying container.
+    )doc");
+
+REGISTER_OP("OrderedMapClear")
+    .Attr("capacity: int = 0")
+    .Attr("memory_limit: int = 0")
+    .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)

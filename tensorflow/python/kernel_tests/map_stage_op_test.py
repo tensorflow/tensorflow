@@ -35,7 +35,7 @@ class MapStageTest(test.TestCase):
         v = 2. * (array_ops.zeros([128, 128]) + x)
       with ops.device(test.gpu_device_name()):
         stager = data_flow_ops.MapStagingArea([dtypes.float32])
-        stage = stager.put(pi,[v])
+        stage = stager.put(pi, [v], [0])
         k, y = stager.get(gi)
         y = math_ops.reduce_max(math_ops.matmul(y, y))
       sess.run(stage, feed_dict={x: -1, pi: 0})
@@ -52,7 +52,7 @@ class MapStageTest(test.TestCase):
         v = 2. * (array_ops.zeros([128, 128]) + x)
       with ops.device(test.gpu_device_name()):
         stager = data_flow_ops.MapStagingArea([dtypes.float32, dtypes.float32])
-        stage = stager.put(pi,[x, v])
+        stage = stager.put(pi, [x, v], [0, 1])
         k, (z, y) = stager.get(gi)
         y = math_ops.reduce_max(z * math_ops.matmul(y, y))
       sess.run(stage, feed_dict={x: -1, pi: 0})
@@ -84,13 +84,13 @@ class MapStageTest(test.TestCase):
         self.assertAllClose(
             4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
-  def testColocation1(self):
+  def testColocation(self):
     with ops.device('/cpu:0'):
       x = array_ops.placeholder(dtypes.float32)
       v = 2. * (array_ops.zeros([128, 128]) + x)
     with ops.device(test.gpu_device_name()):
       stager = data_flow_ops.MapStagingArea([dtypes.float32])
-      y = stager.put(1,[v])
+      y = stager.put(1, [v], [0])
       self.assertEqual(y.device, '/device:GPU:0')
     with ops.device('/cpu:0'):
       _, x = stager.get(1)
@@ -108,7 +108,7 @@ class MapStageTest(test.TestCase):
       p = array_ops.placeholder(dtypes.int32, name='p')
     with ops.device(test.gpu_device_name()):
       stager = data_flow_ops.MapStagingArea([dtypes.int32, ], shapes=[[]])
-      stage = stager.put(pi,[x])
+      stage = stager.put(pi,[x], [0])
       peek = stager.peek(gi)
       size = stager.size()
 
@@ -157,7 +157,8 @@ class MapStageTest(test.TestCase):
     with ops.device(test.gpu_device_name()):
       stager = data_flow_ops.MapStagingArea([dtypes.int32, ],
         capacity=capacity, shapes=[[]])
-      stage = stager.put(pi,[x])
+
+      stage = stager.put(pi, [x], [0])
       get = stager.get()
       size = stager.size()
 
@@ -215,7 +216,7 @@ class MapStageTest(test.TestCase):
     with ops.device(test.gpu_device_name()):
       stager = data_flow_ops.MapStagingArea([dtypes.uint8],
         memory_limit=memory_limit, shapes=[[]])
-      stage = stager.put(pi,[x])
+      stage = stager.put(pi, [x], [0])
       get = stager.get()
       size = stager.size()
 
@@ -263,7 +264,6 @@ class MapStageTest(test.TestCase):
       for i in range(capacity):
         sess.run(get)
 
-
   def testOrdering(self):
     import six
     import random
@@ -275,7 +275,7 @@ class MapStageTest(test.TestCase):
     with ops.device(test.gpu_device_name()):
       stager = data_flow_ops.MapStagingArea([dtypes.int32, ],
         shapes=[[]], ordered=True)
-      stage = stager.put(pi,[x])
+      stage = stager.put(pi, [x], [0])
       get = stager.get()
       size = stager.size()
 
@@ -302,6 +302,85 @@ class MapStageTest(test.TestCase):
         self.assertTrue(k == get_key == values)
 
       self.assertTrue(sess.run(size) == 0)
+
+  def testBarrier(self):
+    with self.test_session(use_gpu=True) as sess:
+      with ops.device('/cpu:0'):
+        x = array_ops.placeholder(dtypes.float32)
+        f = array_ops.placeholder(dtypes.float32)
+        v = array_ops.placeholder(dtypes.float32)
+        pi = array_ops.placeholder(dtypes.int64)
+        gi = array_ops.placeholder(dtypes.int64)
+      with ops.device(test.gpu_device_name()):
+        # Test barrier with dictionary
+        stager = data_flow_ops.MapStagingArea(
+            [dtypes.float32, dtypes.float32, dtypes.float32],
+            names=['x', 'v', 'f'])
+        stage_xf = stager.put(pi,{'x': x, 'f': f})
+        stage_v = stager.put(pi, {'v': v})
+        key, ret = stager.get(gi)
+        size = stager.size()
+        isize = stager.incomplete_size()
+
+        # 0 complete and incomplete entries
+        self.assertTrue(sess.run([size, isize]) == [0, 0])
+        # Stage key 0, x and f tuple entries
+        sess.run(stage_xf, feed_dict={pi: 0, x: 1, f: 2})
+        self.assertTrue(sess.run([size, isize]) == [0, 1])
+        # Stage key 1, x and f tuple entries
+        sess.run(stage_xf, feed_dict={pi: 1, x: 1, f: 2})
+        self.assertTrue(sess.run([size, isize]) == [0, 2])
+
+        # Now complete key 0 with tuple entry v
+        sess.run(stage_v, feed_dict={pi: 0, v: 1})
+        # 1 complete and 1 incomplete entry
+        self.assertTrue(sess.run([size, isize]) == [1, 1])
+        # We can now obtain tuple associated with key 0
+        self.assertTrue(sess.run([key, ret], feed_dict={gi:0})
+                                == [0, { 'x':1, 'f':2, 'v':1}])
+
+        # 0 complete and 1 incomplete entry
+        self.assertTrue(sess.run([size, isize]) == [0, 1])
+        # Now complete key 1 with tuple entry v
+        sess.run(stage_v, feed_dict={pi: 1, v: 3})
+        # We can now obtain tuple associated with key 1
+        self.assertTrue(sess.run([key, ret], feed_dict={gi:1})
+                                == [1, { 'x':1, 'f':2, 'v':3}])
+
+        # Test again with index inserts
+        stager = data_flow_ops.MapStagingArea(
+            [dtypes.float32, dtypes.float32, dtypes.float32])
+        stage_xf = stager.put(pi, [x, f], [0, 2])
+        stage_v = stager.put(pi, [v], [1])
+        key, ret = stager.get(gi)
+        size = stager.size()
+        isize = stager.incomplete_size()
+
+        # 0 complete and incomplete entries
+        self.assertTrue(sess.run([size, isize]) == [0, 0])
+        # Stage key 0, x and f tuple entries
+        sess.run(stage_xf, feed_dict={pi: 0, x: 1, f: 2})
+        self.assertTrue(sess.run([size, isize]) == [0, 1])
+        # Stage key 1, x and f tuple entries
+        sess.run(stage_xf, feed_dict={pi: 1, x: 1, f: 2})
+        self.assertTrue(sess.run([size, isize]) == [0, 2])
+
+        # Now complete key 0 with tuple entry v
+        sess.run(stage_v, feed_dict={pi: 0, v: 1})
+        # 1 complete and 1 incomplete entry
+        self.assertTrue(sess.run([size, isize]) == [1, 1])
+        # We can now obtain tuple associated with key 0
+        self.assertTrue(sess.run([key, ret], feed_dict={gi:0})
+                                == [0, [1, 1, 2]])
+
+        # 0 complete and 1 incomplete entry
+        self.assertTrue(sess.run([size, isize]) == [0, 1])
+        # Now complete key 1 with tuple entry v
+        sess.run(stage_v, feed_dict={pi: 1, v: 3})
+        # We can now obtain tuple associated with key 1
+        self.assertTrue(sess.run([key, ret], feed_dict={gi:1})
+                                == [1, [1,3, 2]])
+
 
 if __name__ == '__main__':
   test.main()
