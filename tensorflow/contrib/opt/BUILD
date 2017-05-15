@@ -15,6 +15,7 @@ py_library(
         "__init__.py",
         "python/training/external_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
+        "python/training/nadam_optimizer.py",
         "python/training/moving_average_optimizer.py",
         "python/training/variable_clipping_optimizer.py",
     ],
@@ -90,6 +91,23 @@ py_test(
 py_test(
     name = "lazy_adam_optimizer_test",
     srcs = ["python/training/lazy_adam_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "nadam_optimizer_test",
+    srcs = ["python/training/nadam_optimizer_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
