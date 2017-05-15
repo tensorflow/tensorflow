@@ -417,10 +417,10 @@ class LiteralUtil {
                   "Cannot map native type to primitive type.");
   }
   template <typename NativeT>
-  static tensorflow::protobuf::RepeatedField<NativeT>* GetMutableRepeatedField(
-      Literal* literal) {
+  static const tensorflow::gtl::MutableArraySlice<NativeT>
+  GetMutableArraySlice(Literal* literal) {
     // Make the expression depend on the template parameter NativeT so
-    // that this compile-time error only apperas if this function is
+    // that this compile-time error only appears if this function is
     // instantiated with some concrete type that is not specialized
     // below.
     static_assert(!std::is_same<NativeT, NativeT>::value,
@@ -439,7 +439,7 @@ class LiteralUtil {
   // the gcc versions used for tests, which seems unable to match templates
   // types uint64 and int64 with tensorflow::protobuf_uint64 and
   // tensorflow::protobuf_int64, for the GetArraySlice<>() and
-  // GetMutableRepeatedField<>() APIs.
+  // GetMutableArraySlice<>() APIs.
   // While for the GetArraySlice<>() case the AsUInt64Slice() and
   // AsInt64Slice() wrappers are taking care via reinterpret_cast<> of the code
   // pointer parameters, the protocol buffer repeated fields accessories
@@ -460,31 +460,39 @@ class LiteralUtil {
 };
 
 // Declarations of template specializations for GetArraySlice and
-// GetMutableRepeatedField. The specializations map native type to XLA primitive
+// GetMutableArraySlice. The specializations map native type to XLA primitive
 // type.
 template <>
 /* static */ tensorflow::gtl::ArraySlice<bool> LiteralUtil::GetArraySlice<bool>(
     const Literal& literal);
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<bool>*
-LiteralUtil::GetMutableRepeatedField<bool>(Literal* literal);
+/* static */ const tensorflow::gtl::MutableArraySlice<bool>
+LiteralUtil::GetMutableArraySlice<bool>(Literal* literal);
+
+template <>
+/* static */ const tensorflow::gtl::MutableArraySlice<int8>
+LiteralUtil::GetMutableArraySlice<int8>(Literal* literal);
+
+template <>
+/* static */ const tensorflow::gtl::MutableArraySlice<uint8>
+LiteralUtil::GetMutableArraySlice<uint8>(Literal* literal);
 
 template <>
 /* static */ tensorflow::gtl::ArraySlice<uint32>
 LiteralUtil::GetArraySlice<uint32>(const Literal& literal);
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<uint32>*
-LiteralUtil::GetMutableRepeatedField<uint32>(Literal* literal);
+/* static */ const tensorflow::gtl::MutableArraySlice<uint32>
+LiteralUtil::GetMutableArraySlice<uint32>(Literal* literal);
 
 template <>
 /* static */ tensorflow::gtl::ArraySlice<uint64>
 LiteralUtil::GetArraySlice<uint64>(const Literal& literal);
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>*
-LiteralUtil::GetMutableRepeatedField<tensorflow::protobuf_uint64>(
+/* static */ const tensorflow::gtl::MutableArraySlice<tensorflow::protobuf_uint64>
+LiteralUtil::GetMutableArraySlice<tensorflow::protobuf_uint64>(
     Literal* literal);
 
 template <>
@@ -492,16 +500,16 @@ template <>
 LiteralUtil::GetArraySlice<int32>(const Literal& literal);
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<int32>*
-LiteralUtil::GetMutableRepeatedField<int32>(Literal* literal);
+/* static */ const tensorflow::gtl::MutableArraySlice<int32>
+LiteralUtil::GetMutableArraySlice<int32>(Literal* literal);
 
 template <>
 /* static */ tensorflow::gtl::ArraySlice<int64>
 LiteralUtil::GetArraySlice<int64>(const Literal& literal);
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
-LiteralUtil::GetMutableRepeatedField<tensorflow::protobuf_int64>(
+/* static */ const tensorflow::gtl::MutableArraySlice<tensorflow::protobuf_int64>
+LiteralUtil::GetMutableArraySlice<tensorflow::protobuf_int64>(
     Literal* literal);
 
 template <>
@@ -512,16 +520,24 @@ LiteralUtil::GetArraySlice<float>(const Literal& literal) {
 }
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<float>*
-LiteralUtil::GetMutableRepeatedField<float>(Literal* literal);
+/* static */ const tensorflow::gtl::MutableArraySlice<float>
+LiteralUtil::GetMutableArraySlice<float>(Literal* literal);
+
+template <>
+/* static */ inline tensorflow::gtl::ArraySlice<half>
+LiteralUtil::GetArraySlice<half>(const Literal& literal);
+
+template <>
+/* static */ const tensorflow::gtl::MutableArraySlice<half>
+LiteralUtil::GetMutableArraySlice<half>(Literal* literal);
 
 template <>
 /* static */ tensorflow::gtl::ArraySlice<double>
 LiteralUtil::GetArraySlice<double>(const Literal& literal);
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<double>*
-LiteralUtil::GetMutableRepeatedField<double>(Literal* literal);
+/* static */ const tensorflow::gtl::MutableArraySlice<double>
+LiteralUtil::GetMutableArraySlice<double>(Literal* literal);
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateR0(NativeT value) {
@@ -757,7 +773,7 @@ template <typename NativeT>
     Literal* literal, tensorflow::gtl::ArraySlice<int64> multi_index,
     NativeT value) {
   int64 linear_index = LinearIndex(*literal, multi_index);
-  GetMutableRepeatedField<NativeT>(literal)->Set(linear_index, value);
+  GetMutableArraySlice<NativeT>(literal)[linear_index] = value;
 }
 
 template <>
@@ -820,25 +836,8 @@ template <typename NativeT>
 /* static */ void LiteralUtil::PopulateR0(NativeT value, Literal* literal) {
   *literal->mutable_shape() = ShapeUtil::MakeShape(
       primitive_util::NativeToPrimitiveType<NativeT>(), {});
-  tensorflow::protobuf::RepeatedField<NativeT>* repeated_field =
-      GetMutableRepeatedField<NativeT>(literal);
-  repeated_field->Add(value);
-}
-
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<uint8>(uint8 value,
-                                                        Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<uint8>(), {});
-  literal->mutable_u8s()->push_back(value);
-}
-
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<int8>(int8 value,
-                                                       Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<int8>(), {});
-  literal->mutable_u8s()->push_back(value);
+  Reserve(1, literal);
+  GetMutableArraySlice<NativeT>(literal)[0] = value;
 }
 
 template <>
@@ -1010,8 +1009,8 @@ template <typename NativeT>
   int64 rank = ShapeUtil::Rank(shape);
   TF_RET_CHECK(shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
-  tensorflow::protobuf::RepeatedField<NativeT>* data =
-      GetMutableRepeatedField<NativeT>(literal);
+  const tensorflow::gtl::MutableArraySlice<NativeT> data =
+      GetMutableArraySlice<NativeT>(literal);
   if (rank > 0) {
     std::vector<int64> base(rank, 0);
     std::vector<int64> step(rank, 1);
@@ -1044,22 +1043,13 @@ template <typename NativeT>
     Literal* literal) {
   *literal->mutable_shape() = ShapeUtil::MakeShape(
       primitive_util::NativeToPrimitiveType<NativeT>(), dimensions);
-  tensorflow::protobuf::RepeatedField<NativeT>* repeated_field =
-      GetMutableRepeatedField<NativeT>(literal);
+  Reserve(ShapeUtil::ElementsIn(literal->shape()), literal);
+  const tensorflow::gtl::MutableArraySlice<NativeT> dest =
+      GetMutableArraySlice<NativeT>(literal);
   for (int64 i = 0; i < ShapeUtil::ElementsIn(literal->shape()); ++i) {
-    repeated_field->Add(value);
+    dest[i] = value;
   }
 }
-
-template <>
-/* static */ void LiteralUtil::PopulateWithValue(
-    int64 value, tensorflow::gtl::ArraySlice<int64> dimensions,
-    Literal* literal);
-
-template <>
-/* static */ void LiteralUtil::PopulateWithValue(
-    uint64 value, tensorflow::gtl::ArraySlice<int64> dimensions,
-    Literal* literal);
 
 template <typename NativeSrcT, typename NativeDestT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::Convert(
@@ -1084,18 +1074,12 @@ template <typename NativeT>
 /* static */ void LiteralUtil::Resize(int64 num_elements, NativeT value,
                                       Literal* literal) {
   CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
-  tensorflow::protobuf::RepeatedField<NativeT>* repeated_field =
-      GetMutableRepeatedField<NativeT>(literal);
-  repeated_field->Resize(num_elements, value);
+  const tensorflow::gtl::MutableArraySlice<NativeT> dest =
+      GetMutableArraySlice<NativeT>(literal);
+  for (int64 i = 0; i < ShapeUtil::ElementsIn(literal->shape()); ++i) {
+    dest[i] = value;
+  }
 }
-
-template <>
-/* static */ void LiteralUtil::Resize(int64 num_elements, int64 value,
-                                      Literal* literal);
-
-template <>
-/* static */ void LiteralUtil::Resize(int64 num_elements, uint64 value,
-                                      Literal* literal);
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal>
