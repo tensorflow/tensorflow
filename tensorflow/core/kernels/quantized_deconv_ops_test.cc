@@ -103,4 +103,74 @@ TEST_F(QuantizedDeconv2DTest, Small) {
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
+TEST_F(QuantizedDeconv2DTest, SmallWithStrideLargerThanOne) {
+  const int stride = 2;
+  TF_ASSERT_OK(NodeDefBuilder("quantized_deconv_op", "QuantizedDeconv2D")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("padding", "VALID")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+
+  const int depth = 1;
+  const int input_width = 2;
+  const int input_height = 2;
+  const int input_batch_count = 1;
+
+  const float input_min = 0.0;
+  const float input_max = 2.0;
+
+  Tensor input_float(DT_FLOAT,
+                     {input_batch_count, input_height, input_width, depth});
+  test::FillValues<float>(&input_float, { 1, 1, 1, 1 });
+  Tensor input_quantized =
+      FloatTensorToQuantized<quint8>(input_float, input_min, input_max);
+
+  const int filter_size = 3;
+  const int filter_count = 1;
+  const float filter_min = 0.0;
+  const float filter_max = 2.0;
+  Tensor filter_float(DT_FLOAT,
+                      {filter_size, filter_size, depth, filter_count});
+  test::FillValues<float>(&filter_float, {1, 1, 1, 1, 1, 1, 1, 1, 1});
+  Tensor filter_quantized =
+      FloatTensorToQuantized<quint8>(filter_float, filter_min, filter_max);
+
+  AddInputFromArray<quint8>(input_quantized.shape(),
+                            input_quantized.flat<quint8>());
+  AddInputFromArray<quint8>(filter_quantized.shape(),
+                            filter_quantized.flat<quint8>());
+  AddInputFromArray<int32>(TensorShape({4}), {1, 5, 5, 1});
+  AddInputFromArray<float>(TensorShape({1}), {input_min});
+  AddInputFromArray<float>(TensorShape({1}), {input_max});
+  AddInputFromArray<float>(TensorShape({1}), {filter_min});
+  AddInputFromArray<float>(TensorShape({1}), {filter_max});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const int expected_width = 5;
+  const int expected_height = 5;
+  Tensor expected_float(
+      DT_FLOAT, TensorShape({input_batch_count, expected_height, expected_width,
+                             filter_count}));
+  test::FillValues<float>(&expected_float,
+      { 1, 1, 2, 1, 1,
+        1, 1, 2, 1, 1,
+        2, 2, 4, 2, 2,
+        1, 1, 2, 1, 1,
+        1, 1, 2, 1, 1 });
+  const Tensor& output_quantized = *GetOutput(0);
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  Tensor output_float =
+      QuantizedTensorToFloat<qint32>(output_quantized, output_min, output_max);
+  test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
+}
+
 } // tensorflow

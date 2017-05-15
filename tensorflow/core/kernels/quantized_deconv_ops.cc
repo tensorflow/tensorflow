@@ -76,6 +76,12 @@ class ReferenceDeconvFunctor {
     // TODO: add support for stride
     
     int output_depth = filter_depth;
+    int filter_left_offset =
+      ((input_width - 1) * stride + filter_width - output_width + 1) / 2;
+    int filter_top_offset =
+      ((input_height - 1) * stride + filter_height - output_height + 1) / 2;
+    LOG(INFO) << filter_left_offset;
+    LOG(INFO) << filter_top_offset;
 
     for (int batch = 0; batch < input_batches; batch ++) {
 
@@ -88,8 +94,8 @@ class ReferenceDeconvFunctor {
           for (int w = 0; w < input_width; w ++) {
             // x and y are the coordinate of the center of the kernel that 
             // outputs the element at (h, w)
-            int x = filter_height / 2 + h;
-            int y = filter_width / 2 + w;
+            int x = filter_height / 2 + h * stride - filter_top_offset;
+            int y = filter_width / 2 + w * stride - filter_left_offset;
 
             for (int kx = 0; kx < filter_height; kx ++) {
               for (int ky = 0; ky < filter_width; ky ++) {
@@ -111,9 +117,6 @@ class ReferenceDeconvFunctor {
                     (c * input_depth) +
                     (f)
                   ];
-
-                  // LOG(INFO) << "input_value  = " << input_value;
-                  // LOG(INFO) << "filter_value  = " << filter_value;
 
                   total += input_value * filter_value;
                 }
@@ -153,9 +156,13 @@ class QuantizedDeconv2DOp: public OpKernel {
                   errors::InvalidArgument("Sliding window strides field must specify 4 dimensions"));
       OP_REQUIRES(context, strides_[1] == strides_[2],
                   errors::InvalidArgument("Current implementation only supports equal strides in the row and column dimensions"));
-      OP_REQUIRES(context, (strides_[0] == 1) & (strides_[1] == 1),
+      //OP_REQUIRES(context, (strides_[1] == 1) & (strides_[2] == 1),
+      //            errors::InvalidArgument("Current implementation doesn't support stride larger than 1"));
+      OP_REQUIRES(context, (strides_[0] == 1) | (strides_[3] == 1),
                   errors::InvalidArgument("Current implementation doesn't support stride in batch or depth dimension"));
       OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+      OP_REQUIRES(context, padding_ == VALID,
+                  errors::InvalidArgument("Only VALID padding is supported in the current implementation"));
 
       // These checkers are copied from the Conv2DFastBackpropInputOp
       // See: conv_grad_input_ops.cc
@@ -223,6 +230,22 @@ class QuantizedDeconv2DOp: public OpKernel {
       CHECK_GT(batch, 0);
 
       const int stride = strides_[1];
+
+      // Check output shape
+      // The shape of the output should satisfy the following conditions:
+      // 1. batch number should be the same
+      // 2. the conditions for VALID padding should be matched
+
+      CHECK_EQ(batch, output_sizes.vec<int32>()(0));
+
+      // compute the expected input shape from the output shape
+      // with the VALID padding condition
+      const int expected_input_rows = ceil((float) (out_rows - filter_rows + 1) / stride);
+      const int expected_input_cols = ceil((float) (out_cols - filter_cols + 1) / stride);
+      LOG(INFO) << expected_input_rows;
+      LOG(INFO) << expected_input_cols;
+      CHECK_EQ(expected_input_rows, input_rows);
+      CHECK_EQ(expected_input_cols, input_cols);
 
       // Create output_shape (TensorShape instance) from the input Tensor output_sizes
       TensorShape output_shape;
