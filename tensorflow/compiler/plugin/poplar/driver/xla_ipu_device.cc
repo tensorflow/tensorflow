@@ -27,7 +27,7 @@ const char* const DEVICE_XLA_IPU = "XLA_IPU";
 const char* const DEVICE_IPU_XLA_JIT = "XLA_IPU_JIT";
 
 constexpr std::array<DataType, 5> kIpuAllTypes =
-        {{DT_INT32, DT_FLOAT, DT_BOOL}};
+        {{DT_INT32, DT_FLOAT, DT_HALF, DT_BOOL}};
 
 class XlaIpuDeviceFactory : public DeviceFactory {
  public:

@@ -29,8 +29,8 @@ PoplarDataType(const xla::Shape& shape) {
       return std::string("unsigned short");
     case U32:
       return std::string("unsigned int");
-    //case F16:
-    //  return std::string("half");
+    case F16:
+      return std::string("half");
     case F32:
       return std::string("float");
     default:
@@ -127,7 +127,7 @@ AddConstantTensor(poplar::Graph& graph,
       AddConstantTensorTyped<int>(graph, literal, shape, type, tensor);
       break;
     case F16:
-      // No fp16 support in XLA yet
+      AddConstantTensorTyped<half>(graph, literal, shape, type, tensor);
       break;
     case F32:
       AddConstantTensorTyped<float>(graph, literal, shape, type, tensor);

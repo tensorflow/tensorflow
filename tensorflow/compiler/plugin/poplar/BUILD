@@ -110,6 +110,15 @@ py_test(
     ],
 )
 
+py_test(
+    name = "f16_test",
+    size = "small",
+    srcs = ["tests/f16_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -119,6 +128,8 @@ test_suite(
         "multi_run_test",
         "conv_test",
         "variable_test",
+        "reduce_test",
+        "f16_test",
     ],
 )
 
