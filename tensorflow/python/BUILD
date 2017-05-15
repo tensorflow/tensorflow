@@ -1332,6 +1332,7 @@ py_library(
     deps = [
         ":array_ops",
         ":clip_ops",
+        ":data_flow_grad",
         ":data_flow_ops",
         ":framework",
         ":framework_for_generated_wrappers",
